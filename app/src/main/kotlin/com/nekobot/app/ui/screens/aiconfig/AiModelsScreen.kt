@@ -187,7 +187,14 @@ class AiModelsViewModel : BaseViewModel() {
         val req = FetchModelsRequest(baseUrl = baseUrl, apiKey = apiKey, protocol = protocol)
         launchResult(
             block = { repo.fetchModels(req) },
-            onSuccess = { res -> _availableModels.value = res.models ?: emptyList() }
+            onSuccess = { res ->
+                // 服务端返回的 models 是 [{id, name, ...}] 对象数组，提取 id 作为下拉选项
+                val ids = res.models?.mapNotNull { it.id } ?: emptyList()
+                _availableModels.value = ids
+                if (res.success == false) {
+                    showError(res.message ?: "获取模型列表失败")
+                }
+            }
         )
     }
 

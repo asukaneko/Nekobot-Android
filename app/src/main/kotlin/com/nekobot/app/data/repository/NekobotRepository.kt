@@ -222,7 +222,22 @@ class NekobotRepository(
     suspend fun testAiConfig(json: JsonElement): Resource<TestResponse> = safeCall { api.testAiConfig(json) }
 
     // ==================== AI 模型 ====================
-    suspend fun listAiModels(): Resource<List<AiModel>> = safeCall { api.listAiModels() }
+    suspend fun listAiModels(): Resource<List<AiModel>> {
+        val raw: Resource<AiModelListResponse> = safeCall { api.listAiModels() }
+        return when (raw) {
+            is Resource.Success -> {
+                // 服务端返回 {"models":[...], "active_model_id":"..."}
+                // 根据 active_model_id 给对应模型打上 active=true 标记
+                val list = raw.data.models ?: emptyList()
+                val activeId = raw.data.activeModelId
+                val processed = if (activeId.isNullOrBlank()) list
+                else list.map { m -> if (m.id == activeId) m.copy(active = true) else m }
+                Resource.Success(processed)
+            }
+            is Resource.Error -> raw
+            is Resource.Loading -> raw
+        }
+    }
     suspend fun createAiModel(req: AiModelRequest): Resource<AiModel> = safeCall { api.createAiModel(req) }
     suspend fun updateAiModel(id: String, req: AiModelRequest): Resource<AiModel> = safeCall { api.updateAiModel(id, req) }
     suspend fun deleteAiModel(id: String): Resource<Unit> = safeCall { api.deleteAiModel(id) }.map { }

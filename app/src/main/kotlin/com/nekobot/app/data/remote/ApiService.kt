@@ -180,7 +180,7 @@ interface ApiService {
 
     // ==================== AI 模型 ====================
     @GET("api/ai-models")
-    suspend fun listAiModels(): Response<List<AiModel>>
+    suspend fun listAiModels(): Response<AiModelListResponse>
 
     @POST("api/ai-models")
     suspend fun createAiModel(@Body body: AiModelRequest): Response<AiModel>

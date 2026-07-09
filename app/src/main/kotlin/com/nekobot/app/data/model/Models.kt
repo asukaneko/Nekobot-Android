@@ -334,10 +334,23 @@ data class FetchModelsRequest(
     val protocol: String? = null
 )
 
+/** 远端 API 返回的单个模型信息（id + 显示名） */
+data class FetchedModel(
+    val id: String? = null,
+    val name: String? = null,
+    @SerializedName("owned_by") val ownedBy: String? = null
+)
+
 data class FetchModelsResponse(
     val success: Boolean? = null,
     val message: String? = null,
-    val models: List<String>? = null
+    val models: List<FetchedModel>? = null
+)
+
+/** GET /api/ai-models 的响应包装。 */
+data class AiModelListResponse(
+    val models: List<AiModel>? = null,
+    @SerializedName("active_model_id") val activeModelId: String? = null
 )
 
 data class TestResponse(
