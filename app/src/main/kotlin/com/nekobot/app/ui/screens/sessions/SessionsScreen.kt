@@ -17,13 +17,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +51,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.collectAsState
 import coil.compose.AsyncImage
+import androidx.lifecycle.viewModelScope
+import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.model.CreateSessionRequest
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.UpdateSessionRequest
@@ -58,25 +63,45 @@ import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.components.resolveAvatarUrl
 import com.nekobot.app.ui.theme.BgSurface
+import com.nekobot.app.ui.theme.BgSurfaceVariant
 import com.nekobot.app.ui.theme.OnSurface
 import com.nekobot.app.ui.theme.OnSurfaceVariant
 import com.nekobot.app.ui.theme.Primary
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+
+/** 会话列表筛选类型。 */
+enum class SessionFilter(val label: String) {
+    ALL("全部会话"),
+    UNARCHIVED("未归档"),
+    ARCHIVED("已归档"),
+    FAVORITE("收藏"),
+    PINNED("置顶"),
+    PUBLIC("已公开"),
+    BY_CHARACTER("按角色")
+}
 
 /**
- * 会话列表页：展示所有会话，支持新建、重命名、删除、收藏切换。
+ * 会话列表页：展示所有会话，支持新建、重命名、删除、收藏 / 置顶切换、筛选、搜索。
  * 点击会话项调用 [onOpenChat]。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionsScreen(onOpenChat: (String) -> Unit) {
     val viewModel: SessionsViewModel = viewModel()
-    val sessions by viewModel.sessions.collectAsState()
+    val sessions by viewModel.displayedSessions.collectAsState()
+    val characters by viewModel.characters.collectAsState()
     val loading by viewModel.loading.collectAsState()
     val error by viewModel.error.collectAsState()
     val toast by viewModel.toast.collectAsState()
+
+    val filter by viewModel.filter.collectAsState()
+    val characterFilterId by viewModel.characterFilterId.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
 
     // 弹窗状态
     var showCreate by remember { mutableStateOf(false) }
@@ -89,7 +114,7 @@ fun SessionsScreen(onOpenChat: (String) -> Unit) {
             TopAppBar(
                 title = { Text("会话", color = OnSurface) },
                 actions = {
-                    IconButton(onClick = { viewModel.loadSessions() }) {
+                    IconButton(onClick = { viewModel.loadAll() }) {
                         Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = OnSurface)
                     }
                     IconButton(onClick = { showCreate = true }) {
@@ -102,59 +127,90 @@ fun SessionsScreen(onOpenChat: (String) -> Unit) {
             )
         }
     ) { padding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            when {
-                loading && sessions.isEmpty() -> {
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator(color = Primary)
+            // 搜索 + 筛选栏
+            FilterBar(
+                searchQuery = searchQuery,
+                onSearchChange = viewModel::setSearchQuery,
+                filter = filter,
+                onFilterChange = viewModel::setFilter,
+                characters = characters,
+                characterFilterId = characterFilterId,
+                onCharacterFilterChange = viewModel::setCharacterFilter
+            )
+
+            Box(modifier = Modifier.fillMaxSize()) {
+                when {
+                    loading && sessions.isEmpty() -> {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(color = Primary)
+                        }
                     }
-                }
-                sessions.isEmpty() -> {
-                    EmptyState(
-                        title = "暂无会话",
-                        hint = "点击右上角 + 创建新会话",
-                        icon = { Icon(Icons.Outlined.Chat, contentDescription = null, tint = OnSurfaceVariant, modifier = Modifier.size(56.dp)) }
-                    )
-                }
-                else -> {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        items(sessions, key = { it.id ?: it.name ?: it.hashCode().toString() }) { session ->
-                            SessionItem(
-                                session = session,
-                                onClick = { session.id?.let(onOpenChat) },
-                                onRename = { renaming = session },
-                                onDelete = { deleting = session },
-                                onToggleFavorite = { viewModel.toggleFavorite(session) }
-                            )
+                    sessions.isEmpty() -> {
+                        val emptyTitle = when {
+                            searchQuery.isNotBlank() -> "未找到匹配会话"
+                            filter != SessionFilter.ALL -> "当前筛选下无会话"
+                            else -> "暂无会话"
+                        }
+                        val emptyHint = when {
+                            searchQuery.isNotBlank() -> "尝试更换关键词或切换筛选"
+                            filter != SessionFilter.ALL -> "切换其他筛选或点击右上角 + 创建"
+                            else -> "点击右上角 + 创建新会话"
+                        }
+                        EmptyState(
+                            title = emptyTitle,
+                            hint = emptyHint,
+                            icon = {
+                                Icon(
+                                    Icons.Outlined.Chat,
+                                    contentDescription = null,
+                                    tint = OnSurfaceVariant,
+                                    modifier = Modifier.size(56.dp)
+                                )
+                            }
+                        )
+                    }
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(sessions, key = { it.id ?: it.name ?: it.hashCode().toString() }) { session ->
+                                SessionItem(
+                                    session = session,
+                                    onClick = { session.id?.let(onOpenChat) },
+                                    onRename = { renaming = session },
+                                    onDelete = { deleting = session },
+                                    onToggleFavorite = { viewModel.toggleFavorite(session) },
+                                    onTogglePinned = { viewModel.togglePinned(session) }
+                                )
+                            }
                         }
                     }
                 }
-            }
 
-            // 错误提示
-            val errorMsg = error
-            if (!errorMsg.isNullOrBlank()) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(16.dp)
-                ) {
-                    ErrorBanner(
-                        message = errorMsg,
-                        onRetry = { viewModel.clearError() }
-                    )
+                // 错误提示
+                val errorMsg = error
+                if (!errorMsg.isNullOrBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(16.dp)
+                    ) {
+                        ErrorBanner(
+                            message = errorMsg,
+                            onRetry = { viewModel.clearError() }
+                        )
+                    }
                 }
             }
         }
@@ -162,14 +218,10 @@ fun SessionsScreen(onOpenChat: (String) -> Unit) {
 
     // 新建会话弹窗
     if (showCreate) {
-        var name by remember { mutableStateOf("") }
-        var characterId by remember { mutableStateOf("") }
-        var firstMessage by remember { mutableStateOf("") }
-        NekoDialog(
+        CreateSessionDialog(
+            characters = characters,
             onDismiss = { showCreate = false },
-            title = "新建会话",
-            confirmText = "创建",
-            onConfirm = {
+            onCreate = { name, characterId, firstMessage ->
                 viewModel.createSession(
                     CreateSessionRequest(
                         name = name.ifBlank { null },
@@ -178,30 +230,7 @@ fun SessionsScreen(onOpenChat: (String) -> Unit) {
                     )
                 ) { showCreate = false }
             },
-            content = {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("会话名称（可选）") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = characterId,
-                    onValueChange = { characterId = it },
-                    label = { Text("角色 ID（可选）") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = firstMessage,
-                    onValueChange = { firstMessage = it },
-                    label = { Text("首条消息（可选）") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+            onLoadCharacters = { viewModel.loadCharacters() }
         )
     }
 
@@ -248,6 +277,288 @@ fun SessionsScreen(onOpenChat: (String) -> Unit) {
     }
 }
 
+/** 顶部搜索 + 筛选下拉栏。 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FilterBar(
+    searchQuery: String,
+    onSearchChange: (String) -> Unit,
+    filter: SessionFilter,
+    onFilterChange: (SessionFilter) -> Unit,
+    characters: List<CharacterPreset>,
+    characterFilterId: String?,
+    onCharacterFilterChange: (String?) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // 搜索框
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = onSearchChange,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("搜索会话、角色名...", color = OnSurfaceVariant) },
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = OnSurfaceVariant) },
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp)
+        )
+
+        // 筛选下拉
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box {
+                var menuExpanded by remember { mutableStateOf(false) }
+                GlassCard(
+                    modifier = Modifier
+                        .clickable { menuExpanded = true },
+                    cornerRadius = 12,
+                    containerColor = BgSurfaceVariant
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Text(filter.label, color = OnSurface, style = MaterialTheme.typography.bodyMedium)
+                        if (filter == SessionFilter.BY_CHARACTER && !characterFilterId.isNullOrBlank()) {
+                            val charName = characters.firstOrNull { it.id == characterFilterId }?.name
+                            if (!charName.isNullOrBlank()) {
+                                Spacer(Modifier.size(6.dp))
+                                Text(
+                                    ": $charName",
+                                    color = Primary,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        Spacer(Modifier.size(4.dp))
+                        Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = OnSurfaceVariant)
+                    }
+                }
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false }
+                ) {
+                    SessionFilter.values().forEach { option ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    option.label,
+                                    color = if (option == filter) Primary else OnSurface,
+                                    fontWeight = if (option == filter) FontWeight.SemiBold else FontWeight.Normal
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onFilterChange(option)
+                                if (option != SessionFilter.BY_CHARACTER) {
+                                    onCharacterFilterChange(null)
+                                }
+                            }
+                        )
+                    }
+                    if (filter == SessionFilter.BY_CHARACTER && characters.isNotEmpty()) {
+                        HorizontalDivider(color = OnSurfaceVariant.copy(alpha = 0.2f))
+                        Text(
+                            "  按角色筛选",
+                            color = OnSurfaceVariant,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                        characters.forEach { c ->
+                            val active = c.id == characterFilterId
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        c.displayName,
+                                        color = if (active) Primary else OnSurface,
+                                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal
+                                    )
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    onCharacterFilterChange(c.id)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.size(8.dp))
+
+            if (filter == SessionFilter.BY_CHARACTER) {
+                Box {
+                    var charMenuExpanded by remember { mutableStateOf(false) }
+                    GlassCard(
+                        modifier = Modifier.clickable { charMenuExpanded = true },
+                        cornerRadius = 12,
+                        containerColor = BgSurfaceVariant
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            val charName = characters.firstOrNull { it.id == characterFilterId }?.displayName
+                                ?: "选择角色"
+                            Text(charName, color = OnSurface, style = MaterialTheme.typography.bodyMedium)
+                            Spacer(Modifier.size(4.dp))
+                            Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = OnSurfaceVariant)
+                        }
+                    }
+                    DropdownMenu(
+                        expanded = charMenuExpanded,
+                        onDismissRequest = { charMenuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("全部角色", color = OnSurfaceVariant) },
+                            onClick = {
+                                charMenuExpanded = false
+                                onCharacterFilterChange(null)
+                            }
+                        )
+                        HorizontalDivider(color = OnSurfaceVariant.copy(alpha = 0.2f))
+                        characters.forEach { c ->
+                            DropdownMenuItem(
+                                text = { Text(c.displayName, color = OnSurface) },
+                                onClick = {
+                                    charMenuExpanded = false
+                                    onCharacterFilterChange(c.id)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 新建会话弹窗：包含 ID 输入 + 角色下拉菜单。 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CreateSessionDialog(
+    characters: List<CharacterPreset>,
+    onDismiss: () -> Unit,
+    onCreate: (name: String, characterId: String, firstMessage: String) -> Unit,
+    onLoadCharacters: () -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var characterId by remember { mutableStateOf("") }
+    var firstMessage by remember { mutableStateOf("") }
+    var dropdownExpanded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        if (characters.isEmpty()) onLoadCharacters()
+    }
+
+    NekoDialog(
+        onDismiss = onDismiss,
+        title = "新建会话",
+        confirmText = "创建",
+        onConfirm = { onCreate(name, characterId, firstMessage) },
+        content = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("会话名称（可选）") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+
+            // 角色 ID 输入 + 选择按钮
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = characterId,
+                    onValueChange = { characterId = it },
+                    label = { Text("角色 ID") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("手动输入或下方选择", color = OnSurfaceVariant) }
+                )
+                Spacer(Modifier.size(8.dp))
+                Box {
+                    GlassCard(
+                        modifier = Modifier.clickable { dropdownExpanded = true },
+                        cornerRadius = 12,
+                        containerColor = BgSurfaceVariant
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                        ) {
+                            Text("选择", color = Primary, style = MaterialTheme.typography.bodyMedium)
+                            Spacer(Modifier.size(4.dp))
+                            Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = Primary)
+                        }
+                    }
+                    DropdownMenu(
+                        expanded = dropdownExpanded,
+                        onDismissRequest = { dropdownExpanded = false }
+                    ) {
+                        if (characters.isEmpty()) {
+                            DropdownMenuItem(
+                                text = { Text("暂无可用角色", color = OnSurfaceVariant) },
+                                onClick = { dropdownExpanded = false }
+                            )
+                        } else {
+                            DropdownMenuItem(
+                                text = { Text("（不选）", color = OnSurfaceVariant) },
+                                onClick = {
+                                    dropdownExpanded = false
+                                    characterId = ""
+                                }
+                            )
+                            HorizontalDivider(color = OnSurfaceVariant.copy(alpha = 0.2f))
+                            characters.forEach { c ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(
+                                                c.displayName,
+                                                color = OnSurface,
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                            if (!c.id.isNullOrBlank()) {
+                                                Text(
+                                                    c.id,
+                                                    color = OnSurfaceVariant,
+                                                    style = MaterialTheme.typography.labelSmall
+                                                )
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        dropdownExpanded = false
+                                        characterId = c.id.orEmpty()
+                                        // 若名称为空，自动用角色名
+                                        if (name.isBlank()) name = c.displayName
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = firstMessage,
+                onValueChange = { firstMessage = it },
+                label = { Text("首条消息（可选）") },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    )
+}
+
 /** 单个会话项卡片。 */
 @Composable
 private fun SessionItem(
@@ -255,7 +566,8 @@ private fun SessionItem(
     onClick: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
-    onToggleFavorite: () -> Unit
+    onToggleFavorite: () -> Unit,
+    onTogglePinned: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     GlassCard(
@@ -298,13 +610,13 @@ private fun SessionItem(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
-                    if (session.favorite == true) {
-                        Spacer(Modifier.size(6.dp))
-                        Text("★", color = Primary, style = MaterialTheme.typography.titleSmall)
-                    }
                     if (session.pinned == true) {
                         Spacer(Modifier.size(6.dp))
                         Text("📌", style = MaterialTheme.typography.titleSmall)
+                    }
+                    if (session.favorite == true) {
+                        Spacer(Modifier.size(6.dp))
+                        Text("★", color = Primary, style = MaterialTheme.typography.titleSmall)
                     }
                 }
                 val preview = session.lastMessage
@@ -365,6 +677,15 @@ private fun SessionItem(
                         }
                     )
                     DropdownMenuItem(
+                        text = {
+                            Text(if (session.pinned == true) "取消置顶" else "置顶")
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onTogglePinned()
+                        }
+                    )
+                    DropdownMenuItem(
                         text = { Text(if (session.favorite == true) "取消收藏" else "收藏") },
                         onClick = {
                             menuExpanded = false
@@ -386,14 +707,62 @@ private fun SessionItem(
 
 /**
  * 会话列表 ViewModel。
+ *
+ * 内部维护原始会话列表 + 筛选/搜索状态，
+ * 对外暴露 [displayedSessions]（已筛选 + 已搜索 + 已排序：置顶永远在前）。
  */
 class SessionsViewModel : BaseViewModel() {
 
     private val _sessions = MutableStateFlow<List<Session>>(emptyList())
-    val sessions: StateFlow<List<Session>> = _sessions.asStateFlow()
+    private val _characters = MutableStateFlow<List<CharacterPreset>>(emptyList())
+    val characters: StateFlow<List<CharacterPreset>> = _characters.asStateFlow()
+
+    private val _filter = MutableStateFlow(SessionFilter.ALL)
+    val filter: StateFlow<SessionFilter> = _filter.asStateFlow()
+
+    private val _characterFilterId = MutableStateFlow<String?>(null)
+    val characterFilterId: StateFlow<String?> = _characterFilterId.asStateFlow()
+
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    /** 对外展示的会话列表：置顶优先 + 应用筛选 + 应用搜索。 */
+    val displayedSessions: StateFlow<List<Session>> = combine(
+        _sessions, _filter, _characterFilterId, _searchQuery
+    ) { all, f, charId, query ->
+        val filtered = applyFilter(all, f, charId)
+        val searched = applySearch(filtered, query)
+        // 置顶强制置顶
+        searched.sortedWith(
+            compareByDescending<Session> { it.pinned == true }
+                .thenByDescending { it.updatedAt ?: "" }
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = emptyList()
+    )
 
     init {
+        loadAll()
+    }
+
+    fun setFilter(f: SessionFilter) {
+        _filter.value = f
+    }
+
+    fun setCharacterFilter(id: String?) {
+        _characterFilterId.value = id
+    }
+
+    fun setSearchQuery(q: String) {
+        _searchQuery.value = q
+    }
+
+    /** 加载会话 + 角色列表。 */
+    fun loadAll() {
         loadSessions()
+        loadCharacters()
     }
 
     /** 加载会话列表。 */
@@ -401,6 +770,16 @@ class SessionsViewModel : BaseViewModel() {
         launchResult(
             block = { repo.listSessions() },
             onSuccess = { _sessions.value = it ?: emptyList() }
+        )
+    }
+
+    /** 加载角色列表（供新建会话下拉菜单使用）。 */
+    fun loadCharacters() {
+        launchResult(
+            block = { repo.listCharacters() },
+            onSuccess = { list ->
+                _characters.value = list ?: emptyList()
+            }
         )
     }
 
@@ -453,5 +832,46 @@ class SessionsViewModel : BaseViewModel() {
                 loadSessions()
             }
         )
+    }
+
+    /** 切换置顶状态。 */
+    fun togglePinned(session: Session) {
+        val newPinned = !(session.pinned ?: false)
+        launchResult(
+            block = { repo.updateSession(session.id.orEmpty(), UpdateSessionRequest(pinned = newPinned)) },
+            onSuccess = {
+                showToast(if (newPinned) "已置顶" else "已取消置顶")
+                loadSessions()
+            }
+        )
+    }
+
+    /** 根据筛选类型过滤会话。 */
+    private fun applyFilter(all: List<Session>, f: SessionFilter, charId: String?): List<Session> {
+        return when (f) {
+            SessionFilter.ALL -> all
+            SessionFilter.UNARCHIVED -> all.filter { it.archived != true }
+            SessionFilter.ARCHIVED -> all.filter { it.archived == true }
+            SessionFilter.FAVORITE -> all.filter { it.favorite == true }
+            SessionFilter.PINNED -> all.filter { it.pinned == true }
+            SessionFilter.PUBLIC -> all.filter { it.isPublic == true }
+            SessionFilter.BY_CHARACTER -> {
+                if (charId.isNullOrBlank()) all
+                else all.filter { s ->
+                    s.characterId == charId || s.characterIds?.contains(charId) == true
+                }
+            }
+        }
+    }
+
+    /** 根据关键词搜索会话名称 / 角色名 / 最后一条消息。 */
+    private fun applySearch(list: List<Session>, query: String): List<Session> {
+        val q = query.trim()
+        if (q.isEmpty()) return list
+        return list.filter { s ->
+            s.displayName.contains(q, ignoreCase = true) ||
+                (s.characterName?.contains(q, ignoreCase = true) == true) ||
+                (s.lastMessage?.contains(q, ignoreCase = true) == true)
+        }
     }
 }
