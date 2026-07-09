@@ -69,11 +69,15 @@ data class CreateSessionRequest(
     val name: String? = null,
     val type: String = "web",
     @SerializedName("session_mode") val sessionMode: String = "character",
+    @SerializedName("user_id") val userId: String? = null,
     @SerializedName("character_id") val characterId: String? = null,
     @SerializedName("character_ids") val characterIds: List<String>? = null,
     @SerializedName("system_prompt") val systemPrompt: String? = null,
     @SerializedName("first_message") val firstMessage: String? = null,
     val scenario: String? = null,
+    @SerializedName("sender_name") val senderName: String? = null,
+    @SerializedName("sender_avatar") val senderAvatar: String? = null,
+    @SerializedName("sender_portrait") val senderPortrait: String? = null,
     val tags: List<String>? = null
 )
 

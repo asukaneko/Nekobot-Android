@@ -53,6 +53,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.collectAsState
 import coil.compose.AsyncImage
 import androidx.lifecycle.viewModelScope
+import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.model.CreateSessionRequest
 import com.nekobot.app.data.model.Session
@@ -222,14 +223,8 @@ fun SessionsScreen(onOpenChat: (String) -> Unit) {
         CreateSessionDialog(
             characters = characters,
             onDismiss = { showCreate = false },
-            onCreate = { name, characterId, firstMessage ->
-                viewModel.createSession(
-                    CreateSessionRequest(
-                        name = name.ifBlank { null },
-                        characterId = characterId.ifBlank { null },
-                        firstMessage = firstMessage.ifBlank { null }
-                    )
-                ) { showCreate = false }
+            onCreate = { req ->
+                viewModel.createSession(req) { showCreate = false }
             },
             onLoadCharacters = { viewModel.loadCharacters() }
         )
@@ -458,24 +453,76 @@ private fun FilterBar(
 private fun CreateSessionDialog(
     characters: List<CharacterPreset>,
     onDismiss: () -> Unit,
-    onCreate: (name: String, characterId: String, firstMessage: String) -> Unit,
+    onCreate: (CreateSessionRequest) -> Unit,
     onLoadCharacters: () -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var characterId by remember { mutableStateOf("") }
     var firstMessage by remember { mutableStateOf("") }
     var dropdownExpanded by remember { mutableStateOf(false) }
+    /** 选中的角色对象（来自下拉或 ID 输入匹配） */
+    var selectedCharacter by remember { mutableStateOf<CharacterPreset?>(null) }
 
     LaunchedEffect(Unit) {
         if (characters.isEmpty()) onLoadCharacters()
+    }
+
+    // 当 ID 输入框变化时，尝试在已加载角色列表里匹配；命中则自动填充对应字段
+    LaunchedEffect(characterId, characters) {
+        val id = characterId.trim()
+        if (id.isEmpty()) {
+            // ID 清空时也清空已选角色（保留手动输入的 firstMessage / name）
+            selectedCharacter = null
+            return@LaunchedEffect
+        }
+        val match = characters.firstOrNull { it.id == id }
+        if (match != null && match != selectedCharacter) {
+            selectedCharacter = match
+            if (name.isBlank()) name = match.displayName
+            if (firstMessage.isBlank()) firstMessage = match.firstMessage.orEmpty()
+        } else if (match == null) {
+            // 输入了不在列表中的 ID，认为是手动输入的自定义 ID
+            selectedCharacter = null
+        }
     }
 
     NekoDialog(
         onDismiss = onDismiss,
         title = "新建会话",
         confirmText = "创建",
-        onConfirm = { onCreate(name, characterId, firstMessage) },
+        onConfirm = {
+            val char = selectedCharacter
+            val req = CreateSessionRequest(
+                name = name.ifBlank { char?.displayName },
+                characterId = characterId.ifBlank { null },
+                systemPrompt = char?.systemPrompt?.takeIf { it.isNotBlank() },
+                firstMessage = firstMessage.ifBlank { char?.firstMessage },
+                scenario = char?.scenario?.takeIf { it.isNotBlank() },
+                senderName = char?.displayName,
+                senderAvatar = char?.avatar,
+                senderPortrait = char?.portrait,
+                userId = ServiceContainer.prefs.username.takeIf { it.isNotBlank() }
+            )
+            onCreate(req)
+        },
         content = {
+            // 当前选中的角色预览
+            val previewChar = selectedCharacter
+            if (previewChar != null) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 4.dp)
+                ) {
+                    Text(
+                        "已选角色：${previewChar.displayName}",
+                        color = Primary,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
@@ -531,6 +578,7 @@ private fun CreateSessionDialog(
                                 onClick = {
                                     dropdownExpanded = false
                                     characterId = ""
+                                    selectedCharacter = null
                                 }
                             )
                             HorizontalDivider(color = OnSurfaceVariant.copy(alpha = 0.2f))
@@ -539,8 +587,14 @@ private fun CreateSessionDialog(
                                     text = { Text(c.displayName, color = OnSurface) },
                                     onClick = {
                                         dropdownExpanded = false
-                                        // 选中后把 ID 填入 ID 输入框（不再回填会话名）
                                         characterId = c.id.orEmpty()
+                                        selectedCharacter = c
+                                        // 自动用角色名作为会话名（仅当当前为空时）
+                                        if (name.isBlank()) name = c.displayName
+                                        // 自动用角色的首条消息（仅当当前为空时）
+                                        if (firstMessage.isBlank()) {
+                                            firstMessage = c.firstMessage.orEmpty()
+                                        }
                                     }
                                 )
                             }
