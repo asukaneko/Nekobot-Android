@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -277,7 +278,7 @@ fun SessionsScreen(onOpenChat: (String) -> Unit) {
     }
 }
 
-/** 顶部搜索 + 筛选下拉栏。 */
+/** 搜索 + 筛选合并栏：搜索框左侧内嵌筛选下拉。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FilterBar(
@@ -289,55 +290,40 @@ private fun FilterBar(
     characterFilterId: String?,
     onCharacterFilterChange: (String?) -> Unit
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    var charMenuExpanded by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // 搜索框
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = onSearchChange,
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("搜索会话、角色名...", color = OnSurfaceVariant) },
-            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = OnSurfaceVariant) },
-            singleLine = true,
-            shape = RoundedCornerShape(12.dp)
-        )
-
-        // 筛选下拉
+        // 搜索框 + 内嵌筛选下拉（左侧 chip + 搜索图标 + 输入）
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box {
-                var menuExpanded by remember { mutableStateOf(false) }
                 GlassCard(
                     modifier = Modifier
+                        .height(56.dp)
                         .clickable { menuExpanded = true },
                     cornerRadius = 12,
                     containerColor = BgSurfaceVariant
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        modifier = Modifier.padding(horizontal = 12.dp)
                     ) {
-                        Text(filter.label, color = OnSurface, style = MaterialTheme.typography.bodyMedium)
-                        if (filter == SessionFilter.BY_CHARACTER && !characterFilterId.isNullOrBlank()) {
-                            val charName = characters.firstOrNull { it.id == characterFilterId }?.name
-                            if (!charName.isNullOrBlank()) {
-                                Spacer(Modifier.size(6.dp))
-                                Text(
-                                    ": $charName",
-                                    color = Primary,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                        Spacer(Modifier.size(4.dp))
+                        Text(
+                            filter.label,
+                            color = if (filter == SessionFilter.ALL) OnSurfaceVariant else Primary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(Modifier.size(2.dp))
                         Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = OnSurfaceVariant)
                     }
                 }
@@ -365,11 +351,12 @@ private fun FilterBar(
                     }
                     if (filter == SessionFilter.BY_CHARACTER && characters.isNotEmpty()) {
                         HorizontalDivider(color = OnSurfaceVariant.copy(alpha = 0.2f))
-                        Text(
-                            "  按角色筛选",
-                            color = OnSurfaceVariant,
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        DropdownMenuItem(
+                            text = { Text("全部角色", color = OnSurfaceVariant) },
+                            onClick = {
+                                menuExpanded = false
+                                onCharacterFilterChange(null)
+                            }
                         )
                         characters.forEach { c ->
                             val active = c.id == characterFilterId
@@ -393,46 +380,71 @@ private fun FilterBar(
 
             Spacer(Modifier.size(8.dp))
 
-            if (filter == SessionFilter.BY_CHARACTER) {
-                Box {
-                    var charMenuExpanded by remember { mutableStateOf(false) }
-                    GlassCard(
-                        modifier = Modifier.clickable { charMenuExpanded = true },
-                        cornerRadius = 12,
-                        containerColor = BgSurfaceVariant
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                        ) {
-                            val charName = characters.firstOrNull { it.id == characterFilterId }?.displayName
-                                ?: "选择角色"
-                            Text(charName, color = OnSurface, style = MaterialTheme.typography.bodyMedium)
-                            Spacer(Modifier.size(4.dp))
-                            Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = OnSurfaceVariant)
-                        }
-                    }
-                    DropdownMenu(
-                        expanded = charMenuExpanded,
-                        onDismissRequest = { charMenuExpanded = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("全部角色", color = OnSurfaceVariant) },
-                            onClick = {
-                                charMenuExpanded = false
-                                onCharacterFilterChange(null)
-                            }
-                        )
-                        HorizontalDivider(color = OnSurfaceVariant.copy(alpha = 0.2f))
-                        characters.forEach { c ->
-                            DropdownMenuItem(
-                                text = { Text(c.displayName, color = OnSurface) },
-                                onClick = {
-                                    charMenuExpanded = false
-                                    onCharacterFilterChange(c.id)
-                                }
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onSearchChange,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(56.dp),
+                placeholder = { Text("搜索会话、角色名...", color = OnSurfaceVariant) },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = OnSurfaceVariant) },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { onSearchChange("") }) {
+                            Icon(
+                                Icons.Filled.Close,
+                                contentDescription = "清空",
+                                tint = OnSurfaceVariant
                             )
                         }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp)
+            )
+        }
+
+        // 当选择「按角色」且未在弹窗中选定时，单独显示一个角色选择 chip
+        if (filter == SessionFilter.BY_CHARACTER) {
+            Box {
+                GlassCard(
+                    modifier = Modifier
+                        .clickable { charMenuExpanded = true }
+                        .height(40.dp),
+                    cornerRadius = 12,
+                    containerColor = BgSurfaceVariant
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    ) {
+                        val charName = characters.firstOrNull { it.id == characterFilterId }?.displayName
+                            ?: "选择角色"
+                        Text(charName, color = OnSurface, style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.size(4.dp))
+                        Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = OnSurfaceVariant)
+                    }
+                }
+                DropdownMenu(
+                    expanded = charMenuExpanded,
+                    onDismissRequest = { charMenuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("全部角色", color = OnSurfaceVariant) },
+                        onClick = {
+                            charMenuExpanded = false
+                            onCharacterFilterChange(null)
+                        }
+                    )
+                    HorizontalDivider(color = OnSurfaceVariant.copy(alpha = 0.2f))
+                    characters.forEach { c ->
+                        DropdownMenuItem(
+                            text = { Text(c.displayName, color = OnSurface) },
+                            onClick = {
+                                charMenuExpanded = false
+                                onCharacterFilterChange(c.id)
+                            }
+                        )
                     }
                 }
             }
@@ -471,9 +483,9 @@ private fun CreateSessionDialog(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
 
-            // 角色 ID 输入 + 选择按钮
+            // 角色 ID 输入 + 选择按钮（按钮高度对齐 OutlinedTextField）
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
                     value = characterId,
@@ -481,21 +493,26 @@ private fun CreateSessionDialog(
                     label = { Text("角色 ID") },
                     singleLine = true,
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("手动输入或下方选择", color = OnSurfaceVariant) }
+                    placeholder = { Text("手动输入或点击右侧选择", color = OnSurfaceVariant) }
                 )
                 Spacer(Modifier.size(8.dp))
-                Box {
+                Box(
+                    modifier = Modifier.height(56.dp),
+                    contentAlignment = Alignment.Center
+                ) {
                     GlassCard(
-                        modifier = Modifier.clickable { dropdownExpanded = true },
+                        modifier = Modifier
+                            .height(56.dp)
+                            .clickable { dropdownExpanded = true },
                         cornerRadius = 12,
                         containerColor = BgSurfaceVariant
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                            modifier = Modifier.padding(horizontal = 12.dp)
                         ) {
                             Text("选择", color = Primary, style = MaterialTheme.typography.bodyMedium)
-                            Spacer(Modifier.size(4.dp))
+                            Spacer(Modifier.size(2.dp))
                             Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = Primary)
                         }
                     }
@@ -519,27 +536,11 @@ private fun CreateSessionDialog(
                             HorizontalDivider(color = OnSurfaceVariant.copy(alpha = 0.2f))
                             characters.forEach { c ->
                                 DropdownMenuItem(
-                                    text = {
-                                        Column {
-                                            Text(
-                                                c.displayName,
-                                                color = OnSurface,
-                                                style = MaterialTheme.typography.bodyMedium
-                                            )
-                                            if (!c.id.isNullOrBlank()) {
-                                                Text(
-                                                    c.id,
-                                                    color = OnSurfaceVariant,
-                                                    style = MaterialTheme.typography.labelSmall
-                                                )
-                                            }
-                                        }
-                                    },
+                                    text = { Text(c.displayName, color = OnSurface) },
                                     onClick = {
                                         dropdownExpanded = false
+                                        // 选中后把 ID 填入 ID 输入框（不再回填会话名）
                                         characterId = c.id.orEmpty()
-                                        // 若名称为空，自动用角色名
-                                        if (name.isBlank()) name = c.displayName
                                     }
                                 )
                             }
@@ -548,7 +549,7 @@ private fun CreateSessionDialog(
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = firstMessage,
                 onValueChange = { firstMessage = it },
