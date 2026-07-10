@@ -32,6 +32,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,6 +54,8 @@ fun MoreScreen(
     onNavigate: (String) -> Unit,
     onLogout: () -> Unit
 ) {
+    // 订阅全局 appMode Flow，模式切换时自动重组
+    val appMode by ServiceContainer.appModeFlow.collectAsState()
     Scaffold(
         topBar = {
             TopAppBar(
@@ -95,7 +99,7 @@ fun MoreScreen(
                     onClick = { onNavigate("state_history") }
                 )
                 // AI 配置 / AI 模型 / 本地 AI 模型：按模式互斥显示
-                if (ServiceContainer.prefs.appMode == AppMode.LOCAL) {
+                if (appMode == AppMode.LOCAL) {
                     Spacer(Modifier.height(8.dp))
                     MoreRow(
                         icon = Icons.Filled.Memory,

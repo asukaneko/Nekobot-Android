@@ -113,10 +113,11 @@ class SettingsViewModel : BaseViewModel() {
     private val _appMode = MutableStateFlow(ServiceContainer.prefs.appMode)
     val appMode: StateFlow<AppMode> = _appMode.asStateFlow()
 
-    /** 切换运行模式。切换后需要重建网络与导航。 */
+    /** 切换运行模式：写入 prefs + 广播全局 Flow + 重建网络 */
     fun switchMode(mode: AppMode) {
-        ServiceContainer.prefs.appMode = mode
+        ServiceContainer.switchAppMode(mode)
         _appMode.value = mode
+        ServiceContainer.rebuildNetwork()
         showToast(if (mode == AppMode.LOCAL) "已切换到本地模式" else "已切换到服务器模式")
     }
 

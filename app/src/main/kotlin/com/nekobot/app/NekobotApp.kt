@@ -3,6 +3,7 @@ package com.nekobot.app
 import android.app.Application
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.local.ai.LocalAiClient
 import com.nekobot.app.data.local.db.NekobotDatabase
@@ -11,6 +12,9 @@ import com.nekobot.app.data.remote.NetworkClient
 import com.nekobot.app.data.remote.SocketManager
 import com.nekobot.app.data.repository.NekobotRepository
 import com.nekobot.app.data.repository.UnifiedRepository
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * 全局依赖容器：单例持有 Prefs / Network / Repository / Gson。
@@ -30,6 +34,14 @@ object ServiceContainer {
         private set
     val gson: Gson = GsonBuilder().setLenient().disableHtmlEscaping().create()
 
+    /** 全局运行模式流：模式切换时所有观察页面自动刷新 */
+    private val _appModeFlow = MutableStateFlow(AppMode.SERVER)
+    val appModeFlow: StateFlow<AppMode> = _appModeFlow.asStateFlow()
+
+    /** 全局登录态流：登录/登出/token 失效时自动刷新路由 */
+    private val _loginStateFlow = MutableStateFlow(false)
+    val loginStateFlow: StateFlow<Boolean> = _loginStateFlow.asStateFlow()
+
     fun init(app: Application) {
         prefs = PrefsManager(app)
         network = NetworkClient(prefs)
@@ -38,10 +50,25 @@ object ServiceContainer {
         localRepository = LocalRepository(db, LocalAiClient(), app)
         unified = UnifiedRepository(prefs, repository, localRepository, app)
         socket = SocketManager(prefs)
+        // 初始化全局状态
+        _appModeFlow.value = prefs.appMode
+        _loginStateFlow.value = prefs.isLoggedIn
     }
 
     fun rebuildNetwork() {
         network.rebuild()
+    }
+
+    /** 切换运行模式并广播 */
+    fun switchAppMode(mode: AppMode) {
+        prefs.appMode = mode
+        _appModeFlow.value = mode
+        _loginStateFlow.value = prefs.isLoggedIn
+    }
+
+    /** 广播登录状态变化（登录成功 / 登出 / token 失效） */
+    fun notifyLoginState(loggedIn: Boolean) {
+        _loginStateFlow.value = loggedIn
     }
 }
 

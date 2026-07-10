@@ -14,6 +14,8 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavType
@@ -54,6 +56,20 @@ fun NekobotNavGraph() {
     val currentRoute = backStackEntry?.destination?.route
     val showBottomBar = currentRoute in mainRoutes
 
+    // 观察全局登录态：登出时自动跳登录页，登录时跳会话页
+    val isLoggedIn by ServiceContainer.loginStateFlow.collectAsState()
+    LaunchedEffect(isLoggedIn) {
+        if (!isLoggedIn && currentRoute != Routes.LOGIN) {
+            navController.navigate(Routes.LOGIN) {
+                popUpTo(0) { inclusive = true }
+            }
+        } else if (isLoggedIn && currentRoute == Routes.LOGIN) {
+            navController.navigate(Routes.SESSIONS) {
+                popUpTo(Routes.LOGIN) { inclusive = true }
+            }
+        }
+    }
+
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
@@ -87,7 +103,7 @@ fun NekobotNavGraph() {
         // 顶部 inset 交给各 Screen 内部的 TopAppBar 消耗，避免状态栏 inset 被应用两次导致顶部空白过高。
         NavHost(
             navController = navController,
-            startDestination = if (ServiceContainer.prefs.isLoggedIn) Routes.SESSIONS else Routes.LOGIN,
+            startDestination = if (isLoggedIn) Routes.SESSIONS else Routes.LOGIN,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(bottom = innerPadding.calculateBottomPadding()),
@@ -99,9 +115,8 @@ fun NekobotNavGraph() {
         ) {
             composable(Routes.LOGIN) {
                 LoginScreen(onLoggedIn = {
-                    navController.navigate(Routes.SESSIONS) {
-                        popUpTo(Routes.LOGIN) { inclusive = true }
-                    }
+                    // 广播登录成功，LaunchedEffect 会自动导航到 SESSIONS
+                    ServiceContainer.notifyLoginState(true)
                 })
             }
             composable(Routes.SESSIONS) {
@@ -169,12 +184,10 @@ fun NekobotNavGraph() {
                 MoreScreen(
                     onNavigate = { route -> navController.navigate(route) },
                     onLogout = {
-                        // 清除本地 token 并断开 socket，确保重启后不会自动登录
+                        // 清除本地 token 并断开 socket，广播登录态变化（LaunchedEffect 会自动导航）
                         ServiceContainer.socket.disconnect()
                         ServiceContainer.repository.logoutLocal()
-                        navController.navigate(Routes.LOGIN) {
-                            popUpTo(0) { inclusive = true }
-                        }
+                        ServiceContainer.notifyLoginState(false)
                     }
                 )
             }
@@ -182,9 +195,8 @@ fun NekobotNavGraph() {
                 SettingsScreen(
                     onLogout = {
                         ServiceContainer.socket.disconnect()
-                        navController.navigate(Routes.LOGIN) {
-                            popUpTo(0) { inclusive = true }
-                        }
+                        ServiceContainer.repository.logoutLocal()
+                        ServiceContainer.notifyLoginState(false)
                     },
                     onNavigate = { route -> navController.navigate(route) },
                     onBack = { navController.popBackStack() }

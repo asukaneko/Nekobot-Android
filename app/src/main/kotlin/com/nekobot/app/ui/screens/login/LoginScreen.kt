@@ -345,6 +345,7 @@ class LoginViewModel : BaseViewModel() {
      * 若 token 已失效，后端请求会返回 401，用户需改用普通登录。
      */
     fun quickLogin(record: LoginRecord, onSuccess: () -> Unit) {
+        // 先写入地址并重建网络，再验证 token
         prefs.serverUrl = record.serverUrl
         prefs.username = record.username
         prefs.token = record.token
@@ -352,7 +353,16 @@ class LoginViewModel : BaseViewModel() {
         // 更新表单为该记录的值，便于失效后手动登录
         _serverUrl.value = record.serverUrl
         _username.value = record.username
-        onSuccess()
+        // 验证 token：调用 listSessions，成功则跳转，失败则提示重新输入密码
+        launchResult(
+            block = { repo.listSessions() },
+            onSuccess = { onSuccess() },
+            onError = {
+                // token 已失效，清除并提示
+                prefs.clearAuth()
+                showError("登录已过期，请重新输入密码")
+            }
+        )
     }
 
     /**

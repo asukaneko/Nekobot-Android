@@ -184,7 +184,9 @@ fun CharacterDetailScreen(
     val isNew = characterId == "new"
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isLocalMode = ServiceContainer.prefs.appMode == AppMode.LOCAL
+    // 订阅全局 appMode Flow，模式切换时自动刷新
+    val appMode by ServiceContainer.appModeFlow.collectAsState()
+    val isLocalMode = appMode == AppMode.LOCAL
 
     // 立绘图片文件选择器
     val portraitLauncher = rememberLauncherForActivityResult(
