@@ -371,7 +371,10 @@ private fun MessageBubble(
     onCopy: () -> String = { "" }
 ) {
     val isUser = message.isUser
-    val bgColor = if (isUser) (if (isSystemInDarkTheme()) BubbleUser else BubbleUserLight) else (if (isSystemInDarkTheme()) BubbleAssistant else BubbleAssistantLight)
+    val isDark = isSystemInDarkTheme()
+    val bgColor = if (isUser) (if (isDark) BubbleUser else BubbleUserLight) else (if (isDark) BubbleAssistant else BubbleAssistantLight)
+    // 文字颜色：用户气泡（紫色）始终白色；AI 气泡深色模式白色，浅色模式深色
+    val textColor = if (isUser) Color.White else (if (isDark) Color.White else MaterialTheme.colorScheme.onSurface)
     val arrangement = if (isUser) Arrangement.End else Arrangement.Start
     val clipboard = LocalClipboardManager.current
 
@@ -383,6 +386,14 @@ private fun MessageBubble(
             .filter { it.isNotEmpty() }
             .let { if (it.isEmpty()) listOf("(空消息)") else it }
     }
+    // 解析每段的多媒体内容段
+    val parsedSegments = remember(segments) {
+        segments.map { parseContentSegments(it) }
+    }
+    // 是否包含多媒体内容（图片/视频/音频/txt/html）或音频 URL，决定气泡最大宽度
+    val hasMultimedia = parsedSegments.any { segs -> segs.any { it.type != SegmentType.TEXT } }
+    val hasAudioUrl = !message.audioUrl.isNullOrBlank()
+    val maxBubbleWidth = if (hasMultimedia || hasAudioUrl) 320.dp else 280.dp
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -412,11 +423,14 @@ private fun MessageBubble(
             Spacer(Modifier.width(8.dp))
         }
 
-        Column(modifier = Modifier.widthIn(max = 280.dp)) {
+        Column(modifier = Modifier.widthIn(max = maxBubbleWidth)) {
             // 多段气泡：每段一个气泡，段间小间距
             segments.forEachIndexed { idx, segment ->
                 val isFirst = idx == 0
                 val isLast = idx == segments.lastIndex
+                // 解析多媒体内容段
+                val contentSegments = parsedSegments[idx]
+                val segHasMultimedia = contentSegments.any { it.type != SegmentType.TEXT }
                 Box(
                     modifier = Modifier
                         .clip(
@@ -434,13 +448,29 @@ private fun MessageBubble(
                         )
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    Text(
-                        text = segment,
-                        color = Color.White,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    if (segHasMultimedia) {
+                        // 多媒体内容：用渲染器渲染，宽度可超出普通文本宽度
+                        RenderContentSegments(
+                            segments = contentSegments,
+                            textColor = textColor,
+                            modifier = Modifier.widthIn(max = 320.dp)
+                        )
+                    } else {
+                        Text(
+                            text = segment,
+                            color = textColor,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
                 }
                 if (!isLast) Spacer(Modifier.height(10.dp))
+            }
+
+            // 如果有音频 URL，追加音频播放器
+            if (hasAudioUrl) {
+                val resolvedAudioUrl = resolveAvatarUrl(message.audioUrl) ?: message.audioUrl!!
+                Spacer(Modifier.height(6.dp))
+                AudioRenderer(url = resolvedAudioUrl, modifier = Modifier.widthIn(max = 280.dp))
             }
 
             // 元信息：时间（精简到分钟）/ token 数

@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -77,6 +78,13 @@ fun MoreScreen(
                     title = "角色记忆",
                     desc = "查看并管理角色对用户/事件的记忆",
                     onClick = { onNavigate("memory") }
+                )
+                Spacer(Modifier.height(8.dp))
+                MoreRow(
+                    icon = Icons.Filled.Palette,
+                    title = "样式设置",
+                    desc = "字体、颜色、大小",
+                    onClick = { onNavigate("style_settings") }
                 )
                 Spacer(Modifier.height(8.dp))
                 MoreRow(

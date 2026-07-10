@@ -34,6 +34,7 @@ import com.nekobot.app.ui.screens.more.MoreScreen
 import com.nekobot.app.ui.screens.sessions.SessionsScreen
 import com.nekobot.app.ui.screens.sessions.SessionDetailScreen
 import com.nekobot.app.ui.screens.settings.SettingsScreen
+import com.nekobot.app.ui.screens.settings.StyleSettingsScreen
 import com.nekobot.app.ui.screens.settings.SystemSettingsScreen
 import com.nekobot.app.ui.screens.statehistory.StateHistoryScreen
 import com.nekobot.app.ui.screens.tokens.TokensScreen
@@ -202,6 +203,9 @@ fun NekobotNavGraph() {
             }
             composable(Routes.MEMORY) {
                 MemoryScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.STYLE_SETTINGS) {
+                StyleSettingsScreen(onBack = { navController.popBackStack() })
             }
         }
     }

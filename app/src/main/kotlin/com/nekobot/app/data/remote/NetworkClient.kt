@@ -93,6 +93,9 @@ class NetworkClient(private val prefs: PrefsManager) {
     val apiService: ApiService
         get() = currentRetrofit.create(ApiService::class.java)
 
+    /** 公开的 OkHttp 客户端（用于直接下载文件等，复用认证拦截器与超时配置）。 */
+    val client: OkHttpClient get() = okHttpClient
+
     private fun buildRetrofit(baseUrl: String): Retrofit {
         val safeUrl = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
         return Retrofit.Builder()

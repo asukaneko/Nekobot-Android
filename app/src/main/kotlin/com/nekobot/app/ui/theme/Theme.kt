@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.nekobot.app.ServiceContainer
 
 private val DarkColors = darkColorScheme(
     primary = Primary,
@@ -53,6 +54,7 @@ fun NekobotTheme(
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
+    val prefs = ServiceContainer.prefs
     val colorScheme = when {
         dynamicColor && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S -> {
             val context = LocalContext.current
@@ -61,6 +63,19 @@ fun NekobotTheme(
         darkTheme -> DarkColors
         else -> LightColors
     }
+
+    // 字体颜色覆盖：null 表示跟随主题
+    val finalColorScheme = prefs.fontColorOverride?.let { hex ->
+        runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrNull()?.let { overrideColor ->
+            colorScheme.copy(
+                onSurface = overrideColor,
+                onSurfaceVariant = overrideColor,
+                onBackground = overrideColor
+            )
+        }
+    } ?: colorScheme
+
+    val typography = buildTypography(prefs.fontFamily, prefs.fontScale)
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -73,8 +88,8 @@ fun NekobotTheme(
     }
 
     MaterialTheme(
-        colorScheme = colorScheme,
-        typography = NekobotTypography,
+        colorScheme = finalColorScheme,
+        typography = typography,
         content = content
     )
 }
