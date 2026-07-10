@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,16 +15,27 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Assistant
+import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,12 +54,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
+import com.google.gson.JsonElement
+import com.google.gson.JsonObject
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.UpdateSessionRequest
 import com.nekobot.app.ui.BaseViewModel
@@ -57,18 +74,22 @@ import com.nekobot.app.ui.components.SectionHeader
 import com.nekobot.app.ui.components.resolveAvatarUrl
 import com.nekobot.app.ui.theme.BgDark
 import com.nekobot.app.ui.theme.BgSurface
+import com.nekobot.app.ui.theme.BgSurfaceVariant
+import com.nekobot.app.ui.theme.ErrorRed
 import com.nekobot.app.ui.theme.OnSurface
 import com.nekobot.app.ui.theme.OnSurfaceVariant
 import com.nekobot.app.ui.theme.Primary
-import com.nekobot.app.ui.theme.ErrorRed
+import com.nekobot.app.ui.theme.Secondary
+import com.nekobot.app.ui.theme.SuccessGreen
+import com.nekobot.app.ui.theme.Tertiary
+import com.nekobot.app.ui.theme.WarningAmber
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
 /**
- * 会话详情 ViewModel：加载单个会话、编辑名称 / 标签 / 置顶 / 收藏，
- * 支持保存、删除、进入对话。
+ * 会话详情 ViewModel：加载单个会话、编辑名称 / 标签 / 置顶 / 收藏 / 系统提示词 /
+ * 自动状态间隔 / 剧情模式等，支持保存、删除。
  */
 class SessionDetailViewModel : BaseViewModel() {
 
@@ -79,10 +100,12 @@ class SessionDetailViewModel : BaseViewModel() {
     val tagsText = MutableStateFlow("")
     val pinned = MutableStateFlow(false)
     val favorite = MutableStateFlow(false)
+    val systemPrompt = MutableStateFlow("")
+    val autoStateInterval = MutableStateFlow<Int?>(null)
+    val plotMode = MutableStateFlow(false)
+    val plotRealTimeSync = MutableStateFlow(false)
 
-    fun init(id: String) {
-        load(id)
-    }
+    fun init(id: String) { load(id) }
 
     fun load(id: String) {
         launchResult(
@@ -93,6 +116,10 @@ class SessionDetailViewModel : BaseViewModel() {
                 tagsText.value = s.tags?.joinToString(", ").orEmpty()
                 pinned.value = s.pinned == true
                 favorite.value = s.favorite == true
+                systemPrompt.value = s.systemPrompt.orEmpty()
+                autoStateInterval.value = s.autoStateInterval
+                plotMode.value = s.plotMode == true
+                plotRealTimeSync.value = s.plotRealTimeSync == true
             }
         )
     }
@@ -113,7 +140,11 @@ class SessionDetailViewModel : BaseViewModel() {
                         name = nameVal,
                         tags = tagsList,
                         pinned = pinned.value,
-                        favorite = favorite.value
+                        favorite = favorite.value,
+                        systemPrompt = systemPrompt.value.ifBlank { null },
+                        autoStateInterval = autoStateInterval.value,
+                        plotMode = plotMode.value,
+                        plotRealTimeSync = plotRealTimeSync.value
                     )
                 )
             },
@@ -138,10 +169,10 @@ class SessionDetailViewModel : BaseViewModel() {
 }
 
 /**
- * 会话详情页：展示并编辑会话元信息（名称、标签、置顶、收藏），
- * 顶部提供「进入对话」「保存」「删除」操作。
+ * 会话详情页：参考 webui 会话详情弹窗，展示并编辑会话的全部元信息。
+ * 分区：基本信息 / 标记 / 系统提示词 / 角色绑定 / 运行时状态 / 剧情模式 / 自动状态 / 只读信息。
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SessionDetailScreen(
     sessionId: String,
@@ -154,14 +185,17 @@ fun SessionDetailScreen(
     val tagsText by vm.tagsText.collectAsState()
     val pinned by vm.pinned.collectAsState()
     val favorite by vm.favorite.collectAsState()
+    val systemPrompt by vm.systemPrompt.collectAsState()
+    val autoStateInterval by vm.autoStateInterval.collectAsState()
+    val plotMode by vm.plotMode.collectAsState()
+    val plotRealTimeSync by vm.plotRealTimeSync.collectAsState()
     val loading by vm.loading.collectAsState()
     val error by vm.error.collectAsState()
 
     var showDeleteDialog by remember { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
 
-    LaunchedEffect(sessionId) {
-        vm.init(sessionId)
-    }
+    LaunchedEffect(sessionId) { vm.init(sessionId) }
 
     Scaffold(
         containerColor = BgDark,
@@ -178,15 +212,12 @@ fun SessionDetailScreen(
                     }
                 },
                 actions = {
-                    // 进入对话
                     IconButton(onClick = { session?.id?.let(onOpenChat) }) {
                         Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = "进入对话", tint = Primary)
                     }
-                    // 保存
                     IconButton(onClick = { vm.save(onBack) }) {
                         Icon(Icons.Filled.Save, contentDescription = "保存", tint = Primary)
                     }
-                    // 删除
                     IconButton(onClick = { showDeleteDialog = true }) {
                         Icon(Icons.Filled.Delete, contentDescription = "删除", tint = ErrorRed)
                     }
@@ -205,9 +236,7 @@ fun SessionDetailScreen(
                     modifier = Modifier.fillMaxSize(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
-                ) {
-                    CircularProgressIndicator(color = Primary)
-                }
+                ) { CircularProgressIndicator(color = Primary) }
             } else {
                 Column(
                     modifier = Modifier
@@ -217,7 +246,7 @@ fun SessionDetailScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     session?.let { s ->
-                        // 顶部：立绘 + 会话基本信息
+                        // === 1. 顶部：立绘 + 基本信息 ===
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 val portraitUrl = resolveAvatarUrl(s.portraitUrl)
@@ -236,54 +265,38 @@ fun SessionDetailScreen(
                                             modifier = Modifier.fillMaxSize()
                                         )
                                     } else {
-                                        Icon(
-                                            Icons.AutoMirrored.Filled.Chat,
-                                            contentDescription = null,
-                                            tint = OnSurfaceVariant,
-                                            modifier = Modifier.size(32.dp)
-                                        )
+                                        Icon(Icons.Filled.SmartToy, contentDescription = null, tint = OnSurfaceVariant, modifier = Modifier.size(32.dp))
                                     }
                                 }
                                 Spacer(Modifier.size(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = s.displayName,
-                                        style = MaterialTheme.typography.titleLarge,
-                                        color = OnSurface,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+                                    Text(s.displayName, style = MaterialTheme.typography.titleLarge, color = OnSurface, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     if (!s.characterName.isNullOrBlank()) {
                                         Spacer(Modifier.height(4.dp))
-                                        Text(
-                                            text = "角色：${s.characterName}",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = Primary
-                                        )
+                                        Text("角色：${s.characterName}", style = MaterialTheme.typography.bodyMedium, color = Primary)
                                     }
                                     Spacer(Modifier.height(4.dp))
+                                    // 类型 / 模式 badge
+                                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        s.type?.let { BadgeChip(it) }
+                                        s.sessionMode?.let { BadgeChip(it) }
+                                        if (s.pinned == true) BadgeChip("置顶", Primary)
+                                        if (s.favorite == true) BadgeChip("收藏", WarningAmber)
+                                        if (s.archived == true) BadgeChip("已归档", OnSurfaceVariant)
+                                        if (s.readOnly == true) BadgeChip("只读", ErrorRed)
+                                    }
                                     s.messageCount?.let { count ->
-                                        Text(
-                                            text = "消息数：$count",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = OnSurfaceVariant
-                                        )
+                                        Spacer(Modifier.height(4.dp))
+                                        Text("消息数：$count", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariant)
                                     }
                                     s.updatedAt?.let { time ->
-                                        Text(
-                                            text = "更新：$time",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = OnSurfaceVariant,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                                        Text("更新：${time.take(19)}", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
                                 }
                             }
                         }
 
-                        // 编辑区
+                        // === 2. 编辑基本信息 ===
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
                             SectionHeader(title = "基本信息")
                             Spacer(Modifier.height(8.dp))
@@ -303,10 +316,7 @@ fun SessionDetailScreen(
                                 modifier = Modifier.fillMaxWidth()
                             )
                             Spacer(Modifier.height(12.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 ToggleChipRow(
                                     label = if (pinned) "已置顶" else "置顶",
                                     selected = pinned,
@@ -322,17 +332,118 @@ fun SessionDetailScreen(
                             }
                         }
 
-                        // 只读信息
+                        // === 3. 系统提示词 ===
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            SectionHeader(title = "其它信息")
+                            SectionHeader(
+                                title = "系统提示词",
+                                trailing = {
+                                    IconButton(onClick = { clipboard.setText(AnnotatedString(systemPrompt)) }) {
+                                        Icon(Icons.Filled.ContentCopy, contentDescription = "复制", tint = OnSurfaceVariant, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = systemPrompt,
+                                onValueChange = { vm.systemPrompt.value = it },
+                                label = { Text("System Prompt") },
+                                minLines = 3,
+                                maxLines = 8,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        // === 4. 角色绑定信息 ===
+                        GlassCard(modifier = Modifier.fillMaxWidth()) {
+                            SectionHeader(title = "角色绑定")
+                            Spacer(Modifier.height(8.dp))
+                            DetailLine(label = "角色 ID", value = s.characterId ?: "—")
+                            DetailLine(label = "角色名", value = s.characterName ?: "—")
+                            DetailLine(label = "发送者名", value = s.senderName ?: "—")
+                            DetailLine(label = "场景", value = s.scenario?.take(60) ?: "—")
+                            s.characterIds?.takeIf { it.isNotEmpty() }?.let {
+                                DetailLine(label = "群聊角色", value = it.joinToString(", "))
+                            }
+                        }
+
+                        // === 5. 角色运行时状态 ===
+                        s.characterRuntimeSnapshot?.takeIf { it.isJsonObject }?.asJsonObject?.let { snap ->
+                            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                                SectionHeader(title = "角色运行时状态")
+                                Spacer(Modifier.height(8.dp))
+                                // 心情 / 能量
+                                val mood = snap.get("mood")?.asString
+                                val intensity = snap.get("mood_intensity")?.let { if (it.isJsonPrimitive) it.asFloat else null }
+                                val energy = snap.get("energy")?.let { if (it.isJsonPrimitive) it.asInt else null }
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    StateMiniCard("心情", mood, Primary, Modifier.weight(1f))
+                                    StateMiniCard("强度", intensity?.let { "${(it * 100).toInt()}%" }, Secondary, Modifier.weight(1f))
+                                    StateMiniCard("能量", energy?.toString(), Tertiary, Modifier.weight(1f))
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                // 关系数值
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    RelBar("好感", snap.get("affection")?.asInt, Primary, Modifier.weight(1f))
+                                    RelBar("信任", snap.get("trust")?.asInt, Secondary, Modifier.weight(1f))
+                                    RelBar("熟悉", snap.get("familiarity")?.asInt, Tertiary, Modifier.weight(1f))
+                                    RelBar("依赖", snap.get("dependency")?.asInt, WarningAmber, Modifier.weight(1f))
+                                    RelBar("安全", snap.get("security")?.asInt, SuccessGreen, Modifier.weight(1f))
+                                    RelBar("嫉妒", snap.get("jealousy")?.asInt, ErrorRed, Modifier.weight(1f))
+                                }
+                                // 表情
+                                snap.get("visible_emotion")?.asString?.let {
+                                    Spacer(Modifier.height(8.dp))
+                                    DetailLine(label = "表象情绪", value = it)
+                                }
+                                snap.get("hidden_emotion")?.asString?.let {
+                                    DetailLine(label = "内在情绪", value = it)
+                                }
+                            }
+                        }
+
+                        // === 6. 剧情模式 / 自动状态 ===
+                        GlassCard(modifier = Modifier.fillMaxWidth()) {
+                            SectionHeader(title = "高级设置")
+                            Spacer(Modifier.height(8.dp))
+                            ToggleChipRow(
+                                label = if (plotMode) "剧情模式：开" else "剧情模式：关",
+                                selected = plotMode,
+                                onClick = { vm.plotMode.value = !plotMode },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            if (plotMode) {
+                                Spacer(Modifier.height(8.dp))
+                                ToggleChipRow(
+                                    label = if (plotRealTimeSync) "现实时间同步：开" else "现实时间同步：关",
+                                    selected = plotRealTimeSync,
+                                    onClick = { vm.plotRealTimeSync.value = !plotRealTimeSync },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            // 自动状态间隔下拉
+                            Text("自动状态评估间隔", style = MaterialTheme.typography.bodyMedium, color = OnSurface)
+                            Spacer(Modifier.height(4.dp))
+                            AutoStateIntervalSelector(
+                                value = autoStateInterval,
+                                onChange = { vm.autoStateInterval.value = it }
+                            )
+                        }
+
+                        // === 7. 只读元信息 ===
+                        GlassCard(modifier = Modifier.fillMaxWidth()) {
+                            SectionHeader(title = "元信息")
                             Spacer(Modifier.height(8.dp))
                             DetailLine(label = "会话 ID", value = s.id.orEmpty())
-                            DetailLine(label = "类型", value = s.type ?: "—")
-                            DetailLine(label = "模式", value = s.sessionMode ?: "—")
-                            DetailLine(label = "角色 ID", value = s.characterId ?: "—")
-                            DetailLine(label = "创建时间", value = s.createdAt ?: "—")
+                            DetailLine(label = "用户 ID", value = s.userId ?: "—")
+                            DetailLine(label = "创建时间", value = s.createdAt?.take(19) ?: "—")
+                            DetailLine(label = "更新时间", value = s.updatedAt?.take(19) ?: "—")
                             DetailLine(label = "公开", value = if (s.isPublic == true) "是" else "否")
                             DetailLine(label = "归档", value = if (s.archived == true) "是" else "否")
+                            DetailLine(label = "只读", value = if (s.readOnly == true) "是" else "否")
+                            s.lastMessage?.let {
+                                DetailLine(label = "最后消息", value = it.take(50))
+                            }
                         }
 
                         error?.let {
@@ -347,7 +458,6 @@ fun SessionDetailScreen(
         }
     }
 
-    // 删除确认弹窗
     if (showDeleteDialog) {
         NekoDialog(
             onDismiss = { showDeleteDialog = false },
@@ -362,7 +472,8 @@ fun SessionDetailScreen(
     }
 }
 
-/** 详情页只读信息行 */
+// ==================== 辅助组件 ====================
+
 @Composable
 private fun DetailLine(label: String, value: String) {
     Row(
@@ -372,13 +483,13 @@ private fun DetailLine(label: String, value: String) {
         verticalAlignment = Alignment.Top
     ) {
         Text(
-            text = label,
+            label,
             style = MaterialTheme.typography.bodySmall,
             color = OnSurfaceVariant,
-            modifier = Modifier.size(width = 88.dp, height = 20.dp)
+            modifier = Modifier.width(80.dp)
         )
         Text(
-            text = value,
+            value,
             style = MaterialTheme.typography.bodyMedium,
             color = OnSurface,
             modifier = Modifier.weight(1f)
@@ -386,7 +497,19 @@ private fun DetailLine(label: String, value: String) {
     }
 }
 
-/** 可切换的胶囊按钮 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BadgeChip(text: String, color: Color = OnSurfaceVariant) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(color.copy(alpha = 0.15f))
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Text(text, style = MaterialTheme.typography.labelSmall, color = color, fontWeight = FontWeight.Medium)
+    }
+}
+
 @Composable
 private fun ToggleChipRow(
     label: String,
@@ -394,26 +517,88 @@ private fun ToggleChipRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    GlassCard(
+    Box(
         modifier = modifier
             .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(12.dp))
+            .background(if (selected) Primary.copy(alpha = 0.2f) else BgSurfaceVariant)
             .clickable(onClick = onClick),
-        cornerRadius = 12,
-        containerColor = if (selected) Primary.copy(alpha = 0.2f) else BgSurface
+        contentAlignment = Alignment.Center
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = label,
-                color = if (selected) Primary else OnSurface,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+        Text(
+            text = label,
+            color = if (selected) Primary else OnSurface,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            modifier = Modifier.padding(vertical = 12.dp)
+        )
+    }
+}
+
+@Composable
+private fun StateMiniCard(
+    label: String,
+    value: String?,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(BgSurface)
+            .padding(vertical = 6.dp, horizontal = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(value ?: "—", style = MaterialTheme.typography.titleSmall, color = color, fontWeight = FontWeight.Bold)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
+    }
+}
+
+@Composable
+private fun RelBar(
+    label: String,
+    value: Int?,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(BgSurface)
+            .padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(value?.toString() ?: "—", style = MaterialTheme.typography.labelMedium, color = color, fontWeight = FontWeight.Bold)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant, maxLines = 1)
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AutoStateIntervalSelector(
+    value: Int?,
+    onChange: (Int?) -> Unit
+) {
+    val options = listOf(
+        null to "全局默认",
+        0 to "关闭",
+        1 to "每 1 轮",
+        2 to "每 2 轮",
+        3 to "每 3 轮",
+        5 to "每 5 轮",
+        8 to "每 8 轮",
+        10 to "每 10 轮"
+    )
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        options.forEach { (interval, label) ->
+            FilterChip(
+                selected = value == interval,
+                onClick = { onChange(interval) },
+                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = Primary.copy(alpha = 0.2f),
+                    selectedLabelColor = Primary
+                )
             )
         }
     }

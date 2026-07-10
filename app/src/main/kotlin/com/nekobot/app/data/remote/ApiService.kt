@@ -245,6 +245,10 @@ interface ApiService {
     @POST("api/sessions/{id}/compress")
     suspend fun compressContext(@Path("id") id: String): Response<JsonElement>
 
+    /** 从指定消息处分叉新会话（分支）。 */
+    @POST("api/sessions/{id}/fork")
+    suspend fun forkSession(@Path("id") id: String, @Body body: ForkRequest): Response<JsonElement>
+
     /** 跨渠道（QQ/Telegram/Feishu/Web）状态历程，合成 timeline sessions 列表。 */
     @GET("api/channel_runtime_timeline")
     suspend fun channelRuntimeTimeline(

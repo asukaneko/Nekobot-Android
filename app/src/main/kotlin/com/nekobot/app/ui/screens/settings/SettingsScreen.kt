@@ -1,6 +1,7 @@
 package com.nekobot.app.ui.screens.settings
 
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,17 +12,21 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Settings as SettingsIcon
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -275,29 +281,23 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                     }
                 }
 
-                // 3. 系统设置 (JSON 编辑器)
+                // 3. 系统设置（跳转子界面编辑 JSON）
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    SectionHeader(title = "系统设置", subtitle = "以 JSON 格式编辑")
-                    Spacer(Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = settingsInput,
-                        onValueChange = { settingsInput = it },
-                        label = { Text("设置 JSON") },
-                        minLines = 6,
-                        maxLines = 12,
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 160.dp)
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Button(
-                        onClick = { vm.saveSettings(settingsInput) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                        modifier = Modifier.fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onNavigate("system_settings") }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.Save, contentDescription = null, tint = OnPrimary)
-                        Spacer(Modifier.width(8.dp))
-                        Text("保存设置", color = OnPrimary)
+                        Icon(Icons.Filled.SettingsIcon, contentDescription = null, tint = Primary, modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("系统设置", style = MaterialTheme.typography.bodyLarge, color = OnSurface, fontWeight = FontWeight.SemiBold)
+                            Text("以 JSON 格式编辑系统配置", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariant)
+                        }
+                        Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = OnSurfaceVariant)
                     }
                 }
 

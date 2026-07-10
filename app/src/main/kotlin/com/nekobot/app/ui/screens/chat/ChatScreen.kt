@@ -33,10 +33,12 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Compress
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.SmartToy
+import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -62,6 +64,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
@@ -96,7 +100,7 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun ChatScreen(sessionId: String, onBack: () -> Unit) {
+fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Unit = {}) {
     val viewModel: ChatViewModel = viewModel()
     val messages by viewModel.messages.collectAsState()
     val session by viewModel.session.collectAsState()
@@ -233,7 +237,10 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit) {
                         MessageBubble(
                             message = msg,
                             portraitUrl = session?.portraitUrl,
-                            onLongClick = { deletingMessage = msg }
+                            onLongClick = { deletingMessage = msg },
+                            onRegenerate = { viewModel.regenerate() },
+                            onFork = { msg.id?.let { mid -> viewModel.forkFromMessage(mid) { onOpenChat(it) } } },
+                            onCopy = { msg.displayContent }
                         )
                     }
                     if (sending) {
@@ -287,13 +294,30 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit) {
     }
 }
 
-/** 单条消息气泡：用户靠右、AI 靠左。 */
+/** 单条消息气泡：用户靠右、AI 靠左。支持 <||> 分隔符拆分为多段气泡。 */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageBubble(message: Message, portraitUrl: String? = null, onLongClick: () -> Unit) {
+private fun MessageBubble(
+    message: Message,
+    portraitUrl: String? = null,
+    onLongClick: () -> Unit,
+    onRegenerate: () -> Unit = {},
+    onFork: () -> Unit = {},
+    onCopy: () -> String = { "" }
+) {
     val isUser = message.isUser
     val bgColor = if (isUser) BubbleUser else BubbleAssistant
     val arrangement = if (isUser) Arrangement.End else Arrangement.Start
+    val clipboard = LocalClipboardManager.current
+
+    // 按 <||> 拆分内容为多段（保留非空段）
+    val segments = remember(message.content) {
+        message.displayContent
+            .split("<||>")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .let { if (it.isEmpty()) listOf("(空消息)") else it }
+    }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -323,54 +347,112 @@ private fun MessageBubble(message: Message, portraitUrl: String? = null, onLongC
             Spacer(Modifier.width(8.dp))
         }
 
-        Column(
-            modifier = Modifier.widthIn(max = 280.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .clip(
-                        RoundedCornerShape(
-                            topStart = 16.dp,
-                            topEnd = 16.dp,
-                            bottomStart = if (isUser) 16.dp else 4.dp,
-                            bottomEnd = if (isUser) 4.dp else 16.dp
+        Column(modifier = Modifier.widthIn(max = 280.dp)) {
+            // 多段气泡：每段一个气泡，段间小间距
+            segments.forEachIndexed { idx, segment ->
+                val isFirst = idx == 0
+                val isLast = idx == segments.lastIndex
+                Box(
+                    modifier = Modifier
+                        .clip(
+                            RoundedCornerShape(
+                                topStart = 16.dp,
+                                topEnd = 16.dp,
+                                bottomStart = if (isUser) 16.dp else if (isLast) 16.dp else 4.dp,
+                                bottomEnd = if (isUser) if (isLast) 4.dp else 16.dp else 16.dp
+                            )
                         )
+                        .background(bgColor)
+                        .combinedClickable(
+                            onClick = {},
+                            onLongClick = onLongClick
+                        )
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = segment,
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium
                     )
-                    .background(bgColor)
-                    .combinedClickable(
-                        onClick = {},
-                        onLongClick = onLongClick
-                    )
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                Text(
-                    text = message.displayContent.ifBlank { "(空消息)" },
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                }
+                if (!isLast) Spacer(Modifier.height(4.dp))
             }
+
             // 元信息：时间（精简到分钟）/ token 数
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                message.timestamp?.let { time ->
-                    val compact = compactTime(time)
-                    if (compact != null) {
-                        Text(
-                            text = compact,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = OnSurfaceVariant
-                        )
-                    }
+            val compactTs = compactTime(message.timestamp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(top = 2.dp)
+            ) {
+                if (compactTs != null) {
+                    Text(compactTs, style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
                 }
                 message.tokens?.let { tokens ->
-                    if (compactTime(message.timestamp) != null) Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = "${tokens} tok",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = OnSurfaceVariant
-                    )
+                    if (compactTs != null) Spacer(Modifier.width(6.dp))
+                    Text("${tokens} tok", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
                 }
             }
+
+            // 操作按钮（小且不显眼）：AI 有 重新生成/分支/复制，用户只有 复制
+            BubbleActions(
+                isUser = isUser,
+                onRegenerate = onRegenerate,
+                onFork = onFork,
+                onCopy = {
+                    val text = onCopy()
+                    clipboard.setText(AnnotatedString(text))
+                }
+            )
         }
+    }
+}
+
+/** 气泡下方的小操作按钮行：低对比度、小图标。 */
+@Composable
+private fun BubbleActions(
+    isUser: Boolean,
+    onRegenerate: () -> Unit,
+    onFork: () -> Unit,
+    onCopy: () -> Unit
+) {
+    Row(
+        modifier = Modifier.padding(top = 2.dp),
+        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (!isUser) {
+            // 重新生成
+            IconActionButton(icon = Icons.Filled.Refresh, description = "重新生成", onClick = onRegenerate)
+            Spacer(Modifier.width(4.dp))
+            // 分支
+            IconActionButton(icon = Icons.Outlined.AccountTree, description = "分支", onClick = onFork)
+            Spacer(Modifier.width(4.dp))
+        }
+        // 复制
+        IconActionButton(icon = Icons.Filled.ContentCopy, description = "复制", onClick = onCopy)
+    }
+}
+
+/** 极小图标按钮：低对比度，不抢视觉。 */
+@Composable
+private fun IconActionButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(24.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            icon,
+            contentDescription = description,
+            tint = OnSurfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.size(14.dp)
+        )
     }
 }
 
@@ -822,6 +904,27 @@ class ChatViewModel : BaseViewModel() {
             onSuccess = {
                 showToast("上下文已压缩")
                 loadMessages()
+            }
+        )
+    }
+
+    /** 从指定消息处分叉新会话，成功后回调 [onSuccess] 传入新会话 ID。 */
+    fun forkFromMessage(messageId: String, onSuccess: (String) -> Unit) {
+        if (currentSessionId.isBlank()) return
+        launchResult(
+            block = { repo.forkSession(currentSessionId, messageId) },
+            onSuccess = { json ->
+                val newId = when {
+                    json.isJsonObject -> json.asJsonObject.get("id")?.asString
+                        ?: json.asJsonObject.get("session_id")?.asString
+                    else -> null
+                }
+                if (newId != null) {
+                    showToast("已从该消息处分叉")
+                    onSuccess(newId)
+                } else {
+                    showToast("分叉成功，但未返回新会话 ID")
+                }
             }
         )
     }

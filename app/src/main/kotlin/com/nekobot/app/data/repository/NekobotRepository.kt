@@ -266,6 +266,8 @@ class NekobotRepository(
     // ==================== 角色状态 / 历程 ====================
     suspend fun sessionRuntimeTimeline(id: String): Resource<JsonElement> = safeCall { api.sessionRuntimeTimeline(id) }
     suspend fun compressContext(id: String): Resource<JsonElement> = safeCall { api.compressContext(id) }
+    suspend fun forkSession(id: String, messageId: String): Resource<JsonElement> =
+        safeCall { api.forkSession(id, com.nekobot.app.data.model.ForkRequest(messageId)) }
     suspend fun channelRuntimeTimeline(channel: String? = null, characterId: String? = null): Resource<JsonElement> =
         safeCall { api.channelRuntimeTimeline(channel, characterId) }
     suspend fun characterState(id: String, scopeId: String): Resource<JsonElement> = safeCall { api.characterState(id, scopeId) }

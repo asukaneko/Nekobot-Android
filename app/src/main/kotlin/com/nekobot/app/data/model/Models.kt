@@ -44,7 +44,7 @@ data class Session(
     val favorite: Boolean? = null,
     val pinned: Boolean? = null,
     @SerializedName("is_public") val isPublic: Boolean? = null,
-    @SerializedName("proactive_chat") val proactiveChat: Any? = null,
+    @SerializedName("proactive_chat") val proactiveChat: JsonElement? = null,
     @SerializedName("sender_name") val senderName: String? = null,
     @SerializedName("sender_avatar") val senderAvatar: String? = null,
     @SerializedName("character_name") val characterName: String? = null,
@@ -56,9 +56,17 @@ data class Session(
     @SerializedName("created_at") val createdAt: String? = null,
     @SerializedName("updated_at") val updatedAt: String? = null,
     val archived: Boolean? = null,
+    @SerializedName("is_archive") val isArchive: Boolean? = null,
+    @SerializedName("read_only") val readOnly: Boolean? = null,
     @SerializedName("tts_config") val ttsConfig: JsonElement? = null,
     @SerializedName("first_message") val firstMessage: String? = null,
-    val scenario: String? = null
+    val scenario: String? = null,
+    @SerializedName("auto_state_interval") val autoStateInterval: Int? = null,
+    @SerializedName("plot_mode") val plotMode: Boolean? = null,
+    @SerializedName("plot_real_time_sync") val plotRealTimeSync: Boolean? = null,
+    @SerializedName("character_runtime_snapshot") val characterRuntimeSnapshot: JsonElement? = null,
+    @SerializedName("user_id") val userId: String? = null,
+    @SerializedName("group_id") val groupId: String? = null
 ) {
     val displayName: String get() = name?.takeIf { it.isNotBlank() } ?: "未命名会话"
     /** 角色立绘 URL：优先 portrait，回退 characterAvatar */
@@ -87,7 +95,17 @@ data class UpdateSessionRequest(
     val favorite: Boolean? = null,
     val pinned: Boolean? = null,
     @SerializedName("system_prompt") val systemPrompt: String? = null,
-    @SerializedName("character_ids") val characterIds: List<String>? = null
+    @SerializedName("character_ids") val characterIds: List<String>? = null,
+    @SerializedName("auto_state_interval") val autoStateInterval: Int? = null,
+    @SerializedName("plot_mode") val plotMode: Boolean? = null,
+    @SerializedName("plot_real_time_sync") val plotRealTimeSync: Boolean? = null,
+    @SerializedName("proactive_chat") val proactiveChat: JsonElement? = null,
+    @SerializedName("tts_config") val ttsConfig: JsonElement? = null
+)
+
+/** 分叉会话请求体：从指定 message_id 处复制到新会话。 */
+data class ForkRequest(
+    @SerializedName("message_id") val messageId: String
 )
 
 // ==================== 消息 ====================

@@ -1,5 +1,10 @@
 package com.nekobot.app.ui.navigation
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.NavigationBar
@@ -27,6 +32,7 @@ import com.nekobot.app.ui.screens.more.MoreScreen
 import com.nekobot.app.ui.screens.sessions.SessionsScreen
 import com.nekobot.app.ui.screens.sessions.SessionDetailScreen
 import com.nekobot.app.ui.screens.settings.SettingsScreen
+import com.nekobot.app.ui.screens.settings.SystemSettingsScreen
 import com.nekobot.app.ui.screens.statehistory.StateHistoryScreen
 import com.nekobot.app.ui.screens.tokens.TokensScreen
 import com.nekobot.app.ui.screens.worldbook.WorldBookDetailScreen
@@ -83,7 +89,12 @@ fun NekobotNavGraph() {
             startDestination = if (ServiceContainer.prefs.isLoggedIn) Routes.SESSIONS else Routes.LOGIN,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = innerPadding.calculateBottomPadding())
+                .padding(bottom = innerPadding.calculateBottomPadding()),
+            // 加快切换动画：淡入淡出 150ms，底部 Tab 间几乎瞬时
+            enterTransition = { fadeIn(animationSpec = tween(150)) },
+            exitTransition = { fadeOut(animationSpec = tween(120)) },
+            popEnterTransition = { fadeIn(animationSpec = tween(150)) },
+            popExitTransition = { fadeOut(animationSpec = tween(120)) }
         ) {
             composable(Routes.LOGIN) {
                 LoginScreen(onLoggedIn = {
@@ -120,7 +131,8 @@ fun NekobotNavGraph() {
             ) { entry ->
                 ChatScreen(
                     sessionId = entry.arguments?.getString("sessionId").orEmpty(),
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onOpenChat = { id -> navController.navigate(Routes.chat(id)) }
                 )
             }
             composable(Routes.CHARACTERS) {
@@ -175,6 +187,9 @@ fun NekobotNavGraph() {
             }
             composable(Routes.STATE_HISTORY) {
                 StateHistoryScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.SYSTEM_SETTINGS) {
+                SystemSettingsScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.AI_CONFIG) {
                 AiConfigScreen(onBack = { navController.popBackStack() })
