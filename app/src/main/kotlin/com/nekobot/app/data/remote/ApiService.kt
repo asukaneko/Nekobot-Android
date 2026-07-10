@@ -46,7 +46,10 @@ interface ApiService {
     suspend fun chat(@Path("id") id: String, @Body body: ChatRequest): Response<ApiResult>
 
     @POST("api/sessions/{id}/regenerate")
-    suspend fun regenerate(@Path("id") id: String): Response<ApiResult>
+    suspend fun regenerate(
+        @Path("id") id: String,
+        @Body body: Map<String, String?> = emptyMap()
+    ): Response<ApiResult>
 
     @POST("api/stop")
     suspend fun stopGeneration(@Body body: Map<String, String>): Response<ApiResult>
@@ -255,6 +258,19 @@ interface ApiService {
         @Query("channel") channel: String? = null,
         @Query("character_id") characterId: String? = null
     ): Response<JsonElement>
+
+    // ==================== 剧情模式 ====================
+    @GET("api/plot/{conversationId}/latest-choices")
+    suspend fun getLatestPlotChoices(@Path("conversationId") conversationId: String): Response<JsonElement>
+
+    @POST("api/plot/{conversationId}/select")
+    suspend fun selectPlotChoice(
+        @Path("conversationId") conversationId: String,
+        @Body body: Map<String, String>
+    ): Response<ApiResult>
+
+    @POST("api/plot/{conversationId}/regenerate-choices")
+    suspend fun regeneratePlotChoices(@Path("conversationId") conversationId: String): Response<JsonElement>
 
     /** 单角色当前运行时状态（心情/能量等），scope_id 形如 web:<session_id>。 */
     @GET("api/characters/{id}/state")

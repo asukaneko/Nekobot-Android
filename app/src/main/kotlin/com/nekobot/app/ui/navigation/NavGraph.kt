@@ -168,6 +168,9 @@ fun NekobotNavGraph() {
                 MoreScreen(
                     onNavigate = { route -> navController.navigate(route) },
                     onLogout = {
+                        // 清除本地 token 并断开 socket，确保重启后不会自动登录
+                        ServiceContainer.socket.disconnect()
+                        ServiceContainer.repository.logoutLocal()
                         navController.navigate(Routes.LOGIN) {
                             popUpTo(0) { inclusive = true }
                         }
@@ -177,6 +180,7 @@ fun NekobotNavGraph() {
             composable(Routes.SETTINGS) {
                 SettingsScreen(
                     onLogout = {
+                        ServiceContainer.socket.disconnect()
                         navController.navigate(Routes.LOGIN) {
                             popUpTo(0) { inclusive = true }
                         }

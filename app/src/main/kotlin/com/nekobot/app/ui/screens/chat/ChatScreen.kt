@@ -54,6 +54,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -84,6 +85,7 @@ import com.nekobot.app.data.remote.RealtimeEvent
 import com.nekobot.app.data.remote.SocketState
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.ui.BaseViewModel
+import com.google.gson.JsonElement
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.NekoDialog
@@ -112,6 +114,7 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
     val sending by viewModel.sending.collectAsState()
     val loading by viewModel.loading.collectAsState()
     val error by viewModel.error.collectAsState()
+    val plotChoices by viewModel.plotChoices.collectAsState()
 
     var input by remember { mutableStateOf("") }
     var menuExpanded by remember { mutableStateOf(false) }
@@ -195,6 +198,9 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                 onInputChange = { input = it },
                 sending = sending,
                 messageCount = messages.size,
+                plotChoices = plotChoices,
+                onSelectPlotChoice = { viewModel.selectPlotChoice(it) },
+                onRegeneratePlotChoices = { viewModel.regeneratePlotChoices() },
                 onSend = {
                     val text = input
                     input = ""
@@ -380,7 +386,7 @@ private fun MessageBubble(
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
-                if (!isLast) Spacer(Modifier.height(4.dp))
+                if (!isLast) Spacer(Modifier.height(10.dp))
             }
 
             // 元信息：时间（精简到分钟）/ token 数
@@ -526,6 +532,74 @@ private fun ThinkingIndicator(portraitUrl: String? = null) {
 }
 
 /**
+ * 剧情选项栏：在输入框上方展示最多 3 个剧情选项卡片，可点击选择或重新生成。
+ */
+@Composable
+private fun PlotChoicesBar(
+    choices: List<PlotChoice>,
+    onSelect: (String) -> Unit,
+    onRegenerate: () -> Unit,
+    enabled: Boolean = true
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = Primary, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("剧情选项", style = MaterialTheme.typography.labelSmall, color = Primary, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.weight(1f))
+            TextButton(
+                onClick = onRegenerate,
+                enabled = enabled,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+            ) {
+                Text("换一组", style = MaterialTheme.typography.labelSmall, color = if (enabled) Primary else OnSurfaceVariant)
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            choices.forEach { choice ->
+                GlassCard(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(enabled = enabled) { onSelect(choice.id) },
+                    cornerRadius = 12,
+                    containerColor = if (choice.selected) Primary.copy(alpha = 0.15f) else BgSurfaceVariant
+                ) {
+                    Text(
+                        text = choice.title.ifBlank { "选项" },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = OnSurface,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (choice.description.isNotBlank()) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = choice.description,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = OnSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
  * 把时间戳/时间字符串精简到「分钟」级，尽量短以节省气泡下方空间。
  * 支持毫秒时间戳、ISO 字符串、已格式化字符串三种输入。
  * 例：2026-07-10T14:30:45.123 → "14:30"；2026-07-10 14:30 → "14:30"；14:30:45 → "14:30"
@@ -573,6 +647,9 @@ private fun ChatInputBar(
     onInputChange: (String) -> Unit,
     sending: Boolean,
     messageCount: Int,
+    plotChoices: List<PlotChoice> = emptyList(),
+    onSelectPlotChoice: (String) -> Unit = {},
+    onRegeneratePlotChoices: () -> Unit = {},
     onSend: () -> Unit,
     onStop: () -> Unit,
     onRegenerate: () -> Unit,
@@ -591,6 +668,15 @@ private fun ChatInputBar(
             .navigationBarsPadding()
             .imePadding()
     ) {
+        // 剧情模式选项（输入框上方，最多展示 3 个）
+        if (plotChoices.isNotEmpty()) {
+            PlotChoicesBar(
+                choices = plotChoices.take(3),
+                onSelect = onSelectPlotChoice,
+                onRegenerate = onRegeneratePlotChoices,
+                enabled = !sending
+            )
+        }
         // 展开面板（向上展开）
         AnimatedVisibility(visible = panelExpanded) {
             GlassCard(
@@ -733,6 +819,10 @@ class ChatViewModel : BaseViewModel() {
     private val _sending = MutableStateFlow(false)
     val sending: StateFlow<Boolean> = _sending.asStateFlow()
 
+    /** 剧情选项列表（plot_mode 开启时从服务器获取） */
+    private val _plotChoices = MutableStateFlow<List<PlotChoice>>(emptyList())
+    val plotChoices: StateFlow<List<PlotChoice>> = _plotChoices.asStateFlow()
+
     private var currentSessionId: String = ""
 
     /** 流式生成中的临时消息内容累加器 */
@@ -749,6 +839,11 @@ class ChatViewModel : BaseViewModel() {
         loadSession(sessionId)
         loadMessages()
         connectSocket(sessionId)
+        // 如果剧情模式开启，加载剧情选项
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(800)
+            if (_session.value?.plotMode == true) loadPlotChoices()
+        }
     }
 
     /** 连接 Socket.IO 并加入会话 room，监听实时事件。 */
@@ -897,9 +992,16 @@ class ChatViewModel : BaseViewModel() {
     /** 重新生成最后一条 AI 回复。 */
     fun regenerate() {
         if (_sending.value || currentSessionId.isBlank()) return
+        // 找到最后一条 assistant 消息的 id 传给服务器
+        val lastAssistant = _messages.value.lastOrNull { !it.isUser }
+        val messageId = lastAssistant?.id
+        if (messageId.isNullOrBlank()) {
+            showError("未找到可重新生成的 AI 消息")
+            return
+        }
         _sending.value = true
         launchResult(
-            block = { repo.regenerate(currentSessionId) },
+            block = { repo.regenerate(currentSessionId, messageId) },
             onSuccess = {
                 // 等待 socket 推送流式，或延迟刷新
                 viewModelScope.launch {
@@ -991,4 +1093,68 @@ class ChatViewModel : BaseViewModel() {
             socket.leaveSession(currentSessionId)
         }
     }
+
+    /** 加载最新剧情选项（仅在 plot_mode 开启时调用）。 */
+    fun loadPlotChoices() {
+        if (currentSessionId.isBlank()) return
+        launchResult(
+            block = { repo.getLatestPlotChoices(currentSessionId) },
+            onSuccess = { json ->
+                _plotChoices.value = parsePlotChoices(json)
+            }
+        )
+    }
+
+    /** 选择一个剧情选项，成功后刷新消息和选项。 */
+    fun selectPlotChoice(choiceId: String) {
+        if (currentSessionId.isBlank()) return
+        launchResult(
+            block = { repo.selectPlotChoice(currentSessionId, choiceId) },
+            onSuccess = {
+                _plotChoices.value = emptyList()
+                _sending.value = true
+                viewModelScope.launch {
+                    kotlinx.coroutines.delay(2000)
+                    loadMessages()
+                    loadPlotChoices()
+                }
+            }
+        )
+    }
+
+    /** 重新生成剧情选项。 */
+    fun regeneratePlotChoices() {
+        if (currentSessionId.isBlank()) return
+        launchResult(
+            block = { repo.regeneratePlotChoices(currentSessionId) },
+            onSuccess = { json ->
+                _plotChoices.value = parsePlotChoices(json)
+            }
+        )
+    }
+
+    /** 解析服务器返回的剧情选项列表。 */
+    private fun parsePlotChoices(json: JsonElement?): List<PlotChoice> {
+        if (json == null || !json.isJsonObject) return emptyList()
+        val arr = json.asJsonObject.get("choices")?.takeIf { it.isJsonArray }?.asJsonArray
+            ?: return emptyList()
+        return arr.mapNotNull { el ->
+            if (!el.isJsonObject) return@mapNotNull null
+            val obj = el.asJsonObject
+            PlotChoice(
+                id = obj.get("id")?.asString ?: obj.get("choice_id")?.asString ?: "",
+                title = obj.get("title")?.asString ?: obj.get("label")?.asString ?: "",
+                description = obj.get("description")?.asString ?: obj.get("summary")?.asString ?: "",
+                selected = obj.get("selected")?.asBoolean == true
+            )
+        }.filter { it.id.isNotBlank() }
+    }
 }
+
+/** 剧情选项数据类。 */
+data class PlotChoice(
+    val id: String,
+    val title: String,
+    val description: String,
+    val selected: Boolean = false
+)

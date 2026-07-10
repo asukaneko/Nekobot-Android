@@ -1,5 +1,6 @@
 package com.nekobot.app.ui.screens.login
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
+import com.nekobot.app.R
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -83,11 +87,12 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // App Logo + 标题
-            Icon(
-                imageVector = Icons.Outlined.SmartToy,
-                contentDescription = null,
-                tint = Primary,
-                modifier = Modifier.size(72.dp)
+            Image(
+                painter = painterResource(id = R.drawable.neko),
+                contentDescription = "Nekobot Logo",
+                modifier = Modifier
+                    .size(96.dp)
+                    .clip(RoundedCornerShape(20.dp))
             )
             Spacer(Modifier.height(12.dp))
             Text(

@@ -95,7 +95,8 @@ class NekobotRepository(
     suspend fun chat(id: String, message: String): Resource<ApiResult> =
         safeCall { api.chat(id, ChatRequest.of(message)) }
 
-    suspend fun regenerate(id: String): Resource<ApiResult> = safeCall { api.regenerate(id) }
+    suspend fun regenerate(id: String, messageId: String? = null): Resource<ApiResult> =
+        safeCall { api.regenerate(id, mapOf("message_id" to messageId)) }
     suspend fun stopGeneration(id: String): Resource<ApiResult> = safeCall { api.stopGeneration(mapOf("session_id" to id)) }
     suspend fun listMessages(id: String): Resource<List<Message>> = safeCall { api.listMessages(id) }
     suspend fun addMessage(id: String, content: String): Resource<Message> =
@@ -270,6 +271,14 @@ class NekobotRepository(
         safeCall { api.forkSession(id, com.nekobot.app.data.model.ForkRequest(messageId)) }
     suspend fun channelRuntimeTimeline(channel: String? = null, characterId: String? = null): Resource<JsonElement> =
         safeCall { api.channelRuntimeTimeline(channel, characterId) }
+
+    // ==================== 剧情模式 ====================
+    suspend fun getLatestPlotChoices(conversationId: String): Resource<JsonElement> =
+        safeCall { api.getLatestPlotChoices(conversationId) }
+    suspend fun selectPlotChoice(conversationId: String, choiceId: String): Resource<ApiResult> =
+        safeCall { api.selectPlotChoice(conversationId, mapOf("choice_id" to choiceId)) }
+    suspend fun regeneratePlotChoices(conversationId: String): Resource<JsonElement> =
+        safeCall { api.regeneratePlotChoices(conversationId) }
     suspend fun characterState(id: String, scopeId: String): Resource<JsonElement> = safeCall { api.characterState(id, scopeId) }
     suspend fun characterRelationships(id: String, targetId: String): Resource<JsonElement> = safeCall { api.characterRelationships(id, targetId) }
 
