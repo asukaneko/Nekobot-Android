@@ -2,6 +2,30 @@ package com.nekobot.app.data.local
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.google.gson.Gson
+import com.google.gson.JsonObject
+import com.google.gson.reflect.TypeToken
+
+/**
+ * 运行模式：本地模式直连 AI API + Room 存储；服务器模式走后端。
+ */
+enum class AppMode {
+    SERVER,
+    LOCAL;
+
+    val isLocal: Boolean get() = this == LOCAL
+}
+
+/**
+ * 单条登录记录：服务器地址 + 用户名 + token（密码不保存，快速登录靠 token 复用）。
+ * 若 token 已失效，后端会返回 401，届时用户需重新输入密码登录。
+ */
+data class LoginRecord(
+    val serverUrl: String,
+    val username: String,
+    val token: String,
+    val savedAt: Long = System.currentTimeMillis()
+)
 
 /**
  * 本地持久化：服务器地址、登录 token、主题偏好等。
@@ -10,6 +34,7 @@ class PrefsManager(context: Context) {
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+    private val gson = Gson()
 
     var serverUrl: String
         get() = prefs.getString(KEY_SERVER_URL, DEFAULT_SERVER) ?: DEFAULT_SERVER
@@ -30,6 +55,66 @@ class PrefsManager(context: Context) {
         set(value) {
             prefs.edit().putString(KEY_USERNAME, value).apply()
         }
+
+    // ==================== 登录记录（多账号） ====================
+
+    /**
+     * 读取所有已保存的登录记录（按保存时间倒序）。
+     * 记录以 serverUrl + username 作为唯一键，重复登录会覆盖旧记录。
+     */
+    fun listLoginRecords(): List<LoginRecord> {
+        val raw = prefs.getString(KEY_LOGIN_RECORDS, null) ?: return emptyList()
+        return try {
+            val type = object : TypeToken<List<JsonObject>>() {}.type
+            val list: List<JsonObject> = gson.fromJson(raw, type)
+            list.mapNotNull { obj ->
+                try {
+                    LoginRecord(
+                        serverUrl = obj.get("serverUrl")?.asString ?: return@mapNotNull null,
+                        username = obj.get("username")?.asString ?: return@mapNotNull null,
+                        token = obj.get("token")?.asString ?: return@mapNotNull null,
+                        savedAt = obj.get("savedAt")?.asLong ?: 0L
+                    )
+                } catch (_: Exception) { null }
+            }.sortedByDescending { it.savedAt }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    /** 保存/更新一条登录记录（同 serverUrl+username 覆盖） */
+    fun saveLoginRecord(server: String, user: String, tkn: String) {
+        val normalized = if (server.endsWith("/")) server.dropLast(1) else server
+        val current = listLoginRecords().toMutableList()
+        // 去重：同 server + user 视为同一条
+        current.removeAll { it.serverUrl == normalized && it.username == user }
+        current.add(LoginRecord(normalized, user, tkn))
+        // 限制最多 10 条
+        val toSave = current.sortedByDescending { it.savedAt }.take(10)
+        prefs.edit().putString(KEY_LOGIN_RECORDS, gson.toJson(toSave)).apply()
+    }
+
+    /** 删除指定登录记录 */
+    fun removeLoginRecord(server: String, user: String) {
+        val normalized = if (server.endsWith("/")) server.dropLast(1) else server
+        val remaining = listLoginRecords().filterNot { it.serverUrl == normalized && it.username == user }
+        prefs.edit().putString(KEY_LOGIN_RECORDS, gson.toJson(remaining)).apply()
+    }
+
+    /** 清空所有登录记录 */
+    fun clearLoginRecords() {
+        prefs.edit().remove(KEY_LOGIN_RECORDS).apply()
+    }
+
+    /** 运行模式：本地 / 服务器 */
+    var appMode: AppMode
+        get() {
+            val raw = prefs.getString(KEY_APP_MODE, AppMode.SERVER.name) ?: AppMode.SERVER.name
+            return runCatching { AppMode.valueOf(raw) }.getOrDefault(AppMode.SERVER)
+        }
+        set(value) {
+            prefs.edit().putString(KEY_APP_MODE, value.name).apply()
+        }
+
+    val isLocalMode: Boolean get() = appMode.isLocal
 
     /** 字体类型：system / serif / monospace / rounded */
     var fontFamily: String
@@ -53,7 +138,10 @@ class PrefsManager(context: Context) {
         }
 
     val isLoggedIn: Boolean
-        get() = !token.isNullOrEmpty() && serverUrl.isNotEmpty()
+        get() = when (appMode) {
+            AppMode.LOCAL -> true  // 本地模式无需登录
+            AppMode.SERVER -> !token.isNullOrEmpty() && serverUrl.isNotEmpty()
+        }
 
     fun clearAuth() {
         prefs.edit().remove(KEY_TOKEN).apply()
@@ -64,6 +152,8 @@ class PrefsManager(context: Context) {
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_TOKEN = "auth_token"
         private const val KEY_USERNAME = "username"
+        private const val KEY_APP_MODE = "app_mode"
+        private const val KEY_LOGIN_RECORDS = "login_records"
         private const val DEFAULT_SERVER = "http://localhost:5000"
 
         // 样式相关 KEY

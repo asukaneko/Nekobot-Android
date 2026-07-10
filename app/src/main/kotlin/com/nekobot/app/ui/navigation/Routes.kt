@@ -31,6 +31,7 @@ object Routes {
 
     const val AI_CONFIG = "ai_config"
     const val AI_MODELS = "ai_models"
+    const val LOCAL_AI_MODELS = "local_ai_models"
     const val SETTINGS = "settings"
     const val SYSTEM_SETTINGS = "system_settings"
     const val STATE_HISTORY = "state_history"

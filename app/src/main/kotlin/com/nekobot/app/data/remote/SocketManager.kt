@@ -40,6 +40,8 @@ sealed class RealtimeEvent {
     data class PlotChoices(val choices: com.google.gson.JsonElement) : RealtimeEvent()
     /** 错误 */
     data class Error(val message: String) : RealtimeEvent()
+    /** 本地模式 AI 流式结束时的 token 用量（input/output/total） */
+    data class Usage(val inputTokens: Int, val outputTokens: Int, val model: String? = null) : RealtimeEvent()
 }
 
 /**

@@ -252,6 +252,17 @@ interface ApiService {
     @POST("api/sessions/{id}/fork")
     suspend fun forkSession(@Path("id") id: String, @Body body: ForkRequest): Response<JsonElement>
 
+    /** 获取会话的自定义提示词列表（custom_prompts）。 */
+    @GET("api/sessions/{id}/custom-prompts")
+    suspend fun getCustomPrompts(@Path("id") id: String): Response<JsonElement>
+
+    /** 全量更新会话的自定义提示词列表。 */
+    @PUT("api/sessions/{id}/custom-prompts")
+    suspend fun updateCustomPrompts(
+        @Path("id") id: String,
+        @Body body: Map<String, Any>
+    ): Response<JsonElement>
+
     /** 跨渠道（QQ/Telegram/Feishu/Web）状态历程，合成 timeline sessions 列表。 */
     @GET("api/channel_runtime_timeline")
     suspend fun channelRuntimeTimeline(

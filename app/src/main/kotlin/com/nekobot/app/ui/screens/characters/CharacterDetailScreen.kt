@@ -1,5 +1,9 @@
 package com.nekobot.app.ui.screens.characters
 
+import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -10,23 +14,32 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.ui.components.LoadingOverlay
 import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.theme.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.UUID
 
 /**
  * 角色详情/编辑页 ViewModel：负责加载角色、编辑各字段、保存与删除。
@@ -61,7 +74,7 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
     /** 加载现有角色并填充编辑字段 */
     fun load(id: String) {
         launchResult(
-            block = { repo.getCharacter(id) },
+            block = { unified.getCharacter(id) },
             onSuccess = { c ->
                 _character.value = c
                 name.value = c.name.orEmpty()
@@ -114,13 +127,13 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
         val json = com.nekobot.app.ServiceContainer.gson.toJsonTree(payload)
         if (isNew) {
             launchResult(
-                block = { repo.createCharacter(json) },
+                block = { unified.createCharacter(json) },
                 onSuccess = { onSuccess() }
             )
         } else {
             val id = _character.value?.id ?: return
             launchResult(
-                block = { repo.updateCharacter(id, json) },
+                block = { unified.updateCharacter(id, json) },
                 onSuccess = { onSuccess() }
             )
         }
@@ -130,7 +143,7 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
     fun delete(onSuccess: () -> Unit) {
         val id = _character.value?.id ?: return
         launchResult(
-            block = { repo.deleteCharacter(id) },
+            block = { unified.deleteCharacter(id) },
             onSuccess = { onSuccess() }
         )
     }
@@ -169,6 +182,34 @@ fun CharacterDetailScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     val isNew = characterId == "new"
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val isLocalMode = ServiceContainer.prefs.appMode == AppMode.LOCAL
+
+    // 立绘图片文件选择器
+    val portraitLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val path = withContext(Dispatchers.IO) { saveImageAndGetPath(context, uri, isLocalMode, "portrait") }
+                if (path != null) vm.portrait.value = path
+                else vm.showToast("图片加载失败")
+            }
+        }
+    }
+    // 头像图片文件选择器
+    val avatarLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val path = withContext(Dispatchers.IO) { saveImageAndGetPath(context, uri, isLocalMode, "avatar") }
+                if (path != null) vm.avatar.value = path
+                else vm.showToast("图片加载失败")
+            }
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -227,15 +268,23 @@ fun CharacterDetailScreen(
                     label = "描述", value = description, onValueChange = { vm.description.value = it },
                     singleLine = false
                 )
-                // 头像图标（font-awesome 类名，如 fas fa-cat）
-                LabeledField(
-                    label = "头像图标（fas fa-cat 等）", value = avatar, onValueChange = { vm.avatar.value = it },
-                    singleLine = true
+                // 头像图标（font-awesome 类名，如 fas fa-cat）或上传图片
+                LabeledFieldWithUpload(
+                    label = "头像图标（fas fa-cat 等）或图片",
+                    value = avatar,
+                    onValueChange = { vm.avatar.value = it },
+                    onUploadClick = {
+                        avatarLauncher.launch(arrayOf("image/*"))
+                    }
                 )
-                // 立绘路径/URL
-                LabeledField(
-                    label = "立绘路径（portrait）", value = portrait, onValueChange = { vm.portrait.value = it },
-                    singleLine = true
+                // 立绘路径/URL 或上传图片
+                LabeledFieldWithUpload(
+                    label = "立绘路径（portrait）或图片",
+                    value = portrait,
+                    onValueChange = { vm.portrait.value = it },
+                    onUploadClick = {
+                        portraitLauncher.launch(arrayOf("image/*"))
+                    }
                 )
                 // 基础信息（多行）
                 LabeledField(
@@ -348,5 +397,96 @@ private fun LabeledField(
             ),
             keyboardOptions = if (singleLine) KeyboardOptions(keyboardType = KeyboardType.Text) else KeyboardOptions.Default
         )
+    }
+}
+
+/** 带上传按钮的标签输入框：单行文本 + 右侧上传图标按钮 */
+@Composable
+private fun LabeledFieldWithUpload(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    onUploadClick: () -> Unit
+) {
+    Column {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                minLines = 1,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                    cursorColor = MaterialTheme.colorScheme.primary,
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
+            )
+            Spacer(Modifier.width(8.dp))
+            IconButton(onClick = onUploadClick) {
+                Icon(
+                    Icons.Filled.Upload,
+                    contentDescription = "上传图片",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 把 Uri 图片保存到本地（本地模式）或缓存目录（远程模式待上传）。
+ * - 本地模式：保存到 filesDir/portraits，返回 file:// URI 字符串
+ * - 远程模式：保存到 cacheDir 临时文件，返回 file:// URI 字符串
+ *   （远程模式保存时会用此本地路径展示，提交时由后端处理 URL）
+ */
+private fun saveImageAndGetPath(
+    context: Context,
+    uri: Uri,
+    isLocalMode: Boolean,
+    prefix: String
+): String? {
+    return try {
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+        val ext = guessImageExt(context, uri)
+        val dir = if (isLocalMode) {
+            File(context.filesDir, "portraits")
+        } else {
+            File(context.cacheDir, "portraits")
+        }
+        if (!dir.exists()) dir.mkdirs()
+        val file = File(dir, "${prefix}_${UUID.randomUUID().toString().take(16)}.$ext")
+        file.writeBytes(bytes)
+        file.toURI().toString()
+    } catch (e: Exception) {
+        null
+    }
+}
+
+/** 从 Uri 推断图片扩展名 */
+private fun guessImageExt(context: Context, uri: Uri): String {
+    val mime = context.contentResolver.getType(uri) ?: "image/png"
+    return when {
+        mime.contains("png") -> "png"
+        mime.contains("jpeg") || mime.contains("jpg") -> "jpg"
+        mime.contains("webp") -> "webp"
+        mime.contains("gif") -> "gif"
+        else -> "png"
     }
 }

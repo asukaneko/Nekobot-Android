@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.ui.components.GlassCard
 
 /**
@@ -93,20 +94,31 @@ fun MoreScreen(
                     desc = "查看角色状态随对话推进的变化",
                     onClick = { onNavigate("state_history") }
                 )
-                Spacer(Modifier.height(8.dp))
-                MoreRow(
-                    icon = Icons.Filled.AutoAwesome,
-                    title = "AI 配置",
-                    desc = "温度、最大 token 等参数",
-                    onClick = { onNavigate("ai_config") }
-                )
-                Spacer(Modifier.height(8.dp))
-                MoreRow(
-                    icon = Icons.Filled.Memory,
-                    title = "AI 模型",
-                    desc = "管理可用的 AI 模型与供应商",
-                    onClick = { onNavigate("ai_models") }
-                )
+                // AI 配置 / AI 模型 / 本地 AI 模型：按模式互斥显示
+                if (ServiceContainer.prefs.appMode == AppMode.LOCAL) {
+                    Spacer(Modifier.height(8.dp))
+                    MoreRow(
+                        icon = Icons.Filled.Memory,
+                        title = "本地 AI 模型",
+                        desc = "配置本地直连的 AI API",
+                        onClick = { onNavigate("local_ai_models") }
+                    )
+                } else {
+                    Spacer(Modifier.height(8.dp))
+                    MoreRow(
+                        icon = Icons.Filled.AutoAwesome,
+                        title = "AI 配置",
+                        desc = "温度、最大 token 等参数",
+                        onClick = { onNavigate("ai_config") }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    MoreRow(
+                        icon = Icons.Filled.Memory,
+                        title = "AI 模型",
+                        desc = "管理可用的 AI 模型与供应商",
+                        onClick = { onNavigate("ai_models") }
+                    )
+                }
             }
 
             Spacer(Modifier.height(8.dp))

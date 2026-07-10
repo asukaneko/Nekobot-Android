@@ -1,9 +1,12 @@
 package com.nekobot.app.ui.screens.login
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +21,7 @@ import com.nekobot.app.R
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Visibility
@@ -49,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.collectAsState
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.LoginRecord
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
@@ -70,6 +75,7 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
     val password by viewModel.password.collectAsState()
     val loading by viewModel.loading.collectAsState()
     val error by viewModel.error.collectAsState()
+    val loginRecords by viewModel.loginRecords.collectAsState()
 
     var passwordVisible by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
@@ -198,6 +204,93 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
                         Text("登录", color = androidx.compose.ui.graphics.Color.White)
                     }
                 }
+
+                Spacer(Modifier.height(12.dp))
+                // 本地模式入口：跳过登录直连 AI API
+                Text(
+                    text = "使用本地模式",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable {
+                            ServiceContainer.prefs.appMode = com.nekobot.app.data.local.AppMode.LOCAL
+                            onLoggedIn()
+                        }
+                        .padding(8.dp)
+                )
+
+                // 历史登录记录：点击直接用 token 快速登录
+                if (loginRecords.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = "历史账号",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    loginRecords.forEach { record ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                .clickable {
+                                    if (!loading) viewModel.quickLogin(record, onLoggedIn)
+                                }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // 用户名首字符圆形徽标
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = record.username.firstOrNull()?.uppercase() ?: "?",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(Modifier.size(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = record.username,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = record.serverUrl,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                            }
+                            // 删除按钮
+                            IconButton(
+                                onClick = { viewModel.removeRecord(record.serverUrl, record.username) },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = "删除记录",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    }
+                }
             }
 
             // 错误提示
@@ -229,15 +322,45 @@ class LoginViewModel : BaseViewModel() {
     private val _password = MutableStateFlow("")
     val password: StateFlow<String> = _password.asStateFlow()
 
+    /** 已保存的登录记录列表（按最近使用排序） */
+    private val _loginRecords = MutableStateFlow(prefs.listLoginRecords())
+    val loginRecords: StateFlow<List<LoginRecord>> = _loginRecords.asStateFlow()
+
     fun onServerUrlChange(v: String) { _serverUrl.value = v }
     fun onUsernameChange(v: String) { _username.value = v }
     fun onPasswordChange(v: String) { _password.value = v }
+
+    /** 刷新登录记录列表 */
+    fun refreshRecords() { _loginRecords.value = prefs.listLoginRecords() }
+
+    /** 删除一条登录记录 */
+    fun removeRecord(server: String, user: String) {
+        prefs.removeLoginRecord(server, user)
+        refreshRecords()
+    }
+
+    /**
+     * 快速登录：使用已保存的 token 直接恢复登录态，无需输入密码。
+     * 适用场景：token 仍在有效期内，直接写入 prefs 并重建网络。
+     * 若 token 已失效，后端请求会返回 401，用户需改用普通登录。
+     */
+    fun quickLogin(record: LoginRecord, onSuccess: () -> Unit) {
+        prefs.serverUrl = record.serverUrl
+        prefs.username = record.username
+        prefs.token = record.token
+        ServiceContainer.rebuildNetwork()
+        // 更新表单为该记录的值，便于失效后手动登录
+        _serverUrl.value = record.serverUrl
+        _username.value = record.username
+        onSuccess()
+    }
 
     /**
      * 登录流程：
      * 1. 写入服务器地址到 prefs
      * 2. 重建网络客户端
      * 3. 调用 repo.login
+     * 4. 成功后保存登录记录（复用 token）
      */
     fun login(onSuccess: () -> Unit) {
         val server = _serverUrl.value.trim()
@@ -252,7 +375,12 @@ class LoginViewModel : BaseViewModel() {
         ServiceContainer.rebuildNetwork()
         launchResult(
             block = { repo.login(user, pwd) },
-            onSuccess = { onSuccess() }
+            onSuccess = {
+                // 保存登录记录（token 来自 NekobotRepository.login 写入的 prefs.token）
+                prefs.token?.let { prefs.saveLoginRecord(server, user, it) }
+                refreshRecords()
+                onSuccess()
+            }
         )
     }
 }

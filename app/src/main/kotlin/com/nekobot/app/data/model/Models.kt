@@ -74,7 +74,13 @@ data class Session(
     @SerializedName("plot_real_time_sync") val plotRealTimeSync: Boolean? = null,
     @SerializedName("character_runtime_snapshot") val characterRuntimeSnapshot: JsonElement? = null,
     @SerializedName("user_id") val userId: String? = null,
-    @SerializedName("group_id") val groupId: String? = null
+    @SerializedName("group_id") val groupId: String? = null,
+    /** 自定义提示词列表（持久化，用户编辑，每项含 order/title/content） */
+    @SerializedName("custom_prompts") val customPrompts: JsonElement? = null,
+    /** 运行时提示词注入栈调试信息（每次对话后由后端更新，只读展示） */
+    @SerializedName("prompt_stack_debug") val promptStackDebug: JsonElement? = null,
+    /** 已禁用的注入项 key 列表（用户可切换某项的启用状态） */
+    @SerializedName("disabled_prompt_keys") val disabledPromptKeys: List<String>? = null
 ) {
     val displayName: String get() = name?.takeIf { it.isNotBlank() } ?: "未命名会话"
     /** 角色立绘 URL：优先 portrait，回退 characterAvatar */
@@ -108,7 +114,8 @@ data class UpdateSessionRequest(
     @SerializedName("plot_mode") val plotMode: Boolean? = null,
     @SerializedName("plot_real_time_sync") val plotRealTimeSync: Boolean? = null,
     @SerializedName("proactive_chat") val proactiveChat: JsonElement? = null,
-    @SerializedName("tts_config") val ttsConfig: JsonElement? = null
+    @SerializedName("tts_config") val ttsConfig: JsonElement? = null,
+    @SerializedName("disabled_prompt_keys") val disabledPromptKeys: List<String>? = null
 )
 
 /** 分叉会话请求体：从指定 message_id 处复制到新会话。 */

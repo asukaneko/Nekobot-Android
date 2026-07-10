@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.characters
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -17,6 +19,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -39,6 +43,8 @@ import com.nekobot.app.ui.components.LoadingOverlay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** 视图模式：列表 / 卡片网格 */
 enum class CharacterViewMode { LIST, GRID }
@@ -58,7 +64,7 @@ class CharactersViewModel : com.nekobot.app.ui.BaseViewModel() {
     /** 加载角色列表 */
     fun load() {
         launchResult(
-            block = { repo.listCharacters() },
+            block = { unified.listCharacters() },
             onSuccess = { _characters.value = it ?: emptyList() }
         )
     }
@@ -66,10 +72,21 @@ class CharactersViewModel : com.nekobot.app.ui.BaseViewModel() {
     /** 删除指定角色 */
     fun delete(id: String) {
         launchResult(
-            block = { repo.deleteCharacter(id) },
+            block = { unified.deleteCharacter(id) },
             onSuccess = {
                 _characters.value = _characters.value.filterNot { it.id == id }
                 showToast("已删除角色")
+            }
+        )
+    }
+
+    /** 导入角色卡（.json / .zip）。 */
+    fun importCharacter(bytes: ByteArray, fileName: String) {
+        launchResult(
+            block = { unified.importCharacter(bytes, fileName) },
+            onSuccess = { preset ->
+                _characters.value = _characters.value + preset
+                showToast("已导入角色：${preset.displayName}")
             }
         )
     }
@@ -88,8 +105,25 @@ fun CharactersScreen(
     val characters by viewModel.characters.collectAsState()
     val loading by viewModel.loading.collectAsState()
     val error by viewModel.error.collectAsState()
+    val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     var viewMode by remember { mutableStateOf(CharacterViewMode.LIST) }
+
+    // 文件选择器：导入角色卡（.json / .zip）
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            // 读取文件内容并交给 ViewModel 导入（IO 线程读取，避免阻塞 UI）
+            scope.launch {
+                val (bytes, name) = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    readUriToBytes(context, uri)
+                }
+                viewModel.importCharacter(bytes, name)
+            }
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -113,6 +147,12 @@ fun CharactersScreen(
                     }
                     IconButton(onClick = { viewModel.load() }) {
                         Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
+                    }
+                    // 导入角色卡按钮
+                    IconButton(onClick = {
+                        importLauncher.launch(arrayOf("application/json", "application/zip", "application/x-zip-compressed", "*/*"))
+                    }) {
+                        Icon(Icons.Filled.Upload, contentDescription = "导入角色卡", tint = MaterialTheme.colorScheme.onSurface)
                     }
                     IconButton(onClick = { onOpenCharacter("new") }) {
                         Icon(Icons.Filled.Add, contentDescription = "新建角色", tint = MaterialTheme.colorScheme.primary)
@@ -334,4 +374,22 @@ private fun resolveImageUrl(path: String): String {
     if (path.startsWith("http://") || path.startsWith("https://")) return path
     val base = ServiceContainer.network.baseUrl().trimEnd('/')
     return base + "/" + path.trimStart('/')
+}
+
+/**
+ * 读取 Uri 对应文件为 ByteArray，并解析原始文件名。
+ */
+private fun readUriToBytes(context: android.content.Context, uri: android.net.Uri): Pair<ByteArray, String> {
+    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        ?: throw IllegalStateException("无法读取文件")
+    // 尝试从 Uri 解析文件名
+    var name: String? = null
+    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+        val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+        if (nameIdx >= 0 && cursor.moveToFirst()) {
+            name = cursor.getString(nameIdx)
+        }
+    }
+    val fileName = name ?: uri.lastPathSegment ?: "character.json"
+    return bytes to fileName
 }

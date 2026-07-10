@@ -16,12 +16,18 @@ abstract class BaseViewModel : ViewModel() {
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
 
     private val _error = MutableStateFlow<String?>(null)
-    val error: StateFlow<String?> = _error.asStateFlow()
+    val error: StateFlow<String??> = _error.asStateFlow()
 
     private val _toast = MutableStateFlow<String?>(null)
-    val toast: StateFlow<String?> = _toast.asStateFlow()
+    val toast: StateFlow<String??> = _toast.asStateFlow()
 
     protected val repo get() = ServiceContainer.repository
+
+    /** 统一仓库：自动按 mode 分发到本地/远程。本地模式相关界面请使用此属性。 */
+    protected val unified get() = ServiceContainer.unified
+
+    /** 当前是否为本地模式。 */
+    protected val isLocalMode get() = ServiceContainer.prefs.isLocalMode
 
     fun setLoading(v: Boolean) { _loading.value = v }
     fun showError(msg: String?) { _error.value = msg }

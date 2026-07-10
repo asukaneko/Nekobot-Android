@@ -25,6 +25,7 @@ import androidx.navigation.navArgument
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.ui.screens.aiconfig.AiConfigScreen
 import com.nekobot.app.ui.screens.aiconfig.AiModelsScreen
+import com.nekobot.app.ui.screens.aiconfig.LocalAiModelsScreen
 import com.nekobot.app.ui.screens.characters.CharacterDetailScreen
 import com.nekobot.app.ui.screens.characters.CharactersScreen
 import com.nekobot.app.ui.screens.chat.ChatScreen
@@ -200,6 +201,9 @@ fun NekobotNavGraph() {
             }
             composable(Routes.AI_MODELS) {
                 AiModelsScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.LOCAL_AI_MODELS) {
+                LocalAiModelsScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.MEMORY) {
                 MemoryScreen(onBack = { navController.popBackStack() })

@@ -379,12 +379,13 @@ private fun MessageBubble(
     val clipboard = LocalClipboardManager.current
 
     // 按 <||> 拆分内容为多段（保留非空段）
+    val isStreamingPlaceholder = message.id == ChatViewModel.STREAMING_ID
     val segments = remember(message.content) {
         message.displayContent
             .split("<||>")
             .map { it.trim() }
             .filter { it.isNotEmpty() }
-            .let { if (it.isEmpty()) listOf("(空消息)") else it }
+            .let { if (it.isEmpty() && !isStreamingPlaceholder) listOf("(空消息)") else it }
     }
     // 解析每段的多媒体内容段
     val parsedSegments = remember(segments) {
@@ -989,9 +990,16 @@ private fun ActionChip(
 
 /**
  * 对话页 ViewModel：管理消息、会话信息与发送状态。
- * 通过 Socket.IO 接收 AI 的流式回复与消息推送。
+ *
+ * 服务器模式：通过 Socket.IO 接收 AI 的流式回复与消息推送。
+ * 本地模式：通过 [UnifiedRepository.chatStream] 返回的 Flow 接收流式分片，不走 Socket。
  */
 class ChatViewModel : BaseViewModel() {
+
+    companion object {
+        /** 流式消息在列表中的临时 id（供 MessageBubble 识别流式占位） */
+        const val STREAMING_ID = "_streaming_"
+    }
 
     private val socket = ServiceContainer.socket
 
@@ -1017,21 +1025,28 @@ class ChatViewModel : BaseViewModel() {
     /** 流式生成中的临时消息内容累加器 */
     private val streamingContent = StringBuilder()
     /** 流式消息在列表中的临时 id */
-    private val streamingId = "_streaming_"
+    private val streamingId = STREAMING_ID
 
-    /** 收集 Socket.IO 事件的 Job */
+    /** 收集 Socket.IO 事件的 Job（服务器模式） */
     private var eventsJob: kotlinx.coroutines.Job? = null
-    /** 初始化：连接 Socket.IO、加入会话 room、加载会话信息与消息列表。 */
+    /** 本地模式流式聊天收集 Job */
+    private var localChatJob: kotlinx.coroutines.Job? = null
+
+    /** 初始化：加载会话信息与消息列表；服务器模式额外连接 Socket.IO。 */
     fun init(sessionId: String) {
         if (sessionId == currentSessionId && _session.value != null) return
         currentSessionId = sessionId
         loadSession(sessionId)
         loadMessages()
-        connectSocket(sessionId)
-        // 如果剧情模式开启，加载剧情选项
-        viewModelScope.launch {
-            kotlinx.coroutines.delay(800)
-            if (_session.value?.plotMode == true) loadPlotChoices()
+        if (!isLocalMode) {
+            connectSocket(sessionId)
+        }
+        // 剧情选项仅服务器模式支持
+        if (!isLocalMode) {
+            viewModelScope.launch {
+                kotlinx.coroutines.delay(800)
+                if (_session.value?.plotMode == true) loadPlotChoices()
+            }
         }
     }
 
@@ -1127,13 +1142,16 @@ class ChatViewModel : BaseViewModel() {
                 _sending.value = false
                 showError(event.message)
             }
+            is RealtimeEvent.Usage -> {
+                // 本地模式 token 用量已由 LocalRepository 保存到消息，UI 无需额外处理
+            }
         }
     }
 
     /** 加载会话信息。 */
     private fun loadSession(sessionId: String) {
         launchResult(
-            block = { repo.getSession(sessionId) },
+            block = { unified.getSession(sessionId) },
             onSuccess = { _session.value = it }
         )
     }
@@ -1142,16 +1160,16 @@ class ChatViewModel : BaseViewModel() {
     fun loadMessages() {
         if (currentSessionId.isBlank()) return
         launchResult(
-            block = { repo.listMessages(currentSessionId) },
+            block = { unified.listMessages(currentSessionId) },
             onSuccess = { _messages.value = (it ?: emptyList()).filterNot { msg -> msg.isThinkingCard } }
         )
     }
 
     /**
      * 发送消息：
-     * 1. 乐观更新，立即把用户消息加入列表
-     * 2. 优先通过 Socket.IO send_message 触发 AI（服务端会推送流式回复）
-     * 3. Socket 未连接时回退到 HTTP /chat
+     * - 本地模式：调用 [UnifiedRepository.chatStream] 返回的 Flow，直接收集事件
+     * - 服务器模式：优先通过 Socket.IO send_message 触发 AI（服务端会推送流式回复），
+     *   Socket 未连接时回退到 HTTP /chat
      */
     fun sendMessage(text: String) {
         val content = text.trim()
@@ -1166,7 +1184,19 @@ class ChatViewModel : BaseViewModel() {
         _sending.value = true
         clearError()
 
-        if (socket.state.value == SocketState.Connected) {
+        if (isLocalMode) {
+            // 本地模式：直接收集 Flow 事件
+            val flow = unified.chatStream(currentSessionId, content)
+            if (flow == null) {
+                _sending.value = false
+                showError("未配置 AI 模型，请在设置中添加")
+                return
+            }
+            localChatJob?.cancel()
+            localChatJob = viewModelScope.launch {
+                flow.collect { event -> handleRealtimeEvent(event) }
+            }
+        } else if (socket.state.value == SocketState.Connected) {
             // Socket.IO 路径：触发 send_message，等待流式推送
             socket.sendMessage(currentSessionId, content)
             // 兜底：若 60 秒仍无 StreamStart 回调，回退 HTTP
@@ -1185,7 +1215,7 @@ class ChatViewModel : BaseViewModel() {
     /** HTTP /chat 回退路径：触发后等待 socket 推送或轮询。 */
     private fun launchHttpChat(content: String) {
         launchResult(
-            block = { repo.chat(currentSessionId, content) },
+            block = { unified.chat(currentSessionId, content) },
             onSuccess = {
                 _sending.value = false
                 // HTTP 成功后稍等再刷新，给 AI 生成时间
@@ -1204,7 +1234,7 @@ class ChatViewModel : BaseViewModel() {
         )
     }
 
-    /** 重新生成最后一条 AI 回复：先隐藏旧 AI 消息，再请求服务器重新生成。 */
+    /** 重新生成最后一条 AI 回复：先隐藏旧 AI 消息，再请求重新生成。 */
     fun regenerate() {
         if (_sending.value || currentSessionId.isBlank()) return
         // 找到最后一条 assistant 消息的 id 传给服务器
@@ -1220,46 +1250,68 @@ class ChatViewModel : BaseViewModel() {
             _messages.value = _messages.value.subList(0, removeIndex)
         }
         _sending.value = true
-        // 如果剧情模式开启，清除旧选项并显示骨架
-        if (_session.value?.plotMode == true) {
+        // 如果剧情模式开启，清除旧选项并显示骨架（仅服务器模式）
+        if (!isLocalMode && _session.value?.plotMode == true) {
             _plotChoices.value = emptyList()
             _plotChoicesLoading.value = true
         }
-        launchResult(
-            block = { repo.regenerate(currentSessionId, messageId) },
-            onSuccess = {
-                // 等待 socket 推送流式，或延迟刷新
-                viewModelScope.launch {
-                    kotlinx.coroutines.delay(3000)
-                    if (_sending.value) loadMessages()
-                }
-            },
-            onError = {
+        if (isLocalMode) {
+            // 本地模式：直接收集 Flow 事件
+            val flow = unified.regenerateStream(currentSessionId, messageId)
+            if (flow == null) {
                 _sending.value = false
-                _plotChoicesLoading.value = false
-                showError(it)
+                showError("未配置 AI 模型，请在设置中添加")
+                return
             }
-        )
+            localChatJob?.cancel()
+            localChatJob = viewModelScope.launch {
+                flow.collect { event -> handleRealtimeEvent(event) }
+            }
+        } else {
+            launchResult(
+                block = { unified.regenerate(currentSessionId, messageId) },
+                onSuccess = {
+                    // 等待 socket 推送流式，或延迟刷新
+                    viewModelScope.launch {
+                        kotlinx.coroutines.delay(3000)
+                        if (_sending.value) loadMessages()
+                    }
+                },
+                onError = {
+                    _sending.value = false
+                    _plotChoicesLoading.value = false
+                    showError(it)
+                }
+            )
+        }
     }
 
     /** 停止生成。 */
     fun stop() {
         if (currentSessionId.isBlank()) return
-        launchResult(
-            block = { repo.stopGeneration(currentSessionId) },
-            onSuccess = {
-                _sending.value = false
-                showToast("已请求停止")
-                loadMessages()
-            }
-        )
+        if (isLocalMode) {
+            localChatJob?.cancel()
+            localChatJob = null
+            _sending.value = false
+            showToast("已停止")
+            loadMessages()
+        } else {
+            launchResult(
+                block = { unified.stopGeneration(currentSessionId) },
+                onSuccess = {
+                    _sending.value = false
+                    showToast("已请求停止")
+                    loadMessages()
+                }
+            )
+        }
     }
 
     /** 压缩上下文：将早期消息摘要化以节省 token。 */
     fun compressContext() {
         if (currentSessionId.isBlank()) return
         launchResult(
-            block = { repo.compressContext(currentSessionId) },
+            block = { unified.compressContext(currentSessionId) },
             onSuccess = {
                 showToast("上下文已压缩")
                 loadMessages()
@@ -1271,10 +1323,11 @@ class ChatViewModel : BaseViewModel() {
     fun forkFromMessage(messageId: String, onSuccess: (String) -> Unit) {
         if (currentSessionId.isBlank()) return
         launchResult(
-            block = { repo.forkSession(currentSessionId, messageId) },
+            block = { unified.forkSession(currentSessionId, messageId) },
             onSuccess = { json ->
                 val newId = when {
-                    json.isJsonObject -> json.asJsonObject.get("id")?.asString
+                    json.isJsonObject -> json.asJsonObject.get("new_session_id")?.asString
+                        ?: json.asJsonObject.get("id")?.asString
                         ?: json.asJsonObject.get("session_id")?.asString
                     else -> null
                 }
@@ -1291,7 +1344,7 @@ class ChatViewModel : BaseViewModel() {
     /** 删除单条消息，成功后回调 [onSuccess]。 */
     fun deleteMessage(sessionId: String, messageId: String, onSuccess: () -> Unit = {}) {
         launchResult(
-            block = { repo.deleteMessage(sessionId, messageId) },
+            block = { unified.deleteMessage(sessionId, messageId) },
             onSuccess = {
                 showToast("已删除")
                 loadMessages()
@@ -1303,7 +1356,7 @@ class ChatViewModel : BaseViewModel() {
     /** 清空会话所有消息，成功后回调 [onSuccess]。 */
     fun clearMessages(sessionId: String, onSuccess: () -> Unit = {}) {
         launchResult(
-            block = { repo.clearMessages(sessionId) },
+            block = { unified.clearMessages(sessionId) },
             onSuccess = {
                 showToast("已清空消息")
                 _messages.value = emptyList()
@@ -1315,14 +1368,15 @@ class ChatViewModel : BaseViewModel() {
     override fun onCleared() {
         super.onCleared()
         eventsJob?.cancel()
-        if (currentSessionId.isNotBlank()) {
+        localChatJob?.cancel()
+        if (!isLocalMode && currentSessionId.isNotBlank()) {
             socket.leaveSession(currentSessionId)
         }
     }
 
-    /** 加载最新剧情选项（仅在 plot_mode 开启时调用）。 */
+    /** 加载最新剧情选项（仅服务器模式 + plot_mode 开启时调用）。 */
     fun loadPlotChoices() {
-        if (currentSessionId.isBlank()) return
+        if (isLocalMode || currentSessionId.isBlank()) return
         _plotChoicesLoading.value = true
         launchResult(
             block = { repo.getLatestPlotChoices(currentSessionId) },
@@ -1336,7 +1390,7 @@ class ChatViewModel : BaseViewModel() {
 
     /** 选择一个剧情选项：后台标记选中（fire-and-forget），不清除选项列表。 */
     fun selectPlotChoice(choiceId: String) {
-        if (currentSessionId.isBlank()) return
+        if (isLocalMode || currentSessionId.isBlank()) return
         // 后台标记选中，不阻塞用户操作
         viewModelScope.launch {
             try { repo.selectPlotChoice(currentSessionId, choiceId) } catch (_: Exception) {}
@@ -1347,7 +1401,7 @@ class ChatViewModel : BaseViewModel() {
 
     /** 重新生成剧情选项。 */
     fun regeneratePlotChoices() {
-        if (currentSessionId.isBlank()) return
+        if (isLocalMode || currentSessionId.isBlank()) return
         _plotChoicesLoading.value = true
         _plotChoices.value = emptyList()
         launchResult(

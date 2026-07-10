@@ -7,6 +7,8 @@ import com.google.gson.JsonParser
 import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.model.*
 import com.nekobot.app.data.remote.NetworkClient
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
  * 统一结果包装：成功带数据，失败带错误信息。
@@ -205,6 +207,47 @@ class NekobotRepository(
         }
     }
 
+    /**
+     * 上传角色卡文件到 /api/personality/import 解析（不保存）。
+     * 服务器返回 {"success": true, "character": {...}}，这里提取 character 对象。
+     * 调用方拿到结果后应再调用 [createCharacter] 保存。
+     */
+    suspend fun importCharacterFile(bytes: ByteArray, fileName: String): Resource<CharacterPreset> {
+        return try {
+            val mediaType = "application/octet-stream".toMediaType()
+            val reqBody = bytes.toRequestBody(mediaType)
+            val multipart = okhttp3.MultipartBody.Builder()
+                .setType(okhttp3.MultipartBody.FORM)
+                .addFormDataPart("file", fileName, reqBody)
+                .build()
+            val url = network.baseUrl().trimEnd('/') + "/api/personality/import"
+            val request = okhttp3.Request.Builder().url(url).post(multipart).build()
+            val resp = network.client.newCall(request).execute()
+            if (!resp.isSuccessful) {
+                return Resource.Error(parseError(resp.code, resp.body?.string()), resp.code)
+            }
+            val raw = resp.body?.string().orEmpty()
+            val obj = JsonParser.parseString(raw).asJsonObject
+            val success = obj.get("success")?.asBoolean ?: true
+            if (!success) {
+                return Resource.Error(obj.get("error")?.asString ?: "导入失败")
+            }
+            val charEl = obj.get("character") ?: obj
+            Resource.Success(extractPreset(charEl))
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "导入失败", null)
+        }
+    }
+
+    /** 直接用 CharacterPreset 对象调用 createPreset（供 importCharacter 流程使用）。 */
+    suspend fun createCharacterPreset(req: JsonElement): CharacterPreset {
+        val raw: Resource<JsonElement> = safeCall { api.createCharacterPreset(req) }
+        return when (raw) {
+            is Resource.Success -> extractPreset(raw.data)
+            else -> throw IllegalStateException((raw as Resource.Error).message)
+        }
+    }
+
     // ==================== 世界书 ====================
     suspend fun listWorldBooks(): Resource<List<WorldBook>> = safeCall { api.listWorldBooks() }
     suspend fun getWorldBook(id: String): Resource<WorldBook> = safeCall { api.getWorldBook(id) }
@@ -271,6 +314,13 @@ class NekobotRepository(
         safeCall { api.forkSession(id, com.nekobot.app.data.model.ForkRequest(messageId)) }
     suspend fun channelRuntimeTimeline(channel: String? = null, characterId: String? = null): Resource<JsonElement> =
         safeCall { api.channelRuntimeTimeline(channel, characterId) }
+
+    /** 获取会话的自定义提示词列表 */
+    suspend fun getCustomPrompts(id: String): Resource<JsonElement> = safeCall { api.getCustomPrompts(id) }
+
+    /** 全量更新会话的自定义提示词列表 */
+    suspend fun updateCustomPrompts(id: String, customPrompts: List<Map<String, Any>>): Resource<JsonElement> =
+        safeCall { api.updateCustomPrompts(id, mapOf("custom_prompts" to customPrompts)) }
 
     // ==================== 剧情模式 ====================
     suspend fun getLatestPlotChoices(conversationId: String): Resource<JsonElement> =

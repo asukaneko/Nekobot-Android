@@ -37,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -61,6 +62,7 @@ import com.google.gson.GsonBuilder
 import com.google.gson.JsonElement
 import com.google.gson.JsonParser
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
@@ -107,6 +109,16 @@ class SettingsViewModel : BaseViewModel() {
 
     private val _serverUrl = MutableStateFlow(ServiceContainer.prefs.serverUrl)
     val serverUrl: StateFlow<String> = _serverUrl.asStateFlow()
+
+    private val _appMode = MutableStateFlow(ServiceContainer.prefs.appMode)
+    val appMode: StateFlow<AppMode> = _appMode.asStateFlow()
+
+    /** 切换运行模式。切换后需要重建网络与导航。 */
+    fun switchMode(mode: AppMode) {
+        ServiceContainer.prefs.appMode = mode
+        _appMode.value = mode
+        showToast(if (mode == AppMode.LOCAL) "已切换到本地模式" else "已切换到服务器模式")
+    }
 
     init {
         loadSettings()
@@ -193,6 +205,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
     val showLogs by vm.showLogs.collectAsState()
     val loggedOut by vm.loggedOut.collectAsState()
     val serverUrl by vm.serverUrl.collectAsState()
+    val appMode by vm.appMode.collectAsState()
     val loading by vm.loading.collectAsState()
     val error by vm.error.collectAsState()
     val toast by vm.toast.collectAsState()
@@ -252,109 +265,161 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                     ErrorBanner(message = it, onRetry = { vm.clearError() })
                 }
 
-                // 1. 服务器配置
+                // 0. 运行模式切换
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    SectionHeader(title = "服务器配置")
-                    Spacer(Modifier.height(12.dp))
-
-                    OutlinedTextField(
-                        value = serverUrlInput,
-                        onValueChange = { serverUrlInput = it },
-                        label = { Text("服务器地址") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Spacer(Modifier.height(8.dp))
-
-                    Button(
-                        onClick = { vm.saveServerUrl(serverUrlInput) },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                    ) {
-                        Text("保存地址", color = MaterialTheme.colorScheme.onPrimary)
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "当前用户: ${ServiceContainer.prefs.username.ifBlank { "未登录" }}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                // 2. AI 管理
-                GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    SectionHeader(title = "AI 管理")
+                    SectionHeader(title = "运行模式")
                     Spacer(Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        OutlinedButton(
-                            onClick = { onNavigate("ai_config") },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(8.dp))
-                            Text("AI 配置")
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                if (appMode == AppMode.LOCAL) "本地模式" else "服务器模式",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                if (appMode == AppMode.LOCAL) "直连 AI API，数据存储在本地"
+                                else "通过后端服务器进行 AI 对话",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
+                        Switch(
+                            checked = appMode == AppMode.LOCAL,
+                            onCheckedChange = { checked ->
+                                vm.switchMode(if (checked) AppMode.LOCAL else AppMode.SERVER)
+                            }
+                        )
+                    }
+                    if (appMode == AppMode.LOCAL) {
+                        Spacer(Modifier.height(8.dp))
                         OutlinedButton(
-                            onClick = { onNavigate("ai_models") },
-                            modifier = Modifier.weight(1f)
+                            onClick = { onNavigate("local_ai_models") },
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(Icons.Filled.Memory, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(8.dp))
-                            Text("AI 模型")
+                            Text("本地 AI 模型配置")
                         }
                     }
                 }
 
-                // 3. 系统设置（跳转子界面编辑 JSON）
-                GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { onNavigate("system_settings") }
-                            .padding(vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Filled.SettingsIcon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("系统设置", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
-                            Text("以 JSON 格式编辑系统配置", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // 1. 服务器配置（仅服务器模式）
+                if (appMode != AppMode.LOCAL) {
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        SectionHeader(title = "服务器配置")
+                        Spacer(Modifier.height(12.dp))
+
+                        OutlinedTextField(
+                            value = serverUrlInput,
+                            onValueChange = { serverUrlInput = it },
+                            label = { Text("服务器地址") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(Modifier.height(8.dp))
+
+                        Button(
+                            onClick = { vm.saveServerUrl(serverUrlInput) },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Text("保存地址", color = MaterialTheme.colorScheme.onPrimary)
                         }
-                        Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "当前用户: ${ServiceContainer.prefs.username.ifBlank { "未登录" }}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
 
-                // 4. 系统操作
-                GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    SectionHeader(title = "系统操作")
-                    Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = { vm.reloadConfig() },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Filled.CloudSync, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
-                        Spacer(Modifier.width(8.dp))
-                        Text("重载配置", color = MaterialTheme.colorScheme.onPrimary)
+                // 2. AI 管理（仅服务器模式）
+                if (appMode != AppMode.LOCAL) {
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        SectionHeader(title = "AI 管理")
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { onNavigate("ai_config") },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(8.dp))
+                                Text("AI 配置")
+                            }
+                            OutlinedButton(
+                                onClick = { onNavigate("ai_models") },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Filled.Memory, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(8.dp))
+                                Text("AI 模型")
+                            }
+                        }
                     }
                 }
 
-                // 5. 日志查看
-                GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    SectionHeader(title = "日志查看")
-                    Spacer(Modifier.height(12.dp))
-                    OutlinedButton(
-                        onClick = { vm.loadLogs() },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Filled.Description, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(8.dp))
-                        Text("查看最近日志")
+                // 3. 系统设置（仅服务器模式）
+                if (appMode != AppMode.LOCAL) {
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onNavigate("system_settings") }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Filled.SettingsIcon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("系统设置", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                                Text("以 JSON 格式编辑系统配置", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
+                // 4. 系统操作（仅服务器模式）
+                if (appMode != AppMode.LOCAL) {
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        SectionHeader(title = "系统操作")
+                        Spacer(Modifier.height(12.dp))
+                        Button(
+                            onClick = { vm.reloadConfig() },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Filled.CloudSync, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
+                            Spacer(Modifier.width(8.dp))
+                            Text("重载配置", color = MaterialTheme.colorScheme.onPrimary)
+                        }
+                    }
+                }
+
+                // 5. 日志查看（仅服务器模式）
+                if (appMode != AppMode.LOCAL) {
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        SectionHeader(title = "日志查看")
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = { vm.loadLogs() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Filled.Description, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(8.dp))
+                            Text("查看最近日志")
+                        }
                     }
                 }
 

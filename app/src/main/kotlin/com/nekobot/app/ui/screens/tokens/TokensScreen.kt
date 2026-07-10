@@ -100,11 +100,11 @@ class TokensViewModel : BaseViewModel() {
         val end = if (isCustom) _endDate.value else null
         val effectiveRange = if (isCustom) null else range
         launchResult(
-            block = { repo.tokenStats(effectiveRange, start, end) },
+            block = { unified.tokenStats(effectiveRange, start, end) },
             onSuccess = { _stats.value = it }
         )
         launchResult(
-            block = { repo.tokenRankings() },
+            block = { unified.tokenRankings() },
             onSuccess = { _rankings.value = it }
         )
     }

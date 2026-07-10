@@ -22,9 +22,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Assistant
 import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Save
@@ -60,6 +63,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.google.gson.JsonElement
@@ -105,11 +109,23 @@ class SessionDetailViewModel : BaseViewModel() {
     val plotMode = MutableStateFlow(false)
     val plotRealTimeSync = MutableStateFlow(false)
 
+    /** 自定义提示词列表（可编辑，每项含 order/title/content） */
+    private val _customPrompts = MutableStateFlow<List<CustomPromptItem>>(emptyList())
+    val customPrompts: StateFlow<List<CustomPromptItem>> = _customPrompts.asStateFlow()
+
+    /** 运行时提示词注入栈调试信息（只读，从 session.promptStackDebug 解析） */
+    private val _promptStackDebug = MutableStateFlow<List<PromptStackItem>>(emptyList())
+    val promptStackDebug: StateFlow<List<PromptStackItem>> = _promptStackDebug.asStateFlow()
+
+    /** 已禁用的注入项 key 集合 */
+    private val _disabledPromptKeys = MutableStateFlow<Set<String>>(emptySet())
+    val disabledPromptKeys: StateFlow<Set<String>> = _disabledPromptKeys.asStateFlow()
+
     fun init(id: String) { load(id) }
 
     fun load(id: String) {
         launchResult(
-            block = { repo.getSession(id) },
+            block = { unified.getSession(id) },
             onSuccess = { s ->
                 _session.value = s
                 name.value = s.name.orEmpty()
@@ -120,6 +136,11 @@ class SessionDetailViewModel : BaseViewModel() {
                 autoStateInterval.value = s.autoStateInterval
                 plotMode.value = s.plotMode == true
                 plotRealTimeSync.value = s.plotRealTimeSync == true
+                // 解析 custom_prompts
+                _customPrompts.value = parseCustomPrompts(s.customPrompts)
+                // 解析 prompt_stack_debug
+                _promptStackDebug.value = parsePromptStackDebug(s.promptStackDebug)
+                _disabledPromptKeys.value = s.disabledPromptKeys?.toSet() ?: emptySet()
             }
         )
     }
@@ -134,7 +155,7 @@ class SessionDetailViewModel : BaseViewModel() {
         val tagsList = tagsText.value.split(",").map { it.trim() }.filter { it.isNotEmpty() }
         launchResult(
             block = {
-                repo.updateSession(
+                unified.updateSession(
                     s.id.orEmpty(),
                     UpdateSessionRequest(
                         name = nameVal,
@@ -144,7 +165,8 @@ class SessionDetailViewModel : BaseViewModel() {
                         systemPrompt = systemPrompt.value.ifBlank { null },
                         autoStateInterval = autoStateInterval.value,
                         plotMode = plotMode.value,
-                        plotRealTimeSync = plotRealTimeSync.value
+                        plotRealTimeSync = plotRealTimeSync.value,
+                        disabledPromptKeys = _disabledPromptKeys.value.toList()
                     )
                 )
             },
@@ -156,17 +178,117 @@ class SessionDetailViewModel : BaseViewModel() {
         )
     }
 
+    /** 切换某注入项的启用/禁用状态 */
+    fun togglePromptKey(key: String) {
+        val current = _disabledPromptKeys.value.toMutableSet()
+        if (key in current) current.remove(key) else current.add(key)
+        _disabledPromptKeys.value = current
+    }
+
+    // ---- custom_prompts 编辑 ----
+    fun addCustomPrompt() {
+        val list = _customPrompts.value.toMutableList()
+        list.add(CustomPromptItem(order = list.size + 1, title = "", content = ""))
+        _customPrompts.value = list
+    }
+
+    fun updateCustomPrompt(index: Int, title: String, content: String) {
+        val list = _customPrompts.value.toMutableList()
+        if (index in list.indices) {
+            list[index] = list[index].copy(title = title, content = content)
+            _customPrompts.value = list
+        }
+    }
+
+    fun removeCustomPrompt(index: Int) {
+        val list = _customPrompts.value.toMutableList()
+        if (index in list.indices) {
+            list.removeAt(index)
+            // 重新编号 order
+            list.forEachIndexed { i, item -> list[i] = item.copy(order = i + 1) }
+            _customPrompts.value = list
+        }
+    }
+
+    /** 保存自定义提示词到后端 */
+    fun saveCustomPrompts() {
+        val s = _session.value ?: return
+        val payload = _customPrompts.value
+            .filter { it.content.isNotBlank() }
+            .mapIndexed { idx, item ->
+                mapOf(
+                    "order" to (idx + 1),
+                    "title" to item.title.trim(),
+                    "content" to item.content.trim()
+                )
+            }
+        launchResult(
+            block = { unified.updateCustomPrompts(s.id.orEmpty(), payload) },
+            onSuccess = {
+                showToast("自定义提示词已保存")
+                load(s.id.orEmpty())
+            }
+        )
+    }
+
     fun delete(onSuccess: () -> Unit) {
         val s = _session.value ?: return
         launchResult(
-            block = { repo.deleteSession(s.id.orEmpty()) },
+            block = { unified.deleteSession(s.id.orEmpty()) },
             onSuccess = {
                 showToast("已删除")
                 onSuccess()
             }
         )
     }
+
+    // ---- JSON 解析辅助 ----
+    private fun parseCustomPrompts(el: JsonElement?): List<CustomPromptItem> {
+        if (el == null || !el.isJsonArray) return emptyList()
+        return el.asJsonArray.mapNotNull { item ->
+            if (!item.isJsonObject) return@mapNotNull null
+            val obj = item.asJsonObject
+            CustomPromptItem(
+                order = obj.get("order")?.takeIf { !it.isJsonNull }?.asInt ?: 0,
+                title = obj.get("title")?.takeIf { !it.isJsonNull }?.asString ?: "",
+                content = obj.get("content")?.takeIf { !it.isJsonNull }?.asString ?: ""
+            )
+        }.sortedBy { it.order }
+    }
+
+    private fun parsePromptStackDebug(el: JsonElement?): List<PromptStackItem> {
+        if (el == null || !el.isJsonArray) return emptyList()
+        return el.asJsonArray.mapNotNull { item ->
+            if (!item.isJsonObject) return@mapNotNull null
+            val obj = item.asJsonObject
+            PromptStackItem(
+                key = obj.get("key")?.takeIf { !it.isJsonNull }?.asString ?: "",
+                content = obj.get("content")?.takeIf { !it.isJsonNull }?.asString ?: "",
+                priority = obj.get("priority")?.takeIf { !it.isJsonNull }?.asInt ?: 100,
+                role = obj.get("role")?.takeIf { !it.isJsonNull }?.asString ?: "system",
+                scope = obj.get("scope")?.takeIf { !it.isJsonNull }?.asString ?: "turn",
+                enabled = obj.get("enabled")?.takeIf { !it.isJsonNull }?.asBoolean ?: true
+            )
+        }.sortedBy { it.priority }
+    }
 }
+
+/** 自定义提示词条目 */
+data class CustomPromptItem(
+    val order: Int = 0,
+    val title: String = "",
+    val content: String = ""
+)
+
+/** 运行时提示词注入栈条目（只读展示） */
+data class PromptStackItem(
+    val key: String = "",
+    val content: String = "",
+    val priority: Int = 100,
+    val role: String = "system",
+    val scope: String = "turn",
+    val enabled: Boolean = true
+)
 
 /**
  * 会话详情页：参考 webui 会话详情弹窗，展示并编辑会话的全部元信息。
@@ -189,6 +311,9 @@ fun SessionDetailScreen(
     val autoStateInterval by vm.autoStateInterval.collectAsState()
     val plotMode by vm.plotMode.collectAsState()
     val plotRealTimeSync by vm.plotRealTimeSync.collectAsState()
+    val customPrompts by vm.customPrompts.collectAsState()
+    val promptStackDebug by vm.promptStackDebug.collectAsState()
+    val disabledPromptKeys by vm.disabledPromptKeys.collectAsState()
     val loading by vm.loading.collectAsState()
     val error by vm.error.collectAsState()
 
@@ -351,6 +476,71 @@ fun SessionDetailScreen(
                                 maxLines = 8,
                                 modifier = Modifier.fillMaxWidth()
                             )
+                        }
+
+                        // === 3.5 自定义提示词（custom_prompts，可编辑） ===
+                        GlassCard(modifier = Modifier.fillMaxWidth()) {
+                            SectionHeader(
+                                title = "自定义提示词",
+                                trailing = {
+                                    Row {
+                                        IconButton(onClick = { vm.addCustomPrompt() }) {
+                                            Icon(Icons.Filled.Add, contentDescription = "添加", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                        }
+                                        IconButton(onClick = { vm.saveCustomPrompts() }) {
+                                            Icon(Icons.Filled.Save, contentDescription = "保存提示词", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                        }
+                                    }
+                                }
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            if (customPrompts.isEmpty()) {
+                                Text(
+                                    "暂无自定义提示词，点击 + 添加",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                customPrompts.forEachIndexed { idx, item ->
+                                    CustomPromptEditor(
+                                        item = item,
+                                        onTitleChange = { vm.updateCustomPrompt(idx, it, item.content) },
+                                        onContentChange = { vm.updateCustomPrompt(idx, item.title, it) },
+                                        onRemove = { vm.removeCustomPrompt(idx) }
+                                    )
+                                    if (idx < customPrompts.lastIndex) Spacer(Modifier.height(8.dp))
+                                }
+                            }
+                        }
+
+                        // === 3.6 提示词注入栈（prompt_stack_debug，只读 + 可禁用） ===
+                        if (promptStackDebug.isNotEmpty()) {
+                            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                                SectionHeader(title = "提示词注入栈")
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "运行时动态注入的提示词（每次对话后更新），点击切换启用状态",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                promptStackDebug.forEach { inj ->
+                                    PromptStackChip(
+                                        item = inj,
+                                        disabled = inj.key in disabledPromptKeys,
+                                        onClick = { vm.togglePromptKey(inj.key) }
+                                    )
+                                    Spacer(Modifier.height(6.dp))
+                                }
+                                if (disabledPromptKeys.isNotEmpty()) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        "已禁用 ${disabledPromptKeys.size} 项，保存会话以生效",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = WarningAmber
+                                    )
+                                }
+                            }
                         }
 
                         // === 4. 角色绑定信息 ===
@@ -601,5 +791,119 @@ private fun AutoStateIntervalSelector(
                 )
             )
         }
+    }
+}
+
+/** 自定义提示词编辑器：标题 + 内容 + 删除按钮 */
+@Composable
+private fun CustomPromptEditor(
+    item: CustomPromptItem,
+    onTitleChange: (String) -> Unit,
+    onContentChange: (String) -> Unit,
+    onRemove: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+            .padding(10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "#${item.order}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.width(8.dp))
+            OutlinedTextField(
+                value = item.title,
+                onValueChange = onTitleChange,
+                label = { Text("标题", style = MaterialTheme.typography.labelSmall) },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = onRemove, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Filled.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        OutlinedTextField(
+            value = item.content,
+            onValueChange = onContentChange,
+            label = { Text("内容", style = MaterialTheme.typography.labelSmall) },
+            minLines = 2,
+            maxLines = 6,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+/** 提示词注入栈条目：展示 key/priority/scope/content，点击切换启用 */
+@Composable
+private fun PromptStackChip(
+    item: PromptStackItem,
+    disabled: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                if (disabled) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                else MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        // 优先级
+        Text(
+            "#${item.priority}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.width(32.dp)
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    item.key,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (disabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                Spacer(Modifier.width(6.dp))
+                // scope badge
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                ) {
+                    Text(item.scope, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                }
+            }
+            if (item.content.isNotBlank()) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    item.content,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (disabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        // 启用/禁用指示
+        Icon(
+            imageVector = if (disabled) Icons.Filled.Close else Icons.Filled.Check,
+            contentDescription = if (disabled) "已禁用" else "已启用",
+            tint = if (disabled) MaterialTheme.colorScheme.onSurfaceVariant else SuccessGreen,
+            modifier = Modifier.size(14.dp)
+        )
     }
 }

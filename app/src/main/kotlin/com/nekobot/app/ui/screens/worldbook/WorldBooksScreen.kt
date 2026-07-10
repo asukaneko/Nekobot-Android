@@ -45,7 +45,7 @@ class WorldBooksViewModel : com.nekobot.app.ui.BaseViewModel() {
     /** 加载世界书列表 */
     fun load() {
         launchResult(
-            block = { repo.listWorldBooks() },
+            block = { unified.listWorldBooks() },
             onSuccess = { _books.value = it ?: emptyList() }
         )
     }
@@ -53,7 +53,7 @@ class WorldBooksViewModel : com.nekobot.app.ui.BaseViewModel() {
     /** 创建世界书 */
     fun create(req: WorldBookRequest) {
         launchResult(
-            block = { repo.createWorldBook(req) },
+            block = { unified.createWorldBook(req) },
             onSuccess = { created ->
                 _books.value = _books.value + created
                 showToast("已创建世界书")
@@ -64,7 +64,7 @@ class WorldBooksViewModel : com.nekobot.app.ui.BaseViewModel() {
     /** 删除世界书 */
     fun delete(id: String) {
         launchResult(
-            block = { repo.deleteWorldBook(id) },
+            block = { unified.deleteWorldBook(id) },
             onSuccess = {
                 _books.value = _books.value.filterNot { it.id == id }
                 showToast("已删除世界书")

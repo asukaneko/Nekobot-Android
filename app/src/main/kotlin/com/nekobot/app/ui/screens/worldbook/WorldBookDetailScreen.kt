@@ -74,11 +74,11 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
     /** 加载世界书信息与条目列表 */
     fun load(bookId: String) {
         launchResult(
-            block = { repo.getWorldBook(bookId) },
+            block = { unified.getWorldBook(bookId) },
             onSuccess = { _book.value = it }
         )
         launchResult(
-            block = { repo.listEntries(bookId) },
+            block = { unified.listEntries(bookId) },
             onSuccess = { _entries.value = it ?: emptyList() }
         )
     }
@@ -89,7 +89,7 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
         val name = b.name ?: return
         launchResult(
             block = {
-                repo.updateWorldBook(
+                unified.updateWorldBook(
                     currentBookId,
                     WorldBookRequest(
                         name = name,
@@ -108,7 +108,7 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
         val b = _book.value
         launchResult(
             block = {
-                repo.updateWorldBook(
+                unified.updateWorldBook(
                     currentBookId,
                     WorldBookRequest(
                         name = name,
@@ -128,7 +128,7 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
     /** 删除世界书 */
     fun deleteBook(onSuccess: () -> Unit) {
         launchResult(
-            block = { repo.deleteWorldBook(currentBookId) },
+            block = { unified.deleteWorldBook(currentBookId) },
             onSuccess = { onSuccess() }
         )
     }
@@ -189,7 +189,7 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
         if (editing == null) {
             // 新建
             launchResult(
-                block = { repo.createEntry(currentBookId, req) },
+                block = { unified.createEntry(currentBookId, req) },
                 onSuccess = {
                     _entries.value = _entries.value + it
                     _showEntryDialog.value = false
@@ -199,7 +199,7 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
         } else {
             val entryId = editing.id ?: return
             launchResult(
-                block = { repo.updateEntry(currentBookId, entryId, req) },
+                block = { unified.updateEntry(currentBookId, entryId, req) },
                 onSuccess = { updated ->
                     _entries.value = _entries.value.map { if (it.id == entryId) updated else it }
                     _showEntryDialog.value = false
@@ -213,7 +213,7 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
     /** 删除条目 */
     fun deleteEntry(id: String) {
         launchResult(
-            block = { repo.deleteEntry(currentBookId, id) },
+            block = { unified.deleteEntry(currentBookId, id) },
             onSuccess = {
                 _entries.value = _entries.value.filterNot { it.id == id }
                 showToast("已删除条目")

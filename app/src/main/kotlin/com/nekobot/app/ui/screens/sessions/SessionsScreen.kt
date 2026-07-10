@@ -999,7 +999,7 @@ class SessionsViewModel : BaseViewModel() {
     /** 加载会话列表。 */
     fun loadSessions() {
         launchResult(
-            block = { repo.listSessions() },
+            block = { unified.listSessions() },
             onSuccess = { _sessions.value = it ?: emptyList() }
         )
     }
@@ -1007,7 +1007,7 @@ class SessionsViewModel : BaseViewModel() {
     /** 加载角色列表（供新建会话下拉菜单使用）。 */
     fun loadCharacters() {
         launchResult(
-            block = { repo.listCharacters() },
+            block = { unified.listCharacters() },
             onSuccess = { list ->
                 _characters.value = list ?: emptyList()
             }
@@ -1017,7 +1017,7 @@ class SessionsViewModel : BaseViewModel() {
     /** 新建会话，成功后刷新并回调 [onSuccess]。 */
     fun createSession(req: CreateSessionRequest, onSuccess: () -> Unit = {}) {
         launchResult(
-            block = { repo.createSession(req) },
+            block = { unified.createSession(req) },
             onSuccess = {
                 showToast("会话已创建")
                 loadSessions()
@@ -1029,7 +1029,7 @@ class SessionsViewModel : BaseViewModel() {
     /** 删除会话，成功后刷新并回调 [onSuccess]。 */
     fun deleteSession(id: String, onSuccess: () -> Unit = {}) {
         launchResult(
-            block = { repo.deleteSession(id) },
+            block = { unified.deleteSession(id) },
             onSuccess = {
                 showToast("会话已删除")
                 loadSessions()
@@ -1045,7 +1045,7 @@ class SessionsViewModel : BaseViewModel() {
             return
         }
         launchResult(
-            block = { repo.updateSession(id, UpdateSessionRequest(name = name)) },
+            block = { unified.updateSession(id, UpdateSessionRequest(name = name)) },
             onSuccess = {
                 showToast("已重命名")
                 loadSessions()
@@ -1058,7 +1058,7 @@ class SessionsViewModel : BaseViewModel() {
     fun toggleFavorite(session: Session) {
         val newFav = !(session.favorite ?: false)
         launchResult(
-            block = { repo.updateSession(session.id.orEmpty(), UpdateSessionRequest(favorite = newFav)) },
+            block = { unified.updateSession(session.id.orEmpty(), UpdateSessionRequest(favorite = newFav)) },
             onSuccess = {
                 loadSessions()
             }
@@ -1069,7 +1069,7 @@ class SessionsViewModel : BaseViewModel() {
     fun togglePinned(session: Session) {
         val newPinned = !(session.pinned ?: false)
         launchResult(
-            block = { repo.updateSession(session.id.orEmpty(), UpdateSessionRequest(pinned = newPinned)) },
+            block = { unified.updateSession(session.id.orEmpty(), UpdateSessionRequest(pinned = newPinned)) },
             onSuccess = {
                 showToast(if (newPinned) "已置顶" else "已取消置顶")
                 loadSessions()
