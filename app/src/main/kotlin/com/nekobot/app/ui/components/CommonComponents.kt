@@ -34,9 +34,9 @@ import com.nekobot.app.ui.theme.*
 fun GlassCard(
     modifier: Modifier = Modifier,
     cornerRadius: Int = 20,
-    containerColor: Color = GlassAlpha,
+    containerColor: Color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
     borderWidth: Int = 1,
-    borderColor: Color = Color.White.copy(alpha = 0.12f),
+    borderColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
     content: @Composable ColumnScope.() -> Unit
 ) {
     Box(
@@ -50,7 +50,7 @@ fun GlassCard(
                 brush = Brush.linearGradient(
                     colors = listOf(
                         borderColor,
-                        Color.White.copy(alpha = 0.04f)
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f)
                     )
                 ),
                 shape = RoundedCornerShape(cornerRadius.dp)
@@ -78,14 +78,14 @@ fun SectionHeader(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                color = OnSurface,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.SemiBold
             )
             if (!subtitle.isNullOrBlank()) {
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -105,12 +105,12 @@ fun LoadingOverlay(visible: Boolean, message: String = "加载中...") {
             GlassCard(
                 modifier = Modifier.padding(32.dp),
                 cornerRadius = 24,
-                containerColor = BgSurface
+                containerColor = MaterialTheme.colorScheme.surface
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = Primary)
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(12.dp))
-                    Text(message, color = OnSurface, style = MaterialTheme.typography.bodyMedium)
+                    Text(message, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
@@ -138,22 +138,22 @@ fun NekoDialog(
                 .fillMaxWidth(0.9f)
                 .padding(8.dp),
             cornerRadius = 24,
-            containerColor = BgSurface
+            containerColor = MaterialTheme.colorScheme.surface
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleLarge,
-                    color = OnSurface,
+                    color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f)
                 )
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Filled.Close, contentDescription = "关闭", tint = OnSurfaceVariant)
+                    Icon(Icons.Filled.Close, contentDescription = "关闭", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             if (!message.isNullOrBlank()) {
                 Spacer(Modifier.height(4.dp))
-                Text(message, style = MaterialTheme.typography.bodyMedium, color = OnSurfaceVariant)
+                Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (content != null) {
                 Spacer(Modifier.height(8.dp))
@@ -166,15 +166,15 @@ fun NekoDialog(
             ) {
                 if (cancelText != null && onCancel != null) {
                     TextButton(onClick = onCancel) {
-                        Text(cancelText, color = OnSurfaceVariant)
+                        Text(cancelText, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Spacer(Modifier.width(8.dp))
                 }
                 Button(
                     onClick = { onConfirm?.invoke() ?: onDismiss() },
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                 ) {
-                    Text(confirmText, color = OnPrimary)
+                    Text(confirmText, color = MaterialTheme.colorScheme.onPrimary)
                 }
             }
         }
@@ -194,10 +194,10 @@ fun EmptyState(title: String, hint: String? = null, icon: @Composable (() -> Uni
             icon()
             Spacer(Modifier.height(16.dp))
         }
-        Text(title, style = MaterialTheme.typography.titleMedium, color = OnSurface)
+        Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
         if (!hint.isNullOrBlank()) {
             Spacer(Modifier.height(8.dp))
-            Text(hint, style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariant)
+            Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -207,17 +207,17 @@ fun ErrorBanner(message: String, onRetry: (() -> Unit)? = null) {
     GlassCard(
         modifier = Modifier.fillMaxWidth(),
         cornerRadius = 16,
-        containerColor = Color(0x33FF6B6B)
+        containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.2f)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 message,
-                color = ErrorRed,
+                color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.weight(1f)
             )
             if (onRetry != null) {
-                TextButton(onClick = onRetry) { Text("重试", color = Primary) }
+                TextButton(onClick = onRetry) { Text("重试", color = MaterialTheme.colorScheme.primary) }
             }
         }
     }
@@ -227,9 +227,9 @@ fun ErrorBanner(message: String, onRetry: (() -> Unit)? = null) {
 @Composable
 fun StatChip(label: String, value: String, modifier: Modifier = Modifier) {
     GlassCard(modifier = modifier, cornerRadius = 16) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
-        Text(value, style = MaterialTheme.typography.titleLarge, color = OnSurface, fontWeight = FontWeight.Bold)
+        Text(value, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
     }
 }
 

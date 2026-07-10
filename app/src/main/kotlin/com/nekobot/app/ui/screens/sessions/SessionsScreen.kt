@@ -130,13 +130,13 @@ fun SessionsScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("会话", color = OnSurface) },
+                title = { Text("会话", color = MaterialTheme.colorScheme.onSurface) },
                 actions = {
                     IconButton(onClick = { viewModel.loadAll() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = OnSurface)
+                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
                     }
                     IconButton(onClick = { showCreate = true }) {
-                        Icon(Icons.Filled.Add, contentDescription = "新建会话", tint = Primary)
+                        Icon(Icons.Filled.Add, contentDescription = "新建会话", tint = MaterialTheme.colorScheme.primary)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -167,7 +167,7 @@ fun SessionsScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
-                            CircularProgressIndicator(color = Primary)
+                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                         }
                     }
                     sessions.isEmpty() -> {
@@ -188,7 +188,7 @@ fun SessionsScreen(
                                 Icon(
                                     Icons.Outlined.Chat,
                                     contentDescription = null,
-                                    tint = OnSurfaceVariant,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(56.dp)
                                 )
                             }
@@ -335,18 +335,18 @@ private fun SearchEntryBar(
             .height(56.dp)
             .clickable { onClick() },
         cornerRadius = 28,
-        containerColor = BgSurfaceVariant
+        containerColor = MaterialTheme.colorScheme.surfaceVariant
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.padding(horizontal = 16.dp)
         ) {
-            Icon(Icons.Filled.Search, contentDescription = null, tint = if (hasActiveFilter) Primary else OnSurfaceVariant)
+            Icon(Icons.Filled.Search, contentDescription = null, tint = if (hasActiveFilter) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             if (searchQuery.isNotBlank()) {
                 Text(
                     searchQuery,
-                    color = OnSurface,
+                    color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -355,7 +355,7 @@ private fun SearchEntryBar(
             } else {
                 Text(
                     "搜索会话、筛选...",
-                    color = OnSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.weight(1f)
                 )
@@ -378,14 +378,14 @@ private fun FilterChip(label: String, active: Boolean) {
         modifier = Modifier
             .height(26.dp)
             .clip(RoundedCornerShape(13.dp))
-            .background(Primary.copy(alpha = 0.15f))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
             .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
-            color = Primary
+            color = MaterialTheme.colorScheme.primary
         )
     }
 }
@@ -417,12 +417,12 @@ private fun SearchPanelContent(
             value = searchQuery,
             onValueChange = onSearchChange,
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("搜索会话、角色名...", color = OnSurfaceVariant) },
-            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = OnSurfaceVariant) },
+            placeholder = { Text("搜索会话、角色名...", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
                     IconButton(onClick = { onSearchChange("") }) {
-                        Icon(Icons.Filled.Close, contentDescription = "清空", tint = OnSurfaceVariant)
+                        Icon(Icons.Filled.Close, contentDescription = "清空", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             },
@@ -431,7 +431,7 @@ private fun SearchPanelContent(
         )
 
         // 频道筛选
-        Text("频道", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+        Text("频道", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         ChannelChips(
             availableChannels = availableChannels,
             selectedValue = channelFilterValue,
@@ -439,7 +439,7 @@ private fun SearchPanelContent(
         )
 
         // 会话筛选
-        Text("筛选", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+        Text("筛选", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SessionFilterChips(
             selected = filter,
             onSelect = { newFilter ->
@@ -452,7 +452,7 @@ private fun SearchPanelContent(
 
         // 角色筛选（仅按角色时显示）
         if (filter == SessionFilter.BY_CHARACTER && characters.isNotEmpty()) {
-            Text("角色", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+            Text("角色", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             CharacterChips(
                 characters = characters,
                 selectedId = characterFilterId,
@@ -540,7 +540,7 @@ private fun CharacterChips(
     }
 }
 
-/** 可选中 Chip：选中时 Primary 背景，未选中时透明背景。直接用Box渲染避免GlassCard内部padding。 */
+/** 可选中 Chip：选中时 MaterialTheme.colorScheme.primary 背景，未选中时透明背景。直接用Box渲染避免GlassCard内部padding。 */
 @Composable
 private fun SelectableChip(
     label: String,
@@ -551,7 +551,7 @@ private fun SelectableChip(
         modifier = Modifier
             .height(40.dp)
             .clip(RoundedCornerShape(20.dp))
-            .background(if (selected) Primary.copy(alpha = 0.2f) else BgSurfaceVariant)
+            .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant)
             .clickable { onClick() }
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center
@@ -559,7 +559,7 @@ private fun SelectableChip(
         Text(
             label,
             style = MaterialTheme.typography.bodyMedium,
-            color = if (selected) Primary else OnSurface,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
         )
     }
@@ -645,7 +645,7 @@ private fun CreateSessionDialog(
                 ) {
                     Text(
                         "已选角色：${previewChar.displayName}",
-                        color = Primary,
+                        color = MaterialTheme.colorScheme.primary,
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
@@ -671,7 +671,7 @@ private fun CreateSessionDialog(
                     label = { Text("角色 ID") },
                     singleLine = true,
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("手动输入或点击右侧选择", color = OnSurfaceVariant) }
+                    placeholder = { Text("手动输入或点击右侧选择", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 )
                 Spacer(Modifier.size(8.dp))
                 Box(
@@ -683,15 +683,15 @@ private fun CreateSessionDialog(
                             .height(56.dp)
                             .clickable { dropdownExpanded = true },
                         cornerRadius = 12,
-                        containerColor = BgSurfaceVariant
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(horizontal = 12.dp)
                         ) {
-                            Text("选择", color = Primary, style = MaterialTheme.typography.bodyMedium)
+                            Text("选择", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
                             Spacer(Modifier.size(2.dp))
-                            Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = Primary)
+                            Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         }
                     }
                     DropdownMenu(
@@ -700,22 +700,22 @@ private fun CreateSessionDialog(
                     ) {
                         if (characters.isEmpty()) {
                             DropdownMenuItem(
-                                text = { Text("暂无可用角色", color = OnSurfaceVariant) },
+                                text = { Text("暂无可用角色", color = MaterialTheme.colorScheme.onSurfaceVariant) },
                                 onClick = { dropdownExpanded = false }
                             )
                         } else {
                             DropdownMenuItem(
-                                text = { Text("（不选）", color = OnSurfaceVariant) },
+                                text = { Text("（不选）", color = MaterialTheme.colorScheme.onSurfaceVariant) },
                                 onClick = {
                                     dropdownExpanded = false
                                     characterId = ""
                                     selectedCharacter = null
                                 }
                             )
-                            HorizontalDivider(color = OnSurfaceVariant.copy(alpha = 0.2f))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
                             characters.forEach { c ->
                                 DropdownMenuItem(
-                                    text = { Text(c.displayName, color = OnSurface) },
+                                    text = { Text(c.displayName, color = MaterialTheme.colorScheme.onSurface) },
                                     onClick = {
                                         dropdownExpanded = false
                                         // 切换角色时同步会话名 + 首条消息（除非用户已手动编辑）
@@ -775,7 +775,7 @@ private fun SessionItem(
                 modifier = Modifier
                     .size(width = 54.dp, height = 70.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(BgSurface),
+                    .background(MaterialTheme.colorScheme.surface),
                 contentAlignment = Alignment.Center
             ) {
                 if (!portraitUrl.isNullOrBlank()) {
@@ -786,7 +786,7 @@ private fun SessionItem(
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
-                    Icon(Icons.Outlined.Chat, contentDescription = null, tint = OnSurfaceVariant, modifier = Modifier.size(28.dp))
+                    Icon(Icons.Outlined.Chat, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(28.dp))
                 }
             }
             Spacer(Modifier.size(12.dp))
@@ -797,7 +797,7 @@ private fun SessionItem(
                     Text(
                         text = session.displayName,
                         style = MaterialTheme.typography.titleMedium,
-                        color = OnSurface,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -809,7 +809,7 @@ private fun SessionItem(
                     }
                     if (session.favorite == true) {
                         Spacer(Modifier.size(6.dp))
-                        Text("★", color = Primary, style = MaterialTheme.typography.titleSmall)
+                        Text("★", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleSmall)
                     }
                 }
                 val preview = session.lastMessage
@@ -818,7 +818,7 @@ private fun SessionItem(
                     Text(
                         text = preview,
                         style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -829,7 +829,7 @@ private fun SessionItem(
                         Text(
                             text = session.characterName,
                             style = MaterialTheme.typography.labelSmall,
-                            color = Primary
+                            color = MaterialTheme.colorScheme.primary
                         )
                         Spacer(Modifier.size(8.dp))
                     }
@@ -837,7 +837,7 @@ private fun SessionItem(
                         Text(
                             text = "$count 条",
                             style = MaterialTheme.typography.labelSmall,
-                            color = OnSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(Modifier.size(8.dp))
                     }
@@ -845,7 +845,7 @@ private fun SessionItem(
                         Text(
                             text = time,
                             style = MaterialTheme.typography.labelSmall,
-                            color = OnSurfaceVariant,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -856,7 +856,7 @@ private fun SessionItem(
             // 右侧菜单
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "更多", tint = OnSurfaceVariant)
+                    Icon(Icons.Filled.MoreVert, contentDescription = "更多", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(
                     expanded = menuExpanded,

@@ -301,4 +301,49 @@ interface ApiService {
         @Query("level") level: String = "all",
         @Query("limit") limit: Int = 100
     ): Response<JsonElement>
+
+    // ==================== 角色记忆（MemoryFS + 旧版）====================
+    /** 列出 MemoryFS 逻辑文件，可选按角色过滤。 */
+    @GET("api/review/memory-fs")
+    suspend fun listMemoryFs(
+        @Query("character_id") characterId: String? = null
+    ): Response<MemoryFsListResponse>
+
+    /** 读取指定路径的 MemoryFS 文件。 */
+    @GET("api/review/memory-fs/read")
+    suspend fun readMemoryFs(@Query("path") path: String): Response<MemoryFile>
+
+    /** 删除指定路径的 MemoryFS 文件。 */
+    @DELETE("api/review/memory-fs/delete")
+    suspend fun deleteMemoryFs(
+        @Query("path") path: String,
+        @Query("character_id") characterId: String? = null
+    ): Response<ApiResult>
+
+    /** 旧版记忆列表，可按 type/target_id/character_name 过滤。 */
+    @GET("api/memory")
+    suspend fun listLegacyMemory(
+        @Query("type") type: String? = null,
+        @Query("target_id") targetId: String? = null,
+        @Query("character_name") characterName: String? = null
+    ): Response<LegacyMemoryListResponse>
+
+    /** 新增旧版记忆。 */
+    @POST("api/memory")
+    suspend fun createLegacyMemory(@Body body: LegacyMemoryRequest): Response<ApiResult>
+
+    /** 更新旧版记忆。 */
+    @PUT("api/memory/{memoryId}")
+    suspend fun updateLegacyMemory(
+        @Path("memoryId") memoryId: String,
+        @Body body: JsonElement
+    ): Response<JsonElement>
+
+    /** 删除单条旧版记忆。 */
+    @DELETE("api/memory/{memoryId}")
+    suspend fun deleteLegacyMemory(@Path("memoryId") memoryId: String): Response<ApiResult>
+
+    /** 导出全部旧版记忆。 */
+    @GET("api/memory/export")
+    suspend fun exportLegacyMemory(): Response<LegacyMemoryListResponse>
 }

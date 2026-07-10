@@ -419,3 +419,83 @@ data class TokenRankings(
     val users: List<JsonElement>? = null,
     val purposes: List<JsonElement>? = null
 )
+
+// ==================== 角色记忆（MemoryFS）====================
+/**
+ * MemoryFS 逻辑记忆文件，对应后端 `/api/review/memory-fs` 返回项。
+ *
+ * path 规范（使用 / 分隔，不含前导 /）：
+ *   characters/{char_id}/general.md
+ *   characters/{char_id}/users/{user_id}/user_persona.md
+ *   characters/{char_id}/users/{user_id}/character_persona.md
+ *   characters/{char_id}/users/{user_id}/recent_digest.md
+ *   characters/{char_id}/events/{conversation_id}.md
+ *   characters/{char_id}/plot/{conversation_id}.md
+ *   characters/{char_id}/timeline.md
+ *   characters/{char_id}/life_sim/{conversation_id}.md
+ *
+ * category 由路径推断：user_persona / character_persona / important_event /
+ * timeline / life_sim / recent_digest / legacy
+ */
+data class MemoryFile(
+    val path: String = "",
+    @SerializedName("character_id") val characterId: String = "",
+    @SerializedName("target_id") val targetId: String = "",
+    val title: String = "",
+    val content: String = "",
+    val summary: String = "",
+    val tags: List<String>? = null,
+    val importance: Float = 0f,
+    val version: Int = 1,
+    @SerializedName("source_event_id") val sourceEventId: String = "",
+    @SerializedName("memory_ids") val memoryIds: List<String>? = null,
+    @SerializedName("updated_at") val updatedAt: String = "",
+    // 由 /api/review/memory-fs 附加的元数据
+    val category: String = "legacy",
+    @SerializedName("category_label") val categoryLabel: String = "旧版/其他",
+    @SerializedName("injects_to_prompt") val injectsToPrompt: Boolean = false,
+    @SerializedName("category_order") val categoryOrder: Int = 99
+)
+
+/** MemoryFS 列表响应。 */
+data class MemoryFsListResponse(
+    val files: List<MemoryFile>? = null,
+    val total: Int = 0
+)
+
+/**
+ * 旧版记忆条目，对应 `/api/memory`。
+ * type 只有 "long" 或 "short"；priority 为 high/normal/low。
+ */
+data class LegacyMemory(
+    val id: String? = null,
+    val title: String = "",
+    val content: String = "",
+    val summary: String? = null,
+    val type: String = "long",
+    val priority: String = "normal",
+    @SerializedName("expire_days") val expireDays: Int = 7,
+    @SerializedName("target_id") val targetId: String = "",
+    @SerializedName("character_name") val characterName: String = "",
+    @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("updated_at") val updatedAt: String? = null
+)
+
+/** 旧版记忆列表响应：{memories, long_term, short_term} */
+data class LegacyMemoryListResponse(
+    val memories: List<LegacyMemory>? = null,
+    @SerializedName("long_term") val longTerm: List<LegacyMemory>? = null,
+    @SerializedName("short_term") val shortTerm: List<LegacyMemory>? = null
+)
+
+/** 创建/更新旧版记忆请求体。 */
+data class LegacyMemoryRequest(
+    val title: String,
+    val content: String,
+    val summary: String? = null,
+    val type: String = "long",
+    val priority: String = "normal",
+    @SerializedName("expire_days") val expireDays: Int = 7,
+    @SerializedName("target_id") val targetId: String = "",
+    @SerializedName("character_name") val characterName: String = ""
+)

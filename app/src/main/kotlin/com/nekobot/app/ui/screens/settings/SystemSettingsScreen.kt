@@ -72,24 +72,24 @@ fun SystemSettingsScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("系统设置", color = OnSurface) },
+                title = { Text("系统设置", color = MaterialTheme.colorScheme.onSurface) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = OnSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     IconButton(onClick = { vm.saveSettings(settingsInput) }) {
-                        Icon(Icons.Filled.Save, contentDescription = "保存", tint = Primary)
+                        Icon(Icons.Filled.Save, contentDescription = "保存", tint = MaterialTheme.colorScheme.primary)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = BgDark,
-                    titleContentColor = OnSurface
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         },
-        containerColor = BgDark
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Box(
             modifier = Modifier
@@ -110,7 +110,7 @@ fun SystemSettingsScreen(onBack: () -> Unit) {
                 Text(
                     text = "以 JSON 格式编辑系统配置，保存后立即生效。",
                     style = MaterialTheme.typography.bodySmall,
-                    color = OnSurface
+                    color = MaterialTheme.colorScheme.onSurface
                 )
 
                 OutlinedTextField(
@@ -127,12 +127,12 @@ fun SystemSettingsScreen(onBack: () -> Unit) {
 
                 Button(
                     onClick = { vm.saveSettings(settingsInput) },
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Filled.Save, contentDescription = null, tint = OnPrimary)
+                    Icon(Icons.Filled.Save, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
                     Spacer(Modifier.width(8.dp))
-                    Text("保存设置", color = OnPrimary)
+                    Text("保存设置", color = MaterialTheme.colorScheme.onPrimary)
                 }
             }
 

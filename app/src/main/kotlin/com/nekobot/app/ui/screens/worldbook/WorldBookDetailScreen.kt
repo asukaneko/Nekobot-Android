@@ -31,7 +31,6 @@ import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
 import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.components.SectionHeader
-import com.nekobot.app.ui.theme.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -247,35 +246,35 @@ fun WorldBookDetailScreen(
     var deleteEntryId by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
-        containerColor = BgDark,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
                     Text(
                         book?.displayName ?: "世界书详情",
-                        color = OnSurface,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = BgSurface,
-                    titleContentColor = OnSurface
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "返回",
-                            tint = OnSurface
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
                 actions = {
                     IconButton(onClick = { showEditBookDialog = true }) {
-                        Icon(Icons.Filled.Edit, contentDescription = "编辑书信息", tint = Primary)
+                        Icon(Icons.Filled.Edit, contentDescription = "编辑书信息", tint = MaterialTheme.colorScheme.primary)
                     }
                     IconButton(onClick = { showDeleteBookDialog = true }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "删除书", tint = ErrorRed)
+                        Icon(Icons.Filled.Delete, contentDescription = "删除书", tint = MaterialTheme.colorScheme.error)
                     }
                 }
             )
@@ -285,7 +284,7 @@ fun WorldBookDetailScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(BgDark)
+                .background(MaterialTheme.colorScheme.background)
         ) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -306,9 +305,9 @@ fun WorldBookDetailScreen(
                         subtitle = "共 ${entries.size} 条"
                     ) {
                         TextButton(onClick = { vm.startNewEntry() }) {
-                            Icon(Icons.Filled.Add, contentDescription = null, tint = Primary)
+                            Icon(Icons.Filled.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(4.dp))
-                            Text("新建条目", color = Primary)
+                            Text("新建条目", color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
@@ -325,7 +324,7 @@ fun WorldBookDetailScreen(
                         Text(
                             "暂无条目，点击右上角新建",
                             style = MaterialTheme.typography.bodySmall,
-                            color = OnSurfaceVariant,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(vertical = 24.dp)
                         )
                     }
@@ -395,7 +394,7 @@ private fun BookInfoCard(book: WorldBook?, onToggleEnabled: (Boolean) -> Unit) {
                 Text(
                     text = book?.displayName ?: "未命名世界书",
                     style = MaterialTheme.typography.titleLarge,
-                    color = OnSurface,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Bold
                 )
                 if (!book?.description.isNullOrBlank()) {
@@ -403,14 +402,14 @@ private fun BookInfoCard(book: WorldBook?, onToggleEnabled: (Boolean) -> Unit) {
                     Text(
                         text = book!!.description!!,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = OnSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = "绑定角色：${book?.characterId ?: "无"}",
                     style = MaterialTheme.typography.labelMedium,
-                    color = OnSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Spacer(Modifier.width(8.dp))
@@ -418,10 +417,10 @@ private fun BookInfoCard(book: WorldBook?, onToggleEnabled: (Boolean) -> Unit) {
                 checked = book?.enabled == true,
                 onCheckedChange = onToggleEnabled,
                 colors = SwitchDefaults.colors(
-                    checkedThumbColor = OnPrimary,
-                    checkedTrackColor = Primary,
-                    uncheckedThumbColor = OnSurfaceVariant,
-                    uncheckedTrackColor = Outline
+                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    uncheckedTrackColor = MaterialTheme.colorScheme.outline
                 )
             )
         }
@@ -450,12 +449,12 @@ private fun EntryItem(
                                     Text(
                                         k,
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = OnSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 },
                                 shape = RoundedCornerShape(8.dp),
                                 colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = Primary.copy(alpha = 0.12f)
+                                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                                 )
                             )
                         }
@@ -466,7 +465,7 @@ private fun EntryItem(
                 Text(
                     text = entry.content.orEmpty().ifBlank { "（无内容）" },
                     style = MaterialTheme.typography.bodySmall,
-                    color = OnSurface,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -475,7 +474,7 @@ private fun EntryItem(
                     Text(
                         text = "备注：${entry.comment}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = OnSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Spacer(Modifier.height(8.dp))
@@ -492,10 +491,10 @@ private fun EntryItem(
             Spacer(Modifier.width(8.dp))
             Column {
                 IconButton(onClick = onEdit) {
-                    Icon(Icons.Filled.Edit, contentDescription = "编辑", tint = Primary)
+                    Icon(Icons.Filled.Edit, contentDescription = "编辑", tint = MaterialTheme.colorScheme.primary)
                 }
                 IconButton(onClick = onDelete) {
-                    Icon(Icons.Filled.Delete, contentDescription = "删除", tint = ErrorRed)
+                    Icon(Icons.Filled.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.error)
                 }
             }
         }
@@ -510,15 +509,15 @@ private fun SwitchLabel(label: String, checked: Boolean) {
             checked = checked,
             onCheckedChange = null,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = OnPrimary,
-                checkedTrackColor = Primary,
-                uncheckedThumbColor = OnSurfaceVariant,
-                uncheckedTrackColor = Outline
+                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                uncheckedTrackColor = MaterialTheme.colorScheme.outline
             ),
             modifier = Modifier.scale(0.8f)
         )
         Spacer(Modifier.width(4.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -547,7 +546,7 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
         onCancel = { vm.dismissEntryDialog() }
     ) {
         // 关键词（逗号分隔）
-        Text("关键词（逗号分隔）", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+        Text("关键词（逗号分隔）", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         NekoTextField(
             value = keys,
@@ -556,7 +555,7 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
         )
         Spacer(Modifier.height(10.dp))
         // 内容（多行）
-        Text("内容", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+        Text("内容", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         NekoTextField(
             value = content,
@@ -567,7 +566,7 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
         )
         Spacer(Modifier.height(10.dp))
         // 备注
-        Text("备注", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+        Text("备注", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         NekoTextField(
             value = comment,
@@ -576,7 +575,7 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
         )
         Spacer(Modifier.height(10.dp))
         // 位置下拉
-        Text("位置", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+        Text("位置", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         ExposedDropdownMenuBox(
             expanded = positionExpanded,
@@ -593,12 +592,12 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
                 shape = RoundedCornerShape(12.dp),
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = positionExpanded) },
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = OnSurface,
-                    unfocusedTextColor = OnSurface,
-                    focusedBorderColor = Primary,
-                    unfocusedBorderColor = Outline,
-                    focusedContainerColor = BgSurfaceVariant,
-                    unfocusedContainerColor = BgSurfaceVariant
+                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
                 )
             )
             ExposedDropdownMenu(
@@ -607,7 +606,7 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
             ) {
                 POSITION_OPTIONS.forEach { opt ->
                     DropdownMenuItem(
-                        text = { Text(opt, color = OnSurface) },
+                        text = { Text(opt, color = MaterialTheme.colorScheme.onSurface) },
                         onClick = {
                             vm.entryPosition.value = opt
                             positionExpanded = false
@@ -618,7 +617,7 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
         }
         Spacer(Modifier.height(10.dp))
         // 优先级（数字）
-        Text("优先级", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+        Text("优先级", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         NekoTextField(
             value = priority.toString(),
@@ -645,17 +644,17 @@ private fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean
         Text(
             label,
             style = MaterialTheme.typography.bodyMedium,
-            color = OnSurface,
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f)
         )
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = OnPrimary,
-                checkedTrackColor = Primary,
-                uncheckedThumbColor = OnSurfaceVariant,
-                uncheckedTrackColor = Outline
+                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                uncheckedTrackColor = MaterialTheme.colorScheme.outline
             )
         )
     }
@@ -683,7 +682,7 @@ private fun EditBookDialog(
         },
         onCancel = onDismiss
     ) {
-        Text("名称", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+        Text("名称", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         NekoTextField(
             value = name,
@@ -691,7 +690,7 @@ private fun EditBookDialog(
             singleLine = true
         )
         Spacer(Modifier.height(10.dp))
-        Text("描述", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+        Text("描述", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         NekoTextField(
             value = desc,
@@ -723,13 +722,13 @@ private fun NekoTextField(
         shape = RoundedCornerShape(12.dp),
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedTextColor = OnSurface,
-            unfocusedTextColor = OnSurface,
-            focusedBorderColor = Primary,
-            unfocusedBorderColor = Outline,
-            cursorColor = Primary,
-            focusedContainerColor = BgSurfaceVariant,
-            unfocusedContainerColor = BgSurfaceVariant
+            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+            focusedBorderColor = MaterialTheme.colorScheme.primary,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+            cursorColor = MaterialTheme.colorScheme.primary,
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
         )
     )
 }

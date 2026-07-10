@@ -80,20 +80,20 @@ fun CharactersScreen(
     val error by viewModel.error.collectAsState()
 
     Scaffold(
-        containerColor = BgDark,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("角色", color = OnSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text("角色", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = BgSurface,
-                    titleContentColor = OnSurface
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 actions = {
                     IconButton(onClick = { viewModel.load() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = OnSurface)
+                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
                     }
                     IconButton(onClick = { onOpenCharacter("new") }) {
-                        Icon(Icons.Filled.Add, contentDescription = "新建角色", tint = Primary)
+                        Icon(Icons.Filled.Add, contentDescription = "新建角色", tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             )
@@ -103,7 +103,7 @@ fun CharactersScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(BgDark)
+                .background(MaterialTheme.colorScheme.background)
         ) {
             if (characters.isEmpty() && !loading) {
                 EmptyState(
@@ -113,7 +113,7 @@ fun CharactersScreen(
                         Icon(
                             Icons.Filled.Person,
                             contentDescription = null,
-                            tint = OnSurfaceVariant,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(48.dp)
                         )
                     }
@@ -162,14 +162,14 @@ private fun CharacterItem(character: CharacterPreset, onClick: () -> Unit) {
                 modifier = Modifier
                     .size(56.dp)
                     .clip(CircleShape)
-                    .background(BgSurfaceVariant)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
             )
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = character.displayName,
                     style = MaterialTheme.typography.titleMedium,
-                    color = OnSurface,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -179,7 +179,7 @@ private fun CharacterItem(character: CharacterPreset, onClick: () -> Unit) {
                     Text(
                         text = character.description,
                         style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -199,13 +199,13 @@ private fun CharacterItem(character: CharacterPreset, onClick: () -> Unit) {
                                     Text(
                                         tag,
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = OnSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 },
                                 shape = RoundedCornerShape(8.dp),
                                 colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = Primary.copy(alpha = 0.12f),
-                                    leadingIconContentColor = Primary
+                                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                    leadingIconContentColor = MaterialTheme.colorScheme.primary
                                 )
                             )
                         }

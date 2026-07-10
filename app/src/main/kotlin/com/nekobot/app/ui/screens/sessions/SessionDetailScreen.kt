@@ -198,28 +198,28 @@ fun SessionDetailScreen(
     LaunchedEffect(sessionId) { vm.init(sessionId) }
 
     Scaffold(
-        containerColor = BgDark,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("会话详情", color = OnSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text("会话详情", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = BgSurface,
-                    titleContentColor = OnSurface
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = OnSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     IconButton(onClick = { session?.id?.let(onOpenChat) }) {
-                        Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = "进入对话", tint = Primary)
+                        Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = "进入对话", tint = MaterialTheme.colorScheme.primary)
                     }
                     IconButton(onClick = { vm.save(onBack) }) {
-                        Icon(Icons.Filled.Save, contentDescription = "保存", tint = Primary)
+                        Icon(Icons.Filled.Save, contentDescription = "保存", tint = MaterialTheme.colorScheme.primary)
                     }
                     IconButton(onClick = { showDeleteDialog = true }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "删除", tint = ErrorRed)
+                        Icon(Icons.Filled.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.error)
                     }
                 }
             )
@@ -229,14 +229,14 @@ fun SessionDetailScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(BgDark)
+                .background(MaterialTheme.colorScheme.background)
         ) {
             if (loading && session == null) {
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
-                ) { CircularProgressIndicator(color = Primary) }
+                ) { CircularProgressIndicator(color = MaterialTheme.colorScheme.primary) }
             } else {
                 Column(
                     modifier = Modifier
@@ -254,7 +254,7 @@ fun SessionDetailScreen(
                                     modifier = Modifier
                                         .size(width = 80.dp, height = 104.dp)
                                         .clip(RoundedCornerShape(14.dp))
-                                        .background(BgSurface),
+                                        .background(MaterialTheme.colorScheme.surface),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     if (!portraitUrl.isNullOrBlank()) {
@@ -265,32 +265,32 @@ fun SessionDetailScreen(
                                             modifier = Modifier.fillMaxSize()
                                         )
                                     } else {
-                                        Icon(Icons.Filled.SmartToy, contentDescription = null, tint = OnSurfaceVariant, modifier = Modifier.size(32.dp))
+                                        Icon(Icons.Filled.SmartToy, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(32.dp))
                                     }
                                 }
                                 Spacer(Modifier.size(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(s.displayName, style = MaterialTheme.typography.titleLarge, color = OnSurface, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    Text(s.displayName, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     if (!s.characterName.isNullOrBlank()) {
                                         Spacer(Modifier.height(4.dp))
-                                        Text("角色：${s.characterName}", style = MaterialTheme.typography.bodyMedium, color = Primary)
+                                        Text("角色：${s.characterName}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
                                     }
                                     Spacer(Modifier.height(4.dp))
                                     // 类型 / 模式 badge
                                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         s.type?.let { BadgeChip(it) }
                                         s.sessionMode?.let { BadgeChip(it) }
-                                        if (s.pinned == true) BadgeChip("置顶", Primary)
+                                        if (s.pinned == true) BadgeChip("置顶", MaterialTheme.colorScheme.primary)
                                         if (s.favorite == true) BadgeChip("收藏", WarningAmber)
-                                        if (s.archived == true) BadgeChip("已归档", OnSurfaceVariant)
-                                        if (s.readOnly == true) BadgeChip("只读", ErrorRed)
+                                        if (s.archived == true) BadgeChip("已归档", MaterialTheme.colorScheme.onSurfaceVariant)
+                                        if (s.readOnly == true) BadgeChip("只读", MaterialTheme.colorScheme.error)
                                     }
                                     s.messageCount?.let { count ->
                                         Spacer(Modifier.height(4.dp))
-                                        Text("消息数：$count", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariant)
+                                        Text("消息数：$count", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                     s.updatedAt?.let { time ->
-                                        Text("更新：${time.take(19)}", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text("更新：${time.take(19)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
                                 }
                             }
@@ -338,7 +338,7 @@ fun SessionDetailScreen(
                                 title = "系统提示词",
                                 trailing = {
                                     IconButton(onClick = { clipboard.setText(AnnotatedString(systemPrompt)) }) {
-                                        Icon(Icons.Filled.ContentCopy, contentDescription = "复制", tint = OnSurfaceVariant, modifier = Modifier.size(18.dp))
+                                        Icon(Icons.Filled.ContentCopy, contentDescription = "复制", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                                     }
                                 }
                             )
@@ -376,19 +376,19 @@ fun SessionDetailScreen(
                                 val intensity = snap.get("mood_intensity")?.let { if (it.isJsonPrimitive) it.asFloat else null }
                                 val energy = snap.get("energy")?.let { if (it.isJsonPrimitive) it.asInt else null }
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    StateMiniCard("心情", mood, Primary, Modifier.weight(1f))
-                                    StateMiniCard("强度", intensity?.let { "${(it * 100).toInt()}%" }, Secondary, Modifier.weight(1f))
-                                    StateMiniCard("能量", energy?.toString(), Tertiary, Modifier.weight(1f))
+                                    StateMiniCard("心情", mood, MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+                                    StateMiniCard("强度", intensity?.let { "${(it * 100).toInt()}%" }, MaterialTheme.colorScheme.secondary, Modifier.weight(1f))
+                                    StateMiniCard("能量", energy?.toString(), MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
                                 }
                                 Spacer(Modifier.height(8.dp))
                                 // 关系数值
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    RelBar("好感", snap.get("affection")?.asInt, Primary, Modifier.weight(1f))
-                                    RelBar("信任", snap.get("trust")?.asInt, Secondary, Modifier.weight(1f))
-                                    RelBar("熟悉", snap.get("familiarity")?.asInt, Tertiary, Modifier.weight(1f))
+                                    RelBar("好感", snap.get("affection")?.asInt, MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+                                    RelBar("信任", snap.get("trust")?.asInt, MaterialTheme.colorScheme.secondary, Modifier.weight(1f))
+                                    RelBar("熟悉", snap.get("familiarity")?.asInt, MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
                                     RelBar("依赖", snap.get("dependency")?.asInt, WarningAmber, Modifier.weight(1f))
                                     RelBar("安全", snap.get("security")?.asInt, SuccessGreen, Modifier.weight(1f))
-                                    RelBar("嫉妒", snap.get("jealousy")?.asInt, ErrorRed, Modifier.weight(1f))
+                                    RelBar("嫉妒", snap.get("jealousy")?.asInt, MaterialTheme.colorScheme.error, Modifier.weight(1f))
                                 }
                                 // 表情
                                 snap.get("visible_emotion")?.asString?.let {
@@ -422,7 +422,7 @@ fun SessionDetailScreen(
                             }
                             Spacer(Modifier.height(12.dp))
                             // 自动状态间隔下拉
-                            Text("自动状态评估间隔", style = MaterialTheme.typography.bodyMedium, color = OnSurface)
+                            Text("自动状态评估间隔", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                             Spacer(Modifier.height(4.dp))
                             AutoStateIntervalSelector(
                                 value = autoStateInterval,
@@ -485,13 +485,13 @@ private fun DetailLine(label: String, value: String) {
         Text(
             label,
             style = MaterialTheme.typography.bodySmall,
-            color = OnSurfaceVariant,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.width(80.dp)
         )
         Text(
             value,
             style = MaterialTheme.typography.bodyMedium,
-            color = OnSurface,
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f)
         )
     }
@@ -499,7 +499,7 @@ private fun DetailLine(label: String, value: String) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun BadgeChip(text: String, color: Color = OnSurfaceVariant) {
+private fun BadgeChip(text: String, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
@@ -521,13 +521,13 @@ private fun ToggleChipRow(
         modifier = modifier
             .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(if (selected) Primary.copy(alpha = 0.2f) else BgSurfaceVariant)
+            .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = label,
-            color = if (selected) Primary else OnSurface,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             modifier = Modifier.padding(vertical = 12.dp)
@@ -545,12 +545,12 @@ private fun StateMiniCard(
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(BgSurface)
+            .background(MaterialTheme.colorScheme.surface)
             .padding(vertical = 6.dp, horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(value ?: "—", style = MaterialTheme.typography.titleSmall, color = color, fontWeight = FontWeight.Bold)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -564,12 +564,12 @@ private fun RelBar(
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(6.dp))
-            .background(BgSurface)
+            .background(MaterialTheme.colorScheme.surface)
             .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(value?.toString() ?: "—", style = MaterialTheme.typography.labelMedium, color = color, fontWeight = FontWeight.Bold)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant, maxLines = 1)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
     }
 }
 
@@ -596,8 +596,8 @@ private fun AutoStateIntervalSelector(
                 onClick = { onChange(interval) },
                 label = { Text(label, style = MaterialTheme.typography.labelSmall) },
                 colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = Primary.copy(alpha = 0.2f),
-                    selectedLabelColor = Primary
+                    selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                    selectedLabelColor = MaterialTheme.colorScheme.primary
                 )
             )
         }

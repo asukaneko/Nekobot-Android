@@ -224,17 +224,17 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "返回",
-                            tint = OnSurface
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = BgDark,
-                    titleContentColor = OnSurface
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         },
-        containerColor = BgDark
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Box(
             modifier = Modifier
@@ -269,16 +269,16 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
 
                     Button(
                         onClick = { vm.saveServerUrl(serverUrlInput) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
-                        Text("保存地址", color = OnPrimary)
+                        Text("保存地址", color = MaterialTheme.colorScheme.onPrimary)
                     }
 
                     Spacer(Modifier.height(8.dp))
                     Text(
                         text = "当前用户: ${ServiceContainer.prefs.username.ifBlank { "未登录" }}",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = OnSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
@@ -294,7 +294,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                             onClick = { onNavigate("ai_config") },
                             modifier = Modifier.weight(1f)
                         ) {
-                            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = Primary)
+                            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(8.dp))
                             Text("AI 配置")
                         }
@@ -302,7 +302,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                             onClick = { onNavigate("ai_models") },
                             modifier = Modifier.weight(1f)
                         ) {
-                            Icon(Icons.Filled.Memory, contentDescription = null, tint = Primary)
+                            Icon(Icons.Filled.Memory, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(8.dp))
                             Text("AI 模型")
                         }
@@ -319,13 +319,13 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.SettingsIcon, contentDescription = null, tint = Primary, modifier = Modifier.size(24.dp))
+                        Icon(Icons.Filled.SettingsIcon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                         Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("系统设置", style = MaterialTheme.typography.bodyLarge, color = OnSurface, fontWeight = FontWeight.SemiBold)
-                            Text("以 JSON 格式编辑系统配置", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariant)
+                            Text("系统设置", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                            Text("以 JSON 格式编辑系统配置", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = OnSurfaceVariant)
+                        Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
 
@@ -335,12 +335,12 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                     Spacer(Modifier.height(12.dp))
                     Button(
                         onClick = { vm.reloadConfig() },
-                        colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Filled.CloudSync, contentDescription = null, tint = OnPrimary)
+                        Icon(Icons.Filled.CloudSync, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
                         Spacer(Modifier.width(8.dp))
-                        Text("重载配置", color = OnPrimary)
+                        Text("重载配置", color = MaterialTheme.colorScheme.onPrimary)
                     }
                 }
 
@@ -352,7 +352,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                         onClick = { vm.loadLogs() },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Filled.Description, contentDescription = null, tint = Primary)
+                        Icon(Icons.Filled.Description, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(8.dp))
                         Text("查看最近日志")
                     }
@@ -364,12 +364,12 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                     Spacer(Modifier.height(12.dp))
                     Button(
                         onClick = { vm.logout() },
-                        colors = ButtonDefaults.buttonColors(containerColor = ErrorRed),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Filled.Logout, contentDescription = null, tint = OnPrimary)
+                        Icon(Icons.Filled.Logout, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
                         Spacer(Modifier.width(8.dp))
-                        Text("退出登录", color = OnPrimary)
+                        Text("退出登录", color = MaterialTheme.colorScheme.onPrimary)
                     }
                 }
             }
@@ -392,7 +392,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                 Text(
                     text = "暂无日志",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = OnSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(16.dp)
                 )
             } else {
@@ -415,10 +415,10 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
 @Composable
 private fun LogCard(log: LogEntry) {
     val levelColor = when (log.level.lowercase()) {
-        "error" -> ErrorRed
+        "error" -> MaterialTheme.colorScheme.error
         "warning", "warn" -> Color(0xFFFFB347)
         "debug" -> Color(0xFF6BAED6)
-        else -> Primary
+        else -> MaterialTheme.colorScheme.primary
     }
     val levelLabel = when (log.level.lowercase()) {
         "warning" -> "WARN"
@@ -428,7 +428,7 @@ private fun LogCard(log: LogEntry) {
     GlassCard(
         modifier = Modifier.fillMaxWidth(),
         cornerRadius = 10,
-        containerColor = BgSurfaceVariant
+        containerColor = MaterialTheme.colorScheme.surfaceVariant
     ) {
         Row(modifier = Modifier.fillMaxWidth()) {
             // 左侧等级色条
@@ -455,14 +455,14 @@ private fun LogCard(log: LogEntry) {
                     Text(
                         text = log.time,
                         style = MaterialTheme.typography.labelSmall,
-                        color = OnSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = log.message,
                     style = MaterialTheme.typography.bodySmall,
-                    color = OnSurface
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
         }

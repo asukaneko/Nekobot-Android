@@ -7,6 +7,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -28,6 +29,7 @@ import com.nekobot.app.ui.screens.characters.CharacterDetailScreen
 import com.nekobot.app.ui.screens.characters.CharactersScreen
 import com.nekobot.app.ui.screens.chat.ChatScreen
 import com.nekobot.app.ui.screens.login.LoginScreen
+import com.nekobot.app.ui.screens.memory.MemoryScreen
 import com.nekobot.app.ui.screens.more.MoreScreen
 import com.nekobot.app.ui.screens.sessions.SessionsScreen
 import com.nekobot.app.ui.screens.sessions.SessionDetailScreen
@@ -37,9 +39,6 @@ import com.nekobot.app.ui.screens.statehistory.StateHistoryScreen
 import com.nekobot.app.ui.screens.tokens.TokensScreen
 import com.nekobot.app.ui.screens.worldbook.WorldBookDetailScreen
 import com.nekobot.app.ui.screens.worldbook.WorldBooksScreen
-import com.nekobot.app.ui.theme.BgDark
-import com.nekobot.app.ui.theme.OnSurfaceVariant
-import com.nekobot.app.ui.theme.Primary
 
 private val mainRoutes = setOf(
     Routes.SESSIONS, Routes.CHARACTERS, Routes.WORLD_BOOKS,
@@ -56,7 +55,7 @@ fun NekobotNavGraph() {
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar(containerColor = BgDark) {
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                     bottomItems.forEach { item ->
                         NavigationBarItem(
                             selected = currentRoute == item.route,
@@ -70,11 +69,11 @@ fun NekobotNavGraph() {
                             icon = { androidx.compose.material3.Icon(item.icon, contentDescription = item.label) },
                             label = { Text(item.label) },
                             colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = Primary,
-                                selectedTextColor = Primary,
-                                unselectedIconColor = OnSurfaceVariant,
-                                unselectedTextColor = OnSurfaceVariant,
-                                indicatorColor = BgDark
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                indicatorColor = MaterialTheme.colorScheme.surface
                             )
                         )
                     }
@@ -200,6 +199,9 @@ fun NekobotNavGraph() {
             }
             composable(Routes.AI_MODELS) {
                 AiModelsScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.MEMORY) {
+                MemoryScreen(onBack = { navController.popBackStack() })
             }
         }
     }

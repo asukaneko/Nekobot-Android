@@ -286,6 +286,43 @@ class NekobotRepository(
     fun toJson(obj: Any): JsonElement = gson.toJsonTree(obj)
 
     fun parseJson(json: String): JsonElement = JsonParser.parseString(json)
+
+    // ==================== 角色记忆（MemoryFS + 旧版）====================
+    /** 列出 MemoryFS 逻辑文件，可选按角色过滤。 */
+    suspend fun listMemoryFs(characterId: String? = null): Resource<MemoryFsListResponse> =
+        safeCall { api.listMemoryFs(characterId) }
+
+    /** 读取指定路径的 MemoryFS 文件。 */
+    suspend fun readMemoryFs(path: String): Resource<MemoryFile> =
+        safeCall { api.readMemoryFs(path) }
+
+    /** 删除指定路径的 MemoryFS 文件。 */
+    suspend fun deleteMemoryFs(path: String, characterId: String? = null): Resource<ApiResult> =
+        safeCall { api.deleteMemoryFs(path, characterId) }
+
+    /** 旧版记忆列表，可按 type/target_id/character_name 过滤。 */
+    suspend fun listLegacyMemory(
+        type: String? = null,
+        targetId: String? = null,
+        characterName: String? = null
+    ): Resource<LegacyMemoryListResponse> =
+        safeCall { api.listLegacyMemory(type, targetId, characterName) }
+
+    /** 新增旧版记忆。 */
+    suspend fun createLegacyMemory(req: LegacyMemoryRequest): Resource<ApiResult> =
+        safeCall { api.createLegacyMemory(req) }
+
+    /** 更新旧版记忆。body 为 JsonElement 透传（字段可选）。 */
+    suspend fun updateLegacyMemory(memoryId: String, body: JsonElement): Resource<JsonElement> =
+        safeCall { api.updateLegacyMemory(memoryId, body) }
+
+    /** 删除单条旧版记忆。 */
+    suspend fun deleteLegacyMemory(memoryId: String): Resource<ApiResult> =
+        safeCall { api.deleteLegacyMemory(memoryId) }
+
+    /** 导出全部旧版记忆。 */
+    suspend fun exportLegacyMemory(): Resource<LegacyMemoryListResponse> =
+        safeCall { api.exportLegacyMemory() }
 }
 
 /** 把无数据成功结果映射为 Unit */

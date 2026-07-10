@@ -169,19 +169,19 @@ fun AiConfigScreen(onBack: () -> Unit) {
                 },
                 actions = {
                     TextButton(onClick = { vm.test() }) {
-                        Text("测试", color = OnSurface)
+                        Text("测试", color = MaterialTheme.colorScheme.onSurface)
                     }
                     TextButton(onClick = { vm.save() }) {
-                        Text("保存", color = OnSurface)
+                        Text("保存", color = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = BgDark,
-                    titleContentColor = OnSurface
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         },
-        containerColor = BgDark
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Box(
             modifier = Modifier
@@ -299,11 +299,11 @@ fun AiConfigScreen(onBack: () -> Unit) {
                 Button(
                     onClick = { vm.save() },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                 ) {
-                    Icon(Icons.Filled.Save, contentDescription = null, tint = OnPrimary)
+                    Icon(Icons.Filled.Save, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
                     Spacer(Modifier.width(8.dp))
-                    Text("保存配置", color = OnPrimary)
+                    Text("保存配置", color = MaterialTheme.colorScheme.onPrimary)
                 }
             }
 
@@ -342,8 +342,8 @@ private fun SliderRow(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(label, style = MaterialTheme.typography.bodyMedium, color = OnSurfaceVariant)
-            Text(valueText, style = MaterialTheme.typography.bodyMedium, color = Primary, fontWeight = FontWeight.SemiBold)
+            Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(valueText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
         }
         Slider(
             value = value,

@@ -1,7 +1,6 @@
 package com.nekobot.app.ui.theme
 
 import android.app.Activity
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -32,19 +31,35 @@ private val DarkColors = darkColorScheme(
     error = ErrorRed,
 )
 
+private val LightColors = lightColorScheme(
+    primary = PrimaryLight,
+    onPrimary = OnPrimaryLight,
+    primaryContainer = PrimaryContainerLight,
+    secondary = SecondaryLight,
+    tertiary = TertiaryLight,
+    background = BgLight,
+    onBackground = OnSurfaceLight,
+    surface = BgSurfaceLight,
+    onSurface = OnSurfaceLight,
+    surfaceVariant = BgSurfaceVariantLight,
+    onSurfaceVariant = OnSurfaceVariantLight,
+    outline = OutlineLight,
+    error = ErrorRedLight,
+)
+
 @Composable
 fun NekobotTheme(
-    darkTheme: Boolean = true,
+    darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+        dynamicColor && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S -> {
             val context = LocalContext.current
-            dynamicDarkColorScheme(context)
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
         darkTheme -> DarkColors
-        else -> lightColorScheme()
+        else -> LightColors
     }
 
     val view = LocalView.current
@@ -52,7 +67,8 @@ fun NekobotTheme(
         SideEffect {
             val window = (view.context as Activity).window
             window.statusBarColor = Color.Transparent.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
+            // 浅色模式下状态栏图标使用深色外观
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
         }
     }
 

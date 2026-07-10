@@ -268,12 +268,12 @@ fun AiModelsScreen(onBack: () -> Unit) {
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = BgDark,
-                    titleContentColor = OnSurface
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         },
-        containerColor = BgDark
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Box(
             modifier = Modifier
@@ -391,7 +391,7 @@ private fun ModelCard(
             Text(
                 text = model.displayName,
                 style = MaterialTheme.typography.titleMedium,
-                color = OnSurface,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f)
             )
@@ -409,7 +409,7 @@ private fun ModelCard(
             var menuExpanded by remember { mutableStateOf(false) }
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "操作", tint = OnSurfaceVariant)
+                    Icon(Icons.Filled.MoreVert, contentDescription = "操作", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(
                     expanded = menuExpanded,
@@ -427,10 +427,10 @@ private fun ModelCard(
         Spacer(Modifier.height(8.dp))
 
         // 信息行
-        Text("协议: ${model.protocol ?: "—"}", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariant)
-        Text("地址: ${model.baseUrl ?: "—"}", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariant)
-        Text("用途: ${model.purpose ?: "—"}", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariant)
-        Text("模型: ${model.model ?: "—"}", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariant)
+        Text("协议: ${model.protocol ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("地址: ${model.baseUrl ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("用途: ${model.purpose ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("模型: ${model.model ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
         Spacer(Modifier.height(8.dp))
 
@@ -439,7 +439,7 @@ private fun ModelCard(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("启用", style = MaterialTheme.typography.bodyMedium, color = OnSurface, modifier = Modifier.weight(1f))
+            Text("启用", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
             Switch(
                 checked = model.enabled ?: false,
                 onCheckedChange = { onToggle() }
@@ -551,7 +551,7 @@ private fun AiModelFormDialog(
                 IconButton(onClick = {
                     onFetchModels(baseUrl, apiKey.ifBlank { null }, protocol.ifBlank { null })
                 }) {
-                    Icon(Icons.Filled.CloudDownload, contentDescription = "拉取可用模型", tint = Primary)
+                    Icon(Icons.Filled.CloudDownload, contentDescription = "拉取可用模型", tint = MaterialTheme.colorScheme.primary)
                 }
             }
 
@@ -567,7 +567,7 @@ private fun AiModelFormDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("启用", style = MaterialTheme.typography.bodyMedium, color = OnSurface, modifier = Modifier.weight(1f))
+                Text("启用", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
                 Switch(
                     checked = enabled,
                     onCheckedChange = { enabled = it }

@@ -10,6 +10,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -94,7 +95,9 @@ import com.nekobot.app.ui.components.resolveAvatarUrl
 import com.nekobot.app.ui.theme.BgSurface
 import com.nekobot.app.ui.theme.BgSurfaceVariant
 import com.nekobot.app.ui.theme.BubbleAssistant
+import com.nekobot.app.ui.theme.BubbleAssistantLight
 import com.nekobot.app.ui.theme.BubbleUser
+import com.nekobot.app.ui.theme.BubbleUserLight
 import com.nekobot.app.ui.theme.OnSurface
 import com.nekobot.app.ui.theme.OnSurfaceVariant
 import com.nekobot.app.ui.theme.Primary
@@ -145,20 +148,20 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                 title = {
                     Text(
                         text = session?.displayName ?: "对话",
-                        color = OnSurface,
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = OnSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     Box {
                         IconButton(onClick = { menuExpanded = true }) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = "更多", tint = OnSurface)
+                            Icon(Icons.Filled.MoreVert, contentDescription = "更多", tint = MaterialTheme.colorScheme.onSurface)
                         }
                         DropdownMenu(
                             expanded = menuExpanded,
@@ -239,7 +242,7 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    CircularProgressIndicator(color = Primary)
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
             } else if (messages.isEmpty()) {
                 Column(
@@ -247,9 +250,9 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = OnSurfaceVariant, modifier = Modifier.size(56.dp))
+                    Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(56.dp))
                     Spacer(Modifier.height(12.dp))
-                    Text("开始与 AI 对话吧", style = MaterialTheme.typography.bodyMedium, color = OnSurfaceVariant)
+                    Text("开始与 AI 对话吧", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
                 LazyColumn(
@@ -335,7 +338,7 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
-                            .background(BgSurfaceVariant)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
                             .clickable {
                                 showMyMessages = false
                                 scope.launch { listState.animateScrollToItem(idx) }
@@ -345,7 +348,7 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                         Text(
                             text = preview + ts,
                             style = MaterialTheme.typography.bodySmall,
-                            color = OnSurface,
+                            color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -368,7 +371,7 @@ private fun MessageBubble(
     onCopy: () -> String = { "" }
 ) {
     val isUser = message.isUser
-    val bgColor = if (isUser) BubbleUser else BubbleAssistant
+    val bgColor = if (isUser) (if (isSystemInDarkTheme()) BubbleUser else BubbleUserLight) else (if (isSystemInDarkTheme()) BubbleAssistant else BubbleAssistantLight)
     val arrangement = if (isUser) Arrangement.End else Arrangement.Start
     val clipboard = LocalClipboardManager.current
 
@@ -392,7 +395,7 @@ private fun MessageBubble(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
-                    .background(BgSurface),
+                    .background(MaterialTheme.colorScheme.surface),
                 contentAlignment = Alignment.Center
             ) {
                 if (!resolved.isNullOrBlank()) {
@@ -403,7 +406,7 @@ private fun MessageBubble(
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
-                    Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = OnSurfaceVariant, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                 }
             }
             Spacer(Modifier.width(8.dp))
@@ -447,11 +450,11 @@ private fun MessageBubble(
                 modifier = Modifier.padding(top = 2.dp)
             ) {
                 if (compactTs != null) {
-                    Text(compactTs, style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
+                    Text(compactTs, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 message.tokens?.let { tokens ->
                     if (compactTs != null) Spacer(Modifier.width(6.dp))
-                    Text("${tokens} tok", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
+                    Text("${tokens} tok", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
@@ -512,7 +515,7 @@ private fun IconActionButton(
         Icon(
             icon,
             contentDescription = description,
-            tint = OnSurfaceVariant.copy(alpha = 0.5f),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             modifier = Modifier.size(14.dp)
         )
     }
@@ -544,7 +547,7 @@ private fun ThinkingIndicator(portraitUrl: String? = null) {
             modifier = Modifier
                 .size(36.dp)
                 .clip(CircleShape)
-                .background(BgSurface),
+                .background(MaterialTheme.colorScheme.surface),
             contentAlignment = Alignment.Center
         ) {
             if (!resolved.isNullOrBlank()) {
@@ -555,7 +558,7 @@ private fun ThinkingIndicator(portraitUrl: String? = null) {
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
-                Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = OnSurfaceVariant, modifier = Modifier.size(20.dp))
+                Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
             }
         }
         Spacer(Modifier.width(8.dp))
@@ -567,7 +570,7 @@ private fun ThinkingIndicator(portraitUrl: String? = null) {
                     .width(180.dp)
                     .height(16.dp)
                     .clip(RoundedCornerShape(6.dp))
-                    .background(BubbleAssistant.copy(alpha = alpha))
+                    .background((if (isSystemInDarkTheme()) BubbleAssistant else BubbleAssistantLight).copy(alpha = alpha))
             )
             Spacer(Modifier.height(8.dp))
             // 第二行气泡骨架（较短）
@@ -576,7 +579,7 @@ private fun ThinkingIndicator(portraitUrl: String? = null) {
                     .width(120.dp)
                     .height(16.dp)
                     .clip(RoundedCornerShape(6.dp))
-                    .background(BubbleAssistant.copy(alpha = alpha))
+                    .background((if (isSystemInDarkTheme()) BubbleAssistant else BubbleAssistantLight).copy(alpha = alpha))
             )
         }
     }
@@ -599,9 +602,9 @@ private fun PlotChoicesSkeleton() {
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = Primary, modifier = Modifier.size(14.dp))
+            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(4.dp))
-            Text("剧情选项生成中...", style = MaterialTheme.typography.labelSmall, color = Primary, fontWeight = FontWeight.SemiBold)
+            Text("剧情选项生成中...", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -613,7 +616,7 @@ private fun PlotChoicesSkeleton() {
                         .weight(1f)
                         .height(56.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(BgSurfaceVariant.copy(alpha = alpha))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha))
                 )
             }
         }
@@ -642,9 +645,9 @@ private fun PlotChoicesBar(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = Primary, modifier = Modifier.size(14.dp))
+            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(4.dp))
-            Text("剧情选项", style = MaterialTheme.typography.labelSmall, color = Primary, fontWeight = FontWeight.SemiBold)
+            Text("剧情选项", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.weight(1f))
             TextButton(
                 onClick = onToggleCollapse,
@@ -653,7 +656,7 @@ private fun PlotChoicesBar(
                 Text(
                     if (collapsed) "显示" else "隐藏",
                     style = MaterialTheme.typography.labelSmall,
-                    color = OnSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             TextButton(
@@ -661,7 +664,7 @@ private fun PlotChoicesBar(
                 enabled = enabled,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp)
             ) {
-                Text("换一组", style = MaterialTheme.typography.labelSmall, color = if (enabled) Primary else OnSurfaceVariant)
+                Text("换一组", style = MaterialTheme.typography.labelSmall, color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         // 折叠时不显示选项卡片
@@ -675,14 +678,14 @@ private fun PlotChoicesBar(
                     val levelColor = when (choice.level) {
                         "turning_point" -> Color(0xFFFF6B6B)
                         "important" -> Color(0xFFFFB347)
-                        else -> Primary
+                        else -> MaterialTheme.colorScheme.primary
                     }
                     GlassCard(
                         modifier = Modifier
                             .weight(1f)
                             .clickable(enabled = enabled) { onSelect(choice) },
                         cornerRadius = 12,
-                        containerColor = if (choice.selected) levelColor.copy(alpha = 0.15f) else BgSurfaceVariant
+                        containerColor = if (choice.selected) levelColor.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
@@ -707,7 +710,7 @@ private fun PlotChoicesBar(
                         Text(
                             text = choice.title.ifBlank { "选项" },
                             style = MaterialTheme.typography.labelSmall,
-                            color = OnSurface,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
@@ -818,11 +821,11 @@ private fun ChatInputBar(
                 Column(modifier = Modifier.padding(12.dp)) {
                     // 上下文数据
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = Primary, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("上下文", style = MaterialTheme.typography.labelMedium, color = OnSurface, fontWeight = FontWeight.SemiBold)
+                        Text("上下文", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.weight(1f))
-                        Text("$messageCount 条", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
+                        Text("$messageCount 条", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Spacer(Modifier.height(10.dp))
                     // 操作按钮网格（每行 2 个，按钮更大）
@@ -873,7 +876,7 @@ private fun ChatInputBar(
             Text(
                 "$charCount 字 / ~$tokenEstimate tok",
                 style = MaterialTheme.typography.labelSmall,
-                color = OnSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
 
@@ -890,12 +893,12 @@ private fun ChatInputBar(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(if (panelExpanded) Primary.copy(alpha = 0.15f) else BgSurfaceVariant)
+                    .background(if (panelExpanded) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Icon(
                     if (panelExpanded) Icons.Filled.MoreVert else Icons.Filled.Add,
                     contentDescription = "更多操作",
-                    tint = if (panelExpanded) Primary else OnSurfaceVariant,
+                    tint = if (panelExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -918,7 +921,7 @@ private fun ChatInputBar(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(if (sending) androidx.compose.ui.graphics.Color(0xFFFF6B6B) else Primary)
+                    .background(if (sending) androidx.compose.ui.graphics.Color(0xFFFF6B6B) else MaterialTheme.colorScheme.primary)
             ) {
                 if (sending) {
                     Icon(Icons.Filled.Stop, contentDescription = "停止", tint = Color.White, modifier = Modifier.size(22.dp))
@@ -942,15 +945,15 @@ private fun ActionChip(
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(if (enabled) BgSurfaceVariant else BgSurfaceVariant.copy(alpha = 0.5f))
+            .background(if (enabled) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             .clickable(enabled = enabled, onClick = onClick)
             .padding(vertical = 14.dp, horizontal = 8.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = if (enabled) Primary else OnSurfaceVariant, modifier = Modifier.size(20.dp))
+        Icon(icon, contentDescription = null, tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(6.dp))
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = if (enabled) OnSurface else OnSurfaceVariant)
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

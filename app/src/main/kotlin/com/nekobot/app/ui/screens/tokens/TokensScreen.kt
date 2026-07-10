@@ -152,12 +152,12 @@ fun TokensScreen() {
             TopAppBar(
                 title = { Text("Token 用量") },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = BgDark,
-                    titleContentColor = OnSurface
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         },
-        containerColor = BgDark
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Box(
             modifier = Modifier
@@ -241,20 +241,20 @@ fun TokensScreen() {
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column {
-                                Text("输入", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+                                Text("输入", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
                                     "${s.todayInput ?: 0L}",
                                     style = MaterialTheme.typography.titleLarge,
-                                    color = Primary,
+                                    color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
                             Column(horizontalAlignment = Alignment.End) {
-                                Text("输出", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+                                Text("输出", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
                                     "${s.todayOutput ?: 0L}",
                                     style = MaterialTheme.typography.titleLarge,
-                                    color = Secondary,
+                                    color = MaterialTheme.colorScheme.secondary,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -296,7 +296,7 @@ fun TokensScreen() {
                     }
                     Spacer(Modifier.height(12.dp))
                     if (rankingData.isNullOrEmpty()) {
-                        Text("暂无数据", color = OnSurfaceVariant)
+                        Text("暂无数据", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
                         // 解析为 (name, tokens) 列表并按 token 数降序
                         val parsed = rankingData.map { extractRankEntry(it) }
@@ -304,7 +304,7 @@ fun TokensScreen() {
                             .sortedByDescending { it.second }
                             .take(10)
                         if (parsed.isEmpty()) {
-                            Text("暂无数据", color = OnSurfaceVariant)
+                            Text("暂无数据", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
                             val maxTokens = parsed.maxOf { it.second }.coerceAtLeast(1L)
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -346,12 +346,12 @@ fun TokensScreen() {
                                 TextButton(
                                     onClick = { if (recordPage > 0) recordPage-- },
                                     enabled = recordPage > 0
-                                ) { Text("上一页", color = if (recordPage > 0) Primary else OnSurfaceVariant) }
-                                Text("${recordPage + 1} / $totalPages", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+                                ) { Text("上一页", color = if (recordPage > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+                                Text("${recordPage + 1} / $totalPages", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 TextButton(
                                     onClick = { if (recordPage < totalPages - 1) recordPage++ },
                                     enabled = recordPage < totalPages - 1
-                                ) { Text("下一页", color = if (recordPage < totalPages - 1) Primary else OnSurfaceVariant) }
+                                ) { Text("下一页", color = if (recordPage < totalPages - 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
                             }
                         }
                     }
@@ -436,16 +436,16 @@ private fun RankingBarRow(
     val ratio = (tokens.toFloat() / maxTokens.toFloat()).coerceIn(0f, 1f)
     // 前 3 名用主色渐变，其余用次色
     val barColor = when (rank) {
-        1 -> Primary
-        2 -> Secondary
-        3 -> Tertiary
-        else -> Primary.copy(alpha = 0.5f)
+        1 -> MaterialTheme.colorScheme.primary
+        2 -> MaterialTheme.colorScheme.secondary
+        3 -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
     }
     val rankColor = when (rank) {
-        1 -> Primary
-        2 -> Secondary
-        3 -> Tertiary
-        else -> OnSurfaceVariant
+        1 -> MaterialTheme.colorScheme.primary
+        2 -> MaterialTheme.colorScheme.secondary
+        3 -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -462,7 +462,7 @@ private fun RankingBarRow(
             Text(
                 text = name,
                 style = MaterialTheme.typography.bodyMedium,
-                color = OnSurface,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
@@ -471,7 +471,7 @@ private fun RankingBarRow(
             Text(
                 text = formatTokenCount(tokens),
                 style = MaterialTheme.typography.bodyMedium,
-                color = Primary,
+                color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.SemiBold
             )
         }
@@ -481,7 +481,7 @@ private fun RankingBarRow(
                 .fillMaxWidth()
                 .height(8.dp)
                 .clip(RoundedCornerShape(4.dp))
-                .background(OnSurfaceVariant.copy(alpha = 0.15f))
+                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f))
         ) {
             Box(
                 modifier = Modifier
@@ -532,24 +532,24 @@ private fun TokenRecordRow(elem: JsonElement) {
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (compactTs != null) {
-                    Text(compactTs, style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
+                    Text(compactTs, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.width(6.dp))
                 }
                 if (purpose.isNotBlank()) {
-                    Text(purpose, style = MaterialTheme.typography.labelSmall, color = Primary)
+                    Text(purpose, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(6.dp))
                 }
                 if (model.isNotBlank()) {
-                    Text(model, style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(model, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             Spacer(Modifier.height(2.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("入 ${formatTokenCount(input)}", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
-                Text("出 ${formatTokenCount(output)}", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
-                Text("合 ${formatTokenCount(total)}", style = MaterialTheme.typography.labelSmall, color = OnSurface, fontWeight = FontWeight.SemiBold)
+                Text("入 ${formatTokenCount(input)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("出 ${formatTokenCount(output)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("合 ${formatTokenCount(total)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
                 if (!cost.isNullOrBlank()) {
-                    Text("¥$cost", style = MaterialTheme.typography.labelSmall, color = Secondary)
+                    Text("¥$cost", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
                 }
             }
         }

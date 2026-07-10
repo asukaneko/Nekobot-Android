@@ -19,10 +19,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.ShowChart
-import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -40,16 +39,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.ui.components.GlassCard
-import com.nekobot.app.ui.theme.BgDark
-import com.nekobot.app.ui.theme.BgSurfaceVariant
-import com.nekobot.app.ui.theme.ErrorRed
-import com.nekobot.app.ui.theme.OnPrimary
-import com.nekobot.app.ui.theme.OnSurface
-import com.nekobot.app.ui.theme.OnSurfaceVariant
-import com.nekobot.app.ui.theme.Primary
 
 /**
- * 「更多」页：放置其他功能入口（状态历程、AI 配置/模型、设置、退出登录等）。
+ * 「更多」页：放置其他功能入口（角色记忆、状态历程、AI 配置/模型、设置、退出登录等）。
  * 设置入口置于底部。
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -61,14 +53,14 @@ fun MoreScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("更多", color = OnSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text("更多", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = BgDark,
-                    titleContentColor = OnSurface
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         },
-        containerColor = BgDark
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Column(
             modifier = Modifier
@@ -80,6 +72,13 @@ fun MoreScreen(
         ) {
             // 功能区
             GlassCard(modifier = Modifier.fillMaxWidth()) {
+                MoreRow(
+                    icon = Icons.Filled.Psychology,
+                    title = "角色记忆",
+                    desc = "查看并管理角色对用户/事件的记忆",
+                    onClick = { onNavigate("memory") }
+                )
+                Spacer(Modifier.height(8.dp))
                 MoreRow(
                     icon = Icons.AutoMirrored.Filled.ShowChart,
                     title = "状态历程",
@@ -130,13 +129,13 @@ fun MoreScreen(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(ErrorRed),
+                            .background(MaterialTheme.colorScheme.error),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             Icons.AutoMirrored.Filled.Logout,
                             contentDescription = null,
-                            tint = OnPrimary,
+                            tint = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -145,13 +144,13 @@ fun MoreScreen(
                         Text(
                             "退出登录",
                             style = MaterialTheme.typography.bodyLarge,
-                            color = ErrorRed,
+                            color = MaterialTheme.colorScheme.error,
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
                             "当前：${ServiceContainer.prefs.username.ifBlank { "未登录" }}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = OnSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -180,15 +179,15 @@ private fun MoreRow(
             modifier = Modifier
                 .size(40.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(BgSurfaceVariant),
+                .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, contentDescription = null, tint = Primary, modifier = Modifier.size(22.dp))
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
         }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, color = OnSurface, fontWeight = FontWeight.SemiBold)
-            Text(desc, style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariant)
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+            Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

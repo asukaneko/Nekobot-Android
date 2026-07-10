@@ -89,20 +89,20 @@ fun WorldBooksScreen(
     var showCreateDialog by remember { mutableStateOf(false) }
 
     Scaffold(
-        containerColor = BgDark,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("世界书", color = OnSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text("世界书", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = BgSurface,
-                    titleContentColor = OnSurface
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 actions = {
                     IconButton(onClick = { viewModel.load() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = OnSurface)
+                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
                     }
                     IconButton(onClick = { showCreateDialog = true }) {
-                        Icon(Icons.Filled.Add, contentDescription = "新建世界书", tint = Primary)
+                        Icon(Icons.Filled.Add, contentDescription = "新建世界书", tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             )
@@ -112,7 +112,7 @@ fun WorldBooksScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(BgDark)
+                .background(MaterialTheme.colorScheme.background)
         ) {
             if (books.isEmpty() && !loading) {
                 EmptyState(
@@ -122,7 +122,7 @@ fun WorldBooksScreen(
                         Icon(
                             Icons.Filled.Book,
                             contentDescription = null,
-                            tint = OnSurfaceVariant,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(48.dp)
                         )
                     }
@@ -177,7 +177,7 @@ private fun WorldBookItem(book: WorldBook, onClick: () -> Unit) {
             Icon(
                 Icons.Filled.Book,
                 contentDescription = null,
-                tint = Primary,
+                tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(36.dp)
             )
             Spacer(Modifier.width(14.dp))
@@ -185,7 +185,7 @@ private fun WorldBookItem(book: WorldBook, onClick: () -> Unit) {
                 Text(
                     text = book.displayName,
                     style = MaterialTheme.typography.titleMedium,
-                    color = OnSurface,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -195,7 +195,7 @@ private fun WorldBookItem(book: WorldBook, onClick: () -> Unit) {
                     Text(
                         text = book.description,
                         style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -204,7 +204,7 @@ private fun WorldBookItem(book: WorldBook, onClick: () -> Unit) {
                 Text(
                     text = "条目数：${book.entries?.size ?: 0}",
                     style = MaterialTheme.typography.labelSmall,
-                    color = OnSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Spacer(Modifier.width(8.dp))
@@ -213,10 +213,10 @@ private fun WorldBookItem(book: WorldBook, onClick: () -> Unit) {
                 checked = book.enabled == true,
                 onCheckedChange = null,
                 colors = SwitchDefaults.colors(
-                    checkedThumbColor = OnPrimary,
-                    checkedTrackColor = Primary,
-                    uncheckedThumbColor = OnSurfaceVariant,
-                    uncheckedTrackColor = Outline
+                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    uncheckedTrackColor = MaterialTheme.colorScheme.outline
                 )
             )
         }
@@ -243,7 +243,7 @@ private fun CreateWorldBookDialog(
         },
         onCancel = onDismiss
     ) {
-        Text("名称", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+        Text("名称", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         OutlinedTextField(
             value = name,
@@ -252,17 +252,17 @@ private fun CreateWorldBookDialog(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = OnSurface,
-                unfocusedTextColor = OnSurface,
-                focusedBorderColor = Primary,
-                unfocusedBorderColor = Outline,
-                cursorColor = Primary,
-                focusedContainerColor = BgSurfaceVariant,
-                unfocusedContainerColor = BgSurfaceVariant
+                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                cursorColor = MaterialTheme.colorScheme.primary,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
             )
         )
         Spacer(Modifier.height(12.dp))
-        Text("描述", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+        Text("描述", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         OutlinedTextField(
             value = desc,
@@ -273,13 +273,13 @@ private fun CreateWorldBookDialog(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = OnSurface,
-                unfocusedTextColor = OnSurface,
-                focusedBorderColor = Primary,
-                unfocusedBorderColor = Outline,
-                cursorColor = Primary,
-                focusedContainerColor = BgSurfaceVariant,
-                unfocusedContainerColor = BgSurfaceVariant
+                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                cursorColor = MaterialTheme.colorScheme.primary,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
             )
         )
     }

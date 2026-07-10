@@ -34,6 +34,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val SYSTEM_SETTINGS = "system_settings"
     const val STATE_HISTORY = "state_history"
+    const val MEMORY = "memory"
 }
 
 data class BottomItem(

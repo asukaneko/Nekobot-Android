@@ -98,14 +98,14 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
             Text(
                 text = "Nekobot",
                 style = MaterialTheme.typography.headlineMedium,
-                color = OnSurface,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.Bold
             )
             Spacer(Modifier.height(4.dp))
             Text(
                 text = "登录以继续",
                 style = MaterialTheme.typography.bodyMedium,
-                color = OnSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(24.dp))
 
@@ -186,7 +186,7 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
                         .fillMaxWidth()
                         .height(52.dp),
                     shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                 ) {
                     if (loading) {
                         CircularProgressIndicator(

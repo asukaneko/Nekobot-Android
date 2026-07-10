@@ -189,19 +189,19 @@ fun StateHistoryScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("状态历程", color = OnSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text("状态历程", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = BgDark,
-                    titleContentColor = OnSurface
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = OnSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             )
         },
-        containerColor = BgDark
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             when {
@@ -210,7 +210,7 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                         modifier = Modifier.fillMaxSize(),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
-                    ) { CircularProgressIndicator(color = Primary) }
+                    ) { CircularProgressIndicator(color = MaterialTheme.colorScheme.primary) }
                 }
                 sessions.isEmpty() -> {
                     Column(modifier = Modifier.fillMaxSize()) {
@@ -237,7 +237,7 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                                     .height(56.dp)
                                     .clickable { dropdownExpanded = true },
                                 cornerRadius = 16,
-                                containerColor = BgSurfaceVariant
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -246,13 +246,13 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                                     Text(
                                         text = selectedName,
                                         style = MaterialTheme.typography.bodyMedium,
-                                        color = OnSurface,
+                                        color = MaterialTheme.colorScheme.onSurface,
                                         fontWeight = FontWeight.SemiBold,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f)
                                     )
-                                    Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = OnSurfaceVariant)
+                                    Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                             DropdownMenu(
@@ -266,7 +266,7 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                                         text = {
                                             Text(
                                                 name,
-                                                color = if (isActive) Primary else OnSurface,
+                                                color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                                 fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
@@ -310,7 +310,7 @@ private fun StateTimelineSection(session: JsonObject) {
         Spacer(Modifier.height(12.dp))
 
         if (timeline.isEmpty()) {
-            Text("该会话暂无状态历程数据", color = OnSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+            Text("该会话暂无状态历程数据", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
             return@GlassCard
         }
 
@@ -330,12 +330,12 @@ private fun StateTimelineSection(session: JsonObject) {
 @Composable
 private fun StateSummaryGrid(entry: JsonObject) {
     val items = listOf(
-        Triple("好感", "affection", Primary),
-        Triple("信任", "trust", Secondary),
-        Triple("熟悉", "familiarity", Tertiary),
+        Triple("好感", "affection", MaterialTheme.colorScheme.primary),
+        Triple("信任", "trust", MaterialTheme.colorScheme.secondary),
+        Triple("熟悉", "familiarity", MaterialTheme.colorScheme.tertiary),
         Triple("依赖", "dependency", WarningAmber),
         Triple("安全感", "security", SuccessGreen),
-        Triple("能量", "energy", OnSurfaceVariant)
+        Triple("能量", "energy", MaterialTheme.colorScheme.onSurfaceVariant)
     )
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         items.forEach { (label, key, color) ->
@@ -355,7 +355,7 @@ private fun StateMiniCard(
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(BgSurface)
+            .background(MaterialTheme.colorScheme.surface)
             .padding(vertical = 6.dp, horizontal = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -368,7 +368,7 @@ private fun StateMiniCard(
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
-            color = OnSurfaceVariant,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -391,35 +391,35 @@ private fun TimelineItem(rank: Int, entry: JsonObject) {
                 modifier = Modifier
                     .size(10.dp)
                     .clip(RoundedCornerShape(5.dp))
-                    .background(Primary)
+                    .background(MaterialTheme.colorScheme.primary)
             )
             Spacer(Modifier.height(2.dp))
             Box(
                 modifier = Modifier
                     .width(2.dp)
                     .height(48.dp)
-                    .background(OnSurfaceVariant.copy(alpha = 0.2f))
+                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
             )
         }
         Spacer(Modifier.width(8.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("#$rank", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant, fontWeight = FontWeight.Bold)
+                Text("#$rank", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(6.dp))
-                Text(mood, style = MaterialTheme.typography.bodyMedium, color = Primary, fontWeight = FontWeight.SemiBold)
+                Text(mood, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                 intensity?.let {
                     Spacer(Modifier.width(4.dp))
-                    Text("(${String.format("%.0f", it * 100)}%)", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
+                    Text("(${String.format("%.0f", it * 100)}%)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Spacer(Modifier.weight(1f))
-                Text(ts, style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
+                Text(ts, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (!userMsg.isNullOrBlank()) {
                 Spacer(Modifier.height(2.dp))
-                Text("我：$userMsg", style = MaterialTheme.typography.bodySmall, color = OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("我：$userMsg", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (!aiMsg.isNullOrBlank()) {
-                Text("AI：$aiMsg", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("AI：$aiMsg", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
