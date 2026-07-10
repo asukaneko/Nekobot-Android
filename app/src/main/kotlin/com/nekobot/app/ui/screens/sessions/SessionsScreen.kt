@@ -371,19 +371,21 @@ private fun SearchEntryBar(
     }
 }
 
-/** 小型筛选标签。 */
+/** 小型筛选标签。直接用Box渲染避免GlassCard内部padding。 */
 @Composable
 private fun FilterChip(label: String, active: Boolean) {
-    GlassCard(
-        modifier = Modifier.height(28.dp),
-        cornerRadius = 14,
-        containerColor = Primary.copy(alpha = 0.15f)
+    Box(
+        modifier = Modifier
+            .height(26.dp)
+            .clip(RoundedCornerShape(13.dp))
+            .background(Primary.copy(alpha = 0.15f))
+            .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.Center
     ) {
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
-            color = Primary,
-            modifier = Modifier.padding(horizontal = 8.dp)
+            color = Primary
         )
     }
 }
@@ -538,26 +540,27 @@ private fun CharacterChips(
     }
 }
 
-/** 可选中 Chip：选中时 Primary 背景，未选中时透明背景。 */
+/** 可选中 Chip：选中时 Primary 背景，未选中时透明背景。直接用Box渲染避免GlassCard内部padding。 */
 @Composable
 private fun SelectableChip(
     label: String,
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    GlassCard(
+    Box(
         modifier = Modifier
-            .height(36.dp)
-            .clickable { onClick() },
-        cornerRadius = 18,
-        containerColor = if (selected) Primary.copy(alpha = 0.2f) else BgSurfaceVariant
+            .height(40.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(if (selected) Primary.copy(alpha = 0.2f) else BgSurfaceVariant)
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center
     ) {
         Text(
             label,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = if (selected) Primary else OnSurface,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            modifier = Modifier.padding(horizontal = 12.dp)
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
         )
     }
 }

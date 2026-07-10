@@ -125,6 +125,7 @@ data class Message(
     val sender: String? = null,
     val name: String? = null,
     val avatar: String? = null,
+    val type: String? = null,
     val timestamp: String? = null,
     @SerializedName("audio_url") val audioUrl: String? = null,
     val tokens: Int? = null,
@@ -137,6 +138,9 @@ data class Message(
     val isUser: Boolean
         get() = role.equals("user", ignoreCase = true) || role.equals("human", ignoreCase = true)
     val displayContent: String get() = content ?: ""
+    /** 是否为进度卡片（thinking_card），不应在聊天列表中展示 */
+    val isThinkingCard: Boolean
+        get() = type.equals("thinking_card", ignoreCase = true) || role.equals("system", ignoreCase = true)
 }
 
 data class ChatRequest(

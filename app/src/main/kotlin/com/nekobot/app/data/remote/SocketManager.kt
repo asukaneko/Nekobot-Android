@@ -36,6 +36,8 @@ sealed class RealtimeEvent {
     data class AiResponse(val message: Message?) : RealtimeEvent()
     /** 消息被过滤 */
     data class Filtered(val message: String?) : RealtimeEvent()
+    /** 剧情选项推送（AI 回复完成后服务端推送新选项） */
+    data class PlotChoices(val choices: com.google.gson.JsonElement) : RealtimeEvent()
     /** 错误 */
     data class Error(val message: String) : RealtimeEvent()
 }
@@ -120,6 +122,8 @@ class SocketManager(private val prefs: PrefsManager) {
         s.on("ai_stream_end") { args -> handleStreamEnd(args) }
         // 消息被过滤
         s.on("message_filtered") { args -> handleFiltered(args) }
+        // 剧情选项推送
+        s.on("plot_choices") { args -> handlePlotChoices(args) }
         // 通用错误
         s.on("error") { args ->
             val msg = args.firstOrNull()?.toString() ?: "Socket 错误"
@@ -210,6 +214,12 @@ class SocketManager(private val prefs: PrefsManager) {
     private fun handleFiltered(args: Array<Any>) {
         val msg = args.firstOrNull()?.toString()
         _events.tryEmit(RealtimeEvent.Filtered(msg))
+    }
+
+    private fun handlePlotChoices(args: Array<Any>) {
+        val raw = args.firstOrNull() ?: return
+        val el = try { JsonParser.parseString(raw.toString()) } catch (_: Exception) { return }
+        _events.tryEmit(RealtimeEvent.PlotChoices(el))
     }
 
     private fun extractSessionId(raw: Any?): String? {
