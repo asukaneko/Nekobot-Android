@@ -262,22 +262,22 @@ fun TokensScreen() {
                     }
                 }
 
-                // 排行榜：优先用 rankings 接口数据，若为空则回退到 stats 内嵌的 sessions/models/users
+                // 排行榜：优先用 rankings 接口数据，若为空则回退到 stats 内嵌的 sessions/models/purposes
                 val rankingData = remember(rankings, stats, rankingTab) {
                     val r = rankings
                     val fromRankings: List<JsonElement>? = when (rankingTab) {
                         0 -> r?.sessions
                         1 -> r?.models
-                        else -> r?.users
+                        else -> r?.purposes ?: r?.users
                     }
                     if (!fromRankings.isNullOrEmpty()) {
                         fromRankings
                     } else {
-                        // 回退：从 tokenStats 中提取 sessions/models/users（JsonElement，可能是数组）
+                        // 回退：从 tokenStats 中提取 sessions/models/purposes（JsonElement，可能是数组）
                         val fallback = when (rankingTab) {
                             0 -> stats?.sessions
                             1 -> stats?.models
-                            else -> stats?.users
+                            else -> stats?.purposes ?: stats?.users
                         }
                         fallback?.takeIf { it.isJsonArray }?.asJsonArray?.toList()
                     }
@@ -286,7 +286,7 @@ fun TokensScreen() {
                     SectionHeader(title = "Token 排行榜")
                     Spacer(Modifier.height(8.dp))
                     TabRow(selectedTabIndex = rankingTab) {
-                        listOf("会话", "模型", "用户").forEachIndexed { index, title ->
+                        listOf("会话", "模型", "用途").forEachIndexed { index, title ->
                             Tab(
                                 selected = rankingTab == index,
                                 onClick = { rankingTab = index },
@@ -316,6 +316,20 @@ fun TokensScreen() {
                                         maxTokens = maxTokens
                                     )
                                 }
+                            }
+                        }
+                    }
+                }
+
+                // 选定时间段的 Token 记录列表
+                val records = stats?.records ?: stats?.recentRecords
+                if (!records.isNullOrEmpty()) {
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        SectionHeader(title = "Token 记录", subtitle = "共 ${records.size} 条")
+                        Spacer(Modifier.height(8.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            records.take(50).forEach { elem ->
+                                TokenRecordRow(elem = elem)
                             }
                         }
                     }
@@ -468,6 +482,86 @@ private fun formatTokenCount(tokens: Long): String {
 }
 
 /**
+ * 单条 Token 记录行：展示时间、用途/模型、输入/输出/合计。
+ */
+@Composable
+private fun TokenRecordRow(elem: JsonElement) {
+    val obj = if (elem.isJsonObject) elem.asJsonObject else return
+    val timestamp = obj.get("timestamp")?.asString
+        ?: obj.get("created_at")?.asString
+        ?: obj.get("time")?.asString
+        ?: ""
+    val model = obj.get("model")?.asString ?: obj.get("model_name")?.asString ?: ""
+    val purpose = obj.get("purpose")?.asString ?: ""
+    val input = obj.get("input")?.asLong ?: obj.get("input_tokens")?.asLong ?: 0L
+    val output = obj.get("output")?.asLong ?: obj.get("output_tokens")?.asLong ?: 0L
+    val total = obj.get("total")?.asLong
+        ?: obj.get("total_tokens")?.asLong
+        ?: obj.get("tokens")?.asLong
+        ?: (input + output)
+    val cost = obj.get("cost")?.asString
+
+    val compactTs = compactTimestamp(timestamp)
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (compactTs != null) {
+                    Text(compactTs, style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
+                    Spacer(Modifier.width(6.dp))
+                }
+                if (purpose.isNotBlank()) {
+                    Text(purpose, style = MaterialTheme.typography.labelSmall, color = Primary)
+                    Spacer(Modifier.width(6.dp))
+                }
+                if (model.isNotBlank()) {
+                    Text(model, style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            Spacer(Modifier.height(2.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("入 ${formatTokenCount(input)}", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
+                Text("出 ${formatTokenCount(output)}", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
+                Text("合 ${formatTokenCount(total)}", style = MaterialTheme.typography.labelSmall, color = OnSurface, fontWeight = FontWeight.SemiBold)
+                if (!cost.isNullOrBlank()) {
+                    Text("¥$cost", style = MaterialTheme.typography.labelSmall, color = Secondary)
+                }
+            }
+        }
+    }
+}
+
+/** 精简时间戳到 MM-dd HH:mm */
+private fun compactTimestamp(raw: String?): String? {
+    if (raw.isNullOrBlank()) return null
+    return try {
+        val s = raw.trim()
+        when {
+            s.matches(Regex("^\\d{10,13}$")) -> {
+                val ms = if (s.length == 10) s.toLong() * 1000 else s.toLong()
+                java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(ms))
+            }
+            s.contains('T') -> {
+                val datePart = s.substringBefore('T').takeLast(5)
+                val timePart = s.substringAfter('T').take(5)
+                "$datePart $timePart"
+            }
+            s.contains(' ') -> {
+                val datePart = s.substringBefore(' ').takeLast(5)
+                val timePart = s.substringAfter(' ').take(5)
+                "$datePart $timePart"
+            }
+            else -> s.take(11)
+        }
+    } catch (e: Exception) {
+        null
+    }
+}
+
+/**
  * 从 JsonElement 中提取 (name, tokens)，兼容多种字段命名。
  * 失败返回 ("未知", 0L)。
  */
@@ -476,6 +570,7 @@ private fun extractRankEntry(elem: JsonElement): Pair<String, Long> {
         if (elem.isJsonObject) {
             val obj = elem.asJsonObject
             val name = obj.get("name")?.asString
+                ?: obj.get("purpose")?.asString
                 ?: obj.get("session_name")?.asString
                 ?: obj.get("title")?.asString
                 ?: obj.get("model")?.asString

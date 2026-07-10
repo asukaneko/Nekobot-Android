@@ -1,6 +1,11 @@
 package com.nekobot.app.ui.screens.chat
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -456,14 +461,27 @@ private fun IconActionButton(
     }
 }
 
-/** AI 思考中状态指示。 */
+/** AI 思考中状态：骨架占位动画（shimmer），不展示进度卡片。 */
 @Composable
 private fun ThinkingIndicator(portraitUrl: String? = null) {
+    // shimmer 动画 alpha
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val alpha by transition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.7f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = androidx.compose.animation.core.LinearEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+        ),
+        label = "shimmerAlpha"
+    )
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.Top
     ) {
+        // 头像骨架（若已有立绘则直接显示）
         val resolved = resolveAvatarUrl(portraitUrl)
         Box(
             modifier = Modifier
@@ -484,12 +502,25 @@ private fun ThinkingIndicator(portraitUrl: String? = null) {
             }
         }
         Spacer(Modifier.width(8.dp))
-        GlassCard(cornerRadius = 16, modifier = Modifier.widthIn(max = 200.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(color = Primary, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("AI 思考中...", color = OnSurface, style = MaterialTheme.typography.bodySmall)
-            }
+        // 骨架气泡：两行占位条
+        Column(modifier = Modifier.widthIn(max = 220.dp)) {
+            // 第一行气泡骨架
+            Box(
+                modifier = Modifier
+                    .width(180.dp)
+                    .height(16.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(BubbleAssistant.copy(alpha = alpha))
+            )
+            Spacer(Modifier.height(8.dp))
+            // 第二行气泡骨架（较短）
+            Box(
+                modifier = Modifier
+                    .width(120.dp)
+                    .height(16.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(BubbleAssistant.copy(alpha = alpha))
+            )
         }
     }
 }
@@ -608,18 +639,18 @@ private fun ChatInputBar(
             }
         }
 
-        // 输入行：+ 按钮 + 输入框 + 发送/停止
+        // 输入行：+ 按钮 + 输入框 + 发送/停止（三者同高 48dp）
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.Bottom
+            verticalAlignment = Alignment.CenterVertically
         ) {
             // 左侧 + 按钮：展开/收起面板
             IconButton(
                 onClick = { panelExpanded = !panelExpanded },
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
                     .background(if (panelExpanded) Primary.copy(alpha = 0.15f) else BgSurfaceVariant)
             ) {
@@ -636,18 +667,18 @@ private fun ChatInputBar(
                 onValueChange = onInputChange,
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(min = 44.dp, max = 140.dp),
+                    .heightIn(min = 48.dp, max = 140.dp),
                 placeholder = { Text(if (sending) "AI 思考中..." else "输入消息...") },
                 enabled = !sending,
                 maxLines = 5,
-                shape = RoundedCornerShape(22.dp)
+                shape = RoundedCornerShape(24.dp)
             )
             Spacer(Modifier.width(8.dp))
             IconButton(
                 onClick = if (sending) onStop else onSend,
                 enabled = sending || input.isNotBlank(),
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
                     .background(if (sending) androidx.compose.ui.graphics.Color(0xFFFF6B6B) else Primary)
             ) {

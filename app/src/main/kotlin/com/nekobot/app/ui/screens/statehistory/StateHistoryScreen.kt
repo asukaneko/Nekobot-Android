@@ -2,7 +2,6 @@ package com.nekobot.app.ui.screens.statehistory
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,7 +18,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -32,6 +34,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,7 +45,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.gson.JsonArray
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
+import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.EmptyState
 import com.nekobot.app.ui.components.ErrorBanner
@@ -61,8 +69,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * 状态历程 ViewModel：拉取跨渠道角色状态时间线。
- * 数据源：GET /api/channel_runtime_timeline（合成 sessions 列表，每个含 timeline 数组）。
+ * 状态历程 ViewModel：拉取所有渠道（QQ + Web 等）的角色状态时间线。
+ * 数据源：
+ *  - GET /api/channel_runtime_timeline（QQ 等渠道会话，已含 timeline）
+ *  - GET /api/sessions（获取全部会话元数据，含 web 会话）
+ *  - GET /api/sessions/{id}/runtime-timeline（逐个获取 web 会话的 timeline）
  */
 class StateHistoryViewModel : BaseViewModel() {
 
@@ -76,26 +87,83 @@ class StateHistoryViewModel : BaseViewModel() {
 
     fun load() {
         launchResult(
-            block = { repo.channelRuntimeTimeline() },
-            onSuccess = { json ->
-                val arr = when {
-                    json.isJsonObject -> json.asJsonObject
-                        .get("sessions")?.takeIf { it.isJsonArray }?.asJsonArray
-                        ?: json.asJsonObject.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
-                    json.isJsonArray -> json.asJsonArray
-                    else -> null
+            block = {
+                // 1. 获取渠道时间线（QQ 等渠道会话，已含 timeline）
+                val channelSessions = when (val r = repo.channelRuntimeTimeline()) {
+                    is Resource.Success -> parseSessionsFromChannel(r.data)
+                    else -> emptyList()
                 }
-                _sessions.value = arr?.mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject } ?: emptyList()
-                if (_selected.value == null) _selected.value = _sessions.value.firstOrNull()
+
+                // 2. 获取所有会话列表（含 web 会话）
+                val allSessions = when (val r = repo.listSessions()) {
+                    is Resource.Success -> r.data ?: emptyList()
+                    else -> emptyList()
+                }
+
+                // 3. 对不在渠道时间线中的会话（web 会话），逐个获取时间线
+                val channelIds = channelSessions.mapNotNull {
+                    it.get("session_id")?.asString ?: it.get("id")?.asString
+                }.toSet()
+
+                val webTimelines = allSessions
+                    .filter { it.id != null && it.id !in channelIds }
+                    .map { s ->
+                        val tl = when (val r = repo.sessionRuntimeTimeline(s.id!!)) {
+                            is Resource.Success -> parseTimeline(r.data)
+                            else -> emptyList()
+                        }
+                        buildSessionJson(s, tl)
+                    }
+
+                Resource.Success(channelSessions + webTimelines)
+            },
+            onSuccess = { merged ->
+                _sessions.value = merged
+                if (_selected.value == null) _selected.value = merged.firstOrNull()
             }
         )
+    }
+
+    private fun parseSessionsFromChannel(json: JsonElement): List<JsonObject> {
+        val arr = when {
+            json.isJsonObject -> json.asJsonObject
+                .get("sessions")?.takeIf { it.isJsonArray }?.asJsonArray
+                ?: json.asJsonObject.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
+            json.isJsonArray -> json.asJsonArray
+            else -> null
+        }
+        return arr?.mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject } ?: emptyList()
+    }
+
+    private fun parseTimeline(json: JsonElement?): List<JsonObject> {
+        if (json == null) return emptyList()
+        val arr = when {
+            json.isJsonObject -> json.asJsonObject
+                .get("timeline")?.takeIf { it.isJsonArray }?.asJsonArray
+                ?: json.asJsonObject.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
+                ?: json.asJsonObject.get("records")?.takeIf { it.isJsonArray }?.asJsonArray
+            json.isJsonArray -> json.asJsonArray
+            else -> null
+        }
+        return arr?.mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject } ?: emptyList()
+    }
+
+    private fun buildSessionJson(session: com.nekobot.app.data.model.Session, timeline: List<JsonObject>): JsonObject {
+        val obj = JsonObject()
+        obj.addProperty("id", session.id)
+        obj.addProperty("name", session.displayName)
+        obj.addProperty("character_id", session.characterId)
+        val timelineArr = JsonArray()
+        timeline.forEach { timelineArr.add(it) }
+        obj.add("character_runtime_timeline", timelineArr)
+        return obj
     }
 
     fun select(s: JsonObject?) { _selected.value = s }
 }
 
 /**
- * 状态历程页：顶部会话选择条，选中后展示该会话的状态时间线。
+ * 状态历程页：通过下拉菜单选择会话，展示该会话的状态时间线。
  * 每条时间线项含心情/能量/好感/信任等数值与对应消息摘要。
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -150,36 +218,55 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text("会话", style = MaterialTheme.typography.titleSmall, color = OnSurfaceVariant)
-                        // 会话选择 chips（横向滚动）
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            sessions.forEach { s ->
-                                val name = s.get("name")?.asString
-                                    ?: s.get("character_id")?.asString
-                                    ?: "会话"
-                                val isActive = s == selected
-                                GlassCard(
-                                    modifier = Modifier.clip(RoundedCornerShape(12.dp)),
-                                    cornerRadius = 12,
-                                    containerColor = if (isActive) Primary.copy(alpha = 0.25f) else BgSurfaceVariant
+                        // 会话选择下拉菜单
+                        var dropdownExpanded by remember { mutableStateOf(false) }
+                        val selectedName = selected?.get("name")?.asString ?: "选择会话"
+                        Box {
+                            GlassCard(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(56.dp)
+                                    .clickable { dropdownExpanded = true },
+                                cornerRadius = 16,
+                                containerColor = BgSurfaceVariant
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 12.dp)
                                 ) {
                                     Text(
-                                        text = name,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = if (isActive) Primary else OnSurface,
-                                        fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                                        text = selectedName,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = OnSurface,
+                                        fontWeight = FontWeight.SemiBold,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier
-                                            .width(140.dp)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .clickable { vm.select(s) }
-                                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = OnSurfaceVariant)
+                                }
+                            }
+                            DropdownMenu(
+                                expanded = dropdownExpanded,
+                                onDismissRequest = { dropdownExpanded = false }
+                            ) {
+                                sessions.forEach { s ->
+                                    val name = s.get("name")?.asString ?: "未命名会话"
+                                    val isActive = s == selected
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                name,
+                                                color = if (isActive) Primary else OnSurface,
+                                                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        },
+                                        onClick = {
+                                            dropdownExpanded = false
+                                            vm.select(s)
+                                        }
                                     )
                                 }
                             }
@@ -241,7 +328,7 @@ private fun StateSummaryGrid(entry: JsonObject) {
         Triple("安全感", "security", SuccessGreen),
         Triple("能量", "energy", OnSurfaceVariant)
     )
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         items.forEach { (label, key, color) ->
             val value = entry.get(key)?.let { if (it.isJsonPrimitive) it.asInt else null }
             StateMiniCard(label = label, value = value, color = color, modifier = Modifier.weight(1f))
@@ -260,7 +347,7 @@ private fun StateMiniCard(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
             .background(BgSurface)
-            .padding(vertical = 6.dp, horizontal = 4.dp),
+            .padding(vertical = 6.dp, horizontal = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
@@ -269,7 +356,13 @@ private fun StateMiniCard(
             color = color,
             fontWeight = FontWeight.Bold
         )
-        Text(label, style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = OnSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

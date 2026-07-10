@@ -314,9 +314,9 @@ private fun FilterBar(
             Box {
                 GlassCard(
                     modifier = Modifier
-                        .height(40.dp)
+                        .height(56.dp)
                         .clickable { menuExpanded = true },
-                    cornerRadius = 20,
+                    cornerRadius = 28,
                     containerColor = BgSurfaceVariant
                 ) {
                     Row(
@@ -397,7 +397,7 @@ private fun FilterBar(
                 onValueChange = onSearchChange,
                 modifier = Modifier
                     .weight(1f)
-                    .height(48.dp),
+                    .height(56.dp),
                 placeholder = { Text("搜索会话、角色名...", color = OnSurfaceVariant) },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = OnSurfaceVariant) },
                 trailingIcon = {
@@ -412,7 +412,7 @@ private fun FilterBar(
                     }
                 },
                 singleLine = true,
-                shape = RoundedCornerShape(20.dp)
+                shape = RoundedCornerShape(28.dp)
             )
         }
 
@@ -422,8 +422,8 @@ private fun FilterBar(
                 GlassCard(
                     modifier = Modifier
                         .clickable { charMenuExpanded = true }
-                        .height(40.dp),
-                    cornerRadius = 12,
+                        .height(56.dp),
+                    cornerRadius = 28,
                     containerColor = BgSurfaceVariant
                 ) {
                     Row(

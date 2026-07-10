@@ -49,7 +49,7 @@ data class Session(
     @SerializedName("sender_avatar") val senderAvatar: String? = null,
     @SerializedName("character_name") val characterName: String? = null,
     @SerializedName("character_avatar") val characterAvatar: String? = null,
-    @SerializedName(value = "portrait", alternate = ["portrait_url", "character_portrait", "character_portrait_url"])
+    @SerializedName(value = "portrait", alternate = ["portrait_url", "character_portrait", "character_portrait_url", "sender_portrait"])
     val portrait: String? = null,
     @SerializedName("message_count") val messageCount: Int? = null,
     @SerializedName("last_message") val lastMessage: String? = null,
@@ -394,7 +394,8 @@ data class TokenStats(
     val records: List<JsonElement>? = null,
     val sessions: JsonElement? = null,
     val models: JsonElement? = null,
-    val users: JsonElement? = null
+    val users: JsonElement? = null,
+    val purposes: JsonElement? = null
 ) {
     val totalDisplay: Long get() = total ?: totalTokens ?: 0L
     val todayTotal: Long get() = today ?: ((todayInput ?: 0L) + (todayOutput ?: 0L))
@@ -403,5 +404,6 @@ data class TokenStats(
 data class TokenRankings(
     val sessions: List<JsonElement>? = null,
     val models: List<JsonElement>? = null,
-    val users: List<JsonElement>? = null
+    val users: List<JsonElement>? = null,
+    val purposes: List<JsonElement>? = null
 )
