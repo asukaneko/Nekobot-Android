@@ -120,6 +120,10 @@ fun SessionsScreen(
     val characterFilterId by viewModel.characterFilterId.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
 
+    // 模式切换时自动刷新会话列表
+    val appMode by ServiceContainer.appModeFlow.collectAsState()
+    LaunchedEffect(appMode) { viewModel.loadAll() }
+
     // 弹窗状态
     var showCreate by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<Session?>(null) }

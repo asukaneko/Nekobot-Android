@@ -192,7 +192,7 @@ class UnifiedRepository(
             val book = WorldBook(
                 name = req.name,
                 description = req.description,
-                characterId = req.characterId,
+                characterIds = req.characterIds,
                 enabled = req.enabled ?: true
             )
             Resource.Success(local.upsertWorldBook(book))
@@ -204,7 +204,7 @@ class UnifiedRepository(
             val book = existing.copy(
                 name = req.name,
                 description = req.description,
-                characterId = req.characterId,
+                characterIds = req.characterIds,
                 enabled = req.enabled ?: existing.enabled
             )
             Resource.Success(local.upsertWorldBook(book))

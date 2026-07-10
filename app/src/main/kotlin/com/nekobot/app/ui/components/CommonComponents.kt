@@ -236,14 +236,19 @@ fun StatChip(label: String, value: String, modifier: Modifier = Modifier) {
 /**
  * 解析头像图片 URL：若是相对路径则拼接当前服务器 baseUrl，避免双斜杠。
  * 返回 null 表示无可用图片。
+ * 支持 http(s):// 绝对 URL、file:// 本地路径、服务器相对路径。
+ * 图标类名（如 fas fa-cat）返回 null，由调用方显示图标。
  */
 fun resolveAvatarUrl(path: String?): String? {
     if (path.isNullOrBlank()) return null
-    return if (path.startsWith("http://") || path.startsWith("https://")) {
-        path
-    } else {
-        val base = ServiceContainer.network.baseUrl().trimEnd('/')
-        val relative = path.trimStart('/')
-        "$base/$relative"
-    }
+    // 本地文件路径：直接返回，Coil 原生支持（兼容 file:// file:/ file:/// 三种写法）
+    if (path.startsWith("file:") || path.startsWith("content://")) return path
+    // http(s) 绝对 URL：直接返回
+    if (path.startsWith("http://") || path.startsWith("https://")) return path
+    // 图标类名（如 fas fa-cat、fasfa-cat）：非图片路径，返回 null 由调用方显示图标
+    if (path.startsWith("fas ") || path.startsWith("fa-") || path.matches(Regex("fas[a-z]+-[a-z-]+"))) return null
+    // 服务器相对路径：拼接 baseUrl
+    val base = ServiceContainer.network.baseUrl().trimEnd('/')
+    val relative = path.trimStart('/')
+    return "$base/$relative"
 }

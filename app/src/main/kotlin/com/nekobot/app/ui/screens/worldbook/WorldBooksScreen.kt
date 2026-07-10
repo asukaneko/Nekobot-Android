@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.WorldBook
 import com.nekobot.app.data.model.WorldBookRequest
 import com.nekobot.app.ui.components.EmptyState
@@ -87,6 +88,10 @@ fun WorldBooksScreen(
     val error by viewModel.error.collectAsState()
 
     var showCreateDialog by remember { mutableStateOf(false) }
+
+    // 模式切换时自动刷新世界书列表
+    val appMode by ServiceContainer.appModeFlow.collectAsState()
+    LaunchedEffect(appMode) { viewModel.load() }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,

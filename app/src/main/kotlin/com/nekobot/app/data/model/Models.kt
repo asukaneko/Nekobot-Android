@@ -46,8 +46,8 @@ data class Session(
     val type: String? = null,
     @SerializedName("session_mode") val sessionMode: String? = null,
     @SerializedName("system_prompt") val systemPrompt: String? = null,
-    @SerializedName("character_id") val characterId: String? = null,
-    @SerializedName("character_ids") val characterIds: List<String>? = null,
+    @SerializedName(value = "character_id", alternate = ["characterId"]) val characterId: String? = null,
+    @SerializedName(value = "character_ids", alternate = ["characterIds"]) val characterIds: List<String>? = null,
     val tags: List<String>? = null,
     val favorite: Boolean? = null,
     val pinned: Boolean? = null,
@@ -55,8 +55,8 @@ data class Session(
     @SerializedName("proactive_chat") val proactiveChat: JsonElement? = null,
     @SerializedName("sender_name") val senderName: String? = null,
     @SerializedName("sender_avatar") val senderAvatar: String? = null,
-    @SerializedName("character_name") val characterName: String? = null,
-    @SerializedName("character_avatar") val characterAvatar: String? = null,
+    @SerializedName(value = "character_name", alternate = ["characterName"]) val characterName: String? = null,
+    @SerializedName(value = "character_avatar", alternate = ["characterAvatar"]) val characterAvatar: String? = null,
     @SerializedName(value = "portrait", alternate = ["portrait_url", "character_portrait", "character_portrait_url", "sender_portrait"])
     val portrait: String? = null,
     @SerializedName("message_count") val messageCount: Int? = null,
@@ -271,13 +271,16 @@ data class WorldBook(
     val id: String? = null,
     val name: String? = null,
     val description: String? = null,
-    @SerializedName("character_id") val characterId: String? = null,
+    @SerializedName(value = "character_ids", alternate = ["character_id", "characterId", "characterIds"])
+    val characterIds: List<String>? = null,
     val enabled: Boolean? = null,
     val entries: List<WorldBookEntry>? = null,
     @SerializedName("created_at") val createdAt: String? = null,
     @SerializedName("updated_at") val updatedAt: String? = null
 ) {
     val displayName: String get() = name?.takeIf { it.isNotBlank() } ?: "未命名世界书"
+    /** 兼容旧代码：取首个绑定角色 ID */
+    val characterId: String? get() = characterIds?.firstOrNull()
 }
 
 data class WorldBookEntry(
@@ -301,7 +304,7 @@ data class WorldBookEntry(
 data class WorldBookRequest(
     val name: String,
     val description: String? = null,
-    @SerializedName("character_id") val characterId: String? = null,
+    @SerializedName("character_ids") val characterIds: List<String>? = null,
     val enabled: Boolean? = null
 )
 

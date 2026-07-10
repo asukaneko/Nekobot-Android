@@ -760,7 +760,7 @@ class LocalRepository(
         id = id,
         name = name,
         description = description,
-        characterId = characterId,
+        characterIds = listOfNotNull(characterId),
         enabled = enabled,
         createdAt = createdAt,
         updatedAt = updatedAt

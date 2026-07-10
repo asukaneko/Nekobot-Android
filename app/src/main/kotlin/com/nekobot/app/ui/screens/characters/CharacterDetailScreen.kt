@@ -475,7 +475,7 @@ private fun saveImageAndGetPath(
         if (!dir.exists()) dir.mkdirs()
         val file = File(dir, "${prefix}_${UUID.randomUUID().toString().take(16)}.$ext")
         file.writeBytes(bytes)
-        file.toURI().toString()
+        android.net.Uri.fromFile(file).toString()
     } catch (e: Exception) {
         null
     }

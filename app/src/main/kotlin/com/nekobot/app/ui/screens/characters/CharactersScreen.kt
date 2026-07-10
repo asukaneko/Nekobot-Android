@@ -110,6 +110,10 @@ fun CharactersScreen(
 
     var viewMode by remember { mutableStateOf(CharacterViewMode.LIST) }
 
+    // 模式切换或返回页面时自动刷新角色列表
+    val appMode by ServiceContainer.appModeFlow.collectAsState()
+    LaunchedEffect(appMode) { viewModel.load() }
+
     // 文件选择器：导入角色卡（.json / .zip）
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -369,8 +373,9 @@ private fun CharacterGridItem(character: CharacterPreset, onClick: () -> Unit) {
     }
 }
 
-/** 把相对路径图片地址拼成完整 URL */
+/** 把相对路径图片地址拼成完整 URL（兼容本地 file: 路径） */
 private fun resolveImageUrl(path: String): String {
+    if (path.startsWith("file:") || path.startsWith("content://")) return path
     if (path.startsWith("http://") || path.startsWith("https://")) return path
     val base = ServiceContainer.network.baseUrl().trimEnd('/')
     return base + "/" + path.trimStart('/')

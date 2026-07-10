@@ -121,6 +121,10 @@ class SessionDetailViewModel : BaseViewModel() {
     private val _disabledPromptKeys = MutableStateFlow<Set<String>>(emptySet())
     val disabledPromptKeys: StateFlow<Set<String>> = _disabledPromptKeys.asStateFlow()
 
+    /** 绑定角色详情（远程模式后端可能不返回 characterName，需二次查询） */
+    private val _characterDetail = MutableStateFlow<com.nekobot.app.data.model.CharacterPreset?>(null)
+    val characterDetail: StateFlow<com.nekobot.app.data.model.CharacterPreset?> = _characterDetail.asStateFlow()
+
     fun init(id: String) { load(id) }
 
     fun load(id: String) {
@@ -141,6 +145,17 @@ class SessionDetailViewModel : BaseViewModel() {
                 // 解析 prompt_stack_debug
                 _promptStackDebug.value = parsePromptStackDebug(s.promptStackDebug)
                 _disabledPromptKeys.value = s.disabledPromptKeys?.toSet() ?: emptySet()
+                // 若后端未返回 characterName，通过 characterId 查询角色详情
+                val cid = s.characterId
+                if (!cid.isNullOrBlank() && s.characterName.isNullOrBlank()) {
+                    launchResult(
+                        block = { unified.getCharacter(cid) },
+                        onSuccess = { _characterDetail.value = it },
+                        onError = { /* 忽略角色查询失败 */ }
+                    )
+                } else {
+                    _characterDetail.value = null
+                }
             }
         )
     }
@@ -314,6 +329,7 @@ fun SessionDetailScreen(
     val customPrompts by vm.customPrompts.collectAsState()
     val promptStackDebug by vm.promptStackDebug.collectAsState()
     val disabledPromptKeys by vm.disabledPromptKeys.collectAsState()
+    val characterDetail by vm.characterDetail.collectAsState()
     val loading by vm.loading.collectAsState()
     val error by vm.error.collectAsState()
 
@@ -548,7 +564,8 @@ fun SessionDetailScreen(
                             SectionHeader(title = "角色绑定")
                             Spacer(Modifier.height(8.dp))
                             DetailLine(label = "角色 ID", value = s.characterId ?: "—")
-                            DetailLine(label = "角色名", value = s.characterName ?: "—")
+                            // 优先用后端返回的 characterName，否则用二次查询的角色详情
+                            DetailLine(label = "角色名", value = s.characterName ?: characterDetail?.name ?: "—")
                             DetailLine(label = "发送者名", value = s.senderName ?: "—")
                             DetailLine(label = "场景", value = s.scenario?.take(60) ?: "—")
                             s.characterIds?.takeIf { it.isNotEmpty() }?.let {

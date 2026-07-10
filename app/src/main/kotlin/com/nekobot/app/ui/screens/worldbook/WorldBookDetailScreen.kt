@@ -1,6 +1,7 @@
 package com.nekobot.app.ui.screens.worldbook
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -9,6 +10,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
@@ -23,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.model.WorldBook
 import com.nekobot.app.data.model.WorldBookEntry
 import com.nekobot.app.data.model.WorldBookEntryRequest
@@ -50,6 +53,10 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
 
     private val _entries = MutableStateFlow<List<WorldBookEntry>>(emptyList())
     val entries: StateFlow<List<WorldBookEntry>> = _entries.asStateFlow()
+
+    /** 所有可选角色列表（用于绑定角色下拉框） */
+    private val _characters = MutableStateFlow<List<CharacterPreset>>(emptyList())
+    val characters: StateFlow<List<CharacterPreset>> = _characters.asStateFlow()
 
     // 条目编辑对话框状态
     private val _editingEntry = MutableStateFlow<WorldBookEntry?>(null)
@@ -81,6 +88,11 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
             block = { unified.listEntries(bookId) },
             onSuccess = { _entries.value = it ?: emptyList() }
         )
+        // 加载角色列表用于绑定下拉框
+        launchResult(
+            block = { unified.listCharacters() },
+            onSuccess = { _characters.value = it ?: emptyList() }
+        )
     }
 
     /** 切换启用状态：用当前书信息 + 新 enabled 调更新接口 */
@@ -94,7 +106,7 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
                     WorldBookRequest(
                         name = name,
                         description = b.description,
-                        characterId = b.characterId,
+                        characterIds = b.characterIds,
                         enabled = enabled
                     )
                 )
@@ -103,8 +115,8 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
         )
     }
 
-    /** 更新世界书信息（名称、描述） */
-    fun updateBook(name: String, description: String?) {
+    /** 更新世界书信息（名称、描述、绑定角色） */
+    fun updateBook(name: String, description: String?, characterId: String?) {
         val b = _book.value
         launchResult(
             block = {
@@ -113,7 +125,7 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
                     WorldBookRequest(
                         name = name,
                         description = description,
-                        characterId = b?.characterId,
+                        characterIds = listOfNotNull(characterId),
                         enabled = b?.enabled
                     )
                 )
@@ -237,6 +249,7 @@ fun WorldBookDetailScreen(
     )
     val book by vm.book.collectAsState()
     val entries by vm.entries.collectAsState()
+    val characters by vm.characters.collectAsState()
     val loading by vm.loading.collectAsState()
     val showEntryDialog by vm.showEntryDialog.collectAsState()
     val editingEntry by vm.editingEntry.collectAsState()
@@ -339,9 +352,11 @@ fun WorldBookDetailScreen(
         EditBookDialog(
             initialName = book?.name.orEmpty(),
             initialDesc = book?.description.orEmpty(),
+            initialCharacterId = book?.characterId,
+            characters = vm.characters,
             onDismiss = { showEditBookDialog = false },
-            onConfirm = { name, desc ->
-                vm.updateBook(name, desc)
+            onConfirm = { name, desc, charId ->
+                vm.updateBook(name, desc, charId)
                 showEditBookDialog = false
             }
         )
@@ -407,7 +422,7 @@ private fun BookInfoCard(book: WorldBook?, onToggleEnabled: (Boolean) -> Unit) {
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "绑定角色：${book?.characterId ?: "无"}",
+                    text = "绑定角色：${book?.characterIds?.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "无"}",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -660,16 +675,23 @@ private fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean
     }
 }
 
-/** 编辑书信息对话框 */
+/** 编辑书信息对话框（含绑定角色选择） */
 @Composable
 private fun EditBookDialog(
     initialName: String,
     initialDesc: String,
+    initialCharacterId: String?,
+    characters: StateFlow<List<CharacterPreset>>,
     onDismiss: () -> Unit,
-    onConfirm: (name: String, description: String?) -> Unit
+    onConfirm: (name: String, description: String?, characterId: String?) -> Unit
 ) {
     var name by remember { mutableStateOf(initialName) }
     var desc by remember { mutableStateOf(initialDesc) }
+    var selectedCharId by remember { mutableStateOf(initialCharacterId) }
+    val charList by characters.collectAsState()
+    var charDropdownExpanded by remember { mutableStateOf(false) }
+    // 选中角色的显示名
+    val selectedCharName = charList.firstOrNull { it.id == selectedCharId }?.name ?: "无（公共世界书）"
 
     NekoDialog(
         onDismiss = onDismiss,
@@ -678,7 +700,7 @@ private fun EditBookDialog(
         cancelText = "取消",
         onConfirm = {
             if (name.isBlank()) return@NekoDialog
-            onConfirm(name.trim(), desc.trim().takeIf { it.isNotBlank() })
+            onConfirm(name.trim(), desc.trim().takeIf { it.isNotBlank() }, selectedCharId)
         },
         onCancel = onDismiss
     ) {
@@ -699,6 +721,46 @@ private fun EditBookDialog(
             minLines = 2,
             maxLines = 5
         )
+        Spacer(Modifier.height(10.dp))
+        Text("绑定角色", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(4.dp))
+        // 角色选择下拉框
+        Box {
+            OutlinedTextField(
+                value = selectedCharName,
+                onValueChange = { },
+                readOnly = true,
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { charDropdownExpanded = true },
+                trailingIcon = {
+                    Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+                }
+            )
+            DropdownMenu(
+                expanded = charDropdownExpanded,
+                onDismissRequest = { charDropdownExpanded = false }
+            ) {
+                // 无（公共世界书）选项
+                DropdownMenuItem(
+                    text = { Text("无（公共世界书）") },
+                    onClick = {
+                        selectedCharId = null
+                        charDropdownExpanded = false
+                    }
+                )
+                charList.forEach { c ->
+                    DropdownMenuItem(
+                        text = { Text(c.name ?: "未命名角色") },
+                        onClick = {
+                            selectedCharId = c.id
+                            charDropdownExpanded = false
+                        }
+                    )
+                }
+            }
+        }
     }
 }
 

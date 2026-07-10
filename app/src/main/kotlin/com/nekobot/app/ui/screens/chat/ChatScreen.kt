@@ -70,6 +70,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -81,6 +82,9 @@ import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
+import coil.compose.SubcomposeAsyncImageContent
+import coil.request.ImageRequest
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.remote.RealtimeEvent
@@ -262,14 +266,19 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(messages, key = { it.id ?: (it.content + it.timestamp + it.hashCode()) }) { msg ->
-                        MessageBubble(
-                            message = msg,
-                            portraitUrl = session?.portraitUrl,
-                            onLongClick = { deletingMessage = msg },
-                            onRegenerate = { viewModel.regenerate() },
-                            onFork = { msg.id?.let { mid -> viewModel.forkFromMessage(mid) { onOpenChat(it) } } },
-                            onCopy = { msg.displayContent }
-                        )
+                        // 流式占位消息且内容为空：显示骨架动画（等待第一个 chunk）
+                        if (msg.id == ChatViewModel.STREAMING_ID && msg.displayContent.isBlank()) {
+                            ThinkingIndicator(portraitUrl = session?.portraitUrl)
+                        } else {
+                            MessageBubble(
+                                message = msg,
+                                portraitUrl = session?.portraitUrl,
+                                onLongClick = { deletingMessage = msg },
+                                onRegenerate = { viewModel.regenerate() },
+                                onFork = { msg.id?.let { mid -> viewModel.forkFromMessage(mid) { onOpenChat(it) } } },
+                                onCopy = { msg.displayContent }
+                            )
+                        }
                     }
                     // AI 处理进度卡片已移除：流式占位消息由 StreamStart 事件创建
                 }
@@ -411,11 +420,20 @@ private fun MessageBubble(
                 contentAlignment = Alignment.Center
             ) {
                 if (!resolved.isNullOrBlank()) {
-                    AsyncImage(
-                        model = resolved,
+                    SubcomposeAsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(resolved)
+                            .crossfade(true)
+                            .build(),
                         contentDescription = "角色立绘",
                         contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        loading = {
+                            Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                        },
+                        error = {
+                            Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                        }
                     )
                 } else {
                     Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
@@ -582,11 +600,20 @@ private fun ThinkingIndicator(portraitUrl: String? = null) {
             contentAlignment = Alignment.Center
         ) {
             if (!resolved.isNullOrBlank()) {
-                AsyncImage(
-                    model = resolved,
+                SubcomposeAsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(resolved)
+                        .crossfade(true)
+                        .build(),
                     contentDescription = "角色立绘",
                     contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    loading = {
+                        Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                    },
+                    error = {
+                        Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                    }
                 )
             } else {
                 Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
@@ -1184,6 +1211,16 @@ class ChatViewModel : BaseViewModel() {
         _sending.value = true
         clearError()
 
+        // 立即创建流式占位消息，显示骨架动画（等待第一个 chunk）
+        streamingContent.setLength(0)
+        val placeholder = Message(
+            id = streamingId,
+            role = "assistant",
+            content = "",
+            timestamp = System.currentTimeMillis().toString()
+        )
+        _messages.value = _messages.value.filter { it.id != streamingId } + placeholder
+
         if (isLocalMode) {
             // 本地模式：直接收集 Flow 事件
             val flow = unified.chatStream(currentSessionId, content)
@@ -1199,11 +1236,13 @@ class ChatViewModel : BaseViewModel() {
         } else if (socket.state.value == SocketState.Connected) {
             // Socket.IO 路径：触发 send_message，等待流式推送
             socket.sendMessage(currentSessionId, content)
-            // 兜底：若 60 秒仍无 StreamStart 回调，回退 HTTP
+            // 兜底：若 60 秒仍无 chunk 回调，尝试刷新消息
             viewModelScope.launch {
                 kotlinx.coroutines.delay(60000)
-                if (_sending.value && _messages.value.none { it.id == streamingId }) {
-                    launchHttpChat(content)
+                if (_sending.value && streamingContent.isEmpty()) {
+                    _sending.value = false
+                    _messages.value = _messages.value.filter { it.id != streamingId }
+                    loadMessages()
                 }
             }
         } else {
@@ -1214,6 +1253,15 @@ class ChatViewModel : BaseViewModel() {
 
     /** HTTP /chat 回退路径：触发后等待 socket 推送或轮询。 */
     private fun launchHttpChat(content: String) {
+        // 创建流式占位消息，显示骨架动画（等待第一个 chunk）
+        streamingContent.setLength(0)
+        val placeholder = Message(
+            id = streamingId,
+            role = "assistant",
+            content = "",
+            timestamp = System.currentTimeMillis().toString()
+        )
+        _messages.value = _messages.value.filter { it.id != streamingId } + placeholder
         launchResult(
             block = { unified.chat(currentSessionId, content) },
             onSuccess = {
@@ -1229,6 +1277,8 @@ class ChatViewModel : BaseViewModel() {
             },
             onError = {
                 _sending.value = false
+                // 移除占位消息
+                _messages.value = _messages.value.filter { it.id != streamingId }
                 showError(it)
             }
         )

@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonElement
+import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.TokenRankings
 import com.nekobot.app.data.model.TokenStats
 import com.nekobot.app.ui.BaseViewModel
@@ -139,6 +140,10 @@ fun TokensScreen() {
     var showStartPicker by remember { mutableStateOf(false) }
     var showEndPicker by remember { mutableStateOf(false) }
     var rankingTab by remember { mutableStateOf(0) }
+
+    // 模式切换时自动刷新 Token 用量
+    val appMode by ServiceContainer.appModeFlow.collectAsState()
+    LaunchedEffect(appMode) { vm.load() }
 
     LaunchedEffect(toast) {
         if (toast != null) {
