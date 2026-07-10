@@ -1,6 +1,7 @@
 package com.nekobot.app.ui.screens.settings
 
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +15,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -49,11 +52,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonElement
 import com.google.gson.JsonParser
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.ui.BaseViewModel
@@ -63,6 +68,7 @@ import com.nekobot.app.ui.components.LoadingOverlay
 import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.components.SectionHeader
 import com.nekobot.app.ui.theme.BgDark
+import com.nekobot.app.ui.theme.BgSurfaceVariant
 import com.nekobot.app.ui.theme.ErrorRed
 import com.nekobot.app.ui.theme.OnPrimary
 import com.nekobot.app.ui.theme.OnSurface
@@ -75,6 +81,13 @@ import kotlinx.coroutines.flow.asStateFlow
 /** 用于格式化 JSON 输出 */
 private val prettyGson = GsonBuilder().setPrettyPrinting().setLenient().disableHtmlEscaping().create()
 
+/** 系统日志条目。 */
+data class LogEntry(
+    val time: String,
+    val level: String,
+    val message: String
+)
+
 /**
  * 系统设置页 ViewModel
  */
@@ -83,8 +96,8 @@ class SettingsViewModel : BaseViewModel() {
     private val _settingsJson = MutableStateFlow("")
     val settingsJson: StateFlow<String> = _settingsJson.asStateFlow()
 
-    private val _logsJson = MutableStateFlow("")
-    val logsJson: StateFlow<String> = _logsJson.asStateFlow()
+    private val _logs = MutableStateFlow<List<LogEntry>>(emptyList())
+    val logs: StateFlow<List<LogEntry>> = _logs.asStateFlow()
 
     private val _showLogs = MutableStateFlow(false)
     val showLogs: StateFlow<Boolean> = _showLogs.asStateFlow()
@@ -131,10 +144,25 @@ class SettingsViewModel : BaseViewModel() {
         launchResult(
             block = { repo.listLogs() },
             onSuccess = { json ->
-                _logsJson.value = prettyGson.toJson(json)
+                _logs.value = parseLogs(json)
                 _showLogs.value = true
             }
         )
+    }
+
+    /** 解析日志 JSON 数组为 LogEntry 列表。 */
+    private fun parseLogs(json: JsonElement?): List<LogEntry> {
+        if (json == null) return emptyList()
+        val arr = if (json.isJsonArray) json.asJsonArray else return emptyList()
+        return arr.mapNotNull { el ->
+            if (!el.isJsonObject) return@mapNotNull null
+            val obj = el.asJsonObject
+            LogEntry(
+                time = obj.get("time")?.asString ?: "",
+                level = obj.get("level")?.asString ?: "info",
+                message = obj.get("message")?.asString ?: ""
+            )
+        }
     }
 
     fun dismissLogs() {
@@ -161,7 +189,7 @@ class SettingsViewModel : BaseViewModel() {
 fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: () -> Unit = onLogout) {
     val vm: SettingsViewModel = viewModel()
     val settingsJson by vm.settingsJson.collectAsState()
-    val logsJson by vm.logsJson.collectAsState()
+    val logs by vm.logs.collectAsState()
     val showLogs by vm.showLogs.collectAsState()
     val loggedOut by vm.loggedOut.collectAsState()
     val serverUrl by vm.serverUrl.collectAsState()
@@ -350,25 +378,93 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
         }
     }
 
-    // 日志弹窗
+    // 日志弹窗：卡片列表展示
     if (showLogs) {
         NekoDialog(
             onDismiss = { vm.dismissLogs() },
-            title = "系统日志",
+            title = "系统日志 (${logs.size})",
             confirmText = "关闭",
             onConfirm = { vm.dismissLogs() },
             cancelText = null,
             onCancel = null
         ) {
-            Text(
-                text = logsJson.ifBlank { "暂无日志" },
-                style = MaterialTheme.typography.bodySmall,
-                color = OnSurfaceVariant,
+            if (logs.isEmpty()) {
+                Text(
+                    text = "暂无日志",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = OnSurfaceVariant,
+                    modifier = Modifier.padding(16.dp)
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 450.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(logs) { log ->
+                        LogCard(log)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 单条日志卡片：左侧等级色条 + 时间 + 消息内容。 */
+@Composable
+private fun LogCard(log: LogEntry) {
+    val levelColor = when (log.level.lowercase()) {
+        "error" -> ErrorRed
+        "warning", "warn" -> Color(0xFFFFB347)
+        "debug" -> Color(0xFF6BAED6)
+        else -> Primary
+    }
+    val levelLabel = when (log.level.lowercase()) {
+        "warning" -> "WARN"
+        "warn" -> "WARN"
+        else -> log.level.uppercase()
+    }
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        cornerRadius = 10,
+        containerColor = BgSurfaceVariant
+    ) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            // 左侧等级色条
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 400.dp)
-                    .verticalScroll(rememberScrollState())
+                    .width(3.dp)
+                    .height(42.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(levelColor)
             )
+            Spacer(Modifier.width(8.dp))
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = levelLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = levelColor,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = log.time,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = OnSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = log.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OnSurface
+                )
+            }
         }
     }
 }

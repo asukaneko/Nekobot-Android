@@ -85,7 +85,16 @@ class StateHistoryViewModel : BaseViewModel() {
 
     init { load() }
 
+    /** 强制刷新：清空缓存后重新加载。 */
+    fun refresh() {
+        _sessions.value = emptyList()
+        _selected.value = null
+        load()
+    }
+
     fun load() {
+        // 已有缓存则不重复加载
+        if (_sessions.value.isNotEmpty()) return
         launchResult(
             block = {
                 // 1. 获取渠道时间线（QQ 等渠道会话，已含 timeline）
@@ -372,8 +381,8 @@ private fun TimelineItem(rank: Int, entry: JsonObject) {
     val mood = entry.get("mood")?.asString ?: "—"
     val intensity = entry.get("mood_intensity")?.let { if (it.isJsonPrimitive) it.asFloat else null }
     val ts = entry.get("timestamp")?.asString?.take(16) ?: ""
-    val userMsg = entry.get("user_message")?.asString?.take(80)
-    val aiMsg = entry.get("assistant_message")?.asString?.take(80)
+    val userMsg = entry.get("user_message")?.asString?.take(50)
+    val aiMsg = entry.get("assistant_message")?.asString?.take(50)
 
     Row(modifier = Modifier.fillMaxWidth()) {
         // 左侧时间轴圆点 + 连线

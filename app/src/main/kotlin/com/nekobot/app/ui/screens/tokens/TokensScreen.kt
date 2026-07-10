@@ -321,15 +321,37 @@ fun TokensScreen() {
                     }
                 }
 
-                // 选定时间段的 Token 记录列表
-                val records = stats?.records ?: stats?.recentRecords
-                if (!records.isNullOrEmpty()) {
+                // 选定时间段的 Token 记录列表（分页，每页 100 条）
+                val allRecords = stats?.records ?: stats?.recentRecords ?: emptyList()
+                if (allRecords.isNotEmpty()) {
+                    var recordPage by remember(allRecords.size) { mutableStateOf(0) }
+                    val pageSize = 100
+                    val totalPages = (allRecords.size + pageSize - 1) / pageSize
+                    val pageRecords = allRecords.drop(recordPage * pageSize).take(pageSize)
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "Token 记录", subtitle = "共 ${records.size} 条")
+                        SectionHeader(title = "Token 记录", subtitle = "共 ${allRecords.size} 条，第 ${recordPage + 1}/$totalPages 页")
                         Spacer(Modifier.height(8.dp))
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            records.take(50).forEach { elem ->
+                            pageRecords.forEach { elem ->
                                 TokenRecordRow(elem = elem)
+                            }
+                        }
+                        if (totalPages > 1) {
+                            Spacer(Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TextButton(
+                                    onClick = { if (recordPage > 0) recordPage-- },
+                                    enabled = recordPage > 0
+                                ) { Text("上一页", color = if (recordPage > 0) Primary else OnSurfaceVariant) }
+                                Text("${recordPage + 1} / $totalPages", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+                                TextButton(
+                                    onClick = { if (recordPage < totalPages - 1) recordPage++ },
+                                    enabled = recordPage < totalPages - 1
+                                ) { Text("下一页", color = if (recordPage < totalPages - 1) Primary else OnSurfaceVariant) }
                             }
                         }
                     }

@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
@@ -120,8 +121,10 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
     var menuExpanded by remember { mutableStateOf(false) }
     var deletingMessage by remember { mutableStateOf<Message?>(null) }
     var showClearConfirm by remember { mutableStateOf(false) }
+    var showMyMessages by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val keyboard = LocalSoftwareKeyboardController.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     // 进入页面加载
     LaunchedEffect(sessionId) {
@@ -199,8 +202,18 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                 sending = sending,
                 messageCount = messages.size,
                 plotChoices = plotChoices,
-                onSelectPlotChoice = { viewModel.selectPlotChoice(it) },
+                onSelectPlotChoice = { choice ->
+                    // 填入输入框（用户可编辑后手动发送），后台标记选中
+                    input = choice.title
+                    viewModel.selectPlotChoice(choice.id)
+                },
                 onRegeneratePlotChoices = { viewModel.regeneratePlotChoices() },
+                onScrollToBottom = {
+                    if (messages.isNotEmpty()) {
+                        scope.launch { listState.animateScrollToItem(messages.lastIndex) }
+                    }
+                },
+                onShowMyMessages = { showMyMessages = true },
                 onSend = {
                     val text = input
                     input = ""
@@ -208,7 +221,6 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                     viewModel.sendMessage(text)
                 },
                 onStop = { viewModel.stop() },
-                onRegenerate = { viewModel.regenerate() },
                 onClear = { showClearConfirm = true },
                 onCompress = { viewModel.compressContext() }
             )
@@ -254,7 +266,8 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                             onCopy = { msg.displayContent }
                         )
                     }
-                    if (sending) {
+                    // 仅在 sending 且尚未收到流式占位消息时显示骨架
+                    if (sending && messages.none { it.id == "_streaming_" }) {
                         item(key = "_thinking_indicator") {
                             ThinkingIndicator(portraitUrl = session?.portraitUrl)
                         }
@@ -302,6 +315,47 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                 viewModel.clearMessages(sessionId) { showClearConfirm = false }
             }
         )
+    }
+
+    // 我的消息列表弹窗：点击可跳转到对应气泡
+    if (showMyMessages) {
+        val myMessages = messages.mapIndexedNotNull { idx, m -> if (m.isUser) idx to m else null }
+        NekoDialog(
+            onDismiss = { showMyMessages = false },
+            title = "我的消息 (${myMessages.size})",
+            message = if (myMessages.isEmpty()) "暂无用户消息" else null,
+            confirmText = "关闭",
+            onConfirm = null
+        ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items(myMessages, key = { it.first }) { (idx, msg) ->
+                    val preview = msg.displayContent.take(60).replace("\n", " ")
+                    val ts = compactTime(msg.timestamp)?.let { "  $it" } ?: ""
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(BgSurfaceVariant)
+                            .clickable {
+                                showMyMessages = false
+                                scope.launch { listState.animateScrollToItem(idx) }
+                            }
+                            .padding(10.dp)
+                    ) {
+                        Text(
+                            text = preview + ts,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = OnSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -537,7 +591,7 @@ private fun ThinkingIndicator(portraitUrl: String? = null) {
 @Composable
 private fun PlotChoicesBar(
     choices: List<PlotChoice>,
-    onSelect: (String) -> Unit,
+    onSelect: (PlotChoice) -> Unit,
     onRegenerate: () -> Unit,
     enabled: Boolean = true
 ) {
@@ -568,13 +622,35 @@ private fun PlotChoicesBar(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             choices.forEach { choice ->
+                // 根据等级选择强调色
+                val levelColor = when (choice.level) {
+                    "turning_point" -> Color(0xFFFF6B6B)
+                    "important" -> Color(0xFFFFB347)
+                    else -> Primary
+                }
                 GlassCard(
                     modifier = Modifier
                         .weight(1f)
-                        .clickable(enabled = enabled) { onSelect(choice.id) },
+                        .clickable(enabled = enabled) { onSelect(choice) },
                     cornerRadius = 12,
-                    containerColor = if (choice.selected) Primary.copy(alpha = 0.15f) else BgSurfaceVariant
+                    containerColor = if (choice.selected) levelColor.copy(alpha = 0.15f) else BgSurfaceVariant
                 ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(levelColor)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = choice.level,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = levelColor,
+                            fontSize = androidx.compose.ui.unit.TextUnit(9f, androidx.compose.ui.unit.TextUnitType.Sp)
+                        )
+                    }
+                    Spacer(Modifier.height(2.dp))
                     Text(
                         text = choice.title.ifBlank { "选项" },
                         style = MaterialTheme.typography.labelSmall,
@@ -639,7 +715,7 @@ private fun compactTime(raw: String?): String? {
  * 底部输入栏：模仿 webui，左侧 + 按钮点击展开上下文数据与操作按钮面板。
  * - 输入框居中，支持多行
  * - 右侧发送/停止按钮
- * - 展开面板含消息数、字符数、估算 token，以及重新生成 / 清空 / 压缩操作
+ * - 展开面板含消息数、字符数、估算 token，以及 滚动到底部 / 我的信息 / 清空 / 压缩 操作
  */
 @Composable
 private fun ChatInputBar(
@@ -648,18 +724,21 @@ private fun ChatInputBar(
     sending: Boolean,
     messageCount: Int,
     plotChoices: List<PlotChoice> = emptyList(),
-    onSelectPlotChoice: (String) -> Unit = {},
+    onSelectPlotChoice: (PlotChoice) -> Unit = {},
     onRegeneratePlotChoices: () -> Unit = {},
+    onScrollToBottom: () -> Unit = {},
+    onShowMyMessages: () -> Unit = {},
     onSend: () -> Unit,
     onStop: () -> Unit,
-    onRegenerate: () -> Unit,
     onClear: () -> Unit,
     onCompress: () -> Unit
 ) {
     var panelExpanded by remember { mutableStateOf(false) }
-    // 估算字符数 / token（粗略 1 token ≈ 1.5 个中文字符 / 4 个英文字符）
+    // 字符数与 token 估算：中文字符约 1 token/字，英文约 0.25 token/字符
     val charCount = input.length
-    val tokenEstimate = (charCount / 1.8).toInt().coerceAtLeast(0)
+    val chineseCount = input.count { it.code in 0x4E00..0x9FFF }
+    val otherCount = charCount - chineseCount
+    val tokenEstimate = (chineseCount + otherCount / 4).coerceAtLeast(if (charCount > 0) 1 else 0)
 
     Column(
         modifier = Modifier
@@ -697,13 +776,20 @@ private fun ChatInputBar(
                         Text("输入 $charCount 字 / ~$tokenEstimate tok", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
                     }
                     Spacer(Modifier.height(10.dp))
-                    // 操作按钮网格
+                    // 操作按钮网格（2 行 3 列）
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ActionChip(
-                            icon = Icons.Filled.Refresh,
-                            label = "重新生成",
-                            enabled = !sending,
-                            onClick = onRegenerate,
+                            icon = Icons.Filled.KeyboardDoubleArrowDown,
+                            label = "滚到底部",
+                            enabled = messageCount > 0,
+                            onClick = onScrollToBottom,
+                            modifier = Modifier.weight(1f)
+                        )
+                        ActionChip(
+                            icon = Icons.Outlined.AccountTree,
+                            label = "我的消息",
+                            enabled = messageCount > 0,
+                            onClick = onShowMyMessages,
                             modifier = Modifier.weight(1f)
                         )
                         ActionChip(
@@ -713,6 +799,9 @@ private fun ChatInputBar(
                             onClick = onCompress,
                             modifier = Modifier.weight(1f)
                         )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ActionChip(
                             icon = Icons.Filled.CleaningServices,
                             label = "清空",
@@ -1105,21 +1194,15 @@ class ChatViewModel : BaseViewModel() {
         )
     }
 
-    /** 选择一个剧情选项，成功后刷新消息和选项。 */
+    /** 选择一个剧情选项：后台标记选中（fire-and-forget），返回选项文本供填入输入框。 */
     fun selectPlotChoice(choiceId: String) {
         if (currentSessionId.isBlank()) return
-        launchResult(
-            block = { repo.selectPlotChoice(currentSessionId, choiceId) },
-            onSuccess = {
-                _plotChoices.value = emptyList()
-                _sending.value = true
-                viewModelScope.launch {
-                    kotlinx.coroutines.delay(2000)
-                    loadMessages()
-                    loadPlotChoices()
-                }
-            }
-        )
+        // 后台标记选中，不阻塞用户操作
+        viewModelScope.launch {
+            try { repo.selectPlotChoice(currentSessionId, choiceId) } catch (_: Exception) {}
+        }
+        // 清除选项栏（用户已选择，等待发送后服务器推送新选项）
+        _plotChoices.value = emptyList()
     }
 
     /** 重新生成剧情选项。 */
@@ -1133,7 +1216,7 @@ class ChatViewModel : BaseViewModel() {
         )
     }
 
-    /** 解析服务器返回的剧情选项列表。 */
+    /** 解析服务器返回的剧情选项列表。服务器字段：id, text, intent, level, selected。 */
     private fun parsePlotChoices(json: JsonElement?): List<PlotChoice> {
         if (json == null || !json.isJsonObject) return emptyList()
         val arr = json.asJsonObject.get("choices")?.takeIf { it.isJsonArray }?.asJsonArray
@@ -1143,9 +1226,10 @@ class ChatViewModel : BaseViewModel() {
             val obj = el.asJsonObject
             PlotChoice(
                 id = obj.get("id")?.asString ?: obj.get("choice_id")?.asString ?: "",
-                title = obj.get("title")?.asString ?: obj.get("label")?.asString ?: "",
-                description = obj.get("description")?.asString ?: obj.get("summary")?.asString ?: "",
-                selected = obj.get("selected")?.asBoolean == true
+                title = obj.get("text")?.asString ?: obj.get("title")?.asString ?: "",
+                description = obj.get("intent")?.asString ?: obj.get("description")?.asString ?: "",
+                selected = obj.get("selected")?.asBoolean == true,
+                level = obj.get("level")?.asString ?: "normal"
             )
         }.filter { it.id.isNotBlank() }
     }
@@ -1156,5 +1240,6 @@ data class PlotChoice(
     val id: String,
     val title: String,
     val description: String,
-    val selected: Boolean = false
+    val selected: Boolean = false,
+    val level: String = "normal"
 )

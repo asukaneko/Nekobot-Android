@@ -2,6 +2,14 @@ package com.nekobot.app.data.remote
 
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonElement
+import com.google.gson.JsonPrimitive
+import com.google.gson.TypeAdapter
+import com.google.gson.TypeAdapterFactory
+import com.google.gson.reflect.TypeToken
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
+import com.google.gson.stream.JsonWriter
 import com.nekobot.app.data.local.PrefsManager
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -15,9 +23,51 @@ import java.util.concurrent.TimeUnit
  */
 class NetworkClient(private val prefs: PrefsManager) {
 
+    /**
+     * 容错字符串适配器：当 JSON 值不是字符串（对象/数组/数字/null）时，
+     * 自动转成字符串或返回 null，避免 Gson 解析抛异常导致整个列表解析失败崩溃。
+     */
+    private object LenientStringAdapter : TypeAdapter<String>() {
+        override fun write(out: JsonWriter, value: String?) {
+            if (value == null) out.nullValue() else out.value(value)
+        }
+        override fun read(reader: JsonReader): String? {
+            // 利用 JsonReader 的 peek 推进，避免类型不匹配时抛 IllegalStateException
+            return try {
+                when (reader.peek()) {
+                    JsonToken.NULL -> { reader.nextNull(); null }
+                    JsonToken.STRING -> reader.nextString()
+                    JsonToken.NUMBER -> reader.nextString()
+                    JsonToken.BOOLEAN -> reader.nextBoolean().toString()
+                    // 对象/数组等非字符串值：跳过并返回 null，保证列表解析继续
+                    JsonToken.BEGIN_OBJECT, JsonToken.BEGIN_ARRAY, JsonToken.NAME, JsonToken.END_OBJECT, JsonToken.END_ARRAY -> {
+                        reader.skipValue()
+                        null
+                    }
+                    else -> {
+                        reader.skipValue()
+                        null
+                    }
+                }
+            } catch (e: Exception) {
+                try { reader.skipValue() } catch (_: Exception) {}
+                null
+            }
+        }
+    }
+
+    private class LenientStringAdapterFactory : TypeAdapterFactory {
+        override fun <T> create(gson: Gson, type: TypeToken<T>): TypeAdapter<T>? {
+            if (type.rawType != String::class.java) return null
+            @Suppress("UNCHECKED_CAST")
+            return LenientStringAdapter as TypeAdapter<T>
+        }
+    }
+
     private val gson: Gson = GsonBuilder()
         .setLenient()
         .disableHtmlEscaping()
+        .registerTypeAdapterFactory(LenientStringAdapterFactory())
         .create()
 
     private val authInterceptor = AuthInterceptor(prefs)

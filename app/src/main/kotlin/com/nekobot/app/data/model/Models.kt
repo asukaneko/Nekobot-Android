@@ -6,10 +6,18 @@ import com.google.gson.annotations.SerializedName
 /** 统一 API 响应包装 */
 data class ApiResult(
     val success: Boolean? = null,
-    val message: String? = null,
+    val message: JsonElement? = null,
     val error: String? = null,
     val filtered: Boolean? = null
-)
+) {
+    /** 将 message 字段统一转为字符串展示。 */
+    fun messageAsString(): String? = when {
+        message == null -> null
+        message!!.isJsonPrimitive -> message!!.asString
+        message!!.isJsonObject || message!!.isJsonArray -> message.toString()
+        else -> null
+    }
+}
 
 // ==================== 认证 ====================
 data class LoginRequest(

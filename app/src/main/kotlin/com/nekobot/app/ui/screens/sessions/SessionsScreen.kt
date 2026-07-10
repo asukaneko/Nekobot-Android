@@ -2,6 +2,7 @@ package com.nekobot.app.ui.screens.sessions
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Chat
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -34,6 +36,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -77,6 +80,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
 /** 会话列表筛选类型。 */
@@ -90,12 +94,8 @@ enum class SessionFilter(val label: String) {
     BY_CHARACTER("按角色")
 }
 
-/** 频道筛选类型：先按频道筛选，再做其他筛选。 */
-enum class ChannelFilter(val label: String, val value: String?) {
-    ALL("全部频道", null),
-    WEB("Web", "web"),
-    QQ("QQ", "qq")
-}
+/** 频道筛选项：value 为 null 表示全部频道。 */
+data class ChannelOption(val label: String, val value: String?)
 
 /**
  * 会话列表页：展示所有会话，支持新建、重命名、删除、收藏 / 置顶切换、筛选、搜索。
@@ -115,7 +115,8 @@ fun SessionsScreen(
     val toast by viewModel.toast.collectAsState()
 
     val filter by viewModel.filter.collectAsState()
-    val channelFilter by viewModel.channelFilter.collectAsState()
+    val channelFilterValue by viewModel.channelFilterValue.collectAsState()
+    val availableChannels by viewModel.availableChannels.collectAsState()
     val characterFilterId by viewModel.characterFilterId.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
 
@@ -123,6 +124,7 @@ fun SessionsScreen(
     var showCreate by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<Session?>(null) }
     var deleting by remember { mutableStateOf<Session?>(null) }
+    var showSearchPanel by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -148,17 +150,13 @@ fun SessionsScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // 搜索 + 筛选栏
-            FilterBar(
+            // 搜索栏（点击展开半屏搜索面板）
+            SearchEntryBar(
                 searchQuery = searchQuery,
-                onSearchChange = viewModel::setSearchQuery,
                 filter = filter,
-                onFilterChange = viewModel::setFilter,
-                channelFilter = channelFilter,
-                onChannelFilterChange = viewModel::setChannelFilter,
-                characters = characters,
-                characterFilterId = characterFilterId,
-                onCharacterFilterChange = viewModel::setCharacterFilter
+                channelFilterValue = channelFilterValue,
+                availableChannels = availableChannels,
+                onClick = { showSearchPanel = true }
             )
 
             Box(modifier = Modifier.fillMaxSize()) {
@@ -293,237 +291,274 @@ fun SessionsScreen(
             viewModel.clearToast()
         }
     }
+
+    // 半屏搜索面板
+    if (showSearchPanel) {
+        ModalBottomSheet(
+            onDismissRequest = { showSearchPanel = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            SearchPanelContent(
+                searchQuery = searchQuery,
+                onSearchChange = viewModel::setSearchQuery,
+                filter = filter,
+                onFilterChange = viewModel::setFilter,
+                channelFilterValue = channelFilterValue,
+                availableChannels = availableChannels,
+                onChannelFilterChange = viewModel::setChannelFilter,
+                characters = characters,
+                characterFilterId = characterFilterId,
+                onCharacterFilterChange = viewModel::setCharacterFilter
+            )
+        }
+    }
 }
 
-/** 搜索 + 筛选合并栏：频道选择 + 搜索框左侧内嵌筛选下拉。 */
+/** 搜索入口栏：点击展开半屏搜索面板。展示当前搜索词和活跃筛选标签。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FilterBar(
+private fun SearchEntryBar(
+    searchQuery: String,
+    filter: SessionFilter,
+    channelFilterValue: String?,
+    availableChannels: List<ChannelOption>,
+    onClick: () -> Unit
+) {
+    val channelLabel = availableChannels.firstOrNull { it.value == channelFilterValue }?.label
+    val hasActiveFilter = filter != SessionFilter.ALL || channelFilterValue != null || searchQuery.isNotBlank()
+
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .height(56.dp)
+            .clickable { onClick() },
+        cornerRadius = 28,
+        containerColor = BgSurfaceVariant
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 16.dp)
+        ) {
+            Icon(Icons.Filled.Search, contentDescription = null, tint = if (hasActiveFilter) Primary else OnSurfaceVariant)
+            if (searchQuery.isNotBlank()) {
+                Text(
+                    searchQuery,
+                    color = OnSurface,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            } else {
+                Text(
+                    "搜索会话、筛选...",
+                    color = OnSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            // 活跃筛选标签
+            if (channelLabel != null) {
+                FilterChip(label = channelLabel, active = true)
+            }
+            if (filter != SessionFilter.ALL) {
+                FilterChip(label = filter.label, active = true)
+            }
+        }
+    }
+}
+
+/** 小型筛选标签。 */
+@Composable
+private fun FilterChip(label: String, active: Boolean) {
+    GlassCard(
+        modifier = Modifier.height(28.dp),
+        cornerRadius = 14,
+        containerColor = Primary.copy(alpha = 0.15f)
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = Primary,
+            modifier = Modifier.padding(horizontal = 8.dp)
+        )
+    }
+}
+
+/** 半屏搜索面板内容：搜索框 + 频道筛选 + 会话筛选 + 角色筛选。 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SearchPanelContent(
     searchQuery: String,
     onSearchChange: (String) -> Unit,
     filter: SessionFilter,
     onFilterChange: (SessionFilter) -> Unit,
-    channelFilter: ChannelFilter,
-    onChannelFilterChange: (ChannelFilter) -> Unit,
+    channelFilterValue: String?,
+    availableChannels: List<ChannelOption>,
+    onChannelFilterChange: (String?) -> Unit,
     characters: List<CharacterPreset>,
     characterFilterId: String?,
     onCharacterFilterChange: (String?) -> Unit
 ) {
-    var menuExpanded by remember { mutableStateOf(false) }
-    var charMenuExpanded by remember { mutableStateOf(false) }
-    var channelMenuExpanded by remember { mutableStateOf(false) }
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 频道筛选下拉（最先筛选）
-        Box {
-            GlassCard(
-                modifier = Modifier
-                    .height(56.dp)
-                    .clickable { channelMenuExpanded = true },
-                cornerRadius = 28,
-                containerColor = BgSurfaceVariant
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 10.dp)
-                ) {
-                    Text(
-                        channelFilter.label,
-                        color = if (channelFilter == ChannelFilter.ALL) OnSurfaceVariant else Primary,
-                        style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1
-                    )
-                    Spacer(Modifier.size(2.dp))
-                    Icon(
-                        Icons.Filled.ArrowDropDown,
-                        contentDescription = null,
-                        tint = OnSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-            DropdownMenu(
-                expanded = channelMenuExpanded,
-                onDismissRequest = { channelMenuExpanded = false }
-            ) {
-                ChannelFilter.entries.forEach { ch ->
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                ch.label,
-                                color = if (ch == channelFilter) Primary else OnSurface,
-                                fontWeight = if (ch == channelFilter) FontWeight.SemiBold else FontWeight.Normal
-                            )
-                        },
-                        onClick = {
-                            channelMenuExpanded = false
-                            onChannelFilterChange(ch)
-                        }
-                    )
-                }
-            }
-        }
-
-        // 搜索框 + 内嵌筛选下拉（左侧 chip + 搜索图标 + 输入）
-        Row(
+        // 搜索框
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = onSearchChange,
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box {
-                GlassCard(
-                    modifier = Modifier
-                        .height(56.dp)
-                        .clickable { menuExpanded = true },
-                    cornerRadius = 28,
-                    containerColor = BgSurfaceVariant
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 10.dp)
-                    ) {
-                        Text(
-                            filter.label,
-                            color = if (filter == SessionFilter.ALL) OnSurfaceVariant else Primary,
-                            style = MaterialTheme.typography.labelMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(Modifier.size(2.dp))
-                        Icon(
-                            Icons.Filled.ArrowDropDown,
-                            contentDescription = null,
-                            tint = OnSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
+            placeholder = { Text("搜索会话、角色名...", color = OnSurfaceVariant) },
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = OnSurfaceVariant) },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { onSearchChange("") }) {
+                        Icon(Icons.Filled.Close, contentDescription = "清空", tint = OnSurfaceVariant)
                     }
                 }
-                DropdownMenu(
-                    expanded = menuExpanded,
-                    onDismissRequest = { menuExpanded = false }
-                ) {
-                    SessionFilter.values().forEach { option ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    option.label,
-                                    color = if (option == filter) Primary else OnSurface,
-                                    fontWeight = if (option == filter) FontWeight.SemiBold else FontWeight.Normal
-                                )
-                            },
-                            onClick = {
-                                menuExpanded = false
-                                onFilterChange(option)
-                                if (option != SessionFilter.BY_CHARACTER) {
-                                    onCharacterFilterChange(null)
-                                }
-                            }
-                        )
-                    }
-                    if (filter == SessionFilter.BY_CHARACTER && characters.isNotEmpty()) {
-                        HorizontalDivider(color = OnSurfaceVariant.copy(alpha = 0.2f))
-                        DropdownMenuItem(
-                            text = { Text("全部角色", color = OnSurfaceVariant) },
-                            onClick = {
-                                menuExpanded = false
-                                onCharacterFilterChange(null)
-                            }
-                        )
-                        characters.forEach { c ->
-                            val active = c.id == characterFilterId
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        c.displayName,
-                                        color = if (active) Primary else OnSurface,
-                                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal
-                                    )
-                                },
-                                onClick = {
-                                    menuExpanded = false
-                                    onCharacterFilterChange(c.id)
-                                }
-                            )
-                        }
-                    }
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(28.dp)
+        )
+
+        // 频道筛选
+        Text("频道", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+        ChannelChips(
+            availableChannels = availableChannels,
+            selectedValue = channelFilterValue,
+            onSelect = onChannelFilterChange
+        )
+
+        // 会话筛选
+        Text("筛选", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+        SessionFilterChips(
+            selected = filter,
+            onSelect = { newFilter ->
+                onFilterChange(newFilter)
+                if (newFilter != SessionFilter.BY_CHARACTER) {
+                    onCharacterFilterChange(null)
                 }
             }
+        )
 
-            Spacer(Modifier.size(8.dp))
-
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = onSearchChange,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(56.dp),
-                placeholder = { Text("搜索会话、角色名...", color = OnSurfaceVariant) },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = OnSurfaceVariant) },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { onSearchChange("") }) {
-                            Icon(
-                                Icons.Filled.Close,
-                                contentDescription = "清空",
-                                tint = OnSurfaceVariant
-                            )
-                        }
-                    }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(28.dp)
+        // 角色筛选（仅按角色时显示）
+        if (filter == SessionFilter.BY_CHARACTER && characters.isNotEmpty()) {
+            Text("角色", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+            CharacterChips(
+                characters = characters,
+                selectedId = characterFilterId,
+                onSelect = onCharacterFilterChange
             )
         }
+    }
+}
 
-        // 当选择「按角色」且未在弹窗中选定时，单独显示一个角色选择 chip
-        if (filter == SessionFilter.BY_CHARACTER) {
-            Box {
-                GlassCard(
-                    modifier = Modifier
-                        .clickable { charMenuExpanded = true }
-                        .height(56.dp),
-                    cornerRadius = 28,
-                    containerColor = BgSurfaceVariant
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 12.dp)
-                    ) {
-                        val charName = characters.firstOrNull { it.id == characterFilterId }?.displayName
-                            ?: "选择角色"
-                        Text(charName, color = OnSurface, style = MaterialTheme.typography.bodyMedium)
-                        Spacer(Modifier.size(4.dp))
-                        Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = OnSurfaceVariant)
-                    }
-                }
-                DropdownMenu(
-                    expanded = charMenuExpanded,
-                    onDismissRequest = { charMenuExpanded = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("全部角色", color = OnSurfaceVariant) },
-                        onClick = {
-                            charMenuExpanded = false
-                            onCharacterFilterChange(null)
-                        }
-                    )
-                    HorizontalDivider(color = OnSurfaceVariant.copy(alpha = 0.2f))
-                    characters.forEach { c ->
-                        DropdownMenuItem(
-                            text = { Text(c.displayName, color = OnSurface) },
-                            onClick = {
-                                charMenuExpanded = false
-                                onCharacterFilterChange(c.id)
-                            }
-                        )
-                    }
-                }
-            }
+/** 频道选择 Chips（含「全部」）。 */
+@Composable
+private fun ChannelChips(
+    availableChannels: List<ChannelOption>,
+    selectedValue: String?,
+    onSelect: (String?) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        SelectableChip(
+            label = "全部",
+            selected = selectedValue == null,
+            onClick = { onSelect(null) }
+        )
+        availableChannels.forEach { ch ->
+            SelectableChip(
+                label = ch.label,
+                selected = selectedValue == ch.value,
+                onClick = { onSelect(ch.value) }
+            )
         }
+    }
+}
+
+/** 会话筛选 Chips。 */
+@Composable
+private fun SessionFilterChips(
+    selected: SessionFilter,
+    onSelect: (SessionFilter) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        SessionFilter.values().forEach { f ->
+            SelectableChip(
+                label = f.label,
+                selected = f == selected,
+                onClick = { onSelect(f) }
+            )
+        }
+    }
+}
+
+/** 角色选择 Chips（含「全部角色」）。 */
+@Composable
+private fun CharacterChips(
+    characters: List<CharacterPreset>,
+    selectedId: String?,
+    onSelect: (String?) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        SelectableChip(
+            label = "全部角色",
+            selected = selectedId == null,
+            onClick = { onSelect(null) }
+        )
+        characters.forEach { c ->
+            SelectableChip(
+                label = c.displayName,
+                selected = c.id == selectedId,
+                onClick = { onSelect(c.id) }
+            )
+        }
+    }
+}
+
+/** 可选中 Chip：选中时 Primary 背景，未选中时透明背景。 */
+@Composable
+private fun SelectableChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    GlassCard(
+        modifier = Modifier
+            .height(36.dp)
+            .clickable { onClick() },
+        cornerRadius = 18,
+        containerColor = if (selected) Primary.copy(alpha = 0.2f) else BgSurfaceVariant
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (selected) Primary else OnSurface,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            modifier = Modifier.padding(horizontal = 12.dp)
+        )
     }
 }
 
@@ -882,8 +917,30 @@ class SessionsViewModel : BaseViewModel() {
     private val _filter = MutableStateFlow(SessionFilter.ALL)
     val filter: StateFlow<SessionFilter> = _filter.asStateFlow()
 
-    private val _channelFilter = MutableStateFlow(ChannelFilter.WEB)
-    val channelFilter: StateFlow<ChannelFilter> = _channelFilter.asStateFlow()
+    /** 当前选中的频道值（null = 全部频道）。默认 null。 */
+    private val _channelFilterValue = MutableStateFlow<String?>(null)
+    val channelFilterValue: StateFlow<String?> = _channelFilterValue.asStateFlow()
+
+    /** 动态频道列表：从已加载会话的 type 字段派生。 */
+    val availableChannels: StateFlow<List<ChannelOption>> = _sessions.map { sessions ->
+        val types = sessions.mapNotNull { it.type?.lowercase()?.trim()?.takeIf { t -> t.isNotBlank() } }
+            .distinct()
+            .sorted()
+        // 标签映射：web->Web, qq->QQ, 其他首字母大写
+        types.map { t ->
+            val label = when (t) {
+                "web" -> "Web"
+                "qq" -> "QQ"
+                "cli" -> "CLI"
+                else -> t.replaceFirstChar { c -> c.uppercase() }
+            }
+            ChannelOption(label, t)
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = emptyList()
+    )
 
     private val _characterFilterId = MutableStateFlow<String?>(null)
     val characterFilterId: StateFlow<String?> = _characterFilterId.asStateFlow()
@@ -893,10 +950,10 @@ class SessionsViewModel : BaseViewModel() {
 
     /** 对外展示的会话列表：频道筛选 + 置顶优先 + 应用筛选 + 应用搜索 + 非置顶按时间倒序。 */
     val displayedSessions: StateFlow<List<Session>> = combine(
-        _sessions, _filter, _channelFilter, _characterFilterId, _searchQuery
-    ) { all, f, ch, charId, query ->
+        _sessions, _filter, _channelFilterValue, _characterFilterId, _searchQuery
+    ) { all, f, chVal, charId, query ->
         // 先按频道筛选
-        val byChannel = applyChannelFilter(all, ch)
+        val byChannel = applyChannelFilter(all, chVal)
         val filtered = applyFilter(byChannel, f, charId)
         val searched = applySearch(filtered, query)
         // 置顶强制置顶；非置顶按时间倒序（updatedAt 回退到 createdAt）
@@ -918,8 +975,8 @@ class SessionsViewModel : BaseViewModel() {
         _filter.value = f
     }
 
-    fun setChannelFilter(ch: ChannelFilter) {
-        _channelFilter.value = ch
+    fun setChannelFilter(value: String?) {
+        _channelFilterValue.value = value
     }
 
     fun setCharacterFilter(id: String?) {
@@ -1017,13 +1074,12 @@ class SessionsViewModel : BaseViewModel() {
         )
     }
 
-    /** 根据频道过滤会话（先于其他筛选）。 */
-    private fun applyChannelFilter(all: List<Session>, ch: ChannelFilter): List<Session> {
-        if (ch.value == null) return all
+    /** 根据频道过滤会话（先于其他筛选）。channelValue 为 null 时返回全部。 */
+    private fun applyChannelFilter(all: List<Session>, channelValue: String?): List<Session> {
+        if (channelValue == null) return all
         return all.filter { s ->
-            // type 为 null 时默认视为 web
             val type = s.type?.lowercase()?.trim() ?: "web"
-            type == ch.value
+            type == channelValue
         }
     }
 
