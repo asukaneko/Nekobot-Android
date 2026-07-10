@@ -12,14 +12,22 @@ android {
         applicationId = "com.nekobot.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "0.1.0"
         vectorDrawables { useSupportLibrary = true }
+    }
+
+    // 使用 debug 签名配置用于 release 构建，使 release APK 可直接安装
+    signingConfigs {
+        getByName("debug") {
+            // 复用默认 debug keystore
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
