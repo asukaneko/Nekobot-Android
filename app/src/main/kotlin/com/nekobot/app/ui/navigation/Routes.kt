@@ -1,10 +1,10 @@
 package com.nekobot.app.ui.navigation
 
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Settings
 
 object Routes {
     const val LOGIN = "login"
@@ -14,11 +14,14 @@ object Routes {
     const val CHARACTERS = "characters"
     const val WORLD_BOOKS = "world_books"
     const val TOKENS = "tokens"
-    const val SETTINGS = "settings"
+    const val MORE = "more"
 
     // 详情页
     const val CHAT = "chat/{sessionId}"
     fun chat(sessionId: String) = "chat/$sessionId"
+
+    const val SESSION_DETAIL = "session/{sessionId}"
+    fun sessionDetail(id: String) = "session/$id"
 
     const val CHARACTER_DETAIL = "character/{characterId}"
     fun characterDetail(id: String) = "character/$id"
@@ -28,6 +31,8 @@ object Routes {
 
     const val AI_CONFIG = "ai_config"
     const val AI_MODELS = "ai_models"
+    const val SETTINGS = "settings"
+    const val STATE_HISTORY = "state_history"
 }
 
 data class BottomItem(
@@ -41,5 +46,5 @@ val bottomItems = listOf(
     BottomItem(Routes.CHARACTERS, "角色", androidx.compose.material.icons.Icons.Filled.Person),
     BottomItem(Routes.WORLD_BOOKS, "世界书", androidx.compose.material.icons.Icons.Filled.MenuBook),
     BottomItem(Routes.TOKENS, "用量", androidx.compose.material.icons.Icons.Filled.BarChart),
-    BottomItem(Routes.SETTINGS, "设置", androidx.compose.material.icons.Icons.Filled.Settings),
+    BottomItem(Routes.MORE, "更多", androidx.compose.material.icons.Icons.Filled.Apps),
 )

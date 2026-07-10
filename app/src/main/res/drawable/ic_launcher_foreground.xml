@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自适应图标前景：将 neko 图像 inset 到安全区域内（108dp 画布的中心区域），
+     避免系统圆形/圆角遮罩裁掉底部文字和边缘内容。
+     不指定 gravity，让 bitmap 默认 fitXY 填充 inset 后的边界，真正缩小图像。 -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetLeft="18dp"
+    android:insetTop="18dp"
+    android:insetRight="18dp"
+    android:insetBottom="18dp">
+    <bitmap android:src="@mipmap/neko" />
+</inset>

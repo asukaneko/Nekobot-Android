@@ -1,6 +1,7 @@
 package com.nekobot.app.ui.screens.tokens
 
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,7 +11,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -38,8 +41,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonElement
@@ -56,6 +61,7 @@ import com.nekobot.app.ui.theme.OnSurface
 import com.nekobot.app.ui.theme.OnSurfaceVariant
 import com.nekobot.app.ui.theme.Primary
 import com.nekobot.app.ui.theme.Secondary
+import com.nekobot.app.ui.theme.Tertiary
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -256,32 +262,59 @@ fun TokensScreen() {
                     }
                 }
 
-                // 排行榜
-                rankings?.let { r ->
-                    GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "Token 排行榜")
-                        Spacer(Modifier.height(8.dp))
-                        TabRow(selectedTabIndex = rankingTab) {
-                            listOf("会话", "模型", "用户").forEachIndexed { index, title ->
-                                Tab(
-                                    selected = rankingTab == index,
-                                    onClick = { rankingTab = index },
-                                    text = { Text(title) }
-                                )
-                            }
+                // 排行榜：优先用 rankings 接口数据，若为空则回退到 stats 内嵌的 sessions/models/users
+                val rankingData = remember(rankings, stats, rankingTab) {
+                    val r = rankings
+                    val fromRankings: List<JsonElement>? = when (rankingTab) {
+                        0 -> r?.sessions
+                        1 -> r?.models
+                        else -> r?.users
+                    }
+                    if (!fromRankings.isNullOrEmpty()) {
+                        fromRankings
+                    } else {
+                        // 回退：从 tokenStats 中提取 sessions/models/users（JsonElement，可能是数组）
+                        val fallback = when (rankingTab) {
+                            0 -> stats?.sessions
+                            1 -> stats?.models
+                            else -> stats?.users
                         }
-                        Spacer(Modifier.height(8.dp))
-                        val list = when (rankingTab) {
-                            0 -> r.sessions
-                            1 -> r.models
-                            else -> r.users
+                        fallback?.takeIf { it.isJsonArray }?.asJsonArray?.toList()
+                    }
+                }
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    SectionHeader(title = "Token 排行榜")
+                    Spacer(Modifier.height(8.dp))
+                    TabRow(selectedTabIndex = rankingTab) {
+                        listOf("会话", "模型", "用户").forEachIndexed { index, title ->
+                            Tab(
+                                selected = rankingTab == index,
+                                onClick = { rankingTab = index },
+                                text = { Text(title) }
+                            )
                         }
-                        if (list.isNullOrEmpty()) {
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    if (rankingData.isNullOrEmpty()) {
+                        Text("暂无数据", color = OnSurfaceVariant)
+                    } else {
+                        // 解析为 (name, tokens) 列表并按 token 数降序
+                        val parsed = rankingData.map { extractRankEntry(it) }
+                            .filter { it.first.isNotBlank() }
+                            .sortedByDescending { it.second }
+                            .take(10)
+                        if (parsed.isEmpty()) {
                             Text("暂无数据", color = OnSurfaceVariant)
                         } else {
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                list.forEach { elem ->
-                                    RankingRow(elem)
+                            val maxTokens = parsed.maxOf { it.second }.coerceAtLeast(1L)
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                parsed.forEachIndexed { idx, (name, tokens) ->
+                                    RankingBarRow(
+                                        rank = idx + 1,
+                                        name = name,
+                                        tokens = tokens,
+                                        maxTokens = maxTokens
+                                    )
                                 }
                             }
                         }
@@ -355,66 +388,123 @@ private fun StatChipGrid(stats: TokenStats) {
 }
 
 /**
- * 排行榜单行
+ * 排行榜柱状图单行：名次 + 名称 + 横向柱条 + token 数。
  */
 @Composable
-private fun RankingRow(elem: JsonElement) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        val name = extractName(elem)
-        val tokens = extractTokens(elem)
-        Text(
-            text = name,
-            style = MaterialTheme.typography.bodyMedium,
-            color = OnSurface,
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            text = tokens,
-            style = MaterialTheme.typography.bodyMedium,
-            color = Primary,
-            fontWeight = FontWeight.SemiBold
-        )
+private fun RankingBarRow(
+    rank: Int,
+    name: String,
+    tokens: Long,
+    maxTokens: Long
+) {
+    val ratio = (tokens.toFloat() / maxTokens.toFloat()).coerceIn(0f, 1f)
+    // 前 3 名用主色渐变，其余用次色
+    val barColor = when (rank) {
+        1 -> Primary
+        2 -> Secondary
+        3 -> Tertiary
+        else -> Primary.copy(alpha = 0.5f)
+    }
+    val rankColor = when (rank) {
+        1 -> Primary
+        2 -> Secondary
+        3 -> Tertiary
+        else -> OnSurfaceVariant
+    }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "$rank",
+                style = MaterialTheme.typography.labelMedium,
+                color = rankColor,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.width(20.dp)
+            )
+            Text(
+                text = name,
+                style = MaterialTheme.typography.bodyMedium,
+                color = OnSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = formatTokenCount(tokens),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Primary,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(OnSurfaceVariant.copy(alpha = 0.15f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(ratio)
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(barColor)
+            )
+        }
+    }
+}
+
+/** 格式化 token 数：超过 1k 用 k 单位，超过 1M 用 M 单位。 */
+private fun formatTokenCount(tokens: Long): String {
+    return when {
+        tokens >= 1_000_000L -> String.format(Locale.US, "%.1fM", tokens / 1_000_000.0)
+        tokens >= 1_000L -> String.format(Locale.US, "%.1fk", tokens / 1_000.0)
+        else -> tokens.toString()
     }
 }
 
 /**
- * 从 JsonElement 中提取名称
+ * 从 JsonElement 中提取 (name, tokens)，兼容多种字段命名。
+ * 失败返回 ("未知", 0L)。
  */
-private fun extractName(elem: JsonElement): String {
+private fun extractRankEntry(elem: JsonElement): Pair<String, Long> {
     return try {
-        val obj = elem.asJsonObject
-        obj.get("name")?.asString
-            ?: obj.get("session_name")?.asString
-            ?: obj.get("title")?.asString
-            ?: obj.get("model")?.asString
-            ?: obj.get("model_name")?.asString
-            ?: obj.get("user")?.asString
-            ?: obj.get("username")?.asString
-            ?: obj.get("id")?.asString
-            ?: obj.get("_id")?.asString
-            ?: "未知"
+        if (elem.isJsonObject) {
+            val obj = elem.asJsonObject
+            val name = obj.get("name")?.asString
+                ?: obj.get("session_name")?.asString
+                ?: obj.get("title")?.asString
+                ?: obj.get("model")?.asString
+                ?: obj.get("model_name")?.asString
+                ?: obj.get("user")?.asString
+                ?: obj.get("username")?.asString
+                ?: obj.get("user_name")?.asString
+                ?: obj.get("sessionName")?.asString
+                ?: obj.get("character_name")?.asString
+                ?: obj.get("id")?.asString
+                ?: obj.get("_id")?.asString
+                ?: obj.get("key")?.asString
+                ?: "未知"
+            val tokens = obj.get("tokens")?.asLong
+                ?: obj.get("token_count")?.asLong
+                ?: obj.get("total_tokens")?.asLong
+                ?: obj.get("total")?.asLong
+                ?: obj.get("count")?.asLong
+                ?: obj.get("usage")?.asLong
+                ?: obj.get("value")?.asLong
+                ?: obj.get("tokens_total")?.asLong
+                ?: obj.get("sum_tokens")?.asLong
+                ?: 0L
+            Pair(name, tokens)
+        } else {
+            Pair("未知", 0L)
+        }
     } catch (e: Exception) {
-        "未知"
-    }
-}
-
-/**
- * 从 JsonElement 中提取 token 数
- */
-private fun extractTokens(elem: JsonElement): String {
-    return try {
-        val obj = elem.asJsonObject
-        val tokens = obj.get("tokens")?.asLong
-            ?: obj.get("token_count")?.asLong
-            ?: obj.get("total_tokens")?.asLong
-            ?: obj.get("count")?.asLong
-            ?: 0L
-        tokens.toString()
-    } catch (e: Exception) {
-        "0"
+        Pair("未知", 0L)
     }
 }
 

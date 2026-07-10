@@ -236,6 +236,36 @@ interface ApiService {
     @GET("api/stats/messages")
     suspend fun messageStats(@Query("period") period: String = "day"): Response<JsonElement>
 
+    // ==================== 角色状态 / 历程 ====================
+    /** 单会话状态历程时间线：返回该会话内角色状态随消息推进的变化。 */
+    @GET("api/sessions/{id}/runtime-timeline")
+    suspend fun sessionRuntimeTimeline(@Path("id") id: String): Response<JsonElement>
+
+    /** 压缩会话上下文（将早期消息摘要化以节省 token）。 */
+    @POST("api/sessions/{id}/compress")
+    suspend fun compressContext(@Path("id") id: String): Response<JsonElement>
+
+    /** 跨渠道（QQ/Telegram/Feishu/Web）状态历程，合成 timeline sessions 列表。 */
+    @GET("api/channel_runtime_timeline")
+    suspend fun channelRuntimeTimeline(
+        @Query("channel") channel: String? = null,
+        @Query("character_id") characterId: String? = null
+    ): Response<JsonElement>
+
+    /** 单角色当前运行时状态（心情/能量等），scope_id 形如 web:<session_id>。 */
+    @GET("api/characters/{id}/state")
+    suspend fun characterState(
+        @Path("id") id: String,
+        @Query("scope_id") scopeId: String
+    ): Response<JsonElement>
+
+    /** 单角色对某 target 的关系状态（好感/信任/熟悉度等）。 */
+    @GET("api/characters/{id}/relationships")
+    suspend fun characterRelationships(
+        @Path("id") id: String,
+        @Query("target_id") targetId: String
+    ): Response<JsonElement>
+
     // ==================== 系统设置 ====================
     @GET("api/settings")
     suspend fun getSettings(): Response<JsonElement>

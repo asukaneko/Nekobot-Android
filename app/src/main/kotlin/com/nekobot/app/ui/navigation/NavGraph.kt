@@ -23,8 +23,11 @@ import com.nekobot.app.ui.screens.characters.CharacterDetailScreen
 import com.nekobot.app.ui.screens.characters.CharactersScreen
 import com.nekobot.app.ui.screens.chat.ChatScreen
 import com.nekobot.app.ui.screens.login.LoginScreen
+import com.nekobot.app.ui.screens.more.MoreScreen
 import com.nekobot.app.ui.screens.sessions.SessionsScreen
+import com.nekobot.app.ui.screens.sessions.SessionDetailScreen
 import com.nekobot.app.ui.screens.settings.SettingsScreen
+import com.nekobot.app.ui.screens.statehistory.StateHistoryScreen
 import com.nekobot.app.ui.screens.tokens.TokensScreen
 import com.nekobot.app.ui.screens.worldbook.WorldBookDetailScreen
 import com.nekobot.app.ui.screens.worldbook.WorldBooksScreen
@@ -34,7 +37,7 @@ import com.nekobot.app.ui.theme.Primary
 
 private val mainRoutes = setOf(
     Routes.SESSIONS, Routes.CHARACTERS, Routes.WORLD_BOOKS,
-    Routes.TOKENS, Routes.SETTINGS
+    Routes.TOKENS, Routes.MORE
 )
 
 @Composable
@@ -90,9 +93,26 @@ fun NekobotNavGraph() {
                 })
             }
             composable(Routes.SESSIONS) {
-                SessionsScreen(onOpenChat = { id ->
-                    navController.navigate(Routes.chat(id))
-                })
+                SessionsScreen(
+                    onOpenChat = { id ->
+                        navController.navigate(Routes.chat(id))
+                    },
+                    onOpenDetail = { id ->
+                        navController.navigate(Routes.sessionDetail(id))
+                    }
+                )
+            }
+            composable(
+                route = Routes.SESSION_DETAIL,
+                arguments = listOf(navArgument("sessionId") { type = NavType.StringType })
+            ) { entry ->
+                SessionDetailScreen(
+                    sessionId = entry.arguments?.getString("sessionId").orEmpty(),
+                    onBack = { navController.popBackStack() },
+                    onOpenChat = { id ->
+                        navController.navigate(Routes.chat(id))
+                    }
+                )
             }
             composable(
                 route = Routes.CHAT,
@@ -132,6 +152,16 @@ fun NekobotNavGraph() {
                 )
             }
             composable(Routes.TOKENS) { TokensScreen() }
+            composable(Routes.MORE) {
+                MoreScreen(
+                    onNavigate = { route -> navController.navigate(route) },
+                    onLogout = {
+                        navController.navigate(Routes.LOGIN) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
+                )
+            }
             composable(Routes.SETTINGS) {
                 SettingsScreen(
                     onLogout = {
@@ -139,8 +169,12 @@ fun NekobotNavGraph() {
                             popUpTo(0) { inclusive = true }
                         }
                     },
-                    onNavigate = { route -> navController.navigate(route) }
+                    onNavigate = { route -> navController.navigate(route) },
+                    onBack = { navController.popBackStack() }
                 )
+            }
+            composable(Routes.STATE_HISTORY) {
+                StateHistoryScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.AI_CONFIG) {
                 AiConfigScreen(onBack = { navController.popBackStack() })

@@ -1,7 +1,9 @@
 package com.nekobot.app.ui.screens.chat
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,7 +29,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -72,6 +80,7 @@ import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.components.resolveAvatarUrl
 import com.nekobot.app.ui.theme.BgSurface
+import com.nekobot.app.ui.theme.BgSurfaceVariant
 import com.nekobot.app.ui.theme.BubbleAssistant
 import com.nekobot.app.ui.theme.BubbleUser
 import com.nekobot.app.ui.theme.OnSurface
@@ -171,43 +180,23 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit) {
             )
         },
         bottomBar = {
-            // 底部输入栏
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface)
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                    .navigationBarsPadding()
-                    .imePadding(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = input,
-                    onValueChange = { input = it },
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 48.dp, max = 140.dp),
-                    placeholder = { Text(if (sending) "AI 思考中..." else "输入消息...") },
-                    enabled = !sending,
-                    maxLines = 5
-                )
-                Spacer(Modifier.width(8.dp))
-                IconButton(
-                    onClick = {
-                        val text = input
-                        input = ""
-                        keyboard?.hide()
-                        viewModel.sendMessage(text)
-                    },
-                    enabled = !sending && input.isNotBlank()
-                ) {
-                    if (sending) {
-                        CircularProgressIndicator(color = Primary, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
-                    } else {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送", tint = Primary)
-                    }
-                }
-            }
+            // 底部输入栏：左侧 + 按钮展开数据/操作面板，中间输入框，右侧发送
+            ChatInputBar(
+                input = input,
+                onInputChange = { input = it },
+                sending = sending,
+                messageCount = messages.size,
+                onSend = {
+                    val text = input
+                    input = ""
+                    keyboard?.hide()
+                    viewModel.sendMessage(text)
+                },
+                onStop = { viewModel.stop() },
+                onRegenerate = { viewModel.regenerate() },
+                onClear = { showClearConfirm = true },
+                onCompress = { viewModel.compressContext() }
+            )
         }
     ) { padding ->
         Box(
@@ -243,12 +232,13 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit) {
                     items(messages, key = { it.id ?: (it.content + it.timestamp + it.hashCode()) }) { msg ->
                         MessageBubble(
                             message = msg,
+                            portraitUrl = session?.portraitUrl,
                             onLongClick = { deletingMessage = msg }
                         )
                     }
                     if (sending) {
                         item(key = "_thinking_indicator") {
-                            ThinkingIndicator()
+                            ThinkingIndicator(portraitUrl = session?.portraitUrl)
                         }
                     }
                 }
@@ -300,7 +290,7 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit) {
 /** 单条消息气泡：用户靠右、AI 靠左。 */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageBubble(message: Message, onLongClick: () -> Unit) {
+private fun MessageBubble(message: Message, portraitUrl: String? = null, onLongClick: () -> Unit) {
     val isUser = message.isUser
     val bgColor = if (isUser) BubbleUser else BubbleAssistant
     val arrangement = if (isUser) Arrangement.End else Arrangement.Start
@@ -309,16 +299,26 @@ private fun MessageBubble(message: Message, onLongClick: () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = arrangement
     ) {
-        // AI 头像
+        // AI 头像（使用角色立绘，回退到图标）
         if (!isUser) {
+            val resolved = resolveAvatarUrl(portraitUrl)
             Box(
                 modifier = Modifier
-                    .size(32.dp)
+                    .size(36.dp)
                     .clip(CircleShape)
                     .background(BgSurface),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = OnSurfaceVariant, modifier = Modifier.size(20.dp))
+                if (!resolved.isNullOrBlank()) {
+                    AsyncImage(
+                        model = resolved,
+                        contentDescription = "角色立绘",
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = OnSurfaceVariant, modifier = Modifier.size(20.dp))
+                }
             }
             Spacer(Modifier.width(8.dp))
         }
@@ -349,17 +349,20 @@ private fun MessageBubble(message: Message, onLongClick: () -> Unit) {
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
-            // 元信息：时间 / token 数
+            // 元信息：时间（精简到分钟）/ token 数
             Row(verticalAlignment = Alignment.CenterVertically) {
                 message.timestamp?.let { time ->
-                    Text(
-                        text = time,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = OnSurfaceVariant
-                    )
+                    val compact = compactTime(time)
+                    if (compact != null) {
+                        Text(
+                            text = compact,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = OnSurfaceVariant
+                        )
+                    }
                 }
                 message.tokens?.let { tokens ->
-                    if (message.timestamp != null) Spacer(Modifier.width(6.dp))
+                    if (compactTime(message.timestamp) != null) Spacer(Modifier.width(6.dp))
                     Text(
                         text = "${tokens} tok",
                         style = MaterialTheme.typography.labelSmall,
@@ -373,20 +376,30 @@ private fun MessageBubble(message: Message, onLongClick: () -> Unit) {
 
 /** AI 思考中状态指示。 */
 @Composable
-private fun ThinkingIndicator() {
+private fun ThinkingIndicator(portraitUrl: String? = null) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        val resolved = resolveAvatarUrl(portraitUrl)
         Box(
             modifier = Modifier
-                .size(32.dp)
+                .size(36.dp)
                 .clip(CircleShape)
                 .background(BgSurface),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = OnSurfaceVariant, modifier = Modifier.size(20.dp))
+            if (!resolved.isNullOrBlank()) {
+                AsyncImage(
+                    model = resolved,
+                    contentDescription = "角色立绘",
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = OnSurfaceVariant, modifier = Modifier.size(20.dp))
+            }
         }
         Spacer(Modifier.width(8.dp))
         GlassCard(cornerRadius = 16, modifier = Modifier.widthIn(max = 200.dp)) {
@@ -396,6 +409,197 @@ private fun ThinkingIndicator() {
                 Text("AI 思考中...", color = OnSurface, style = MaterialTheme.typography.bodySmall)
             }
         }
+    }
+}
+
+/**
+ * 把时间戳/时间字符串精简到「分钟」级，尽量短以节省气泡下方空间。
+ * 支持毫秒时间戳、ISO 字符串、已格式化字符串三种输入。
+ * 例：2026-07-10T14:30:45.123 → "14:30"；2026-07-10 14:30 → "14:30"；14:30:45 → "14:30"
+ */
+private fun compactTime(raw: String?): String? {
+    if (raw.isNullOrBlank()) return null
+    val s = raw.trim()
+    return try {
+        when {
+            // 纯数字时间戳（毫秒）
+            s.matches(Regex("^\\d{10,13}$")) -> {
+                val ms = if (s.length == 10) s.toLong() * 1000 else s.toLong()
+                val instant = java.util.Date(ms)
+                java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                    .format(instant)
+            }
+            // ISO 或带 T 的时间：提取 HH:mm
+            s.contains('T') -> {
+                val timePart = s.substringAfter('T').take(5)
+                if (timePart.matches(Regex("\\d{2}:\\d{2}"))) timePart else null
+            }
+            // 含空格分隔日期时间：取时间部分前 5 位
+            s.contains(' ') -> {
+                val timePart = s.substringAfter(' ').take(5)
+                if (timePart.matches(Regex("\\d{2}:\\d{2}"))) timePart else null
+            }
+            // 仅时间 HH:mm:ss 或 HH:mm
+            s.matches(Regex("\\d{2}:\\d{2}(:\\d{2})?")) -> s.take(5)
+            else -> null
+        }
+    } catch (e: Exception) {
+        null
+    }
+}
+
+/**
+ * 底部输入栏：模仿 webui，左侧 + 按钮点击展开上下文数据与操作按钮面板。
+ * - 输入框居中，支持多行
+ * - 右侧发送/停止按钮
+ * - 展开面板含消息数、字符数、估算 token，以及重新生成 / 清空 / 压缩操作
+ */
+@Composable
+private fun ChatInputBar(
+    input: String,
+    onInputChange: (String) -> Unit,
+    sending: Boolean,
+    messageCount: Int,
+    onSend: () -> Unit,
+    onStop: () -> Unit,
+    onRegenerate: () -> Unit,
+    onClear: () -> Unit,
+    onCompress: () -> Unit
+) {
+    var panelExpanded by remember { mutableStateOf(false) }
+    // 估算字符数 / token（粗略 1 token ≈ 1.5 个中文字符 / 4 个英文字符）
+    val charCount = input.length
+    val tokenEstimate = (charCount / 1.8).toInt().coerceAtLeast(0)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .navigationBarsPadding()
+            .imePadding()
+    ) {
+        // 展开面板（向上展开）
+        AnimatedVisibility(visible = panelExpanded) {
+            GlassCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                cornerRadius = 14
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    // 上下文数据
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = Primary, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("上下文", style = MaterialTheme.typography.labelMedium, color = OnSurface, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.weight(1f))
+                        Text("$messageCount 条", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
+                        Spacer(Modifier.width(8.dp))
+                        Text("输入 $charCount 字 / ~$tokenEstimate tok", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    // 操作按钮网格
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ActionChip(
+                            icon = Icons.Filled.Refresh,
+                            label = "重新生成",
+                            enabled = !sending,
+                            onClick = onRegenerate,
+                            modifier = Modifier.weight(1f)
+                        )
+                        ActionChip(
+                            icon = Icons.Filled.Compress,
+                            label = "压缩",
+                            enabled = !sending,
+                            onClick = onCompress,
+                            modifier = Modifier.weight(1f)
+                        )
+                        ActionChip(
+                            icon = Icons.Filled.CleaningServices,
+                            label = "清空",
+                            enabled = !sending,
+                            onClick = onClear,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+        }
+
+        // 输入行：+ 按钮 + 输入框 + 发送/停止
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            // 左侧 + 按钮：展开/收起面板
+            IconButton(
+                onClick = { panelExpanded = !panelExpanded },
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(if (panelExpanded) Primary.copy(alpha = 0.15f) else BgSurfaceVariant)
+            ) {
+                Icon(
+                    if (panelExpanded) Icons.Filled.MoreVert else Icons.Filled.Add,
+                    contentDescription = "更多操作",
+                    tint = if (panelExpanded) Primary else OnSurfaceVariant,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            OutlinedTextField(
+                value = input,
+                onValueChange = onInputChange,
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 44.dp, max = 140.dp),
+                placeholder = { Text(if (sending) "AI 思考中..." else "输入消息...") },
+                enabled = !sending,
+                maxLines = 5,
+                shape = RoundedCornerShape(22.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            IconButton(
+                onClick = if (sending) onStop else onSend,
+                enabled = sending || input.isNotBlank(),
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(if (sending) androidx.compose.ui.graphics.Color(0xFFFF6B6B) else Primary)
+            ) {
+                if (sending) {
+                    Icon(Icons.Filled.Stop, contentDescription = "停止", tint = Color.White, modifier = Modifier.size(22.dp))
+                } else {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送", tint = Color.White, modifier = Modifier.size(22.dp))
+                }
+            }
+        }
+    }
+}
+
+/** 操作胶囊按钮：图标 + 文案。 */
+@Composable
+private fun ActionChip(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (enabled) BgSurfaceVariant else BgSurfaceVariant.copy(alpha = 0.5f))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = if (enabled) Primary else OnSurfaceVariant, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(4.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = if (enabled) OnSurface else OnSurfaceVariant)
     }
 }
 
@@ -605,6 +809,18 @@ class ChatViewModel : BaseViewModel() {
             onSuccess = {
                 _sending.value = false
                 showToast("已请求停止")
+                loadMessages()
+            }
+        )
+    }
+
+    /** 压缩上下文：将早期消息摘要化以节省 token。 */
+    fun compressContext() {
+        if (currentSessionId.isBlank()) return
+        launchResult(
+            block = { repo.compressContext(currentSessionId) },
+            onSuccess = {
+                showToast("上下文已压缩")
                 loadMessages()
             }
         )

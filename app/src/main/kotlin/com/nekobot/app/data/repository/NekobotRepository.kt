@@ -263,6 +263,14 @@ class NekobotRepository(
     suspend fun stats(): Resource<JsonElement> = safeCall { api.stats() }
     suspend fun messageStats(period: String = "day"): Resource<JsonElement> = safeCall { api.messageStats(period) }
 
+    // ==================== 角色状态 / 历程 ====================
+    suspend fun sessionRuntimeTimeline(id: String): Resource<JsonElement> = safeCall { api.sessionRuntimeTimeline(id) }
+    suspend fun compressContext(id: String): Resource<JsonElement> = safeCall { api.compressContext(id) }
+    suspend fun channelRuntimeTimeline(channel: String? = null, characterId: String? = null): Resource<JsonElement> =
+        safeCall { api.channelRuntimeTimeline(channel, characterId) }
+    suspend fun characterState(id: String, scopeId: String): Resource<JsonElement> = safeCall { api.characterState(id, scopeId) }
+    suspend fun characterRelationships(id: String, targetId: String): Resource<JsonElement> = safeCall { api.characterRelationships(id, targetId) }
+
     // ==================== 工具 ====================
     fun toJson(obj: Any): JsonElement = gson.toJsonTree(obj)
 

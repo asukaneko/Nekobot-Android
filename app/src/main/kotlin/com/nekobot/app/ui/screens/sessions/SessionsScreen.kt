@@ -10,11 +10,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -93,7 +96,10 @@ enum class SessionFilter(val label: String) {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SessionsScreen(onOpenChat: (String) -> Unit) {
+fun SessionsScreen(
+    onOpenChat: (String) -> Unit,
+    onOpenDetail: (String) -> Unit = onOpenChat
+) {
     val viewModel: SessionsViewModel = viewModel()
     val sessions by viewModel.displayedSessions.collectAsState()
     val characters by viewModel.characters.collectAsState()
@@ -187,9 +193,15 @@ fun SessionsScreen(onOpenChat: (String) -> Unit) {
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             items(sessions, key = { it.id ?: it.name ?: it.hashCode().toString() }) { session ->
+                                // 当 session 自身没有立绘时，回退到已加载角色列表里同 characterId 的立绘
+                                val fallbackPortrait = characters
+                                    .firstOrNull { it.id == session.characterId }
+                                    ?.avatarUrl
                                 SessionItem(
                                     session = session,
+                                    fallbackPortraitUrl = fallbackPortrait,
                                     onClick = { session.id?.let(onOpenChat) },
+                                    onOpenDetail = { session.id?.let(onOpenDetail) },
                                     onRename = { renaming = session },
                                     onDelete = { deleting = session },
                                     onToggleFavorite = { viewModel.toggleFavorite(session) },
@@ -302,24 +314,29 @@ private fun FilterBar(
             Box {
                 GlassCard(
                     modifier = Modifier
-                        .height(56.dp)
+                        .height(40.dp)
                         .clickable { menuExpanded = true },
-                    cornerRadius = 12,
+                    cornerRadius = 20,
                     containerColor = BgSurfaceVariant
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 12.dp)
+                        modifier = Modifier.padding(horizontal = 10.dp)
                     ) {
                         Text(
                             filter.label,
                             color = if (filter == SessionFilter.ALL) OnSurfaceVariant else Primary,
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.labelMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Spacer(Modifier.size(2.dp))
-                        Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = OnSurfaceVariant)
+                        Icon(
+                            Icons.Filled.ArrowDropDown,
+                            contentDescription = null,
+                            tint = OnSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
                 DropdownMenu(
@@ -380,7 +397,7 @@ private fun FilterBar(
                 onValueChange = onSearchChange,
                 modifier = Modifier
                     .weight(1f)
-                    .height(56.dp),
+                    .height(48.dp),
                 placeholder = { Text("搜索会话、角色名...", color = OnSurfaceVariant) },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = OnSurfaceVariant) },
                 trailingIcon = {
@@ -395,7 +412,7 @@ private fun FilterBar(
                     }
                 },
                 singleLine = true,
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(20.dp)
             )
         }
 
@@ -462,9 +479,21 @@ private fun CreateSessionDialog(
     var dropdownExpanded by remember { mutableStateOf(false) }
     /** 选中的角色对象（来自下拉或 ID 输入匹配） */
     var selectedCharacter by remember { mutableStateOf<CharacterPreset?>(null) }
+    /** 标记用户是否手动编辑过会话名 / 首条消息，避免被角色切换覆盖。 */
+    var nameEditedByUser by remember { mutableStateOf(false) }
+    var firstMessageEditedByUser by remember { mutableStateOf(false) }
+    val firstMessageScrollState = rememberScrollState()
 
     LaunchedEffect(Unit) {
         if (characters.isEmpty()) onLoadCharacters()
+    }
+
+    /** 切换到指定角色时同步会话名 + 首条消息（仅覆盖未被手动编辑过的字段）。 */
+    fun applyCharacter(c: CharacterPreset?) {
+        selectedCharacter = c
+        if (c == null) return
+        if (!nameEditedByUser) name = c.displayName
+        if (!firstMessageEditedByUser) firstMessage = c.firstMessage.orEmpty()
     }
 
     // 当 ID 输入框变化时，尝试在已加载角色列表里匹配；命中则自动填充对应字段
@@ -477,9 +506,7 @@ private fun CreateSessionDialog(
         }
         val match = characters.firstOrNull { it.id == id }
         if (match != null && match != selectedCharacter) {
-            selectedCharacter = match
-            if (name.isBlank()) name = match.displayName
-            if (firstMessage.isBlank()) firstMessage = match.firstMessage.orEmpty()
+            applyCharacter(match)
         } else if (match == null) {
             // 输入了不在列表中的 ID，认为是手动输入的自定义 ID
             selectedCharacter = null
@@ -525,7 +552,10 @@ private fun CreateSessionDialog(
 
             OutlinedTextField(
                 value = name,
-                onValueChange = { name = it },
+                onValueChange = {
+                    name = it
+                    nameEditedByUser = it.isNotBlank()
+                },
                 label = { Text("会话名称（可选）") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
@@ -587,14 +617,9 @@ private fun CreateSessionDialog(
                                     text = { Text(c.displayName, color = OnSurface) },
                                     onClick = {
                                         dropdownExpanded = false
+                                        // 切换角色时同步会话名 + 首条消息（除非用户已手动编辑）
                                         characterId = c.id.orEmpty()
-                                        selectedCharacter = c
-                                        // 自动用角色名作为会话名（仅当当前为空时）
-                                        if (name.isBlank()) name = c.displayName
-                                        // 自动用角色的首条消息（仅当当前为空时）
-                                        if (firstMessage.isBlank()) {
-                                            firstMessage = c.firstMessage.orEmpty()
-                                        }
+                                        applyCharacter(c)
                                     }
                                 )
                             }
@@ -604,11 +629,18 @@ private fun CreateSessionDialog(
             }
 
             Spacer(Modifier.height(12.dp))
+            // 首条消息：固定高度的滚动窗口，避免长内容撑爆弹窗
             OutlinedTextField(
                 value = firstMessage,
-                onValueChange = { firstMessage = it },
+                onValueChange = {
+                    firstMessage = it
+                    firstMessageEditedByUser = it.isNotBlank()
+                },
                 label = { Text("首条消息（可选）") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 96.dp, max = 160.dp)
+                    .verticalScroll(firstMessageScrollState)
             )
         }
     )
@@ -622,7 +654,10 @@ private fun SessionItem(
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onToggleFavorite: () -> Unit,
-    onTogglePinned: () -> Unit
+    onTogglePinned: () -> Unit,
+    /** 会话自身无立绘时的回退 URL（来自已加载角色列表）。 */
+    fallbackPortraitUrl: String? = null,
+    onOpenDetail: () -> Unit = {}
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     GlassCard(
@@ -632,8 +667,9 @@ private fun SessionItem(
         cornerRadius = 18
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // 角色立绘图片（竖向圆角矩形）
-            val portraitUrl = resolveAvatarUrl(session.portraitUrl)
+            // 角色立绘图片（竖向圆角矩形）：优先 session 自带立绘，回退到角色列表
+            val rawPortrait = session.portraitUrl ?: fallbackPortraitUrl
+            val portraitUrl = resolveAvatarUrl(rawPortrait)
             Box(
                 modifier = Modifier
                     .size(width = 54.dp, height = 70.dp)
@@ -645,6 +681,7 @@ private fun SessionItem(
                     AsyncImage(
                         model = portraitUrl,
                         contentDescription = session.characterName ?: "角色立绘",
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
@@ -724,6 +761,13 @@ private fun SessionItem(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false }
                 ) {
+                    DropdownMenuItem(
+                        text = { Text("会话详情") },
+                        onClick = {
+                            menuExpanded = false
+                            onOpenDetail()
+                        }
+                    )
                     DropdownMenuItem(
                         text = { Text("重命名") },
                         onClick = {
