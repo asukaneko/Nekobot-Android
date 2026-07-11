@@ -24,7 +24,9 @@ import java.util.UUID
 class AutoMemory(
     private val memoryDao: MemoryDao,
     private val aiClient: LocalAiClient,
-    private val aiModelProvider: (suspend () -> LocalAiModelEntity?)? = null
+    private val aiModelProvider: (suspend () -> LocalAiModelEntity?)? = null,
+    /** 二级 LLM 调用 token 记账回调：(source, model, inputTokens, outputTokens) */
+    private val onTokenUsage: ((String, String, Int, Int) -> Unit)? = null
 ) {
     companion object {
         private const val TAG = "AutoMemory"
@@ -56,10 +58,6 @@ class AutoMemory(
         if (ctx.metadata["is_heartbeat"] == true) return 0
         if (ctx.metadata["skip_auto_memory"] == true) return 0
 
-        val userMessage = ctx.chatRequest.content
-        val assistantMessage = result.finalContent
-        if (userMessage.length < 2 || assistantMessage.length < 2) return 0
-
         // 构建记忆上下文
         val memoryContext = callbacks.getMemoryContext(ctx)
         val characterId = (memoryContext["character_id"] as? String) ?: ""
@@ -67,9 +65,40 @@ class AutoMemory(
         val targetId = (memoryContext["target_id"] as? String) ?: ctx.chatRequest.userId ?: ""
         val sessionId = (memoryContext["session_id"] as? String) ?: ctx.chatRequest.conversationId
 
-        if (characterId.isEmpty() || targetId.isEmpty()) return 0
+        return extractAndSave(
+            characterId = characterId,
+            characterName = characterName,
+            targetId = targetId,
+            sessionId = sessionId,
+            userMessage = ctx.chatRequest.content,
+            assistantMessage = result.finalContent
+        )
+    }
 
-        val counterKey = "$characterId:$targetId:$sessionId"
+    /**
+     * 记忆抽取核心逻辑（原始参数入口）。
+     *
+     * 供管线入口 [extractAndSaveTurnMemories] 与运行时 [LocalMemoryService] 共享，
+     * 统一缓冲累积 / 触发间隔 / 失败回滚 / 分类归一化行为。
+     *
+     * @return 本轮保存的记忆条数（未触发或无产出时为 0）
+     */
+    suspend fun extractAndSave(
+        characterId: String,
+        characterName: String,
+        targetId: String,
+        sessionId: String,
+        userMessage: String,
+        assistantMessage: String
+    ): Int {
+        if (userMessage.length < 2 || assistantMessage.length < 2) return 0
+        if (characterId.isEmpty() || targetId.isEmpty()) {
+            Log.w(TAG, "记忆抽取跳过：characterId 或 targetId 为空 (characterId=$characterId targetId=$targetId)")
+            return 0
+        }
+
+        // counterKey 采用与 AutoState 一致的 scope（characterId:sessionId:targetId）
+        val counterKey = "$characterId:$sessionId:$targetId"
         val count = (turnCounters[counterKey] ?: 0) + 1
         turnCounters[counterKey] = count
 
@@ -77,7 +106,12 @@ class AutoMemory(
         val buffer = turnBuffers.getOrPut(counterKey) { mutableListOf() }
         buffer.add(mapOf("user" to userMessage, "assistant" to assistantMessage))
 
-        if (count < MEMORY_TURN_INTERVAL) return 0
+        if (count < MEMORY_TURN_INTERVAL) {
+            Log.d(TAG, "记忆抽取累积中 $count/$MEMORY_TURN_INTERVAL (key=$counterKey)")
+            return 0
+        }
+
+        Log.d(TAG, "记忆抽取触发：$count 轮已达间隔 (key=$counterKey)")
 
         // 取出缓冲区
         val turns = buffer.toList()
@@ -86,7 +120,7 @@ class AutoMemory(
         val memories = try {
             callMemoryModel(turns, characterName, targetId)
         } catch (e: Exception) {
-            Log.w(TAG, "记忆抽取失败: ${e.message}")
+            Log.w(TAG, "记忆抽取失败: ${e.message}", e)
             // 失败回滚：放回缓冲区，计数器重置为间隔值（下一轮重试）
             turnBuffers[counterKey] = turns.toMutableList()
             turnCounters[counterKey] = MEMORY_TURN_INTERVAL
@@ -94,6 +128,7 @@ class AutoMemory(
         }
 
         if (memories.isEmpty()) {
+            Log.d(TAG, "记忆抽取无产出（LLM 未返回有效记忆）(key=$counterKey)")
             turnCounters[counterKey] = 0
             buffer.clear()
             return 0
@@ -126,6 +161,14 @@ class AutoMemory(
         )
 
         val result = aiClient.chatOnce(model, messages)
+        // 记账二级 LLM 调用 token（与主对话区分，source=memory）
+        if (result.usage.isNotEmpty()) {
+            onTokenUsage?.invoke(
+                "memory", model.model,
+                result.usage["prompt"] ?: 0,
+                result.usage["completion"] ?: 0
+            )
+        }
         if (result.error != null || result.content.isBlank()) return emptyList()
 
         return parseMemoryResponse(result.content)

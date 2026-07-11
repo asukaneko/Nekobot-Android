@@ -218,6 +218,18 @@ interface RelationshipDao {
 }
 
 @Dao
+interface StateSnapshotDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(snapshot: LocalStateSnapshotEntity)
+
+    @Query("SELECT * FROM local_state_snapshots WHERE session_id = :sessionId ORDER BY timestamp ASC")
+    suspend fun listBySession(sessionId: String): List<LocalStateSnapshotEntity>
+
+    @Query("DELETE FROM local_state_snapshots WHERE session_id = :sessionId")
+    suspend fun deleteBySession(sessionId: String)
+}
+
+@Dao
 interface MemoryDao {
     @Query("SELECT * FROM local_character_memories WHERE character_id = :characterId AND target_id = :targetId ORDER BY importance DESC, created_at DESC LIMIT :limit")
     suspend fun listByCharacterAndTarget(characterId: String, targetId: String, limit: Int = 20): List<LocalCharacterMemoryEntity>

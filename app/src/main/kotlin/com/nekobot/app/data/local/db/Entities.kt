@@ -232,3 +232,38 @@ data class LocalCharacterMemoryEntity(
     @ColumnInfo(name = "created_at") val createdAt: String,
     @ColumnInfo(name = "expires_at") val expiresAt: String? = null
 )
+
+/**
+ * 角色状态历史快照。每轮 after_turn 写入一条，记录情绪/精力/关系六维随时间的演变。
+ *
+ * 与 [LocalCharacterStateEntity]（单行覆盖当前状态）不同，本表按时间追加，
+ * 供「状态历程」界面呈现真实演变曲线。
+ *
+ * triggerType: state_machine（规则状态机）/ auto_state（LLM 评估）
+ * qualityScoresJson: 可空，AutoState 产出的质量评分（character_fidelity/immersion/world_consistency/risk）JSON。
+ */
+@Entity(
+    tableName = "local_state_snapshots",
+    indices = [
+        Index("session_id"),
+        Index(value = ["character_id", "target_id"])
+    ]
+)
+data class LocalStateSnapshotEntity(
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "session_id") val sessionId: String,
+    @ColumnInfo(name = "character_id") val characterId: String,
+    @ColumnInfo(name = "target_id") val targetId: String,
+    @ColumnInfo(name = "timestamp") val timestamp: String,
+    val mood: String,
+    @ColumnInfo(name = "mood_intensity") val moodIntensity: Float,
+    val energy: Int,
+    val affection: Int,
+    val trust: Int,
+    val familiarity: Int,
+    val dependency: Int,
+    val security: Int,
+    val jealousy: Int,
+    @ColumnInfo(name = "quality_scores_json") val qualityScoresJson: String? = null,
+    @ColumnInfo(name = "trigger_type") val triggerType: String
+)

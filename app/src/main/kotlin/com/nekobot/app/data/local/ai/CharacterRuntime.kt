@@ -1,5 +1,6 @@
 package com.nekobot.app.data.local.ai
 
+import android.util.Log
 import java.time.Instant
 
 /**
@@ -24,8 +25,13 @@ class CharacterRuntime(
     private val memoryService: MemoryService? = null,
     private val worldBookStore: WorldBookStore? = null,
     private val autoState: AutoState? = null,
-    private val memoryFS: MemoryFS? = null
+    private val memoryFS: MemoryFS? = null,
+    private val snapshotRepo: StateSnapshotRepository? = null
 ) {
+
+    companion object {
+        private const val TAG = "CharacterRuntime"
+    }
 
     /** 世界书存储接口 */
     interface WorldBookStore {
@@ -116,7 +122,7 @@ class CharacterRuntime(
                     promptStack.add("memory_fs", memoryContext, priority = PromptStack.Priority.CHARACTER_MEMORIES)
                 }
             } catch (e: Exception) {
-                // MemoryFS 失败不影响主流程
+                Log.w(TAG, "MemoryFS 提示词注入失败（不影响主流程）: ${e.message}")
             }
         }
 
@@ -173,12 +179,16 @@ class CharacterRuntime(
         // 保存状态
         stateRepo?.save(newState)
         relationshipRepo?.save(newRelationship)
+        Log.d(TAG, "afterTurn 状态已保存: mood=${newState.mood} energy=${newState.energy} " +
+            "affection=${newRelationship.affection} trust=${newRelationship.trust}")
 
         // 更新 turnContext 中的状态（供后续流程使用）
         turnContext.state = newState
         turnContext.relationship = newRelationship
 
         // AutoState：LLM 驱动的状态评估（每 2 轮一次）
+        var triggerType = "state_machine"
+        var qualityScores: Map<String, Float>? = null
         if (autoState != null) {
             try {
                 val (aiState, aiRel, updated) = autoState.updateStateFromRecentTurns(
@@ -195,9 +205,35 @@ class CharacterRuntime(
                     relationshipRepo?.save(aiRel)
                     turnContext.state = aiState
                     turnContext.relationship = aiRel
+                    triggerType = "auto_state"
+                    qualityScores = autoState.getQualityScores(
+                        characterId = turnContext.profile.id.ifEmpty { turnContext.profile.name },
+                        targetId = aiRel.targetId,
+                        conversationId = chatRequest.conversationId
+                    ).takeIf { it.isNotEmpty() }
+                    Log.d(TAG, "AutoState 已应用 LLM 评估: mood=${aiState.mood} " +
+                        "moodIntensity=${aiState.moodIntensity} energy=${aiState.energy}")
+                } else {
+                    Log.d(TAG, "AutoState 本轮未更新（未达触发间隔或无变化）")
                 }
             } catch (e: Exception) {
-                // AutoState 失败不影响主流程
+                Log.w(TAG, "AutoState 状态评估失败（不影响主流程）: ${e.message}", e)
+            }
+        }
+
+        // 写入状态历史快照（供「状态历程」界面呈现随时间演变）
+        if (snapshotRepo != null) {
+            try {
+                snapshotRepo.append(
+                    sessionId = turnContext.state.scopeId,
+                    state = turnContext.state,
+                    relationship = turnContext.relationship,
+                    qualityScores = qualityScores,
+                    triggerType = triggerType
+                )
+                Log.d(TAG, "状态快照已写入 (trigger=$triggerType, hasQuality=${qualityScores != null})")
+            } catch (e: Exception) {
+                Log.w(TAG, "状态快照写入失败（不影响主流程）: ${e.message}", e)
             }
         }
 
@@ -207,9 +243,48 @@ class CharacterRuntime(
                 val response = ChatResponse(finalContent = finalContent)
                 memoryService.extractIfNeeded(chatRequest, response, turnContext)
             } catch (e: Exception) {
-                // 记忆抽取失败不影响主流程
+                Log.w(TAG, "记忆抽取失败（不影响主流程）: ${e.message}", e)
             }
         }
+    }
+
+    /**
+     * 应用对话审查产出的关系增量并保存（对应原仓库 review pipeline 的关系回写）。
+     *
+     * 合并顺序为「先 StateMachine → 再 AutoState → 再 review 增量」，此方法为链路最后一环。
+     * 读取最新持久化的关系（避免覆盖 AutoState 结果），叠加增量后钳制在 0~100 并保存。
+     *
+     * @param characterId 角色 ID
+     * @param targetId 目标（用户）ID
+     * @param deltas 六维增量映射（affection/trust/familiarity/dependency/security/jealousy）
+     * @return 是否有实际变更并已保存
+     */
+    suspend fun applyRelationshipDelta(
+        characterId: String,
+        targetId: String,
+        deltas: Map<String, Int>
+    ): Boolean {
+        val repo = relationshipRepo ?: return false
+        if (deltas.values.all { it == 0 }) return false
+
+        val current = repo.get(characterId, targetId) ?: return false
+        fun clamp(base: Int, key: String) = (base + (deltas[key] ?: 0)).coerceIn(0, 100)
+
+        val updated = current.copy(
+            affection = clamp(current.affection, "affection"),
+            trust = clamp(current.trust, "trust"),
+            familiarity = clamp(current.familiarity, "familiarity"),
+            dependency = clamp(current.dependency, "dependency"),
+            security = clamp(current.security, "security"),
+            jealousy = clamp(current.jealousy, "jealousy"),
+            updatedAt = Instant.now().toString()
+        )
+        // 无实际变化则跳过保存
+        if (updated == current) return false
+
+        repo.save(updated)
+        Log.d(TAG, "审查关系增量已回写: $deltas → affection=${updated.affection} trust=${updated.trust}")
+        return true
     }
 
     // ==================== 内部方法 ====================

@@ -1,5 +1,6 @@
 package com.nekobot.app.data.local
 
+import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -67,17 +68,43 @@ class LocalRepository(
     @Volatile
     private var currentChatJob: Job? = null
 
+    /**
+     * 当前进行中会话 ID。二级 LLM 调用（AutoState/记忆抽取）在跨会话单例内触发，
+     * 缺少 per-turn sessionId，故在此暂存，供 token 记账归属到正确会话。
+     */
+    @Volatile
+    private var currentSessionId: String = ""
+
+    /** 二级 LLM 调用（state/memory）token 记账回调 */
+    private fun recordSecondaryTokenUsage(source: String, model: String, input: Int, output: Int) {
+        if (input == 0 && output == 0) return
+        appendTokenUsageRecord(
+            sessionId = currentSessionId,
+            model = model,
+            inputTokens = input,
+            outputTokens = output,
+            timestamp = nowIsoTimestamp(),
+            source = source
+        )
+    }
+
     // ==================== 角色运行时单例（跨会话保持 turnCounters 状态）====================
 
     /** AutoState 必须跨轮次保持 turnCounters，否则永远达不到触发阈值 */
     private val autoState by lazy {
-        com.nekobot.app.data.local.ai.AutoState(aiClient) { aiModelDao.getActive() }
+        com.nekobot.app.data.local.ai.AutoState(
+            aiClient,
+            { aiModelDao.getActive() },
+            onTokenUsage = ::recordSecondaryTokenUsage
+        )
     }
     /** LocalMemoryService 同理，turnCounters 需跨轮次保持 */
     private val memoryService by lazy {
         com.nekobot.app.data.local.ai.LocalMemoryService(
-            db.memoryDao(), aiClient
-        ) { aiModelDao.getActive() }
+            db.memoryDao(), aiClient,
+            { aiModelDao.getActive() },
+            onTokenUsage = ::recordSecondaryTokenUsage
+        )
     }
     /** CharacterRuntime 依赖上述单例 */
     private val characterRuntime by lazy {
@@ -86,8 +113,9 @@ class LocalRepository(
         val relRepo = com.nekobot.app.data.local.ai.LocalRelationshipRepository(db.relationshipDao())
         val worldBookStore = com.nekobot.app.data.local.ai.LocalWorldBookStore(characterDao, worldBookDao)
         val memFS = com.nekobot.app.data.local.ai.MemoryFS(db.memoryDao())
+        val snapshotRepo = com.nekobot.app.data.local.ai.LocalStateSnapshotRepository(db.stateSnapshotDao())
         com.nekobot.app.data.local.ai.CharacterRuntime(
-            profileRepo, stateRepo, relRepo, memoryService, worldBookStore, autoState, memFS
+            profileRepo, stateRepo, relRepo, memoryService, worldBookStore, autoState, memFS, snapshotRepo
         )
     }
 
@@ -258,10 +286,14 @@ class LocalRepository(
         appContext?.getSharedPreferences("token_usage", android.content.Context.MODE_PRIVATE)
     }
 
-    /** 追加一条 token 用量记录到 SharedPreferences JSON 数组 */
+    /**
+     * 追加一条 token 用量记录到 SharedPreferences JSON 数组。
+     * @param source 用量来源：chat（主对话）/ state（状态评估）/ memory（记忆抽取）/ plot（剧情）
+     */
     private fun appendTokenUsageRecord(
         sessionId: String, model: String,
-        inputTokens: Int, outputTokens: Int, timestamp: String
+        inputTokens: Int, outputTokens: Int, timestamp: String,
+        source: String = "chat"
     ) {
         val prefs = tokenUsagePrefs ?: return
         val existing = prefs.getString("records", "[]") ?: "[]"
@@ -274,6 +306,7 @@ class LocalRepository(
                 addProperty("output_tokens", outputTokens)
                 addProperty("total_tokens", inputTokens + outputTokens)
                 addProperty("timestamp", timestamp)
+                addProperty("source", source)
                 // 提取日期部分（yyyy-MM-dd）用于按日聚合
                 addProperty("date", timestamp.substringBefore("T").substringBefore(" ").ifBlank { timestamp })
             }
@@ -445,6 +478,9 @@ class LocalRepository(
         activeModel: LocalAiModelEntity
     ): Flow<RealtimeEvent> = flow {
         try {
+        // 标记当前会话，供二级 LLM 调用（AutoState/记忆）token 记账归属
+        currentSessionId = sessionId
+
         // 1. 保存用户消息
         addMessage(sessionId, "user", userMessage)
 
@@ -525,7 +561,7 @@ class LocalRepository(
                 val customPrompts = gson.fromJson<List<Map<String, Any>>>(customPromptsRaw, type) ?: emptyList()
                 ctx.metadata["custom_prompts"] = customPrompts
             } catch (e: Exception) {
-                // 忽略解析错误
+                Log.w(TAG, "解析会话自定义提示词失败: ${e.message}")
             }
         }
 
@@ -552,7 +588,9 @@ class LocalRepository(
             if (stackDebug != null) {
                 try {
                     sessionDao.updatePromptStackDebug(sessionId, gson.toJson(stackDebug))
-                } catch (_: Exception) { }
+                } catch (e: Exception) {
+                    Log.w(TAG, "保存 prompt_stack_debug 失败: ${e.message}")
+                }
             }
 
             // Phase 6: 剧情模式 → 生成选项
@@ -583,7 +621,7 @@ class LocalRepository(
                         emit(RealtimeEvent.PlotChoices(payload))
                     }
                 } catch (e: Exception) {
-                    // 剧情选项生成失败不影响主流程
+                    Log.w(TAG, "剧情选项生成失败（不影响主流程）: ${e.message}", e)
                 }
             }
         } catch (e: Exception) {
@@ -884,6 +922,8 @@ class LocalRepository(
                 addProperty("output_tokens", rec.get("output_tokens")?.asLong ?: 0)
                 addProperty("total_tokens", rec.get("total_tokens")?.asLong ?: 0)
                 addProperty("timestamp", rec.get("timestamp")?.asString ?: "")
+                // 用量来源：chat / state / memory / plot（旧记录无此字段时默认 chat）
+                addProperty("source", rec.get("source")?.asString ?: "chat")
             }
         }
 
@@ -1043,6 +1083,8 @@ class LocalRepository(
         SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
 
     companion object {
+        private const val TAG = "LocalRepository"
+
         /** 静态时间戳工具（供 LocalPipelineCallbacks 等外部类使用） */
         fun nowIsoStatic(): String =
             SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
@@ -1268,66 +1310,41 @@ class LocalRepository(
     /**
      * 构建本地模式的状态历程时间线。
      *
-     * 从消息历史中提取每轮对话的角色状态快照（从 assistant 消息的 metadata 中恢复）。
-     * 本地模式不存储完整状态时间线，因此从消息列表和角色状态表构建简化版。
+     * 从 local_state_snapshots 读取每轮 after_turn 写入的真实状态快照，
+     * 呈现情绪/精力/关系六维（含 jealousy）随时间的演变，以及本轮质量评分。
+     * 快照按时间正序存储，此处倒序返回（最新在前）供 UI 展示。
      */
     suspend fun listStateHistory(sessionId: String): List<Map<String, Any>> = withContext(Dispatchers.IO) {
-        val messages = messageDao.listBySession(sessionId)
-        val session = sessionDao.getById(sessionId) ?: return@withContext emptyList()
-        val characterId = session.characterId ?: return@withContext emptyList()
-
-        // 从消息历史构建时间线
-        val timeline = mutableListOf<Map<String, Any>>()
-
-        // 1. 当前角色状态（心情/精力等）
-        val currentState = db.characterStateDao().get(characterId, sessionId)
-        // 2. 当前关系状态（六维数据）
-        val currentRel = db.relationshipDao().get(characterId, "local-user")
-
-        if (currentState != null || currentRel != null) {
-            val stateMap = mutableMapOf<String, Any>()
-            if (currentState != null) {
-                try {
-                    val stateJson = JsonParser.parseString(currentState.dataJson).asJsonObject
-                    stateMap["mood"] = stateJson.get("mood")?.asString ?: ""
-                    stateMap["mood_intensity"] = stateJson.get("moodIntensity")?.asFloat ?: 0f
-                    stateMap["energy"] = stateJson.get("energy")?.asInt ?: 0
-                } catch (_: Exception) { }
-            }
-            if (currentRel != null) {
-                try {
-                    val relJson = JsonParser.parseString(currentRel.dataJson).asJsonObject
-                    // 六维关系数据，StateHistoryScreen 期望直接从 entry 读取
-                    stateMap["affection"] = relJson.get("affection")?.asInt ?: 0
-                    stateMap["trust"] = relJson.get("trust")?.asInt ?: 0
-                    stateMap["familiarity"] = relJson.get("familiarity")?.asInt ?: 0
-                    stateMap["dependency"] = relJson.get("dependency")?.asInt ?: 0
-                    stateMap["security"] = relJson.get("security")?.asInt ?: 0
-                } catch (_: Exception) { }
-            }
+        val snapshots = db.stateSnapshotDao().listBySession(sessionId)
+        snapshots.asReversed().map { snap ->
             val entry = mutableMapOf<String, Any>(
-                "timestamp" to (currentState?.updatedAt ?: currentRel?.updatedAt ?: ""),
+                "timestamp" to snap.timestamp,
                 "type" to "state_snapshot",
-                "source" to "local_runtime"
+                "source" to "local_runtime",
+                "trigger_type" to snap.triggerType,
+                "mood" to snap.mood,
+                "mood_intensity" to snap.moodIntensity,
+                "energy" to snap.energy,
+                // 关系六维（含 jealousy）
+                "affection" to snap.affection,
+                "trust" to snap.trust,
+                "familiarity" to snap.familiarity,
+                "dependency" to snap.dependency,
+                "security" to snap.security,
+                "jealousy" to snap.jealousy
             )
-            entry.putAll(stateMap)
-            timeline.add(entry)
+            // 质量评分（AutoState 产出，可空）
+            snap.qualityScoresJson?.let { json ->
+                try {
+                    val obj = JsonParser.parseString(json).asJsonObject
+                    for ((k, v) in obj.entrySet()) {
+                        if (v.isJsonPrimitive) entry["quality_$k"] = v.asFloat
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "解析质量评分 JSON 失败: ${e.message}")
+                }
+            }
+            entry
         }
-
-        // 3. 从消息历史构建对话里程碑（倒序，最新在前）
-        for (msg in messages.filter { it.role == "assistant" }.asReversed()) {
-            val state = mapOf(
-                "timestamp" to msg.createdAt,
-                "type" to "message",
-                "role" to "assistant",
-                "content_preview" to msg.content.take(100),
-                "model" to (msg.model ?: ""),
-                "input_tokens" to (msg.inputTokens ?: 0),
-                "output_tokens" to (msg.outputTokens ?: 0)
-            )
-            timeline.add(state)
-        }
-
-        timeline
     }
 }

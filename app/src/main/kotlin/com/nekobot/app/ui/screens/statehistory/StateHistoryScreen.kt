@@ -384,21 +384,43 @@ private fun StateTimelineSection(session: JsonObject) {
     }
 }
 
-/** 6 维状态数值小卡片 */
+/** 关系六维 + 能量数值小卡片 */
 @Composable
 private fun StateSummaryGrid(entry: JsonObject) {
-    val items = listOf(
+    // 关系六维（含 jealousy）
+    val relationItems = listOf(
         Triple("好感", "affection", MaterialTheme.colorScheme.primary),
         Triple("信任", "trust", MaterialTheme.colorScheme.secondary),
         Triple("熟悉", "familiarity", MaterialTheme.colorScheme.tertiary),
         Triple("依赖", "dependency", WarningAmber),
         Triple("安全感", "security", SuccessGreen),
-        Triple("能量", "energy", MaterialTheme.colorScheme.onSurfaceVariant)
+        Triple("嫉妒", "jealousy", MaterialTheme.colorScheme.error)
     )
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        items.forEach { (label, key, color) ->
+        relationItems.forEach { (label, key, color) ->
             val value = entry.get(key)?.let { if (it.isJsonPrimitive) it.asInt else null }
             StateMiniCard(label = label, value = value, color = color, modifier = Modifier.weight(1f))
+        }
+    }
+
+    // 质量评分（AutoState 产出，可空）：character_fidelity / immersion / world_consistency / risk
+    val qualityItems = listOf(
+        "还原度" to "quality_character_fidelity",
+        "沉浸感" to "quality_immersion",
+        "世界一致" to "quality_world_consistency",
+        "风险" to "quality_risk"
+    )
+    val hasQuality = qualityItems.any { (_, key) -> entry.get(key)?.isJsonPrimitive == true }
+    if (hasQuality) {
+        Spacer(Modifier.height(8.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            qualityItems.forEach { (label, key) ->
+                // 质量评分为 0~1 浮点，转成 0~100 百分制展示；风险用警示色
+                val raw = entry.get(key)?.let { if (it.isJsonPrimitive) it.asFloat else null }
+                val pct = raw?.let { (it * 100).toInt() }
+                val color = if (key == "quality_risk") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                StateMiniCard(label = label, value = pct, color = color, modifier = Modifier.weight(1f))
+            }
         }
     }
 }

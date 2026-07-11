@@ -324,8 +324,9 @@ class AIPipeline {
 
             // 角色运行时已在 beforeTurn 内部调用 buildCharacterInjections 注册了 PromptStack 注入项
             // 这里无需重复注册
+            android.util.Log.d(TAG, "CharacterRuntime before_turn 完成: 已编译角色提示词")
         } catch (e: Exception) {
-            android.util.Log.w(TAG, "CharacterRuntime before_turn 异常: ${e.message}")
+            android.util.Log.w(TAG, "CharacterRuntime before_turn 异常: ${e.message}", e)
         }
     }
 
@@ -673,7 +674,7 @@ class AIPipeline {
      * 使用 RuleReview 对本轮对话进行规则审查，产出评分/记忆/关系增量/剧情更新。
      * 审查结果存入 ctx.metadata 供后续流程使用，不影响主流程。
      */
-    private fun phaseReview(
+    private suspend fun phaseReview(
         ctx: PipelineContext,
         callbacks: PipelineCallbacks,
         result: PipelineResult
@@ -699,8 +700,30 @@ class AIPipeline {
                 "relationship_delta" to reviewOutput.relationshipDelta,
                 "skipped" to reviewOutput.skipped
             )
+
+            // 关系增量回写（对应原仓库 review pipeline 行为）。
+            // 合并顺序：StateMachine → AutoState → review 增量，此处为最后一环。
+            if (!reviewOutput.skipped) {
+                val d = reviewOutput.relationshipDelta
+                val runtime = callbacks.getCharacterRuntime(ctx)
+                if (runtime != null) {
+                    val applied = runtime.applyRelationshipDelta(
+                        characterId = identity.characterId,
+                        targetId = identity.targetId.ifEmpty { ctx.chatRequest.userId ?: "local-user" },
+                        deltas = mapOf(
+                            "affection" to d.affection,
+                            "trust" to d.trust,
+                            "familiarity" to d.familiarity,
+                            "dependency" to d.dependency,
+                            "security" to d.security,
+                            "jealousy" to d.jealousy
+                        )
+                    )
+                    if (applied) android.util.Log.d(TAG, "审查关系增量已回写")
+                }
+            }
         } catch (e: Exception) {
-            android.util.Log.w(TAG, "ReviewPipeline 审查异常: ${e.message}")
+            android.util.Log.w(TAG, "ReviewPipeline 审查异常: ${e.message}", e)
         }
     }
 
@@ -720,7 +743,7 @@ class AIPipeline {
         try {
             runtime.afterTurn(ctx.chatRequest, result.finalContent, turn)
         } catch (e: Exception) {
-            android.util.Log.w(TAG, "CharacterRuntime after_turn 异常: ${e.message}")
+            android.util.Log.w(TAG, "CharacterRuntime after_turn 异常: ${e.message}", e)
         }
     }
 

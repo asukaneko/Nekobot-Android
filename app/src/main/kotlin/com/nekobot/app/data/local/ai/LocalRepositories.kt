@@ -8,9 +8,11 @@ import com.nekobot.app.data.local.db.LocalCharacterEntity
 import com.nekobot.app.data.local.db.LocalCharacterMemoryEntity
 import com.nekobot.app.data.local.db.LocalCharacterStateEntity
 import com.nekobot.app.data.local.db.LocalRelationshipStateEntity
+import com.nekobot.app.data.local.db.LocalStateSnapshotEntity
 import com.nekobot.app.data.local.db.LocalWorldBookEntryEntity
 import com.nekobot.app.data.local.db.MemoryDao
 import com.nekobot.app.data.local.db.RelationshipDao
+import com.nekobot.app.data.local.db.StateSnapshotDao
 import com.nekobot.app.data.local.db.CharacterDao
 import java.time.Instant
 import java.util.UUID
@@ -151,6 +153,47 @@ class LocalRelationshipRepository(
 }
 
 // ============================================================================
+// StateSnapshotRepository 实现
+// ============================================================================
+
+/**
+ * 本地状态历史快照仓库。
+ * 每轮 after_turn 追加一条，供「状态历程」界面呈现随时间的演变。
+ */
+class LocalStateSnapshotRepository(
+    private val snapshotDao: StateSnapshotDao
+) : StateSnapshotRepository {
+
+    override suspend fun append(
+        sessionId: String,
+        state: CharacterState,
+        relationship: RelationshipState,
+        qualityScores: Map<String, Float>?,
+        triggerType: String
+    ) {
+        val entity = LocalStateSnapshotEntity(
+            id = UUID.randomUUID().toString(),
+            sessionId = sessionId,
+            characterId = state.characterId,
+            targetId = relationship.targetId,
+            timestamp = Instant.now().toString(),
+            mood = state.mood,
+            moodIntensity = state.moodIntensity,
+            energy = state.energy,
+            affection = relationship.affection,
+            trust = relationship.trust,
+            familiarity = relationship.familiarity,
+            dependency = relationship.dependency,
+            security = relationship.security,
+            jealousy = relationship.jealousy,
+            qualityScoresJson = qualityScores?.takeIf { it.isNotEmpty() }?.let { repoGson.toJson(it) },
+            triggerType = triggerType
+        )
+        snapshotDao.insert(entity)
+    }
+}
+
+// ============================================================================
 // MemoryService 实现
 // ============================================================================
 
@@ -167,19 +210,22 @@ class LocalRelationshipRepository(
 class LocalMemoryService(
     private val memoryDao: MemoryDao,
     private val aiClient: LocalAiClient? = null,
-    private val aiModelProvider: (suspend () -> com.nekobot.app.data.local.db.LocalAiModelEntity?)? = null
+    private val aiModelProvider: (suspend () -> com.nekobot.app.data.local.db.LocalAiModelEntity?)? = null,
+    /** 二级 LLM 调用 token 记账回调：(source, model, inputTokens, outputTokens) */
+    private val onTokenUsage: ((String, String, Int, Int) -> Unit)? = null
 ) : MemoryService {
 
     companion object {
         private const val TAG = "LocalMemoryService"
-        /** 记忆抽取频率：每 N 轮对话抽取一次 */
-        private const val EXTRACT_INTERVAL = 6
     }
 
-    /** 每个角色的对话轮次计数器（内存中，重启后重置） */
-    private val turnCounters = mutableMapOf<String, Int>()
-    /** 每个角色的对话缓冲区 */
-    private val turnBuffers = mutableMapOf<String, MutableList<Map<String, String>>>()
+    /**
+     * 完整版记忆抽取引擎（复用其缓冲累积 / 失败回滚 / 分类归一化 / token 记账）。
+     * 仅当 aiClient 存在时可用；search 路径不依赖它。
+     */
+    private val autoMemory: AutoMemory? by lazy {
+        aiClient?.let { AutoMemory(memoryDao, it, aiModelProvider, onTokenUsage) }
+    }
 
     override suspend fun search(identity: CharacterIdentity, content: String, limit: Int): List<CharacterMemory> {
         if (content.isBlank()) {
@@ -195,104 +241,20 @@ class LocalMemoryService(
         response: ChatResponse,
         turnContext: CharacterTurnContext
     ) {
-        val key = "${turnContext.profile.id}:${chatRequest.userId ?: "default"}"
-        val count = (turnCounters[key] ?: 0) + 1
-        turnCounters[key] = count
-
-        // 累积对话缓冲
-        val buffer = turnBuffers.getOrPut(key) { mutableListOf() }
-        buffer.add(mapOf(
-            "user" to chatRequest.content,
-            "assistant" to response.finalContent
-        ))
-
-        // 每 EXTRACT_INTERVAL 轮抽取一次
-        if (count < EXTRACT_INTERVAL) return
-        if (buffer.isEmpty()) return
-
-        try {
-            val memories = extractMemoriesWithAI(
-                characterId = turnContext.profile.id,
-                targetId = chatRequest.userId ?: "default",
-                characterName = turnContext.profile.name,
-                dialogues = buffer.toList()
-            )
-            if (memories.isNotEmpty()) {
-                val entities = memories.map { memoryToEntity(it) }
-                memoryDao.upsertAll(entities)
-                Log.d(TAG, "抽取并保存 ${memories.size} 条记忆 (key=$key)")
-            }
-            // 清空缓冲区
-            buffer.clear()
-            turnCounters[key] = 0
-        } catch (e: Exception) {
-            Log.w(TAG, "记忆抽取失败: ${e.message}")
+        val engine = autoMemory ?: run {
+            Log.w(TAG, "记忆抽取跳过：AI 客户端未配置")
+            return
         }
-    }
-
-    /** 使用 AI 模型从对话中抽取记忆 */
-    private suspend fun extractMemoriesWithAI(
-        characterId: String,
-        targetId: String,
-        characterName: String,
-        dialogues: List<Map<String, String>>
-    ): List<CharacterMemory> {
-        val client = aiClient ?: return emptyList()
-        val model = aiModelProvider?.invoke() ?: return emptyList()
-
-        val dialogText = dialogues.joinToString("\n") { d ->
-            "用户: ${d["user"] ?: ""}\n$characterName: ${d["assistant"] ?: ""}"
-        }
-
-        val prompt = """请从以下对话中提取值得长期记忆的信息，返回 JSON 数组。
-每条记忆格式：{"category":"user_persona|character_persona|important_event|recent_digest","title":"简短标题","summary":"一句话摘要","content":"详细内容","importance":1-10}
-
-只提取有长期价值的信息，忽略寒暄和闲聊。最多提取 5 条。
-
-对话内容：
-$dialogText
-
-只返回 JSON 数组，不要其他文字。"""
-
-        val messages = listOf(
-            mapOf("role" to "system", "content" to "你是一个记忆抽取助手，只返回JSON数组。"),
-            mapOf("role" to "user", "content" to prompt)
+        // 委托给完整版 AutoMemory，统一触发/缓冲/归一化行为。
+        // scope 与 AutoState 一致：characterId:sessionId:targetId。
+        engine.extractAndSave(
+            characterId = turnContext.profile.id,
+            characterName = turnContext.profile.name,
+            targetId = chatRequest.userId ?: "default",
+            sessionId = chatRequest.conversationId,
+            userMessage = chatRequest.content,
+            assistantMessage = response.finalContent
         )
-
-        val result = client.chatOnce(model, messages)
-        if (result.error != null || result.content.isBlank()) return emptyList()
-
-        return parseMemoryResponse(result.content, characterId, targetId)
-    }
-
-    /** 解析 AI 返回的记忆 JSON */
-    private fun parseMemoryResponse(text: String, characterId: String, targetId: String): List<CharacterMemory> {
-        val cleaned = cleanResponseContent(text)
-        if (cleaned.isEmpty() || !cleaned.startsWith("[")) return emptyList()
-        return try {
-            val type = object : TypeToken<List<Map<String, Any>>>() {}.type
-            @Suppress("UNCHECKED_CAST")
-            val list = repoGson.fromJson<List<Map<String, Any>>>(cleaned, type) ?: return emptyList()
-            list.mapNotNull { item ->
-                val category = (item["category"] as? String) ?: "recent_digest"
-                val title = (item["title"] as? String) ?: return@mapNotNull null
-                val summary = (item["summary"] as? String) ?: ""
-                val content = (item["content"] as? String) ?: ""
-                val importance = (item["importance"] as? Number)?.toInt() ?: 5
-                CharacterMemory(
-                    id = UUID.randomUUID().toString(),
-                    characterId = characterId,
-                    targetId = targetId,
-                    type = "long",
-                    title = title,
-                    summary = summary,
-                    content = content,
-                    importance = importance.coerceIn(1, 10)
-                )
-            }
-        } catch (e: Exception) {
-            emptyList()
-        }
     }
 
     /** Entity → CharacterMemory */
@@ -323,23 +285,6 @@ $dialogText
         )
     }
 
-    /** CharacterMemory → Entity */
-    private fun memoryToEntity(memory: CharacterMemory): LocalCharacterMemoryEntity {
-        return LocalCharacterMemoryEntity(
-            id = memory.id.ifEmpty { UUID.randomUUID().toString() },
-            characterId = memory.characterId,
-            targetId = memory.targetId,
-            type = memory.type,
-            title = memory.title,
-            summary = memory.summary,
-            content = memory.content,
-            importance = memory.importance,
-            emotionImpact = if (memory.emotionImpact.isNotEmpty()) repoGson.toJson(memory.emotionImpact) else null,
-            sourceTurnId = memory.sourceTurnId,
-            createdAt = memory.createdAt.ifEmpty { Instant.now().toString() },
-            expiresAt = memory.expiresAt
-        )
-    }
 }
 
 // ============================================================================

@@ -22,9 +22,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalAiModelEntity::class,
         LocalCharacterStateEntity::class,
         LocalRelationshipStateEntity::class,
-        LocalCharacterMemoryEntity::class
+        LocalCharacterMemoryEntity::class,
+        LocalStateSnapshotEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -36,6 +37,7 @@ abstract class NekobotDatabase : RoomDatabase() {
     abstract fun characterStateDao(): CharacterStateDao
     abstract fun relationshipDao(): RelationshipDao
     abstract fun memoryDao(): MemoryDao
+    abstract fun stateSnapshotDao(): StateSnapshotDao
 
     companion object {
         @Volatile
@@ -75,6 +77,41 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v4 → v5：新增 local_state_snapshots 表（角色状态历史快照）。
+         *
+         * 追加式历史表，供「状态历程」界面呈现情绪/精力/关系六维随时间的演变，
+         * 与单行覆盖的 local_character_states 互补。使用 CREATE TABLE 保留现有数据。
+         */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_state_snapshots (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        session_id TEXT NOT NULL,
+                        character_id TEXT NOT NULL,
+                        target_id TEXT NOT NULL,
+                        timestamp TEXT NOT NULL,
+                        mood TEXT NOT NULL,
+                        mood_intensity REAL NOT NULL,
+                        energy INTEGER NOT NULL,
+                        affection INTEGER NOT NULL,
+                        trust INTEGER NOT NULL,
+                        familiarity INTEGER NOT NULL,
+                        dependency INTEGER NOT NULL,
+                        security INTEGER NOT NULL,
+                        jealousy INTEGER NOT NULL,
+                        quality_scores_json TEXT,
+                        trigger_type TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_local_state_snapshots_session_id ON local_state_snapshots (session_id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_local_state_snapshots_character_id_target_id ON local_state_snapshots (character_id, target_id)")
+            }
+        }
+
         fun get(context: Context): NekobotDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -82,7 +119,7 @@ abstract class NekobotDatabase : RoomDatabase() {
                     NekobotDatabase::class.java,
                     "nekobot_local.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     // 仅当迁移脚本未覆盖的未来版本变更时才回退到破坏性迁移（保护现有数据）
                     .fallbackToDestructiveMigration()
                     .build()
