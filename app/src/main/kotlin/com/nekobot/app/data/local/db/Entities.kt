@@ -162,3 +162,66 @@ data class LocalAiModelEntity(
     @ColumnInfo(name = "supports_stream") val supportsStream: Boolean = true,
     @ColumnInfo(name = "created_at") val createdAt: String
 )
+
+// ==================== 角色运行时存储 (Stage 4) ====================
+
+/**
+ * 角色运行时状态。每个 (character_id, scope_id) 独立。
+ * data_json 存储 [com.nekobot.app.data.local.ai.CharacterState] 的完整 JSON。
+ */
+@Entity(
+    tableName = "local_character_states",
+    indices = [Index(value = ["character_id", "scope_id"], unique = true)]
+)
+data class LocalCharacterStateEntity(
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "character_id") val characterId: String,
+    @ColumnInfo(name = "scope_id") val scopeId: String,
+    @ColumnInfo(name = "data_json") val dataJson: String,
+    @ColumnInfo(name = "updated_at") val updatedAt: String
+)
+
+/**
+ * 关系状态。每个 (character_id, target_id) 独立。
+ * data_json 存储 [com.nekobot.app.data.local.ai.RelationshipState] 的完整 JSON。
+ */
+@Entity(
+    tableName = "local_relationship_states",
+    indices = [Index(value = ["character_id", "target_id"], unique = true)]
+)
+data class LocalRelationshipStateEntity(
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "character_id") val characterId: String,
+    @ColumnInfo(name = "target_id") val targetId: String,
+    @ColumnInfo(name = "data_json") val dataJson: String,
+    @ColumnInfo(name = "updated_at") val updatedAt: String
+)
+
+/**
+ * 角色记忆条目。
+ * type: long / short / flash
+ * category: user_persona / character_persona / important_event / recent_digest
+ */
+@Entity(
+    tableName = "local_character_memories",
+    indices = [
+        Index("character_id"),
+        Index("target_id"),
+        Index(value = ["character_id", "target_id"])
+    ]
+)
+data class LocalCharacterMemoryEntity(
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "character_id") val characterId: String,
+    @ColumnInfo(name = "target_id") val targetId: String,
+    val type: String,
+    val category: String = "",
+    val title: String,
+    val summary: String,
+    val content: String,
+    val importance: Int,
+    @ColumnInfo(name = "emotion_impact") val emotionImpact: String? = null,   // JSON
+    @ColumnInfo(name = "source_turn_id") val sourceTurnId: String? = null,
+    @ColumnInfo(name = "created_at") val createdAt: String,
+    @ColumnInfo(name = "expires_at") val expiresAt: String? = null
+)

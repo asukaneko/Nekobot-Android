@@ -26,9 +26,11 @@ import com.nekobot.app.data.model.WorldBookEntry
 import com.nekobot.app.data.remote.RealtimeEvent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -312,6 +314,119 @@ class LocalRepository(
         currentChatJob?.cancel()
         currentChatJob = null
     }
+
+    // ==================== Pipeline 驱动的聊天（角色运行时） ====================
+
+    /**
+     * 使用 AIPipeline + 角色运行时的流式聊天。
+     *
+     * 与 [chat] 相比，此方法：
+     * - 经过 7 阶段 Pipeline（附件→知识库→上下文→AI响应→结果组装）
+     * - 启用角色运行时（SignalAnalyzer → ReactionPlanner → StateMachine）
+     * - 注入 PromptStack 动态提示词（状态/关系/记忆/世界书）
+     * - 自动记忆抽取（每 6 轮）
+     *
+     * 若会话未绑定角色，会回退到普通 [chat] 流程。
+     *
+     * @param sessionId 会话 ID
+     * @param userMessage 用户消息
+     * @param activeModel 激活的 AI 模型
+     * @return RealtimeEvent 流
+     */
+    fun chatWithPipeline(
+        sessionId: String,
+        userMessage: String,
+        activeModel: LocalAiModelEntity
+    ): Flow<RealtimeEvent> = flow {
+        // 1. 保存用户消息
+        addMessage(sessionId, "user", userMessage)
+
+        val session = sessionDao.getById(sessionId) ?: run {
+            emit(RealtimeEvent.Error("会话不存在"))
+            emit(RealtimeEvent.StreamEnd(sessionId))
+            return@flow
+        }
+
+        val character = session.characterId?.let { characterDao.getById(it) }
+
+        // 无角色绑定 → 回退到旧流程
+        if (character == null) {
+            // 回退时需删除刚保存的用户消息（chat 会重新保存）
+            messageDao.listBySession(sessionId).lastOrNull { it.role == "user" }?.let {
+                messageDao.deleteById(it.id)
+            }
+            chat(sessionId, userMessage, activeModel).collect { emit(it) }
+            return@flow
+        }
+
+        // 2. 加载世界书条目
+        val worldBookEntries = loadWorldBookEntries(session.characterId)
+
+        // 3. 构建角色运行时
+        val profileRepo = com.nekobot.app.data.local.ai.LocalProfileRepository(characterDao)
+        val stateRepo = com.nekobot.app.data.local.ai.LocalCharacterStateRepository(db.characterStateDao())
+        val relRepo = com.nekobot.app.data.local.ai.LocalRelationshipRepository(db.relationshipDao())
+        val memoryService = com.nekobot.app.data.local.ai.LocalMemoryService(
+            db.memoryDao(), aiClient
+        ) { aiModelDao.getActive() }
+        val worldBookStore = com.nekobot.app.data.local.ai.LocalWorldBookStore(characterDao, worldBookDao)
+
+        val runtime = com.nekobot.app.data.local.ai.CharacterRuntime(
+            profileRepo, stateRepo, relRepo, memoryService, worldBookStore
+        )
+
+        val identity = com.nekobot.app.data.local.ai.CharacterIdentity(
+            characterId = character.id,
+            targetId = "local-user",
+            scopeId = sessionId,
+            channel = "local"
+        )
+
+        // 4. 构建回调
+        val callbacks = com.nekobot.app.data.local.ai.LocalPipelineCallbacks(
+            db, aiClient, activeModel, session, character, worldBookEntries, runtime, identity
+        )
+
+        // 5. 构建上下文
+        val chatRequest = com.nekobot.app.data.local.ai.ChatRequest.forLocal(
+            sessionId = sessionId,
+            content = userMessage,
+            userId = "local-user"
+        )
+        val ctx = com.nekobot.app.data.local.ai.PipelineContext(chatRequest)
+
+        // 注入会话自定义提示词
+        val customPromptsRaw = session.customPrompts
+        if (!customPromptsRaw.isNullOrBlank()) {
+            try {
+                val type = object : com.google.gson.reflect.TypeToken<List<Map<String, Any>>>() {}.type
+                @Suppress("UNCHECKED_CAST")
+                val customPrompts = gson.fromJson<List<Map<String, Any>>>(customPromptsRaw, type) ?: emptyList()
+                ctx.metadata["custom_prompts"] = customPrompts
+            } catch (e: Exception) {
+                // 忽略解析错误
+            }
+        }
+
+        // 6. 执行 Pipeline + 转发流式事件
+        try {
+            coroutineScope {
+                // 启动事件转发协程
+                val eventsJob = launch {
+                    callbacks.events.collect { emit(it) }
+                }
+                // 执行 Pipeline
+                try {
+                    com.nekobot.app.data.local.ai.aiPipeline.process(ctx, callbacks)
+                } finally {
+                    eventsJob.cancel()
+                }
+            }
+        } catch (e: Exception) {
+            emit(RealtimeEvent.Error(e.message ?: "Pipeline 执行失败"))
+            emit(RealtimeEvent.StreamEnd(sessionId))
+        }
+    }.flowOn(Dispatchers.IO)
 
     // ==================== 会话 Fork ====================
 
@@ -684,6 +799,12 @@ class LocalRepository(
 
     fun nowIso(): String =
         SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+
+    companion object {
+        /** 静态时间戳工具（供 LocalPipelineCallbacks 等外部类使用） */
+        fun nowIsoStatic(): String =
+            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+    }
 
     fun nowIsoTimestamp(): String =
         SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.getDefault()).format(Date())

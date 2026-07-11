@@ -176,3 +176,56 @@ interface AiModelDao {
     @Query("DELETE FROM local_ai_models WHERE id = :id")
     suspend fun deleteById(id: String)
 }
+
+// ==================== 角色运行时 DAOs (Stage 4) ====================
+
+@Dao
+interface CharacterStateDao {
+    @Query("SELECT * FROM local_character_states WHERE character_id = :characterId AND scope_id = :scopeId LIMIT 1")
+    suspend fun get(characterId: String, scopeId: String): LocalCharacterStateEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(state: LocalCharacterStateEntity)
+
+    @Query("DELETE FROM local_character_states WHERE character_id = :characterId AND scope_id = :scopeId")
+    suspend fun delete(characterId: String, scopeId: String)
+}
+
+@Dao
+interface RelationshipDao {
+    @Query("SELECT * FROM local_relationship_states WHERE character_id = :characterId AND target_id = :targetId LIMIT 1")
+    suspend fun get(characterId: String, targetId: String): LocalRelationshipStateEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(relationship: LocalRelationshipStateEntity)
+
+    @Query("DELETE FROM local_relationship_states WHERE character_id = :characterId AND target_id = :targetId")
+    suspend fun delete(characterId: String, targetId: String)
+}
+
+@Dao
+interface MemoryDao {
+    @Query("SELECT * FROM local_character_memories WHERE character_id = :characterId AND target_id = :targetId ORDER BY importance DESC, created_at DESC LIMIT :limit")
+    suspend fun listByCharacterAndTarget(characterId: String, targetId: String, limit: Int = 20): List<LocalCharacterMemoryEntity>
+
+    @Query("SELECT * FROM local_character_memories WHERE character_id = :characterId AND target_id = :targetId AND (title LIKE '%' || :query || '%' OR summary LIKE '%' || :query || '%' OR content LIKE '%' || :query || '%') ORDER BY importance DESC, created_at DESC LIMIT :limit")
+    suspend fun search(characterId: String, targetId: String, query: String, limit: Int = 8): List<LocalCharacterMemoryEntity>
+
+    @Query("SELECT * FROM local_character_memories WHERE character_id = :characterId AND target_id = :targetId AND category = :category ORDER BY created_at DESC LIMIT :limit")
+    suspend fun listByCategory(characterId: String, targetId: String, category: String, limit: Int = 10): List<LocalCharacterMemoryEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(memory: LocalCharacterMemoryEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(memories: List<LocalCharacterMemoryEntity>)
+
+    @Query("DELETE FROM local_character_memories WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM local_character_memories WHERE character_id = :characterId AND target_id = :targetId")
+    suspend fun deleteByCharacterAndTarget(characterId: String, targetId: String)
+
+    @Query("SELECT COUNT(*) FROM local_character_memories WHERE character_id = :characterId AND target_id = :targetId")
+    suspend fun count(characterId: String, targetId: String): Int
+}

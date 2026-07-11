@@ -17,9 +17,12 @@ import androidx.room.RoomDatabase
         LocalCharacterEntity::class,
         LocalWorldBookEntity::class,
         LocalWorldBookEntryEntity::class,
-        LocalAiModelEntity::class
+        LocalAiModelEntity::class,
+        LocalCharacterStateEntity::class,
+        LocalRelationshipStateEntity::class,
+        LocalCharacterMemoryEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -28,6 +31,9 @@ abstract class NekobotDatabase : RoomDatabase() {
     abstract fun characterDao(): CharacterDao
     abstract fun worldBookDao(): WorldBookDao
     abstract fun aiModelDao(): AiModelDao
+    abstract fun characterStateDao(): CharacterStateDao
+    abstract fun relationshipDao(): RelationshipDao
+    abstract fun memoryDao(): MemoryDao
 
     companion object {
         @Volatile

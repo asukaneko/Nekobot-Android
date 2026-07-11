@@ -96,6 +96,18 @@ class UnifiedRepository(
         if (!isLocal) return null
         val model = kotlinx.coroutines.runBlocking { local.getActiveModel() }
             ?: return null
+        // 启用角色运行时的会话走 Pipeline，否则走旧流程
+        return local.chatWithPipeline(id, message, model)
+    }
+
+    /**
+     * 本地模式：直接走旧流程（不启用角色运行时）；
+     * 服务器模式：返回 null（调用方走 Socket）。
+     */
+    fun chatStreamLegacy(id: String, message: String): Flow<RealtimeEvent>? {
+        if (!isLocal) return null
+        val model = kotlinx.coroutines.runBlocking { local.getActiveModel() }
+            ?: return null
         return local.chat(id, message, model)
     }
 
