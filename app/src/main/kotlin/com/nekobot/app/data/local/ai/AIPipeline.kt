@@ -648,7 +648,7 @@ class AIPipeline {
         return result
     }
 
-    /** 后处理：角色运行时 after_turn → on_response_complete */
+    /** 后处理：角色运行时 after_turn → 对话审查 → on_response_complete */
     private suspend fun postProcessResult(
         ctx: PipelineContext,
         callbacks: PipelineCallbacks,
@@ -657,8 +657,48 @@ class AIPipeline {
         // 角色运行时 after_turn
         phaseCharacterRuntimeAfterTurn(ctx, callbacks, result)
 
+        // 对话后审查（ReviewPipeline）
+        phaseReview(ctx, callbacks, result)
+
         // on_response_complete
         callbacks.onResponseComplete(ctx, result)
+    }
+
+    /**
+     * Phase 5b: 对话后审查。
+     *
+     * 使用 RuleReview 对本轮对话进行规则审查，产出评分/记忆/关系增量/剧情更新。
+     * 审查结果存入 ctx.metadata 供后续流程使用，不影响主流程。
+     */
+    private fun phaseReview(
+        ctx: PipelineContext,
+        callbacks: PipelineCallbacks,
+        result: PipelineResult
+    ) {
+        val identity = callbacks.getCharacterContext(ctx) ?: return
+        val turn = ctx.characterTurn ?: return
+
+        try {
+            val reviewInput = ReviewInput(
+                conversationId = ctx.chatRequest.conversationId,
+                characterId = identity.characterId,
+                userId = ctx.chatRequest.userId ?: "",
+                userMessage = ctx.chatRequest.content,
+                assistantMessage = result.finalContent,
+                relationshipState = turn.relationship,
+                characterState = turn.state,
+                plotMode = (ctx.metadata["plot_mode"] as? Boolean) ?: false
+            )
+            val reviewOutput = getGlobalReviewPipeline().run(reviewInput)
+            ctx.metadata["review_output"] = mapOf(
+                "scores" to reviewOutput.scores,
+                "memory_items" to reviewOutput.memoryItems,
+                "relationship_delta" to reviewOutput.relationshipDelta,
+                "skipped" to reviewOutput.skipped
+            )
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "ReviewPipeline 审查异常: ${e.message}")
+        }
     }
 
     // ------------------------------------------------------------------

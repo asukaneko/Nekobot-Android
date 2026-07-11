@@ -22,7 +22,8 @@ class CharacterRuntime(
     private val stateRepo: CharacterStateRepository? = null,
     private val relationshipRepo: RelationshipRepository? = null,
     private val memoryService: MemoryService? = null,
-    private val worldBookStore: WorldBookStore? = null
+    private val worldBookStore: WorldBookStore? = null,
+    private val autoState: AutoState? = null
 ) {
 
     /** 世界书存储接口 */
@@ -153,6 +154,28 @@ class CharacterRuntime(
         // 更新 turnContext 中的状态（供后续流程使用）
         turnContext.state = newState
         turnContext.relationship = newRelationship
+
+        // AutoState：LLM 驱动的状态评估（每 2 轮一次）
+        if (autoState != null) {
+            try {
+                val (aiState, aiRel, updated) = autoState.updateStateFromRecentTurns(
+                    profile = turnContext.profile,
+                    state = newState,
+                    relationship = newRelationship,
+                    userMessage = chatRequest.content,
+                    assistantMessage = finalContent,
+                    conversationId = chatRequest.conversationId
+                )
+                if (updated) {
+                    stateRepo?.save(aiState)
+                    relationshipRepo?.save(aiRel)
+                    turnContext.state = aiState
+                    turnContext.relationship = aiRel
+                }
+            } catch (e: Exception) {
+                // AutoState 失败不影响主流程
+            }
+        }
 
         // 记忆抽取
         if (memoryService != null) {

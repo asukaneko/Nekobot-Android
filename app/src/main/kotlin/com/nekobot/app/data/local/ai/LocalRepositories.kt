@@ -8,6 +8,7 @@ import com.nekobot.app.data.local.db.LocalCharacterEntity
 import com.nekobot.app.data.local.db.LocalCharacterMemoryEntity
 import com.nekobot.app.data.local.db.LocalCharacterStateEntity
 import com.nekobot.app.data.local.db.LocalRelationshipStateEntity
+import com.nekobot.app.data.local.db.LocalWorldBookEntryEntity
 import com.nekobot.app.data.local.db.MemoryDao
 import com.nekobot.app.data.local.db.RelationshipDao
 import com.nekobot.app.data.local.db.CharacterDao
@@ -360,50 +361,42 @@ class LocalWorldBookStore(
         state: CharacterState?,
         recentMessages: List<String>
     ): List<CharacterRuntime.WorldBookMatch> {
-        val entries = worldBookDao.listActiveEntriesForCharacter(characterId)
-        if (entries.isEmpty()) return emptyList()
+        val books = worldBookDao.listByCharacter(characterId).filter { it.enabled }
+        if (books.isEmpty()) return emptyList()
 
-        val results = mutableListOf<CharacterRuntime.WorldBookMatch>()
-        val combinedText = (userMessage + " " + recentMessages.joinToString(" ")).lowercase()
-
-        for (entry in entries) {
-            if (!entry.enabled) continue
-            val keysJson = entry.keys ?: continue
-            if (keysJson.isBlank()) continue
-
-            val keys = try {
-                val type = object : TypeToken<List<String>>() {}.type
-                repoGson.fromJson<List<String>>(keysJson, type) ?: emptyList()
-            } catch (e: Exception) {
-                emptyList()
-            }
-
-            if (keys.isEmpty()) continue
-
-            // 常驻条目或关键词匹配
-            val matched = if (entry.constant) {
-                true
-            } else if (entry.selective) {
-                keys.any { key ->
-                    if (entry.caseSensitive) key in userMessage
-                    else key.lowercase() in combinedText
-                }
-            } else {
-                keys.any { key ->
-                    if (entry.caseSensitive) key in userMessage
-                    else key.lowercase() in combinedText
-                }
-            }
-
-            if (matched) {
-                results.add(CharacterRuntime.WorldBookMatch(
-                    content = entry.content ?: "",
-                    comment = entry.comment ?: "",
-                    priority = entry.priority
-                ))
-            }
+        // 加载每本书的条目
+        val entriesByBook = mutableMapOf<String, List<LocalWorldBookEntryEntity>>()
+        for (book in books) {
+            val entries = worldBookDao.listEntries(book.id).filter { it.enabled }
+            if (entries.isNotEmpty()) entriesByBook[book.id] = entries
         }
+        if (entriesByBook.isEmpty()) return emptyList()
 
-        return results.sortedBy { it.priority }
+        // 构建召回上下文
+        val recentMsgMaps = recentMessages.mapIndexed { idx, text ->
+            mapOf("role" to if (idx % 2 == 0) "user" else "assistant", "content" to text)
+        }
+        val context = WorldBookRecallContext(
+            latestUserMessage = userMessage,
+            recentMessages = recentMsgMaps,
+            scene = state?.scene ?: emptyMap(),
+            characterId = characterId
+        )
+
+        // 使用 V2 多源召回匹配器
+        val matchResults = WorldBookMatcher.matchEntriesV2(
+            context = context,
+            worldBooks = books,
+            entriesByBook = entriesByBook,
+            characterId = characterId
+        )
+
+        return matchResults.map { r ->
+            CharacterRuntime.WorldBookMatch(
+                content = r.entry.content ?: "",
+                comment = r.entry.comment ?: "",
+                priority = r.entry.priority
+            )
+        }
     }
 }

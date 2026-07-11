@@ -370,9 +370,10 @@ class LocalRepository(
             db.memoryDao(), aiClient
         ) { aiModelDao.getActive() }
         val worldBookStore = com.nekobot.app.data.local.ai.LocalWorldBookStore(characterDao, worldBookDao)
+        val autoState = com.nekobot.app.data.local.ai.AutoState(aiClient) { aiModelDao.getActive() }
 
         val runtime = com.nekobot.app.data.local.ai.CharacterRuntime(
-            profileRepo, stateRepo, relRepo, memoryService, worldBookStore
+            profileRepo, stateRepo, relRepo, memoryService, worldBookStore, autoState
         )
 
         val identity = com.nekobot.app.data.local.ai.CharacterIdentity(
@@ -394,6 +395,11 @@ class LocalRepository(
             userId = "local-user"
         )
         val ctx = com.nekobot.app.data.local.ai.PipelineContext(chatRequest)
+
+        // 标记剧情模式
+        if (session.plotMode) {
+            ctx.metadata["plot_mode"] = true
+        }
 
         // 注入会话自定义提示词
         val customPromptsRaw = session.customPrompts
@@ -420,6 +426,29 @@ class LocalRepository(
                     com.nekobot.app.data.local.ai.aiPipeline.process(ctx, callbacks)
                 } finally {
                     eventsJob.cancel()
+                }
+            }
+
+            // Phase 6: 剧情模式 → 生成选项
+            if (session.plotMode) {
+                try {
+                    val plotGen = com.nekobot.app.data.local.ai.PlotChoiceGenerator(
+                        aiClient, { aiModelDao.getActive() }
+                    )
+                    val recentHistory = messageDao.listBySession(sessionId)
+                        .takeLast(6)
+                        .filter { it.role != "system" }
+                        .map { mapOf("role" to it.role, "content" to it.content) }
+                    val choices = plotGen.generate(
+                        responseText = ctx.finalContent,
+                        recentHistory = recentHistory
+                    )
+                    if (choices.isNotEmpty()) {
+                        val jsonChoices = gson.toJsonTree(choices)
+                        emit(RealtimeEvent.PlotChoices(jsonChoices))
+                    }
+                } catch (e: Exception) {
+                    // 剧情选项生成失败不影响主流程
                 }
             }
         } catch (e: Exception) {

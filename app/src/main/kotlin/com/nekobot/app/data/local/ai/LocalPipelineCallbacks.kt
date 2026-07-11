@@ -109,6 +109,22 @@ class LocalPipelineCallbacks(
             val msgCount = messageDao.countBySession(session.id)
             sessionDao.touch(session.id, content.take(200), msgCount, now)
         }
+
+        // 记录 Token 用量到 TokenStatsManager
+        if (inputTokens != null || outputTokens != null) {
+            try {
+                getGlobalTokenStatsManager().recordUsage(
+                    promptTokens = inputTokens ?: 0,
+                    completionTokens = outputTokens ?: 0,
+                    model = modelName,
+                    sessionId = session.id,
+                    userId = "local-user",
+                    purpose = TokenStatsManager.PURPOSE_CHAT
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "TokenStats 记录失败: ${e.message}")
+            }
+        }
     }
 
     // ---- AI 模型交互 ----
