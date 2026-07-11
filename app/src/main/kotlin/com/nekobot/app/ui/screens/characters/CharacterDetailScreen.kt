@@ -67,6 +67,15 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
     val systemPrompt = MutableStateFlow("")
     val tagsText = MutableStateFlow("")
 
+    // 六维初始关系状态（0-100）+ 初始心情
+    val affection = MutableStateFlow(50)
+    val trust = MutableStateFlow(50)
+    val familiarity = MutableStateFlow(30)
+    val dependency = MutableStateFlow(30)
+    val security = MutableStateFlow(50)
+    val jealousy = MutableStateFlow(0)
+    val mood = MutableStateFlow("平静")
+
     init {
         if (!isNew) load(characterId)
     }
@@ -90,6 +99,18 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
                 rulesText.value = c.rules?.joinToString("\n").orEmpty()
                 systemPrompt.value = c.systemPrompt.orEmpty()
                 tagsText.value = c.tags?.joinToString(", ").orEmpty()
+                // 解析六维初始状态 + 心情
+                val st = c.state
+                if (st != null && st.isJsonObject) {
+                    val obj = st.asJsonObject
+                    affection.value = obj.get("affection")?.takeIf { !it.isJsonNull }?.asInt ?: 50
+                    trust.value = obj.get("trust")?.takeIf { !it.isJsonNull }?.asInt ?: 50
+                    familiarity.value = obj.get("familiarity")?.takeIf { !it.isJsonNull }?.asInt ?: 30
+                    dependency.value = obj.get("dependency")?.takeIf { !it.isJsonNull }?.asInt ?: 30
+                    security.value = obj.get("security")?.takeIf { !it.isJsonNull }?.asInt ?: 50
+                    jealousy.value = obj.get("jealousy")?.takeIf { !it.isJsonNull }?.asInt ?: 0
+                    mood.value = obj.get("mood")?.takeIf { !it.isJsonNull }?.asString ?: "平静"
+                }
             }
         )
     }
@@ -98,7 +119,7 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
      * 保存：
      *  - POST 不传 id / systemPrompt / greeting（后端自动管理 id / created_at / systemPrompt，greeting 已合并到 firstMessage）
      *  - PUT 传部分字段做合并更新，不传 updated_at（后端管理）
-     *  - state 不在 UI 中编辑，保留服务端默认值
+     *  - state 包含六维初始关系值 + 初始心情
      */
     fun save(onSuccess: () -> Unit) {
         val nameVal = name.value.trim()
@@ -122,6 +143,17 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
             responseFormat.value.trim().takeIf { it.isNotBlank() }?.let { put("responseFormat", it) }
             if (rulesList.isNotEmpty()) put("rules", rulesList)
             if (tagsList.isNotEmpty()) put("tags", tagsList)
+            // 六维初始关系状态 + 心情 → state JSON 对象
+            val stateObj = com.google.gson.JsonObject().apply {
+                addProperty("affection", affection.value)
+                addProperty("trust", trust.value)
+                addProperty("familiarity", familiarity.value)
+                addProperty("dependency", dependency.value)
+                addProperty("security", security.value)
+                addProperty("jealousy", jealousy.value)
+                addProperty("mood", mood.value.trim().ifBlank { "平静" })
+            }
+            put("state", stateObj)
             // 显式不传：id / systemPrompt / greeting / created_at / updated_at
         }
         val json = com.nekobot.app.ServiceContainer.gson.toJsonTree(payload)
@@ -178,6 +210,13 @@ fun CharacterDetailScreen(
     val rulesText by vm.rulesText.collectAsState()
     val systemPrompt by vm.systemPrompt.collectAsState()
     val tagsText by vm.tagsText.collectAsState()
+    val affection by vm.affection.collectAsState()
+    val trust by vm.trust.collectAsState()
+    val familiarity by vm.familiarity.collectAsState()
+    val dependency by vm.dependency.collectAsState()
+    val security by vm.security.collectAsState()
+    val jealousy by vm.jealousy.collectAsState()
+    val mood by vm.mood.collectAsState()
 
     var showDeleteDialog by remember { mutableStateOf(false) }
 
@@ -342,6 +381,27 @@ fun CharacterDetailScreen(
                     label = "标签（逗号分隔）", value = tagsText, onValueChange = { vm.tagsText.value = it },
                     singleLine = true
                 )
+                // 六维初始关系状态
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "初始关系状态",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold
+                )
+                DimSlider(label = "好感", value = affection, onValueChange = { vm.affection.value = it })
+                DimSlider(label = "信任", value = trust, onValueChange = { vm.trust.value = it })
+                DimSlider(label = "熟悉", value = familiarity, onValueChange = { vm.familiarity.value = it })
+                DimSlider(label = "依赖", value = dependency, onValueChange = { vm.dependency.value = it })
+                DimSlider(label = "安全感", value = security, onValueChange = { vm.security.value = it })
+                DimSlider(label = "嫉妒", value = jealousy, onValueChange = { vm.jealousy.value = it })
+                // 初始心情
+                LabeledField(
+                    label = "初始心情（如 平静/开心/害羞/愤怒）",
+                    value = mood,
+                    onValueChange = { vm.mood.value = it },
+                    singleLine = true
+                )
                 Spacer(Modifier.height(24.dp))
             }
             LoadingOverlay(visible = loading)
@@ -361,6 +421,41 @@ fun CharacterDetailScreen(
                 vm.delete(onBack)
             },
             onCancel = { showDeleteDialog = false }
+        )
+    }
+}
+
+/** 六维滑块：标签 + 数值 + 滑块（0-100） */
+@Composable
+private fun DimSlider(
+    label: String,
+    value: Int,
+    onValueChange: (Int) -> Unit
+) {
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = value.toString(),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Medium
+            )
+        }
+        Slider(
+            value = value.toFloat(),
+            onValueChange = { onValueChange(it.toInt()) },
+            valueRange = 0f..100f,
+            steps = 99,
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }

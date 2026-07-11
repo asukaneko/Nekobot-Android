@@ -214,7 +214,8 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .clickable {
-                            ServiceContainer.prefs.appMode = com.nekobot.app.data.local.AppMode.LOCAL
+                            // 调用 switchAppMode 同步 prefs / appModeFlow / loginStateFlow
+                            ServiceContainer.switchAppMode(com.nekobot.app.data.local.AppMode.LOCAL)
                             onLoggedIn()
                         }
                         .padding(8.dp)

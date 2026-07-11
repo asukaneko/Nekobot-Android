@@ -122,7 +122,10 @@ class SettingsViewModel : BaseViewModel() {
     }
 
     init {
-        loadSettings()
+        // 本地模式无需调用远程 getSettings（避免 401 错误）
+        if (ServiceContainer.prefs.appMode != AppMode.LOCAL) {
+            loadSettings()
+        }
     }
 
     fun loadSettings() {
@@ -424,18 +427,20 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                     }
                 }
 
-                // 6. 账号
-                GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    SectionHeader(title = "账号")
-                    Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = { vm.logout() },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Filled.Logout, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
-                        Spacer(Modifier.width(8.dp))
-                        Text("退出登录", color = MaterialTheme.colorScheme.onPrimary)
+                // 6. 账号（仅服务器模式，本地模式无需登录）
+                if (appMode != AppMode.LOCAL) {
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        SectionHeader(title = "账号")
+                        Spacer(Modifier.height(12.dp))
+                        Button(
+                            onClick = { vm.logout() },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Filled.Logout, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
+                            Spacer(Modifier.width(8.dp))
+                            Text("退出登录", color = MaterialTheme.colorScheme.onPrimary)
+                        }
                     }
                 }
             }

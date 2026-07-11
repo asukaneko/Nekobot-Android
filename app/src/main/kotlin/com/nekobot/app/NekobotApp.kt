@@ -66,9 +66,10 @@ object ServiceContainer {
         _loginStateFlow.value = prefs.isLoggedIn
     }
 
-    /** 广播登录状态变化（登录成功 / 登出 / token 失效） */
+    /** 广播登录状态变化（登录成功 / 登出 / token 失效）。
+     *  本地模式恒为已登录，不接受 false（避免本地模式被强制跳转登录页）。 */
     fun notifyLoginState(loggedIn: Boolean) {
-        _loginStateFlow.value = loggedIn
+        _loginStateFlow.value = if (prefs.isLocalMode) true else loggedIn
     }
 }
 

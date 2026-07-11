@@ -67,6 +67,30 @@ class LocalRepository(
     @Volatile
     private var currentChatJob: Job? = null
 
+    // ==================== 角色运行时单例（跨会话保持 turnCounters 状态）====================
+
+    /** AutoState 必须跨轮次保持 turnCounters，否则永远达不到触发阈值 */
+    private val autoState by lazy {
+        com.nekobot.app.data.local.ai.AutoState(aiClient) { aiModelDao.getActive() }
+    }
+    /** LocalMemoryService 同理，turnCounters 需跨轮次保持 */
+    private val memoryService by lazy {
+        com.nekobot.app.data.local.ai.LocalMemoryService(
+            db.memoryDao(), aiClient
+        ) { aiModelDao.getActive() }
+    }
+    /** CharacterRuntime 依赖上述单例 */
+    private val characterRuntime by lazy {
+        val profileRepo = com.nekobot.app.data.local.ai.LocalProfileRepository(characterDao)
+        val stateRepo = com.nekobot.app.data.local.ai.LocalCharacterStateRepository(db.characterStateDao())
+        val relRepo = com.nekobot.app.data.local.ai.LocalRelationshipRepository(db.relationshipDao())
+        val worldBookStore = com.nekobot.app.data.local.ai.LocalWorldBookStore(characterDao, worldBookDao)
+        val memFS = com.nekobot.app.data.local.ai.MemoryFS(db.memoryDao())
+        com.nekobot.app.data.local.ai.CharacterRuntime(
+            profileRepo, stateRepo, relRepo, memoryService, worldBookStore, autoState, memFS
+        )
+    }
+
     // ==================== 会话 ====================
 
     suspend fun listSessions(): List<Session> = withContext(Dispatchers.IO) {
@@ -103,20 +127,52 @@ class LocalRepository(
         entity.toSession()
     }
 
-    suspend fun updateSession(id: String, name: String?, systemPrompt: String?, favorite: Boolean?) =
-        withContext(Dispatchers.IO) {
-            val entity = sessionDao.getById(id) ?: return@withContext
-            val updated = entity.copy(
-                name = name ?: entity.name,
-                systemPrompt = systemPrompt ?: entity.systemPrompt,
-                favorite = favorite ?: entity.favorite,
-                updatedAt = nowIso()
-            )
-            sessionDao.upsert(updated)
-        }
+    suspend fun updateSession(
+        id: String,
+        name: String? = null,
+        systemPrompt: String? = null,
+        favorite: Boolean? = null,
+        tags: List<String>? = null,
+        plotMode: Boolean? = null,
+        plotRealTimeSync: Boolean? = null,
+        autoStateInterval: Int? = null,
+        disabledPromptKeys: List<String>? = null
+    ) = withContext(Dispatchers.IO) {
+        val entity = sessionDao.getById(id) ?: return@withContext
+        val updated = entity.copy(
+            name = name ?: entity.name,
+            systemPrompt = systemPrompt ?: entity.systemPrompt,
+            favorite = favorite ?: entity.favorite,
+            tags = tags?.let { it.joinToString(",") } ?: entity.tags,
+            plotMode = plotMode ?: entity.plotMode,
+            plotRealTimeSync = plotRealTimeSync ?: entity.plotRealTimeSync,
+            autoStateInterval = autoStateInterval ?: entity.autoStateInterval,
+            disabledPromptKeys = disabledPromptKeys?.let { it.joinToString(",") } ?: entity.disabledPromptKeys,
+            updatedAt = nowIso()
+        )
+        // 使用 @Update 而非 upsert(@Insert REPLACE)，避免触发外键级联删除消息
+        sessionDao.update(updated)
+    }
 
     suspend fun deleteSession(id: String) = withContext(Dispatchers.IO) {
+        // 先清理该会话的剧情选项缓存（不影响 token 用量）
+        appContext?.getSharedPreferences("plot_choices", android.content.Context.MODE_PRIVATE)
+            ?.edit()?.remove(id)?.apply()
         sessionDao.deleteById(id)
+    }
+
+    // ==================== 剧情选项持久化 ====================
+
+    /** 保存剧情选项到 SharedPreferences（与 session 生命周期解耦） */
+    fun savePlotChoices(sessionId: String, choicesJson: String) {
+        appContext?.getSharedPreferences("plot_choices", android.content.Context.MODE_PRIVATE)
+            ?.edit()?.putString(sessionId, choicesJson)?.apply()
+    }
+
+    /** 读取已保存的剧情选项 */
+    fun getPlotChoices(sessionId: String): String? {
+        return appContext?.getSharedPreferences("plot_choices", android.content.Context.MODE_PRIVATE)
+            ?.getString(sessionId, null)
     }
 
     // ==================== 消息 ====================
@@ -185,7 +241,57 @@ class LocalRepository(
                 updatedAt = now
             )
         }
+        // 同时追加到独立 token 用量存储（不受会话删除影响）
+        appendTokenUsageRecord(
+            sessionId = sessionId,
+            model = model ?: "",
+            inputTokens = inputTokens ?: 0,
+            outputTokens = outputTokens ?: 0,
+            timestamp = now
+        )
         msg.toMessage()
+    }
+
+    // ==================== 独立 Token 用量存储（与会话生命周期解耦）====================
+
+    private val tokenUsagePrefs by lazy {
+        appContext?.getSharedPreferences("token_usage", android.content.Context.MODE_PRIVATE)
+    }
+
+    /** 追加一条 token 用量记录到 SharedPreferences JSON 数组 */
+    private fun appendTokenUsageRecord(
+        sessionId: String, model: String,
+        inputTokens: Int, outputTokens: Int, timestamp: String
+    ) {
+        val prefs = tokenUsagePrefs ?: return
+        val existing = prefs.getString("records", "[]") ?: "[]"
+        try {
+            val arr = JsonParser.parseString(existing).asJsonArray
+            val record = JsonObject().apply {
+                addProperty("session_id", sessionId)
+                addProperty("model", model)
+                addProperty("input_tokens", inputTokens)
+                addProperty("output_tokens", outputTokens)
+                addProperty("total_tokens", inputTokens + outputTokens)
+                addProperty("timestamp", timestamp)
+                // 提取日期部分（yyyy-MM-dd）用于按日聚合
+                addProperty("date", timestamp.substringBefore("T").substringBefore(" ").ifBlank { timestamp })
+            }
+            arr.add(record)
+            // 限制最多 5000 条，超出则丢弃最早的
+            while (arr.size() > 5000) arr.remove(0)
+            prefs.edit().putString("records", arr.toString()).apply()
+        } catch (_: Exception) { }
+    }
+
+    /** 读取所有 token 用量记录 */
+    private fun readTokenUsageRecords(): List<JsonObject> {
+        val prefs = tokenUsagePrefs ?: return emptyList()
+        val raw = prefs.getString("records", "[]") ?: "[]"
+        return try {
+            JsonParser.parseString(raw).asJsonArray
+                .mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject }
+        } catch (_: Exception) { emptyList() }
     }
 
     suspend fun deleteMessage(sessionId: String, messageId: String) = withContext(Dispatchers.IO) {
@@ -338,6 +444,7 @@ class LocalRepository(
         userMessage: String,
         activeModel: LocalAiModelEntity
     ): Flow<RealtimeEvent> = flow {
+        try {
         // 1. 保存用户消息
         addMessage(sessionId, "user", userMessage)
 
@@ -362,19 +469,8 @@ class LocalRepository(
         // 2. 加载世界书条目
         val worldBookEntries = loadWorldBookEntries(session.characterId)
 
-        // 3. 构建角色运行时
-        val profileRepo = com.nekobot.app.data.local.ai.LocalProfileRepository(characterDao)
-        val stateRepo = com.nekobot.app.data.local.ai.LocalCharacterStateRepository(db.characterStateDao())
-        val relRepo = com.nekobot.app.data.local.ai.LocalRelationshipRepository(db.relationshipDao())
-        val memoryService = com.nekobot.app.data.local.ai.LocalMemoryService(
-            db.memoryDao(), aiClient
-        ) { aiModelDao.getActive() }
-        val worldBookStore = com.nekobot.app.data.local.ai.LocalWorldBookStore(characterDao, worldBookDao)
-        val autoState = com.nekobot.app.data.local.ai.AutoState(aiClient) { aiModelDao.getActive() }
-
-        val runtime = com.nekobot.app.data.local.ai.CharacterRuntime(
-            profileRepo, stateRepo, relRepo, memoryService, worldBookStore, autoState
-        )
+        // 3. 使用成员变量（跨轮次保持 turnCounters 状态）
+        val runtime = characterRuntime
 
         val identity = com.nekobot.app.data.local.ai.CharacterIdentity(
             characterId = character.id,
@@ -385,21 +481,40 @@ class LocalRepository(
 
         // 4. 构建回调
         val callbacks = com.nekobot.app.data.local.ai.LocalPipelineCallbacks(
-            db, aiClient, activeModel, session, character, worldBookEntries, runtime, identity
+            db, aiClient, activeModel, session, character, worldBookEntries, runtime, identity,
+            onTokenRecorded = { sid, model, input, output, ts ->
+                appendTokenUsageRecord(sid, model, input, output, ts)
+            }
         )
 
-        // 5. 构建上下文
+        // 5. 构建上下文（含会话级配置：剧情模式、禁用注入项、自动状态间隔等）
+        val disabledKeys = session.disabledPromptKeys
+            ?.split(",")
+            ?.filter { it.isNotBlank() }
+            ?: emptyList()
         val chatRequest = com.nekobot.app.data.local.ai.ChatRequest.forLocal(
             sessionId = sessionId,
             content = userMessage,
-            userId = "local-user"
+            userId = "local-user",
+            metadata = buildMap {
+                if (session.plotMode) put("plot_mode", true)
+                if (session.plotRealTimeSync) put("plot_realtime_sync", true)
+                put("auto_state_interval", session.autoStateInterval)
+                if (disabledKeys.isNotEmpty()) put("disabled_prompt_keys", disabledKeys)
+            }
         )
         val ctx = com.nekobot.app.data.local.ai.PipelineContext(chatRequest)
 
-        // 标记剧情模式
+        // 标记剧情模式（管线层使用）
         if (session.plotMode) {
             ctx.metadata["plot_mode"] = true
         }
+        // 禁用列表也同步到 ctx.metadata（供 phasePrepareContext 的管线栈使用）
+        if (disabledKeys.isNotEmpty()) {
+            ctx.metadata["disabled_prompt_keys"] = disabledKeys
+        }
+        // auto_state_interval 同步到 ctx.metadata（供 AutoState 读取）
+        ctx.metadata["auto_state_interval"] = session.autoStateInterval
 
         // 注入会话自定义提示词
         val customPromptsRaw = session.customPrompts
@@ -416,17 +531,28 @@ class LocalRepository(
 
         // 6. 执行 Pipeline + 转发流式事件
         try {
-            coroutineScope {
-                // 启动事件转发协程
-                val eventsJob = launch {
-                    callbacks.events.collect { emit(it) }
+            // 在单独协程中执行 Pipeline，同时从 Channel 转发事件到 Flow
+            kotlinx.coroutines.coroutineScope {
+                val pipelineJob = launch {
+                    try {
+                        com.nekobot.app.data.local.ai.aiPipeline.process(ctx, callbacks)
+                    } finally {
+                        callbacks.eventChannel.close()
+                    }
                 }
-                // 执行 Pipeline
+                // 从 Channel 转发事件（在当前协程上下文中 emit，不跨协程）
+                for (event in callbacks.eventChannel) {
+                    emit(event)
+                }
+                pipelineJob.join()
+            }
+
+            // Phase 5.5: 保存 prompt_stack_debug 到会话（供会话详情页展示）
+            val stackDebug = ctx.metadata["prompt_stack_debug"]
+            if (stackDebug != null) {
                 try {
-                    com.nekobot.app.data.local.ai.aiPipeline.process(ctx, callbacks)
-                } finally {
-                    eventsJob.cancel()
-                }
+                    sessionDao.updatePromptStackDebug(sessionId, gson.toJson(stackDebug))
+                } catch (_: Exception) { }
             }
 
             // Phase 6: 剧情模式 → 生成选项
@@ -444,8 +570,17 @@ class LocalRepository(
                         recentHistory = recentHistory
                     )
                     if (choices.isNotEmpty()) {
-                        val jsonChoices = gson.toJsonTree(choices)
-                        emit(RealtimeEvent.PlotChoices(jsonChoices))
+                        // 为每个选项添加 id（parsePlotChoices 要求 id 非空）
+                        val choicesWithId = choices.mapIndexed { idx, c ->
+                            c.toMutableMap().apply { put("id", "plot_${System.currentTimeMillis()}_$idx") }
+                        }
+                        // 包装成 {"choices": [...]} 格式（parsePlotChoices 期望 JsonObject）
+                        val payload = com.google.gson.JsonObject().apply {
+                            add("choices", gson.toJsonTree(choicesWithId))
+                        }
+                        // 持久化到 SharedPreferences，重新进入会话时可恢复
+                        savePlotChoices(sessionId, payload.toString())
+                        emit(RealtimeEvent.PlotChoices(payload))
                     }
                 } catch (e: Exception) {
                     // 剧情选项生成失败不影响主流程
@@ -454,6 +589,66 @@ class LocalRepository(
         } catch (e: Exception) {
             emit(RealtimeEvent.Error(e.message ?: "Pipeline 执行失败"))
             emit(RealtimeEvent.StreamEnd(sessionId))
+        }
+        } catch (e: Exception) {
+            emit(RealtimeEvent.Error(e.message ?: "本地聊天失败"))
+            emit(RealtimeEvent.StreamEnd(sessionId))
+        }
+    }.flowOn(Dispatchers.IO)
+
+    /**
+     * 本地模式：单独重新生成剧情选项（不重新跑完整 Pipeline）。
+     * 复用最近一轮的 assistant 回复 + 最近历史调用 PlotChoiceGenerator。
+     */
+    fun regeneratePlotChoicesLocal(sessionId: String): Flow<RealtimeEvent> = flow {
+        try {
+            val session = sessionDao.getById(sessionId)
+                ?: run {
+                    emit(RealtimeEvent.Error("会话不存在"))
+                    return@flow
+                }
+            if (!session.plotMode) {
+                emit(RealtimeEvent.Error("未开启剧情模式"))
+                return@flow
+            }
+            val activeModel = aiModelDao.getActive()
+                ?: run {
+                    emit(RealtimeEvent.Error("未配置激活的 AI 模型"))
+                    return@flow
+                }
+
+            // 取最近 assistant 回复 + 历史
+            val recentMsgs = messageDao.listBySession(sessionId)
+                .filter { it.role != "system" }
+                .takeLast(6)
+            val lastAssistant = recentMsgs.lastOrNull { it.role == "assistant" }
+                ?: run {
+                    emit(RealtimeEvent.Error("没有可用的助手回复"))
+                    return@flow
+                }
+            val recentHistory = recentMsgs.map { mapOf("role" to it.role, "content" to it.content) }
+
+            val plotGen = com.nekobot.app.data.local.ai.PlotChoiceGenerator(
+                aiClient, { aiModelDao.getActive() }
+            )
+            val choices = plotGen.generate(
+                responseText = lastAssistant.content,
+                recentHistory = recentHistory
+            )
+            if (choices.isNotEmpty()) {
+                val choicesWithId = choices.mapIndexed { idx, c ->
+                    c.toMutableMap().apply { put("id", "plot_${System.currentTimeMillis()}_$idx") }
+                }
+                val payload = com.google.gson.JsonObject().apply {
+                    add("choices", gson.toJsonTree(choicesWithId))
+                }
+                savePlotChoices(sessionId, payload.toString())
+                emit(RealtimeEvent.PlotChoices(payload))
+            } else {
+                emit(RealtimeEvent.Error("未能生成剧情选项"))
+            }
+        } catch (e: Exception) {
+            emit(RealtimeEvent.Error(e.message ?: "重新生成剧情选项失败"))
         }
     }.flowOn(Dispatchers.IO)
 
@@ -650,76 +845,94 @@ class LocalRepository(
 
     suspend fun testModel(model: LocalAiModelEntity): LocalAiResult = aiClient.testModel(model)
 
-    // ==================== Token 用量统计 ====================
+    // ==================== Token 用量统计（从独立存储聚合，不受会话删除影响）====================
 
-    /** 本地 token 用量统计（基于 local_messages 的 input/output_tokens 字段聚合）。 */
+    /** 本地 token 用量统计（基于独立 SharedPreferences 存储，非 messageDao）。 */
     suspend fun tokenStats(): TokenStats = withContext(Dispatchers.IO) {
-        val todayStart = SimpleDateFormat("yyyy-MM-dd 00:00:00", Locale.getDefault()).format(Date())
-        val monthStart = SimpleDateFormat("yyyy-MM-01 00:00:00", Locale.getDefault()).format(Date())
+        val records = readTokenUsageRecords()
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val monthStr = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date())
 
-        val todayInput = messageDao.todayInputTokens(todayStart).toLong()
-        val todayOutput = messageDao.todayOutputTokens(todayStart).toLong()
-        val month = messageDao.monthTokens(monthStart).toLong()
-        val total = messageDao.totalTokens().toLong()
-        val msgCount = messageDao.assistantMessageCount().toLong()
+        var todayInput = 0L
+        var todayOutput = 0L
+        var monthTotal = 0L
+        var totalTokens = 0L
+        var msgCount = 0L
+
+        for (rec in records) {
+            val input = rec.get("input_tokens")?.asLong ?: 0
+            val output = rec.get("output_tokens")?.asLong ?: 0
+            val total = rec.get("total_tokens")?.asLong ?: (input + output)
+            val date = rec.get("date")?.asString ?: ""
+            totalTokens += total
+            msgCount++
+            if (date == todayStr) {
+                todayInput += input
+                todayOutput += output
+            }
+            if (date.startsWith(monthStr)) {
+                monthTotal += total
+            }
+        }
 
         // 最近记录：最多 50 条
-        val recent = messageDao.listAllAssistant().take(50).map { msg ->
+        val recent = records.takeLast(50).reversed().map { rec ->
             JsonObject().apply {
-                addProperty("session_id", msg.sessionId)
-                addProperty("model", msg.model ?: "")
-                addProperty("input_tokens", msg.inputTokens ?: 0)
-                addProperty("output_tokens", msg.outputTokens ?: 0)
-                addProperty("total_tokens", (msg.inputTokens ?: 0) + (msg.outputTokens ?: 0))
-                addProperty("timestamp", msg.timestamp)
+                addProperty("session_id", rec.get("session_id")?.asString ?: "")
+                addProperty("model", rec.get("model")?.asString ?: "")
+                addProperty("input_tokens", rec.get("input_tokens")?.asLong ?: 0)
+                addProperty("output_tokens", rec.get("output_tokens")?.asLong ?: 0)
+                addProperty("total_tokens", rec.get("total_tokens")?.asLong ?: 0)
+                addProperty("timestamp", rec.get("timestamp")?.asString ?: "")
             }
         }
 
         TokenStats(
             today = todayInput + todayOutput,
-            month = month,
-            totalTokens = total,
+            month = monthTotal,
+            totalTokens = totalTokens,
             todayInput = todayInput,
             todayOutput = todayOutput,
             messageCount = msgCount,
-            avgTokensPerMsg = if (msgCount > 0) total.toDouble() / msgCount else 0.0,
+            avgTokensPerMsg = if (msgCount > 0) totalTokens.toDouble() / msgCount else 0.0,
             estimatedCost = "—",
             recentRecords = recent,
             records = recent
         )
     }
 
-    /** 本地 token 用量排行榜（按 model / session / 用途聚合）。 */
+    /** 本地 token 用量排行榜（按 model / session 聚合，从独立存储读取）。 */
     suspend fun tokenRankings(): TokenRankings = withContext(Dispatchers.IO) {
-        val all = messageDao.listAllAssistant()
+        val records = readTokenUsageRecords()
+
         // 按模型聚合
-        val modelsRank = all.groupBy { it.model ?: "未知" }
-            .map { (model, msgs) ->
-                val input = msgs.sumOf { it.inputTokens ?: 0 }
-                val output = msgs.sumOf { it.outputTokens ?: 0 }
+        val modelsRank = records.groupBy { it.get("model")?.asString ?: "未知" }
+            .map { (model, recs) ->
+                val input = recs.sumOf { it.get("input_tokens")?.asLong ?: 0 }
+                val output = recs.sumOf { it.get("output_tokens")?.asLong ?: 0 }
                 JsonObject().apply {
                     addProperty("name", model)
                     addProperty("input_tokens", input)
                     addProperty("output_tokens", output)
                     addProperty("total_tokens", input + output)
-                    addProperty("count", msgs.size)
+                    addProperty("count", recs.size)
                 }
             }
             .sortedByDescending { it.get("total_tokens").asLong }
 
         // 按会话聚合
-        val sessionsRank = all.groupBy { it.sessionId }
-            .map { (sid, msgs) ->
-                val input = msgs.sumOf { it.inputTokens ?: 0 }
-                val output = msgs.sumOf { it.outputTokens ?: 0 }
-                val sessionName = sessionDao.getById(sid)?.name ?: sid
+        val sessionsRank = records.groupBy { it.get("session_id")?.asString ?: "" }
+            .map { (sid, recs) ->
+                val input = recs.sumOf { it.get("input_tokens")?.asLong ?: 0 }
+                val output = recs.sumOf { it.get("output_tokens")?.asLong ?: 0 }
+                val sessionName = if (sid.isNotEmpty()) sessionDao.getById(sid)?.name ?: sid else "未知会话"
                 JsonObject().apply {
                     addProperty("name", sessionName)
                     addProperty("session_id", sid)
                     addProperty("input_tokens", input)
                     addProperty("output_tokens", output)
                     addProperty("total_tokens", input + output)
-                    addProperty("count", msgs.size)
+                    addProperty("count", recs.size)
                 }
             }
             .sortedByDescending { it.get("total_tokens").asLong }
@@ -855,12 +1068,17 @@ class LocalRepository(
         portrait = portrait,
         tags = tags?.split(",")?.filter { it.isNotEmpty() },
         favorite = favorite,
+        pinned = pinned,
         createdAt = createdAt,
         updatedAt = updatedAt,
         lastMessage = lastMessage,
         messageCount = messageCount,
         plotMode = plotMode,
-        customPrompts = customPrompts?.let { runCatching { JsonParser.parseString(it) }.getOrNull() }
+        plotRealTimeSync = plotRealTimeSync,
+        autoStateInterval = autoStateInterval,
+        disabledPromptKeys = disabledPromptKeys?.split(",")?.filter { it.isNotEmpty() },
+        customPrompts = customPrompts?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
+        promptStackDebug = promptStackDebug?.let { runCatching { JsonParser.parseString(it) }.getOrNull() }
     )
 
     private fun LocalMessageEntity.toMessage(): Message = Message(
@@ -973,4 +1191,143 @@ class LocalRepository(
 
     /** 用于 chat API 返回的统一结果。 */
     fun apiResultOk(): ApiResult = ApiResult(success = true)
+
+    // ==================== 角色记忆（UI 用） ====================
+
+    /** 列出本地角色记忆，映射为 LegacyMemory 格式供 UI 使用。 */
+    suspend fun listMemories(characterId: String? = null): List<com.nekobot.app.data.model.LegacyMemory> =
+        withContext(Dispatchers.IO) {
+            val entities = if (characterId != null) {
+                db.memoryDao().listByCharacter(characterId)
+            } else {
+                db.memoryDao().listAll()
+            }
+            entities.map { it.toLegacyMemory() }
+        }
+
+    /** 删除本地角色记忆。 */
+    suspend fun deleteMemory(id: String) = withContext(Dispatchers.IO) {
+        db.memoryDao().deleteById(id)
+    }
+
+    /** 新增/更新本地角色记忆（id 存在则更新，否则新增）。 */
+    suspend fun saveMemory(
+        id: String?, title: String, content: String, summary: String,
+        type: String, priority: String, characterId: String?
+    ) = withContext(Dispatchers.IO) {
+        val now = nowIso()
+        val importance = when (priority) {
+            "high" -> 8
+            "normal" -> 4
+            else -> 1
+        }
+        val memId = id ?: UUID.randomUUID().toString()
+        val entity = com.nekobot.app.data.local.db.LocalCharacterMemoryEntity(
+            id = memId,
+            characterId = characterId ?: "",
+            targetId = "local-user",
+            title = title,
+            content = content,
+            summary = summary,
+            type = if (type == "short") "short" else "long",
+            importance = importance,
+            category = "legacy",
+            createdAt = now
+        )
+        db.memoryDao().upsert(entity)
+        memId
+    }
+
+    private fun com.nekobot.app.data.local.db.LocalCharacterMemoryEntity.toLegacyMemory(): com.nekobot.app.data.model.LegacyMemory {
+        val typeLabel = when (type) {
+            "flash" -> "short"
+            "short" -> "short"
+            else -> "long"
+        }
+        val priorityLabel = when {
+            importance >= 8 -> "high"
+            importance >= 4 -> "normal"
+            else -> "low"
+        }
+        return com.nekobot.app.data.model.LegacyMemory(
+            id = id,
+            title = title,
+            content = content,
+            summary = summary,
+            type = typeLabel,
+            priority = priorityLabel,
+            targetId = targetId,
+            characterName = characterId,  // 本地模式用 characterId 代替
+            createdAt = createdAt,
+            updatedAt = createdAt
+        )
+    }
+
+    // ==================== 状态历程（UI 用） ====================
+
+    /**
+     * 构建本地模式的状态历程时间线。
+     *
+     * 从消息历史中提取每轮对话的角色状态快照（从 assistant 消息的 metadata 中恢复）。
+     * 本地模式不存储完整状态时间线，因此从消息列表和角色状态表构建简化版。
+     */
+    suspend fun listStateHistory(sessionId: String): List<Map<String, Any>> = withContext(Dispatchers.IO) {
+        val messages = messageDao.listBySession(sessionId)
+        val session = sessionDao.getById(sessionId) ?: return@withContext emptyList()
+        val characterId = session.characterId ?: return@withContext emptyList()
+
+        // 从消息历史构建时间线
+        val timeline = mutableListOf<Map<String, Any>>()
+
+        // 1. 当前角色状态（心情/精力等）
+        val currentState = db.characterStateDao().get(characterId, sessionId)
+        // 2. 当前关系状态（六维数据）
+        val currentRel = db.relationshipDao().get(characterId, "local-user")
+
+        if (currentState != null || currentRel != null) {
+            val stateMap = mutableMapOf<String, Any>()
+            if (currentState != null) {
+                try {
+                    val stateJson = JsonParser.parseString(currentState.dataJson).asJsonObject
+                    stateMap["mood"] = stateJson.get("mood")?.asString ?: ""
+                    stateMap["mood_intensity"] = stateJson.get("moodIntensity")?.asFloat ?: 0f
+                    stateMap["energy"] = stateJson.get("energy")?.asInt ?: 0
+                } catch (_: Exception) { }
+            }
+            if (currentRel != null) {
+                try {
+                    val relJson = JsonParser.parseString(currentRel.dataJson).asJsonObject
+                    // 六维关系数据，StateHistoryScreen 期望直接从 entry 读取
+                    stateMap["affection"] = relJson.get("affection")?.asInt ?: 0
+                    stateMap["trust"] = relJson.get("trust")?.asInt ?: 0
+                    stateMap["familiarity"] = relJson.get("familiarity")?.asInt ?: 0
+                    stateMap["dependency"] = relJson.get("dependency")?.asInt ?: 0
+                    stateMap["security"] = relJson.get("security")?.asInt ?: 0
+                } catch (_: Exception) { }
+            }
+            val entry = mutableMapOf<String, Any>(
+                "timestamp" to (currentState?.updatedAt ?: currentRel?.updatedAt ?: ""),
+                "type" to "state_snapshot",
+                "source" to "local_runtime"
+            )
+            entry.putAll(stateMap)
+            timeline.add(entry)
+        }
+
+        // 3. 从消息历史构建对话里程碑（倒序，最新在前）
+        for (msg in messages.filter { it.role == "assistant" }.asReversed()) {
+            val state = mapOf(
+                "timestamp" to msg.createdAt,
+                "type" to "message",
+                "role" to "assistant",
+                "content_preview" to msg.content.take(100),
+                "model" to (msg.model ?: ""),
+                "input_tokens" to (msg.inputTokens ?: 0),
+                "output_tokens" to (msg.outputTokens ?: 0)
+            )
+            timeline.add(state)
+        }
+
+        timeline
+    }
 }

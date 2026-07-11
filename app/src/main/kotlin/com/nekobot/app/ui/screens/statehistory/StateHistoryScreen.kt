@@ -95,6 +95,64 @@ class StateHistoryViewModel : BaseViewModel() {
     fun load() {
         // 已有缓存则不重复加载
         if (_sessions.value.isNotEmpty()) return
+        if (isLocalMode) {
+            loadLocalStateHistory()
+        } else {
+            loadRemoteStateHistory()
+        }
+    }
+
+    /** 本地模式：从 LocalRepository 加载状态历程 */
+    private fun loadLocalStateHistory() {
+        launchResult(
+            block = {
+                val sessions = com.nekobot.app.ServiceContainer.localRepository.listSessions()
+                val jsonSessions = sessions.mapNotNull { s ->
+                    val sid = s.id ?: return@mapNotNull null
+                    val timeline = com.nekobot.app.ServiceContainer.localRepository
+                        .listStateHistory(sid)
+                    val timelineArr = JsonArray()
+                    timeline.forEach { entry ->
+                        val obj = JsonObject()
+                        entry.forEach { (k, v) ->
+                            when (v) {
+                                is String -> obj.addProperty(k, v)
+                                is Number -> obj.addProperty(k, v)
+                                is Boolean -> obj.addProperty(k, v)
+                                is Map<*, *> -> {
+                                    val subObj = JsonObject()
+                                    @Suppress("UNCHECKED_CAST")
+                                    (v as Map<String, Any>).forEach { (sk, sv) ->
+                                        when (sv) {
+                                            is String -> subObj.addProperty(sk, sv)
+                                            is Number -> subObj.addProperty(sk, sv)
+                                            is Boolean -> subObj.addProperty(sk, sv)
+                                        }
+                                    }
+                                    obj.add(k, subObj)
+                                }
+                            }
+                        }
+                        timelineArr.add(obj)
+                    }
+                    val obj = JsonObject()
+                    obj.addProperty("id", sid)
+                    obj.addProperty("name", s.displayName)
+                    obj.addProperty("character_id", s.characterId ?: "")
+                    obj.add("character_runtime_timeline", timelineArr)
+                    obj
+                }
+                Resource.Success(jsonSessions)
+            },
+            onSuccess = { merged ->
+                _sessions.value = merged
+                if (_selected.value == null) _selected.value = merged.firstOrNull()
+            }
+        )
+    }
+
+    /** 远程模式：从服务器加载状态历程 */
+    private fun loadRemoteStateHistory() {
         launchResult(
             block = {
                 // 1. 获取渠道时间线（QQ 等渠道会话，已含 timeline）

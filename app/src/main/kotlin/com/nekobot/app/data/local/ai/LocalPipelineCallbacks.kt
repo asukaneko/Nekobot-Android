@@ -9,8 +9,7 @@ import com.nekobot.app.data.local.db.LocalSessionEntity
 import com.nekobot.app.data.local.db.LocalWorldBookEntryEntity
 import com.nekobot.app.data.local.db.NekobotDatabase
 import com.nekobot.app.data.remote.RealtimeEvent
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.channels.Channel
 
 /**
  * 本地模式 PipelineCallbacks 实现。
@@ -35,7 +34,8 @@ class LocalPipelineCallbacks(
     private val character: LocalCharacterEntity?,
     private val worldBookEntries: List<LocalWorldBookEntryEntity> = emptyList(),
     private val characterRuntime: CharacterRuntime? = null,
-    private val characterIdentity: CharacterIdentity? = null
+    private val characterIdentity: CharacterIdentity? = null,
+    private val onTokenRecorded: ((sessionId: String, model: String, inputTokens: Int, outputTokens: Int, timestamp: String) -> Unit)? = null
 ) : PipelineCallbacks() {
 
     companion object {
@@ -46,9 +46,13 @@ class LocalPipelineCallbacks(
     private val sessionDao = db.sessionDao()
     private val messageDao = db.messageDao()
 
-    /** 流式事件流（UI 层收集） */
-    private val _events = MutableSharedFlow<RealtimeEvent>(extraBufferCapacity = 64)
-    val events: SharedFlow<RealtimeEvent> = _events
+    /** 流式事件通道（UI 层收集），UNLIMITED 避免背压阻塞 */
+    val eventChannel: Channel<RealtimeEvent> = Channel(Channel.UNLIMITED)
+
+    /** 非阻塞 emit：Channel.trySend 不会挂起 */
+    private fun emitEvent(event: RealtimeEvent) {
+        eventChannel.trySend(event)
+    }
 
     /** 流式消息 ID */
     private var streamMessageId: String = ""
@@ -86,8 +90,12 @@ class LocalPipelineCallbacks(
         val content = (message["content"] as? String) ?: ""
         if (content.isBlank()) return
 
-        val inputTokens = (ctx.usage["prompt_tokens"] as? Int) ?: (ctx.usage["input_tokens"] as? Int)
-        val outputTokens = (ctx.usage["completion_tokens"] as? Int) ?: (ctx.usage["output_tokens"] as? Int)
+        val inputTokens = (ctx.usage["prompt_tokens"] as? Int)
+            ?: (ctx.usage["input_tokens"] as? Int)
+            ?: (ctx.usage["prompt"] as? Int)
+        val outputTokens = (ctx.usage["completion_tokens"] as? Int)
+            ?: (ctx.usage["output_tokens"] as? Int)
+            ?: (ctx.usage["completion"] as? Int)
         val modelName = (ctx.metadata["model_name"] as? String) ?: activeModel.model
 
         // 保存到 Room（同步执行，因为已在 IO 线程）
@@ -110,7 +118,7 @@ class LocalPipelineCallbacks(
             sessionDao.touch(session.id, content.take(200), msgCount, now)
         }
 
-        // 记录 Token 用量到 TokenStatsManager
+        // 记录 Token 用量到 TokenStatsManager（内存统计）
         if (inputTokens != null || outputTokens != null) {
             try {
                 getGlobalTokenStatsManager().recordUsage(
@@ -123,6 +131,18 @@ class LocalPipelineCallbacks(
                 )
             } catch (e: Exception) {
                 Log.w(TAG, "TokenStats 记录失败: ${e.message}")
+            }
+            // 同时持久化到 SharedPreferences（供 tokenStats()/tokenRankings() 聚合读取）
+            try {
+                onTokenRecorded?.invoke(
+                    session.id,
+                    modelName,
+                    inputTokens ?: 0,
+                    outputTokens ?: 0,
+                    com.nekobot.app.data.local.LocalRepository.nowIsoStatic()
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "持久化 Token 记录失败: ${e.message}")
             }
         }
     }
@@ -196,21 +216,15 @@ class LocalPipelineCallbacks(
 
     override fun onStreamStart(ctx: PipelineContext, message: Map<String, Any>) {
         streamMessageId = (message["id"] as? String) ?: java.util.UUID.randomUUID().toString()
-        kotlinx.coroutines.runBlocking {
-            _events.emit(RealtimeEvent.StreamStart(null))
-        }
+        emitEvent(RealtimeEvent.StreamStart(null))
     }
 
     override fun onStreamChunk(ctx: PipelineContext, chunk: String, messageId: String) {
-        kotlinx.coroutines.runBlocking {
-            _events.emit(RealtimeEvent.StreamChunk(chunk))
-        }
+        emitEvent(RealtimeEvent.StreamChunk(chunk))
     }
 
     override fun onStreamEnd(ctx: PipelineContext, messageId: String) {
-        kotlinx.coroutines.runBlocking {
-            _events.emit(RealtimeEvent.StreamEnd(session.id))
-        }
+        emitEvent(RealtimeEvent.StreamEnd(session.id))
     }
 
     // ---- 进度报告 ----
@@ -220,9 +234,7 @@ class LocalPipelineCallbacks(
     // ---- 工具确认 ----
 
     override fun onConfirmationRequired(ctx: PipelineContext, requestId: String, command: String) {
-        kotlinx.coroutines.runBlocking {
-            _events.emit(RealtimeEvent.Error("需要确认: $command [ID: $requestId]"))
-        }
+        emitEvent(RealtimeEvent.Error("需要确认: $command [ID: $requestId]"))
     }
 
     override fun checkConfirmation(ctx: PipelineContext, userInput: String): String? {

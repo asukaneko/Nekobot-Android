@@ -22,6 +22,17 @@ interface SessionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(session: LocalSessionEntity)
 
+    /**
+     * 更新已存在的会话：使用 @Update 而非 @Insert(REPLACE)。
+     *
+     * 原因：@Insert(onConflict = REPLACE) 在主键冲突时会先 DELETE 旧行再 INSERT 新行，
+     * 而 local_messages 对 local_sessions 有 ForeignKey(onDelete = CASCADE)，
+     * 这会导致会话的所有消息被级联删除——会话详情保存按钮"清空对话内容"的根因。
+     * @Update 只生成 UPDATE ... WHERE id=? 语句，不会触发 DELETE/CASCADE。
+     */
+    @Update
+    suspend fun update(session: LocalSessionEntity)
+
     @Delete
     suspend fun delete(session: LocalSessionEntity)
 
@@ -33,6 +44,9 @@ interface SessionDao {
 
     @Query("UPDATE local_sessions SET custom_prompts = :customPrompts, updated_at = :updatedAt WHERE id = :id")
     suspend fun updateCustomPrompts(id: String, customPrompts: String?, updatedAt: String)
+
+    @Query("UPDATE local_sessions SET prompt_stack_debug = :debugJson WHERE id = :id")
+    suspend fun updatePromptStackDebug(id: String, debugJson: String)
 }
 
 @Dao
@@ -228,4 +242,10 @@ interface MemoryDao {
 
     @Query("SELECT COUNT(*) FROM local_character_memories WHERE character_id = :characterId AND target_id = :targetId")
     suspend fun count(characterId: String, targetId: String): Int
+
+    @Query("SELECT * FROM local_character_memories ORDER BY importance DESC, created_at DESC")
+    suspend fun listAll(): List<LocalCharacterMemoryEntity>
+
+    @Query("SELECT * FROM local_character_memories WHERE character_id = :characterId ORDER BY importance DESC, created_at DESC")
+    suspend fun listByCharacter(characterId: String): List<LocalCharacterMemoryEntity>
 }

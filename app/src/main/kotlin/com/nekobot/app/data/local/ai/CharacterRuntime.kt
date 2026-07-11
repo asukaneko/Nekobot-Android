@@ -23,7 +23,8 @@ class CharacterRuntime(
     private val relationshipRepo: RelationshipRepository? = null,
     private val memoryService: MemoryService? = null,
     private val worldBookStore: WorldBookStore? = null,
-    private val autoState: AutoState? = null
+    private val autoState: AutoState? = null,
+    private val memoryFS: MemoryFS? = null
 ) {
 
     /** 世界书存储接口 */
@@ -103,6 +104,28 @@ class CharacterRuntime(
                 }
             promptStack.add("world_book", worldBookText, priority = PromptStack.Priority.WORLD_BOOK)
         }
+        // MemoryFS 结构化记忆注入（按类别分组：【用户人格】【角色人格】等）
+        if (memoryFS != null) {
+            try {
+                val memoryContext = memoryFS.buildPromptContext(
+                    characterId = identity.characterId,
+                    targetId = identity.targetId,
+                    conversationId = chatRequest.conversationId
+                )
+                if (memoryContext.isNotBlank()) {
+                    promptStack.add("memory_fs", memoryContext, priority = PromptStack.Priority.CHARACTER_MEMORIES)
+                }
+            } catch (e: Exception) {
+                // MemoryFS 失败不影响主流程
+            }
+        }
+
+        // 应用会话级禁用注入项（从 chatRequest.metadata 读取）
+        @Suppress("UNCHECKED_CAST")
+        val disabledKeys = (chatRequest.metadata["disabled_prompt_keys"] as? List<String>) ?: emptyList()
+        if (disabledKeys.isNotEmpty()) {
+            promptStack.disableKeys(disabledKeys)
+        }
 
         val promptText = promptStack.render(basePrompt = buildBasePrompt(profile))
 
@@ -164,6 +187,7 @@ class CharacterRuntime(
                     relationship = newRelationship,
                     userMessage = chatRequest.content,
                     assistantMessage = finalContent,
+                    metadata = chatRequest.metadata,
                     conversationId = chatRequest.conversationId
                 )
                 if (updated) {

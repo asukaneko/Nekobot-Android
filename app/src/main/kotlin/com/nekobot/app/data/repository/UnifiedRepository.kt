@@ -69,7 +69,17 @@ class UnifiedRepository(
 
     suspend fun updateSession(id: String, req: UpdateSessionRequest): Resource<Session> =
         if (isLocal) {
-            local.updateSession(id, req.name, req.systemPrompt, req.favorite)
+            local.updateSession(
+                id = id,
+                name = req.name,
+                systemPrompt = req.systemPrompt,
+                favorite = req.favorite,
+                tags = req.tags,
+                plotMode = req.plotMode,
+                plotRealTimeSync = req.plotRealTimeSync,
+                autoStateInterval = req.autoStateInterval,
+                disabledPromptKeys = req.disabledPromptKeys
+            )
             local.getSession(id)?.let { Resource.Success(it) } ?: Resource.Error("会话不存在")
         } else remote.updateSession(id, req)
 

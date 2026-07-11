@@ -561,11 +561,12 @@ private fun MessageBubble(
                         )
                     } else {
                         // 文本内容：用 Markdown 渲染
+                        // 用户气泡：宽度跟随实际内容（短消息不撑满）；AI 气泡：填满最大宽度
                         MarkdownText(
                             text = segment,
                             color = textColor,
                             style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = if (isUser) Modifier.widthIn(max = maxBubbleWidth) else Modifier.fillMaxWidth()
                         )
                     }
                 }
@@ -1228,11 +1229,11 @@ class ChatViewModel : BaseViewModel() {
         if (!isLocalMode) {
             connectSocket(sessionId)
         }
-        // 剧情选项仅服务器模式支持
-        if (!isLocalMode) {
-            viewModelScope.launch {
-                kotlinx.coroutines.delay(800)
-                if (_session.value?.plotMode == true) loadPlotChoices()
+        // 剧情选项：本地模式和服务器模式都需加载
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(300)
+            if (_session.value?.plotMode == true) {
+                if (isLocalMode) loadLocalPlotChoices() else loadPlotChoices()
             }
         }
     }
@@ -1278,10 +1279,21 @@ class ChatViewModel : BaseViewModel() {
                 if (_session.value?.plotMode == true) {
                     _plotChoices.value = emptyList()
                     _plotChoicesLoading.value = true
-                    // 延迟 1 秒后通过 HTTP 加载（兜底：若 plot_choices socket 事件先到则覆盖）
-                    viewModelScope.launch {
-                        kotlinx.coroutines.delay(1000)
-                        if (_plotChoicesLoading.value) loadPlotChoices()
+                    if (isLocalMode) {
+                        // 本地模式：等待 PlotChoices 事件到达（chatWithPipeline 在 StreamEnd 后生成）
+                        // 5 秒超时保护：生成失败时自动关闭骨架
+                        viewModelScope.launch {
+                            kotlinx.coroutines.delay(5000)
+                            if (_plotChoicesLoading.value) {
+                                _plotChoicesLoading.value = false
+                            }
+                        }
+                    } else {
+                        // 服务器模式：延迟 1 秒后通过 HTTP 加载（兜底：若 plot_choices socket 事件先到则覆盖）
+                        viewModelScope.launch {
+                            kotlinx.coroutines.delay(1000)
+                            if (_plotChoicesLoading.value) loadPlotChoices()
+                        }
                     }
                 }
             }
@@ -1391,7 +1403,13 @@ class ChatViewModel : BaseViewModel() {
             }
             localChatJob?.cancel()
             localChatJob = viewModelScope.launch {
-                flow.collect { event -> handleRealtimeEvent(event) }
+                try {
+                    flow.collect { event -> handleRealtimeEvent(event) }
+                } catch (e: Exception) {
+                    _sending.value = false
+                    _messages.value = _messages.value.filter { it.id != streamingId }
+                    showError(e.message ?: "发送失败")
+                }
             }
         } else if (socket.state.value == SocketState.Connected) {
             // Socket.IO 路径：触发 send_message，等待流式推送
@@ -1475,7 +1493,13 @@ class ChatViewModel : BaseViewModel() {
             }
             localChatJob?.cancel()
             localChatJob = viewModelScope.launch {
-                flow.collect { event -> handleRealtimeEvent(event) }
+                try {
+                    flow.collect { event -> handleRealtimeEvent(event) }
+                } catch (e: Exception) {
+                    _sending.value = false
+                    _messages.value = _messages.value.filter { it.id != streamingId }
+                    showError(e.message ?: "重新生成失败")
+                }
             }
         } else {
             launchResult(
@@ -1598,9 +1622,51 @@ class ChatViewModel : BaseViewModel() {
         )
     }
 
+    /** 本地模式：从 SharedPreferences 加载已保存的剧情选项 */
+    fun loadLocalPlotChoices() {
+        if (currentSessionId.isBlank()) return
+        viewModelScope.launch {
+            val json = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.nekobot.app.ServiceContainer.localRepository.getPlotChoices(currentSessionId)
+            }
+            if (json != null) {
+                try {
+                    val element = com.google.gson.JsonParser.parseString(json)
+                    _plotChoices.value = parsePlotChoices(element)
+                } catch (_: Exception) { }
+            }
+            _plotChoicesLoading.value = false
+        }
+    }
+
     /** 选择一个剧情选项：后台标记选中（fire-and-forget），不清除选项列表。 */
     fun selectPlotChoice(choiceId: String) {
-        if (isLocalMode || currentSessionId.isBlank()) return
+        if (currentSessionId.isBlank()) return
+        if (isLocalMode) {
+            // 本地模式：标记选中状态，并记录到 SharedPreferences
+            _plotChoices.value = _plotChoices.value.map { if (it.id == choiceId) it.copy(selected = true) else it }
+            viewModelScope.launch {
+                try {
+                    // 已保存的 JSON 格式为 {"choices": [...]}，直接解析后修改 selected 字段
+                    val raw = com.nekobot.app.ServiceContainer.localRepository
+                        .getPlotChoices(currentSessionId) ?: "{\"choices\":[]}"
+                    val payload = com.google.gson.JsonParser.parseString(raw).asJsonObject
+                    val choicesArr = payload.get("choices")?.takeIf { it.isJsonArray }?.asJsonArray
+                    choicesArr?.forEach { el ->
+                        if (el.isJsonObject) {
+                            val obj = el.asJsonObject
+                            val id = obj.get("id")?.takeIf { it.isJsonPrimitive }?.asString
+                            if (id == choiceId) {
+                                obj.addProperty("selected", true)
+                            }
+                        }
+                    }
+                    com.nekobot.app.ServiceContainer.localRepository
+                        .savePlotChoices(currentSessionId, payload.toString())
+                } catch (_: Exception) { }
+            }
+            return
+        }
         // 后台标记选中，不阻塞用户操作
         viewModelScope.launch {
             try { repo.selectPlotChoice(currentSessionId, choiceId) } catch (_: Exception) {}
@@ -1611,7 +1677,39 @@ class ChatViewModel : BaseViewModel() {
 
     /** 重新生成剧情选项。 */
     fun regeneratePlotChoices() {
-        if (isLocalMode || currentSessionId.isBlank()) return
+        if (currentSessionId.isBlank()) return
+        if (isLocalMode) {
+            // 本地模式：清除当前选项，重新触发聊天流程的最后一步生成选项
+            _plotChoicesLoading.value = true
+            _plotChoices.value = emptyList()
+            viewModelScope.launch {
+                try {
+                    val repo = com.nekobot.app.ServiceContainer.localRepository
+                    val session = repo.getSession(currentSessionId)
+                    if (session?.plotMode == true) {
+                        // 调用本地重新生成（复用 LocalRepository 的 regeneratePlotChoices）
+                        val flow = repo.regeneratePlotChoicesLocal(currentSessionId)
+                        flow.collect { event ->
+                            when (event) {
+                                is RealtimeEvent.PlotChoices -> {
+                                    _plotChoices.value = parsePlotChoices(event.choices)
+                                    _plotChoicesLoading.value = false
+                                }
+                                is RealtimeEvent.Error -> {
+                                    _plotChoicesLoading.value = false
+                                }
+                                else -> {}
+                            }
+                        }
+                    } else {
+                        _plotChoicesLoading.value = false
+                    }
+                } catch (e: Exception) {
+                    _plotChoicesLoading.value = false
+                }
+            }
+            return
+        }
         _plotChoicesLoading.value = true
         _plotChoices.value = emptyList()
         launchResult(

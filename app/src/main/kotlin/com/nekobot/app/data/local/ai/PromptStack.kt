@@ -75,6 +75,32 @@ class PromptStack {
         return items.removeAll { it.key == key }
     }
 
+    /** 禁用指定 key 的注入项（保留在栈中但 enabled=false，用于调试） */
+    fun disable(key: String): Boolean {
+        val idx = items.indexOfFirst { it.key == key }
+        if (idx < 0) return false
+        items[idx] = items[idx].copy(enabled = false)
+        return true
+    }
+
+    /** 批量禁用注入项，支持前缀匹配（如 "character.*" 禁用所有 character. 开头的项） */
+    fun disableKeys(keys: Collection<String>) {
+        for (key in keys) {
+            val trimmed = key.trim()
+            if (trimmed.isEmpty()) continue
+            if (trimmed.endsWith(".*")) {
+                val prefix = trimmed.dropLast(2)
+                items.indices.forEach { i ->
+                    if (items[i].key.startsWith(prefix)) {
+                        items[i] = items[i].copy(enabled = false)
+                    }
+                }
+            } else {
+                disable(trimmed)
+            }
+        }
+    }
+
     /** 获取指定 key 的注入项 */
     fun get(key: String): PromptInjection? = items.firstOrNull { it.key == key }
 

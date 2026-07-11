@@ -26,13 +26,20 @@ data class LocalSessionEntity(
     val portrait: String? = null,
     val tags: String? = null,                  // 逗号分隔
     val favorite: Boolean = false,
+    val pinned: Boolean = false,
     @ColumnInfo(name = "created_at") val createdAt: String,
     @ColumnInfo(name = "updated_at") val updatedAt: String,
     @ColumnInfo(name = "last_message") val lastMessage: String? = null,
     @ColumnInfo(name = "message_count") val messageCount: Int = 0,
     @ColumnInfo(name = "plot_mode") val plotMode: Boolean = false,
+    @ColumnInfo(name = "plot_realtime_sync") val plotRealTimeSync: Boolean = false,
+    @ColumnInfo(name = "auto_state_interval") val autoStateInterval: Int = 2,
+    /** 禁用的提示词注入项 key 列表，逗号分隔 */
+    @ColumnInfo(name = "disabled_prompt_keys") val disabledPromptKeys: String? = null,
     /** 自定义提示词列表，JSON 数组字符串，每项含 order/title/content */
-    @ColumnInfo(name = "custom_prompts") val customPrompts: String? = null
+    @ColumnInfo(name = "custom_prompts") val customPrompts: String? = null,
+    /** 运行时提示词注入栈调试信息（JSON 字符串），每次对话后更新 */
+    @ColumnInfo(name = "prompt_stack_debug") val promptStackDebug: String? = null
 )
 
 /**

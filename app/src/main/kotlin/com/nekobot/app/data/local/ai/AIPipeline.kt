@@ -230,7 +230,7 @@ class AIPipeline {
             val enhancedContent = userContent + "\n\n" + ctx.fileContents.joinToString("\n\n")
             messagesForAi = messagesForAi.mapIndexed { idx, msg ->
                 if (idx == messagesForAi.lastIndex && msg["role"] == "user") {
-                    msg.toMutableMap().apply { "content" to enhancedContent }
+                    msg.toMutableMap().apply { put("content", enhancedContent) }
                 } else msg
             }
         }
@@ -240,7 +240,7 @@ class AIPipeline {
             messagesForAi = messagesForAi.mapIndexed { idx, msg ->
                 if (idx == messagesForAi.lastIndex && msg["role"] == "user") {
                     msg.toMutableMap().apply {
-                        "content" to "[附图片 ${ctx.imageUrls.size} 张，已通过视觉模型识别]\n${msg["content"] ?: ""}"
+                        put("content", "[附图片 ${ctx.imageUrls.size} 张，已通过视觉模型识别]\n${msg["content"] ?: ""}")
                     }
                 } else msg
             }
@@ -257,11 +257,14 @@ class AIPipeline {
         // 角色运行时 before_turn
         phaseCharacterRuntimeBeforeTurn(ctx, callbacks)
 
-        // 应用会话级提示词栈禁用列表
+        // 使用角色运行时编译的提示词作为 basePrompt（包含角色卡 systemPrompt / 基本信息 / 性格 / 状态 / 关系 / 记忆 / 世界书）
+        val characterBasePrompt = ctx.characterTurn?.promptText ?: ""
+
+        // 应用会话级提示词栈禁用列表（对管线栈 knowledge.rag / custom:* 生效）
         @Suppress("UNCHECKED_CAST")
         val disabledKeys = (ctx.metadata["disabled_prompt_keys"] as? List<String>) ?: emptyList()
         if (disabledKeys.isNotEmpty()) {
-            // 禁用匹配的注入项（通过重新 add 并标记，这里简化处理）
+            ctx.promptStack.disableKeys(disabledKeys)
         }
 
         // 注入用户自定义提示词（从会话数据中读取）
@@ -280,7 +283,7 @@ class AIPipeline {
         }
 
         // PromptStack 合成最终 system prompt
-        val composedSystem = ctx.promptStack.render(basePrompt)
+        val composedSystem = ctx.promptStack.render(characterBasePrompt.ifBlank { basePrompt })
         ctx.metadata["composed_system_prompt"] = composedSystem
         ctx.metadata["prompt_stack_debug"] = ctx.promptStack.renderDebug()
 

@@ -83,17 +83,70 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
 
     /** 加载 MemoryFS 与旧版记忆 */
     fun load() {
-        launchResult(
-            block = { repo.listMemoryFs(_selectedCharacterId.value) },
-            onSuccess = { resp -> _files.value = resp?.files ?: emptyList() }
-        )
-        launchResult(
-            block = { repo.listLegacyMemory() },
-            onSuccess = { resp ->
-                _legacy.value = resp?.memories
-                    ?: (resp?.longTerm.orEmpty() + resp?.shortTerm.orEmpty())
+        if (isLocalMode) {
+            // 本地模式：从 LocalRepository 加载角色记忆，并按 MemoryFS 类别分组构建文件视图
+            launchResult(
+                block = {
+                    val memories = com.nekobot.app.ServiceContainer.localRepository
+                        .listMemories(_selectedCharacterId.value)
+                    com.nekobot.app.data.repository.Resource.Success(
+                        com.nekobot.app.data.model.LegacyMemoryListResponse(memories = memories)
+                    )
+                },
+                onSuccess = { resp ->
+                    val all = resp?.memories
+                        ?: (resp?.longTerm.orEmpty() + resp?.shortTerm.orEmpty())
+                    _legacy.value = all
+                    // 按 category 分组构建 MemoryFS 文件视图
+                    _files.value = buildLocalMemoryFsFiles(all)
+                }
+            )
+        } else {
+            // 远程模式：从服务器加载
+            launchResult(
+                block = { repo.listMemoryFs(_selectedCharacterId.value) },
+                onSuccess = { resp -> _files.value = resp?.files ?: emptyList() }
+            )
+            launchResult(
+                block = { repo.listLegacyMemory() },
+                onSuccess = { resp ->
+                    _legacy.value = resp?.memories
+                        ?: (resp?.longTerm.orEmpty() + resp?.shortTerm.orEmpty())
+                }
+            )
+        }
+    }
+
+    /**
+     * 本地模式：按 MemoryFS 类别元数据将扁平记忆列表分组为文件视图。
+     *
+     * 每个 category 对应一个"文件"，content 为该类别下所有记忆的合并文本。
+     */
+    private fun buildLocalMemoryFsFiles(memories: List<LegacyMemory>): List<MemoryFile> {
+        if (memories.isEmpty()) return emptyList()
+        // LegacyMemory.type 映射回 MemoryFS category
+        val grouped = memories.groupBy { mem ->
+            when (mem.type) {
+                "long" -> "important_event"
+                "short" -> "recent_digest"
+                else -> "legacy"
             }
-        )
+        }
+        return com.nekobot.app.data.local.ai.MEMORY_CATEGORY_META.mapNotNull { meta ->
+            val entries = grouped[meta.key] ?: return@mapNotNull null
+            if (entries.isEmpty()) return@mapNotNull null
+            val content = entries.joinToString("\n\n") { e ->
+                val title = e.title?.trim().orEmpty()
+                val body = e.content?.trim().orEmpty()
+                if (title.isNotEmpty()) "[$title]\n$body" else body
+            }
+            MemoryFile(
+                path = "memory/${meta.key}.md",
+                title = meta.label,
+                content = content,
+                summary = "${entries.size} 条记忆"
+            )
+        }
     }
 
     /** 选择角色（null 表示全部） */
@@ -114,24 +167,53 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
 
     /** 删除 MemoryFS 文件 */
     fun deleteMemoryFile(path: String) {
-        launchResult(
-            block = { repo.deleteMemoryFs(path, _selectedCharacterId.value) },
-            onSuccess = {
-                _files.value = _files.value.filterNot { it.path == path }
-                showToast("已删除记忆文件")
-            }
-        )
+        if (isLocalMode) {
+            // 本地模式：MemoryFS 文件由记忆聚合而来，按 path 匹配删除
+            val target = _files.value.find { it.path == path } ?: return
+            // 本地 MemoryFS 文件的 path 即 memoryId
+            launchResult(
+                block = {
+                    com.nekobot.app.ServiceContainer.localRepository.deleteMemory(path)
+                    com.nekobot.app.data.repository.Resource.Success(null)
+                },
+                onSuccess = {
+                    _files.value = _files.value.filterNot { it.path == path }
+                    showToast("已删除记忆文件")
+                }
+            )
+        } else {
+            launchResult(
+                block = { repo.deleteMemoryFs(path, _selectedCharacterId.value) },
+                onSuccess = {
+                    _files.value = _files.value.filterNot { it.path == path }
+                    showToast("已删除记忆文件")
+                }
+            )
+        }
     }
 
     /** 删除旧版记忆 */
     fun deleteLegacy(id: String) {
-        launchResult(
-            block = { repo.deleteLegacyMemory(id) },
-            onSuccess = {
-                _legacy.value = _legacy.value.filterNot { it.id == id }
-                showToast("已删除记忆")
-            }
-        )
+        if (isLocalMode) {
+            launchResult(
+                block = {
+                    com.nekobot.app.ServiceContainer.localRepository.deleteMemory(id)
+                    com.nekobot.app.data.repository.Resource.Success(null)
+                },
+                onSuccess = {
+                    _legacy.value = _legacy.value.filterNot { it.id == id }
+                    showToast("已删除记忆")
+                }
+            )
+        } else {
+            launchResult(
+                block = { repo.deleteLegacyMemory(id) },
+                onSuccess = {
+                    _legacy.value = _legacy.value.filterNot { it.id == id }
+                    showToast("已删除记忆")
+                }
+            )
+        }
     }
 
     /** 打开新增对话框 */
@@ -155,43 +237,72 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
     /** 保存（新增/更新）旧版记忆 */
     fun saveLegacy(req: LegacyMemoryRequest) {
         val editing = _editingLegacy.value
-        if (editing?.id != null) {
+        if (isLocalMode) {
             launchResult(
                 block = {
-                    val body = com.google.gson.JsonParser.parseString(
-                        com.google.gson.Gson().toJson(req)
+                    com.nekobot.app.ServiceContainer.localRepository.saveMemory(
+                        id = editing?.id,
+                        title = req.title,
+                        content = req.content,
+                        summary = req.summary ?: "",
+                        type = req.type ?: "long",
+                        priority = req.priority ?: "normal",
+                        characterId = _selectedCharacterId.value
                     )
-                    repo.updateLegacyMemory(editing.id, body)
+                    com.nekobot.app.data.repository.Resource.Success(null)
                 },
                 onSuccess = {
                     load()
                     _showAddDialog.value = false
                     _editingLegacy.value = null
-                    showToast("已更新记忆")
+                    showToast(if (editing != null) "已更新记忆" else "已新增记忆")
                 }
             )
         } else {
-            launchResult(
-                block = { repo.createLegacyMemory(req) },
-                onSuccess = {
-                    load()
-                    _showAddDialog.value = false
-                    showToast("已新增记忆")
-                }
-            )
+            if (editing?.id != null) {
+                launchResult(
+                    block = {
+                        val body = com.google.gson.JsonParser.parseString(
+                            com.google.gson.Gson().toJson(req)
+                        )
+                        repo.updateLegacyMemory(editing.id, body)
+                    },
+                    onSuccess = {
+                        load()
+                        _showAddDialog.value = false
+                        _editingLegacy.value = null
+                        showToast("已更新记忆")
+                    }
+                )
+            } else {
+                launchResult(
+                    block = { repo.createLegacyMemory(req) },
+                    onSuccess = {
+                        load()
+                        _showAddDialog.value = false
+                        showToast("已新增记忆")
+                    }
+                )
+            }
         }
     }
 
     /** 导出旧版记忆（重新拉取列表后展示） */
     fun exportLegacy() {
-        launchResult(
-            block = { repo.exportLegacyMemory() },
-            onSuccess = {
-                _legacy.value = it?.memories
-                    ?: (it?.longTerm.orEmpty() + it?.shortTerm.orEmpty())
-                showToast("已刷新旧版记忆")
-            }
-        )
+        if (isLocalMode) {
+            // 本地模式：重新从本地加载
+            load()
+            showToast("已刷新旧版记忆")
+        } else {
+            launchResult(
+                block = { repo.exportLegacyMemory() },
+                onSuccess = {
+                    _legacy.value = it?.memories
+                        ?: (it?.longTerm.orEmpty() + it?.shortTerm.orEmpty())
+                    showToast("已刷新旧版记忆")
+                }
+            )
+        }
     }
 }
 
