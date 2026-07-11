@@ -19,7 +19,7 @@ import androidx.room.RoomDatabase
         LocalWorldBookEntryEntity::class,
         LocalAiModelEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class NekobotDatabase : RoomDatabase() {

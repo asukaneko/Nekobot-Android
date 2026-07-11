@@ -36,10 +36,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
@@ -81,10 +84,15 @@ import androidx.lifecycle.viewModelScope
 import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import android.provider.OpenableColumns
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import coil.compose.SubcomposeAsyncImageContent
 import coil.request.ImageRequest
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.remote.RealtimeEvent
@@ -94,6 +102,7 @@ import com.nekobot.app.ui.BaseViewModel
 import com.google.gson.JsonElement
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
+import com.nekobot.app.ui.components.MarkdownText
 import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.components.resolveAvatarUrl
 import com.nekobot.app.ui.theme.BgSurface
@@ -115,7 +124,7 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Unit = {}) {
+fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Unit = {}, onOpenSessionDetail: (String) -> Unit = {}, onOpenWorkspace: (String) -> Unit = {}) {
     val viewModel: ChatViewModel = viewModel()
     val messages by viewModel.messages.collectAsState()
     val session by viewModel.session.collectAsState()
@@ -133,15 +142,73 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
     val listState = rememberLazyListState()
     val keyboard = LocalSoftwareKeyboardController.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val context = LocalContext.current
+    val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
+    // 文件选择模式：null=未选择, "send"=发送文件(上传+插入引用), "upload"=仅上传到工作区
+    var filePickMode by remember { mutableStateOf<String?>(null) }
+    var fileBusy by remember { mutableStateOf(false) }
+
+    // 标记是否为首次加载，用于跳过滚动动画直接定位到最新消息
+    var initialLoad by remember { mutableStateOf(true) }
 
     // 进入页面加载
     LaunchedEffect(sessionId) {
+        initialLoad = true
         viewModel.init(sessionId)
     }
-    // 新消息时滚到底部
+    // 新消息时滚动：首次加载用瞬时滚动（无动画），后续用动画滚动
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.lastIndex)
+            if (initialLoad) {
+                // 首次加载：直接跳到底部，无动画
+                listState.scrollToItem(messages.lastIndex)
+                initialLoad = false
+            } else {
+                listState.animateScrollToItem(messages.lastIndex)
+            }
+        }
+    }
+
+    // 文件选择器：选取本地文件
+    val pickFile = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        val mode = filePickMode
+        filePickMode = null
+        if (uri == null || mode == null) return@rememberLauncherForActivityResult
+        fileBusy = true
+        scope.launch {
+            try {
+                // 读取文件名和字节
+                val (name, bytes) = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    readUriFile(context, uri) ?: throw IllegalStateException("读取文件失败")
+                }
+                val mediaType = guessMime(name).toMediaTypeOrNull()
+                val body = bytes.toRequestBody(mediaType)
+                val part = MultipartBody.Part.createFormData("file", name, body)
+                when (val res = ServiceContainer.unified.uploadWorkspaceFile(sessionId, part)) {
+                    is com.nekobot.app.data.repository.Resource.Success -> {
+                        if (mode == "send") {
+                            // 发送文件：上传后在输入框插入文件引用，提示用户可编辑后发送
+                            input = buildString {
+                                if (input.isNotBlank()) { append(input); append("\n") }
+                                append("[已上传文件: $name]")
+                            }
+                            snackbarHostState.showSnackbar("文件已上传，引用已插入输入框，编辑后发送")
+                        } else {
+                            snackbarHostState.showSnackbar("已上传到工作区: $name")
+                        }
+                    }
+                    is com.nekobot.app.data.repository.Resource.Error -> {
+                        snackbarHostState.showSnackbar("上传失败: ${res.message}")
+                    }
+                    is com.nekobot.app.data.repository.Resource.Loading -> {}
+                }
+            } catch (e: Exception) {
+                snackbarHostState.showSnackbar("操作失败: ${e.message ?: "未知错误"}")
+            } finally {
+                fileBusy = false
+            }
         }
     }
 
@@ -171,6 +238,13 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                             expanded = menuExpanded,
                             onDismissRequest = { menuExpanded = false }
                         ) {
+                            DropdownMenuItem(
+                                text = { Text("会话详情") },
+                                onClick = {
+                                    menuExpanded = false
+                                    session?.id?.let { onOpenSessionDetail(it) }
+                                }
+                            )
                             DropdownMenuItem(
                                 text = { Text("重新生成") },
                                 onClick = {
@@ -231,9 +305,20 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                 },
                 onStop = { viewModel.stop() },
                 onClear = { showClearConfirm = true },
-                onCompress = { viewModel.compressContext() }
+                onCompress = { viewModel.compressContext() },
+                onSendFile = {
+                    filePickMode = "send"
+                    pickFile.launch("*/*")
+                },
+                onUploadToWorkspace = {
+                    filePickMode = "upload"
+                    pickFile.launch("*/*")
+                },
+                onOpenWorkspace = { onOpenWorkspace(sessionId) },
+                fileBusy = fileBusy
             )
-        }
+        },
+        snackbarHost = { androidx.compose.material3.SnackbarHost(snackbarHostState) }
     ) { padding ->
         Box(
             modifier = Modifier
@@ -475,10 +560,12 @@ private fun MessageBubble(
                             modifier = Modifier.widthIn(max = 320.dp)
                         )
                     } else {
-                        Text(
+                        // 文本内容：用 Markdown 渲染
+                        MarkdownText(
                             text = segment,
                             color = textColor,
-                            style = MaterialTheme.typography.bodyMedium
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                 }
@@ -837,7 +924,11 @@ private fun ChatInputBar(
     onSend: () -> Unit,
     onStop: () -> Unit,
     onClear: () -> Unit,
-    onCompress: () -> Unit
+    onCompress: () -> Unit,
+    onSendFile: () -> Unit = {},
+    onUploadToWorkspace: () -> Unit = {},
+    onOpenWorkspace: () -> Unit = {},
+    fileBusy: Boolean = false
 ) {
     var panelExpanded by remember { mutableStateOf(false) }
     var plotChoicesCollapsed by remember { mutableStateOf(false) }
@@ -917,6 +1008,35 @@ private fun ChatInputBar(
                             label = "清空消息",
                             enabled = !sending,
                             onClick = onClear,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    // 工作区操作：发送文件 / 上传到工作区
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ActionChip(
+                            icon = Icons.Filled.AttachFile,
+                            label = "发送文件",
+                            enabled = !fileBusy,
+                            onClick = onSendFile,
+                            modifier = Modifier.weight(1f)
+                        )
+                        ActionChip(
+                            icon = Icons.Filled.CloudUpload,
+                            label = "上传工作区",
+                            enabled = !fileBusy,
+                            onClick = onUploadToWorkspace,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    // 查看工作区（整行）
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ActionChip(
+                            icon = Icons.Filled.Folder,
+                            label = "查看工作区",
+                            enabled = true,
+                            onClick = onOpenWorkspace,
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -1012,6 +1132,46 @@ private fun ActionChip(
         Icon(icon, contentDescription = null, tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(6.dp))
         Text(label, style = MaterialTheme.typography.bodyMedium, color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** 从 Uri 读取文件名与字节数组，用于上传到工作区。 */
+private fun readUriFile(context: android.content.Context, uri: android.net.Uri): Pair<String, ByteArray>? {
+    return try {
+        val name = queryFileName(context, uri) ?: "file"
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+        name to bytes
+    } catch (e: Exception) {
+        null
+    }
+}
+
+private fun queryFileName(context: android.content.Context, uri: android.net.Uri): String? {
+    return try {
+        context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+            val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (idx >= 0 && c.moveToFirst()) c.getString(idx) else uri.lastPathSegment
+        }
+    } catch (e: Exception) {
+        uri.lastPathSegment
+    }
+}
+
+private fun guessMime(name: String): String {
+    val ext = name.substringAfterLast('.', "").lowercase()
+    return when (ext) {
+        "txt" -> "text/plain"
+        "json" -> "application/json"
+        "xml" -> "application/xml"
+        "html", "htm" -> "text/html"
+        "pdf" -> "application/pdf"
+        "jpg", "jpeg" -> "image/jpeg"
+        "png" -> "image/png"
+        "gif" -> "image/gif"
+        "webp" -> "image/webp"
+        "mp4" -> "video/mp4"
+        "mp3" -> "audio/mpeg"
+        else -> "application/octet-stream"
     }
 }
 

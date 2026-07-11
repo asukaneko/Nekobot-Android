@@ -357,4 +357,35 @@ interface ApiService {
     /** 导出全部旧版记忆。 */
     @GET("api/memory/export")
     suspend fun exportLegacyMemory(): Response<LegacyMemoryListResponse>
+
+    // ==================== 工作区 ====================
+    /** 列出会话工作区文件 */
+    @GET("api/sessions/{id}/workspace/files")
+    suspend fun listWorkspaceFiles(
+        @Path("id") id: String,
+        @Query("path") path: String? = null
+    ): Response<JsonElement>
+
+    /** 上传文件到会话工作区（multipart） */
+    @Multipart
+    @POST("api/sessions/{id}/workspace/upload")
+    suspend fun uploadWorkspaceFile(
+        @Path("id") id: String,
+        @Part file: MultipartBody.Part
+    ): Response<JsonElement>
+
+    /** 删除工作区文件 */
+    @DELETE("api/sessions/{id}/workspace/files/{filename}")
+    suspend fun deleteWorkspaceFile(
+        @Path("id") id: String,
+        @Path("filename") filename: String
+    ): Response<JsonElement>
+
+    /** 下载工作区文件 */
+    @Streaming
+    @GET("api/sessions/{id}/workspace/files/{filename}")
+    suspend fun downloadWorkspaceFile(
+        @Path("id") id: String,
+        @Path("filename") filename: String
+    ): Response<ResponseBody>
 }

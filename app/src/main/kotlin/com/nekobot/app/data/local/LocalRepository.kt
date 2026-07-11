@@ -588,6 +588,18 @@ class LocalRepository(
         )
     }
 
+    // ==================== 自定义提示词 ====================
+
+    /** 获取会话的自定义提示词列表（JSON 数组字符串） */
+    suspend fun getCustomPromptsRaw(id: String): String? = withContext(Dispatchers.IO) {
+        sessionDao.getById(id)?.customPrompts
+    }
+
+    /** 全量更新会话的自定义提示词列表 */
+    suspend fun updateCustomPrompts(id: String, customPromptsJson: String?) = withContext(Dispatchers.IO) {
+        sessionDao.updateCustomPrompts(id, customPromptsJson, nowIso())
+    }
+
     // ==================== 角色卡导入 ====================
 
     /**
@@ -697,7 +709,8 @@ class LocalRepository(
         updatedAt = updatedAt,
         lastMessage = lastMessage,
         messageCount = messageCount,
-        plotMode = plotMode
+        plotMode = plotMode,
+        customPrompts = customPrompts?.let { runCatching { JsonParser.parseString(it) }.getOrNull() }
     )
 
     private fun LocalMessageEntity.toMessage(): Message = Message(

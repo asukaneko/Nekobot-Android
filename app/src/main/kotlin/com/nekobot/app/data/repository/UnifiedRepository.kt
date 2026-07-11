@@ -22,6 +22,7 @@ import com.nekobot.app.data.model.WorldBookEntryRequest
 import com.nekobot.app.data.model.WorldBookRequest
 import com.nekobot.app.data.remote.RealtimeEvent
 import kotlinx.coroutines.flow.Flow
+import okhttp3.MultipartBody
 
 /**
  * 统一仓库：根据 [PrefsManager.appMode] 分发到本地或远程实现。
@@ -140,16 +141,20 @@ class UnifiedRepository(
 
     // ==================== 提示词栈 / 自定义提示词 ====================
 
-    /** 获取会话的自定义提示词列表（本地模式返回空） */
+    /** 获取会话的自定义提示词列表 */
     suspend fun getCustomPrompts(id: String): Resource<JsonElement> =
         if (isLocal) {
-            Resource.Success(JsonParser.parseString("{\"success\":true,\"custom_prompts\":[]}"))
+            val raw = local.getCustomPromptsRaw(id)
+            val arrStr = if (raw.isNullOrBlank()) "[]" else raw
+            Resource.Success(JsonParser.parseString("{\"success\":true,\"custom_prompts\":$arrStr}"))
         } else remote.getCustomPrompts(id)
 
-    /** 全量更新会话的自定义提示词列表（本地模式无操作直接成功） */
+    /** 全量更新会话的自定义提示词列表 */
     suspend fun updateCustomPrompts(id: String, customPrompts: List<Map<String, Any>>): Resource<JsonElement> =
         if (isLocal) {
-            Resource.Success(JsonParser.parseString("{\"success\":true,\"custom_prompts\":[]}"))
+            val arr = gson.toJsonTree(customPrompts).toString()
+            local.updateCustomPrompts(id, arr)
+            Resource.Success(JsonParser.parseString("{\"success\":true,\"custom_prompts\":$arr}"))
         } else remote.updateCustomPrompts(id, customPrompts)
 
     // ==================== 角色卡 ====================
@@ -336,4 +341,37 @@ class UnifiedRepository(
 
     /** 转发到本地仓库（仅本地模式使用）。 */
     fun local(): LocalRepository = local
+
+    // ==================== 工作区 ====================
+    /** 列出工作区文件：本地模式返回空数组，远程模式转发 */
+    suspend fun listWorkspaceFiles(sessionId: String, path: String? = null): Resource<JsonElement> {
+        return if (isLocal) {
+            Resource.Success(JsonParser.parseString("[]"))
+        } else {
+            remote.listWorkspaceFiles(sessionId, path)
+        }
+    }
+
+    /** 上传文件到工作区：本地模式不支持，远程模式转发 */
+    suspend fun uploadWorkspaceFile(sessionId: String, file: MultipartBody.Part): Resource<JsonElement> {
+        return if (isLocal) {
+            Resource.Error("本地模式不支持工作区上传")
+        } else {
+            remote.uploadWorkspaceFile(sessionId, file)
+        }
+    }
+
+    /** 删除工作区文件：本地模式不支持，远程模式转发 */
+    suspend fun deleteWorkspaceFile(sessionId: String, filename: String): Resource<JsonElement> {
+        return if (isLocal) {
+            Resource.Error("本地模式不支持工作区操作")
+        } else {
+            remote.deleteWorkspaceFile(sessionId, filename)
+        }
+    }
+
+    /** 下载工作区文件：本地模式返回 null，远程模式转发 */
+    suspend fun downloadWorkspaceFile(sessionId: String, filename: String): retrofit2.Response<okhttp3.ResponseBody>? {
+        return if (isLocal) null else remote.downloadWorkspaceFile(sessionId, filename)
+    }
 }

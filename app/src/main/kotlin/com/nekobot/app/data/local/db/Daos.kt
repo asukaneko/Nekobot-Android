@@ -30,6 +30,9 @@ interface SessionDao {
 
     @Query("UPDATE local_sessions SET last_message = :lastMessage, message_count = :count, updated_at = :updatedAt WHERE id = :id")
     suspend fun touch(id: String, lastMessage: String, count: Int, updatedAt: String)
+
+    @Query("UPDATE local_sessions SET custom_prompts = :customPrompts, updated_at = :updatedAt WHERE id = :id")
+    suspend fun updateCustomPrompts(id: String, customPrompts: String?, updatedAt: String)
 }
 
 @Dao

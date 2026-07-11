@@ -30,7 +30,9 @@ data class LocalSessionEntity(
     @ColumnInfo(name = "updated_at") val updatedAt: String,
     @ColumnInfo(name = "last_message") val lastMessage: String? = null,
     @ColumnInfo(name = "message_count") val messageCount: Int = 0,
-    @ColumnInfo(name = "plot_mode") val plotMode: Boolean = false
+    @ColumnInfo(name = "plot_mode") val plotMode: Boolean = false,
+    /** 自定义提示词列表，JSON 数组字符串，每项含 order/title/content */
+    @ColumnInfo(name = "custom_prompts") val customPrompts: String? = null
 )
 
 /**

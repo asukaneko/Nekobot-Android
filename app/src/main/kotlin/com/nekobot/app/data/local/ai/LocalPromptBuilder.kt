@@ -90,6 +90,15 @@ object LocalPromptBuilder {
             ?: character?.systemPrompt?.takeIf { it.isNotBlank() }
         systemPrompt?.let { parts.add(it) }
 
+        // 自定义提示词（按 order 排序注入）
+        parseCustomPrompts(session.customPrompts).forEach { cp ->
+            val title = cp.first
+            val content = cp.second
+            if (content.isNotBlank()) {
+                parts.add(if (title.isNotBlank()) "[$title]\n$content" else content)
+            }
+        }
+
         // 角色卡补充字段
         if (character != null) {
             character.basicInfo?.takeIf { it.isNotBlank() }?.let { parts.add("【基本信息】\n$it") }
@@ -170,5 +179,27 @@ object LocalPromptBuilder {
     fun stringifyList(list: List<String>?): String? {
         if (list.isNullOrEmpty()) return null
         return gson.toJson(list)
+    }
+
+    /**
+     * 解析自定义提示词 JSON 字符串为 (title, content) 列表，按 order 排序。
+     * JSON 格式：[{"order":1,"title":"...","content":"..."}, ...]
+     */
+    fun parseCustomPrompts(json: String?): List<Pair<String, String>> {
+        if (json.isNullOrBlank()) return emptyList()
+        return try {
+            val arr = JsonParser.parseString(json)
+            if (!arr.isJsonArray) return emptyList()
+            arr.asJsonArray.mapNotNull { el ->
+                if (!el.isJsonObject) return@mapNotNull null
+                val obj = el.asJsonObject
+                val title = obj.get("title")?.takeIf { !it.isJsonNull }?.asString ?: ""
+                val content = obj.get("content")?.takeIf { !it.isJsonNull }?.asString ?: ""
+                val order = obj.get("order")?.takeIf { !it.isJsonNull }?.asInt ?: 0
+                Triple(order, title, content)
+            }.sortedBy { it.first }.map { it.second to it.third }
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
 }

@@ -31,6 +31,7 @@ import com.nekobot.app.ui.screens.aiconfig.LocalAiModelsScreen
 import com.nekobot.app.ui.screens.characters.CharacterDetailScreen
 import com.nekobot.app.ui.screens.characters.CharactersScreen
 import com.nekobot.app.ui.screens.chat.ChatScreen
+import com.nekobot.app.ui.screens.chat.WorkspaceScreen
 import com.nekobot.app.ui.screens.login.LoginScreen
 import com.nekobot.app.ui.screens.memory.MemoryScreen
 import com.nekobot.app.ui.screens.more.MoreScreen
@@ -148,7 +149,9 @@ fun NekobotNavGraph() {
                 ChatScreen(
                     sessionId = entry.arguments?.getString("sessionId").orEmpty(),
                     onBack = { navController.popBackStack() },
-                    onOpenChat = { id -> navController.navigate(Routes.chat(id)) }
+                    onOpenChat = { id -> navController.navigate(Routes.chat(id)) },
+                    onOpenSessionDetail = { id -> navController.navigate(Routes.sessionDetail(id)) },
+                    onOpenWorkspace = { id -> navController.navigate(Routes.workspace(id)) }
                 )
             }
             composable(Routes.CHARACTERS) {
@@ -222,6 +225,15 @@ fun NekobotNavGraph() {
             }
             composable(Routes.STYLE_SETTINGS) {
                 StyleSettingsScreen(onBack = { navController.popBackStack() })
+            }
+            composable(
+                route = Routes.WORKSPACE,
+                arguments = listOf(navArgument("sessionId") { type = NavType.StringType })
+            ) { entry ->
+                WorkspaceScreen(
+                    sessionId = entry.arguments?.getString("sessionId").orEmpty(),
+                    onBack = { navController.popBackStack() }
+                )
             }
         }
     }

@@ -8,7 +8,10 @@ import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.model.*
 import com.nekobot.app.data.remote.NetworkClient
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.ResponseBody
+import retrofit2.Response
 
 /**
  * 统一结果包装：成功带数据，失败带错误信息。
@@ -373,6 +376,23 @@ class NekobotRepository(
     /** 导出全部旧版记忆。 */
     suspend fun exportLegacyMemory(): Resource<LegacyMemoryListResponse> =
         safeCall { api.exportLegacyMemory() }
+
+    // ==================== 工作区 ====================
+    /** 列出会话工作区文件 */
+    suspend fun listWorkspaceFiles(sessionId: String, path: String? = null): Resource<JsonElement> =
+        safeCall { api.listWorkspaceFiles(sessionId, path) }
+
+    /** 上传文件到会话工作区 */
+    suspend fun uploadWorkspaceFile(sessionId: String, file: MultipartBody.Part): Resource<JsonElement> =
+        safeCall { api.uploadWorkspaceFile(sessionId, file) }
+
+    /** 删除工作区文件 */
+    suspend fun deleteWorkspaceFile(sessionId: String, filename: String): Resource<JsonElement> =
+        safeCall { api.deleteWorkspaceFile(sessionId, filename) }
+
+    /** 下载工作区文件（流式） */
+    suspend fun downloadWorkspaceFile(sessionId: String, filename: String): Response<ResponseBody> =
+        api.downloadWorkspaceFile(sessionId, filename)
 }
 
 /** 把无数据成功结果映射为 Unit */
