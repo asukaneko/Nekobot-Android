@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -45,9 +46,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewModelScope
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.EmptyState
@@ -64,9 +67,12 @@ import com.nekobot.app.ui.theme.Secondary
 import com.nekobot.app.ui.theme.SuccessGreen
 import com.nekobot.app.ui.theme.Tertiary
 import com.nekobot.app.ui.theme.WarningAmber
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 状态历程 ViewModel：拉取所有渠道（QQ + Web 等）的角色状态时间线。
@@ -74,6 +80,8 @@ import kotlinx.coroutines.flow.asStateFlow
  *  - GET /api/channel_runtime_timeline（QQ 等渠道会话，已含 timeline）
  *  - GET /api/sessions（获取全部会话元数据，含 web 会话）
  *  - GET /api/sessions/{id}/runtime-timeline（逐个获取 web 会话的 timeline）
+ *
+ * 缓存策略：进入页面时优先加载缓存文件，点击刷新按钮才重新获取。
  */
 class StateHistoryViewModel : BaseViewModel() {
 
@@ -83,22 +91,50 @@ class StateHistoryViewModel : BaseViewModel() {
     private val _selected = MutableStateFlow<JsonObject?>(null)
     val selected: StateFlow<JsonObject?> = _selected.asStateFlow()
 
-    init { load() }
+    init { loadFromCache() }
 
-    /** 强制刷新：清空缓存后重新加载。 */
+    /** 从缓存文件加载（进入页面时调用） */
+    fun loadFromCache() {
+        viewModelScope.launch {
+            val cacheJson = withContext(Dispatchers.IO) {
+                com.nekobot.app.ServiceContainer.localRepository.loadStateHistoryCache()
+            }
+            if (!cacheJson.isNullOrBlank()) {
+                runCatching {
+                    val arr = JsonParser.parseString(cacheJson).asJsonArray
+                    val list = arr.mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject }
+                    _sessions.value = list
+                    if (_selected.value == null) _selected.value = list.firstOrNull()
+                }
+            } else {
+                // 无缓存，首次加载从数据源获取
+                fetchFromSource()
+            }
+        }
+    }
+
+    /** 强制刷新：清空内存缓存后从数据源重新获取 */
     fun refresh() {
         _sessions.value = emptyList()
         _selected.value = null
-        load()
+        fetchFromSource()
     }
 
-    fun load() {
-        // 已有缓存则不重复加载
-        if (_sessions.value.isNotEmpty()) return
+    private fun fetchFromSource() {
         if (isLocalMode) {
             loadLocalStateHistory()
         } else {
             loadRemoteStateHistory()
+        }
+    }
+
+    /** 将会话列表保存到缓存文件 */
+    private fun saveCache(list: List<JsonObject>) {
+        val arr = JsonArray()
+        list.forEach { arr.add(it) }
+        val jsonStr = arr.toString()
+        viewModelScope.launch(Dispatchers.IO) {
+            com.nekobot.app.ServiceContainer.localRepository.saveStateHistoryCache(jsonStr)
         }
     }
 
@@ -147,6 +183,7 @@ class StateHistoryViewModel : BaseViewModel() {
             onSuccess = { merged ->
                 _sessions.value = merged
                 if (_selected.value == null) _selected.value = merged.firstOrNull()
+                saveCache(merged)
             }
         )
     }
@@ -187,6 +224,7 @@ class StateHistoryViewModel : BaseViewModel() {
             onSuccess = { merged ->
                 _sessions.value = merged
                 if (_selected.value == null) _selected.value = merged.firstOrNull()
+                saveCache(merged)
             }
         )
     }
@@ -242,7 +280,7 @@ fun StateHistoryScreen(onBack: () -> Unit) {
     val loading by vm.loading.collectAsState()
     val error by vm.error.collectAsState()
 
-    LaunchedEffect(Unit) { vm.load() }
+    LaunchedEffect(Unit) { vm.loadFromCache() }
 
     Scaffold(
         topBar = {
@@ -255,6 +293,11 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { vm.refresh() }) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             )
@@ -274,7 +317,7 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                     Column(modifier = Modifier.fillMaxSize()) {
                         error?.let {
                             Box(Modifier.padding(16.dp)) {
-                                ErrorBanner(message = it, onRetry = { vm.clearError(); vm.load() })
+                                ErrorBanner(message = it, onRetry = { vm.clearError(); vm.refresh() })
                             }
                         }
                         EmptyState(title = "暂无状态数据", hint = "开始对话后，角色状态历程会在此展示")
@@ -342,7 +385,7 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                         selected?.let { StateTimelineSection(it) }
 
                         error?.let {
-                            ErrorBanner(message = it, onRetry = { vm.clearError(); vm.load() })
+                            ErrorBanner(message = it, onRetry = { vm.clearError(); vm.refresh() })
                         }
                     }
                 }

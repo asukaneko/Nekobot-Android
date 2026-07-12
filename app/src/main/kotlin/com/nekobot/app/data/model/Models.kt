@@ -67,6 +67,8 @@ data class Session(
     @SerializedName("is_archive") val isArchive: Boolean? = null,
     @SerializedName("read_only") val readOnly: Boolean? = null,
     @SerializedName("tts_config") val ttsConfig: JsonElement? = null,
+    /** 公开分享配置 JSON: {expires_days, password, include_character, include_user_messages, message_start, message_end} */
+    @SerializedName("share_config") val shareConfig: JsonElement? = null,
     @SerializedName("first_message") val firstMessage: String? = null,
     val scenario: String? = null,
     @SerializedName("auto_state_interval") val autoStateInterval: Int? = null,
@@ -117,6 +119,7 @@ data class UpdateSessionRequest(
     @SerializedName("plot_real_time_sync") val plotRealTimeSync: Boolean? = null,
     @SerializedName("proactive_chat") val proactiveChat: JsonElement? = null,
     @SerializedName("tts_config") val ttsConfig: JsonElement? = null,
+    @SerializedName("share_config") val shareConfig: JsonElement? = null,
     @SerializedName("disabled_prompt_keys") val disabledPromptKeys: List<String>? = null,
     @SerializedName("is_public") val isPublic: Boolean? = null
 )

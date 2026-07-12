@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Assistant
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Check
@@ -65,6 +66,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
@@ -87,9 +89,11 @@ import com.nekobot.app.ui.theme.Secondary
 import com.nekobot.app.ui.theme.SuccessGreen
 import com.nekobot.app.ui.theme.Tertiary
 import com.nekobot.app.ui.theme.WarningAmber
+import com.nekobot.app.data.repository.Resource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /**
  * 会话详情 ViewModel：加载单个会话、编辑名称 / 标签 / 置顶 / 收藏 / 系统提示词 /
@@ -110,10 +114,22 @@ class SessionDetailViewModel : BaseViewModel() {
     val plotRealTimeSync = MutableStateFlow(false)
     // TTS / 主动聊天 / 公开分享
     val ttsEnabled = MutableStateFlow(false)
+    val ttsModelId = MutableStateFlow("")
     val ttsVoice = MutableStateFlow("")
     val proactiveChatEnabled = MutableStateFlow(false)
     val proactiveChatInterval = MutableStateFlow(60)
     val isPublic = MutableStateFlow(false)
+    // 公开分享配置
+    val shareExpiresDays = MutableStateFlow(30)
+    val sharePassword = MutableStateFlow("")
+    val shareMessageStart = MutableStateFlow("")
+    val shareMessageEnd = MutableStateFlow("")
+    val shareIncludeCharacter = MutableStateFlow(true)
+    val shareIncludeUserMessages = MutableStateFlow(true)
+
+    /** 可用 AI 模型列表（用于 TTS 模型选择） */
+    private val _aiModels = MutableStateFlow<List<Pair<String, String>>>(emptyList())
+    val aiModels: StateFlow<List<Pair<String, String>>> = _aiModels.asStateFlow()
 
     /** 自定义提示词列表（可编辑，每项含 order/title/content） */
     private val _customPrompts = MutableStateFlow<List<CustomPromptItem>>(emptyList())
@@ -135,7 +151,31 @@ class SessionDetailViewModel : BaseViewModel() {
     private val _characterDetail = MutableStateFlow<com.nekobot.app.data.model.CharacterPreset?>(null)
     val characterDetail: StateFlow<com.nekobot.app.data.model.CharacterPreset?> = _characterDetail.asStateFlow()
 
-    fun init(id: String) { load(id) }
+    fun init(id: String) {
+        load(id)
+        loadAiModels()
+    }
+
+    /** 加载可用 AI 模型列表（用于 TTS 模型选择下拉） */
+    private fun loadAiModels() {
+        viewModelScope.launch {
+            try {
+                if (isLocalMode) {
+                    val models = com.nekobot.app.ServiceContainer.localRepository.listAiModels()
+                    _aiModels.value = models.map { it.id to it.name }
+                } else {
+                    when (val r = repo.listAiModels()) {
+                        is Resource.Success -> {
+                            _aiModels.value = (r.data ?: emptyList()).mapNotNull { m ->
+                                m.id?.let { it to (m.name ?: m.model ?: it) }
+                            }
+                        }
+                        else -> {}
+                    }
+                }
+            } catch (_: Exception) { /* 忽略模型列表加载失败 */ }
+        }
+    }
 
     fun load(id: String) {
         launchResult(
@@ -151,6 +191,7 @@ class SessionDetailViewModel : BaseViewModel() {
                 plotMode.value = s.plotMode == true
                 plotRealTimeSync.value = s.plotRealTimeSync == true
                 // 解析 TTS / 主动聊天 / 公开分享
+                android.util.Log.d("SessionDetail", "load: s.isPublic=${s.isPublic}, s.ttsConfig=${s.ttsConfig}, s.shareConfig=${s.shareConfig}")
                 isPublic.value = s.isPublic == true
                 // proactive_chat: {"enabled":bool,"interval_minutes":int}
                 runCatching {
@@ -162,7 +203,18 @@ class SessionDetailViewModel : BaseViewModel() {
                 runCatching {
                     val tts = s.ttsConfig?.asJsonObject
                     ttsEnabled.value = tts?.get("enabled")?.asBoolean == true
+                    ttsModelId.value = tts?.get("model_id")?.takeIf { !it.isJsonNull }?.asString ?: ""
                     ttsVoice.value = tts?.get("voice")?.takeIf { !it.isJsonNull }?.asString ?: ""
+                }
+                // share_config: {"expires_days":int,"password":str,"include_character":bool,"include_user_messages":bool,"message_start":int?,"message_end":int?}
+                runCatching {
+                    val sc = s.shareConfig?.asJsonObject
+                    shareExpiresDays.value = sc?.get("expires_days")?.takeIf { !it.isJsonNull }?.asInt ?: 30
+                    sharePassword.value = sc?.get("password")?.takeIf { !it.isJsonNull }?.asString ?: ""
+                    shareIncludeCharacter.value = sc?.get("include_character")?.takeIf { !it.isJsonNull }?.asBoolean ?: true
+                    shareIncludeUserMessages.value = sc?.get("include_user_messages")?.takeIf { !it.isJsonNull }?.asBoolean ?: true
+                    shareMessageStart.value = sc?.get("message_start")?.takeIf { !it.isJsonNull }?.let { it.asInt.toString() } ?: ""
+                    shareMessageEnd.value = sc?.get("message_end")?.takeIf { !it.isJsonNull }?.let { it.asInt.toString() } ?: ""
                 }
                 // 解析 custom_prompts
                 _customPrompts.value = parseCustomPrompts(s.customPrompts)
@@ -192,6 +244,7 @@ class SessionDetailViewModel : BaseViewModel() {
             showToast("会话名不能为空")
             return
         }
+        android.util.Log.d("SessionDetail", "save: isPublic=${isPublic.value}, ttsEnabled=${ttsEnabled.value}, sessionId=${s.id}")
         val tagsList = tagsText.value.split(",").map { it.trim() }.filter { it.isNotEmpty() }
         // 构建 proactive_chat / tts_config JSON
         val proactiveJson = com.google.gson.JsonObject().apply {
@@ -200,8 +253,16 @@ class SessionDetailViewModel : BaseViewModel() {
         }
         val ttsJson = com.google.gson.JsonObject().apply {
             addProperty("enabled", ttsEnabled.value)
-            addProperty("model_id", "")
+            addProperty("model_id", ttsModelId.value)
             addProperty("voice", ttsVoice.value.ifBlank { "" })
+        }
+        val shareJson = com.google.gson.JsonObject().apply {
+            addProperty("expires_days", shareExpiresDays.value)
+            addProperty("password", sharePassword.value)
+            addProperty("include_character", shareIncludeCharacter.value)
+            addProperty("include_user_messages", shareIncludeUserMessages.value)
+            shareMessageStart.value.trim().toIntOrNull()?.let { addProperty("message_start", it) }
+            shareMessageEnd.value.trim().toIntOrNull()?.let { addProperty("message_end", it) }
         }
         launchResult(
             block = {
@@ -219,11 +280,13 @@ class SessionDetailViewModel : BaseViewModel() {
                         disabledPromptKeys = _disabledPromptKeys.value.toList(),
                         isPublic = isPublic.value,
                         proactiveChat = proactiveJson,
-                        ttsConfig = ttsJson
+                        ttsConfig = ttsJson,
+                        shareConfig = shareJson
                     )
                 )
             },
             onSuccess = {
+                android.util.Log.d("SessionDetail", "save onSuccess: starting reload")
                 showToast("已保存")
                 load(s.id.orEmpty())
                 onSuccess()
@@ -365,10 +428,18 @@ fun SessionDetailScreen(
     val plotMode by vm.plotMode.collectAsState()
     val plotRealTimeSync by vm.plotRealTimeSync.collectAsState()
     val ttsEnabled by vm.ttsEnabled.collectAsState()
+    val ttsModelId by vm.ttsModelId.collectAsState()
     val ttsVoice by vm.ttsVoice.collectAsState()
     val proactiveChatEnabled by vm.proactiveChatEnabled.collectAsState()
     val proactiveChatInterval by vm.proactiveChatInterval.collectAsState()
     val isPublic by vm.isPublic.collectAsState()
+    val shareExpiresDays by vm.shareExpiresDays.collectAsState()
+    val sharePassword by vm.sharePassword.collectAsState()
+    val shareMessageStart by vm.shareMessageStart.collectAsState()
+    val shareMessageEnd by vm.shareMessageEnd.collectAsState()
+    val shareIncludeCharacter by vm.shareIncludeCharacter.collectAsState()
+    val shareIncludeUserMessages by vm.shareIncludeUserMessages.collectAsState()
+    val aiModels by vm.aiModels.collectAsState()
     val customPrompts by vm.customPrompts.collectAsState()
     val promptStackDebug by vm.promptStackDebug.collectAsState()
     val composedSystemPrompt by vm.composedSystemPrompt.collectAsState()
@@ -726,12 +797,21 @@ fun SessionDetailScreen(
                             )
                             if (ttsEnabled) {
                                 Spacer(Modifier.height(8.dp))
-                                OutlinedTextField(
-                                    value = ttsVoice,
-                                    onValueChange = { vm.ttsVoice.value = it },
-                                    label = { Text("语音音色（voice）", style = MaterialTheme.typography.labelSmall) },
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth()
+                                // TTS 模型选择下拉
+                                Text("TTS 模型", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                                Spacer(Modifier.height(4.dp))
+                                TtsModelSelector(
+                                    modelId = ttsModelId,
+                                    models = aiModels,
+                                    onChange = { vm.ttsModelId.value = it }
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                // 音色选择
+                                Text("语音音色（voice）", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                                Spacer(Modifier.height(4.dp))
+                                TtsVoiceSelector(
+                                    voice = ttsVoice,
+                                    onChange = { vm.ttsVoice.value = it }
                                 )
                             }
 
@@ -763,6 +843,59 @@ fun SessionDetailScreen(
                                 onClick = { vm.isPublic.value = !isPublic },
                                 modifier = Modifier.fillMaxWidth()
                             )
+                            if (isPublic) {
+                                Spacer(Modifier.height(8.dp))
+                                // 有效期
+                                Text("有效期", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                                Spacer(Modifier.height(4.dp))
+                                ShareExpirySelector(
+                                    value = shareExpiresDays,
+                                    onChange = { vm.shareExpiresDays.value = it }
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                // 访问密码
+                                OutlinedTextField(
+                                    value = sharePassword,
+                                    onValueChange = { vm.sharePassword.value = it },
+                                    label = { Text("访问密码（留空则无密码）", style = MaterialTheme.typography.labelSmall) },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                // 消息序号范围
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = shareMessageStart,
+                                        onValueChange = { vm.shareMessageStart.value = it.filter { c -> c.isDigit() } },
+                                        label = { Text("起始消息序号", style = MaterialTheme.typography.labelSmall) },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    OutlinedTextField(
+                                        value = shareMessageEnd,
+                                        onValueChange = { vm.shareMessageEnd.value = it.filter { c -> c.isDigit() } },
+                                        label = { Text("结束消息序号", style = MaterialTheme.typography.labelSmall) },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                // 显示选项
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    ToggleChipRow(
+                                        label = if (shareIncludeCharacter) "角色信息：显示" else "角色信息：隐藏",
+                                        selected = shareIncludeCharacter,
+                                        onClick = { vm.shareIncludeCharacter.value = !shareIncludeCharacter },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    ToggleChipRow(
+                                        label = if (shareIncludeUserMessages) "用户消息：显示" else "用户消息：隐藏",
+                                        selected = shareIncludeUserMessages,
+                                        onClick = { vm.shareIncludeUserMessages.value = !shareIncludeUserMessages },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
                         }
 
                         // === 7. 只读元信息 ===
@@ -960,6 +1093,129 @@ private fun ProactiveIntervalSelector(
             FilterChip(
                 selected = value == minutes,
                 onClick = { onChange(minutes) },
+                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                    selectedLabelColor = MaterialTheme.colorScheme.primary
+                )
+            )
+        }
+    }
+}
+
+/** TTS 模型选择器：下拉菜单展示可用 AI 模型 */
+@Composable
+private fun TtsModelSelector(
+    modelId: String,
+    models: List<Pair<String, String>>,
+    onChange: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedName = models.firstOrNull { it.first == modelId }?.second
+        ?: if (modelId.isBlank()) "未选择" else modelId
+    Box {
+        GlassCard(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clickable { expanded = true },
+            cornerRadius = 12,
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 12.dp).fillMaxSize()
+            ) {
+                Text(
+                    text = selectedName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (modelId.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text("未选择", color = if (modelId.isBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) },
+                onClick = { onChange(""); expanded = false }
+            )
+            models.forEach { (id, name) ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            name,
+                            color = if (id == modelId) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            fontWeight = if (id == modelId) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    onClick = { onChange(id); expanded = false }
+                )
+            }
+            if (models.isEmpty()) {
+                Text("  暂无可用模型，请先在 AI 配置中添加", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
+            }
+        }
+    }
+}
+
+/** TTS 音色选择器：常用音色 FilterChips + 自定义输入 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TtsVoiceSelector(
+    voice: String,
+    onChange: (String) -> Unit
+) {
+    val commonVoices = listOf("alloy", "echo", "fable", "onyx", "nova", "shimmer", "coral", "verse", "ballad", "ash", "sage")
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        commonVoices.forEach { v ->
+            FilterChip(
+                selected = voice == v,
+                onClick = { onChange(v) },
+                label = { Text(v, style = MaterialTheme.typography.labelSmall) },
+                colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                    selectedLabelColor = MaterialTheme.colorScheme.primary
+                )
+            )
+        }
+    }
+    Spacer(Modifier.height(6.dp))
+    OutlinedTextField(
+        value = voice,
+        onValueChange = { onChange(it) },
+        label = { Text("自定义音色（可直接输入）", style = MaterialTheme.typography.labelSmall) },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+
+/** 公开分享有效期选择器 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ShareExpirySelector(
+    value: Int,
+    onChange: (Int) -> Unit
+) {
+    val options = listOf(
+        1 to "1 天",
+        7 to "7 天",
+        30 to "30 天",
+        90 to "90 天",
+        365 to "365 天"
+    )
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        options.forEach { (days, label) ->
+            FilterChip(
+                selected = value == days,
+                onClick = { onChange(days) },
                 label = { Text(label, style = MaterialTheme.typography.labelSmall) },
                 colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
                     selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),

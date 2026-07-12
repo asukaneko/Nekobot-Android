@@ -114,7 +114,8 @@ class UnifiedRepository(
                 disabledPromptKeys = req.disabledPromptKeys,
                 isPublic = req.isPublic,
                 proactiveChat = req.proactiveChat?.toString(),
-                ttsConfig = req.ttsConfig?.toString()
+                ttsConfig = req.ttsConfig?.toString(),
+                shareConfig = req.shareConfig?.toString()
             )
             local.getSession(id)?.let { Resource.Success(it) } ?: Resource.Error("会话不存在")
         } else remote.updateSession(id, req)

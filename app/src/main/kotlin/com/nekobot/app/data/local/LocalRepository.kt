@@ -188,9 +188,14 @@ class LocalRepository(
         disabledPromptKeys: List<String>? = null,
         isPublic: Boolean? = null,
         proactiveChat: String? = null,
-        ttsConfig: String? = null
+        ttsConfig: String? = null,
+        shareConfig: String? = null
     ) = withContext(Dispatchers.IO) {
-        val entity = sessionDao.getById(id) ?: return@withContext
+        val entity = sessionDao.getById(id) ?: run {
+            android.util.Log.d("LocalRepo", "updateSession: entity not found for id=$id")
+            return@withContext
+        }
+        android.util.Log.d("LocalRepo", "updateSession: isPublic=$isPublic, entity.isPublic=${entity.isPublic}, ttsConfig=$ttsConfig, shareConfig=$shareConfig")
         val updated = entity.copy(
             name = name ?: entity.name,
             systemPrompt = systemPrompt ?: entity.systemPrompt,
@@ -203,10 +208,12 @@ class LocalRepository(
             isPublic = isPublic ?: entity.isPublic,
             proactiveChat = proactiveChat ?: entity.proactiveChat,
             ttsConfig = ttsConfig ?: entity.ttsConfig,
+            shareConfig = shareConfig ?: entity.shareConfig,
             updatedAt = nowIso()
         )
         // 使用 @Update 而非 upsert(@Insert REPLACE)，避免触发外键级联删除消息
         sessionDao.update(updated)
+        android.util.Log.d("LocalRepo", "updateSession: updated.isPublic=${updated.isPublic}, updated.ttsConfig=${updated.ttsConfig}, updated.shareConfig=${updated.shareConfig}")
     }
 
     suspend fun deleteSession(id: String) = withContext(Dispatchers.IO) {
@@ -228,6 +235,24 @@ class LocalRepository(
     fun getPlotChoices(sessionId: String): String? {
         return appContext?.getSharedPreferences("plot_choices", android.content.Context.MODE_PRIVATE)
             ?.getString(sessionId, null)
+    }
+
+    // ==================== 状态历程缓存 ====================
+
+    private val stateHistoryCacheFile get() = appContext?.cacheDir?.resolve("state_history_cache.json")
+
+    /** 保存状态历程数据到缓存文件 */
+    fun saveStateHistoryCache(json: String) {
+        try {
+            stateHistoryCacheFile?.writeText(json)
+        } catch (_: Exception) { /* 忽略缓存写入失败 */ }
+    }
+
+    /** 读取缓存的状态历程数据 */
+    fun loadStateHistoryCache(): String? {
+        return try {
+            stateHistoryCacheFile?.takeIf { it.exists() }?.readText()
+        } catch (_: Exception) { null }
     }
 
     // ==================== 消息 ====================
@@ -1196,7 +1221,8 @@ class LocalRepository(
         composedSystemPrompt = composedSystemPrompt,
         isPublic = isPublic,
         proactiveChat = proactiveChat?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
-        ttsConfig = ttsConfig?.let { runCatching { JsonParser.parseString(it) }.getOrNull() }
+        ttsConfig = ttsConfig?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
+        shareConfig = shareConfig?.let { runCatching { JsonParser.parseString(it) }.getOrNull() }
     )
 
     private fun LocalMessageEntity.toMessage(): Message = Message(

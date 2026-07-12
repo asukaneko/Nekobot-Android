@@ -47,7 +47,9 @@ data class LocalSessionEntity(
     /** 主动聊天配置 JSON 字符串 {"enabled":bool,"interval_minutes":int} */
     @ColumnInfo(name = "proactive_chat") val proactiveChat: String? = null,
     /** TTS 配置 JSON 字符串 {"enabled":bool,"model_id":str,"voice":str} */
-    @ColumnInfo(name = "tts_config") val ttsConfig: String? = null
+    @ColumnInfo(name = "tts_config") val ttsConfig: String? = null,
+    /** 公开分享配置 JSON 字符串 {expires_days,password,include_character,include_user_messages,message_start,message_end} */
+    @ColumnInfo(name = "share_config") val shareConfig: String? = null
 )
 
 /**
