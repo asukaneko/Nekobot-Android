@@ -363,7 +363,8 @@ fun TokensScreen() {
                 }
             }
 
-            LoadingOverlay(visible = loading)
+            // 仅首次（尚无数据）加载时盖全屏遮罩；已有数据的刷新不再黑屏，避免切回本页时生硬闪烁。
+            LoadingOverlay(visible = loading && stats == null)
         }
     }
 

@@ -7,12 +7,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -50,6 +45,23 @@ private val mainRoutes = setOf(
     Routes.TOKENS, Routes.MORE
 )
 
+// 底栏 Tab 的显示顺序，用于判断横向滑动方向。
+private val tabOrder = bottomItems.map { it.route }
+
+private const val TAB_ANIM_MS = 200
+private const val DETAIL_ANIM_MS = 220
+
+/**
+ * 返回主 Tab 间切换的滑动方向：
+ * +1 表示目标在右侧（内容向左推入），-1 表示目标在左侧，0 表示不是主 Tab 间切换（走详情页转场）。
+ */
+private fun tabDirection(from: String?, to: String?): Int {
+    val fromIndex = tabOrder.indexOf(from)
+    val toIndex = tabOrder.indexOf(to)
+    if (fromIndex == -1 || toIndex == -1 || fromIndex == toIndex) return 0
+    return if (toIndex > fromIndex) 1 else -1
+}
+
 @Composable
 fun NekobotNavGraph() {
     val navController = rememberNavController()
@@ -74,29 +86,17 @@ fun NekobotNavGraph() {
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                    bottomItems.forEach { item ->
-                        NavigationBarItem(
-                            selected = currentRoute == item.route,
-                            onClick = {
-                                navController.navigate(item.route) {
-                                    popUpTo(Routes.SESSIONS) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = { androidx.compose.material3.Icon(item.icon, contentDescription = item.label) },
-                            label = { Text(item.label) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                indicatorColor = MaterialTheme.colorScheme.surface
-                            )
-                        )
+                LiquidGlassBottomBar(
+                    items = bottomItems,
+                    selectedRoute = currentRoute,
+                    onItemSelected = { item ->
+                        navController.navigate(item.route) {
+                            popUpTo(Routes.SESSIONS) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
                     }
-                }
+                )
             }
         }
     ) { innerPadding ->
@@ -108,11 +108,36 @@ fun NekobotNavGraph() {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(bottom = innerPadding.calculateBottomPadding()),
-            // 加快切换动画：淡入淡出 150ms，底部 Tab 间几乎瞬时
-            enterTransition = { fadeIn(animationSpec = tween(150)) },
-            exitTransition = { fadeOut(animationSpec = tween(120)) },
-            popEnterTransition = { fadeIn(animationSpec = tween(150)) },
-            popExitTransition = { fadeOut(animationSpec = tween(120)) }
+            // 主 Tab 之间：按底栏顺序做方向性横向滑动 + 淡入，呼应圆岛的滑动方向；
+            // 进入/退出详情页：从右侧滑入、向右滑出，形成层级纵深感。
+            enterTransition = {
+                val from = initialState.destination.route
+                val to = targetState.destination.route
+                val dir = tabDirection(from, to)
+                if (dir != 0) {
+                    slideInHorizontally(tween(TAB_ANIM_MS)) { w -> dir * w / 6 } +
+                        fadeIn(tween(TAB_ANIM_MS))
+                } else {
+                    slideInHorizontally(tween(DETAIL_ANIM_MS)) { w -> w } +
+                        fadeIn(tween(DETAIL_ANIM_MS))
+                }
+            },
+            exitTransition = {
+                val from = initialState.destination.route
+                val to = targetState.destination.route
+                val dir = tabDirection(from, to)
+                if (dir != 0) {
+                    slideOutHorizontally(tween(TAB_ANIM_MS)) { w -> -dir * w / 6 } +
+                        fadeOut(tween(TAB_ANIM_MS))
+                } else {
+                    fadeOut(tween(DETAIL_ANIM_MS))
+                }
+            },
+            popEnterTransition = { fadeIn(tween(DETAIL_ANIM_MS)) },
+            popExitTransition = {
+                slideOutHorizontally(tween(DETAIL_ANIM_MS)) { w -> w } +
+                    fadeOut(tween(DETAIL_ANIM_MS))
+            }
         ) {
             composable(Routes.LOGIN) {
                 LoginScreen(onLoggedIn = {
