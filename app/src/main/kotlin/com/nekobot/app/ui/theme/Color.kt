@@ -1,6 +1,7 @@
 package com.nekobot.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 
 // ==================== 深色玻璃拟态主题配色 ====================
 val BgDark = Color(0xFF0E0E16)
@@ -50,3 +51,43 @@ val WarningAmberLight = Color(0xFFC77700)
 // 消息气泡（浅色）
 val BubbleUserLight = Color(0xFF7A5CFF)
 val BubbleAssistantLight = Color(0xFFEDEDF6)
+
+/**
+ * 根据主色派生 primaryContainer（深色主题用，亮度降低到 ~38%）。
+ */
+fun derivePrimaryContainer(primary: Color): Color {
+    val argb = primary.toArgb()
+    val hsv = FloatArray(3)
+    android.graphics.Color.RGBToHSV(
+        (argb shr 16) and 0xFF,
+        (argb shr 8) and 0xFF,
+        argb and 0xFF,
+        hsv
+    )
+    hsv[1] = (hsv[1] * 0.85f).coerceAtMost(1f)  // 略降饱和度
+    hsv[2] = (hsv[2] * 0.38f).coerceAtLeast(0.12f)  // 大幅降亮度
+    return Color(android.graphics.Color.HSVToColor(hsv))
+}
+
+/**
+ * 根据主色派生浅色主题的 primaryContainer（亮度提高到 ~92%）。
+ */
+fun derivePrimaryContainerLight(primary: Color): Color {
+    val argb = primary.toArgb()
+    val hsv = FloatArray(3)
+    android.graphics.Color.RGBToHSV(
+        (argb shr 16) and 0xFF,
+        (argb shr 8) and 0xFF,
+        argb and 0xFF,
+        hsv
+    )
+    hsv[1] = (hsv[1] * 0.4f).coerceAtMost(0.5f)  // 大幅降饱和度
+    hsv[2] = 0.96f  // 提亮
+    return Color(android.graphics.Color.HSVToColor(hsv))
+}
+
+/** 解析 hex 颜色字符串，失败返回 null。 */
+fun parseHexColor(hex: String?): Color? {
+    if (hex.isNullOrBlank()) return null
+    return runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrNull()
+}

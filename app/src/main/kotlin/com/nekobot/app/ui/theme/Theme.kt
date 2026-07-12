@@ -55,7 +55,7 @@ fun NekobotTheme(
     content: @Composable () -> Unit
 ) {
     val prefs = ServiceContainer.prefs
-    val colorScheme = when {
+    val baseScheme = when {
         dynamicColor && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
@@ -64,16 +64,27 @@ fun NekobotTheme(
         else -> LightColors
     }
 
+    // 主题色覆盖：null 表示使用默认紫色
+    val themedScheme = prefs.themeColorOverride?.let { hex ->
+        parseHexColor(hex)?.let { override ->
+            val container = if (darkTheme) derivePrimaryContainer(override) else derivePrimaryContainerLight(override)
+            baseScheme.copy(
+                primary = override,
+                primaryContainer = container
+            )
+        }
+    } ?: baseScheme
+
     // 字体颜色覆盖：null 表示跟随主题
     val finalColorScheme = prefs.fontColorOverride?.let { hex ->
-        runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrNull()?.let { overrideColor ->
-            colorScheme.copy(
+        parseHexColor(hex)?.let { overrideColor ->
+            themedScheme.copy(
                 onSurface = overrideColor,
                 onSurfaceVariant = overrideColor,
                 onBackground = overrideColor
             )
         }
-    } ?: colorScheme
+    } ?: themedScheme
 
     val typography = buildTypography(prefs.fontFamily, prefs.fontScale)
 

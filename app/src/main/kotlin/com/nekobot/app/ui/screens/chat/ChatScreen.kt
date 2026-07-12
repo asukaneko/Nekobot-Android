@@ -114,6 +114,7 @@ import com.nekobot.app.ui.theme.BubbleUserLight
 import com.nekobot.app.ui.theme.OnSurface
 import com.nekobot.app.ui.theme.OnSurfaceVariant
 import com.nekobot.app.ui.theme.Primary
+import com.nekobot.app.ui.theme.parseHexColor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -466,7 +467,10 @@ private fun MessageBubble(
 ) {
     val isUser = message.isUser
     val isDark = isSystemInDarkTheme()
-    val bgColor = if (isUser) (if (isDark) BubbleUser else BubbleUserLight) else (if (isDark) BubbleAssistant else BubbleAssistantLight)
+    // 用户气泡颜色：若设置了主题色覆盖则跟随主题，否则使用默认紫色
+    val userBubble = ServiceContainer.prefs.themeColorOverride?.let { parseHexColor(it) }
+        ?: if (isDark) BubbleUser else BubbleUserLight
+    val bgColor = if (isUser) userBubble else (if (isDark) BubbleAssistant else BubbleAssistantLight)
     // 文字颜色：用户气泡（紫色）始终白色；AI 气泡深色模式白色，浅色模式深色
     val textColor = if (isUser) Color.White else (if (isDark) Color.White else MaterialTheme.colorScheme.onSurface)
     val arrangement = if (isUser) Arrangement.End else Arrangement.Start

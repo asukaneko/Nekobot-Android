@@ -137,6 +137,13 @@ class PrefsManager(context: Context) {
             prefs.edit().putString(KEY_FONT_COLOR, value).apply()
         }
 
+    /** 主题色覆盖：null 表示使用默认紫色，否则为颜色 hex 值如 "#4D96FF" */
+    var themeColorOverride: String?
+        get() = prefs.getString(KEY_THEME_COLOR, null)
+        set(value) {
+            prefs.edit().putString(KEY_THEME_COLOR, value).apply()
+        }
+
     val isLoggedIn: Boolean
         get() = when (appMode) {
             AppMode.LOCAL -> true  // 本地模式无需登录
@@ -160,6 +167,7 @@ class PrefsManager(context: Context) {
         const val KEY_FONT_FAMILY = "font_family"
         const val KEY_FONT_SCALE = "font_scale"
         const val KEY_FONT_COLOR = "font_color"
+        const val KEY_THEME_COLOR = "theme_color"
 
         // 字体类型可选值
         const val FONT_FAMILY_SYSTEM = "system"

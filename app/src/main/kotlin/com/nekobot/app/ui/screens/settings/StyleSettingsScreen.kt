@@ -50,9 +50,10 @@ import androidx.compose.ui.unit.dp
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.theme.buildTypography
+import com.nekobot.app.ui.theme.parseHexColor
 
 /**
- * 样式设置：字体类型、字体大小、字体颜色，带实时预览。
+ * 样式设置：主题色、字体类型、字体大小、字体颜色，带实时预览。
  * 选择后立即保存到 prefs，点击"应用"按钮重建 Activity 使全局生效。
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -61,10 +62,12 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
     val prefs = ServiceContainer.prefs
     val context = LocalContext.current
 
+    var themeColorOverride by remember { mutableStateOf(prefs.themeColorOverride) }
     var fontFamily by remember { mutableStateOf(prefs.fontFamily) }
     var fontScale by remember { mutableStateOf(prefs.fontScale) }
     var fontColorOverride by remember { mutableStateOf(prefs.fontColorOverride) }
     var showCustomColorDialog by remember { mutableStateOf(false) }
+    var showCustomThemeColorDialog by remember { mutableStateOf(false) }
 
     // 字体类型选项
     val fontFamilyOptions = listOf(
@@ -82,6 +85,17 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
         1.3f to "超大",
     )
 
+    // 主题色选项：null 表示默认紫色
+    val themeColorOptions = listOf<Pair<String?, String>>(
+        null to "紫色",
+        "#4D96FF" to "蓝色",
+        "#22C1C5" to "青色",
+        "#6BCB77" to "绿色",
+        "#FFB347" to "橙色",
+        "#FF8FB1" to "粉色",
+        "#FF6B6B" to "红色",
+    )
+
     // 字体颜色选项：null 表示跟随主题
     val colorOptions = listOf<Pair<String?, String>>(
         null to "跟随主题",
@@ -93,6 +107,7 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
     )
 
     fun applyAndRecreate() {
+        prefs.themeColorOverride = themeColorOverride
         prefs.fontFamily = fontFamily
         prefs.fontScale = fontScale
         prefs.fontColorOverride = fontColorOverride
@@ -127,6 +142,7 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
             // 实时预览
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 val previewTypography = buildTypography(fontFamily, fontScale)
+                val previewPrimary = parseHexColor(themeColorOverride) ?: MaterialTheme.colorScheme.primary
                 val previewColor = fontColorOverride?.let {
                     runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull()
                 } ?: MaterialTheme.colorScheme.onSurface
@@ -136,8 +152,54 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
                 Text("标题文字示例", style = previewTypography.titleLarge, color = previewColor, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(4.dp))
                 Text("这是正文内容示例，用于展示当前字体类型、大小与颜色配置的效果。", style = previewTypography.bodyLarge, color = previewColor)
-                Spacer(Modifier.height(4.dp))
-                Text("标签示例", style = previewTypography.labelMedium, color = previewColor)
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 32.dp, height = 20.dp)
+                            .clip(MaterialTheme.shapes.small)
+                            .background(previewPrimary)
+                    )
+                    Text(
+                        "主题色 / 气泡预览",
+                        style = previewTypography.labelMedium,
+                        color = previewColor
+                    )
+                }
+            }
+
+            // 主题色
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Text("主题色", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    themeColorOptions.forEach { (hex, label) ->
+                        // null 表示默认紫色，用当前主题的 primary 展示
+                        val circleColor = parseHexColor(hex) ?: MaterialTheme.colorScheme.primary
+                        val selected = themeColorOverride == hex
+                        ColorCircleButton(
+                            color = circleColor,
+                            label = label,
+                            selected = selected,
+                            onClick = {
+                                themeColorOverride = hex
+                                prefs.themeColorOverride = hex
+                            }
+                        )
+                    }
+                    // 自定义主题色按钮
+                    val presetHexes = themeColorOptions.map { it.first }
+                    val customSelected = themeColorOverride != null && themeColorOverride !in presetHexes
+                    ColorCircleButton(
+                        color = parseHexColor(themeColorOverride) ?: MaterialTheme.colorScheme.primary,
+                        label = "自定义",
+                        selected = customSelected,
+                        onClick = { showCustomThemeColorDialog = true }
+                    )
+                }
             }
 
             // 字体类型
@@ -252,6 +314,42 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
             },
             dismissButton = {
                 TextButton(onClick = { showCustomColorDialog = false }) {
+                    Text("取消", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        )
+    }
+
+    // 自定义主题色对话框
+    if (showCustomThemeColorDialog) {
+        var customHex by remember { mutableStateOf(themeColorOverride ?: "#") }
+        AlertDialog(
+            onDismissRequest = { showCustomThemeColorDialog = false },
+            title = { Text("自定义主题色") },
+            text = {
+                Column {
+                    Text("请输入颜色 hex 值，例如 #4D96FF", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = customHex,
+                        onValueChange = { customHex = it },
+                        label = { Text("颜色 hex") },
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val normalized = customHex.trim().let { if (it.startsWith("#")) it else "#$it" }
+                    themeColorOverride = normalized
+                    prefs.themeColorOverride = normalized
+                    showCustomThemeColorDialog = false
+                }) {
+                    Text("确定", color = MaterialTheme.colorScheme.primary)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomThemeColorDialog = false }) {
                     Text("取消", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
