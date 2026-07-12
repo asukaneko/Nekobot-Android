@@ -15,6 +15,7 @@ import com.nekobot.app.data.model.Channel
 import com.nekobot.app.data.model.ChannelPreset
 import com.nekobot.app.data.model.ChannelRequest
 import com.nekobot.app.data.model.CharacterPreset
+import com.nekobot.app.data.model.ConfigExportRequest
 import com.nekobot.app.data.model.CreateSessionRequest
 import com.nekobot.app.data.model.Hook
 import com.nekobot.app.data.model.HookExecutionLog
@@ -33,9 +34,21 @@ import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.model.MessageFilterConfig
 import com.nekobot.app.data.model.MessageFilterRule
 import com.nekobot.app.data.model.MessageFilterRuleRequest
+import com.nekobot.app.data.model.PlotBranchRequest
+import com.nekobot.app.data.model.PlotChoiceData
+import com.nekobot.app.data.model.PlotEdgeData
+import com.nekobot.app.data.model.PlotGraphData
+import com.nekobot.app.data.model.PlotNodeData
+import com.nekobot.app.data.model.PlotRollbackRequest
+import com.nekobot.app.data.model.PlotSelectRequest
+import com.nekobot.app.data.model.PlotSwitchRequest
+import com.nekobot.app.data.model.PlotToggleRequest
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.Skill
 import com.nekobot.app.data.model.SkillRequest
+import com.nekobot.app.data.model.SttTranscribeResponse
+import com.nekobot.app.data.model.SwitchStateRequest
+import com.nekobot.app.data.model.SwitchToggleResponse
 import com.nekobot.app.data.model.TaskItem
 import com.nekobot.app.data.model.TaskRequest
 import com.nekobot.app.data.model.TokenRankings
@@ -46,6 +59,9 @@ import com.nekobot.app.data.model.TtsPreviewRequest
 import com.nekobot.app.data.model.TtsPreviewResponse
 import com.nekobot.app.data.model.TtsVoice
 import com.nekobot.app.data.model.UpdateSessionRequest
+import com.nekobot.app.data.model.WebDavBackupRequest
+import com.nekobot.app.data.model.WebDavConfig
+import com.nekobot.app.data.model.WebDavTestRequest
 import com.nekobot.app.data.model.Workflow
 import com.nekobot.app.data.model.WorkflowRequest
 import com.nekobot.app.data.model.WorldBook
@@ -110,12 +126,14 @@ class UnifiedRepository(
                 tags = req.tags,
                 plotMode = req.plotMode,
                 plotRealTimeSync = req.plotRealTimeSync,
+                plotChoiceStyle = req.plotChoiceStyle,
                 autoStateInterval = req.autoStateInterval,
                 disabledPromptKeys = req.disabledPromptKeys,
                 isPublic = req.isPublic,
                 proactiveChat = req.proactiveChat?.toString(),
                 ttsConfig = req.ttsConfig?.toString(),
-                shareConfig = req.shareConfig?.toString()
+                shareConfig = req.shareConfig?.toString(),
+                archived = req.archived
             )
             local.getSession(id)?.let { Resource.Success(it) } ?: Resource.Error("会话不存在")
         } else remote.updateSession(id, req)
@@ -605,4 +623,143 @@ class UnifiedRepository(
         if (isLocal) localNotSupported("API Keys") else remote.updateApiKey(id, req)
     suspend fun deleteApiKey(id: String): Resource<Unit> =
         if (isLocal) localNotSupported("API Keys") else remote.deleteApiKey(id)
+
+    // ==================== 会话归档 ====================
+    suspend fun archiveSession(id: String): Resource<JsonElement> {
+        return if (isLocal) {
+            local.updateSession(id, archived = true)
+            Resource.Success(JsonParser.parseString("{\"success\":true,\"archived\":true}"))
+        } else remote.archiveSession(id)
+    }
+
+    suspend fun restoreSession(id: String): Resource<JsonElement> {
+        return if (isLocal) {
+            local.updateSession(id, archived = false)
+            Resource.Success(JsonParser.parseString("{\"success\":true,\"archived\":false}"))
+        } else remote.restoreSession(id)
+    }
+
+    // ==================== 故事图 ====================
+    suspend fun plotToggle(req: PlotToggleRequest): Resource<JsonElement> =
+        if (isLocal) {
+            // 本地模式：更新会话的 plotMode 和 plotChoiceStyle
+            local.updateSession(
+                id = req.sessionId,
+                plotMode = req.enabled,
+                plotChoiceStyle = req.plotChoiceStyle
+            )
+            Resource.Success(JsonParser.parseString("{\"success\":true,\"plot_mode\":${req.enabled}}"))
+        } else remote.plotToggle(req)
+
+    suspend fun plotRealTimeSyncToggle(body: Map<String, Any>): Resource<JsonElement> =
+        if (isLocal) {
+            val sid = body["session_id"] as? String
+            if (sid.isNullOrEmpty()) {
+                Resource.Error("缺少 session_id")
+            } else {
+                val enabled = body["enabled"] as? Boolean ?: false
+                local.updateSession(sid, plotRealTimeSync = enabled)
+                Resource.Success(JsonParser.parseString("{\"success\":true}"))
+            }
+        } else remote.plotRealTimeSyncToggle(body)
+
+    suspend fun plotGraph(conversationId: String): Resource<PlotGraphData> =
+        if (isLocal) {
+            // 本地模式：从 PlotGraphManager 获取数据
+            val mgr = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
+            val graph = mgr.getGraph(conversationId)
+            val gson = Gson()
+            Resource.Success(PlotGraphData(
+                nodes = (graph["nodes"] as? List<Map<String, Any>>)?.map {
+                    gson.fromJson(gson.toJson(it), PlotNodeData::class.java)
+                } ?: emptyList(),
+                choices = (graph["choices"] as? List<Map<String, Any>>)?.map {
+                    gson.fromJson(gson.toJson(it), PlotChoiceData::class.java)
+                } ?: emptyList(),
+                edges = (graph["edges"] as? List<Map<String, Any>>)?.map {
+                    gson.fromJson(gson.toJson(it), PlotEdgeData::class.java)
+                } ?: emptyList(),
+                activeNodeId = mgr.getActiveNodeId(conversationId)
+            ))
+        } else remote.plotGraph(conversationId)
+
+    suspend fun plotLatestChoices(conversationId: String): Resource<JsonElement> =
+        if (isLocal) {
+            val mgr = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
+            val choices = mgr.getLatestChoices(conversationId)
+            val gson = Gson()
+            Resource.Success(JsonParser.parseString("{\"choices\":${gson.toJson(choices.map { it.toDict() })}}"))
+        } else remote.plotLatestChoices(conversationId)
+
+    suspend fun plotMermaid(conversationId: String): Resource<JsonElement> =
+        if (isLocal) {
+            // 本地简化：返回空 mermaid
+            Resource.Success(JsonParser.parseString("{\"mermaid\":\"graph TD\\n\"}"))
+        } else remote.plotMermaid(conversationId)
+
+    suspend fun plotSelect(conversationId: String, req: PlotSelectRequest): Resource<JsonElement> =
+        if (isLocal) {
+            val mgr = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
+            val ok = mgr.selectChoice(req.choiceId)
+            Resource.Success(JsonParser.parseString("{\"success\":$ok,\"choice_id\":\"${req.choiceId}\"}"))
+        } else remote.plotSelect(conversationId, req)
+
+    suspend fun plotRegenerateChoices(conversationId: String): Resource<JsonElement> =
+        if (isLocal) localNotSupported("剧情选项重新生成") else remote.plotRegenerateChoices(conversationId)
+
+    suspend fun plotRollback(conversationId: String, req: PlotRollbackRequest): Resource<JsonElement> =
+        if (isLocal) {
+            val mgr = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
+            val ok = mgr.rollback(req.nodeId)
+            Resource.Success(JsonParser.parseString("{\"success\":$ok,\"node_id\":\"${req.nodeId}\"}"))
+        } else remote.plotRollback(conversationId, req)
+
+    suspend fun plotBranchPreview(conversationId: String, nodeId: String): Resource<JsonElement> =
+        if (isLocal) {
+            val mgr = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
+            val path = mgr.materializePath(nodeId)
+            val gson = Gson()
+            Resource.Success(JsonParser.parseString("{\"node_id\":\"$nodeId\",\"messages\":${gson.toJson(path)}}"))
+        } else remote.plotBranchPreview(conversationId, nodeId)
+
+    suspend fun plotSwitch(conversationId: String, req: PlotSwitchRequest): Resource<JsonElement> =
+        if (isLocal) {
+            val mgr = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
+            mgr.setActiveNode(conversationId, req.nodeId)
+            Resource.Success(JsonParser.parseString("{\"success\":true,\"node_id\":\"${req.nodeId}\"}"))
+        } else remote.plotSwitch(conversationId, req)
+
+    suspend fun plotBranch(conversationId: String, req: PlotBranchRequest): Resource<JsonElement> =
+        if (isLocal) localNotSupported("剧情分支创建") else remote.plotBranch(conversationId, req)
+
+    // ==================== WebDAV 备份 ====================
+    suspend fun getWebDavConfig(): Resource<WebDavConfig> =
+        if (isLocal) localNotSupported("WebDAV 备份") else remote.getWebDavConfig()
+    suspend fun saveWebDavConfig(config: WebDavConfig): Resource<JsonElement> =
+        if (isLocal) localNotSupported("WebDAV 备份") else remote.saveWebDavConfig(config)
+    suspend fun testWebDav(req: WebDavTestRequest): Resource<JsonElement> =
+        if (isLocal) localNotSupported("WebDAV 备份") else remote.testWebDav(req)
+    suspend fun webDavInfo(): Resource<JsonElement> =
+        if (isLocal) localNotSupported("WebDAV 备份") else remote.webDavInfo()
+    suspend fun webDavBackup(req: WebDavBackupRequest): Resource<JsonElement> =
+        if (isLocal) localNotSupported("WebDAV 备份") else remote.webDavBackup(req)
+    suspend fun webDavSync(req: WebDavBackupRequest): Resource<JsonElement> =
+        if (isLocal) localNotSupported("WebDAV 备份") else remote.webDavSync(req)
+
+    // ==================== 配置迁移 ====================
+    suspend fun exportConfig(req: ConfigExportRequest): retrofit2.Response<okhttp3.ResponseBody> =
+        if (isLocal) { throw UnsupportedOperationException("本地模式不支持配置迁移") } else remote.exportConfig(req)
+    suspend fun importConfig(file: okhttp3.MultipartBody.Part, password: okhttp3.RequestBody, overwrite: okhttp3.RequestBody): Resource<JsonElement> =
+        if (isLocal) localNotSupported("配置迁移") else remote.importConfig(file, password, overwrite)
+
+    // ==================== 功能开关 ====================
+    suspend fun listSwitches(): Resource<JsonElement> =
+        if (isLocal) localNotSupported("功能开关") else remote.listSwitches()
+    suspend fun toggleSwitch(req: SwitchStateRequest): Resource<SwitchToggleResponse> =
+        if (isLocal) localNotSupported("功能开关") else remote.toggleSwitch(req)
+
+    // ==================== 语音识别（STT）====================
+    suspend fun sttTranscribe(audio: okhttp3.MultipartBody.Part, language: okhttp3.RequestBody): Resource<SttTranscribeResponse> =
+        if (isLocal) localNotSupported("语音识别") else remote.sttTranscribe(audio, language)
+
 }

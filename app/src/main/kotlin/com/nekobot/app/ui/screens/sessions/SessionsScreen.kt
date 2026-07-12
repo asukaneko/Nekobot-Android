@@ -105,7 +105,8 @@ data class ChannelOption(val label: String, val value: String?)
 @Composable
 fun SessionsScreen(
     onOpenChat: (String) -> Unit,
-    onOpenDetail: (String) -> Unit = onOpenChat
+    onOpenDetail: (String) -> Unit = onOpenChat,
+    onOpenStoryGraph: (String) -> Unit = onOpenChat
 ) {
     val viewModel: SessionsViewModel = viewModel()
     val sessions by viewModel.displayedSessions.collectAsState()
@@ -217,7 +218,9 @@ fun SessionsScreen(
                                     onRename = { renaming = session },
                                     onDelete = { deleting = session },
                                     onToggleFavorite = { viewModel.toggleFavorite(session) },
-                                    onTogglePinned = { viewModel.togglePinned(session) }
+                                    onTogglePinned = { viewModel.togglePinned(session) },
+                                    onToggleArchived = { viewModel.toggleArchived(session) },
+                                    onOpenStoryGraph = { session.id?.let(onOpenStoryGraph) }
                                 )
                             }
                         }
@@ -762,7 +765,9 @@ private fun SessionItem(
     onTogglePinned: () -> Unit,
     /** 会话自身无立绘时的回退 URL（来自已加载角色列表）。 */
     fallbackPortraitUrl: String? = null,
-    onOpenDetail: () -> Unit = {}
+    onOpenDetail: () -> Unit = {},
+    onToggleArchived: () -> Unit = {},
+    onOpenStoryGraph: () -> Unit = {}
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     GlassCard(
@@ -814,6 +819,10 @@ private fun SessionItem(
                     if (session.favorite == true) {
                         Spacer(Modifier.size(6.dp))
                         Text("★", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleSmall)
+                    }
+                    if (session.archived == true) {
+                        Spacer(Modifier.size(6.dp))
+                        Text("📦", style = MaterialTheme.typography.titleSmall)
                     }
                 }
                 val preview = session.lastMessage
@@ -894,6 +903,20 @@ private fun SessionItem(
                         onClick = {
                             menuExpanded = false
                             onToggleFavorite()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(if (session.archived == true) "取消归档" else "归档") },
+                        onClick = {
+                            menuExpanded = false
+                            onToggleArchived()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("故事图") },
+                        onClick = {
+                            menuExpanded = false
+                            onOpenStoryGraph()
                         }
                     )
                     DropdownMenuItem(
@@ -1072,6 +1095,21 @@ class SessionsViewModel : BaseViewModel() {
             block = { unified.updateSession(session.id.orEmpty(), UpdateSessionRequest(pinned = newPinned)) },
             onSuccess = {
                 showToast(if (newPinned) "已置顶" else "已取消置顶")
+                loadSessions()
+            }
+        )
+    }
+
+    /** 切换归档状态。 */
+    fun toggleArchived(session: Session) {
+        val newArchived = !(session.archived ?: false)
+        launchResult(
+            block = {
+                if (newArchived) unified.archiveSession(session.id.orEmpty())
+                else unified.restoreSession(session.id.orEmpty())
+            },
+            onSuccess = {
+                showToast(if (newArchived) "已归档" else "已取消归档")
                 loadSessions()
             }
         )

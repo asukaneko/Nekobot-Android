@@ -74,6 +74,8 @@ data class Session(
     @SerializedName("auto_state_interval") val autoStateInterval: Int? = null,
     @SerializedName("plot_mode") val plotMode: Boolean? = null,
     @SerializedName("plot_real_time_sync") val plotRealTimeSync: Boolean? = null,
+    /** 剧情选项风格（回复风格）：预设 key 或自定义文本 */
+    @SerializedName("plot_choice_style") val plotChoiceStyle: String? = null,
     @SerializedName("character_runtime_snapshot") val characterRuntimeSnapshot: JsonElement? = null,
     @SerializedName("user_id") val userId: String? = null,
     @SerializedName("group_id") val groupId: String? = null,
@@ -112,11 +114,13 @@ data class UpdateSessionRequest(
     val tags: List<String>? = null,
     val favorite: Boolean? = null,
     val pinned: Boolean? = null,
+    val archived: Boolean? = null,
     @SerializedName("system_prompt") val systemPrompt: String? = null,
     @SerializedName("character_ids") val characterIds: List<String>? = null,
     @SerializedName("auto_state_interval") val autoStateInterval: Int? = null,
     @SerializedName("plot_mode") val plotMode: Boolean? = null,
     @SerializedName("plot_real_time_sync") val plotRealTimeSync: Boolean? = null,
+    @SerializedName("plot_choice_style") val plotChoiceStyle: String? = null,
     @SerializedName("proactive_chat") val proactiveChat: JsonElement? = null,
     @SerializedName("tts_config") val ttsConfig: JsonElement? = null,
     @SerializedName("share_config") val shareConfig: JsonElement? = null,
@@ -990,3 +994,150 @@ data class ApiKeyResponse(
     val success: Boolean? = null,
     val key: ApiKey? = null
 )
+
+// ==================== 故事图（Plot Graph）====================
+/** 故事图节点（API 版本，对应原仓库 PlotNode） */
+data class PlotNodeData(
+    @SerializedName(value = "id", alternate = ["node_id"]) val id: String? = null,
+    @SerializedName("conversation_id") val conversationId: String? = null,
+    @SerializedName("character_id") val characterId: String? = null,
+    val title: String? = null,
+    val summary: String? = null,
+    val level: String? = null,
+    val scene: JsonElement? = null,
+    @SerializedName("state_snapshot") val stateSnapshot: JsonElement? = null,
+    @SerializedName("relationship_snapshot") val relationshipSnapshot: JsonElement? = null,
+    @SerializedName("parent_node_id") val parentNodeId: String? = null,
+    @SerializedName("selected_choice_id") val selectedChoiceId: String? = null,
+    @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("user_message") val userMessage: JsonElement? = null,
+    @SerializedName("assistant_message") val assistantMessage: JsonElement? = null,
+    @SerializedName("activity_type") val activityType: String? = null,
+    val participants: List<String>? = null,
+    val location: String? = null,
+    val mood: String? = null
+)
+
+/** 故事图选项 */
+data class PlotChoiceData(
+    @SerializedName(value = "id", alternate = ["choice_id"]) val id: String? = null,
+    @SerializedName("node_id") val nodeId: String? = null,
+    val text: String? = null,
+    val level: String? = null,
+    val intent: String? = null,
+    val selected: Boolean? = null,
+    val risk: String? = null
+)
+
+/** 故事图边 */
+data class PlotEdgeData(
+    val id: String? = null,
+    @SerializedName("from_node_id") val fromNodeId: String? = null,
+    @SerializedName("to_node_id") val toNodeId: String? = null,
+    @SerializedName("choice_id") val choiceId: String? = null,
+    val label: String? = null
+)
+
+/** 故事图完整数据 */
+data class PlotGraphData(
+    val nodes: List<PlotNodeData> = emptyList(),
+    val choices: List<PlotChoiceData> = emptyList(),
+    val edges: List<PlotEdgeData> = emptyList(),
+    @SerializedName("active_node_id") val activeNodeId: String? = null
+)
+
+/** 开启剧情模式请求 */
+data class PlotToggleRequest(
+    @SerializedName("session_id") val sessionId: String,
+    val enabled: Boolean,
+    @SerializedName("plot_choice_style") val plotChoiceStyle: String? = null
+)
+
+/** 选择剧情分支请求 */
+data class PlotSelectRequest(
+    @SerializedName("choice_id") val choiceId: String
+)
+
+/** 剧情分支切换请求 */
+data class PlotSwitchRequest(
+    @SerializedName("node_id") val nodeId: String
+)
+
+/** 剧情分支创建请求 */
+data class PlotBranchRequest(
+    @SerializedName("node_id") val nodeId: String,
+    @SerializedName("choice_id") val choiceId: String
+)
+
+/** 剧情回滚请求 */
+data class PlotRollbackRequest(
+    @SerializedName("node_id") val nodeId: String
+)
+
+// ==================== WebDAV 备份 ====================
+data class WebDavConfig(
+    val enabled: Boolean? = null,
+    val url: String? = null,
+    val username: String? = null,
+    val password: String? = null,
+    @SerializedName("encryption_password") val encryptionPassword: String? = null,
+    @SerializedName("last_backup_at") val lastBackupAt: String? = null,
+    @SerializedName("last_sync_at") val lastSyncAt: String? = null,
+    @SerializedName("last_error") val lastError: String? = null,
+    @SerializedName("last_file_size") val lastFileSize: Long? = null,
+    @SerializedName("last_modified") val lastModified: String? = null,
+    @SerializedName("resolved_file_url") val resolvedFileUrl: String? = null,
+    @SerializedName("has_password") val hasPassword: Boolean? = null,
+    @SerializedName("has_encryption_password") val hasEncryptionPassword: Boolean? = null
+)
+
+data class WebDavTestRequest(
+    val url: String? = null,
+    val username: String? = null,
+    val password: String? = null
+)
+
+data class WebDavBackupRequest(
+    val password: String? = null,
+    @SerializedName("include_portraits") val includePortraits: Boolean? = null
+)
+
+// ==================== 配置迁移 ====================
+data class ConfigExportRequest(
+    val password: String? = null
+)
+
+data class ConfigImportRequest(
+    val password: String? = null,
+    val overwrite: Boolean? = null
+)
+
+// ==================== 功能开关 ====================
+data class SwitchInfo(
+    val name: String? = null,
+    val default: Boolean? = null,
+    val description: String? = null
+)
+
+data class SwitchStateRequest(
+    val name: String,
+    val state: Boolean,
+    @SerializedName("group_id") val groupId: String? = null,
+    @SerializedName("user_id") val userId: String? = null,
+    @SerializedName("conversation_id") val conversationId: String? = null
+)
+
+data class SwitchToggleResponse(
+    val success: Boolean? = null,
+    val name: String? = null,
+    val state: Boolean? = null
+)
+
+// ==================== 语音识别（STT）====================
+data class SttTranscribeResponse(
+    val success: Boolean? = null,
+    val text: String? = null,
+    val language: String? = null,
+    val provider: String? = null
+)
+

@@ -643,4 +643,109 @@ interface ApiService {
         @Path("id") id: String,
         @Path("filename") filename: String
     ): Response<ResponseBody>
+
+    // ==================== 会话归档 ====================
+    @POST("api/sessions/{id}/archive")
+    suspend fun archiveSession(@Path("id") id: String): Response<JsonElement>
+
+    @POST("api/sessions/{id}/restore")
+    suspend fun restoreSession(@Path("id") id: String): Response<JsonElement>
+
+    // ==================== 故事图（Plot Graph）====================
+    @POST("api/plot/toggle")
+    suspend fun plotToggle(@Body body: PlotToggleRequest): Response<JsonElement>
+
+    @POST("api/plot/real-time-sync/toggle")
+    suspend fun plotRealTimeSyncToggle(
+        @Body body: Map<String, Any>
+    ): Response<JsonElement>
+
+    @GET("api/plot/{conversationId}/graph")
+    suspend fun plotGraph(@Path("conversationId") conversationId: String): Response<PlotGraphData>
+
+    @GET("api/plot/{conversationId}/latest-choices")
+    suspend fun plotLatestChoices(@Path("conversationId") conversationId: String): Response<JsonElement>
+
+    @GET("api/plot/{conversationId}/mermaid")
+    suspend fun plotMermaid(@Path("conversationId") conversationId: String): Response<JsonElement>
+
+    @POST("api/plot/{conversationId}/select")
+    suspend fun plotSelect(
+        @Path("conversationId") conversationId: String,
+        @Body body: PlotSelectRequest
+    ): Response<JsonElement>
+
+    @POST("api/plot/{conversationId}/regenerate-choices")
+    suspend fun plotRegenerateChoices(@Path("conversationId") conversationId: String): Response<JsonElement>
+
+    @POST("api/plot/{conversationId}/rollback")
+    suspend fun plotRollback(
+        @Path("conversationId") conversationId: String,
+        @Body body: PlotRollbackRequest
+    ): Response<JsonElement>
+
+    @GET("api/plot/{conversationId}/branch-preview")
+    suspend fun plotBranchPreview(
+        @Path("conversationId") conversationId: String,
+        @Query("node_id") nodeId: String
+    ): Response<JsonElement>
+
+    @POST("api/plot/{conversationId}/switch")
+    suspend fun plotSwitch(
+        @Path("conversationId") conversationId: String,
+        @Body body: PlotSwitchRequest
+    ): Response<JsonElement>
+
+    @POST("api/plot/{conversationId}/branch")
+    suspend fun plotBranch(
+        @Path("conversationId") conversationId: String,
+        @Body body: PlotBranchRequest
+    ): Response<JsonElement>
+
+    // ==================== WebDAV 备份 ====================
+    @GET("api/webdav/config")
+    suspend fun getWebDavConfig(): Response<WebDavConfig>
+
+    @PUT("api/webdav/config")
+    suspend fun saveWebDavConfig(@Body body: WebDavConfig): Response<JsonElement>
+
+    @POST("api/webdav/test")
+    suspend fun testWebDav(@Body body: WebDavTestRequest): Response<JsonElement>
+
+    @GET("api/webdav/info")
+    suspend fun webDavInfo(): Response<JsonElement>
+
+    @POST("api/webdav/backup")
+    suspend fun webDavBackup(@Body body: WebDavBackupRequest): Response<JsonElement>
+
+    @POST("api/webdav/sync")
+    suspend fun webDavSync(@Body body: WebDavBackupRequest): Response<JsonElement>
+
+    // ==================== 配置迁移 ====================
+    @POST("api/config-transfer/export")
+    suspend fun exportConfig(@Body body: ConfigExportRequest): Response<ResponseBody>
+
+    @Multipart
+    @POST("api/config-transfer/import")
+    suspend fun importConfig(
+        @Part file: MultipartBody.Part,
+        @Part("password") password: RequestBody,
+        @Part("overwrite") overwrite: RequestBody
+    ): Response<JsonElement>
+
+    // ==================== 功能开关 ====================
+    @GET("api/switches")
+    suspend fun listSwitches(): Response<JsonElement>
+
+    @POST("api/switches/toggle")
+    suspend fun toggleSwitch(@Body body: SwitchStateRequest): Response<SwitchToggleResponse>
+
+    // ==================== 语音识别（STT）====================
+    @Multipart
+    @POST("api/stt/transcribe")
+    suspend fun sttTranscribe(
+        @Part audio: MultipartBody.Part,
+        @Part("language") language: RequestBody
+    ): Response<SttTranscribeResponse>
 }
+

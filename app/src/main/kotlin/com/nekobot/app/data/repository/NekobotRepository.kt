@@ -528,7 +528,46 @@ class NekobotRepository(
     suspend fun updateApiKey(id: String, req: ApiKeyRequest): Resource<ApiKey> =
         safeCall { api.updateApiKey(id, req) }.mapData { it.key ?: ApiKey(id = id, name = req.name) }
     suspend fun deleteApiKey(id: String): Resource<Unit> = safeCall { api.deleteApiKey(id) }.map { }
+
+    // ==================== 会话归档 ====================
+    suspend fun archiveSession(id: String): Resource<JsonElement> = safeCall { api.archiveSession(id) }
+    suspend fun restoreSession(id: String): Resource<JsonElement> = safeCall { api.restoreSession(id) }
+
+    // ==================== 故事图 ====================
+    suspend fun plotToggle(req: PlotToggleRequest): Resource<JsonElement> = safeCall { api.plotToggle(req) }
+    suspend fun plotRealTimeSyncToggle(body: Map<String, Any>): Resource<JsonElement> = safeCall { api.plotRealTimeSyncToggle(body) }
+    suspend fun plotGraph(conversationId: String): Resource<PlotGraphData> = safeCall { api.plotGraph(conversationId) }
+    suspend fun plotLatestChoices(conversationId: String): Resource<JsonElement> = safeCall { api.plotLatestChoices(conversationId) }
+    suspend fun plotMermaid(conversationId: String): Resource<JsonElement> = safeCall { api.plotMermaid(conversationId) }
+    suspend fun plotSelect(conversationId: String, req: PlotSelectRequest): Resource<JsonElement> = safeCall { api.plotSelect(conversationId, req) }
+    suspend fun plotRegenerateChoices(conversationId: String): Resource<JsonElement> = safeCall { api.plotRegenerateChoices(conversationId) }
+    suspend fun plotRollback(conversationId: String, req: PlotRollbackRequest): Resource<JsonElement> = safeCall { api.plotRollback(conversationId, req) }
+    suspend fun plotBranchPreview(conversationId: String, nodeId: String): Resource<JsonElement> = safeCall { api.plotBranchPreview(conversationId, nodeId) }
+    suspend fun plotSwitch(conversationId: String, req: PlotSwitchRequest): Resource<JsonElement> = safeCall { api.plotSwitch(conversationId, req) }
+    suspend fun plotBranch(conversationId: String, req: PlotBranchRequest): Resource<JsonElement> = safeCall { api.plotBranch(conversationId, req) }
+
+    // ==================== WebDAV 备份 ====================
+    suspend fun getWebDavConfig(): Resource<WebDavConfig> = safeCall { api.getWebDavConfig() }
+    suspend fun saveWebDavConfig(config: WebDavConfig): Resource<JsonElement> = safeCall { api.saveWebDavConfig(config) }
+    suspend fun testWebDav(req: WebDavTestRequest): Resource<JsonElement> = safeCall { api.testWebDav(req) }
+    suspend fun webDavInfo(): Resource<JsonElement> = safeCall { api.webDavInfo() }
+    suspend fun webDavBackup(req: WebDavBackupRequest): Resource<JsonElement> = safeCall { api.webDavBackup(req) }
+    suspend fun webDavSync(req: WebDavBackupRequest): Resource<JsonElement> = safeCall { api.webDavSync(req) }
+
+    // ==================== 配置迁移 ====================
+    suspend fun exportConfig(req: ConfigExportRequest): Response<ResponseBody> = api.exportConfig(req)
+    suspend fun importConfig(file: MultipartBody.Part, password: RequestBody, overwrite: RequestBody): Resource<JsonElement> =
+        safeCall { api.importConfig(file, password, overwrite) }
+
+    // ==================== 功能开关 ====================
+    suspend fun listSwitches(): Resource<JsonElement> = safeCall { api.listSwitches() }
+    suspend fun toggleSwitch(req: SwitchStateRequest): Resource<SwitchToggleResponse> = safeCall { api.toggleSwitch(req) }
+
+    // ==================== 语音识别（STT）====================
+    suspend fun sttTranscribe(audio: MultipartBody.Part, language: RequestBody): Resource<SttTranscribeResponse> =
+        safeCall { api.sttTranscribe(audio, language) }
 }
+
 
 /** 把无数据成功结果映射为 Unit */
 fun <T> Resource<T>.map(transform: (T) -> Unit): Resource<Unit> = when (this) {

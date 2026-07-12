@@ -42,6 +42,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -112,6 +113,7 @@ class SessionDetailViewModel : BaseViewModel() {
     val autoStateInterval = MutableStateFlow<Int?>(null)
     val plotMode = MutableStateFlow(false)
     val plotRealTimeSync = MutableStateFlow(false)
+    val plotChoiceStyle = MutableStateFlow("")
     // TTS / 主动聊天 / 公开分享
     val ttsEnabled = MutableStateFlow(false)
     val ttsModelId = MutableStateFlow("")
@@ -190,6 +192,7 @@ class SessionDetailViewModel : BaseViewModel() {
                 autoStateInterval.value = s.autoStateInterval
                 plotMode.value = s.plotMode == true
                 plotRealTimeSync.value = s.plotRealTimeSync == true
+                plotChoiceStyle.value = s.plotChoiceStyle ?: ""
                 // 解析 TTS / 主动聊天 / 公开分享
                 android.util.Log.d("SessionDetail", "load: s.isPublic=${s.isPublic}, s.ttsConfig=${s.ttsConfig}, s.shareConfig=${s.shareConfig}")
                 isPublic.value = s.isPublic == true
@@ -277,6 +280,7 @@ class SessionDetailViewModel : BaseViewModel() {
                         autoStateInterval = autoStateInterval.value,
                         plotMode = plotMode.value,
                         plotRealTimeSync = plotRealTimeSync.value,
+                        plotChoiceStyle = plotChoiceStyle.value.ifBlank { null },
                         disabledPromptKeys = _disabledPromptKeys.value.toList(),
                         isPublic = isPublic.value,
                         proactiveChat = proactiveJson,
@@ -427,6 +431,7 @@ fun SessionDetailScreen(
     val autoStateInterval by vm.autoStateInterval.collectAsState()
     val plotMode by vm.plotMode.collectAsState()
     val plotRealTimeSync by vm.plotRealTimeSync.collectAsState()
+    val plotChoiceStyle by vm.plotChoiceStyle.collectAsState()
     val ttsEnabled by vm.ttsEnabled.collectAsState()
     val ttsModelId by vm.ttsModelId.collectAsState()
     val ttsVoice by vm.ttsVoice.collectAsState()
@@ -772,6 +777,36 @@ fun SessionDetailScreen(
                                     onClick = { vm.plotRealTimeSync.value = !plotRealTimeSync },
                                     modifier = Modifier.fillMaxWidth()
                                 )
+                                Spacer(Modifier.height(8.dp))
+                                // 回复风格编辑器
+                                var showStyleDialog by remember { mutableStateOf(false) }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "回复风格",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    OutlinedButton(onClick = { showStyleDialog = true }) {
+                                        Text(
+                                            text = plotStyleLabel(plotChoiceStyle),
+                                            style = MaterialTheme.typography.labelMedium
+                                        )
+                                    }
+                                }
+                                if (showStyleDialog) {
+                                    PlotStylePickerDialog(
+                                        currentStyle = plotChoiceStyle,
+                                        onConfirm = { newStyle ->
+                                            vm.plotChoiceStyle.value = newStyle
+                                            showStyleDialog = false
+                                        },
+                                        onDismiss = { showStyleDialog = false }
+                                    )
+                                }
                             }
                             Spacer(Modifier.height(12.dp))
                             // 自动状态间隔下拉
@@ -1039,6 +1074,104 @@ private fun RelBar(
         Text(value?.toString() ?: "—", style = MaterialTheme.typography.labelMedium, color = color, fontWeight = FontWeight.Bold)
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
     }
+}
+
+/** 剧情选项风格预设列表（对应原仓库 _STYLE_PRESETS） */
+private val PLOT_STYLE_PRESETS = listOf(
+    "" to "默认推进",
+    "sweet" to "甜蜜暧昧",
+    "suspense" to "悬疑紧张",
+    "daily" to "日常轻松",
+    "dramatic" to "戏剧转折"
+)
+
+/** 根据风格文本返回显示标签 */
+private fun plotStyleLabel(style: String): String {
+    return PLOT_STYLE_PRESETS.firstOrNull { it.first == style }?.second
+        ?: if (style.isNotBlank()) "自定义" else "未设置"
+}
+
+/** 回复风格选择弹窗 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlotStylePickerDialog(
+    currentStyle: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedPreset by remember { mutableStateOf(PLOT_STYLE_PRESETS.firstOrNull { it.first == currentStyle }?.first ?: "custom") }
+    var customText by remember { mutableStateOf(if (selectedPreset == "custom") currentStyle else "") }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("编辑回复风格", fontWeight = FontWeight.SemiBold) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "选择剧情选项的生成风格（影响 AI 生成的 3 个分支选项的语气与取向）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(12.dp))
+                PLOT_STYLE_PRESETS.forEach { (key, label) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { selectedPreset = key }
+                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        androidx.compose.material3.RadioButton(
+                            selected = selectedPreset == key,
+                            onClick = { selectedPreset = key }
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+                // 自定义选项
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { selectedPreset = "custom" }
+                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.RadioButton(
+                        selected = selectedPreset == "custom",
+                        onClick = { selectedPreset = "custom" }
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("自定义", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                }
+                if (selectedPreset == "custom") {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = customText,
+                        onValueChange = { customText = it },
+                        label = { Text("自定义风格描述") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        maxLines = 4
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = {
+                val result = when (selectedPreset) {
+                    "custom" -> customText.trim()
+                    else -> selectedPreset
+                }
+                onConfirm(result)
+            }) { Text("确定") }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) { Text("取消") }
+        }
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)

@@ -23,10 +23,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.ImportExport
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Save
@@ -434,6 +438,38 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                     }
                 }
 
+                // 4.5 高级功能（仅服务器模式）：功能开关 / 数据维护 / 配置迁移 / WebDAV 备份
+                if (appMode != AppMode.LOCAL) {
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        SectionHeader(title = "高级功能")
+                        Spacer(Modifier.height(12.dp))
+                        SettingNavRow(
+                            icon = Icons.Filled.Tune,
+                            iconColor = MaterialTheme.colorScheme.primary,
+                            title = "功能开关",
+                            subtitle = "开启或关闭各项功能模块"
+                        ) { onNavigate("feature_switches") }
+                        SettingNavRow(
+                            icon = Icons.Filled.Build,
+                            iconColor = MaterialTheme.colorScheme.tertiary,
+                            title = "数据维护",
+                            subtitle = "清理缓存、重建索引、压缩数据"
+                        ) { onNavigate("data_maintenance") }
+                        SettingNavRow(
+                            icon = Icons.Filled.ImportExport,
+                            iconColor = MaterialTheme.colorScheme.secondary,
+                            title = "配置迁移",
+                            subtitle = "导入或导出配置包"
+                        ) { onNavigate("config_transfer") }
+                        SettingNavRow(
+                            icon = Icons.Filled.CloudUpload,
+                            iconColor = MaterialTheme.colorScheme.primary,
+                            title = "WebDAV 备份",
+                            subtitle = "配置远程备份并定时同步"
+                        ) { onNavigate("webdav_backup") }
+                    }
+                }
+
                 // 5. 日志查看（服务器模式看服务端日志，本地模式看 LocalLogger）
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     SectionHeader(title = if (appMode == AppMode.LOCAL) "本地日志" else "日志查看")
@@ -571,5 +607,32 @@ private fun LogCard(log: LogEntry) {
                 )
             }
         }
+    }
+}
+
+/** 通用设置导航行：图标 + 标题 + 副标题 + 右箭头。 */
+@Composable
+private fun SettingNavRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconColor: Color,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

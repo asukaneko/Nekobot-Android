@@ -41,6 +41,14 @@ object Routes {
     const val WORKSPACE = "workspace/{sessionId}"
     fun workspace(sessionId: String) = "workspace/$sessionId"
 
+    const val STORY_GRAPH = "story_graph/{sessionId}"
+    fun storyGraph(sessionId: String) = "story_graph/$sessionId"
+
+    const val WEBDAV_BACKUP = "webdav_backup"
+    const val CONFIG_TRANSFER = "config_transfer"
+    const val FEATURE_SWITCHES = "feature_switches"
+    const val DATA_MAINTENANCE = "data_maintenance"
+
     // 扩展功能聚合页 + 12 个模块（仅远程模式）
     const val EXTENSIONS = "extensions"
     const val HOOKS = "hooks"

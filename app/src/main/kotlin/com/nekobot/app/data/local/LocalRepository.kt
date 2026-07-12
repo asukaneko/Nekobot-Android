@@ -184,12 +184,14 @@ class LocalRepository(
         tags: List<String>? = null,
         plotMode: Boolean? = null,
         plotRealTimeSync: Boolean? = null,
+        plotChoiceStyle: String? = null,
         autoStateInterval: Int? = null,
         disabledPromptKeys: List<String>? = null,
         isPublic: Boolean? = null,
         proactiveChat: String? = null,
         ttsConfig: String? = null,
-        shareConfig: String? = null
+        shareConfig: String? = null,
+        archived: Boolean? = null
     ) = withContext(Dispatchers.IO) {
         val entity = sessionDao.getById(id) ?: run {
             android.util.Log.d("LocalRepo", "updateSession: entity not found for id=$id")
@@ -203,16 +205,30 @@ class LocalRepository(
             tags = tags?.let { it.joinToString(",") } ?: entity.tags,
             plotMode = plotMode ?: entity.plotMode,
             plotRealTimeSync = plotRealTimeSync ?: entity.plotRealTimeSync,
+            plotChoiceStyle = plotChoiceStyle ?: entity.plotChoiceStyle,
             autoStateInterval = autoStateInterval ?: entity.autoStateInterval,
             disabledPromptKeys = disabledPromptKeys?.let { it.joinToString(",") } ?: entity.disabledPromptKeys,
             isPublic = isPublic ?: entity.isPublic,
             proactiveChat = proactiveChat ?: entity.proactiveChat,
             ttsConfig = ttsConfig ?: entity.ttsConfig,
             shareConfig = shareConfig ?: entity.shareConfig,
+            archived = archived ?: entity.archived,
             updatedAt = nowIso()
         )
         // 使用 @Update 而非 upsert(@Insert REPLACE)，避免触发外键级联删除消息
         sessionDao.update(updated)
+        // 额外用直接 SQL 确保 is_public / share_config / tts_config / proactive_chat 落库
+        // （@Update 理论上会更新所有字段，但实测 is_public 等新增列偶发不生效，此处兜底）
+        if (isPublic != null || shareConfig != null || ttsConfig != null || proactiveChat != null) {
+            sessionDao.updatePublicShareConfig(
+                id = id,
+                isPublic = updated.isPublic,
+                shareConfig = updated.shareConfig,
+                ttsConfig = updated.ttsConfig,
+                proactiveChat = updated.proactiveChat,
+                updatedAt = nowIso()
+            )
+        }
         android.util.Log.d("LocalRepo", "updateSession: updated.isPublic=${updated.isPublic}, updated.ttsConfig=${updated.ttsConfig}, updated.shareConfig=${updated.shareConfig}")
     }
 
@@ -1208,12 +1224,14 @@ class LocalRepository(
         tags = tags?.split(",")?.filter { it.isNotEmpty() },
         favorite = favorite,
         pinned = pinned,
+        archived = archived,
         createdAt = createdAt,
         updatedAt = updatedAt,
         lastMessage = lastMessage,
         messageCount = messageCount,
         plotMode = plotMode,
         plotRealTimeSync = plotRealTimeSync,
+        plotChoiceStyle = plotChoiceStyle,
         autoStateInterval = autoStateInterval,
         disabledPromptKeys = disabledPromptKeys?.split(",")?.filter { it.isNotEmpty() },
         customPrompts = customPrompts?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },

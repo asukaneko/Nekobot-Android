@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
@@ -125,7 +126,7 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Unit = {}, onOpenSessionDetail: (String) -> Unit = {}, onOpenWorkspace: (String) -> Unit = {}) {
+fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Unit = {}, onOpenSessionDetail: (String) -> Unit = {}, onOpenWorkspace: (String) -> Unit = {}, onOpenStoryGraph: (String) -> Unit = {}) {
     val viewModel: ChatViewModel = viewModel()
     val messages by viewModel.messages.collectAsState()
     val session by viewModel.session.collectAsState()
@@ -148,6 +149,121 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
     // 文件选择模式：null=未选择, "send"=发送文件(上传+插入引用), "upload"=仅上传到工作区
     var filePickMode by remember { mutableStateOf<String?>(null) }
     var fileBusy by remember { mutableStateOf(false) }
+
+    // ===== 语音输入（录音 + STT 识别）=====
+    var isRecording by remember { mutableStateOf(false) }
+    var recordingDuration by remember { mutableStateOf(0) }
+    var voiceTranscribing by remember { mutableStateOf(false) }
+    var recorderRef by remember { mutableStateOf<android.media.MediaRecorder?>(null) }
+    var audioFileRef by remember { mutableStateOf<java.io.File?>(null) }
+
+    fun startVoiceRecording() {
+        try {
+            val file = java.io.File(context.cacheDir, "voice_${System.currentTimeMillis()}.m4a")
+            val recorder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                android.media.MediaRecorder(context)
+            } else {
+                @Suppress("DEPRECATION")
+                android.media.MediaRecorder()
+            }
+            recorder.apply {
+                setAudioSource(android.media.MediaRecorder.AudioSource.MIC)
+                setOutputFormat(android.media.MediaRecorder.OutputFormat.MPEG_4)
+                setAudioEncoder(android.media.MediaRecorder.AudioEncoder.AAC)
+                setAudioSamplingRate(44100)
+                setAudioEncodingBitRate(128000)
+                setOutputFile(file.absolutePath)
+                prepare()
+                start()
+            }
+            recorderRef = recorder
+            audioFileRef = file
+            recordingDuration = 0
+            isRecording = true
+        } catch (e: Exception) {
+            scope.launch { snackbarHostState.showSnackbar("录音启动失败: ${e.message ?: "未知错误"}") }
+        }
+    }
+
+    fun stopAndTranscribe() {
+        val recorder = recorderRef ?: return
+        val file = audioFileRef
+        try {
+            recorder.stop()
+            recorder.release()
+        } catch (e: Exception) {
+            scope.launch { snackbarHostState.showSnackbar("录音结束异常: ${e.message ?: ""}") }
+        }
+        recorderRef = null
+        isRecording = false
+        if (file == null || !file.exists()) return
+        voiceTranscribing = true
+        scope.launch {
+            try {
+                val bytes = withContext(kotlinx.coroutines.Dispatchers.IO) { file.readBytes() }
+                val body = bytes.toRequestBody("audio/mp4".toMediaTypeOrNull())
+                val part = MultipartBody.Part.createFormData("audio", file.name, body)
+                val lang = "zh".toRequestBody("text/plain".toMediaTypeOrNull())
+                when (val res = ServiceContainer.unified.sttTranscribe(part, lang)) {
+                    is com.nekobot.app.data.repository.Resource.Success -> {
+                        val text = res.data?.text
+                        if (!text.isNullOrBlank()) {
+                            input = if (input.isBlank()) text else "$input $text"
+                        } else {
+                            snackbarHostState.showSnackbar("语音识别未返回文字")
+                        }
+                    }
+                    is com.nekobot.app.data.repository.Resource.Error ->
+                        snackbarHostState.showSnackbar("识别失败: ${res.message}")
+                    is com.nekobot.app.data.repository.Resource.Loading -> {}
+                }
+            } catch (e: Exception) {
+                snackbarHostState.showSnackbar("识别失败: ${e.message ?: "未知错误"}")
+            } finally {
+                voiceTranscribing = false
+                file.delete()
+            }
+        }
+    }
+
+    fun cancelRecording() {
+        val recorder = recorderRef ?: return
+        try {
+            recorder.stop()
+            recorder.release()
+        } catch (_: Exception) {}
+        recorderRef = null
+        audioFileRef?.delete()
+        audioFileRef = null
+        isRecording = false
+        recordingDuration = 0
+    }
+
+    val requestMicPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            startVoiceRecording()
+        } else {
+            scope.launch { snackbarHostState.showSnackbar("需要录音权限才能使用语音输入") }
+        }
+    }
+
+    // 录音计时器
+    LaunchedEffect(isRecording) {
+        while (isRecording) {
+            delay(1000)
+            recordingDuration++
+        }
+    }
+
+    fun startVoiceInput() {
+        if (com.nekobot.app.ServiceContainer.prefs.isLocalMode) {
+            scope.launch { snackbarHostState.showSnackbar("语音输入仅在服务器模式可用") }
+            return
+        }
+        requestMicPermission.launch(android.Manifest.permission.RECORD_AUDIO)
+    }
 
     // 标记是否为首次加载，用于跳过滚动动画直接定位到最新消息
     var initialLoad by remember { mutableStateOf(true) }
@@ -247,6 +363,13 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                                 }
                             )
                             DropdownMenuItem(
+                                text = { Text("故事图") },
+                                onClick = {
+                                    menuExpanded = false
+                                    session?.id?.let { onOpenStoryGraph(it) }
+                                }
+                            )
+                            DropdownMenuItem(
                                 text = { Text("重新生成") },
                                 onClick = {
                                     menuExpanded = false
@@ -316,6 +439,7 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                     pickFile.launch("*/*")
                 },
                 onOpenWorkspace = { onOpenWorkspace(sessionId) },
+                onVoiceInput = { startVoiceInput() },
                 fileBusy = fileBusy
             )
         },
@@ -450,6 +574,82 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                     }
                 }
             }
+        }
+    }
+
+    // 语音录制中弹窗
+    if (isRecording) {
+        VoiceRecordingDialog(
+            duration = recordingDuration,
+            onStop = { stopAndTranscribe() },
+            onCancel = { cancelRecording() }
+        )
+    }
+    // 语音识别中弹窗
+    if (voiceTranscribing) {
+        NekoDialog(
+            onDismiss = {},
+            title = "语音识别中",
+            message = "正在上传录音并识别文字，请稍候...",
+            confirmText = "请稍候",
+            onConfirm = null,
+            cancelText = null,
+            onCancel = null
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
+}
+
+/** 语音录制中弹窗：显示录音时长 + 停止/取消按钮。 */
+@Composable
+private fun VoiceRecordingDialog(
+    duration: Int,
+    onStop: () -> Unit,
+    onCancel: () -> Unit
+) {
+    val minutes = duration / 60
+    val seconds = duration % 60
+    val timeText = "%02d:%02d".format(minutes, seconds)
+    // 脉冲动画
+    val transition = rememberInfiniteTransition(label = "voice_pulse")
+    val pulseAlpha by transition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(animation = tween(800), repeatMode = RepeatMode.Reverse),
+        label = "pulse_alpha"
+    )
+    NekoDialog(
+        onDismiss = onCancel,
+        title = "录音中",
+        message = null,
+        confirmText = "停止并识别",
+        onConfirm = onStop,
+        cancelText = "取消",
+        onCancel = onCancel
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                Icons.Filled.Mic,
+                contentDescription = "录音中",
+                tint = Color(0xFFFF6B6B).copy(alpha = pulseAlpha),
+                modifier = Modifier.size(56.dp)
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = timeText,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }
@@ -933,6 +1133,7 @@ private fun ChatInputBar(
     onSendFile: () -> Unit = {},
     onUploadToWorkspace: () -> Unit = {},
     onOpenWorkspace: () -> Unit = {},
+    onVoiceInput: () -> Unit = {},
     fileBusy: Boolean = false
 ) {
     var panelExpanded by remember { mutableStateOf(false) }
@@ -1098,18 +1299,25 @@ private fun ChatInputBar(
                 shape = RoundedCornerShape(24.dp)
             )
             Spacer(Modifier.width(8.dp))
+            // 右侧按钮：发送中→停止；有内容→发送；空内容→语音输入
+            val showSend = sending || input.isNotBlank()
             IconButton(
-                onClick = if (sending) onStop else onSend,
-                enabled = sending || input.isNotBlank(),
+                onClick = if (sending) onStop else if (input.isNotBlank()) onSend else onVoiceInput,
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(if (sending) androidx.compose.ui.graphics.Color(0xFFFF6B6B) else MaterialTheme.colorScheme.primary)
+                    .background(
+                        if (sending) androidx.compose.ui.graphics.Color(0xFFFF6B6B)
+                        else if (showSend) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.surfaceVariant
+                    )
             ) {
                 if (sending) {
                     Icon(Icons.Filled.Stop, contentDescription = "停止", tint = Color.White, modifier = Modifier.size(22.dp))
-                } else {
+                } else if (input.isNotBlank()) {
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送", tint = Color.White, modifier = Modifier.size(22.dp))
+                } else {
+                    Icon(Icons.Filled.Mic, contentDescription = "语音输入", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
                 }
             }
         }

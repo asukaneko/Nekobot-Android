@@ -27,12 +27,15 @@ data class LocalSessionEntity(
     val tags: String? = null,                  // 逗号分隔
     val favorite: Boolean = false,
     val pinned: Boolean = false,
+    val archived: Boolean = false,
     @ColumnInfo(name = "created_at") val createdAt: String,
     @ColumnInfo(name = "updated_at") val updatedAt: String,
     @ColumnInfo(name = "last_message") val lastMessage: String? = null,
     @ColumnInfo(name = "message_count") val messageCount: Int = 0,
     @ColumnInfo(name = "plot_mode") val plotMode: Boolean = false,
     @ColumnInfo(name = "plot_realtime_sync") val plotRealTimeSync: Boolean = false,
+    /** 剧情选项风格（回复风格）文本 */
+    @ColumnInfo(name = "plot_choice_style") val plotChoiceStyle: String? = null,
     @ColumnInfo(name = "auto_state_interval") val autoStateInterval: Int = 2,
     /** 禁用的提示词注入项 key 列表，逗号分隔 */
     @ColumnInfo(name = "disabled_prompt_keys") val disabledPromptKeys: String? = null,

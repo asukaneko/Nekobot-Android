@@ -32,9 +32,14 @@ import com.nekobot.app.ui.screens.memory.MemoryScreen
 import com.nekobot.app.ui.screens.more.MoreScreen
 import com.nekobot.app.ui.screens.sessions.SessionsScreen
 import com.nekobot.app.ui.screens.sessions.SessionDetailScreen
+import com.nekobot.app.ui.screens.plot.StoryGraphScreen
+import com.nekobot.app.ui.screens.settings.ConfigTransferScreen
+import com.nekobot.app.ui.screens.settings.DataMaintenanceScreen
+import com.nekobot.app.ui.screens.settings.FeatureSwitchesScreen
 import com.nekobot.app.ui.screens.settings.SettingsScreen
 import com.nekobot.app.ui.screens.settings.StyleSettingsScreen
 import com.nekobot.app.ui.screens.settings.SystemSettingsScreen
+import com.nekobot.app.ui.screens.settings.WebDavBackupScreen
 import com.nekobot.app.ui.screens.statehistory.StateHistoryScreen
 import com.nekobot.app.ui.screens.tokens.TokensScreen
 import com.nekobot.app.ui.screens.worldbook.WorldBookDetailScreen
@@ -165,6 +170,9 @@ fun NekobotNavGraph() {
                     },
                     onOpenDetail = { id ->
                         navController.navigate(Routes.sessionDetail(id))
+                    },
+                    onOpenStoryGraph = { id ->
+                        navController.navigate(Routes.storyGraph(id))
                     }
                 )
             }
@@ -189,7 +197,8 @@ fun NekobotNavGraph() {
                     onBack = { navController.popBackStack() },
                     onOpenChat = { id -> navController.navigate(Routes.chat(id)) },
                     onOpenSessionDetail = { id -> navController.navigate(Routes.sessionDetail(id)) },
-                    onOpenWorkspace = { id -> navController.navigate(Routes.workspace(id)) }
+                    onOpenWorkspace = { id -> navController.navigate(Routes.workspace(id)) },
+                    onOpenStoryGraph = { id -> navController.navigate(Routes.storyGraph(id)) }
                 )
             }
             composable(Routes.CHARACTERS) {
@@ -272,6 +281,27 @@ fun NekobotNavGraph() {
                     sessionId = entry.arguments?.getString("sessionId").orEmpty(),
                     onBack = { navController.popBackStack() }
                 )
+            }
+            composable(
+                route = Routes.STORY_GRAPH,
+                arguments = listOf(navArgument("sessionId") { type = NavType.StringType })
+            ) { entry ->
+                StoryGraphScreen(
+                    sessionId = entry.arguments?.getString("sessionId").orEmpty(),
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable(Routes.FEATURE_SWITCHES) {
+                FeatureSwitchesScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.DATA_MAINTENANCE) {
+                DataMaintenanceScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.CONFIG_TRANSFER) {
+                ConfigTransferScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.WEBDAV_BACKUP) {
+                WebDavBackupScreen(onBack = { navController.popBackStack() })
             }
             // ==================== 扩展功能（仅远程模式）====================
             composable(Routes.EXTENSIONS) {

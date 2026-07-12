@@ -50,6 +50,9 @@ interface SessionDao {
 
     @Query("UPDATE local_sessions SET composed_system_prompt = :prompt WHERE id = :id")
     suspend fun updateComposedSystemPrompt(id: String, prompt: String)
+
+    @Query("UPDATE local_sessions SET is_public = :isPublic, share_config = :shareConfig, tts_config = :ttsConfig, proactive_chat = :proactiveChat, updated_at = :updatedAt WHERE id = :id")
+    suspend fun updatePublicShareConfig(id: String, isPublic: Boolean, shareConfig: String?, ttsConfig: String?, proactiveChat: String?, updatedAt: String)
 }
 
 @Dao
