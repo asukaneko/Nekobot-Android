@@ -108,6 +108,12 @@ class SessionDetailViewModel : BaseViewModel() {
     val autoStateInterval = MutableStateFlow<Int?>(null)
     val plotMode = MutableStateFlow(false)
     val plotRealTimeSync = MutableStateFlow(false)
+    // TTS / 主动聊天 / 公开分享
+    val ttsEnabled = MutableStateFlow(false)
+    val ttsVoice = MutableStateFlow("")
+    val proactiveChatEnabled = MutableStateFlow(false)
+    val proactiveChatInterval = MutableStateFlow(60)
+    val isPublic = MutableStateFlow(false)
 
     /** 自定义提示词列表（可编辑，每项含 order/title/content） */
     private val _customPrompts = MutableStateFlow<List<CustomPromptItem>>(emptyList())
@@ -144,6 +150,20 @@ class SessionDetailViewModel : BaseViewModel() {
                 autoStateInterval.value = s.autoStateInterval
                 plotMode.value = s.plotMode == true
                 plotRealTimeSync.value = s.plotRealTimeSync == true
+                // 解析 TTS / 主动聊天 / 公开分享
+                isPublic.value = s.isPublic == true
+                // proactive_chat: {"enabled":bool,"interval_minutes":int}
+                runCatching {
+                    val pc = s.proactiveChat?.asJsonObject
+                    proactiveChatEnabled.value = pc?.get("enabled")?.asBoolean == true
+                    proactiveChatInterval.value = pc?.get("interval_minutes")?.takeIf { !it.isJsonNull }?.asInt ?: 60
+                }
+                // tts_config: {"enabled":bool,"model_id":str,"voice":str}
+                runCatching {
+                    val tts = s.ttsConfig?.asJsonObject
+                    ttsEnabled.value = tts?.get("enabled")?.asBoolean == true
+                    ttsVoice.value = tts?.get("voice")?.takeIf { !it.isJsonNull }?.asString ?: ""
+                }
                 // 解析 custom_prompts
                 _customPrompts.value = parseCustomPrompts(s.customPrompts)
                 // 解析 prompt_stack_debug
@@ -173,6 +193,16 @@ class SessionDetailViewModel : BaseViewModel() {
             return
         }
         val tagsList = tagsText.value.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        // 构建 proactive_chat / tts_config JSON
+        val proactiveJson = com.google.gson.JsonObject().apply {
+            addProperty("enabled", proactiveChatEnabled.value)
+            addProperty("interval_minutes", proactiveChatInterval.value)
+        }
+        val ttsJson = com.google.gson.JsonObject().apply {
+            addProperty("enabled", ttsEnabled.value)
+            addProperty("model_id", "")
+            addProperty("voice", ttsVoice.value.ifBlank { "" })
+        }
         launchResult(
             block = {
                 unified.updateSession(
@@ -186,7 +216,10 @@ class SessionDetailViewModel : BaseViewModel() {
                         autoStateInterval = autoStateInterval.value,
                         plotMode = plotMode.value,
                         plotRealTimeSync = plotRealTimeSync.value,
-                        disabledPromptKeys = _disabledPromptKeys.value.toList()
+                        disabledPromptKeys = _disabledPromptKeys.value.toList(),
+                        isPublic = isPublic.value,
+                        proactiveChat = proactiveJson,
+                        ttsConfig = ttsJson
                     )
                 )
             },
@@ -331,6 +364,11 @@ fun SessionDetailScreen(
     val autoStateInterval by vm.autoStateInterval.collectAsState()
     val plotMode by vm.plotMode.collectAsState()
     val plotRealTimeSync by vm.plotRealTimeSync.collectAsState()
+    val ttsEnabled by vm.ttsEnabled.collectAsState()
+    val ttsVoice by vm.ttsVoice.collectAsState()
+    val proactiveChatEnabled by vm.proactiveChatEnabled.collectAsState()
+    val proactiveChatInterval by vm.proactiveChatInterval.collectAsState()
+    val isPublic by vm.isPublic.collectAsState()
     val customPrompts by vm.customPrompts.collectAsState()
     val promptStackDebug by vm.promptStackDebug.collectAsState()
     val composedSystemPrompt by vm.composedSystemPrompt.collectAsState()
@@ -674,6 +712,59 @@ fun SessionDetailScreen(
                             )
                         }
 
+                        // === 6.5 TTS / 主动聊天 / 公开分享 ===
+                        GlassCard(modifier = Modifier.fillMaxWidth()) {
+                            SectionHeader(title = "TTS / 主动聊天 / 公开分享")
+                            Spacer(Modifier.height(8.dp))
+
+                            // TTS 开关
+                            ToggleChipRow(
+                                label = if (ttsEnabled) "TTS：开" else "TTS：关",
+                                selected = ttsEnabled,
+                                onClick = { vm.ttsEnabled.value = !ttsEnabled },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            if (ttsEnabled) {
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = ttsVoice,
+                                    onValueChange = { vm.ttsVoice.value = it },
+                                    label = { Text("语音音色（voice）", style = MaterialTheme.typography.labelSmall) },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+
+                            // 主动聊天开关
+                            ToggleChipRow(
+                                label = if (proactiveChatEnabled) "主动聊天：开" else "主动聊天：关",
+                                selected = proactiveChatEnabled,
+                                onClick = { vm.proactiveChatEnabled.value = !proactiveChatEnabled },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            if (proactiveChatEnabled) {
+                                Spacer(Modifier.height(8.dp))
+                                Text("触发间隔（分钟）", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                                Spacer(Modifier.height(4.dp))
+                                ProactiveIntervalSelector(
+                                    value = proactiveChatInterval,
+                                    onChange = { vm.proactiveChatInterval.value = it }
+                                )
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+
+                            // 公开分享开关
+                            ToggleChipRow(
+                                label = if (isPublic) "公开分享：开" else "公开分享：关",
+                                selected = isPublic,
+                                onClick = { vm.isPublic.value = !isPublic },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
                         // === 7. 只读元信息 ===
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
                             SectionHeader(title = "元信息")
@@ -838,6 +929,37 @@ private fun AutoStateIntervalSelector(
             FilterChip(
                 selected = value == interval,
                 onClick = { onChange(interval) },
+                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                    selectedLabelColor = MaterialTheme.colorScheme.primary
+                )
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ProactiveIntervalSelector(
+    value: Int,
+    onChange: (Int) -> Unit
+) {
+    val options = listOf(
+        5 to "5 分钟",
+        10 to "10 分钟",
+        15 to "15 分钟",
+        30 to "30 分钟",
+        60 to "1 小时",
+        120 to "2 小时",
+        240 to "4 小时",
+        480 to "8 小时"
+    )
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        options.forEach { (minutes, label) ->
+            FilterChip(
+                selected = value == minutes,
+                onClick = { onChange(minutes) },
                 label = { Text(label, style = MaterialTheme.typography.labelSmall) },
                 colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
                     selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),

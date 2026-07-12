@@ -69,6 +69,7 @@ class UnifiedRepository(
 
     suspend fun updateSession(id: String, req: UpdateSessionRequest): Resource<Session> =
         if (isLocal) {
+            // 本地模式：proactive_chat / tts_config 以 JSON 字符串形式存入 Room
             local.updateSession(
                 id = id,
                 name = req.name,
@@ -78,7 +79,10 @@ class UnifiedRepository(
                 plotMode = req.plotMode,
                 plotRealTimeSync = req.plotRealTimeSync,
                 autoStateInterval = req.autoStateInterval,
-                disabledPromptKeys = req.disabledPromptKeys
+                disabledPromptKeys = req.disabledPromptKeys,
+                isPublic = req.isPublic,
+                proactiveChat = req.proactiveChat?.toString(),
+                ttsConfig = req.ttsConfig?.toString()
             )
             local.getSession(id)?.let { Resource.Success(it) } ?: Resource.Error("会话不存在")
         } else remote.updateSession(id, req)

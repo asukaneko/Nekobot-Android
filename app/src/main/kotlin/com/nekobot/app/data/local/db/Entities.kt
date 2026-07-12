@@ -41,7 +41,13 @@ data class LocalSessionEntity(
     /** 运行时提示词注入栈调试信息（JSON 字符串），每次对话后更新 */
     @ColumnInfo(name = "prompt_stack_debug") val promptStackDebug: String? = null,
     /** 运行时合成后的完整系统提示词（每次对话后更新，只读展示） */
-    @ColumnInfo(name = "composed_system_prompt") val composedSystemPrompt: String? = null
+    @ColumnInfo(name = "composed_system_prompt") val composedSystemPrompt: String? = null,
+    /** 是否公开分享 */
+    @ColumnInfo(name = "is_public") val isPublic: Boolean = false,
+    /** 主动聊天配置 JSON 字符串 {"enabled":bool,"interval_minutes":int} */
+    @ColumnInfo(name = "proactive_chat") val proactiveChat: String? = null,
+    /** TTS 配置 JSON 字符串 {"enabled":bool,"model_id":str,"voice":str} */
+    @ColumnInfo(name = "tts_config") val ttsConfig: String? = null
 )
 
 /**

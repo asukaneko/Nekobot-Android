@@ -1,6 +1,5 @@
 package com.nekobot.app.data.local.ai
 
-import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.nekobot.app.data.local.db.LocalAiModelEntity
@@ -60,18 +59,31 @@ class AutoState(
         conversationId: String = "",
         resultError: String? = null
     ): Triple<CharacterState, RelationshipState, Boolean> {
-        if (resultError != null) return Triple(state, relationship, false)
-        if (metadata["is_heartbeat"] == true) return Triple(state, relationship, false)
-        if (metadata["skip_auto_state"] == true) return Triple(state, relationship, false)
+        if (resultError != null) {
+            com.nekobot.app.data.local.LocalLogger.d(TAG, "跳过 AutoState: resultError=$resultError")
+            return Triple(state, relationship, false)
+        }
+        if (metadata["is_heartbeat"] == true) {
+            com.nekobot.app.data.local.LocalLogger.d(TAG, "跳过 AutoState: heartbeat")
+            return Triple(state, relationship, false)
+        }
+        if (metadata["skip_auto_state"] == true) {
+            com.nekobot.app.data.local.LocalLogger.d(TAG, "跳过 AutoState: skip_auto_state=true")
+            return Triple(state, relationship, false)
+        }
 
         if (userMessage.length < 2 || assistantMessage.length < 2) {
+            com.nekobot.app.data.local.LocalLogger.d(TAG, "跳过 AutoState: 消息过短 (user=${userMessage.length}, assistant=${assistantMessage.length})")
             return Triple(state, relationship, false)
         }
 
         val characterId = profile.id.ifEmpty { profile.name }
         val targetId = relationship.targetId.ifEmpty { (metadata["target_id"] as? String) ?: "" }
         val sessionId = (metadata["session_id"] as? String) ?: conversationId
-        if (characterId.isEmpty() || targetId.isEmpty()) return Triple(state, relationship, false)
+        if (characterId.isEmpty() || targetId.isEmpty()) {
+            com.nekobot.app.data.local.LocalLogger.d(TAG, "跳过 AutoState: characterId=$characterId targetId=$targetId 为空")
+            return Triple(state, relationship, false)
+        }
 
         val key = "$characterId:${state.scopeId}:$targetId:$conversationId:$sessionId"
 
@@ -86,8 +98,15 @@ class AutoState(
 
         // 会话级间隔覆盖
         val sessionInterval = (metadata["auto_state_interval"] as? Number)?.toInt() ?: STATE_TURN_INTERVAL
-        if (sessionInterval <= 0) return Triple(state, relationship, false)
-        if (count < sessionInterval) return Triple(state, relationship, false)
+        if (sessionInterval <= 0) {
+            com.nekobot.app.data.local.LocalLogger.d(TAG, "跳过 AutoState: sessionInterval=$sessionInterval <= 0")
+            return Triple(state, relationship, false)
+        }
+        if (count < sessionInterval) {
+            com.nekobot.app.data.local.LocalLogger.d(TAG, "AutoState 计数 $count/$sessionInterval，未达触发间隔 (key=$key)")
+            return Triple(state, relationship, false)
+        }
+        com.nekobot.app.data.local.LocalLogger.i(TAG, "AutoState 达到触发条件: count=$count interval=$sessionInterval (key=$key)")
 
         // 取出缓冲区
         val turns = buffer.toList()
@@ -96,7 +115,7 @@ class AutoState(
         val adjustment = try {
             callStateModel(turns, profile, state, relationship)
         } catch (e: Exception) {
-            Log.w(TAG, "状态评估失败: ${e.message}")
+            com.nekobot.app.data.local.LocalLogger.w(TAG, "状态评估异常: ${e.message}", e)
             turnCounters[key] = 0
             return Triple(state, relationship, false)
         }
@@ -136,7 +155,12 @@ class AutoState(
         state: CharacterState,
         relationship: RelationshipState
     ): Map<String, Any> {
-        val model = aiModelProvider?.invoke() ?: return emptyMap()
+        val model = aiModelProvider?.invoke() ?: run {
+            com.nekobot.app.data.local.LocalLogger.w(TAG, "callStateModel: 无可用激活模型（aiModelProvider 返回 null）")
+            return emptyMap()
+        }
+
+        com.nekobot.app.data.local.LocalLogger.i(TAG, "callStateModel: 开始调用 LLM 状态评估 | 模型=${model.name}(${model.model}) | 轮次=${turns.size}")
 
         val currentSnapshot = mapOf(
             "mood" to state.mood,
@@ -162,9 +186,23 @@ class AutoState(
                 result.usage["completion"] ?: 0
             )
         }
-        if (result.error != null || result.content.isBlank()) return emptyMap()
+        if (result.error != null) {
+            com.nekobot.app.data.local.LocalLogger.w(TAG, "callStateModel: LLM 调用返回错误: ${result.error}")
+            return emptyMap()
+        }
+        if (result.content.isBlank()) {
+            com.nekobot.app.data.local.LocalLogger.w(TAG, "callStateModel: LLM 返回空内容")
+            return emptyMap()
+        }
 
-        return parseStateResponse(result.content)
+        com.nekobot.app.data.local.LocalLogger.i(TAG, "callStateModel: LLM 返回内容长度=${result.content.length} | 前100字符=${result.content.take(100)}")
+        val parsed = parseStateResponse(result.content)
+        if (parsed.isEmpty()) {
+            com.nekobot.app.data.local.LocalLogger.w(TAG, "callStateModel: JSON 解析失败，返回空 Map")
+        } else {
+            com.nekobot.app.data.local.LocalLogger.i(TAG, "callStateModel: 解析成功，字段=${parsed.keys}")
+        }
+        return parsed
     }
 
     /** 构建状态评估 system prompt */

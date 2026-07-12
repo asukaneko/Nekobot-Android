@@ -117,7 +117,8 @@ data class UpdateSessionRequest(
     @SerializedName("plot_real_time_sync") val plotRealTimeSync: Boolean? = null,
     @SerializedName("proactive_chat") val proactiveChat: JsonElement? = null,
     @SerializedName("tts_config") val ttsConfig: JsonElement? = null,
-    @SerializedName("disabled_prompt_keys") val disabledPromptKeys: List<String>? = null
+    @SerializedName("disabled_prompt_keys") val disabledPromptKeys: List<String>? = null,
+    @SerializedName("is_public") val isPublic: Boolean? = null
 )
 
 /** 分叉会话请求体：从指定 message_id 处复制到新会话。 */

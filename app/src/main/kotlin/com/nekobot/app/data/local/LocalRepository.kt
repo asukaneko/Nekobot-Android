@@ -185,7 +185,10 @@ class LocalRepository(
         plotMode: Boolean? = null,
         plotRealTimeSync: Boolean? = null,
         autoStateInterval: Int? = null,
-        disabledPromptKeys: List<String>? = null
+        disabledPromptKeys: List<String>? = null,
+        isPublic: Boolean? = null,
+        proactiveChat: String? = null,
+        ttsConfig: String? = null
     ) = withContext(Dispatchers.IO) {
         val entity = sessionDao.getById(id) ?: return@withContext
         val updated = entity.copy(
@@ -197,6 +200,9 @@ class LocalRepository(
             plotRealTimeSync = plotRealTimeSync ?: entity.plotRealTimeSync,
             autoStateInterval = autoStateInterval ?: entity.autoStateInterval,
             disabledPromptKeys = disabledPromptKeys?.let { it.joinToString(",") } ?: entity.disabledPromptKeys,
+            isPublic = isPublic ?: entity.isPublic,
+            proactiveChat = proactiveChat ?: entity.proactiveChat,
+            ttsConfig = ttsConfig ?: entity.ttsConfig,
             updatedAt = nowIso()
         )
         // 使用 @Update 而非 upsert(@Insert REPLACE)，避免触发外键级联删除消息
@@ -1187,7 +1193,10 @@ class LocalRepository(
         disabledPromptKeys = disabledPromptKeys?.split(",")?.filter { it.isNotEmpty() },
         customPrompts = customPrompts?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
         promptStackDebug = promptStackDebug?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
-        composedSystemPrompt = composedSystemPrompt
+        composedSystemPrompt = composedSystemPrompt,
+        isPublic = isPublic,
+        proactiveChat = proactiveChat?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
+        ttsConfig = ttsConfig?.let { runCatching { JsonParser.parseString(it) }.getOrNull() }
     )
 
     private fun LocalMessageEntity.toMessage(): Message = Message(
