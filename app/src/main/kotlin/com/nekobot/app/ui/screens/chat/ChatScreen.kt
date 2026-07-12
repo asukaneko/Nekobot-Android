@@ -529,7 +529,8 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                                 onLongClick = { deletingMessage = msg },
                                 onRegenerate = { viewModel.regenerate() },
                                 onFork = { msg.id?.let { mid -> viewModel.forkFromMessage(mid) { onOpenChat(it) } } },
-                                onCopy = { msg.displayContent }
+                                onCopy = { msg.displayContent },
+                                sessionId = sessionId
                             )
                         }
                     }
@@ -848,7 +849,8 @@ private fun MessageBubble(
     onLongClick: () -> Unit,
     onRegenerate: () -> Unit = {},
     onFork: () -> Unit = {},
-    onCopy: () -> String = { "" }
+    onCopy: () -> String = { "" },
+    sessionId: String = ""
 ) {
     val isUser = message.isUser
     val isDark = isSystemInDarkTheme()
@@ -946,7 +948,8 @@ private fun MessageBubble(
                         RenderContentSegments(
                             segments = contentSegments,
                             textColor = textColor,
-                            modifier = Modifier.widthIn(max = 320.dp)
+                            modifier = Modifier.widthIn(max = 320.dp),
+                            sessionId = sessionId
                         )
                     } else {
                         // 文本内容：用 Markdown 渲染

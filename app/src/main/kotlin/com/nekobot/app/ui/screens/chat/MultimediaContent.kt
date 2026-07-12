@@ -24,6 +24,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
@@ -53,18 +57,20 @@ import com.nekobot.app.ServiceContainer
 import com.nekobot.app.ui.components.GlassCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 
 /** 多媒体内容段类型 */
-enum class SegmentType { TEXT, IMAGE, VIDEO, AUDIO, TXT, HTML }
+enum class SegmentType { TEXT, IMAGE, VIDEO, AUDIO, TXT, HTML, FILE }
 
 /** 内容段：文本或多媒体 URL。HTML 内容（整段为 HTML 时）存于 [text]。 */
 data class ContentSegment(
     val type: SegmentType,
     val text: String = "",      // TEXT 类型的文本内容；HTML 整段内容也存这里
     val url: String = "",       // 多媒体 URL
-    val caption: String = ""    // URL 前后的说明文字（可选）
+    val caption: String = "",    // URL 前后的说明文字（可选）
+    val fileName: String = ""   // FILE 类型的文件名
 )
 
 /** 图片扩展名 */
@@ -83,6 +89,9 @@ private val URL_REGEX = Regex("""https?://[^\s<>"'\]]+""")
 
 /** HTML 标签检测正则（检测内容是否包含 HTML 标签）*/
 private val HTML_TAG_REGEX = Regex("""<(div|span|table|p|br|h[1-6]|ul|ol|li|a|img|b|i|strong|em)\b[^>]*>""", RegexOption.IGNORE_CASE)
+
+/** 文件引用正则：匹配 [File: filename] 或 [文件: filename] */
+private val FILE_REF_REGEX = Regex("""\[(?:File|文件):\s*([^\]]+)\]""")
 
 /** 根据 URL 扩展名判断多媒体类型 */
 private fun classifyUrl(url: String): SegmentType {
@@ -106,6 +115,34 @@ private fun classifyUrl(url: String): SegmentType {
  */
 fun parseContentSegments(content: String): List<ContentSegment> {
     if (content.isBlank()) return listOf(ContentSegment(type = SegmentType.TEXT, text = content))
+
+    // 优先检测 [File: filename] 或 [文件: filename] 引用
+    val fileMatches = FILE_REF_REGEX.findAll(content).toList()
+    if (fileMatches.isNotEmpty()) {
+        val result = mutableListOf<ContentSegment>()
+        var lastIndex = 0
+        for (m in fileMatches) {
+            // 文件引用前的文本
+            if (m.range.first > lastIndex) {
+                val text = content.substring(lastIndex, m.range.first)
+                if (text.isNotBlank()) {
+                    // 递归解析文本中的 URL 等其他多媒体
+                    result.addAll(parseContentSegments(text))
+                }
+            }
+            val fileName = m.groupValues[1].trim()
+            result.add(ContentSegment(type = SegmentType.FILE, fileName = fileName))
+            lastIndex = m.range.last + 1
+        }
+        // 末尾文本
+        if (lastIndex < content.length) {
+            val text = content.substring(lastIndex)
+            if (text.isNotBlank()) {
+                result.addAll(parseContentSegments(text))
+            }
+        }
+        return result
+    }
 
     val hasHtmlTag = HTML_TAG_REGEX.containsMatchIn(content)
 
@@ -391,28 +428,169 @@ fun TxtRenderer(url: String, modifier: Modifier = Modifier) {
     }
 }
 
-/** HTML 渲染器：URL 用 WebView 加载，HTML 内容用 loadDataWithBaseURL 显示。 */
+/** HTML 渲染器：URL 用带认证的 OkHttp 下载后用 loadDataWithBaseURL 显示；HTML 内容直接显示。
+ *  支持点击全屏按钮进入全屏预览模式。 */
 @Composable
 fun HtmlRenderer(html: String, url: String, modifier: Modifier = Modifier) {
-    AndroidView(
-        factory = { ctx ->
-            WebView(ctx).apply {
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                webViewClient = WebViewClient()
-                if (url.isNotBlank()) {
-                    loadUrl(url)
-                } else if (html.isNotBlank()) {
-                    loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+    var downloadedHtml by remember(url) { mutableStateOf<String?>(null) }
+    var downloadError by remember(url) { mutableStateOf<String?>(null) }
+    var fullscreen by remember { mutableStateOf(false) }
+
+    // 如果提供了 URL，用带认证的 OkHttp 下载 HTML 内容
+    LaunchedEffect(url) {
+        if (url.isNotBlank() && html.isBlank()) {
+            downloadedHtml = null
+            downloadError = null
+            try {
+                val client = ServiceContainer.network.client
+                val text = withContext(Dispatchers.IO) {
+                    val request = Request.Builder().url(url).build()
+                    client.newCall(request).execute().use { response ->
+                        response.body?.string() ?: ""
+                    }
                 }
+                downloadedHtml = text
+            } catch (e: Exception) {
+                downloadError = e.message ?: "下载失败"
             }
-        },
+        }
+    }
+
+    val resolvedContent = html.ifBlank { downloadedHtml ?: "" }
+    val hasContent = resolvedContent.isNotBlank()
+
+    // 内联预览：限制高度 + 右上角全屏按钮覆盖层
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 100.dp, max = 300.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-    )
+    ) {
+        AndroidView(
+            factory = { ctx ->
+                WebView(ctx).apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.loadWithOverviewMode = true
+                    settings.useWideViewPort = true
+                    webViewClient = WebViewClient()
+                    if (hasContent) {
+                        loadDataWithBaseURL(null, resolvedContent, "text/html", "UTF-8", null)
+                    }
+                }
+            },
+            update = { webView ->
+                if (hasContent) {
+                    webView.loadDataWithBaseURL(null, resolvedContent, "text/html", "UTF-8", null)
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+        // 右上角全屏按钮
+        if (hasContent) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    .clickable { fullscreen = true },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Fullscreen,
+                    contentDescription = "全屏查看",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+        // 加载中覆盖层
+        if (url.isNotBlank() && html.isBlank() && downloadedHtml == null && downloadError == null) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+    if (downloadError != null) {
+        Text(
+            text = "HTML 加载失败: $downloadError",
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(4.dp)
+        )
+    }
+
+    // 全屏预览 Dialog
+    if (fullscreen && hasContent) {
+        FullscreenHtmlDialog(
+            content = resolvedContent,
+            onDismiss = { fullscreen = false }
+        )
+    }
+}
+
+/** 全屏 HTML 预览：顶栏标题 + 关闭按钮，WebView 填充剩余空间。 */
+@Composable
+private fun FullscreenHtmlDialog(content: String, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF111111))
+        ) {
+            // 顶部关闭按钮
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .clickable { onDismiss() }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.FullscreenExit,
+                    contentDescription = "退出全屏",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = "退出全屏",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
+            AndroidView(
+                factory = { ctx ->
+                    WebView(ctx).apply {
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.loadWithOverviewMode = true
+                        settings.useWideViewPort = true
+                        settings.builtInZoomControls = true
+                        settings.displayZoomControls = false
+                        webViewClient = WebViewClient()
+                        loadDataWithBaseURL(null, content, "text/html", "UTF-8", null)
+                    }
+                },
+                update = { webView ->
+                    webView.loadDataWithBaseURL(null, content, "text/html", "UTF-8", null)
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+    }
 }
 
 /**
@@ -422,7 +600,8 @@ fun HtmlRenderer(html: String, url: String, modifier: Modifier = Modifier) {
 fun RenderContentSegments(
     segments: List<ContentSegment>,
     textColor: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    sessionId: String = ""
 ) {
     Column(modifier = modifier) {
         segments.forEachIndexed { idx, segment ->
@@ -437,8 +616,188 @@ fun RenderContentSegments(
                 SegmentType.AUDIO -> AudioRenderer(url = segment.url)
                 SegmentType.TXT -> TxtRenderer(url = segment.url)
                 SegmentType.HTML -> HtmlRenderer(html = segment.text, url = segment.url)
+                SegmentType.FILE -> FileCardRenderer(fileName = segment.fileName, sessionId = sessionId)
             }
             if (idx != segments.lastIndex) Spacer(Modifier.height(4.dp))
+        }
+    }
+}
+
+/** 获取文件扩展名（小写，不含点） */
+private fun fileExt(name: String): String = name.substringAfterLast('.', "").lowercase()
+
+/** 构建工作区文件下载 URL */
+private fun buildWorkspaceFileUrl(sessionId: String, fileName: String): String? {
+    if (sessionId.isBlank() || fileName.isBlank()) return null
+    val base = ServiceContainer.prefs.serverUrl.trimEnd('/')
+    if (base.isBlank()) return null
+    return "$base/api/sessions/$sessionId/workspace/files/${java.net.URLEncoder.encode(fileName, "UTF-8")}"
+}
+
+/** 判断文件类型是否可直接预览 */
+private enum class FilePreviewType { IMAGE, TEXT, HTML, UNSUPPORTED }
+private fun classifyFilePreview(fileName: String): FilePreviewType {
+    val ext = fileExt(fileName)
+    return when (ext) {
+        in IMAGE_EXTS -> FilePreviewType.IMAGE
+        in TXT_EXTS, "md", "json", "csv", "log", "yaml", "yml", "xml", "py", "js", "ts", "kt", "java", "c", "cpp", "go", "rs", "sh" -> FilePreviewType.TEXT
+        in HTML_EXTS -> FilePreviewType.HTML
+        else -> FilePreviewType.UNSUPPORTED
+    }
+}
+
+/**
+ * 文件卡片渲染器：根据文件类型选择渲染方式。
+ * - 图片：直接内联显示
+ * - 文本/代码：下载后显示内容
+ * - HTML：用 WebView 渲染
+ * - 其他：显示文件信息卡片 + 下载按钮
+ */
+@Composable
+fun FileCardRenderer(fileName: String, sessionId: String, modifier: Modifier = Modifier) {
+    val fileUrl = remember(sessionId, fileName) { buildWorkspaceFileUrl(sessionId, fileName) }
+    val previewType = remember(fileName) { classifyFilePreview(fileName) }
+
+    when (previewType) {
+        FilePreviewType.IMAGE -> {
+            if (fileUrl != null) {
+                ImageRenderer(url = fileUrl, modifier = modifier)
+            } else {
+                UnsupportedFileCard(fileName, fileUrl, modifier)
+            }
+        }
+        FilePreviewType.TEXT -> {
+            if (fileUrl != null) {
+                TxtRenderer(url = fileUrl, modifier = modifier)
+                // 下载按钮
+                if (fileUrl != null) {
+                    Spacer(Modifier.height(4.dp))
+                    DownloadButton(fileName, fileUrl)
+                }
+            } else {
+                UnsupportedFileCard(fileName, fileUrl, modifier)
+            }
+        }
+        FilePreviewType.HTML -> {
+            if (fileUrl != null) {
+                HtmlRenderer(html = "", url = fileUrl, modifier = modifier)
+            } else {
+                UnsupportedFileCard(fileName, fileUrl, modifier)
+            }
+        }
+        FilePreviewType.UNSUPPORTED -> {
+            UnsupportedFileCard(fileName, fileUrl, modifier)
+        }
+    }
+}
+
+/** 不支持直接预览的文件卡片：显示文件名 + 下载按钮 */
+@Composable
+private fun UnsupportedFileCard(
+    fileName: String,
+    fileUrl: String?,
+    modifier: Modifier = Modifier
+) {
+    GlassCard(modifier = modifier.fillMaxWidth(), cornerRadius = 12) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(12.dp)
+        ) {
+            // 文件图标
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = fileExt(fileName).take(3).ifBlank { "?" }.uppercase(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            // 文件名
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = fileName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                )
+                Text(
+                    text = "点击下载文件",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            // 下载按钮
+            if (fileUrl != null) {
+                DownloadButton(fileName, fileUrl)
+            }
+        }
+    }
+}
+
+/** 下载按钮：用带认证的 OkHttp 下载到本地缓存目录后打开 */
+@Composable
+private fun DownloadButton(fileName: String, fileUrl: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var downloading by remember { mutableStateOf(false) }
+
+    IconButton(onClick = {
+        if (downloading) return@IconButton
+        downloading = true
+        scope.launch {
+            try {
+                val savedPath = withContext(Dispatchers.IO) {
+                    val client = ServiceContainer.network.client
+                    val request = Request.Builder().url(fileUrl).build()
+                    client.newCall(request).execute().use { response ->
+                        val body = response.body ?: throw IllegalStateException("空响应")
+                        val dir = java.io.File(context.cacheDir, "downloads")
+                        if (!dir.exists()) dir.mkdirs()
+                        val file = java.io.File(dir, fileName)
+                        body.byteStream().use { input ->
+                            java.io.FileOutputStream(file).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                        file.absolutePath
+                    }
+                }
+                // 用 FileProvider URI 打开文件
+                val uri = androidx.core.content.FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    java.io.File(savedPath)
+                )
+                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "application/octet-stream")
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            } catch (_: Exception) { /* 忽略 */ }
+            downloading = false
+        }
+    }) {
+        if (downloading) {
+            CircularProgressIndicator(
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Filled.Download,
+                contentDescription = "下载",
+                tint = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }
