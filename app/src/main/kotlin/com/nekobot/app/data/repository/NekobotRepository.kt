@@ -6,6 +6,8 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonParser
 import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.model.*
+import com.nekobot.app.data.model.BindCharacterRequest
+import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.remote.NetworkClient
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -335,6 +337,28 @@ class NekobotRepository(
         safeCall { api.regeneratePlotChoices(conversationId) }
     suspend fun characterState(id: String, scopeId: String): Resource<JsonElement> = safeCall { api.characterState(id, scopeId) }
     suspend fun characterRelationships(id: String, targetId: String): Resource<JsonElement> = safeCall { api.characterRelationships(id, targetId) }
+
+    // ==================== 绑定角色 ====================
+    suspend fun bindCharacter(sessionId: String, req: BindCharacterRequest): Resource<JsonElement> =
+        safeCall { api.bindCharacter(sessionId, mapOf(
+            "sender_name" to req.senderName,
+            "character_id" to (req.characterId ?: ""),
+            "sender_avatar" to (req.senderAvatar ?: ""),
+            "sender_portrait" to (req.senderPortrait ?: ""),
+            "scenario" to (req.scenario ?: ""),
+            "system_prompt" to (req.systemPrompt ?: "")
+        )) }
+
+    // ==================== 消息收藏 ====================
+    suspend fun listMessageFavorites(sessionId: String): Resource<JsonElement> =
+        safeCall { api.listMessageFavorites(sessionId) }
+
+    suspend fun updateMessageFavorites(sessionId: String, req: MessageFavoriteRequest): Resource<JsonElement> =
+        safeCall { api.updateMessageFavorites(sessionId, mapOf(
+            "message_ids" to req.messageIds,
+            "title" to (req.title ?: ""),
+            "collection_id" to (req.collectionId ?: "")
+        )) }
 
     // ==================== 工具 ====================
     fun toJson(obj: Any): JsonElement = gson.toJsonTree(obj)

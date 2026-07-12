@@ -48,6 +48,9 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material3.CircularProgressIndicator
@@ -64,6 +67,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -101,6 +105,7 @@ import com.nekobot.app.data.remote.SocketState
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.ui.BaseViewModel
 import com.google.gson.JsonElement
+import com.google.gson.JsonObject
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.MarkdownText
@@ -149,6 +154,13 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
     // 文件选择模式：null=未选择, "send"=发送文件(上传+插入引用), "upload"=仅上传到工作区
     var filePickMode by remember { mutableStateOf<String?>(null) }
     var fileBusy by remember { mutableStateOf(false) }
+
+    // ===== 收藏夹 & 搜索 =====
+    var showFavoritesDialog by remember { mutableStateOf(false) }
+    var showSearchDialog by remember { mutableStateOf(false) }
+    var favorites by remember { mutableStateOf<List<JsonObject>>(emptyList()) }
+    var favoritesLoading by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
 
     // ===== 语音输入（录音 + STT 识别）=====
     var isRecording by remember { mutableStateOf(false) }
@@ -273,6 +285,19 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
         initialLoad = true
         viewModel.init(sessionId)
     }
+    // 生命周期绑定：聊天界面可见性追踪（用于通知提醒判断）
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> viewModel.setChatVisible(true)
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> viewModel.setChatVisible(false)
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     // 新消息时滚动：首次加载用瞬时滚动（无动画），后续用动画滚动
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
@@ -326,6 +351,22 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
             } finally {
                 fileBusy = false
             }
+        }
+    }
+
+    // 加载收藏夹（服务器模式）
+    LaunchedEffect(showFavoritesDialog) {
+        if (showFavoritesDialog && !com.nekobot.app.ServiceContainer.prefs.isLocalMode) {
+            favoritesLoading = true
+            when (val res = ServiceContainer.unified.listMessageFavorites(sessionId)) {
+                is com.nekobot.app.data.repository.Resource.Success -> {
+                    val obj = res.data?.asJsonObject
+                    val arr = obj?.getAsJsonArray("collections") ?: obj?.getAsJsonArray("favorites")
+                    favorites = arr?.mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject } ?: emptyList()
+                }
+                else -> {}
+            }
+            favoritesLoading = false
         }
     }
 
@@ -440,6 +481,8 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                 },
                 onOpenWorkspace = { onOpenWorkspace(sessionId) },
                 onVoiceInput = { startVoiceInput() },
+                onShowFavorites = { showFavoritesDialog = true },
+                onShowSearch = { showSearchDialog = true },
                 fileBusy = fileBusy
             )
         },
@@ -604,6 +647,30 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
             }
         }
     }
+
+    // 收藏夹弹窗
+    if (showFavoritesDialog) {
+        MessageFavoritesDialog(
+            favorites = favorites,
+            loading = favoritesLoading,
+            onDismiss = { showFavoritesDialog = false }
+        )
+    }
+
+    // 搜索对话弹窗
+    if (showSearchDialog) {
+        MessageSearchDialog(
+            messages = messages,
+            query = searchQuery,
+            onQueryChange = { searchQuery = it },
+            onDismiss = { showSearchDialog = false },
+            onResultClick = { msgId ->
+                showSearchDialog = false
+                val idx = messages.indexOfFirst { it.id == msgId }
+                if (idx >= 0) scope.launch { listState.animateScrollToItem(idx) }
+            }
+        )
+    }
 }
 
 /** 语音录制中弹窗：显示录音时长 + 停止/取消按钮。 */
@@ -650,6 +717,124 @@ private fun VoiceRecordingDialog(
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
+        }
+    }
+}
+
+/** 收藏夹弹窗：列出消息收藏集，每个含 title/created_at/messages。 */
+@Composable
+private fun MessageFavoritesDialog(
+    favorites: List<JsonObject>,
+    loading: Boolean,
+    onDismiss: () -> Unit
+) {
+    NekoDialog(
+        onDismiss = onDismiss,
+        title = "收藏夹",
+        confirmText = "关闭",
+        onConfirm = onDismiss
+    ) {
+        if (loading) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            }
+        } else if (favorites.isEmpty()) {
+            Text("暂无收藏", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
+        } else {
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 400.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(favorites, key = { it.get("id")?.asString ?: "" }) { collection ->
+                    val title = collection.get("title")?.asString ?: "未命名收藏"
+                    val createdAt = collection.get("created_at")?.asString?.take(10) ?: ""
+                    val messages = collection.getAsJsonArray("messages")
+                        ?.mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject } ?: emptyList()
+                    GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 12) {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                                Text(createdAt, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Text("${messages.size} 条消息", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            messages.take(2).forEach { msg ->
+                                val role = msg.get("role")?.asString ?: ""
+                                val content = msg.get("content")?.asString?.take(60) ?: ""
+                                Text("[$role] $content", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 搜索对话弹窗：纯前端过滤当前会话消息，点击结果滚动到对应消息。 */
+@Composable
+private fun MessageSearchDialog(
+    messages: List<Message>,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onResultClick: (String?) -> Unit
+) {
+    val results = remember(query, messages) {
+        val q = query.trim().lowercase()
+        if (q.isBlank()) emptyList()
+        else messages.filter { it.role != "system" && it.content?.lowercase()?.contains(q) == true }.take(80)
+    }
+    NekoDialog(
+        onDismiss = onDismiss,
+        title = "搜索对话",
+        confirmText = "关闭",
+        onConfirm = onDismiss
+    ) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            label = { Text("搜索当前会话...") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(12.dp))
+        if (query.isNotBlank() && results.isEmpty()) {
+            Text("无匹配结果", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
+        } else if (results.isNotEmpty()) {
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 400.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                items(results, key = { it.id ?: "" }) { msg ->
+                    val role = msg.role ?: "unknown"
+                    val content = msg.content ?: ""
+                    val idx = content.lowercase().indexOf(query.lowercase())
+                    val preview = if (idx >= 0) {
+                        val start = maxOf(0, idx - 36)
+                        val end = minOf(content.length, idx + query.length + 72)
+                        (if (start > 0) "..." else "") + content.slice(start until end).replace("\n", " ").trim() + (if (end < content.length) "..." else "")
+                    } else content.take(100)
+                    GlassCard(
+                        modifier = Modifier.fillMaxWidth().clickable { onResultClick(msg.id) },
+                        cornerRadius = 12
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                if (role == "assistant") Icons.Outlined.SmartToy else Icons.Filled.AccountCircle,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(if (role == "assistant") "AI" else "我", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(preview, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -1134,6 +1319,8 @@ private fun ChatInputBar(
     onUploadToWorkspace: () -> Unit = {},
     onOpenWorkspace: () -> Unit = {},
     onVoiceInput: () -> Unit = {},
+    onShowFavorites: () -> Unit = {},
+    onShowSearch: () -> Unit = {},
     fileBusy: Boolean = false
 ) {
     var panelExpanded by remember { mutableStateOf(false) }
@@ -1243,6 +1430,24 @@ private fun ChatInputBar(
                             label = "查看工作区",
                             enabled = true,
                             onClick = onOpenWorkspace,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    // 收藏夹 & 搜索对话
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ActionChip(
+                            icon = Icons.Filled.Star,
+                            label = "收藏夹",
+                            enabled = true,
+                            onClick = onShowFavorites,
+                            modifier = Modifier.weight(1f)
+                        )
+                        ActionChip(
+                            icon = Icons.Filled.Search,
+                            label = "搜索对话",
+                            enabled = messageCount > 0,
+                            onClick = onShowSearch,
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -1436,6 +1641,15 @@ class ChatViewModel : BaseViewModel() {
     /** 本地模式流式聊天收集 Job */
     private var localChatJob: kotlinx.coroutines.Job? = null
 
+    /** 当前会话是否对用户可见（在聊天界面且应用在前台） */
+    var isChatVisible: Boolean = false
+        private set
+
+    /** 标记聊天界面可见性（由 ChatScreen 的 onResume/onPause 调用） */
+    fun setChatVisible(visible: Boolean) {
+        isChatVisible = visible
+    }
+
     /** 初始化：加载会话信息与消息列表；服务器模式额外连接 Socket.IO。 */
     fun init(sessionId: String) {
         if (sessionId == currentSessionId && _session.value != null) return
@@ -1496,6 +1710,8 @@ class ChatViewModel : BaseViewModel() {
                 _sending.value = false
                 // 流式结束，刷新列表获取服务端持久化的真实消息
                 loadMessages()
+                // 检查是否需要发送通知（用户不在聊天界面时）
+                trySendNotification(streamingContent.toString())
                 // 如果剧情模式开启，显示骨架并加载新剧情选项
                 if (_session.value?.plotMode == true) {
                     _plotChoices.value = emptyList()
@@ -1530,6 +1746,8 @@ class ChatViewModel : BaseViewModel() {
                     _messages.value = _messages.value
                         .filter { it.id != streamingId }
                         .let { if (msg.content.isNullOrBlank()) it else it + msg }
+                    // 通知检查
+                    trySendNotification(msg.content.orEmpty())
                 } ?: loadMessages()
                 // 非流式回复也需刷新剧情选项
                 if (_session.value?.plotMode == true) {
@@ -1688,6 +1906,42 @@ class ChatViewModel : BaseViewModel() {
                 showError(it)
             }
         )
+    }
+
+    /** 检查是否需要发送本地通知（用户不在聊天界面且开启了通知提醒时） */
+    private fun trySendNotification(content: String) {
+        if (content.isBlank()) return
+        if (isChatVisible) return // 用户在聊天界面，不通知
+        val sid = currentSessionId
+        if (sid.isBlank()) return
+        if (!ServiceContainer.prefs.isSessionNotificationEnabled(sid)) return
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+            try {
+                val ctx = ServiceContainer.appContext ?: return@launch
+                val sender = _session.value?.senderName ?: _session.value?.characterName ?: "AI"
+                val preview = content.take(100) + if (content.length > 100) "..." else ""
+                val mgr = androidx.core.app.NotificationManagerCompat.from(ctx)
+                if (!mgr.areNotificationsEnabled()) return@launch
+                val channelId = "nekobot_chat_reply"
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    val channel = android.app.NotificationChannel(
+                        channelId,
+                        "AI 回复提醒",
+                        android.app.NotificationManager.IMPORTANCE_DEFAULT
+                    ).apply { description = "AI 回复时若不在聊天界面则弹出通知" }
+                    androidx.core.app.NotificationManagerCompat.from(ctx).createNotificationChannel(channel)
+                }
+                val notif = androidx.core.app.NotificationCompat.Builder(ctx, channelId)
+                    .setSmallIcon(android.R.drawable.ic_dialog_info)
+                    .setContentTitle(sender)
+                    .setContentText(preview)
+                    .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(content.take(500)))
+                    .setAutoCancel(true)
+                    .setPriority(androidx.core.app.NotificationCompat.PRIORITY_DEFAULT)
+                    .build()
+                mgr.notify(sid.hashCode(), notif)
+            } catch (_: Exception) { /* 忽略通知发送失败 */ }
+        }
     }
 
     /** 重新生成最后一条 AI 回复：先隐藏旧 AI 消息，再请求重新生成。 */

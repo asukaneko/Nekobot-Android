@@ -747,5 +747,22 @@ interface ApiService {
         @Part audio: MultipartBody.Part,
         @Part("language") language: RequestBody
     ): Response<SttTranscribeResponse>
+
+    // ==================== 绑定角色 ====================
+    @PUT("api/sessions/{id}/bind-character")
+    suspend fun bindCharacter(
+        @Path("id") id: String,
+        @Body body: Map<String, Any>
+    ): Response<JsonElement>
+
+    // ==================== 消息收藏 ====================
+    @GET("api/sessions/{id}/message-favorites")
+    suspend fun listMessageFavorites(@Path("id") id: String): Response<JsonElement>
+
+    @PUT("api/sessions/{id}/message-favorites")
+    suspend fun updateMessageFavorites(
+        @Path("id") id: String,
+        @Body body: Map<String, Any>
+    ): Response<JsonElement>
 }
 

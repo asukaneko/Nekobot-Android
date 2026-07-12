@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -33,6 +35,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -121,6 +124,8 @@ class SessionDetailViewModel : BaseViewModel() {
     val proactiveChatEnabled = MutableStateFlow(false)
     val proactiveChatInterval = MutableStateFlow(60)
     val isPublic = MutableStateFlow(false)
+    // 通知提醒（本地 SharedPreferences 存储）
+    val notificationEnabled = MutableStateFlow(false)
     // 公开分享配置
     val shareExpiresDays = MutableStateFlow(30)
     val sharePassword = MutableStateFlow("")
@@ -153,9 +158,52 @@ class SessionDetailViewModel : BaseViewModel() {
     private val _characterDetail = MutableStateFlow<com.nekobot.app.data.model.CharacterPreset?>(null)
     val characterDetail: StateFlow<com.nekobot.app.data.model.CharacterPreset?> = _characterDetail.asStateFlow()
 
+    /** 角色列表（用于绑定角色选择） */
+    private val _characters = MutableStateFlow<List<com.nekobot.app.data.model.CharacterPreset>>(emptyList())
+    val characters: StateFlow<List<com.nekobot.app.data.model.CharacterPreset>> = _characters.asStateFlow()
+
     fun init(id: String) {
         load(id)
         loadAiModels()
+        loadCharacters()
+    }
+
+    /** 加载角色列表（用于绑定角色选择） */
+    fun loadCharacters() {
+        viewModelScope.launch {
+            try {
+                if (isLocalMode) {
+                    _characters.value = com.nekobot.app.ServiceContainer.localRepository.listCharacters()
+                } else {
+                    when (val r = repo.listCharacters()) {
+                        is Resource.Success -> _characters.value = r.data ?: emptyList()
+                        else -> {}
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    /** 绑定角色到当前会话 */
+    fun bindCharacter(character: com.nekobot.app.data.model.CharacterPreset, onSuccess: () -> Unit) {
+        val s = _session.value ?: return
+        launchResult(
+            block = {
+                unified.bindCharacter(s.id.orEmpty(), com.nekobot.app.data.model.BindCharacterRequest(
+                    senderName = character.displayName,
+                    characterId = character.id,
+                    senderAvatar = character.avatar,
+                    senderPortrait = character.portrait,
+                    scenario = character.scenario,
+                    systemPrompt = character.systemPrompt
+                ))
+            },
+            onSuccess = {
+                showToast("已绑定角色：${character.displayName}")
+                load(s.id.orEmpty()) // 重新加载会话
+                onSuccess()
+            }
+        )
     }
 
     /** 加载可用 AI 模型列表（用于 TTS 模型选择下拉） */
@@ -196,6 +244,8 @@ class SessionDetailViewModel : BaseViewModel() {
                 // 解析 TTS / 主动聊天 / 公开分享
                 android.util.Log.d("SessionDetail", "load: s.isPublic=${s.isPublic}, s.ttsConfig=${s.ttsConfig}, s.shareConfig=${s.shareConfig}")
                 isPublic.value = s.isPublic == true
+                // 通知提醒从本地 PrefsManager 读取
+                notificationEnabled.value = com.nekobot.app.ServiceContainer.prefs.isSessionNotificationEnabled(s.id.orEmpty())
                 // proactive_chat: {"enabled":bool,"interval_minutes":int}
                 runCatching {
                     val pc = s.proactiveChat?.asJsonObject
@@ -438,6 +488,7 @@ fun SessionDetailScreen(
     val proactiveChatEnabled by vm.proactiveChatEnabled.collectAsState()
     val proactiveChatInterval by vm.proactiveChatInterval.collectAsState()
     val isPublic by vm.isPublic.collectAsState()
+    val notificationEnabled by vm.notificationEnabled.collectAsState()
     val shareExpiresDays by vm.shareExpiresDays.collectAsState()
     val sharePassword by vm.sharePassword.collectAsState()
     val shareMessageStart by vm.shareMessageStart.collectAsState()
@@ -450,10 +501,12 @@ fun SessionDetailScreen(
     val composedSystemPrompt by vm.composedSystemPrompt.collectAsState()
     val disabledPromptKeys by vm.disabledPromptKeys.collectAsState()
     val characterDetail by vm.characterDetail.collectAsState()
+    val characters by vm.characters.collectAsState()
     val loading by vm.loading.collectAsState()
     val error by vm.error.collectAsState()
 
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showBindCharacterDialog by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
 
     LaunchedEffect(sessionId) { vm.init(sessionId) }
@@ -722,6 +775,25 @@ fun SessionDetailScreen(
                             s.characterIds?.takeIf { it.isNotEmpty() }?.let {
                                 DetailLine(label = "群聊角色", value = it.joinToString(", "))
                             }
+                            Spacer(Modifier.height(12.dp))
+                            // 更改绑定角色按钮（仅服务器模式可用）
+                            val isLocal = com.nekobot.app.ServiceContainer.prefs.isLocalMode
+                            OutlinedButton(
+                                onClick = { showBindCharacterDialog = true },
+                                enabled = !isLocal,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    Icons.Filled.SwapHoriz,
+                                    contentDescription = null,
+                                    tint = if (isLocal) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    if (isLocal) "本地模式不支持更改绑定角色" else "更改绑定角色",
+                                    color = if (isLocal) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
 
                         // === 5. 角色运行时状态 ===
@@ -933,6 +1005,30 @@ fun SessionDetailScreen(
                             }
                         }
 
+                        // === 6.6 通知提醒 ===
+                        GlassCard(modifier = Modifier.fillMaxWidth()) {
+                            SectionHeader(title = "通知提醒", subtitle = "AI 回复时若不在聊天界面则弹出通知")
+                            Spacer(Modifier.height(8.dp))
+                            ToggleChipRow(
+                                label = if (notificationEnabled) "通知提醒：开" else "通知提醒：关",
+                                selected = notificationEnabled,
+                                onClick = {
+                                    val newVal = !notificationEnabled
+                                    vm.notificationEnabled.value = newVal
+                                    s.id?.let { com.nekobot.app.ServiceContainer.prefs.setSessionNotificationEnabled(it, newVal) }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            if (notificationEnabled) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "开启后，当 AI 回复且您不在当前聊天界面时，将收到系统通知提醒",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
                         // === 7. 只读元信息 ===
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
                             SectionHeader(title = "元信息")
@@ -973,6 +1069,17 @@ fun SessionDetailScreen(
             }
         )
     }
+
+    if (showBindCharacterDialog) {
+        BindCharacterPickerDialog(
+            characters = characters,
+            onDismiss = { showBindCharacterDialog = false },
+            onSelect = { char ->
+                showBindCharacterDialog = false
+                vm.bindCharacter(char) {}
+            }
+        )
+    }
 }
 
 // ==================== 辅助组件 ====================
@@ -997,6 +1104,68 @@ private fun DetailLine(label: String, value: String) {
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f)
         )
+    }
+}
+
+/** 绑定角色选择弹窗：展示角色列表，点击即选择 */
+@Composable
+private fun BindCharacterPickerDialog(
+    characters: List<com.nekobot.app.data.model.CharacterPreset>,
+    onDismiss: () -> Unit,
+    onSelect: (com.nekobot.app.data.model.CharacterPreset) -> Unit
+) {
+    NekoDialog(
+        onDismiss = onDismiss,
+        title = "选择角色",
+        confirmText = "",
+        onConfirm = null
+    ) {
+        if (characters.isEmpty()) {
+            Text("暂无可用角色", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 400.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(characters, key = { it.id ?: it.name ?: "" }) { char ->
+                    GlassCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(char) },
+                        cornerRadius = 12
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // 头像
+                            char.avatar?.let { url ->
+                                AsyncImage(
+                                    model = resolveAvatarUrl(url),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(40.dp).clip(RoundedCornerShape(20.dp))
+                                )
+                                Spacer(Modifier.width(12.dp))
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    char.displayName,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                char.description?.takeIf { it.isNotBlank() }?.let {
+                                    Text(
+                                        it,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

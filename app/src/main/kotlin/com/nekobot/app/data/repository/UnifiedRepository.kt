@@ -11,6 +11,7 @@ import com.nekobot.app.data.local.db.LocalSessionEntity
 import com.nekobot.app.data.model.ApiResult
 import com.nekobot.app.data.model.ApiKey
 import com.nekobot.app.data.model.ApiKeyRequest
+import com.nekobot.app.data.model.BindCharacterRequest
 import com.nekobot.app.data.model.Channel
 import com.nekobot.app.data.model.ChannelPreset
 import com.nekobot.app.data.model.ChannelRequest
@@ -31,6 +32,7 @@ import com.nekobot.app.data.model.LoginTokenResponse
 import com.nekobot.app.data.model.McpServer
 import com.nekobot.app.data.model.McpServerRequest
 import com.nekobot.app.data.model.Message
+import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.MessageFilterConfig
 import com.nekobot.app.data.model.MessageFilterRule
 import com.nekobot.app.data.model.MessageFilterRuleRequest
@@ -731,6 +733,16 @@ class UnifiedRepository(
 
     suspend fun plotBranch(conversationId: String, req: PlotBranchRequest): Resource<JsonElement> =
         if (isLocal) localNotSupported("剧情分支创建") else remote.plotBranch(conversationId, req)
+
+    // ==================== 绑定角色 / 消息收藏 ====================
+    suspend fun bindCharacter(sessionId: String, req: BindCharacterRequest): Resource<JsonElement> =
+        if (isLocal) Resource.Error("本地模式不支持更改绑定角色") else remote.bindCharacter(sessionId, req)
+
+    suspend fun listMessageFavorites(sessionId: String): Resource<JsonElement> =
+        if (isLocal) Resource.Success(com.google.gson.JsonParser.parseString("""{"collections":[]}""")) else remote.listMessageFavorites(sessionId)
+
+    suspend fun updateMessageFavorites(sessionId: String, req: MessageFavoriteRequest): Resource<JsonElement> =
+        if (isLocal) Resource.Error("本地模式不支持消息收藏") else remote.updateMessageFavorites(sessionId, req)
 
     // ==================== WebDAV 备份 ====================
     suspend fun getWebDavConfig(): Resource<WebDavConfig> =

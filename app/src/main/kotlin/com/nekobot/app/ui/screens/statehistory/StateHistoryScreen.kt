@@ -1,12 +1,16 @@
 package com.nekobot.app.ui.screens.statehistory
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,7 +23,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -28,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -41,10 +50,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.JsonArray
@@ -56,6 +73,7 @@ import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.EmptyState
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
+import com.nekobot.app.ui.components.MarkdownText
 import com.nekobot.app.ui.components.SectionHeader
 import com.nekobot.app.ui.theme.BgDark
 import com.nekobot.app.ui.theme.BgSurface
@@ -68,11 +86,44 @@ import com.nekobot.app.ui.theme.SuccessGreen
 import com.nekobot.app.ui.theme.Tertiary
 import com.nekobot.app.ui.theme.WarningAmber
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.roundToInt
+import kotlin.math.sin
+
+/** 六维指标定义：(显示名, JSON键, 颜色)。雷达图与趋势线共用，不含嫉妒（用精力替代）。 */
+private val metricDefs = listOf(
+    Triple("好感", "affection", Color(0xFFfb7185)),
+    Triple("信任", "trust", Color(0xFF38bdf8)),
+    Triple("熟悉", "familiarity", Color(0xFF34d399)),
+    Triple("依赖", "dependency", Color(0xFFa78bfa)),
+    Triple("安全感", "security", Color(0xFFf59e0b)),
+    Triple("精力", "energy", Color(0xFF22c55e))
+)
+
+// ==================== JsonObject 取值辅助 ====================
+
+private fun JsonObject.intOr(key: String, default: Int = 0): Int =
+    get(key)?.takeIf { it.isJsonPrimitive }?.asInt ?: default
+
+private fun JsonObject.intOrNull(key: String): Int? =
+    get(key)?.takeIf { it.isJsonPrimitive }?.asInt
+
+private fun JsonObject.floatOrNull(key: String): Float? =
+    get(key)?.takeIf { it.isJsonPrimitive }?.asFloat
+
+private fun JsonObject.strOr(key: String, default: String = "—"): String =
+    get(key)?.takeIf { it.isJsonPrimitive }?.asString ?: default
+
+private fun JsonObject.strOrNull(key: String): String? =
+    get(key)?.takeIf { it.isJsonPrimitive }?.asString
 
 /**
  * 状态历程 ViewModel：拉取所有渠道（QQ + Web 等）的角色状态时间线。
@@ -269,7 +320,7 @@ class StateHistoryViewModel : BaseViewModel() {
 
 /**
  * 状态历程页：通过下拉菜单选择会话，展示该会话的状态时间线。
- * 每条时间线项含心情/能量/好感/信任等数值与对应消息摘要。
+ * 重写后向原仓库看齐：雷达图 + 趋势线 + Delta卡片 + 对话回放 + 时间轴滑块。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -394,156 +445,629 @@ fun StateHistoryScreen(onBack: () -> Unit) {
     }
 }
 
-/** 选中会话的状态时间线展示 */
+/** 选中会话的状态时间线展示：包含元信息/雷达图/趋势线/Delta/对话回放/时间轴滑块。 */
 @Composable
 private fun StateTimelineSection(session: JsonObject) {
     val name = session.get("name")?.asString ?: "未命名会话"
     val timelineEl = session.get("character_runtime_timeline")
         ?: session.get("timeline")
-    val timeline: List<JsonObject> = when {
-        timelineEl?.isJsonArray == true -> timelineEl.asJsonArray
-            .mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject }
-        else -> emptyList()
+    val timeline: List<JsonObject> = remember(session) {
+        when {
+            timelineEl?.isJsonArray == true -> timelineEl.asJsonArray
+                .mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject }
+            else -> emptyList()
+        }
     }
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         SectionHeader(title = name, subtitle = "${timeline.size} 条状态记录")
-        Spacer(Modifier.height(12.dp))
 
         if (timeline.isEmpty()) {
+            Spacer(Modifier.height(12.dp))
             Text("该会话暂无状态历程数据", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
             return@GlassCard
         }
 
-        // 最新快照数值卡片
-        timeline.lastOrNull()?.let { StateSummaryGrid(it) }
-        Spacer(Modifier.height(16.dp))
+        // 播放状态
+        var currentIndex by remember { mutableStateOf(0) }
+        var isPlaying by remember { mutableStateOf(false) }
+        // 趋势线选中指标
+        var selectedMetricIndex by remember { mutableStateOf(0) }
 
-        // 时间线列表（倒序，最新在上）
-        timeline.reversed().forEachIndexed { idx, entry ->
-            TimelineItem(rank = timeline.size - idx, entry = entry)
-            if (idx < timeline.size - 1) Spacer(Modifier.height(8.dp))
+        // 切换会话时重置
+        LaunchedEffect(timeline) {
+            currentIndex = 0
+            isPlaying = false
+        }
+        // 自动播放：每 1.5 秒推进一节，到末尾自动停止
+        LaunchedEffect(isPlaying, timeline) {
+            if (isPlaying && timeline.isNotEmpty()) {
+                while (isActive) {
+                    delay(1500)
+                    val next = currentIndex + 1
+                    if (next >= timeline.size) {
+                        isPlaying = false
+                        break
+                    }
+                    currentIndex = next
+                }
+            }
+        }
+
+        val currentNode = timeline.getOrElse(currentIndex.coerceIn(0, timeline.lastIndex)) { timeline.first() }
+        val prevNode = if (currentIndex > 0) timeline[currentIndex - 1] else null
+
+        Spacer(Modifier.height(12.dp))
+
+        // 1. 当前节点元信息面板
+        NodeMetaPanel(node = currentNode, index = currentIndex, total = timeline.size)
+        Spacer(Modifier.height(12.dp))
+
+        // 2. 六维雷达图
+        SectionHeader(title = "六维雷达图", subtitle = "好感/信任/熟悉/依赖/安全感/精力")
+        Spacer(Modifier.height(8.dp))
+        val radarValues = metricDefs.map { (label, key, _) -> label to currentNode.intOr(key) }
+        RadarChart(values = radarValues)
+        Spacer(Modifier.height(12.dp))
+
+        // 3. 趋势折线图
+        SectionHeader(title = "趋势折线图", subtitle = "点击下方指标切换")
+        Spacer(Modifier.height(8.dp))
+        MetricSelector(selectedIndex = selectedMetricIndex, onSelect = { selectedMetricIndex = it })
+        Spacer(Modifier.height(8.dp))
+        val (_, metricKey, metricColor) = metricDefs[selectedMetricIndex]
+        TrendLineChart(
+            timeline = timeline,
+            metricKey = metricKey,
+            metricColor = metricColor,
+            currentIndex = currentIndex
+        )
+        Spacer(Modifier.height(12.dp))
+
+        // 4. Delta 差分卡片网格
+        SectionHeader(title = "Delta 差分", subtitle = "与上一节点的差值")
+        Spacer(Modifier.height(8.dp))
+        DeltaCardGrid(current = currentNode, previous = prevNode)
+        Spacer(Modifier.height(12.dp))
+
+        // 5. 对话回放
+        SectionHeader(title = "对话回放", subtitle = "当前节点关联消息")
+        Spacer(Modifier.height(8.dp))
+        DialogueReplay(node = currentNode)
+        Spacer(Modifier.height(12.dp))
+
+        // 6. 时间轴滑块 + 播放控制
+        SectionHeader(title = "时间轴", subtitle = "节点 ${currentIndex + 1} / ${timeline.size}")
+        Spacer(Modifier.height(8.dp))
+        TimelineSlider(
+            currentIndex = currentIndex,
+            total = timeline.size,
+            isPlaying = isPlaying,
+            onIndexChange = { currentIndex = it.coerceIn(0, timeline.lastIndex) },
+            onPlayPause = { isPlaying = !isPlaying },
+            onPrev = { currentIndex = (currentIndex - 1).coerceAtLeast(0); isPlaying = false },
+            onNext = { currentIndex = (currentIndex + 1).coerceAtMost(timeline.lastIndex); isPlaying = false }
+        )
+    }
+}
+
+// ==================== 节点元信息面板 ====================
+
+/** 当前节点元信息：序号/时间/心情/表层情绪/隐藏情绪。 */
+@Composable
+private fun NodeMetaPanel(node: JsonObject, index: Int, total: Int) {
+    GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 16) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // 节点序号徽章
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "${index + 1}",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleLarge
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "节点 ${index + 1} / $total",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold
+                )
+                val ts = node.strOrNull("timestamp")?.take(19) ?: "—"
+                Text(
+                    text = ts,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // 心情 + 强度
+        val mood = node.strOr("mood")
+        val intensity = node.floatOrNull("mood_intensity")
+        val intensityStr = intensity?.let { " (${(it * 100).roundToInt()}%)" } ?: ""
+        MetaRow(label = "当前心情", value = "$mood$intensityStr", valueColor = MaterialTheme.colorScheme.primary)
+
+        // 表层情绪
+        val visible = node.strOrNull("visible_emotion")
+        if (!visible.isNullOrBlank()) {
+            MetaRow(label = "表层情绪", value = visible, valueColor = Tertiary)
+        }
+        // 隐藏情绪
+        val hidden = node.strOrNull("hidden_emotion")
+        if (!hidden.isNullOrBlank()) {
+            MetaRow(label = "隐藏情绪", value = hidden, valueColor = WarningAmber)
         }
     }
 }
 
-/** 关系六维 + 能量数值小卡片 */
 @Composable
-private fun StateSummaryGrid(entry: JsonObject) {
-    // 关系六维（含 jealousy）
-    val relationItems = listOf(
-        Triple("好感", "affection", MaterialTheme.colorScheme.primary),
-        Triple("信任", "trust", MaterialTheme.colorScheme.secondary),
-        Triple("熟悉", "familiarity", MaterialTheme.colorScheme.tertiary),
-        Triple("依赖", "dependency", WarningAmber),
-        Triple("安全感", "security", SuccessGreen),
-        Triple("嫉妒", "jealousy", MaterialTheme.colorScheme.error)
-    )
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        relationItems.forEach { (label, key, color) ->
-            val value = entry.get(key)?.let { if (it.isJsonPrimitive) it.asInt else null }
-            StateMiniCard(label = label, value = value, color = color, modifier = Modifier.weight(1f))
+private fun MetaRow(label: String, value: String, valueColor: Color) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(64.dp)
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = valueColor,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+// ==================== 六维雷达图 ====================
+
+/** Canvas 绘制六维雷达图：五层六边形网格 + 当前节点数值多边形 + 顶点标注。 */
+@Composable
+private fun RadarChart(values: List<Pair<String, Int>>) {
+    val density = LocalDensity.current
+    val labelTextPx = with(density) { 10.sp.toPx() }
+    val valueTextPx = with(density) { 13.sp.toPx() }
+
+    val labelPaint = remember(labelTextPx) {
+        android.graphics.Paint().apply {
+            isAntiAlias = true
+            textAlign = android.graphics.Paint.Align.CENTER
+            color = OnSurfaceVariant.toArgb()
+            textSize = labelTextPx
         }
     }
+    val valuePaint = remember(valueTextPx) {
+        android.graphics.Paint().apply {
+            isAntiAlias = true
+            textAlign = android.graphics.Paint.Align.CENTER
+            color = OnSurface.toArgb()
+            textSize = valueTextPx
+            isFakeBoldText = true
+        }
+    }
+    val gridColor = OnSurfaceVariant.copy(alpha = 0.3f)
+    val axisColor = OnSurfaceVariant.copy(alpha = 0.45f)
+    val fillColor = Primary.copy(alpha = 0.28f)
+    val strokeColor = Primary
 
-    // 质量评分（AutoState 产出，可空）：character_fidelity / immersion / world_consistency / risk
-    val qualityItems = listOf(
-        "还原度" to "quality_character_fidelity",
-        "沉浸感" to "quality_immersion",
-        "世界一致" to "quality_world_consistency",
-        "风险" to "quality_risk"
-    )
-    val hasQuality = qualityItems.any { (_, key) -> entry.get(key)?.isJsonPrimitive == true }
-    if (hasQuality) {
-        Spacer(Modifier.height(8.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            qualityItems.forEach { (label, key) ->
-                // 质量评分为 0~1 浮点，转成 0~100 百分制展示；风险用警示色
-                val raw = entry.get(key)?.let { if (it.isJsonPrimitive) it.asFloat else null }
-                val pct = raw?.let { (it * 100).toInt() }
-                val color = if (key == "quality_risk") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                StateMiniCard(label = label, value = pct, color = color, modifier = Modifier.weight(1f))
+    Canvas(modifier = Modifier.fillMaxWidth().height(300.dp)) {
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val radius = (minOf(size.width, size.height) / 2f) * 0.70f
+        // 6 个顶点角度，从顶部开始顺时针
+        val angles = (0 until 6).map { i -> -PI / 2.0 + i * (PI / 3.0) }
+
+        // 五层六边形网格（20/40/60/80/100）
+        for (level in listOf(20f, 40f, 60f, 80f, 100f)) {
+            val r = radius * level / 100f
+            val path = Path()
+            angles.forEachIndexed { i, a ->
+                val x = cx + (r * cos(a)).toFloat()
+                val y = cy + (r * sin(a)).toFloat()
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            path.close()
+            drawPath(path = path, color = gridColor, style = Stroke(width = 1f))
+        }
+
+        // 轴线
+        angles.forEach { a ->
+            val x = cx + (radius * cos(a)).toFloat()
+            val y = cy + (radius * sin(a)).toFloat()
+            drawLine(axisColor, start = Offset(cx, cy), end = Offset(x, y), strokeWidth = 1f)
+        }
+
+        // 数据多边形
+        val dataPath = Path()
+        values.forEachIndexed { i, (_, v) ->
+            val r = radius * (v.coerceIn(0, 100) / 100f)
+            val a = angles[i]
+            val x = cx + (r * cos(a)).toFloat()
+            val y = cy + (r * sin(a)).toFloat()
+            if (i == 0) dataPath.moveTo(x, y) else dataPath.lineTo(x, y)
+        }
+        dataPath.close()
+        drawPath(path = dataPath, color = fillColor)
+        drawPath(path = dataPath, color = strokeColor, style = Stroke(width = 2.5f))
+
+        // 数据顶点
+        values.forEachIndexed { i, (_, v) ->
+            val r = radius * (v.coerceIn(0, 100) / 100f)
+            val a = angles[i]
+            val x = cx + (r * cos(a)).toFloat()
+            val y = cy + (r * sin(a)).toFloat()
+            drawCircle(color = strokeColor, radius = 4f, center = Offset(x, y))
+        }
+
+        // 顶点标注（维度名 + 数值）
+        drawIntoCanvas { canvas ->
+            values.forEachIndexed { i, (label, v) ->
+                val a = angles[i]
+                val labelR = radius + 22f
+                val x = cx + (labelR * cos(a)).toFloat()
+                val y = cy + (labelR * sin(a)).toFloat()
+                canvas.nativeCanvas.drawText(label, x, y, labelPaint)
+                canvas.nativeCanvas.drawText(v.toString(), x, y + valueTextPx + 2f, valuePaint)
             }
         }
     }
 }
 
+// ==================== 趋势折线图 ====================
+
+/** 指标选择器：FlowRow 形式的彩色 chips。 */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun StateMiniCard(
+private fun MetricSelector(selectedIndex: Int, onSelect: (Int) -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        metricDefs.forEachIndexed { i, (label, _, color) ->
+            val selected = i == selectedIndex
+            val bg = if (selected) color.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(bg)
+                    .clickable { onSelect(i) }
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(color)
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (selected) color else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                )
+            }
+        }
+    }
+}
+
+/** Canvas 绘制趋势折线图：X轴节点序号，Y轴 0-100，当前节点高亮。 */
+@Composable
+private fun TrendLineChart(
+    timeline: List<JsonObject>,
+    metricKey: String,
+    metricColor: Color,
+    currentIndex: Int
+) {
+    val density = LocalDensity.current
+    val labelPx = with(density) { 10.sp.toPx() }
+
+    val yLabelPaint = remember(labelPx) {
+        android.graphics.Paint().apply {
+            isAntiAlias = true
+            textAlign = android.graphics.Paint.Align.RIGHT
+            color = OnSurfaceVariant.toArgb()
+            textSize = labelPx
+        }
+    }
+    val xLabelPaint = remember(labelPx) {
+        android.graphics.Paint().apply {
+            isAntiAlias = true
+            textAlign = android.graphics.Paint.Align.CENTER
+            color = OnSurfaceVariant.toArgb()
+            textSize = labelPx
+        }
+    }
+    val gridColor = OnSurfaceVariant.copy(alpha = 0.22f)
+    val axisColor = OnSurfaceVariant.copy(alpha = 0.5f)
+
+    Canvas(modifier = Modifier.fillMaxWidth().height(200.dp)) {
+        if (timeline.isEmpty()) return@Canvas
+        val padLeft = 34f
+        val padRight = 14f
+        val padTop = 14f
+        val padBottom = 22f
+        val w = size.width
+        val h = size.height
+        val chartW = w - padLeft - padRight
+        val chartH = h - padTop - padBottom
+        if (chartW <= 0f || chartH <= 0f) return@Canvas
+
+        // 横向网格线 + Y 轴标签（0/50/100）
+        for (level in listOf(0, 25, 50, 75, 100)) {
+            val y = padTop + chartH * (1 - level / 100f)
+            drawLine(gridColor, Offset(padLeft, y), Offset(w - padRight, y), strokeWidth = 1f)
+        }
+        // 基线
+        drawLine(axisColor, Offset(padLeft, padTop + chartH), Offset(w - padRight, padTop + chartH), strokeWidth = 1.5f)
+
+        val n = timeline.size
+        fun xOf(i: Int) = if (n <= 1) padLeft + chartW / 2f else padLeft + chartW * (i.toFloat() / (n - 1))
+        fun yOf(v: Int) = padTop + chartH * (1 - v.coerceIn(0, 100) / 100f)
+
+        val values = timeline.map { it.intOr(metricKey) }
+
+        // 折线
+        if (n > 1) {
+            val path = Path()
+            values.forEachIndexed { i, v ->
+                val x = xOf(i); val y = yOf(v)
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            drawPath(path = path, color = metricColor, style = Stroke(width = 2.5f))
+        }
+
+        // 当前节点竖线高亮
+        val curIdx = currentIndex.coerceIn(0, n - 1)
+        val curX = xOf(curIdx)
+        drawLine(metricColor.copy(alpha = 0.35f), Offset(curX, padTop), Offset(curX, padTop + chartH), strokeWidth = 1f)
+
+        // 数据点
+        values.forEachIndexed { i, v ->
+            val x = xOf(i); val y = yOf(v)
+            val isCurrent = i == curIdx
+            if (isCurrent) {
+                drawCircle(metricColor.copy(alpha = 0.25f), radius = 10f, center = Offset(x, y))
+            }
+            drawCircle(metricColor, radius = if (isCurrent) 5f else 3f, center = Offset(x, y))
+        }
+
+        // 轴标签
+        drawIntoCanvas { canvas ->
+            for (level in listOf(0, 50, 100)) {
+                val y = padTop + chartH * (1 - level / 100f)
+                canvas.nativeCanvas.drawText(level.toString(), padLeft - 5f, y + labelPx / 3f, yLabelPaint)
+            }
+            // X 轴序号标签（最多 ~6 个）
+            val step = if (n <= 6) 1 else (n + 5) / 6
+            for (i in 0 until n step step) {
+                val x = xOf(i)
+                canvas.nativeCanvas.drawText((i + 1).toString(), x, h - 5f, xLabelPaint)
+            }
+        }
+    }
+}
+
+// ==================== Delta 差分卡片网格 ====================
+
+/** 六维 Delta 卡片网格：每个卡片显示当前值 + 与上一节点差值 + 进度条。 */
+@Composable
+private fun DeltaCardGrid(current: JsonObject, previous: JsonObject?) {
+    // 2 列 × 3 行
+    metricDefs.chunked(2).forEach { rowDefs ->
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            rowDefs.forEach { (label, key, color) ->
+                val cur = current.intOr(key)
+                val delta = if (previous != null) cur - previous.intOr(key) else null
+                DeltaCard(
+                    label = label,
+                    value = cur,
+                    delta = delta,
+                    color = color,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            // 若一行只有一个，补一个占位
+            if (rowDefs.size == 1) { Spacer(Modifier.weight(1f)) }
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun DeltaCard(
     label: String,
-    value: Int?,
+    value: Int,
+    delta: Int?,
     color: Color,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(vertical = 6.dp, horizontal = 2.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+            .padding(10.dp)
     ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(color)
+            )
+            Spacer(Modifier.width(5.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            )
+            delta?.let {
+                val deltaColor = if (it > 0) SuccessGreen else if (it < 0) MaterialTheme.colorScheme.error else OnSurfaceVariant
+                val sign = if (it > 0) "+" else ""
+                Text(
+                    text = "$sign$it",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = deltaColor,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
         Text(
-            text = value?.toString() ?: "—",
-            style = MaterialTheme.typography.titleSmall,
+            text = value.toString(),
+            style = MaterialTheme.typography.titleLarge,
             color = color,
             fontWeight = FontWeight.Bold
         )
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Spacer(Modifier.height(6.dp))
+        // 百分比进度条
+        val progress = (value.coerceIn(0, 100) / 100f)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(5.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(progress)
+                    .height(5.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(color)
+            )
+        }
     }
 }
 
-/** 单条时间线项：时间轴圆点 + 心情 + 消息摘要 */
-@Composable
-private fun TimelineItem(rank: Int, entry: JsonObject) {
-    val mood = entry.get("mood")?.asString ?: "—"
-    val intensity = entry.get("mood_intensity")?.let { if (it.isJsonPrimitive) it.asFloat else null }
-    val ts = entry.get("timestamp")?.asString?.take(16) ?: ""
-    val userMsg = entry.get("user_message")?.asString?.take(50)
-    val aiMsg = entry.get("assistant_message")?.asString?.take(50)
+// ==================== 对话回放 ====================
 
-    Row(modifier = Modifier.fillMaxWidth()) {
-        // 左侧时间轴圆点 + 连线
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(MaterialTheme.colorScheme.primary)
+/** 当前节点关联的对话回放：用户消息靠右、AI 消息靠左，MarkdownText 渲染。 */
+@Composable
+private fun DialogueReplay(node: JsonObject) {
+    val userMsg = node.strOrNull("user_message")?.takeIf { it.isNotBlank() }
+    val aiMsg = node.strOrNull("assistant_message")?.takeIf { it.isNotBlank() }
+    val msgIndex = node.intOrNull("message_index")
+
+    if (userMsg == null && aiMsg == null) {
+        Text(
+            "该节点无关联消息",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        return
+    }
+
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        msgIndex?.let {
+            Text(
+                "消息序号 #$it",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Spacer(Modifier.height(2.dp))
-            Box(
-                modifier = Modifier
-                    .width(2.dp)
-                    .height(48.dp)
-                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
+        }
+        userMsg?.let { MessageBubble(text = it, isUser = true) }
+        aiMsg?.let { MessageBubble(text = it, isUser = false) }
+    }
+}
+
+/** 单条消息气泡：用户靠右（primary 底+白字）、AI 靠左（surface 底）。 */
+@Composable
+private fun MessageBubble(text: String, isUser: Boolean) {
+    val bgColor = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+    val textColor = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+    val bubbleShape = RoundedCornerShape(
+        topStart = 14.dp,
+        topEnd = 14.dp,
+        bottomEnd = if (isUser) 4.dp else 14.dp,
+        bottomStart = if (isUser) 14.dp else 4.dp
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .clip(bubbleShape)
+                .background(bgColor)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+        ) {
+            MarkdownText(
+                text = text,
+                color = textColor,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
+}
+
+// ==================== 时间轴滑块 + 播放控制 ====================
+
+/** 时间轴滑块 + 上一节/播放/暂停/下一节按钮。 */
+@Composable
+private fun TimelineSlider(
+    currentIndex: Int,
+    total: Int,
+    isPlaying: Boolean,
+    onIndexChange: (Int) -> Unit,
+    onPlayPause: () -> Unit,
+    onPrev: () -> Unit,
+    onNext: () -> Unit
+) {
+    val lastIndex = (total - 1).coerceAtLeast(0)
+    val single = total <= 1
+    val sliderValue = if (single) 0f else currentIndex.toFloat()
+    val sliderRange = if (single) 0f..1f else 0f..lastIndex.toFloat()
+    val steps = if (total > 2) total - 2 else 0
+
+    Slider(
+        value = sliderValue,
+        onValueChange = { if (!single) onIndexChange(it.roundToInt()) },
+        valueRange = sliderRange,
+        steps = steps,
+        enabled = !single
+    )
+
+    Spacer(Modifier.height(4.dp))
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onPrev, enabled = currentIndex > 0) {
+            Icon(Icons.Filled.SkipPrevious, contentDescription = "上一节", tint = MaterialTheme.colorScheme.primary)
+        }
+        Spacer(Modifier.width(8.dp))
+        IconButton(onClick = onPlayPause) {
+            Icon(
+                if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                contentDescription = if (isPlaying) "暂停" else "播放",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(32.dp)
             )
         }
         Spacer(Modifier.width(8.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("#$rank", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.width(6.dp))
-                Text(mood, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                intensity?.let {
-                    Spacer(Modifier.width(4.dp))
-                    Text("(${String.format("%.0f", it * 100)}%)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Spacer(Modifier.weight(1f))
-                Text(ts, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (!userMsg.isNullOrBlank()) {
-                Spacer(Modifier.height(2.dp))
-                Text("我：$userMsg", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            if (!aiMsg.isNullOrBlank()) {
-                Text("AI：$aiMsg", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
+        IconButton(onClick = onNext, enabled = currentIndex < lastIndex) {
+            Icon(Icons.Filled.SkipNext, contentDescription = "下一节", tint = MaterialTheme.colorScheme.primary)
         }
     }
 }

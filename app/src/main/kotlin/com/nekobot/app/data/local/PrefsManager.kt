@@ -154,6 +154,18 @@ class PrefsManager(context: Context) {
         prefs.edit().remove(KEY_TOKEN).apply()
     }
 
+    // ==================== 会话通知提醒 ====================
+
+    /** 获取指定会话的通知提醒开关 */
+    fun isSessionNotificationEnabled(sessionId: String): Boolean {
+        return prefs.getBoolean("notif_$sessionId", false)
+    }
+
+    /** 设置指定会话的通知提醒开关 */
+    fun setSessionNotificationEnabled(sessionId: String, enabled: Boolean) {
+        prefs.edit().putBoolean("notif_$sessionId", enabled).apply()
+    }
+
     companion object {
         private const val PREF_NAME = "nekobot_prefs"
         private const val KEY_SERVER_URL = "server_url"

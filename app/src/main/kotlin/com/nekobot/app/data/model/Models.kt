@@ -128,6 +128,23 @@ data class UpdateSessionRequest(
     @SerializedName("is_public") val isPublic: Boolean? = null
 )
 
+/** 绑定角色请求体 */
+data class BindCharacterRequest(
+    @SerializedName("sender_name") val senderName: String,
+    @SerializedName("character_id") val characterId: String? = null,
+    @SerializedName("sender_avatar") val senderAvatar: String? = null,
+    @SerializedName("sender_portrait") val senderPortrait: String? = null,
+    val scenario: String? = null,
+    @SerializedName("system_prompt") val systemPrompt: String? = null
+)
+
+/** 消息收藏请求体 */
+data class MessageFavoriteRequest(
+    @SerializedName("message_ids") val messageIds: List<String>,
+    val title: String? = null,
+    @SerializedName("collection_id") val collectionId: String? = null
+)
+
 /** 分叉会话请求体：从指定 message_id 处复制到新会话。 */
 data class ForkRequest(
     @SerializedName("message_id") val messageId: String

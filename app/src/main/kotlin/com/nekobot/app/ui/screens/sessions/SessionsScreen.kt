@@ -572,7 +572,7 @@ private fun SelectableChip(
     }
 }
 
-/** 新建会话弹窗：包含 ID 输入 + 角色下拉菜单。 */
+/** 新建会话弹窗：支持角色 / Agent / 群聊三种模式。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CreateSessionDialog(
@@ -581,6 +581,7 @@ private fun CreateSessionDialog(
     onCreate: (CreateSessionRequest) -> Unit,
     onLoadCharacters: () -> Unit
 ) {
+    var sessionMode by remember { mutableStateOf("character") }
     var name by remember { mutableStateOf("") }
     var characterId by remember { mutableStateOf("") }
     var firstMessage by remember { mutableStateOf("") }
@@ -591,6 +592,11 @@ private fun CreateSessionDialog(
     var nameEditedByUser by remember { mutableStateOf(false) }
     var firstMessageEditedByUser by remember { mutableStateOf(false) }
     val firstMessageScrollState = rememberScrollState()
+
+    // 群聊模式：选中的角色 ID 列表 + 发言策略
+    var selectedGroupCharacterIds by remember { mutableStateOf(emptyList<String>()) }
+    var speechStrategy by remember { mutableStateOf("round_robin") }
+    var speechStrategyExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         if (characters.isEmpty()) onLoadCharacters()
@@ -627,129 +633,306 @@ private fun CreateSessionDialog(
         confirmText = "创建",
         onConfirm = {
             val char = selectedCharacter
-            val req = CreateSessionRequest(
-                name = name.ifBlank { char?.displayName },
-                characterId = characterId.ifBlank { null },
-                systemPrompt = char?.systemPrompt?.takeIf { it.isNotBlank() },
-                firstMessage = firstMessage.ifBlank { char?.firstMessage },
-                scenario = char?.scenario?.takeIf { it.isNotBlank() },
-                senderName = char?.displayName,
-                senderAvatar = char?.avatar,
-                senderPortrait = char?.portrait,
-                userId = ServiceContainer.prefs.username.takeIf { it.isNotBlank() }
-            )
+            val req = when (sessionMode) {
+                "agent" -> CreateSessionRequest(
+                    name = name.ifBlank { "Agent 对话" },
+                    sessionMode = "agent",
+                    systemPrompt = "",
+                    firstMessage = "",
+                    senderName = "Agent",
+                    characterId = "",
+                    userId = ServiceContainer.prefs.username.takeIf { it.isNotBlank() }
+                )
+                "group" -> CreateSessionRequest(
+                    name = name.ifBlank { "群聊" },
+                    sessionMode = "group",
+                    characterIds = selectedGroupCharacterIds,
+                    senderName = "群聊",
+                    userId = ServiceContainer.prefs.username.takeIf { it.isNotBlank() }
+                )
+                else -> CreateSessionRequest(
+                    name = name.ifBlank { char?.displayName },
+                    sessionMode = "character",
+                    characterId = characterId.ifBlank { null },
+                    systemPrompt = char?.systemPrompt?.takeIf { it.isNotBlank() },
+                    firstMessage = firstMessage.ifBlank { char?.firstMessage },
+                    scenario = char?.scenario?.takeIf { it.isNotBlank() },
+                    senderName = char?.displayName,
+                    senderAvatar = char?.avatar,
+                    senderPortrait = char?.portrait,
+                    userId = ServiceContainer.prefs.username.takeIf { it.isNotBlank() }
+                )
+            }
             onCreate(req)
         },
         content = {
-            // 当前选中的角色预览
-            val previewChar = selectedCharacter
-            if (previewChar != null) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 4.dp)
-                ) {
-                    Text(
-                        "已选角色：${previewChar.displayName}",
-                        color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
+            // 模式选择 Tab
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SelectableChip(
+                    label = "角色模式",
+                    selected = sessionMode == "character",
+                    onClick = { sessionMode = "character" }
+                )
+                SelectableChip(
+                    label = "Agent 模式",
+                    selected = sessionMode == "agent",
+                    onClick = { sessionMode = "agent" }
+                )
+                SelectableChip(
+                    label = "群聊模式",
+                    selected = sessionMode == "group",
+                    onClick = { sessionMode = "group" }
+                )
             }
-
-            OutlinedTextField(
-                value = name,
-                onValueChange = {
-                    name = it
-                    nameEditedByUser = it.isNotBlank()
-                },
-                label = { Text("会话名称（可选）") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
             Spacer(Modifier.height(12.dp))
 
-            // 角色 ID 输入 + 选择按钮（按钮高度对齐 OutlinedTextField）
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = characterId,
-                    onValueChange = { characterId = it },
-                    label = { Text("角色 ID") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("手动输入或点击右侧选择", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                )
-                Spacer(Modifier.size(8.dp))
-                Box(
-                    modifier = Modifier.height(56.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    GlassCard(
-                        modifier = Modifier
-                            .height(56.dp)
-                            .clickable { dropdownExpanded = true },
-                        cornerRadius = 12,
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 12.dp)
+            when (sessionMode) {
+                "agent" -> {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = {
+                            name = it
+                            nameEditedByUser = it.isNotBlank()
+                        },
+                        label = { Text("会话名称（可选）") },
+                        placeholder = { Text("Agent 对话", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Agent 模式不继承角色卡配置，适合纯工具对话",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                "group" -> {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = {
+                            name = it
+                            nameEditedByUser = it.isNotBlank()
+                        },
+                        label = { Text("会话名称（可选）") },
+                        placeholder = { Text("群聊", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(12.dp))
+
+                    // 发言策略下拉选择
+                    val strategies = listOf(
+                        "round_robin" to "轮流发言",
+                        "mention" to "@提及",
+                        "relevance" to "智能推荐",
+                        "random" to "随机",
+                        "world_engine" to "世界引擎"
+                    )
+                    val currentStrategyLabel = strategies.firstOrNull { it.first == speechStrategy }?.second ?: speechStrategy
+                    Box {
+                        OutlinedTextField(
+                            value = currentStrategyLabel,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("发言策略") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { speechStrategyExpanded = true },
+                            trailingIcon = {
+                                Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        )
+                        DropdownMenu(
+                            expanded = speechStrategyExpanded,
+                            onDismissRequest = { speechStrategyExpanded = false }
                         ) {
-                            Text("选择", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
-                            Spacer(Modifier.size(2.dp))
-                            Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                    DropdownMenu(
-                        expanded = dropdownExpanded,
-                        onDismissRequest = { dropdownExpanded = false }
-                    ) {
-                        if (characters.isEmpty()) {
-                            DropdownMenuItem(
-                                text = { Text("暂无可用角色", color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                                onClick = { dropdownExpanded = false }
-                            )
-                        } else {
-                            DropdownMenuItem(
-                                text = { Text("（不选）", color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                                onClick = {
-                                    dropdownExpanded = false
-                                    characterId = ""
-                                    selectedCharacter = null
-                                }
-                            )
-                            HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
-                            characters.forEach { c ->
+                            strategies.forEach { (value, label) ->
                                 DropdownMenuItem(
-                                    text = { Text(c.displayName, color = MaterialTheme.colorScheme.onSurface) },
+                                    text = { Text(label, color = MaterialTheme.colorScheme.onSurface) },
                                     onClick = {
-                                        dropdownExpanded = false
-                                        // 切换角色时同步会话名 + 首条消息（除非用户已手动编辑）
-                                        characterId = c.id.orEmpty()
-                                        applyCharacter(c)
+                                        speechStrategy = value
+                                        speechStrategyExpanded = false
                                     }
                                 )
                             }
                         }
                     }
+                    Spacer(Modifier.height(12.dp))
+
+                    // 角色多选列表
+                    Text("选择角色（可多选）", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(4.dp))
+                    if (characters.isEmpty()) {
+                        Text("暂无可用角色", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 200.dp)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            characters.forEach { c ->
+                                val id = c.id
+                                if (id != null) {
+                                    val selected = selectedGroupCharacterIds.contains(id)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent)
+                                            .clickable {
+                                                selectedGroupCharacterIds = if (selected) {
+                                                    selectedGroupCharacterIds - id
+                                                } else {
+                                                    selectedGroupCharacterIds + id
+                                                }
+                                            }
+                                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (selected) {
+                                                Text("✓", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        }
+                                        Spacer(Modifier.size(8.dp))
+                                        Text(
+                                            c.displayName,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                else -> {
+                    // 角色模式（原有逻辑）
+                    // 当前选中的角色预览
+                    val previewChar = selectedCharacter
+                    if (previewChar != null) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 4.dp)
+                        ) {
+                            Text(
+                                "已选角色：${previewChar.displayName}",
+                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = {
+                            name = it
+                            nameEditedByUser = it.isNotBlank()
+                        },
+                        label = { Text("会话名称（可选）") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(12.dp))
+
+                    // 角色 ID 输入 + 选择按钮（按钮高度对齐 OutlinedTextField）
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = characterId,
+                            onValueChange = { characterId = it },
+                            label = { Text("角色 ID") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            placeholder = { Text("手动输入或点击右侧选择", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        )
+                        Spacer(Modifier.size(8.dp))
+                        Box(
+                            modifier = Modifier.height(56.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            GlassCard(
+                                modifier = Modifier
+                                    .height(56.dp)
+                                    .clickable { dropdownExpanded = true },
+                                cornerRadius = 12,
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 12.dp)
+                                ) {
+                                    Text("选择", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
+                                    Spacer(Modifier.size(2.dp))
+                                    Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                            DropdownMenu(
+                                expanded = dropdownExpanded,
+                                onDismissRequest = { dropdownExpanded = false }
+                            ) {
+                                if (characters.isEmpty()) {
+                                    DropdownMenuItem(
+                                        text = { Text("暂无可用角色", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                        onClick = { dropdownExpanded = false }
+                                    )
+                                } else {
+                                    DropdownMenuItem(
+                                        text = { Text("（不选）", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                        onClick = {
+                                            dropdownExpanded = false
+                                            characterId = ""
+                                            selectedCharacter = null
+                                        }
+                                    )
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
+                                    characters.forEach { c ->
+                                        DropdownMenuItem(
+                                            text = { Text(c.displayName, color = MaterialTheme.colorScheme.onSurface) },
+                                            onClick = {
+                                                dropdownExpanded = false
+                                                // 切换角色时同步会话名 + 首条消息（除非用户已手动编辑）
+                                                characterId = c.id.orEmpty()
+                                                applyCharacter(c)
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+                    // 首条消息：固定高度的滚动窗口，避免长内容撑爆弹窗
+                    OutlinedTextField(
+                        value = firstMessage,
+                        onValueChange = {
+                            firstMessage = it
+                            firstMessageEditedByUser = it.isNotBlank()
+                        },
+                        label = { Text("首条消息（可选）") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 96.dp, max = 160.dp)
+                            .verticalScroll(firstMessageScrollState)
+                    )
                 }
             }
-
-            Spacer(Modifier.height(12.dp))
-            // 首条消息：固定高度的滚动窗口，避免长内容撑爆弹窗
-            OutlinedTextField(
-                value = firstMessage,
-                onValueChange = {
-                    firstMessage = it
-                    firstMessageEditedByUser = it.isNotBlank()
-                },
-                label = { Text("首条消息（可选）") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 96.dp, max = 160.dp)
-                    .verticalScroll(firstMessageScrollState)
-            )
         }
     )
 }

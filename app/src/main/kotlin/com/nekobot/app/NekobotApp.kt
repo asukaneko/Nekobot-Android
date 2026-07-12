@@ -22,6 +22,9 @@ import kotlinx.coroutines.flow.asStateFlow
 object ServiceContainer {
     lateinit var prefs: PrefsManager
         private set
+    /** 应用上下文（用于发送通知等需要 Context 的操作） */
+    var appContext: android.content.Context? = null
+        private set
     lateinit var network: NetworkClient
         private set
     lateinit var repository: NekobotRepository
@@ -43,6 +46,7 @@ object ServiceContainer {
     val loginStateFlow: StateFlow<Boolean> = _loginStateFlow.asStateFlow()
 
     fun init(app: Application) {
+        appContext = app.applicationContext
         prefs = PrefsManager(app)
         network = NetworkClient(prefs)
         repository = NekobotRepository(network, prefs)
