@@ -512,3 +512,478 @@ data class LegacyMemoryRequest(
     @SerializedName("target_id") val targetId: String = "",
     @SerializedName("character_name") val characterName: String = ""
 )
+
+// ==================== Hook 管理 ====================
+/**
+ * 对话 Hook，对应后端 `/api/hooks`。
+ * event 支持通配符如 "character.*"；scope 为 global/character/conversation/user。
+ */
+data class Hook(
+    @SerializedName(value = "id", alternate = ["hook_id", "_id"]) val id: String? = null,
+    val name: String = "",
+    val event: String = "",
+    val actions: List<JsonElement> = emptyList(),
+    val description: String? = null,
+    val enabled: Boolean = true,
+    val scope: String = "global",
+    val priority: Int = 100,
+    val conditions: JsonElement? = null,
+    val permissions: JsonElement? = null,
+    @SerializedName("timeout_ms") val timeoutMs: Int = 3000,
+    @SerializedName("max_retries") val maxRetries: Int = 0,
+    @SerializedName("trigger_mode") val triggerMode: String = "always",
+    @SerializedName("condition_logic") val conditionLogic: String = "and",
+    @SerializedName("character_id") val characterId: String? = null,
+    @SerializedName("conversation_id") val conversationId: String? = null,
+    @SerializedName("user_id") val userId: String? = null,
+    @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("updated_at") val updatedAt: String? = null
+) {
+    val displayName: String get() = name.ifBlank { "未命名 Hook" }
+}
+
+data class HookRequest(
+    val name: String,
+    val event: String,
+    val actions: List<JsonElement> = emptyList(),
+    val description: String? = null,
+    val enabled: Boolean = true,
+    val scope: String = "global",
+    val priority: Int = 100,
+    val conditions: JsonElement? = null,
+    val permissions: JsonElement? = null,
+    @SerializedName("timeout_ms") val timeoutMs: Int = 3000,
+    @SerializedName("max_retries") val maxRetries: Int = 0,
+    @SerializedName("trigger_mode") val triggerMode: String = "always",
+    @SerializedName("condition_logic") val conditionLogic: String = "and",
+    @SerializedName("character_id") val characterId: String? = null,
+    @SerializedName("conversation_id") val conversationId: String? = null,
+    @SerializedName("user_id") val userId: String? = null
+)
+
+data class HookExecutionLog(
+    val id: String? = null,
+    @SerializedName("hook_id") val hookId: String? = null,
+    @SerializedName("event_id") val eventId: String? = null,
+    val status: String = "",
+    @SerializedName("actions_executed") val actionsExecuted: Int = 0,
+    val error: String? = null,
+    @SerializedName("duration_ms") val durationMs: Int = 0,
+    @SerializedName("conversation_id") val conversationId: String? = null,
+    @SerializedName("event_type") val eventType: String? = null,
+    @SerializedName("created_at") val createdAt: String? = null
+)
+
+// ==================== 任务中心 ====================
+/**
+ * 任务中心聚合项，对应后端 `/api/task-center`。
+ * kind 为 heartbeat / workflow / custom；trigger 为 interval / cron / run_at。
+ */
+data class TaskItem(
+    @SerializedName(value = "id", alternate = ["task_id", "_id"]) val id: String = "",
+    val kind: String = "custom",
+    val name: String = "",
+    val description: String? = null,
+    val enabled: Boolean = true,
+    val trigger: String = "interval",
+    val config: JsonElement? = null,
+    @SerializedName("target_session_id") val targetSessionId: String? = null,
+    val prompt: String? = null,
+    @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("last_run") val lastRun: String? = null,
+    @SerializedName("next_run") val nextRun: String? = null
+) {
+    val displayName: String get() = name.ifBlank { "未命名任务" }
+}
+
+data class TaskRequest(
+    val name: String,
+    val description: String? = null,
+    val enabled: Boolean = true,
+    val trigger: String = "interval",
+    val config: JsonElement? = null,
+    @SerializedName("target_session_id") val targetSessionId: String? = null,
+    val prompt: String? = null
+)
+
+// ==================== 工作流 ====================
+/**
+ * 工作流，对应后端 `/api/workflows`。trigger 为 manual / cron。
+ */
+data class Workflow(
+    @SerializedName(value = "id", alternate = ["workflow_id", "_id"]) val id: String? = null,
+    val name: String = "",
+    val description: String? = null,
+    val enabled: Boolean = true,
+    val trigger: String = "manual",
+    val config: JsonElement? = null,
+    @SerializedName("created_at") val createdAt: String? = null
+) {
+    val displayName: String get() = name.ifBlank { "未命名工作流" }
+}
+
+data class WorkflowRequest(
+    val name: String,
+    val description: String? = null,
+    val enabled: Boolean = true,
+    val trigger: String = "manual",
+    val config: JsonElement? = null
+)
+
+// ==================== 知识库 ====================
+/**
+ * 知识库文档，对应后端 `/api/knowledge`。
+ */
+data class KnowledgeDocument(
+    @SerializedName(value = "id", alternate = ["doc_id", "_id"]) val id: String? = null,
+    val title: String = "",
+    val content: String = "",
+    val source: String? = null,
+    val tags: List<String> = emptyList(),
+    @SerializedName("created_at") val createdAt: String? = null,
+    val metadata: JsonElement? = null
+) {
+    val displayName: String get() = title.ifBlank { "未命名文档" }
+}
+
+data class KnowledgeDocumentRequest(
+    val title: String,
+    val content: String,
+    val source: String? = null,
+    val tags: List<String> = emptyList(),
+    val metadata: JsonElement? = null
+)
+
+data class KnowledgeStats(
+    val total: Int = 0,
+    val indexed: Int = 0,
+    val pending: Int = 0
+)
+
+data class KnowledgeSearchRequest(
+    val query: String,
+    @SerializedName("top_k") val topK: Int = 5
+)
+
+data class KnowledgeSearchResult(
+    val id: String? = null,
+    val title: String? = null,
+    val content: String? = null,
+    val score: Float? = null,
+    val source: String? = null
+)
+
+// ==================== Skills 配置 ====================
+/**
+ * Skill 元数据，对应后端 `/api/skills`。
+ */
+data class Skill(
+    @SerializedName(value = "id", alternate = ["skill_id", "_id"]) val id: String? = null,
+    val name: String = "",
+    val description: String? = null,
+    val aliases: List<String> = emptyList(),
+    val enabled: Boolean = true,
+    val parameters: JsonElement? = null,
+    @SerializedName("created_at") val createdAt: String? = null
+) {
+    val displayName: String get() = name.ifBlank { "未命名 Skill" }
+}
+
+data class SkillRequest(
+    val name: String,
+    val description: String? = null,
+    val aliases: List<String> = emptyList(),
+    val enabled: Boolean = true,
+    val parameters: JsonElement? = null
+)
+
+// ==================== Tools 配置 ====================
+/**
+ * 工具配置，对应后端 `/api/tools`。内置工具 builtin=true 不可删除/切换。
+ */
+data class Tool(
+    @SerializedName(value = "id", alternate = ["tool_id", "_id"]) val id: String? = null,
+    val name: String = "",
+    val description: String? = null,
+    val enabled: Boolean = true,
+    val parameters: JsonElement? = null,
+    val implementation: JsonElement? = null,
+    @SerializedName("_builtin") val builtin: Boolean = false,
+    @SerializedName("created_at") val createdAt: String? = null
+) {
+    val displayName: String get() = name.ifBlank { "未命名工具" }
+}
+
+data class ToolRequest(
+    val name: String,
+    val description: String? = null,
+    val enabled: Boolean = true,
+    val parameters: JsonElement? = null,
+    val implementation: JsonElement? = null
+)
+
+// ==================== MCP 服务 ====================
+/**
+ * MCP 服务，对应后端 `/api/mcp-servers`。
+ * transport 为 streamable-http / stdio；HTTP 模式用 url，stdio 模式用 command/args/env。
+ */
+data class McpServer(
+    @SerializedName(value = "id", alternate = ["server_id", "_id"]) val id: String? = null,
+    val name: String = "",
+    val transport: String = "streamable-http",
+    val description: String? = null,
+    val enabled: Boolean = true,
+    @SerializedName("auto_connect") val autoConnect: Boolean = false,
+    val connected: Boolean = false,
+    @SerializedName("tool_count") val toolCount: Int = 0,
+    val url: String? = null,
+    val command: String? = null,
+    val args: List<String> = emptyList(),
+    val env: JsonElement? = null,
+    @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("last_connected_at") val lastConnectedAt: String? = null,
+    @SerializedName("_builtin") val builtin: Boolean = false
+) {
+    val displayName: String get() = name.ifBlank { "未命名 MCP 服务" }
+}
+
+data class McpServerRequest(
+    val name: String,
+    val transport: String = "streamable-http",
+    val description: String? = null,
+    val enabled: Boolean = true,
+    @SerializedName("auto_connect") val autoConnect: Boolean = false,
+    val url: String? = null,
+    val command: String? = null,
+    val args: List<String> = emptyList(),
+    val env: JsonElement? = null
+)
+
+// ==================== 频道管理 ====================
+/**
+ * 频道，对应后端 `/api/channels`。
+ * type 为 custom/telegram/feishu/feishu_ws/qqbot/web/qq；transport 为 webhook/websocket/socketio/napcat。
+ */
+data class Channel(
+    @SerializedName(value = "id", alternate = ["channel_id", "_id"]) val id: String? = null,
+    val name: String = "",
+    val type: String = "custom",
+    val transport: String = "webhook",
+    val description: String? = null,
+    val enabled: Boolean = true,
+    val builtin: Boolean = false,
+    val config: JsonElement? = null,
+    val capabilities: JsonElement? = null,
+    @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("updated_at") val updatedAt: String? = null
+) {
+    val displayName: String get() = name.ifBlank { "未命名频道" }
+}
+
+data class ChannelRequest(
+    val name: String,
+    val type: String = "custom",
+    val transport: String = "webhook",
+    val description: String? = null,
+    val enabled: Boolean = true,
+    val config: JsonElement? = null,
+    val capabilities: JsonElement? = null
+)
+
+data class ChannelPreset(
+    val id: String = "",
+    val name: String = "",
+    val type: String = "",
+    val transport: String = "",
+    val description: String? = null,
+    val config: JsonElement? = null
+)
+
+// ==================== 消息过滤 ====================
+/**
+ * 消息过滤规则，对应后端 `/api/message-filter`。
+ * type 为 keyword/regex；action 为 strip/recall；filter_target 为 user/ai/both。
+ */
+data class MessageFilterRule(
+    @SerializedName(value = "id", alternate = ["rule_id", "_id"]) val id: String? = null,
+    val pattern: String = "",
+    val type: String = "keyword",
+    val action: String = "strip",
+    @SerializedName("filter_target") val filterTarget: String = "both",
+    @SerializedName("session_scope") val sessionScope: String = "all",
+    @SerializedName("session_id") val sessionId: String? = null,
+    val enabled: Boolean = true,
+    @SerializedName("created_at") val createdAt: String? = null
+) {
+    val displayName: String get() = pattern.ifBlank { "未命名规则" }
+}
+
+data class MessageFilterRuleRequest(
+    val pattern: String,
+    val type: String = "keyword",
+    val action: String = "strip",
+    @SerializedName("filter_target") val filterTarget: String = "both",
+    @SerializedName("session_scope") val sessionScope: String = "all",
+    @SerializedName("session_id") val sessionId: String? = null,
+    val enabled: Boolean = true
+)
+
+/** 消息过滤全局配置（顶层结构） */
+data class MessageFilterConfig(
+    val enabled: Boolean = true,
+    val global: List<MessageFilterRule> = emptyList(),
+    val channels: JsonElement? = null
+)
+
+// ==================== TTS 试验场 ====================
+/**
+ * TTS 音色，对应后端 `/api/tts/voices`。provider 为 xiaomi/doubao/openai；custom=true 为自定义音色。
+ */
+data class TtsVoice(
+    val id: String = "",
+    val name: String = "",
+    val description: String? = null,
+    val provider: String? = null,
+    val custom: Boolean = false,
+    @SerializedName("sample_text") val sampleText: String? = null,
+    @SerializedName("created_at") val createdAt: String? = null
+) {
+    val displayName: String get() = name.ifBlank { id }
+}
+
+data class TtsPreviewRequest(
+    val text: String,
+    @SerializedName("model_id") val modelId: String? = null,
+    val voice: String,
+    val speed: Float = 1.0f,
+    val pitch: Float = 1.0f,
+    val volume: Float = 1.0f
+)
+
+data class TtsPreviewResponse(
+    val success: Boolean? = null,
+    @SerializedName("audio_url") val audioUrl: String? = null,
+    val message: String? = null
+)
+
+// ==================== 登录令牌 / API Keys ====================
+/**
+ * 登录令牌，对应后端 `/api/login-tokens`。tokenHash 为 SHA-256，明文仅创建时返回一次。
+ */
+data class LoginToken(
+    // 后端列表接口返回 `hash_full`（完整哈希），用于 DELETE 路径参数。
+    @SerializedName("hash_full") val tokenHash: String = "",
+    @SerializedName("token_prefix") val tokenPrefix: String? = null,
+    val username: String = "",
+    @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("expires_at") val expiresAt: String? = null,
+    @SerializedName("ip_address") val ipAddress: String? = null
+) {
+    val displayName: String get() = "${tokenPrefix ?: "令牌"} · $username"
+}
+
+data class LoginTokenRequest(
+    val username: String,
+    @SerializedName("expires_days") val expiresDays: Int = 30
+)
+
+data class LoginTokenResponse(
+    val success: Boolean? = null,
+    val token: String? = null,
+    val message: String? = null
+)
+
+/**
+ * API Key，对应后端 `/api/api-keys`。key 仅详情接口返回。
+ */
+data class ApiKey(
+    @SerializedName(value = "id", alternate = ["key_id", "_id"]) val id: String? = null,
+    val name: String = "",
+    val key: String? = null,
+    @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("updated_at") val updatedAt: String? = null
+) {
+    val displayName: String get() = name.ifBlank { "未命名 Key" }
+}
+
+data class ApiKeyRequest(
+    val name: String,
+    val key: String
+)
+
+// ==================== 包装响应（Envelope Responses）====================
+// 后端实际返回形如 {"hooks": [...], "total": N} / {"hook": {...}} / {"items": [...]} /
+// {"success": true, "task": {...}} / {"presets": [...]} / {"channels": [...]} /
+// {"success": true, "channel": {...}} / {"success": true, "enabled": bool} /
+// {"success": true, "voices": [...]} / {"success": true, "tokens": [...]} /
+// {"success": true, "keys": [...]} / {"success": true, "key": {...}} 等包装结构。
+// 直接用裸类型反序列化会得到空对象/空列表，因此此处显式声明包装类。
+
+// ---- Hook ----
+data class HookListResponse(
+    val hooks: List<Hook> = emptyList(),
+    val total: Int = 0
+)
+data class HookResponse(val hook: Hook? = null)
+data class HookLogListResponse(
+    val logs: List<HookExecutionLog> = emptyList(),
+    val total: Int = 0
+)
+
+// ---- Task Center ----
+data class TaskListResponse(val items: List<TaskItem> = emptyList())
+data class TaskResponse(
+    val success: Boolean? = null,
+    val task: TaskItem? = null
+)
+data class TaskItemResponse(
+    val success: Boolean? = null,
+    val item: TaskItem? = null
+)
+
+// ---- Channels ----
+data class ChannelPresetListResponse(
+    val presets: List<ChannelPreset> = emptyList()
+)
+data class ChannelListResponse(
+    val channels: List<Channel> = emptyList(),
+    @SerializedName("registered_adapters") val registeredAdapters: List<String> = emptyList(),
+    @SerializedName("registered_handlers") val registeredHandlers: JsonElement? = null,
+    @SerializedName("feishu_ws_running") val feishuWsRunning: JsonElement? = null,
+    @SerializedName("qqbot_running") val qqbotRunning: JsonElement? = null
+)
+data class ChannelResponse(
+    val success: Boolean? = null,
+    val channel: Channel? = null
+)
+data class ChannelToggleResponse(
+    val success: Boolean? = null,
+    val enabled: Boolean? = null
+)
+
+// ---- TTS ----
+data class TtsVoiceListResponse(
+    val success: Boolean? = null,
+    val voices: List<TtsVoice> = emptyList()
+)
+data class TtsVoiceUploadResponse(
+    val success: Boolean? = null,
+    @SerializedName("voice_id") val voiceId: String? = null,
+    val name: String? = null
+)
+
+// ---- Login Tokens ----
+data class LoginTokenListResponse(
+    val success: Boolean? = null,
+    val tokens: List<LoginToken> = emptyList()
+)
+
+// ---- API Keys ----
+data class ApiKeyListResponse(
+    val success: Boolean? = null,
+    val keys: List<ApiKey> = emptyList()
+)
+data class ApiKeyResponse(
+    val success: Boolean? = null,
+    val key: ApiKey? = null
+)

@@ -9,6 +9,7 @@ import com.nekobot.app.data.model.*
 import com.nekobot.app.data.remote.NetworkClient
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.ResponseBody
 import retrofit2.Response
@@ -393,10 +394,151 @@ class NekobotRepository(
     /** 下载工作区文件（流式） */
     suspend fun downloadWorkspaceFile(sessionId: String, filename: String): Response<ResponseBody> =
         api.downloadWorkspaceFile(sessionId, filename)
+
+    // ==================== Hook 管理 ====================
+    suspend fun listHooks(scope: String? = null, event: String? = null, enabled: String? = null): Resource<List<Hook>> =
+        safeCall { api.listHooks(scope, event, enabled) }.mapData { it.hooks }
+    suspend fun createHook(req: HookRequest): Resource<Hook> =
+        safeCall { api.createHook(req) }.mapData { it.hook ?: Hook() }
+    suspend fun getHook(id: String): Resource<Hook> =
+        safeCall { api.getHook(id) }.mapData { it.hook ?: Hook() }
+    suspend fun updateHook(id: String, req: HookRequest): Resource<Hook> =
+        safeCall { api.updateHook(id, req) }.mapData { it.hook ?: Hook() }
+    suspend fun deleteHook(id: String): Resource<Unit> = safeCall { api.deleteHook(id) }.map { }
+    suspend fun toggleHook(id: String): Resource<Hook> =
+        safeCall { api.toggleHook(id) }.mapData { it.hook ?: Hook() }
+    suspend fun testHook(body: JsonElement): Resource<JsonElement> = safeCall { api.testHook(body) }
+    suspend fun listHookLogs(hookId: String? = null, limit: Int = 100): Resource<List<HookExecutionLog>> =
+        safeCall { api.listHookLogs(hookId, limit) }.mapData { it.logs }
+    suspend fun hookStats(): Resource<JsonElement> = safeCall { api.hookStats() }
+
+    // ==================== 任务中心 ====================
+    suspend fun listTasks(): Resource<List<TaskItem>> =
+        safeCall { api.listTasks() }.mapData { it.items }
+    suspend fun createTask(req: TaskRequest): Resource<TaskItem> =
+        safeCall { api.createTask(req) }.mapData { it.task ?: TaskItem() }
+    suspend fun updateTask(id: String, req: TaskRequest): Resource<TaskItem> =
+        safeCall { api.updateTask(id, req) }.mapData { it.task ?: TaskItem() }
+    suspend fun deleteTask(id: String): Resource<Unit> = safeCall { api.deleteTask(id) }.map { }
+    suspend fun toggleTask(id: String): Resource<TaskItem> =
+        safeCall { api.toggleTask(id) }.mapData { it.item ?: TaskItem() }
+    suspend fun runTask(id: String): Resource<JsonElement> = safeCall { api.runTask(id) }
+
+    // ==================== 工作流 ====================
+    suspend fun listWorkflows(): Resource<List<Workflow>> = safeCall { api.listWorkflows() }
+    suspend fun createWorkflow(req: WorkflowRequest): Resource<Workflow> = safeCall { api.createWorkflow(req) }
+    suspend fun updateWorkflow(id: String, req: WorkflowRequest): Resource<Workflow> = safeCall { api.updateWorkflow(id, req) }
+    suspend fun deleteWorkflow(id: String): Resource<Unit> = safeCall { api.deleteWorkflow(id) }.map { }
+    suspend fun toggleWorkflow(id: String): Resource<Workflow> = safeCall { api.toggleWorkflow(id) }
+    suspend fun executeWorkflow(id: String): Resource<JsonElement> = safeCall { api.executeWorkflow(id) }
+
+    // ==================== 知识库 ====================
+    suspend fun listKnowledge(): Resource<List<KnowledgeDocument>> = safeCall { api.listKnowledge() }
+    suspend fun createKnowledge(req: KnowledgeDocumentRequest): Resource<KnowledgeDocument> = safeCall { api.createKnowledge(req) }
+    suspend fun getKnowledge(id: String): Resource<KnowledgeDocument> = safeCall { api.getKnowledge(id) }
+    suspend fun updateKnowledge(id: String, req: KnowledgeDocumentRequest): Resource<KnowledgeDocument> = safeCall { api.updateKnowledge(id, req) }
+    suspend fun deleteKnowledge(id: String): Resource<Unit> = safeCall { api.deleteKnowledge(id) }.map { }
+    suspend fun indexKnowledge(id: String): Resource<JsonElement> = safeCall { api.indexKnowledge(id) }
+    suspend fun batchKnowledge(body: JsonElement): Resource<JsonElement> = safeCall { api.batchKnowledge(body) }
+    suspend fun batchDeleteKnowledge(body: JsonElement): Resource<JsonElement> = safeCall { api.batchDeleteKnowledge(body) }
+    suspend fun knowledgeStats(): Resource<KnowledgeStats> = safeCall { api.knowledgeStats() }
+    suspend fun searchKnowledge(req: KnowledgeSearchRequest): Resource<List<KnowledgeSearchResult>> = safeCall { api.searchKnowledge(req) }
+    suspend fun rebuildKnowledge(): Resource<JsonElement> = safeCall { api.rebuildKnowledge() }
+
+    // ==================== Skills 配置 ====================
+    suspend fun listSkills(): Resource<List<Skill>> = safeCall { api.listSkills() }
+    suspend fun createSkill(req: SkillRequest): Resource<Skill> = safeCall { api.createSkill(req) }
+    suspend fun updateSkill(id: String, req: SkillRequest): Resource<Skill> = safeCall { api.updateSkill(id, req) }
+    suspend fun deleteSkill(id: String): Resource<Unit> = safeCall { api.deleteSkill(id) }.map { }
+    suspend fun toggleSkill(id: String): Resource<Skill> = safeCall { api.toggleSkill(id) }
+
+    // ==================== Tools 配置 ====================
+    suspend fun listTools(): Resource<List<Tool>> = safeCall { api.listTools() }
+    suspend fun createTool(req: ToolRequest): Resource<Tool> = safeCall { api.createTool(req) }
+    suspend fun updateTool(id: String, req: ToolRequest): Resource<Tool> = safeCall { api.updateTool(id, req) }
+    suspend fun deleteTool(id: String): Resource<Unit> = safeCall { api.deleteTool(id) }.map { }
+    suspend fun toggleTool(id: String): Resource<Tool> = safeCall { api.toggleTool(id) }
+
+    // ==================== MCP 服务 ====================
+    suspend fun listMcpServers(): Resource<List<McpServer>> = safeCall { api.listMcpServers() }
+    suspend fun createMcpServer(req: McpServerRequest): Resource<McpServer> = safeCall { api.createMcpServer(req) }
+    suspend fun updateMcpServer(id: String, req: McpServerRequest): Resource<McpServer> = safeCall { api.updateMcpServer(id, req) }
+    suspend fun deleteMcpServer(id: String): Resource<Unit> = safeCall { api.deleteMcpServer(id) }.map { }
+    suspend fun connectMcpServer(id: String): Resource<JsonElement> = safeCall { api.connectMcpServer(id) }
+    suspend fun disconnectMcpServer(id: String): Resource<JsonElement> = safeCall { api.disconnectMcpServer(id) }
+    suspend fun mcpServerTools(id: String): Resource<JsonElement> = safeCall { api.mcpServerTools(id) }
+    suspend fun testMcpServer(id: String): Resource<JsonElement> = safeCall { api.testMcpServer(id) }
+
+    // ==================== 频道管理 ====================
+    suspend fun channelPresets(): Resource<List<ChannelPreset>> =
+        safeCall { api.channelPresets() }.mapData { it.presets }
+    suspend fun createChannelFromPreset(presetId: String): Resource<Channel> =
+        safeCall { api.createChannelFromPreset(presetId) }.mapData { it.channel ?: Channel() }
+    suspend fun listChannels(): Resource<List<Channel>> =
+        safeCall { api.listChannels() }.mapData { it.channels }
+    suspend fun createChannel(req: ChannelRequest): Resource<Channel> =
+        safeCall { api.createChannel(req) }.mapData { it.channel ?: Channel() }
+    suspend fun updateChannel(id: String, req: ChannelRequest): Resource<Channel> =
+        safeCall { api.updateChannel(id, req) }.mapData { it.channel ?: Channel() }
+    suspend fun deleteChannel(id: String): Resource<Unit> = safeCall { api.deleteChannel(id) }.map { }
+    /**
+     * 切换频道启停状态。后端只返回 `{"success": true, "enabled": bool}`，
+     * 不返回完整 Channel 对象，故返回新启用状态，调用方一般会触发 load() 刷新列表。
+     */
+    suspend fun toggleChannel(id: String): Resource<Boolean> =
+        safeCall { api.toggleChannel(id) }.mapData { it.enabled ?: false }
+
+    // ==================== 消息过滤 ====================
+    suspend fun listMessageFilter(): Resource<MessageFilterConfig> = safeCall { api.listMessageFilter() }
+    suspend fun createMessageFilterRule(req: MessageFilterRuleRequest): Resource<MessageFilterRule> = safeCall { api.createMessageFilterRule(req) }
+    suspend fun updateMessageFilterRule(id: String, channel: String?, sessionId: String?, req: MessageFilterRuleRequest): Resource<MessageFilterRule> =
+        safeCall { api.updateMessageFilterRule(id, channel, sessionId, req) }
+    suspend fun deleteMessageFilterRule(id: String, channel: String? = null, sessionId: String? = null): Resource<Unit> =
+        safeCall { api.deleteMessageFilterRule(id, channel, sessionId) }.map { }
+    suspend fun toggleMessageFilter(enabled: Boolean): Resource<JsonElement> =
+        safeCall { api.toggleMessageFilter(mapOf("enabled" to enabled)) }
+
+    // ==================== TTS 试验场 ====================
+    suspend fun listTtsVoices(): Resource<List<TtsVoice>> =
+        safeCall { api.listTtsVoices() }.mapData { it.voices }
+    suspend fun ttsPreview(req: TtsPreviewRequest): Resource<TtsPreviewResponse> = safeCall { api.ttsPreview(req) }
+    /**
+     * 上传自定义音色。后端返回 `{"success": true, "voice_id": ..., "name": ...}`，
+     * 不含完整 TtsVoice 字段，故构造一个仅含 id/name 的对象返回。
+     */
+    suspend fun uploadTtsVoice(file: MultipartBody.Part, customName: RequestBody, text: RequestBody): Resource<TtsVoice> =
+        safeCall { api.uploadTtsVoice(file, customName, text) }.mapData { res ->
+            TtsVoice(id = res.voiceId ?: "", name = res.name ?: "")
+        }
+
+    // ==================== 登录令牌 ====================
+    suspend fun listLoginTokens(): Resource<List<LoginToken>> =
+        safeCall { api.listLoginTokens() }.mapData { it.tokens }
+    suspend fun createLoginToken(req: LoginTokenRequest): Resource<LoginTokenResponse> = safeCall { api.createLoginToken(req) }
+    suspend fun deleteLoginToken(tokenHash: String): Resource<Unit> = safeCall { api.deleteLoginToken(tokenHash) }.map { }
+    suspend fun deleteAllLoginTokens(): Resource<Unit> = safeCall { api.deleteAllLoginTokens() }.map { }
+
+    // ==================== API Keys ====================
+    suspend fun listApiKeys(): Resource<List<ApiKey>> =
+        safeCall { api.listApiKeys() }.mapData { it.keys }
+    suspend fun getApiKey(id: String): Resource<ApiKey> =
+        safeCall { api.getApiKey(id) }.mapData { it.key ?: ApiKey() }
+    suspend fun createApiKey(req: ApiKeyRequest): Resource<ApiKey> =
+        safeCall { api.createApiKey(req) }.mapData { it.key ?: ApiKey(name = req.name) }
+    suspend fun updateApiKey(id: String, req: ApiKeyRequest): Resource<ApiKey> =
+        safeCall { api.updateApiKey(id, req) }.mapData { it.key ?: ApiKey(id = id, name = req.name) }
+    suspend fun deleteApiKey(id: String): Resource<Unit> = safeCall { api.deleteApiKey(id) }.map { }
 }
 
 /** 把无数据成功结果映射为 Unit */
 fun <T> Resource<T>.map(transform: (T) -> Unit): Resource<Unit> = when (this) {
+    is Resource.Success -> Resource.Success(transform(data))
+    is Resource.Error -> this
+    is Resource.Loading -> this
+}
+
+/** 把成功结果的数据映射为另一种类型（用于拆解后端包装响应）。 */
+fun <T, R> Resource<T>.mapData(transform: (T) -> R): Resource<R> = when (this) {
     is Resource.Success -> Resource.Success(transform(data))
     is Resource.Error -> this
     is Resource.Loading -> this

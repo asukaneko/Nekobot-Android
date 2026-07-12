@@ -9,13 +9,45 @@ import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.local.db.LocalMessageEntity
 import com.nekobot.app.data.local.db.LocalSessionEntity
 import com.nekobot.app.data.model.ApiResult
+import com.nekobot.app.data.model.ApiKey
+import com.nekobot.app.data.model.ApiKeyRequest
+import com.nekobot.app.data.model.Channel
+import com.nekobot.app.data.model.ChannelPreset
+import com.nekobot.app.data.model.ChannelRequest
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.model.CreateSessionRequest
+import com.nekobot.app.data.model.Hook
+import com.nekobot.app.data.model.HookExecutionLog
+import com.nekobot.app.data.model.HookRequest
+import com.nekobot.app.data.model.KnowledgeDocument
+import com.nekobot.app.data.model.KnowledgeDocumentRequest
+import com.nekobot.app.data.model.KnowledgeSearchRequest
+import com.nekobot.app.data.model.KnowledgeSearchResult
+import com.nekobot.app.data.model.KnowledgeStats
+import com.nekobot.app.data.model.LoginToken
+import com.nekobot.app.data.model.LoginTokenRequest
+import com.nekobot.app.data.model.LoginTokenResponse
+import com.nekobot.app.data.model.McpServer
+import com.nekobot.app.data.model.McpServerRequest
 import com.nekobot.app.data.model.Message
+import com.nekobot.app.data.model.MessageFilterConfig
+import com.nekobot.app.data.model.MessageFilterRule
+import com.nekobot.app.data.model.MessageFilterRuleRequest
 import com.nekobot.app.data.model.Session
+import com.nekobot.app.data.model.Skill
+import com.nekobot.app.data.model.SkillRequest
+import com.nekobot.app.data.model.TaskItem
+import com.nekobot.app.data.model.TaskRequest
 import com.nekobot.app.data.model.TokenRankings
 import com.nekobot.app.data.model.TokenStats
+import com.nekobot.app.data.model.Tool
+import com.nekobot.app.data.model.ToolRequest
+import com.nekobot.app.data.model.TtsPreviewRequest
+import com.nekobot.app.data.model.TtsPreviewResponse
+import com.nekobot.app.data.model.TtsVoice
 import com.nekobot.app.data.model.UpdateSessionRequest
+import com.nekobot.app.data.model.Workflow
+import com.nekobot.app.data.model.WorkflowRequest
 import com.nekobot.app.data.model.WorldBook
 import com.nekobot.app.data.model.WorldBookEntry
 import com.nekobot.app.data.model.WorldBookEntryRequest
@@ -398,4 +430,178 @@ class UnifiedRepository(
     suspend fun downloadWorkspaceFile(sessionId: String, filename: String): retrofit2.Response<okhttp3.ResponseBody>? {
         return if (isLocal) null else remote.downloadWorkspaceFile(sessionId, filename)
     }
+
+    // ==================== 扩展功能（仅远程模式，本地模式返回错误）====================
+    // 以下 12 组模块仅在远程模式可用，本地模式返回 Resource.Error
+
+    private fun localNotSupported(module: String): Resource<Nothing> =
+        Resource.Error("本地模式不支持 $module，请切换到服务器模式")
+
+    // ---- Hook 管理 ----
+    suspend fun listHooks(scope: String? = null, event: String? = null, enabled: String? = null): Resource<List<Hook>> =
+        if (isLocal) localNotSupported("Hook 管理") else remote.listHooks(scope, event, enabled)
+    suspend fun createHook(req: HookRequest): Resource<Hook> =
+        if (isLocal) localNotSupported("Hook 管理") else remote.createHook(req)
+    suspend fun updateHook(id: String, req: HookRequest): Resource<Hook> =
+        if (isLocal) localNotSupported("Hook 管理") else remote.updateHook(id, req)
+    suspend fun deleteHook(id: String): Resource<Unit> =
+        if (isLocal) localNotSupported("Hook 管理") else remote.deleteHook(id)
+    suspend fun toggleHook(id: String): Resource<Hook> =
+        if (isLocal) localNotSupported("Hook 管理") else remote.toggleHook(id)
+    suspend fun testHook(body: JsonElement): Resource<JsonElement> =
+        if (isLocal) localNotSupported("Hook 管理") else remote.testHook(body)
+    suspend fun listHookLogs(hookId: String? = null, limit: Int = 100): Resource<List<HookExecutionLog>> =
+        if (isLocal) localNotSupported("Hook 管理") else remote.listHookLogs(hookId, limit)
+    suspend fun hookStats(): Resource<JsonElement> =
+        if (isLocal) localNotSupported("Hook 管理") else remote.hookStats()
+
+    // ---- 任务中心 ----
+    suspend fun listTasks(): Resource<List<TaskItem>> =
+        if (isLocal) localNotSupported("任务中心") else remote.listTasks()
+    suspend fun createTask(req: TaskRequest): Resource<TaskItem> =
+        if (isLocal) localNotSupported("任务中心") else remote.createTask(req)
+    suspend fun updateTask(id: String, req: TaskRequest): Resource<TaskItem> =
+        if (isLocal) localNotSupported("任务中心") else remote.updateTask(id, req)
+    suspend fun deleteTask(id: String): Resource<Unit> =
+        if (isLocal) localNotSupported("任务中心") else remote.deleteTask(id)
+    suspend fun toggleTask(id: String): Resource<TaskItem> =
+        if (isLocal) localNotSupported("任务中心") else remote.toggleTask(id)
+    suspend fun runTask(id: String): Resource<JsonElement> =
+        if (isLocal) localNotSupported("任务中心") else remote.runTask(id)
+
+    // ---- 工作流 ----
+    suspend fun listWorkflows(): Resource<List<Workflow>> =
+        if (isLocal) localNotSupported("工作流") else remote.listWorkflows()
+    suspend fun createWorkflow(req: WorkflowRequest): Resource<Workflow> =
+        if (isLocal) localNotSupported("工作流") else remote.createWorkflow(req)
+    suspend fun updateWorkflow(id: String, req: WorkflowRequest): Resource<Workflow> =
+        if (isLocal) localNotSupported("工作流") else remote.updateWorkflow(id, req)
+    suspend fun deleteWorkflow(id: String): Resource<Unit> =
+        if (isLocal) localNotSupported("工作流") else remote.deleteWorkflow(id)
+    suspend fun toggleWorkflow(id: String): Resource<Workflow> =
+        if (isLocal) localNotSupported("工作流") else remote.toggleWorkflow(id)
+    suspend fun executeWorkflow(id: String): Resource<JsonElement> =
+        if (isLocal) localNotSupported("工作流") else remote.executeWorkflow(id)
+
+    // ---- 知识库 ----
+    suspend fun listKnowledge(): Resource<List<KnowledgeDocument>> =
+        if (isLocal) localNotSupported("知识库") else remote.listKnowledge()
+    suspend fun createKnowledge(req: KnowledgeDocumentRequest): Resource<KnowledgeDocument> =
+        if (isLocal) localNotSupported("知识库") else remote.createKnowledge(req)
+    suspend fun updateKnowledge(id: String, req: KnowledgeDocumentRequest): Resource<KnowledgeDocument> =
+        if (isLocal) localNotSupported("知识库") else remote.updateKnowledge(id, req)
+    suspend fun deleteKnowledge(id: String): Resource<Unit> =
+        if (isLocal) localNotSupported("知识库") else remote.deleteKnowledge(id)
+    suspend fun indexKnowledge(id: String): Resource<JsonElement> =
+        if (isLocal) localNotSupported("知识库") else remote.indexKnowledge(id)
+    suspend fun knowledgeStats(): Resource<KnowledgeStats> =
+        if (isLocal) localNotSupported("知识库") else remote.knowledgeStats()
+    suspend fun searchKnowledge(req: KnowledgeSearchRequest): Resource<List<KnowledgeSearchResult>> =
+        if (isLocal) localNotSupported("知识库") else remote.searchKnowledge(req)
+    suspend fun rebuildKnowledge(): Resource<JsonElement> =
+        if (isLocal) localNotSupported("知识库") else remote.rebuildKnowledge()
+
+    // ---- Skills 配置 ----
+    suspend fun listSkills(): Resource<List<Skill>> =
+        if (isLocal) localNotSupported("Skills 配置") else remote.listSkills()
+    suspend fun createSkill(req: SkillRequest): Resource<Skill> =
+        if (isLocal) localNotSupported("Skills 配置") else remote.createSkill(req)
+    suspend fun updateSkill(id: String, req: SkillRequest): Resource<Skill> =
+        if (isLocal) localNotSupported("Skills 配置") else remote.updateSkill(id, req)
+    suspend fun deleteSkill(id: String): Resource<Unit> =
+        if (isLocal) localNotSupported("Skills 配置") else remote.deleteSkill(id)
+    suspend fun toggleSkill(id: String): Resource<Skill> =
+        if (isLocal) localNotSupported("Skills 配置") else remote.toggleSkill(id)
+
+    // ---- Tools 配置 ----
+    suspend fun listTools(): Resource<List<Tool>> =
+        if (isLocal) localNotSupported("Tools 配置") else remote.listTools()
+    suspend fun createTool(req: ToolRequest): Resource<Tool> =
+        if (isLocal) localNotSupported("Tools 配置") else remote.createTool(req)
+    suspend fun updateTool(id: String, req: ToolRequest): Resource<Tool> =
+        if (isLocal) localNotSupported("Tools 配置") else remote.updateTool(id, req)
+    suspend fun deleteTool(id: String): Resource<Unit> =
+        if (isLocal) localNotSupported("Tools 配置") else remote.deleteTool(id)
+    suspend fun toggleTool(id: String): Resource<Tool> =
+        if (isLocal) localNotSupported("Tools 配置") else remote.toggleTool(id)
+
+    // ---- MCP 服务 ----
+    suspend fun listMcpServers(): Resource<List<McpServer>> =
+        if (isLocal) localNotSupported("MCP 服务") else remote.listMcpServers()
+    suspend fun createMcpServer(req: McpServerRequest): Resource<McpServer> =
+        if (isLocal) localNotSupported("MCP 服务") else remote.createMcpServer(req)
+    suspend fun updateMcpServer(id: String, req: McpServerRequest): Resource<McpServer> =
+        if (isLocal) localNotSupported("MCP 服务") else remote.updateMcpServer(id, req)
+    suspend fun deleteMcpServer(id: String): Resource<Unit> =
+        if (isLocal) localNotSupported("MCP 服务") else remote.deleteMcpServer(id)
+    suspend fun connectMcpServer(id: String): Resource<JsonElement> =
+        if (isLocal) localNotSupported("MCP 服务") else remote.connectMcpServer(id)
+    suspend fun disconnectMcpServer(id: String): Resource<JsonElement> =
+        if (isLocal) localNotSupported("MCP 服务") else remote.disconnectMcpServer(id)
+    suspend fun mcpServerTools(id: String): Resource<JsonElement> =
+        if (isLocal) localNotSupported("MCP 服务") else remote.mcpServerTools(id)
+    suspend fun testMcpServer(id: String): Resource<JsonElement> =
+        if (isLocal) localNotSupported("MCP 服务") else remote.testMcpServer(id)
+
+    // ---- 频道管理 ----
+    suspend fun channelPresets(): Resource<List<ChannelPreset>> =
+        if (isLocal) localNotSupported("频道管理") else remote.channelPresets()
+    suspend fun createChannelFromPreset(presetId: String): Resource<Channel> =
+        if (isLocal) localNotSupported("频道管理") else remote.createChannelFromPreset(presetId)
+    suspend fun listChannels(): Resource<List<Channel>> =
+        if (isLocal) localNotSupported("频道管理") else remote.listChannels()
+    suspend fun createChannel(req: ChannelRequest): Resource<Channel> =
+        if (isLocal) localNotSupported("频道管理") else remote.createChannel(req)
+    suspend fun updateChannel(id: String, req: ChannelRequest): Resource<Channel> =
+        if (isLocal) localNotSupported("频道管理") else remote.updateChannel(id, req)
+    suspend fun deleteChannel(id: String): Resource<Unit> =
+        if (isLocal) localNotSupported("频道管理") else remote.deleteChannel(id)
+    /**
+     * 切换频道启停。后端只返回 `{success, enabled}`，无完整 Channel 对象，
+     * 故返回新的启用状态；调用方一般会再触发 load() 刷新列表。
+     */
+    suspend fun toggleChannel(id: String): Resource<Boolean> =
+        if (isLocal) localNotSupported("频道管理") else remote.toggleChannel(id)
+
+    // ---- 消息过滤 ----
+    suspend fun listMessageFilter(): Resource<MessageFilterConfig> =
+        if (isLocal) localNotSupported("消息过滤") else remote.listMessageFilter()
+    suspend fun createMessageFilterRule(req: MessageFilterRuleRequest): Resource<MessageFilterRule> =
+        if (isLocal) localNotSupported("消息过滤") else remote.createMessageFilterRule(req)
+    suspend fun updateMessageFilterRule(id: String, channel: String?, sessionId: String?, req: MessageFilterRuleRequest): Resource<MessageFilterRule> =
+        if (isLocal) localNotSupported("消息过滤") else remote.updateMessageFilterRule(id, channel, sessionId, req)
+    suspend fun deleteMessageFilterRule(id: String, channel: String? = null, sessionId: String? = null): Resource<Unit> =
+        if (isLocal) localNotSupported("消息过滤") else remote.deleteMessageFilterRule(id, channel, sessionId)
+    suspend fun toggleMessageFilter(enabled: Boolean): Resource<JsonElement> =
+        if (isLocal) localNotSupported("消息过滤") else remote.toggleMessageFilter(enabled)
+
+    // ---- TTS 试验场 ----
+    suspend fun listTtsVoices(): Resource<List<TtsVoice>> =
+        if (isLocal) localNotSupported("TTS 试验场") else remote.listTtsVoices()
+    suspend fun ttsPreview(req: TtsPreviewRequest): Resource<TtsPreviewResponse> =
+        if (isLocal) localNotSupported("TTS 试验场") else remote.ttsPreview(req)
+    suspend fun uploadTtsVoice(file: okhttp3.MultipartBody.Part, customName: okhttp3.RequestBody, text: okhttp3.RequestBody): Resource<TtsVoice> =
+        if (isLocal) localNotSupported("TTS 试验场") else remote.uploadTtsVoice(file, customName, text)
+
+    // ---- 登录令牌 ----
+    suspend fun listLoginTokens(): Resource<List<LoginToken>> =
+        if (isLocal) localNotSupported("登录令牌") else remote.listLoginTokens()
+    suspend fun createLoginToken(req: LoginTokenRequest): Resource<LoginTokenResponse> =
+        if (isLocal) localNotSupported("登录令牌") else remote.createLoginToken(req)
+    suspend fun deleteLoginToken(tokenHash: String): Resource<Unit> =
+        if (isLocal) localNotSupported("登录令牌") else remote.deleteLoginToken(tokenHash)
+    suspend fun deleteAllLoginTokens(): Resource<Unit> =
+        if (isLocal) localNotSupported("登录令牌") else remote.deleteAllLoginTokens()
+
+    // ---- API Keys ----
+    suspend fun listApiKeys(): Resource<List<ApiKey>> =
+        if (isLocal) localNotSupported("API Keys") else remote.listApiKeys()
+    suspend fun getApiKey(id: String): Resource<ApiKey> =
+        if (isLocal) localNotSupported("API Keys") else remote.getApiKey(id)
+    suspend fun createApiKey(req: ApiKeyRequest): Resource<ApiKey> =
+        if (isLocal) localNotSupported("API Keys") else remote.createApiKey(req)
+    suspend fun updateApiKey(id: String, req: ApiKeyRequest): Resource<ApiKey> =
+        if (isLocal) localNotSupported("API Keys") else remote.updateApiKey(id, req)
+    suspend fun deleteApiKey(id: String): Resource<Unit> =
+        if (isLocal) localNotSupported("API Keys") else remote.deleteApiKey(id)
 }

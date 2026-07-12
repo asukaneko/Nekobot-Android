@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Psychology
@@ -121,6 +122,14 @@ fun MoreScreen(
                         title = "AI 模型",
                         desc = "管理可用的 AI 模型与供应商",
                         onClick = { onNavigate("ai_models") }
+                    )
+                    // 扩展功能（仅远程模式）：Hook/任务/工作流/知识库/Skills/Tools/MCP/频道/消息过滤/TTS/令牌
+                    Spacer(Modifier.height(8.dp))
+                    MoreRow(
+                        icon = Icons.Filled.Extension,
+                        title = "扩展功能",
+                        desc = "Hook、任务、工作流、知识库、MCP、频道等高级配置",
+                        onClick = { onNavigate("extensions") }
                     )
                 }
             }

@@ -39,6 +39,19 @@ import com.nekobot.app.ui.screens.statehistory.StateHistoryScreen
 import com.nekobot.app.ui.screens.tokens.TokensScreen
 import com.nekobot.app.ui.screens.worldbook.WorldBookDetailScreen
 import com.nekobot.app.ui.screens.worldbook.WorldBooksScreen
+import com.nekobot.app.ui.screens.extensions.ExtensionsScreen
+import com.nekobot.app.ui.screens.extensions.HooksScreen
+import com.nekobot.app.ui.screens.extensions.TaskCenterScreen
+import com.nekobot.app.ui.screens.extensions.WorkflowsScreen
+import com.nekobot.app.ui.screens.extensions.KnowledgeScreen
+import com.nekobot.app.ui.screens.extensions.SkillsScreen
+import com.nekobot.app.ui.screens.extensions.ToolsScreen
+import com.nekobot.app.ui.screens.extensions.McpServersScreen
+import com.nekobot.app.ui.screens.extensions.ChannelsScreen
+import com.nekobot.app.ui.screens.extensions.MessageFilterScreen
+import com.nekobot.app.ui.screens.extensions.TtsPlaygroundScreen
+import com.nekobot.app.ui.screens.extensions.LoginTokensScreen
+import com.nekobot.app.ui.screens.extensions.ApiKeysScreen
 
 private val mainRoutes = setOf(
     Routes.SESSIONS, Routes.CHARACTERS, Routes.WORLD_BOOKS,
@@ -259,6 +272,49 @@ fun NekobotNavGraph() {
                     sessionId = entry.arguments?.getString("sessionId").orEmpty(),
                     onBack = { navController.popBackStack() }
                 )
+            }
+            // ==================== 扩展功能（仅远程模式）====================
+            composable(Routes.EXTENSIONS) {
+                ExtensionsScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigate = { route -> navController.navigate(route) }
+                )
+            }
+            composable(Routes.HOOKS) {
+                HooksScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.TASK_CENTER) {
+                TaskCenterScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.WORKFLOWS) {
+                WorkflowsScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.KNOWLEDGE) {
+                KnowledgeScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.SKILLS) {
+                SkillsScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.TOOLS) {
+                ToolsScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.MCP_SERVERS) {
+                McpServersScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.CHANNELS) {
+                ChannelsScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.MESSAGE_FILTER) {
+                MessageFilterScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.TTS_PLAYGROUND) {
+                TtsPlaygroundScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.LOGIN_TOKENS) {
+                LoginTokensScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.API_KEYS) {
+                ApiKeysScreen(onBack = { navController.popBackStack() })
             }
         }
     }

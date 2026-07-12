@@ -307,6 +307,261 @@ interface ApiService {
     @POST("api/system/reload-config")
     suspend fun reloadConfig(): Response<ApiResult>
 
+    // ==================== Hook 管理 ====================
+    @GET("api/hooks")
+    suspend fun listHooks(
+        @Query("scope") scope: String? = null,
+        @Query("event") event: String? = null,
+        @Query("enabled") enabled: String? = null
+    ): Response<HookListResponse>
+
+    @POST("api/hooks")
+    suspend fun createHook(@Body body: HookRequest): Response<HookResponse>
+
+    @GET("api/hooks/{id}")
+    suspend fun getHook(@Path("id") id: String): Response<HookResponse>
+
+    @PUT("api/hooks/{id}")
+    suspend fun updateHook(@Path("id") id: String, @Body body: HookRequest): Response<HookResponse>
+
+    @DELETE("api/hooks/{id}")
+    suspend fun deleteHook(@Path("id") id: String): Response<ApiResult>
+
+    @POST("api/hooks/{id}/toggle")
+    suspend fun toggleHook(@Path("id") id: String): Response<HookResponse>
+
+    @POST("api/hooks/test")
+    suspend fun testHook(@Body body: JsonElement): Response<JsonElement>
+
+    @GET("api/hooks/logs")
+    suspend fun listHookLogs(
+        @Query("hook_id") hookId: String? = null,
+        @Query("limit") limit: Int = 100
+    ): Response<HookLogListResponse>
+
+    @GET("api/hooks/stats")
+    suspend fun hookStats(): Response<JsonElement>
+
+    // ==================== 任务中心 ====================
+    @GET("api/task-center")
+    suspend fun listTasks(): Response<TaskListResponse>
+
+    @POST("api/task-center")
+    suspend fun createTask(@Body body: TaskRequest): Response<TaskResponse>
+
+    @PUT("api/task-center/{id}")
+    suspend fun updateTask(@Path("id") id: String, @Body body: TaskRequest): Response<TaskResponse>
+
+    @DELETE("api/task-center/{id}")
+    suspend fun deleteTask(@Path("id") id: String): Response<ApiResult>
+
+    @POST("api/task-center/{id}/toggle")
+    suspend fun toggleTask(@Path("id") id: String): Response<TaskItemResponse>
+
+    @POST("api/task-center/{id}/run")
+    suspend fun runTask(@Path("id") id: String): Response<JsonElement>
+
+    // ==================== 工作流 ====================
+    @GET("api/workflows")
+    suspend fun listWorkflows(): Response<List<Workflow>>
+
+    @POST("api/workflows")
+    suspend fun createWorkflow(@Body body: WorkflowRequest): Response<Workflow>
+
+    @PUT("api/workflows/{id}")
+    suspend fun updateWorkflow(@Path("id") id: String, @Body body: WorkflowRequest): Response<Workflow>
+
+    @DELETE("api/workflows/{id}")
+    suspend fun deleteWorkflow(@Path("id") id: String): Response<ApiResult>
+
+    @POST("api/workflows/{id}/toggle")
+    suspend fun toggleWorkflow(@Path("id") id: String): Response<Workflow>
+
+    @POST("api/workflows/{id}/execute")
+    suspend fun executeWorkflow(@Path("id") id: String): Response<JsonElement>
+
+    // ==================== 知识库 ====================
+    @GET("api/knowledge")
+    suspend fun listKnowledge(): Response<List<KnowledgeDocument>>
+
+    @POST("api/knowledge")
+    suspend fun createKnowledge(@Body body: KnowledgeDocumentRequest): Response<KnowledgeDocument>
+
+    @GET("api/knowledge/{id}")
+    suspend fun getKnowledge(@Path("id") id: String): Response<KnowledgeDocument>
+
+    @PUT("api/knowledge/{id}")
+    suspend fun updateKnowledge(@Path("id") id: String, @Body body: KnowledgeDocumentRequest): Response<KnowledgeDocument>
+
+    @DELETE("api/knowledge/{id}")
+    suspend fun deleteKnowledge(@Path("id") id: String): Response<ApiResult>
+
+    @POST("api/knowledge/{id}/index")
+    suspend fun indexKnowledge(@Path("id") id: String): Response<JsonElement>
+
+    @POST("api/knowledge/batch")
+    suspend fun batchKnowledge(@Body body: JsonElement): Response<JsonElement>
+
+    @POST("api/knowledge/batch-delete")
+    suspend fun batchDeleteKnowledge(@Body body: JsonElement): Response<JsonElement>
+
+    @GET("api/knowledge/stats")
+    suspend fun knowledgeStats(): Response<KnowledgeStats>
+
+    @POST("api/knowledge/search")
+    suspend fun searchKnowledge(@Body body: KnowledgeSearchRequest): Response<List<KnowledgeSearchResult>>
+
+    @POST("api/knowledge/rebuild")
+    suspend fun rebuildKnowledge(): Response<JsonElement>
+
+    // ==================== Skills 配置 ====================
+    @GET("api/skills")
+    suspend fun listSkills(): Response<List<Skill>>
+
+    @POST("api/skills")
+    suspend fun createSkill(@Body body: SkillRequest): Response<Skill>
+
+    @PUT("api/skills/{id}")
+    suspend fun updateSkill(@Path("id") id: String, @Body body: SkillRequest): Response<Skill>
+
+    @DELETE("api/skills/{id}")
+    suspend fun deleteSkill(@Path("id") id: String): Response<ApiResult>
+
+    @POST("api/skills/{id}/toggle")
+    suspend fun toggleSkill(@Path("id") id: String): Response<Skill>
+
+    // ==================== Tools 配置 ====================
+    @GET("api/tools")
+    suspend fun listTools(): Response<List<Tool>>
+
+    @POST("api/tools")
+    suspend fun createTool(@Body body: ToolRequest): Response<Tool>
+
+    @PUT("api/tools/{id}")
+    suspend fun updateTool(@Path("id") id: String, @Body body: ToolRequest): Response<Tool>
+
+    @DELETE("api/tools/{id}")
+    suspend fun deleteTool(@Path("id") id: String): Response<ApiResult>
+
+    @POST("api/tools/{id}/toggle")
+    suspend fun toggleTool(@Path("id") id: String): Response<Tool>
+
+    // ==================== MCP 服务 ====================
+    @GET("api/mcp-servers")
+    suspend fun listMcpServers(): Response<List<McpServer>>
+
+    @POST("api/mcp-servers")
+    suspend fun createMcpServer(@Body body: McpServerRequest): Response<McpServer>
+
+    @PUT("api/mcp-servers/{id}")
+    suspend fun updateMcpServer(@Path("id") id: String, @Body body: McpServerRequest): Response<McpServer>
+
+    @DELETE("api/mcp-servers/{id}")
+    suspend fun deleteMcpServer(@Path("id") id: String): Response<ApiResult>
+
+    @POST("api/mcp-servers/{id}/connect")
+    suspend fun connectMcpServer(@Path("id") id: String): Response<JsonElement>
+
+    @POST("api/mcp-servers/{id}/disconnect")
+    suspend fun disconnectMcpServer(@Path("id") id: String): Response<JsonElement>
+
+    @GET("api/mcp-servers/{id}/tools")
+    suspend fun mcpServerTools(@Path("id") id: String): Response<JsonElement>
+
+    @POST("api/mcp-servers/{id}/test")
+    suspend fun testMcpServer(@Path("id") id: String): Response<JsonElement>
+
+    // ==================== 频道管理 ====================
+    @GET("api/channels/presets")
+    suspend fun channelPresets(): Response<ChannelPresetListResponse>
+
+    @POST("api/channels/presets/{presetId}")
+    suspend fun createChannelFromPreset(@Path("presetId") presetId: String): Response<ChannelResponse>
+
+    @GET("api/channels")
+    suspend fun listChannels(): Response<ChannelListResponse>
+
+    @POST("api/channels")
+    suspend fun createChannel(@Body body: ChannelRequest): Response<ChannelResponse>
+
+    @PUT("api/channels/{id}")
+    suspend fun updateChannel(@Path("id") id: String, @Body body: ChannelRequest): Response<ChannelResponse>
+
+    @DELETE("api/channels/{id}")
+    suspend fun deleteChannel(@Path("id") id: String): Response<ApiResult>
+
+    @POST("api/channels/{id}/toggle")
+    suspend fun toggleChannel(@Path("id") id: String): Response<ChannelToggleResponse>
+
+    // ==================== 消息过滤 ====================
+    @GET("api/message-filter")
+    suspend fun listMessageFilter(): Response<MessageFilterConfig>
+
+    @POST("api/message-filter")
+    suspend fun createMessageFilterRule(@Body body: MessageFilterRuleRequest): Response<MessageFilterRule>
+
+    @PUT("api/message-filter/{id}")
+    suspend fun updateMessageFilterRule(
+        @Path("id") id: String,
+        @Query("channel") channel: String? = null,
+        @Query("session_id") sessionId: String? = null,
+        @Body body: MessageFilterRuleRequest
+    ): Response<MessageFilterRule>
+
+    @DELETE("api/message-filter/{id}")
+    suspend fun deleteMessageFilterRule(
+        @Path("id") id: String,
+        @Query("channel") channel: String? = null,
+        @Query("session_id") sessionId: String? = null
+    ): Response<ApiResult>
+
+    @POST("api/message-filter/toggle")
+    suspend fun toggleMessageFilter(@Body body: Map<String, Boolean>): Response<JsonElement>
+
+    // ==================== TTS 试验场 ====================
+    @GET("api/tts/voices")
+    suspend fun listTtsVoices(): Response<TtsVoiceListResponse>
+
+    @POST("api/tts/preview")
+    suspend fun ttsPreview(@Body body: TtsPreviewRequest): Response<TtsPreviewResponse>
+
+    @Multipart
+    @POST("api/tts/upload-voice")
+    suspend fun uploadTtsVoice(
+        @Part file: MultipartBody.Part,
+        @Part("customName") customName: RequestBody,
+        @Part("text") text: RequestBody
+    ): Response<TtsVoiceUploadResponse>
+
+    // ==================== 登录令牌 ====================
+    @GET("api/login-tokens")
+    suspend fun listLoginTokens(): Response<LoginTokenListResponse>
+
+    @POST("api/login-tokens")
+    suspend fun createLoginToken(@Body body: LoginTokenRequest): Response<LoginTokenResponse>
+
+    @DELETE("api/login-tokens/{tokenHash}")
+    suspend fun deleteLoginToken(@Path("tokenHash") tokenHash: String): Response<ApiResult>
+
+    @DELETE("api/login-tokens")
+    suspend fun deleteAllLoginTokens(): Response<ApiResult>
+
+    // ==================== API Keys ====================
+    @GET("api/api-keys")
+    suspend fun listApiKeys(): Response<ApiKeyListResponse>
+
+    @GET("api/api-keys/{id}")
+    suspend fun getApiKey(@Path("id") id: String): Response<ApiKeyResponse>
+
+    @POST("api/api-keys")
+    suspend fun createApiKey(@Body body: ApiKeyRequest): Response<ApiKeyResponse>
+
+    @PUT("api/api-keys/{id}")
+    suspend fun updateApiKey(@Path("id") id: String, @Body body: ApiKeyRequest): Response<ApiKeyResponse>
+
+    @DELETE("api/api-keys/{id}")
+    suspend fun deleteApiKey(@Path("id") id: String): Response<ApiResult>
+
     @GET("api/logs")
     suspend fun listLogs(
         @Query("level") level: String = "all",

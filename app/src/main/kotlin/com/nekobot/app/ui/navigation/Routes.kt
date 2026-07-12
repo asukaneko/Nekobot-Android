@@ -40,6 +40,21 @@ object Routes {
 
     const val WORKSPACE = "workspace/{sessionId}"
     fun workspace(sessionId: String) = "workspace/$sessionId"
+
+    // 扩展功能聚合页 + 12 个模块（仅远程模式）
+    const val EXTENSIONS = "extensions"
+    const val HOOKS = "hooks"
+    const val TASK_CENTER = "task_center"
+    const val WORKFLOWS = "workflows"
+    const val KNOWLEDGE = "knowledge"
+    const val SKILLS = "skills"
+    const val TOOLS = "tools"
+    const val MCP_SERVERS = "mcp_servers"
+    const val CHANNELS = "channels"
+    const val MESSAGE_FILTER = "message_filter"
+    const val TTS_PLAYGROUND = "tts_playground"
+    const val LOGIN_TOKENS = "login_tokens"
+    const val API_KEYS = "api_keys"
 }
 
 data class BottomItem(
