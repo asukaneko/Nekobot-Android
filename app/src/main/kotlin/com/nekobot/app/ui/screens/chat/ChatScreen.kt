@@ -1218,6 +1218,10 @@ class ChatViewModel : BaseViewModel() {
     private val streamingContent = StringBuilder()
     /** 流式消息在列表中的临时 id */
     private val streamingId = STREAMING_ID
+    /** 上次流式 chunk 更新 UI 的时间戳，用于节流（避免高频 chunk 触发 MarkdownText 全量重解析） */
+    private var lastStreamUiUpdateMs: Long = 0L
+    /** 流式节流间隔（毫秒） */
+    private val streamThrottleMs = 60L
 
     /** 收集 Socket.IO 事件的 Job（服务器模式） */
     private var eventsJob: kotlinx.coroutines.Job? = null
@@ -1258,6 +1262,7 @@ class ChatViewModel : BaseViewModel() {
             is RealtimeEvent.StreamStart -> {
                 _sending.value = true
                 streamingContent.setLength(0)
+                lastStreamUiUpdateMs = 0L
                 // 插入流式占位消息
                 val placeholder = Message(
                     id = streamingId,
@@ -1269,10 +1274,14 @@ class ChatViewModel : BaseViewModel() {
             }
             is RealtimeEvent.StreamChunk -> {
                 streamingContent.append(event.chunk)
-                // 更新占位消息内容
-                _messages.value = _messages.value.map {
-                    if (it.id == streamingId) it.copy(content = streamingContent.toString())
-                    else it
+                // 节流：距上次 UI 更新不足阈值时跳过，避免高频 chunk 触发 MarkdownText 全量重解析
+                val now = System.currentTimeMillis()
+                if (now - lastStreamUiUpdateMs >= streamThrottleMs) {
+                    lastStreamUiUpdateMs = now
+                    _messages.value = _messages.value.map {
+                        if (it.id == streamingId) it.copy(content = streamingContent.toString())
+                        else it
+                    }
                 }
             }
             is RealtimeEvent.StreamEnd -> {
@@ -1399,14 +1408,21 @@ class ChatViewModel : BaseViewModel() {
 
         if (isLocalMode) {
             // 本地模式：直接收集 Flow 事件
-            val flow = unified.chatStream(currentSessionId, content)
-            if (flow == null) {
-                _sending.value = false
-                showError("未配置 AI 模型，请在设置中添加")
-                return
-            }
             localChatJob?.cancel()
             localChatJob = viewModelScope.launch {
+                val flow = try {
+                    unified.chatStream(currentSessionId, content)
+                } catch (e: Exception) {
+                    _sending.value = false
+                    _messages.value = _messages.value.filter { it.id != streamingId }
+                    showError(e.message ?: "发送失败")
+                    return@launch
+                }
+                if (flow == null) {
+                    _sending.value = false
+                    showError("未配置 AI 模型，请在设置中添加")
+                    return@launch
+                }
                 try {
                     flow.collect { event -> handleRealtimeEvent(event) }
                 } catch (e: Exception) {
@@ -1489,14 +1505,20 @@ class ChatViewModel : BaseViewModel() {
         }
         if (isLocalMode) {
             // 本地模式：直接收集 Flow 事件
-            val flow = unified.regenerateStream(currentSessionId, messageId)
-            if (flow == null) {
-                _sending.value = false
-                showError("未配置 AI 模型，请在设置中添加")
-                return
-            }
             localChatJob?.cancel()
             localChatJob = viewModelScope.launch {
+                val flow = try {
+                    unified.regenerateStream(currentSessionId, messageId)
+                } catch (e: Exception) {
+                    _sending.value = false
+                    showError(e.message ?: "重新生成失败")
+                    return@launch
+                }
+                if (flow == null) {
+                    _sending.value = false
+                    showError("未配置 AI 模型，请在设置中添加")
+                    return@launch
+                }
                 try {
                     flow.collect { event -> handleRealtimeEvent(event) }
                 } catch (e: Exception) {
@@ -1650,24 +1672,26 @@ class ChatViewModel : BaseViewModel() {
             // 本地模式：标记选中状态，并记录到 SharedPreferences
             _plotChoices.value = _plotChoices.value.map { if (it.id == choiceId) it.copy(selected = true) else it }
             viewModelScope.launch {
-                try {
-                    // 已保存的 JSON 格式为 {"choices": [...]}，直接解析后修改 selected 字段
-                    val raw = com.nekobot.app.ServiceContainer.localRepository
-                        .getPlotChoices(currentSessionId) ?: "{\"choices\":[]}"
-                    val payload = com.google.gson.JsonParser.parseString(raw).asJsonObject
-                    val choicesArr = payload.get("choices")?.takeIf { it.isJsonArray }?.asJsonArray
-                    choicesArr?.forEach { el ->
-                        if (el.isJsonObject) {
-                            val obj = el.asJsonObject
-                            val id = obj.get("id")?.takeIf { it.isJsonPrimitive }?.asString
-                            if (id == choiceId) {
-                                obj.addProperty("selected", true)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        // 已保存的 JSON 格式为 {"choices": [...]}，直接解析后修改 selected 字段
+                        val raw = com.nekobot.app.ServiceContainer.localRepository
+                            .getPlotChoices(currentSessionId) ?: "{\"choices\":[]}"
+                        val payload = com.google.gson.JsonParser.parseString(raw).asJsonObject
+                        val choicesArr = payload.get("choices")?.takeIf { it.isJsonArray }?.asJsonArray
+                        choicesArr?.forEach { el ->
+                            if (el.isJsonObject) {
+                                val obj = el.asJsonObject
+                                val id = obj.get("id")?.takeIf { it.isJsonPrimitive }?.asString
+                                if (id == choiceId) {
+                                    obj.addProperty("selected", true)
+                                }
                             }
                         }
-                    }
-                    com.nekobot.app.ServiceContainer.localRepository
-                        .savePlotChoices(currentSessionId, payload.toString())
-                } catch (_: Exception) { }
+                        com.nekobot.app.ServiceContainer.localRepository
+                            .savePlotChoices(currentSessionId, payload.toString())
+                    } catch (_: Exception) { }
+                }
             }
             return
         }

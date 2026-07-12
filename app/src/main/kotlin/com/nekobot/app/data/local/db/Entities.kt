@@ -39,7 +39,9 @@ data class LocalSessionEntity(
     /** 自定义提示词列表，JSON 数组字符串，每项含 order/title/content */
     @ColumnInfo(name = "custom_prompts") val customPrompts: String? = null,
     /** 运行时提示词注入栈调试信息（JSON 字符串），每次对话后更新 */
-    @ColumnInfo(name = "prompt_stack_debug") val promptStackDebug: String? = null
+    @ColumnInfo(name = "prompt_stack_debug") val promptStackDebug: String? = null,
+    /** 运行时合成后的完整系统提示词（每次对话后更新，只读展示） */
+    @ColumnInfo(name = "composed_system_prompt") val composedSystemPrompt: String? = null
 )
 
 /**

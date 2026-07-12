@@ -152,6 +152,9 @@ class PromptStack {
     /** 返回所有已注册的 key 列表 */
     val keys: List<String> get() = items.map { it.key }
 
+    /** 返回所有注入项（含 enabled 状态，供调试展示用） */
+    fun getItems(): List<PromptInjection> = items.toList()
+
     // ==================== 动态 section 清理 ====================
 
     /** 动态 section 的 key 列表，用于从持久化的 base_prompt 中剥离 */

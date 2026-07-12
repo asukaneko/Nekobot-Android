@@ -122,7 +122,7 @@ class CharacterRuntime(
                     promptStack.add("memory_fs", memoryContext, priority = PromptStack.Priority.CHARACTER_MEMORIES)
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "MemoryFS 提示词注入失败（不影响主流程）: ${e.message}")
+                com.nekobot.app.data.local.LocalLogger.w(TAG, "MemoryFS 提示词注入失败（不影响主流程）: ${e.message}")
             }
         }
 
@@ -143,7 +143,8 @@ class CharacterRuntime(
             signals = signals,
             plan = plan,
             promptText = promptText,
-            worldBookEntries = worldBookEntries
+            worldBookEntries = worldBookEntries,
+            promptStackItems = promptStack.getItems()
         )
     }
 
@@ -179,7 +180,7 @@ class CharacterRuntime(
         // 保存状态
         stateRepo?.save(newState)
         relationshipRepo?.save(newRelationship)
-        Log.d(TAG, "afterTurn 状态已保存: mood=${newState.mood} energy=${newState.energy} " +
+        com.nekobot.app.data.local.LocalLogger.i(TAG, "afterTurn 状态已保存: mood=${newState.mood} energy=${newState.energy} " +
             "affection=${newRelationship.affection} trust=${newRelationship.trust}")
 
         // 更新 turnContext 中的状态（供后续流程使用）
@@ -211,13 +212,13 @@ class CharacterRuntime(
                         targetId = aiRel.targetId,
                         conversationId = chatRequest.conversationId
                     ).takeIf { it.isNotEmpty() }
-                    Log.d(TAG, "AutoState 已应用 LLM 评估: mood=${aiState.mood} " +
+                    com.nekobot.app.data.local.LocalLogger.i(TAG, "AutoState 已应用 LLM 评估: mood=${aiState.mood} " +
                         "moodIntensity=${aiState.moodIntensity} energy=${aiState.energy}")
                 } else {
-                    Log.d(TAG, "AutoState 本轮未更新（未达触发间隔或无变化）")
+                    com.nekobot.app.data.local.LocalLogger.d(TAG, "AutoState 本轮未更新（未达触发间隔或无变化）")
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "AutoState 状态评估失败（不影响主流程）: ${e.message}", e)
+                com.nekobot.app.data.local.LocalLogger.w(TAG, "AutoState 状态评估失败（不影响主流程）: ${e.message}", e)
             }
         }
 
@@ -231,9 +232,9 @@ class CharacterRuntime(
                     qualityScores = qualityScores,
                     triggerType = triggerType
                 )
-                Log.d(TAG, "状态快照已写入 (trigger=$triggerType, hasQuality=${qualityScores != null})")
+                com.nekobot.app.data.local.LocalLogger.d(TAG, "状态快照已写入 (trigger=$triggerType, hasQuality=${qualityScores != null})")
             } catch (e: Exception) {
-                Log.w(TAG, "状态快照写入失败（不影响主流程）: ${e.message}", e)
+                com.nekobot.app.data.local.LocalLogger.w(TAG, "状态快照写入失败（不影响主流程）: ${e.message}", e)
             }
         }
 
@@ -243,7 +244,7 @@ class CharacterRuntime(
                 val response = ChatResponse(finalContent = finalContent)
                 memoryService.extractIfNeeded(chatRequest, response, turnContext)
             } catch (e: Exception) {
-                Log.w(TAG, "记忆抽取失败（不影响主流程）: ${e.message}", e)
+                com.nekobot.app.data.local.LocalLogger.w(TAG, "记忆抽取失败（不影响主流程）: ${e.message}", e)
             }
         }
     }
@@ -283,7 +284,7 @@ class CharacterRuntime(
         if (updated == current) return false
 
         repo.save(updated)
-        Log.d(TAG, "审查关系增量已回写: $deltas → affection=${updated.affection} trust=${updated.trust}")
+        com.nekobot.app.data.local.LocalLogger.i(TAG, "审查关系增量已回写: $deltas → affection=${updated.affection} trust=${updated.trust}")
         return true
     }
 

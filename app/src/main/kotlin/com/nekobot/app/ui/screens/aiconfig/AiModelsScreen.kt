@@ -296,7 +296,7 @@ fun AiModelsScreen(onBack: () -> Unit) {
                             })
                         }
                     }
-                    items(models) { model ->
+                    items(models, key = { it.id ?: it.name ?: it.hashCode().toString() }) { model ->
                         ModelCard(
                             model = model,
                             onToggle = { model.id?.let { vm.toggle(it) } },

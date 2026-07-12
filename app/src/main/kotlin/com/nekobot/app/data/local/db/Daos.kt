@@ -47,6 +47,9 @@ interface SessionDao {
 
     @Query("UPDATE local_sessions SET prompt_stack_debug = :debugJson WHERE id = :id")
     suspend fun updatePromptStackDebug(id: String, debugJson: String)
+
+    @Query("UPDATE local_sessions SET composed_system_prompt = :prompt WHERE id = :id")
+    suspend fun updateComposedSystemPrompt(id: String, prompt: String)
 }
 
 @Dao

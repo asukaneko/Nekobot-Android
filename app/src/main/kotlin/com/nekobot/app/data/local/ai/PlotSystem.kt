@@ -412,7 +412,8 @@ private val STYLE_PRESETS = mapOf(
  */
 class PlotChoiceGenerator(
     private val aiClient: LocalAiClient,
-    private val aiModelProvider: (suspend () -> com.nekobot.app.data.local.db.LocalAiModelEntity?)? = null
+    private val aiModelProvider: (suspend () -> com.nekobot.app.data.local.db.LocalAiModelEntity?)? = null,
+    private val onTokenUsage: ((model: String, inputTokens: Int, outputTokens: Int) -> Unit)? = null
 ) {
     companion object {
         private const val TAG = "PlotChoiceGenerator"
@@ -450,6 +451,23 @@ class PlotChoiceGenerator(
         return try {
             val result = aiClient.chatOnce(model, messages)
             if (result.error != null || result.content.isBlank()) return DEFAULT_CHOICES
+
+            // 记录 token 用量（剧情生成用途）
+            if (onTokenUsage != null && result.usage.isNotEmpty()) {
+                try {
+                    val input = (result.usage["prompt"] as? Int)
+                        ?: (result.usage["input_tokens"] as? Int)
+                        ?: (result.usage["prompt_tokens"] as? Int)
+                        ?: 0
+                    val output = (result.usage["completion"] as? Int)
+                        ?: (result.usage["output_tokens"] as? Int)
+                        ?: (result.usage["completion_tokens"] as? Int)
+                        ?: 0
+                    if (input > 0 || output > 0) {
+                        onTokenUsage.invoke(model.model, input, output)
+                    }
+                } catch (_: Exception) { }
+            }
 
             val cleaned = cleanResponseContent(result.content)
             val parsed = parseChoices(cleaned)

@@ -974,10 +974,6 @@ class SessionsViewModel : BaseViewModel() {
         initialValue = emptyList()
     )
 
-    init {
-        loadAll()
-    }
-
     fun setFilter(f: SessionFilter) {
         _filter.value = f
     }

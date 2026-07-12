@@ -329,7 +329,9 @@ data class CharacterTurnContext(
     val plan: ReactionPlan = ReactionPlan(),
     /** 编译后的提示词文本 */
     var promptText: String = "",
-    val worldBookEntries: List<Any> = emptyList()
+    val worldBookEntries: List<Any> = emptyList(),
+    /** before_turn 注册的全部提示词注入项（供会话详情页展示完整栈） */
+    var promptStackItems: List<PromptStack.PromptInjection> = emptyList()
 )
 
 // ==================== 辅助函数 ====================

@@ -78,13 +78,34 @@ class LocalRepository(
     /** 二级 LLM 调用（state/memory）token 记账回调 */
     private fun recordSecondaryTokenUsage(source: String, model: String, input: Int, output: Int) {
         if (input == 0 && output == 0) return
+        // source 映射到 purpose：state → utility，memory → memory
+        val purpose = when (source) {
+            "state" -> com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_UTILITY
+            "memory" -> com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_MEMORY
+            else -> com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_CHAT
+        }
         appendTokenUsageRecord(
             sessionId = currentSessionId,
             model = model,
             inputTokens = input,
             outputTokens = output,
             timestamp = nowIsoTimestamp(),
-            source = source
+            source = source,
+            purpose = purpose
+        )
+    }
+
+    /** 剧情选项生成 token 记账回调 */
+    private fun recordPlotTokenUsage(model: String, input: Int, output: Int) {
+        if (input == 0 && output == 0) return
+        appendTokenUsageRecord(
+            sessionId = currentSessionId,
+            model = model,
+            inputTokens = input,
+            outputTokens = output,
+            timestamp = nowIsoTimestamp(),
+            source = "plot",
+            purpose = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_PLOT
         )
     }
 
@@ -289,11 +310,13 @@ class LocalRepository(
     /**
      * 追加一条 token 用量记录到 SharedPreferences JSON 数组。
      * @param source 用量来源：chat（主对话）/ state（状态评估）/ memory（记忆抽取）/ plot（剧情）
+     * @param purpose 用途标签（与 TokenStatsManager 常量对齐）：chat/utility/memory/plot 等
      */
     private fun appendTokenUsageRecord(
         sessionId: String, model: String,
         inputTokens: Int, outputTokens: Int, timestamp: String,
-        source: String = "chat"
+        source: String = "chat",
+        purpose: String = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_CHAT
     ) {
         val prefs = tokenUsagePrefs ?: return
         val existing = prefs.getString("records", "[]") ?: "[]"
@@ -307,6 +330,7 @@ class LocalRepository(
                 addProperty("total_tokens", inputTokens + outputTokens)
                 addProperty("timestamp", timestamp)
                 addProperty("source", source)
+                addProperty("purpose", purpose)
                 // 提取日期部分（yyyy-MM-dd）用于按日聚合
                 addProperty("date", timestamp.substringBefore("T").substringBefore(" ").ifBlank { timestamp })
             }
@@ -518,8 +542,8 @@ class LocalRepository(
         // 4. 构建回调
         val callbacks = com.nekobot.app.data.local.ai.LocalPipelineCallbacks(
             db, aiClient, activeModel, session, character, worldBookEntries, runtime, identity,
-            onTokenRecorded = { sid, model, input, output, ts ->
-                appendTokenUsageRecord(sid, model, input, output, ts)
+            onTokenRecorded = { sid, model, input, output, ts, purpose ->
+                appendTokenUsageRecord(sid, model, input, output, ts, purpose = purpose)
             }
         )
 
@@ -561,7 +585,7 @@ class LocalRepository(
                 val customPrompts = gson.fromJson<List<Map<String, Any>>>(customPromptsRaw, type) ?: emptyList()
                 ctx.metadata["custom_prompts"] = customPrompts
             } catch (e: Exception) {
-                Log.w(TAG, "解析会话自定义提示词失败: ${e.message}")
+                com.nekobot.app.data.local.LocalLogger.w(TAG, "解析会话自定义提示词失败: ${e.message}")
             }
         }
 
@@ -583,13 +607,21 @@ class LocalRepository(
                 pipelineJob.join()
             }
 
-            // Phase 5.5: 保存 prompt_stack_debug 到会话（供会话详情页展示）
+            // Phase 5.5: 保存 prompt_stack_debug 和 composed_system_prompt 到会话（供会话详情页展示）
             val stackDebug = ctx.metadata["prompt_stack_debug"]
             if (stackDebug != null) {
                 try {
                     sessionDao.updatePromptStackDebug(sessionId, gson.toJson(stackDebug))
                 } catch (e: Exception) {
-                    Log.w(TAG, "保存 prompt_stack_debug 失败: ${e.message}")
+                    com.nekobot.app.data.local.LocalLogger.w(TAG, "保存 prompt_stack_debug 失败: ${e.message}")
+                }
+            }
+            val composedPrompt = ctx.metadata["composed_system_prompt"] as? String
+            if (!composedPrompt.isNullOrBlank()) {
+                try {
+                    sessionDao.updateComposedSystemPrompt(sessionId, composedPrompt)
+                } catch (e: Exception) {
+                    com.nekobot.app.data.local.LocalLogger.w(TAG, "保存 composed_system_prompt 失败: ${e.message}")
                 }
             }
 
@@ -597,7 +629,8 @@ class LocalRepository(
             if (session.plotMode) {
                 try {
                     val plotGen = com.nekobot.app.data.local.ai.PlotChoiceGenerator(
-                        aiClient, { aiModelDao.getActive() }
+                        aiClient, { aiModelDao.getActive() },
+                        onTokenUsage = ::recordPlotTokenUsage
                     )
                     val recentHistory = messageDao.listBySession(sessionId)
                         .takeLast(6)
@@ -621,7 +654,7 @@ class LocalRepository(
                         emit(RealtimeEvent.PlotChoices(payload))
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "剧情选项生成失败（不影响主流程）: ${e.message}", e)
+                    com.nekobot.app.data.local.LocalLogger.w(TAG, "剧情选项生成失败（不影响主流程）: ${e.message}", e)
                 }
             }
         } catch (e: Exception) {
@@ -667,7 +700,8 @@ class LocalRepository(
             val recentHistory = recentMsgs.map { mapOf("role" to it.role, "content" to it.content) }
 
             val plotGen = com.nekobot.app.data.local.ai.PlotChoiceGenerator(
-                aiClient, { aiModelDao.getActive() }
+                aiClient, { aiModelDao.getActive() },
+                onTokenUsage = ::recordPlotTokenUsage
             )
             val choices = plotGen.generate(
                 responseText = lastAssistant.content,
@@ -924,6 +958,15 @@ class LocalRepository(
                 addProperty("timestamp", rec.get("timestamp")?.asString ?: "")
                 // 用量来源：chat / state / memory / plot（旧记录无此字段时默认 chat）
                 addProperty("source", rec.get("source")?.asString ?: "chat")
+                // 用途标签（与 TokenStatsManager 常量对齐）：旧记录无此字段时按 source 推断
+                val purpose = rec.get("purpose")?.asString
+                    ?: when (rec.get("source")?.asString) {
+                        "state" -> com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_UTILITY
+                        "memory" -> com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_MEMORY
+                        "plot" -> com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_PLOT
+                        else -> com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_CHAT
+                    }
+                addProperty("purpose", purpose)
             }
         }
 
@@ -977,11 +1020,34 @@ class LocalRepository(
             }
             .sortedByDescending { it.get("total_tokens").asLong }
 
+        // 按用途聚合（兼容旧记录：无 purpose 字段时按 source 推断）
+        val purposeLabels = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_LABELS
+        val purposesRank = records.groupBy { rec ->
+            rec.get("purpose")?.asString
+                ?: when (rec.get("source")?.asString) {
+                    "state" -> com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_UTILITY
+                    "memory" -> com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_MEMORY
+                    "plot" -> com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_PLOT
+                    else -> com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_CHAT
+                }
+        }.map { (purpose, recs) ->
+            val input = recs.sumOf { it.get("input_tokens")?.asLong ?: 0 }
+            val output = recs.sumOf { it.get("output_tokens")?.asLong ?: 0 }
+            JsonObject().apply {
+                addProperty("name", purposeLabels[purpose] ?: purpose)
+                addProperty("purpose", purpose)
+                addProperty("input_tokens", input)
+                addProperty("output_tokens", output)
+                addProperty("total_tokens", input + output)
+                addProperty("count", recs.size)
+            }
+        }.sortedByDescending { it.get("total_tokens").asLong }
+
         TokenRankings(
             sessions = sessionsRank,
             models = modelsRank,
             users = emptyList(),
-            purposes = emptyList()
+            purposes = purposesRank
         )
     }
 
@@ -1120,7 +1186,8 @@ class LocalRepository(
         autoStateInterval = autoStateInterval,
         disabledPromptKeys = disabledPromptKeys?.split(",")?.filter { it.isNotEmpty() },
         customPrompts = customPrompts?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
-        promptStackDebug = promptStackDebug?.let { runCatching { JsonParser.parseString(it) }.getOrNull() }
+        promptStackDebug = promptStackDebug?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
+        composedSystemPrompt = composedSystemPrompt
     )
 
     private fun LocalMessageEntity.toMessage(): Message = Message(

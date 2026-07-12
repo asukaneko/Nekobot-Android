@@ -35,7 +35,7 @@ class LocalPipelineCallbacks(
     private val worldBookEntries: List<LocalWorldBookEntryEntity> = emptyList(),
     private val characterRuntime: CharacterRuntime? = null,
     private val characterIdentity: CharacterIdentity? = null,
-    private val onTokenRecorded: ((sessionId: String, model: String, inputTokens: Int, outputTokens: Int, timestamp: String) -> Unit)? = null
+    private val onTokenRecorded: ((sessionId: String, model: String, inputTokens: Int, outputTokens: Int, timestamp: String, purpose: String) -> Unit)? = null
 ) : PipelineCallbacks() {
 
     companion object {
@@ -130,7 +130,7 @@ class LocalPipelineCallbacks(
                     purpose = TokenStatsManager.PURPOSE_CHAT
                 )
             } catch (e: Exception) {
-                Log.w(TAG, "TokenStats 记录失败: ${e.message}")
+                com.nekobot.app.data.local.LocalLogger.w(TAG, "TokenStats 记录失败: ${e.message}")
             }
             // 同时持久化到 SharedPreferences（供 tokenStats()/tokenRankings() 聚合读取）
             try {
@@ -139,10 +139,11 @@ class LocalPipelineCallbacks(
                     modelName,
                     inputTokens ?: 0,
                     outputTokens ?: 0,
-                    com.nekobot.app.data.local.LocalRepository.nowIsoStatic()
+                    com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
+                    TokenStatsManager.PURPOSE_CHAT
                 )
             } catch (e: Exception) {
-                Log.w(TAG, "持久化 Token 记录失败: ${e.message}")
+                com.nekobot.app.data.local.LocalLogger.w(TAG, "持久化 Token 记录失败: ${e.message}")
             }
         }
     }
@@ -263,7 +264,7 @@ class LocalPipelineCallbacks(
     // ---- 后处理 ----
 
     override fun onResponseComplete(ctx: PipelineContext, result: PipelineResult) {
-        Log.d(TAG, "Response complete: ${result.finalContent.length} chars, error=${result.error}")
+        com.nekobot.app.data.local.LocalLogger.d(TAG, "Response complete: ${result.finalContent.length} chars, error=${result.error}")
     }
 
     // ---- 角色运行时 ----

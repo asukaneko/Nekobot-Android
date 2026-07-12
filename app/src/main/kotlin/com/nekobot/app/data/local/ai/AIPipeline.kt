@@ -69,6 +69,7 @@ class AIPipeline {
     ): PipelineResult {
         val startTime = System.nanoTime()
         ctx.metadata["_pipeline_start_time"] = startTime
+        com.nekobot.app.data.local.LocalLogger.i(TAG, "Pipeline 开始 | 会话=${ctx.chatRequest.conversationId} | 用户消息=${ctx.chatRequest.content.take(80)}")
 
         val progress = callbacks.getProgressReporter(ctx)
 
@@ -92,6 +93,10 @@ class AIPipeline {
         val resultMeta = result.metadata.toMutableMap()
         resultMeta["duration_ms"] = durationMs
         if (!resultMeta.containsKey("ttft_ms")) resultMeta["ttft_ms"] = durationMs
+
+        val modelInfo = resultMeta["model_name"]?.let { " | 模型=$it" } ?: ""
+        val usageInfo = result.usage.takeIf { it.isNotEmpty() }?.let { " | usage=$it" } ?: ""
+        com.nekobot.app.data.local.LocalLogger.i(TAG, "Pipeline 完成 | 耗时=${"%.0f".format(durationMs)}ms$modelInfo$usageInfo | 回复长度=${result.finalContent.length}")
 
         return result.copy(metadata = resultMeta)
     }
@@ -283,9 +288,43 @@ class AIPipeline {
         }
 
         // PromptStack 合成最终 system prompt
-        val composedSystem = ctx.promptStack.render(characterBasePrompt.ifBlank { basePrompt })
+        // characterBasePrompt（角色运行时 promptText）已包含角色卡基础信息 + character.* 注入项，
+        // 管线栈额外包含 knowledge.rag / custom:* 项。
+        // 不能用 ctx.promptStack.render(characterBasePrompt)，因为 render 内部的 stripDynamicPromptSections
+        // 会剥离 characterBasePrompt 中的 character.* 动态段，导致丢失角色运行时注入内容。
+        // 改为直接拼接 characterBasePrompt + 管线栈额外 items。
+        val pipelineExtraItems = ctx.promptStack.getItems()
+            .filter { it.enabled && it.content.isNotBlank() }
+            .sortedBy { it.priority }
+        val composedSystem = if (pipelineExtraItems.isEmpty()) {
+            characterBasePrompt.ifBlank { basePrompt }
+        } else {
+            val extraParts = pipelineExtraItems.joinToString("\n\n") { "## ${it.key}\n${it.content.trim()}" }
+            (characterBasePrompt.ifBlank { basePrompt }).trim() + "\n\n" + extraParts
+        }
         ctx.metadata["composed_system_prompt"] = composedSystem
-        ctx.metadata["prompt_stack_debug"] = ctx.promptStack.renderDebug()
+
+        // 合并提示词栈调试信息：管线栈 + 角色运行时栈（character.* 注入项）
+        // 角色运行时在 beforeTurn 内部使用独立的 PromptStack 实例注册 character.* 注入，
+        // 这里将其 items 合并到管线栈 debug 输出，供会话详情页展示完整栈。
+        val pipelineDebug = ctx.promptStack.renderDebug().toMutableList()
+        val characterItems = ctx.characterTurn?.promptStackItems ?: emptyList()
+        val pipelineKeys = pipelineDebug.mapNotNull { it["key"] as? String }.toSet()
+        for (item in characterItems) {
+            if (item.key !in pipelineKeys) {
+                pipelineDebug.add(mapOf(
+                    "key" to item.key,
+                    "content" to (if (item.content.length > 200) item.content.take(200) + "..." else item.content),
+                    "priority" to item.priority,
+                    "role" to item.role,
+                    "scope" to item.scope,
+                    "enabled" to item.enabled
+                ))
+            }
+        }
+        ctx.metadata["prompt_stack_debug"] = pipelineDebug.sortedBy { (it["priority"] as? Int) ?: 100 }
+
+        com.nekobot.app.data.local.LocalLogger.i(TAG, "上下文准备完成 | system prompt=${composedSystem.length}字符 | 提示词栈=${pipelineDebug.size}项 | 历史=${historyMessages.size}条")
 
         messagesForAi = listOf(mapOf("role" to "system", "content" to composedSystem)) + historyMessages
 
@@ -324,9 +363,9 @@ class AIPipeline {
 
             // 角色运行时已在 beforeTurn 内部调用 buildCharacterInjections 注册了 PromptStack 注入项
             // 这里无需重复注册
-            android.util.Log.d(TAG, "CharacterRuntime before_turn 完成: 已编译角色提示词")
+            com.nekobot.app.data.local.LocalLogger.i(TAG, "CharacterRuntime before_turn 完成 | 角色=${turn.profile.name} | 心情=${turn.state.mood} | 注入项=${turn.promptStackItems.size}个 | promptText=${turn.promptText.length}字符")
         } catch (e: Exception) {
-            android.util.Log.w(TAG, "CharacterRuntime before_turn 异常: ${e.message}", e)
+            com.nekobot.app.data.local.LocalLogger.w(TAG, "CharacterRuntime before_turn 异常: ${e.message}", e)
         }
     }
 
@@ -375,8 +414,9 @@ class AIPipeline {
             ctx.finalContent = (response["content"] as? String) ?: ""
             @Suppress("UNCHECKED_CAST")
             ctx.usage = (response["usage"] as? Map<String, Any>) ?: emptyMap()
+            com.nekobot.app.data.local.LocalLogger.i(TAG, "模型调用完成(simple) | 回复=${ctx.finalContent.length}字符")
         } catch (e: Exception) {
-            android.util.Log.e(TAG, "Simple model call failed: ${e.message}")
+            com.nekobot.app.data.local.LocalLogger.e(TAG, "Simple model call failed: ${e.message}", e)
             ctx.error = e.message ?: "AI 调用失败"
             ctx.finalContent = "AI 调用失败: ${e.message}"
         }
@@ -472,11 +512,11 @@ class AIPipeline {
             ctx.finalContent = resolveLoopFinalContent(loopResult)
         } catch (e: ToolLoopModelError) {
             val errorStr = e.message ?: "工具循环执行失败"
-            android.util.Log.e(TAG, "Tool loop failed: $errorStr")
+            com.nekobot.app.data.local.LocalLogger.e(TAG, "Tool loop failed: $errorStr", e)
 
             // 首次模型调用失败（iteration==0）时回退到无工具对话
             if (e.iteration <= 0 && "400" in errorStr) {
-                android.util.Log.w(TAG, "首次模型调用返回400错误，回退到无工具对话")
+                com.nekobot.app.data.local.LocalLogger.w(TAG, "首次模型调用返回400错误，回退到无工具对话")
                 progress.onThinkingStart(ctx)
                 runSimple(ctx, callbacks)
                 return
@@ -485,7 +525,7 @@ class AIPipeline {
             ctx.finalContent = "工具循环执行失败: $errorStr"
         } catch (e: Exception) {
             val errorStr = e.message ?: "工具循环执行失败"
-            android.util.Log.e(TAG, "Tool loop failed: $errorStr")
+            com.nekobot.app.data.local.LocalLogger.e(TAG, "Tool loop failed: $errorStr", e)
             ctx.error = errorStr
             ctx.finalContent = "工具循环执行失败: $errorStr"
         }
@@ -530,7 +570,7 @@ class AIPipeline {
                 callbacks.onStreamChunk(ctx, chunk, messageId)
             }
         } catch (e: Exception) {
-            android.util.Log.e(TAG, "Streaming failed: ${e.message}")
+            com.nekobot.app.data.local.LocalLogger.e(TAG, "Streaming failed: ${e.message}", e)
             ctx.error = e.message ?: "流式输出失败"
             if (fullContent.isEmpty()) {
                 fullContent.append("流式输出失败: ${e.message}")
@@ -541,6 +581,7 @@ class AIPipeline {
         val durationMs = (System.nanoTime() - streamStart) / 1_000_000.0
         ctx.metadata["duration_ms"] = durationMs
         ctx.metadata["ttft_ms"] = ttftMs ?: durationMs
+        com.nekobot.app.data.local.LocalLogger.i(TAG, "流式输出完成 | TTFT=${ttftMs?.let { "%.0f".format(it) } ?: "?"}ms | 总耗时=${"%.0f".format(durationMs)}ms | 内容=${fullContent.length}字符")
 
         // 流式在首块到达前就失败（如 400），需要创建消息
         if (ctx.finalContent.isNotEmpty() && ctx.streamedMessage == null) {
@@ -719,11 +760,11 @@ class AIPipeline {
                             "jealousy" to d.jealousy
                         )
                     )
-                    if (applied) android.util.Log.d(TAG, "审查关系增量已回写")
+                    if (applied) com.nekobot.app.data.local.LocalLogger.i(TAG, "审查关系增量已回写: $d")
                 }
             }
         } catch (e: Exception) {
-            android.util.Log.w(TAG, "ReviewPipeline 审查异常: ${e.message}", e)
+            com.nekobot.app.data.local.LocalLogger.w(TAG, "ReviewPipeline 审查异常: ${e.message}", e)
         }
     }
 
@@ -743,7 +784,7 @@ class AIPipeline {
         try {
             runtime.afterTurn(ctx.chatRequest, result.finalContent, turn)
         } catch (e: Exception) {
-            android.util.Log.w(TAG, "CharacterRuntime after_turn 异常: ${e.message}", e)
+            com.nekobot.app.data.local.LocalLogger.w(TAG, "CharacterRuntime after_turn 异常: ${e.message}", e)
         }
     }
 

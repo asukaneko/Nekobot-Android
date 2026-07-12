@@ -57,10 +57,6 @@ class CharactersViewModel : com.nekobot.app.ui.BaseViewModel() {
     private val _characters = MutableStateFlow<List<CharacterPreset>>(emptyList())
     val characters: StateFlow<List<CharacterPreset>> = _characters.asStateFlow()
 
-    init {
-        load()
-    }
-
     /** 加载角色列表 */
     fun load() {
         launchResult(

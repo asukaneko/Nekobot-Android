@@ -117,6 +117,10 @@ class SessionDetailViewModel : BaseViewModel() {
     private val _promptStackDebug = MutableStateFlow<List<PromptStackItem>>(emptyList())
     val promptStackDebug: StateFlow<List<PromptStackItem>> = _promptStackDebug.asStateFlow()
 
+    /** 运行时合成的完整系统提示词（只读，每次对话后更新） */
+    private val _composedSystemPrompt = MutableStateFlow("")
+    val composedSystemPrompt: StateFlow<String> = _composedSystemPrompt.asStateFlow()
+
     /** 已禁用的注入项 key 集合 */
     private val _disabledPromptKeys = MutableStateFlow<Set<String>>(emptySet())
     val disabledPromptKeys: StateFlow<Set<String>> = _disabledPromptKeys.asStateFlow()
@@ -144,13 +148,14 @@ class SessionDetailViewModel : BaseViewModel() {
                 _customPrompts.value = parseCustomPrompts(s.customPrompts)
                 // 解析 prompt_stack_debug
                 _promptStackDebug.value = parsePromptStackDebug(s.promptStackDebug)
+                _composedSystemPrompt.value = s.composedSystemPrompt.orEmpty()
                 _disabledPromptKeys.value = s.disabledPromptKeys?.toSet() ?: emptySet()
-                // 若后端未返回 characterName，通过 characterId 查询角色详情
+                // 查询绑定角色卡：用于回填 characterName（后端可能不返回）
                 val cid = s.characterId
                 if (!cid.isNullOrBlank() && s.characterName.isNullOrBlank()) {
                     launchResult(
                         block = { unified.getCharacter(cid) },
-                        onSuccess = { _characterDetail.value = it },
+                        onSuccess = { char -> _characterDetail.value = char },
                         onError = { /* 忽略角色查询失败 */ }
                     )
                 } else {
@@ -328,6 +333,7 @@ fun SessionDetailScreen(
     val plotRealTimeSync by vm.plotRealTimeSync.collectAsState()
     val customPrompts by vm.customPrompts.collectAsState()
     val promptStackDebug by vm.promptStackDebug.collectAsState()
+    val composedSystemPrompt by vm.composedSystemPrompt.collectAsState()
     val disabledPromptKeys by vm.disabledPromptKeys.collectAsState()
     val characterDetail by vm.characterDetail.collectAsState()
     val loading by vm.loading.collectAsState()
@@ -492,6 +498,37 @@ fun SessionDetailScreen(
                                 maxLines = 8,
                                 modifier = Modifier.fillMaxWidth()
                             )
+                        }
+
+                        // === 3.4 运行时系统提示词（composed_system_prompt，只读） ===
+                        if (composedSystemPrompt.isNotBlank()) {
+                            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                                SectionHeader(
+                                    title = "运行时系统提示词",
+                                    trailing = {
+                                        IconButton(onClick = { clipboard.setText(AnnotatedString(composedSystemPrompt)) }) {
+                                            Icon(Icons.Filled.ContentCopy, contentDescription = "复制", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                        }
+                                    }
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "实际发送给 AI 的完整系统提示词（含角色卡、状态、记忆、世界书等动态注入），每次对话后更新",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    text = composedSystemPrompt,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 300.dp)
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(8.dp)
+                                )
+                            }
                         }
 
                         // === 3.5 自定义提示词（custom_prompts，可编辑） ===

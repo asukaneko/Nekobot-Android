@@ -25,7 +25,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalCharacterMemoryEntity::class,
         LocalStateSnapshotEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -112,6 +112,15 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v5 → v6：local_sessions 新增 composed_system_prompt 列（运行时合成的完整系统提示词）。
+         */
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_sessions ADD COLUMN composed_system_prompt TEXT")
+            }
+        }
+
         fun get(context: Context): NekobotDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -119,7 +128,7 @@ abstract class NekobotDatabase : RoomDatabase() {
                     NekobotDatabase::class.java,
                     "nekobot_local.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     // 仅当迁移脚本未覆盖的未来版本变更时才回退到破坏性迁移（保护现有数据）
                     .fallbackToDestructiveMigration()
                     .build()

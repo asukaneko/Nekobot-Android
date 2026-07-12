@@ -102,10 +102,9 @@ class UnifiedRepository(
      * 本地模式：返回 Flow<RealtimeEvent>（流式聊天）；
      * 服务器模式：返回 null（调用方走 Socket）。
      */
-    fun chatStream(id: String, message: String): Flow<RealtimeEvent>? {
+    suspend fun chatStream(id: String, message: String): Flow<RealtimeEvent>? {
         if (!isLocal) return null
-        val model = kotlinx.coroutines.runBlocking { local.getActiveModel() }
-            ?: return null
+        val model = local.getActiveModel() ?: return null
         // 启用角色运行时的会话走 Pipeline，否则走旧流程
         return local.chatWithPipeline(id, message, model)
     }
@@ -114,10 +113,9 @@ class UnifiedRepository(
      * 本地模式：直接走旧流程（不启用角色运行时）；
      * 服务器模式：返回 null（调用方走 Socket）。
      */
-    fun chatStreamLegacy(id: String, message: String): Flow<RealtimeEvent>? {
+    suspend fun chatStreamLegacy(id: String, message: String): Flow<RealtimeEvent>? {
         if (!isLocal) return null
-        val model = kotlinx.coroutines.runBlocking { local.getActiveModel() }
-            ?: return null
+        val model = local.getActiveModel() ?: return null
         return local.chat(id, message, model)
     }
 
@@ -128,9 +126,9 @@ class UnifiedRepository(
     /**
      * 重新生成。本地模式返回 Flow，服务器模式返回 null（走 HTTP + Socket）。
      */
-    fun regenerateStream(id: String, messageId: String?): Flow<RealtimeEvent>? {
+    suspend fun regenerateStream(id: String, messageId: String?): Flow<RealtimeEvent>? {
         if (!isLocal) return null
-        val model = kotlinx.coroutines.runBlocking { local.getActiveModel() } ?: return null
+        val model = local.getActiveModel() ?: return null
         return local.regenerate(id, messageId, model)
     }
 

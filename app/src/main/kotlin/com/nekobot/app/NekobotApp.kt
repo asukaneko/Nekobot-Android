@@ -50,6 +50,8 @@ object ServiceContainer {
         localRepository = LocalRepository(db, LocalAiClient(), app)
         unified = UnifiedRepository(prefs, repository, localRepository, app)
         socket = SocketManager(prefs)
+        // 初始化本地日志记录器
+        com.nekobot.app.data.local.LocalLogger.init(app)
         // 初始化全局状态
         _appModeFlow.value = prefs.appMode
         _loginStateFlow.value = prefs.isLoggedIn
@@ -73,9 +75,26 @@ object ServiceContainer {
     }
 }
 
-class NekobotApp : Application() {
+class NekobotApp : Application(), coil.ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         ServiceContainer.init(this)
+    }
+
+    override fun newImageLoader(): coil.ImageLoader {
+        return coil.ImageLoader.Builder(this)
+            .crossfade(true)
+            .memoryCache {
+                coil.memory.MemoryCache.Builder(this)
+                    .maxSizePercent(0.25)
+                    .build()
+            }
+            .diskCache {
+                coil.disk.DiskCache.Builder()
+                    .directory(cacheDir.resolve("image_cache"))
+                    .maxSizeBytes(256L * 1024 * 1024)
+                    .build()
+            }
+            .build()
     }
 }

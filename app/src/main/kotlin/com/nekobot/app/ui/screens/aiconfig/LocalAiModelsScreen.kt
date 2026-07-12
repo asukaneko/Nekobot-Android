@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.MoreVert
@@ -54,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.LocalLogger
 import com.nekobot.app.data.local.ai.LocalProtocols
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.ui.BaseViewModel
@@ -160,6 +164,8 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
     var deletingModel by remember { mutableStateOf<LocalAiModelEntity?>(null) }
     var testingModel by remember { mutableStateOf<LocalAiModelEntity?>(null) }
     var testResult by remember { mutableStateOf<String?>(null) }
+    var showLogs by remember { mutableStateOf(false) }
+    var logRecords by remember { mutableStateOf<List<LocalLogger.Record>>(emptyList()) }
 
     LaunchedEffect(toast) {
         if (toast != null) {
@@ -178,6 +184,12 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
                     }
                 },
                 actions = {
+                    IconButton(onClick = {
+                        logRecords = LocalLogger.listLogs()
+                        showLogs = true
+                    }) {
+                        Icon(Icons.Filled.Description, contentDescription = "本地日志", tint = MaterialTheme.colorScheme.onSurface)
+                    }
                     IconButton(onClick = {
                         editingModel = null
                         showEditDialog = true
@@ -299,6 +311,104 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(16.dp)
+                )
+            }
+        }
+    }
+
+    // 本地日志查看
+    if (showLogs) {
+        NekoDialog(
+            onDismiss = { showLogs = false },
+            title = "本地日志 (${logRecords.size})",
+            confirmText = "关闭",
+            onConfirm = { showLogs = false },
+            cancelText = "清空",
+            onCancel = {
+                LocalLogger.clear()
+                logRecords = emptyList()
+            }
+        ) {
+            if (logRecords.isEmpty()) {
+                Text(
+                    text = "暂无日志",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp)
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 450.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(logRecords, key = { "${it.time}_${it.tag}_${it.message.hashCode()}" }) { record ->
+                        LocalLogCard(record)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 本地日志单条卡片：左侧等级色条 + 时间 + tag + 消息。 */
+@Composable
+private fun LocalLogCard(record: LocalLogger.Record) {
+    val levelColor = when (record.level.lowercase()) {
+        "error" -> MaterialTheme.colorScheme.error
+        "warning" -> Color(0xFFFFB347)
+        "debug" -> Color(0xFF6BAED6)
+        else -> MaterialTheme.colorScheme.primary
+    }
+    val levelLabel = when (record.level.lowercase()) {
+        "warning" -> "WARN"
+        else -> record.level.uppercase()
+    }
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        cornerRadius = 10,
+        containerColor = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(levelColor)
+            )
+            Spacer(Modifier.width(8.dp))
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = levelLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = levelColor,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = record.time,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (record.tag.isNotBlank()) {
+                    Text(
+                        text = record.tag,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = record.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
         }

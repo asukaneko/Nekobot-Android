@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Logout
@@ -63,6 +64,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonParser
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.AppMode
+import com.nekobot.app.data.local.LocalLogger
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
@@ -183,6 +185,27 @@ class SettingsViewModel : BaseViewModel() {
 
     fun dismissLogs() {
         _showLogs.value = false
+    }
+
+    /** 加载本地模式运行日志（来自 LocalLogger 持久化存储）。 */
+    fun loadLocalLogs() {
+        val records = LocalLogger.listLogs()
+        _logs.value = records.map { rec ->
+            LogEntry(
+                time = "${rec.date} ${rec.time}",
+                level = rec.level,
+                message = if (rec.tag.isNotBlank()) "[${rec.tag}] ${rec.message}" else rec.message
+            )
+        }
+        _showLogs.value = true
+    }
+
+    /** 清空本地日志。 */
+    fun clearLocalLogs() {
+        LocalLogger.clear()
+        _logs.value = emptyList()
+        _showLogs.value = false
+        showToast("已清空本地日志")
     }
 
     fun logout() {
@@ -411,18 +434,29 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                     }
                 }
 
-                // 5. 日志查看（仅服务器模式）
-                if (appMode != AppMode.LOCAL) {
-                    GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "日志查看")
-                        Spacer(Modifier.height(12.dp))
+                // 5. 日志查看（服务器模式看服务端日志，本地模式看 LocalLogger）
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    SectionHeader(title = if (appMode == AppMode.LOCAL) "本地日志" else "日志查看")
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = {
+                            if (appMode == AppMode.LOCAL) vm.loadLocalLogs() else vm.loadLogs()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Filled.Description, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (appMode == AppMode.LOCAL) "查看本地运行日志" else "查看最近日志")
+                    }
+                    if (appMode == AppMode.LOCAL) {
+                        Spacer(Modifier.height(8.dp))
                         OutlinedButton(
-                            onClick = { vm.loadLogs() },
+                            onClick = { vm.clearLocalLogs() },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(Icons.Filled.Description, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
                             Spacer(Modifier.width(8.dp))
-                            Text("查看最近日志")
+                            Text("清空本地日志", color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
