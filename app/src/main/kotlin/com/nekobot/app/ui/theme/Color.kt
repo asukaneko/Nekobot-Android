@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.theme
 
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 
@@ -91,3 +93,11 @@ fun parseHexColor(hex: String?): Color? {
     if (hex.isNullOrBlank()) return null
     return runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrNull()
 }
+
+/**
+ * 获取"默认紫色"主题色：与主题色覆盖为 null 时一致，
+ * 不受当前已选主题色影响，供样式设置中的"紫色"选项展示用。
+ */
+@Composable
+fun defaultPrimaryColor(): Color =
+    if (isSystemInDarkTheme()) Primary else PrimaryLight

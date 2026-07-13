@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.theme.buildTypography
+import com.nekobot.app.ui.theme.defaultPrimaryColor
 import com.nekobot.app.ui.theme.parseHexColor
 
 /**
@@ -142,7 +143,7 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
             // 实时预览
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 val previewTypography = buildTypography(fontFamily, fontScale)
-                val previewPrimary = parseHexColor(themeColorOverride) ?: MaterialTheme.colorScheme.primary
+                val previewPrimary = parseHexColor(themeColorOverride) ?: defaultPrimaryColor()
                 val previewColor = fontColorOverride?.let {
                     runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull()
                 } ?: MaterialTheme.colorScheme.onSurface
@@ -177,8 +178,8 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     themeColorOptions.forEach { (hex, label) ->
-                        // null 表示默认紫色，用当前主题的 primary 展示
-                        val circleColor = parseHexColor(hex) ?: MaterialTheme.colorScheme.primary
+                        // null 表示默认紫色，用默认紫色展示（不受当前主题色影响）
+                        val circleColor = parseHexColor(hex) ?: defaultPrimaryColor()
                         val selected = themeColorOverride == hex
                         ColorCircleButton(
                             color = circleColor,
@@ -194,7 +195,7 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
                     val presetHexes = themeColorOptions.map { it.first }
                     val customSelected = themeColorOverride != null && themeColorOverride !in presetHexes
                     ColorCircleButton(
-                        color = parseHexColor(themeColorOverride) ?: MaterialTheme.colorScheme.primary,
+                        color = parseHexColor(themeColorOverride) ?: defaultPrimaryColor(),
                         label = "自定义",
                         selected = customSelected,
                         onClick = { showCustomThemeColorDialog = true }
