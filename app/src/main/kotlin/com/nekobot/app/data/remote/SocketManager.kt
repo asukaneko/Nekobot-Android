@@ -150,7 +150,8 @@ class SocketManager(private val prefs: PrefsManager) {
     /** 离开会话 room。 */
     fun leaveSession(sessionId: String) {
         if (joinedSessionId == sessionId) joinedSessionId = null
-        socket?.emit("leave_session", sessionId)
+        // 服务端根据当前 Socket SID 查找 room，leave_session 处理器不接收参数。
+        socket?.emit("leave_session")
     }
 
     /**

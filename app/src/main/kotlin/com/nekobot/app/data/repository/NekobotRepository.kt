@@ -98,6 +98,12 @@ class NekobotRepository(
     suspend fun createSession(req: CreateSessionRequest): Resource<Session> = safeCall { api.createSession(req) }
     suspend fun getSession(id: String): Resource<Session> = safeCall { api.getSession(id) }
     suspend fun updateSession(id: String, req: UpdateSessionRequest): Resource<Session> = safeCall { api.updateSession(id, req) }
+    suspend fun makeSessionPublic(id: String, req: PublicShareRequest): Resource<PublicSessionStatus> =
+        safeCall { api.makeSessionPublic(id, req) }
+    suspend fun removeSessionPublic(id: String): Resource<Unit> =
+        safeCall { api.removeSessionPublic(id) }.map { }
+    suspend fun getSessionPublicStatus(id: String): Resource<PublicSessionStatus> =
+        safeCall { api.getSessionPublicStatus(id) }
     suspend fun deleteSession(id: String): Resource<Unit> = safeCall { api.deleteSession(id) }.map { }
 
     suspend fun chat(id: String, message: String): Resource<ApiResult> =

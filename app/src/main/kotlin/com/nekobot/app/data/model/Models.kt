@@ -129,6 +129,35 @@ data class UpdateSessionRequest(
     @SerializedName("is_public") val isPublic: Boolean? = null
 )
 
+/** 创建或更新公开分享时提交给独立 public API 的配置。 */
+data class PublicShareRequest(
+    @SerializedName("expires_days") val expiresDays: Int = 30,
+    val password: String = "",
+    @SerializedName("include_character") val includeCharacter: Boolean = true,
+    @SerializedName("include_user_messages") val includeUserMessages: Boolean = true,
+    @SerializedName("message_start") val messageStart: Int? = null,
+    @SerializedName("message_end") val messageEnd: Int? = null
+)
+
+data class PublicShareOptions(
+    @SerializedName("expires_days") val expiresDays: Int = 30,
+    @SerializedName("include_character") val includeCharacter: Boolean = true,
+    @SerializedName("include_user_messages") val includeUserMessages: Boolean = true,
+    @SerializedName("message_start") val messageStart: Int? = null,
+    @SerializedName("message_end") val messageEnd: Int? = null
+)
+
+/** POST /public 与 GET /public/status 的兼容响应。 */
+data class PublicSessionStatus(
+    val success: Boolean = false,
+    @SerializedName("is_public") val isPublic: Boolean = false,
+    @SerializedName("public_id") val publicId: String? = null,
+    @SerializedName("public_url") val publicUrl: String? = null,
+    @SerializedName("expires_at") val expiresAt: Double? = null,
+    val options: PublicShareOptions? = null,
+    @SerializedName("password_required") val passwordRequired: Boolean = false
+)
+
 /** 绑定角色请求体 */
 data class BindCharacterRequest(
     @SerializedName("sender_name") val senderName: String,
@@ -1158,4 +1187,3 @@ data class SttTranscribeResponse(
     val language: String? = null,
     val provider: String? = null
 )
-

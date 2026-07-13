@@ -39,6 +39,18 @@ interface ApiService {
         @Body body: UpdateSessionRequest
     ): Response<Session>
 
+    @POST("api/sessions/{id}/public")
+    suspend fun makeSessionPublic(
+        @Path("id") id: String,
+        @Body body: PublicShareRequest
+    ): Response<PublicSessionStatus>
+
+    @DELETE("api/sessions/{id}/public")
+    suspend fun removeSessionPublic(@Path("id") id: String): Response<ApiResult>
+
+    @GET("api/sessions/{id}/public/status")
+    suspend fun getSessionPublicStatus(@Path("id") id: String): Response<PublicSessionStatus>
+
     @DELETE("api/sessions/{id}")
     suspend fun deleteSession(@Path("id") id: String): Response<ApiResult>
 

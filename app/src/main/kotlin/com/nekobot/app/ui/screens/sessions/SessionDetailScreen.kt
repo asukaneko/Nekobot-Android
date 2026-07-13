@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -67,6 +68,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -77,6 +79,7 @@ import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
+import com.nekobot.app.data.model.PublicShareRequest
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.UpdateSessionRequest
 import com.nekobot.app.ui.BaseViewModel
@@ -136,6 +139,10 @@ class SessionDetailViewModel : BaseViewModel() {
     val shareMessageEnd = MutableStateFlow("")
     val shareIncludeCharacter = MutableStateFlow(true)
     val shareIncludeUserMessages = MutableStateFlow(true)
+    val publicShareUrl = MutableStateFlow("")
+    val publicSharePasswordRequired = MutableStateFlow(false)
+    val publicShareExpiresAt = MutableStateFlow<Double?>(null)
+    val isLoadingPublic = MutableStateFlow(false)
 
     /** 可用 AI 模型列表（用于 TTS 模型选择） */
     private val _aiModels = MutableStateFlow<List<Pair<String, String>>>(emptyList())
@@ -246,7 +253,7 @@ class SessionDetailViewModel : BaseViewModel() {
                 plotChoiceStyle.value = s.plotChoiceStyle ?: ""
                 // 解析 TTS / 主动聊天 / 公开分享
                 android.util.Log.d("SessionDetail", "load: s.isPublic=${s.isPublic}, s.ttsConfig=${s.ttsConfig}, s.shareConfig=${s.shareConfig}")
-                isPublic.value = s.isPublic == true
+                isPublic.value = false
                 // 通知提醒从本地 PrefsManager 读取
                 notificationEnabled.value = com.nekobot.app.ServiceContainer.prefs.isSessionNotificationEnabled(s.id.orEmpty())
                 // proactive_chat: {"enabled":bool,"interval_minutes":int}
@@ -263,14 +270,11 @@ class SessionDetailViewModel : BaseViewModel() {
                     ttsVoice.value = tts?.get("voice")?.takeIf { !it.isJsonNull }?.asString ?: ""
                 }
                 // share_config: {"expires_days":int,"password":str,"include_character":bool,"include_user_messages":bool,"message_start":int?,"message_end":int?}
-                runCatching {
-                    val sc = s.shareConfig?.asJsonObject
-                    shareExpiresDays.value = sc?.get("expires_days")?.takeIf { !it.isJsonNull }?.asInt ?: 30
-                    sharePassword.value = sc?.get("password")?.takeIf { !it.isJsonNull }?.asString ?: ""
-                    shareIncludeCharacter.value = sc?.get("include_character")?.takeIf { !it.isJsonNull }?.asBoolean ?: true
-                    shareIncludeUserMessages.value = sc?.get("include_user_messages")?.takeIf { !it.isJsonNull }?.asBoolean ?: true
-                    shareMessageStart.value = sc?.get("message_start")?.takeIf { !it.isJsonNull }?.let { it.asInt.toString() } ?: ""
-                    shareMessageEnd.value = sc?.get("message_end")?.takeIf { !it.isJsonNull }?.let { it.asInt.toString() } ?: ""
+                if (isLocalMode) {
+                    resetPublicShareState(includeCharacter = s.sessionMode != "agent")
+                } else {
+                    resetPublicShareState(includeCharacter = s.sessionMode != "agent")
+                    loadPublicShareStatus(s.id.orEmpty())
                 }
                 // 解析 custom_prompts
                 _customPrompts.value = parseCustomPrompts(s.customPrompts)
@@ -293,6 +297,103 @@ class SessionDetailViewModel : BaseViewModel() {
         )
     }
 
+    /** 远程公开状态不属于 Session 更新接口，必须从独立 public/status 接口读取。 */
+    private fun loadPublicShareStatus(sessionId: String) {
+        viewModelScope.launch {
+            when (val result = repo.getSessionPublicStatus(sessionId)) {
+                is Resource.Success -> {
+                    if (_session.value?.id != sessionId) return@launch
+                    val status = result.data
+                    isPublic.value = status.isPublic
+                    publicShareUrl.value = status.publicUrl.orEmpty()
+                    publicSharePasswordRequired.value = status.passwordRequired
+                    publicShareExpiresAt.value = status.expiresAt
+                    status.options?.let { options ->
+                        shareExpiresDays.value = options.expiresDays
+                        shareIncludeCharacter.value = options.includeCharacter
+                        shareIncludeUserMessages.value = options.includeUserMessages
+                        shareMessageStart.value = options.messageStart?.toString().orEmpty()
+                        shareMessageEnd.value = options.messageEnd?.toString().orEmpty()
+                    }
+                    // 服务端只返回是否设置密码，不会回传密码明文。
+                    sharePassword.value = ""
+                }
+                is Resource.Error -> showError(result.message)
+                is Resource.Loading -> Unit
+            }
+        }
+    }
+
+    private fun resetPublicShareState(includeCharacter: Boolean) {
+        isPublic.value = false
+        publicShareUrl.value = ""
+        publicSharePasswordRequired.value = false
+        publicShareExpiresAt.value = null
+        shareExpiresDays.value = 30
+        sharePassword.value = ""
+        shareMessageStart.value = ""
+        shareMessageEnd.value = ""
+        shareIncludeCharacter.value = includeCharacter
+        shareIncludeUserMessages.value = true
+    }
+
+    /** 与原仓库一致：公开分享是独立操作，不跟随会话详情保存。 */
+    fun makeSessionPublic() {
+        val s = _session.value ?: return
+        if (isLocalMode) {
+            showToast("本地模式不支持公开分享")
+            return
+        }
+        val request = PublicShareRequest(
+            expiresDays = shareExpiresDays.value,
+            password = sharePassword.value,
+            includeCharacter = s.sessionMode != "agent" && shareIncludeCharacter.value,
+            includeUserMessages = shareIncludeUserMessages.value,
+            messageStart = shareMessageStart.value.trim().toIntOrNull(),
+            messageEnd = shareMessageEnd.value.trim().toIntOrNull()
+        )
+        viewModelScope.launch {
+            isLoadingPublic.value = true
+            try {
+                when (val result = repo.makeSessionPublic(s.id.orEmpty(), request)) {
+                    is Resource.Success -> {
+                        val status = result.data
+                        isPublic.value = true
+                        publicShareUrl.value = status.publicUrl.orEmpty()
+                        publicSharePasswordRequired.value = status.passwordRequired
+                        publicShareExpiresAt.value = status.expiresAt
+                        sharePassword.value = ""
+                        showToast("会话已公开")
+                    }
+                    is Resource.Error -> showError(result.message)
+                    is Resource.Loading -> Unit
+                }
+            } finally {
+                isLoadingPublic.value = false
+            }
+        }
+    }
+
+    fun removeSessionPublic() {
+        val s = _session.value ?: return
+        if (isLocalMode) return
+        viewModelScope.launch {
+            isLoadingPublic.value = true
+            try {
+                when (val result = repo.removeSessionPublic(s.id.orEmpty())) {
+                    is Resource.Success -> {
+                        resetPublicShareState(includeCharacter = s.sessionMode != "agent")
+                        showToast("已取消公开")
+                    }
+                    is Resource.Error -> showError(result.message)
+                    is Resource.Loading -> Unit
+                }
+            } finally {
+                isLoadingPublic.value = false
+            }
+        }
+    }
+
     fun save(onSuccess: () -> Unit) {
         val s = _session.value ?: return
         val nameVal = name.value.trim()
@@ -312,14 +413,6 @@ class SessionDetailViewModel : BaseViewModel() {
             addProperty("model_id", ttsModelId.value)
             addProperty("voice", ttsVoice.value.ifBlank { "" })
         }
-        val shareJson = com.google.gson.JsonObject().apply {
-            addProperty("expires_days", shareExpiresDays.value)
-            addProperty("password", sharePassword.value)
-            addProperty("include_character", shareIncludeCharacter.value)
-            addProperty("include_user_messages", shareIncludeUserMessages.value)
-            shareMessageStart.value.trim().toIntOrNull()?.let { addProperty("message_start", it) }
-            shareMessageEnd.value.trim().toIntOrNull()?.let { addProperty("message_end", it) }
-        }
         launchResult(
             block = {
                 unified.updateSession(
@@ -335,10 +428,8 @@ class SessionDetailViewModel : BaseViewModel() {
                         plotRealTimeSync = plotRealTimeSync.value,
                         plotChoiceStyle = plotChoiceStyle.value.ifBlank { null },
                         disabledPromptKeys = _disabledPromptKeys.value.toList(),
-                        isPublic = isPublic.value,
                         proactiveChat = proactiveJson,
-                        ttsConfig = ttsJson,
-                        shareConfig = shareJson
+                        ttsConfig = ttsJson
                     )
                 )
             },
@@ -517,6 +608,10 @@ fun SessionDetailScreen(
     val shareMessageEnd by vm.shareMessageEnd.collectAsState()
     val shareIncludeCharacter by vm.shareIncludeCharacter.collectAsState()
     val shareIncludeUserMessages by vm.shareIncludeUserMessages.collectAsState()
+    val publicShareUrl by vm.publicShareUrl.collectAsState()
+    val publicSharePasswordRequired by vm.publicSharePasswordRequired.collectAsState()
+    val publicShareExpiresAt by vm.publicShareExpiresAt.collectAsState()
+    val isLoadingPublic by vm.isLoadingPublic.collectAsState()
     val aiModels by vm.aiModels.collectAsState()
     val customPrompts by vm.customPrompts.collectAsState()
     val promptStackDebug by vm.promptStackDebug.collectAsState()
@@ -542,6 +637,7 @@ fun SessionDetailScreen(
         }
     }
     val clipboard = LocalClipboardManager.current
+    val uriHandler = LocalUriHandler.current
 
     LaunchedEffect(sessionId) { vm.init(sessionId) }
 
@@ -924,9 +1020,9 @@ fun SessionDetailScreen(
                             )
                         }
 
-                        // === 6.5 TTS / 主动聊天 / 公开分享 ===
+                        // === 6.5 TTS / 主动聊天 ===
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            SectionHeader(title = "TTS / 主动聊天 / 公开分享")
+                            SectionHeader(title = "TTS / 主动聊天")
                             Spacer(Modifier.height(8.dp))
 
                             // TTS 开关
@@ -975,58 +1071,62 @@ fun SessionDetailScreen(
                                 )
                             }
 
-                            Spacer(Modifier.height(12.dp))
+                        }
 
-                            // 公开分享开关
-                            ToggleChipRow(
-                                label = if (isPublic) "公开分享：开" else "公开分享：关",
-                                selected = isPublic,
-                                onClick = { vm.isPublic.value = !isPublic },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            if (isPublic) {
-                                Spacer(Modifier.height(8.dp))
-                                // 有效期
-                                Text("有效期", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                        // === 6.6 公开分享：与原仓库一致，独立于会话详情保存 ===
+                        GlassCard(modifier = Modifier.fillMaxWidth()) {
+                            SectionHeader(title = "公开分享")
+                            Spacer(Modifier.height(8.dp))
+                            if (com.nekobot.app.ServiceContainer.prefs.isLocalMode) {
+                                Text(
+                                    "本地模式不支持公开分享。请切换到服务器模式后使用。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else if (!isPublic) {
+                                Text(
+                                    "公开后会生成只读链接，其他人可以查看对话内容但无法交互。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                Text("有效期", style = MaterialTheme.typography.bodyMedium)
                                 Spacer(Modifier.height(4.dp))
                                 ShareExpirySelector(
                                     value = shareExpiresDays,
                                     onChange = { vm.shareExpiresDays.value = it }
                                 )
                                 Spacer(Modifier.height(8.dp))
-                                // 访问密码
                                 OutlinedTextField(
                                     value = sharePassword,
                                     onValueChange = { vm.sharePassword.value = it },
-                                    label = { Text("访问密码（留空则无密码）", style = MaterialTheme.typography.labelSmall) },
+                                    label = { Text("访问密码（可留空）", style = MaterialTheme.typography.labelSmall) },
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth()
                                 )
                                 Spacer(Modifier.height(8.dp))
-                                // 消息序号范围
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     OutlinedTextField(
                                         value = shareMessageStart,
-                                        onValueChange = { vm.shareMessageStart.value = it.filter { c -> c.isDigit() } },
+                                        onValueChange = { vm.shareMessageStart.value = it.filter(Char::isDigit) },
                                         label = { Text("起始消息序号", style = MaterialTheme.typography.labelSmall) },
                                         singleLine = true,
                                         modifier = Modifier.weight(1f)
                                     )
                                     OutlinedTextField(
                                         value = shareMessageEnd,
-                                        onValueChange = { vm.shareMessageEnd.value = it.filter { c -> c.isDigit() } },
+                                        onValueChange = { vm.shareMessageEnd.value = it.filter(Char::isDigit) },
                                         label = { Text("结束消息序号", style = MaterialTheme.typography.labelSmall) },
                                         singleLine = true,
                                         modifier = Modifier.weight(1f)
                                     )
                                 }
                                 Spacer(Modifier.height(8.dp))
-                                // 显示选项
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     ToggleChipRow(
-                                        label = if (shareIncludeCharacter) "角色信息：显示" else "角色信息：隐藏",
-                                        selected = shareIncludeCharacter,
-                                        onClick = { vm.shareIncludeCharacter.value = !shareIncludeCharacter },
+                                        label = if (s.sessionMode == "agent") "Agent 会话不包含角色信息" else if (shareIncludeCharacter) "角色信息：显示" else "角色信息：隐藏",
+                                        selected = shareIncludeCharacter && s.sessionMode != "agent",
+                                        onClick = { if (s.sessionMode != "agent") vm.shareIncludeCharacter.value = !shareIncludeCharacter },
                                         modifier = Modifier.weight(1f)
                                     )
                                     ToggleChipRow(
@@ -1036,10 +1136,66 @@ fun SessionDetailScreen(
                                         modifier = Modifier.weight(1f)
                                     )
                                 }
+                                Spacer(Modifier.height(12.dp))
+                                Button(
+                                    onClick = vm::makeSessionPublic,
+                                    enabled = !isLoadingPublic,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    if (isLoadingPublic) {
+                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                        Spacer(Modifier.width(8.dp))
+                                    }
+                                    Text(if (isLoadingPublic) "处理中…" else "公开会话")
+                                }
+                            } else {
+                                Text("会话已公开", style = MaterialTheme.typography.titleSmall, color = SuccessGreen)
+                                Spacer(Modifier.height(8.dp))
+                                SelectionContainer {
+                                    Text(
+                                        publicShareUrl,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Spacer(Modifier.height(12.dp))
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            clipboard.setText(AnnotatedString(publicShareUrl))
+                                            vm.showToast("链接已复制到剪贴板")
+                                        },
+                                        enabled = publicShareUrl.isNotBlank(),
+                                        modifier = Modifier.weight(1f)
+                                    ) { Text("复制链接") }
+                                    OutlinedButton(
+                                        onClick = { uriHandler.openUri(publicShareUrl) },
+                                        enabled = publicShareUrl.isNotBlank(),
+                                        modifier = Modifier.weight(1f)
+                                    ) { Text("打开链接") }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = vm::removeSessionPublic,
+                                    enabled = !isLoadingPublic,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(if (isLoadingPublic) "处理中…" else "取消公开", color = MaterialTheme.colorScheme.error)
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    buildString {
+                                        append("访问链接可查看只读对话")
+                                        if (publicSharePasswordRequired) append(" · 需要密码")
+                                        publicShareExpiresAt?.let { append(" · ${formatPublicExpiresAt(it)} 失效") }
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
 
-                        // === 6.6 通知提醒 ===
+                        // === 6.7 通知提醒 ===
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
                             SectionHeader(title = "通知提醒", subtitle = "AI 回复时若不在聊天界面则弹出通知")
                             Spacer(Modifier.height(8.dp))
@@ -1078,7 +1234,7 @@ fun SessionDetailScreen(
                             DetailLine(label = "用户 ID", value = s.userId ?: "—")
                             DetailLine(label = "创建时间", value = s.createdAt?.take(19) ?: "—")
                             DetailLine(label = "更新时间", value = s.updatedAt?.take(19) ?: "—")
-                            DetailLine(label = "公开", value = if (s.isPublic == true) "是" else "否")
+                            DetailLine(label = "公开", value = if (isPublic) "是" else "否")
                             DetailLine(label = "归档", value = if (s.archived == true) "是" else "否")
                             DetailLine(label = "只读", value = if (s.readOnly == true) "是" else "否")
                             s.lastMessage?.let {
@@ -1773,4 +1929,13 @@ private fun PromptStackChip(
             modifier = Modifier.size(14.dp)
         )
     }
+}
+
+private fun formatPublicExpiresAt(expiresAt: Double): String {
+    val epochMillis = if (expiresAt > 10_000_000_000) expiresAt.toLong() else (expiresAt * 1000).toLong()
+    return runCatching {
+        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+            .withZone(java.time.ZoneId.systemDefault())
+            .format(java.time.Instant.ofEpochMilli(epochMillis))
+    }.getOrDefault("")
 }
