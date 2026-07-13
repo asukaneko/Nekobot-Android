@@ -36,6 +36,7 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
+import java.time.Instant
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
@@ -63,6 +64,22 @@ class LocalRepository(
     private val characterDao = db.characterDao()
     private val worldBookDao = db.worldBookDao()
     private val aiModelDao = db.aiModelDao()
+
+    init {
+        val savedGraph = appContext
+            ?.getSharedPreferences("plot_graph", android.content.Context.MODE_PRIVATE)
+            ?.getString("graph", null)
+        if (!savedGraph.isNullOrBlank()) {
+            com.nekobot.app.data.local.ai.getGlobalPlotGraphManager().fromJson(savedGraph)
+        }
+    }
+
+    /** 将本地故事图整体持久化，保证重启应用后节点、边和当前分支仍可恢复。 */
+    fun persistPlotGraph() {
+        val json = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager().toJson()
+        appContext?.getSharedPreferences("plot_graph", android.content.Context.MODE_PRIVATE)
+            ?.edit()?.putString("graph", json)?.apply()
+    }
 
     /** 当前正在进行的聊天 Job，用于 stopGeneration */
     @Volatile
@@ -253,6 +270,15 @@ class LocalRepository(
             ?.getString(sessionId, null)
     }
 
+    /** 将故事图当前节点的未选择选项同步到聊天页缓存。 */
+    fun syncPlotChoicesFromGraph(sessionId: String) {
+        val choices = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
+            .getLatestChoices(sessionId)
+            .map { it.toDict() }
+        val payload = JsonObject().apply { add("choices", gson.toJsonTree(choices)) }
+        savePlotChoices(sessionId, payload.toString())
+    }
+
     // ==================== 状态历程缓存 ====================
 
     private val stateHistoryCacheFile get() = appContext?.cacheDir?.resolve("state_history_cache.json")
@@ -279,6 +305,74 @@ class LocalRepository(
 
     fun observeMessages(sessionId: String): Flow<List<LocalMessageEntity>> =
         messageDao.observeBySession(sessionId)
+
+    /** 用故事图根到目标节点的消息路径替换当前会话，供本地分支切换与回溯使用。 */
+    suspend fun replaceMessagesWithPlotPath(sessionId: String, nodeId: String) = withContext(Dispatchers.IO) {
+        val path = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager().materializePath(nodeId)
+        messageDao.deleteBySession(sessionId)
+        val base = Instant.now()
+        val entities = path.mapIndexedNotNull { index, message ->
+            val content = message["content"].orEmpty()
+            if (content.isBlank()) return@mapIndexedNotNull null
+            val role = message["role"] ?: "assistant"
+            val timestamp = base.plusMillis(index.toLong()).toString()
+            LocalMessageEntity(
+                id = UUID.randomUUID().toString(),
+                sessionId = sessionId,
+                role = role,
+                content = content,
+                sender = if (role == "assistant") "assistant" else null,
+                timestamp = timestamp,
+                createdAt = timestamp
+            )
+        }
+        if (entities.isNotEmpty()) messageDao.upsertAll(entities)
+        sessionDao.getById(sessionId)?.let {
+            sessionDao.touch(
+                sessionId,
+                lastMessage = entities.lastOrNull()?.content?.take(200).orEmpty(),
+                count = entities.size,
+                updatedAt = base.toString()
+            )
+        }
+    }
+
+    /** 把根到指定剧情节点的消息复制为一个本地归档会话。 */
+    suspend fun archivePlotBranch(sessionId: String, nodeId: String): Int = withContext(Dispatchers.IO) {
+        val source = sessionDao.getById(sessionId) ?: return@withContext 0
+        val path = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager().materializePath(nodeId)
+        if (path.isEmpty()) return@withContext 0
+        val archiveId = UUID.randomUUID().toString()
+        val now = Instant.now()
+        val nodeTitle = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
+            .getNode(nodeId)?.title?.takeIf { it.isNotBlank() } ?: nodeId.take(8)
+        sessionDao.upsert(
+            source.copy(
+                id = archiveId,
+                name = "${source.name} · 分支归档 · $nodeTitle",
+                archived = true,
+                favorite = false,
+                lastMessage = path.last()["content"].orEmpty().take(200),
+                messageCount = path.size,
+                createdAt = now.toString(),
+                updatedAt = now.toString()
+            )
+        )
+        messageDao.upsertAll(path.mapIndexed { index, message ->
+            val role = message["role"] ?: "assistant"
+            val timestamp = now.plusMillis(index.toLong()).toString()
+            LocalMessageEntity(
+                id = UUID.randomUUID().toString(),
+                sessionId = archiveId,
+                role = role,
+                content = message["content"].orEmpty(),
+                sender = if (role == "assistant") "assistant" else null,
+                timestamp = timestamp,
+                createdAt = timestamp
+            )
+        })
+        path.size
+    }
 
     suspend fun addMessage(sessionId: String, role: String, content: String, sender: String? = null) =
         withContext(Dispatchers.IO) {
@@ -611,6 +705,7 @@ class LocalRepository(
             }
         )
         val ctx = com.nekobot.app.data.local.ai.PipelineContext(chatRequest)
+        var currentPlotNode: com.nekobot.app.data.local.ai.PlotNode? = null
 
         // 标记剧情模式（管线层使用）
         if (session.plotMode) {
@@ -654,6 +749,47 @@ class LocalRepository(
                 pipelineJob.join()
             }
 
+            // 剧情模式的每轮回复必须真正落入故事图；此前这里只生成了悬空选项，
+            // 导致故事地图始终为空或无法形成边。
+            if (session.plotMode && ctx.finalContent.isNotBlank()) {
+                val manager = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
+                val parent = manager.getLatestNode(sessionId)
+                val selectedChoice = parent?.selectedChoiceId?.let(manager::getChoice)
+                val turn = ctx.characterTurn
+                val node = com.nekobot.app.data.local.ai.PlotNode(
+                    conversationId = sessionId,
+                    characterId = character.id,
+                    title = selectedChoice?.text?.take(80)
+                        ?: userMessage.replace('\n', ' ').take(80).ifBlank { "剧情节点" },
+                    summary = ctx.finalContent.take(500),
+                    level = selectedChoice?.level ?: "normal",
+                    scene = turn?.state?.scene ?: emptyMap(),
+                    stateSnapshot = turn?.state?.toDict() ?: emptyMap(),
+                    relationshipSnapshot = turn?.relationship?.toDict() ?: emptyMap(),
+                    parentNodeId = parent?.id,
+                    userMessage = userMessage,
+                    assistantMessage = ctx.finalContent,
+                    activityType = turn?.state?.scene?.get("current_activity") as? String ?: "chat",
+                    location = turn?.state?.scene?.get("location") as? String ?: "",
+                    mood = turn?.state?.mood ?: ""
+                )
+                if (selectedChoice != null) manager.branchFrom(selectedChoice.id, node)
+                else {
+                    manager.addNode(node)
+                    if (parent != null) {
+                        manager.addEdge(
+                            com.nekobot.app.data.local.ai.PlotEdge(
+                                fromNodeId = parent.id,
+                                toNodeId = node.id
+                            )
+                        )
+                        manager.setActiveNode(sessionId, node.id)
+                    }
+                }
+                currentPlotNode = node
+                persistPlotGraph()
+            }
+
             // Phase 5.5: 保存 prompt_stack_debug 和 composed_system_prompt 到会话（供会话详情页展示）
             val stackDebug = ctx.metadata["prompt_stack_debug"]
             if (stackDebug != null) {
@@ -691,6 +827,21 @@ class LocalRepository(
                         // 为每个选项添加 id（parsePlotChoices 要求 id 非空）
                         val choicesWithId = choices.mapIndexed { idx, c ->
                             c.toMutableMap().apply { put("id", "plot_${System.currentTimeMillis()}_$idx") }
+                        }
+                        currentPlotNode?.let { node ->
+                            val manager = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
+                            choicesWithId.forEach { choice ->
+                                manager.addChoice(
+                                    com.nekobot.app.data.local.ai.PlotChoice(
+                                        id = choice["id"].orEmpty(),
+                                        nodeId = node.id,
+                                        text = choice["text"].orEmpty(),
+                                        level = choice["level"] ?: "normal",
+                                        intent = choice["intent"].orEmpty()
+                                    )
+                                )
+                            }
+                            persistPlotGraph()
                         }
                         // 包装成 {"choices": [...]} 格式（parsePlotChoices 期望 JsonObject）
                         val payload = com.google.gson.JsonObject().apply {
@@ -757,6 +908,22 @@ class LocalRepository(
             if (choices.isNotEmpty()) {
                 val choicesWithId = choices.mapIndexed { idx, c ->
                     c.toMutableMap().apply { put("id", "plot_${System.currentTimeMillis()}_$idx") }
+                }
+                val manager = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
+                manager.getLatestNode(sessionId)?.let { node ->
+                    manager.deleteChoicesForNode(node.id)
+                    choicesWithId.forEach { choice ->
+                        manager.addChoice(
+                            com.nekobot.app.data.local.ai.PlotChoice(
+                                id = choice["id"].orEmpty(),
+                                nodeId = node.id,
+                                text = choice["text"].orEmpty(),
+                                level = choice["level"] ?: "normal",
+                                intent = choice["intent"].orEmpty()
+                            )
+                        )
+                    }
+                    persistPlotGraph()
                 }
                 val payload = com.google.gson.JsonObject().apply {
                     add("choices", gson.toJsonTree(choicesWithId))

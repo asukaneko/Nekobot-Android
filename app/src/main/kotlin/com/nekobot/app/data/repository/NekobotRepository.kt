@@ -567,6 +567,8 @@ class NekobotRepository(
     // ==================== 会话归档 ====================
     suspend fun archiveSession(id: String): Resource<JsonElement> = safeCall { api.archiveSession(id) }
     suspend fun restoreSession(id: String): Resource<JsonElement> = safeCall { api.restoreSession(id) }
+    suspend fun archivePlotBranch(id: String, req: PlotSwitchRequest): Resource<JsonElement> =
+        safeCall { api.archivePlotBranch(id, req) }
 
     // ==================== 故事图 ====================
     suspend fun plotToggle(req: PlotToggleRequest): Resource<JsonElement> = safeCall { api.plotToggle(req) }

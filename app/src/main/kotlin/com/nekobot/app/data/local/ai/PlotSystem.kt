@@ -256,7 +256,36 @@ class PlotGraphManager {
     fun getActiveNodeId(conversationId: String): String? = active[conversationId]
 
     fun setActiveNode(conversationId: String, nodeId: String) {
-        active[conversationId] = nodeId
+        if (nodes[nodeId]?.conversationId == conversationId) {
+            active[conversationId] = nodeId
+        }
+    }
+
+    /** 生成与服务端兼容的 Mermaid 流程图，而不是返回空占位图。 */
+    fun generateMermaid(conversationId: String): String {
+        val graph = getGraph(conversationId)
+        @Suppress("UNCHECKED_CAST")
+        val graphNodes = graph["nodes"] as? List<Map<String, Any>> ?: emptyList()
+        @Suppress("UNCHECKED_CAST")
+        val graphEdges = graph["edges"] as? List<Map<String, Any>> ?: emptyList()
+        fun safeId(raw: String) = "n_" + raw.replace(Regex("[^A-Za-z0-9_]"), "_")
+        fun safeLabel(raw: String) = raw.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
+
+        return buildString {
+            appendLine("graph TD")
+            graphNodes.forEach { node ->
+                val id = node["id"] as? String ?: return@forEach
+                val title = (node["title"] as? String).orEmpty().ifBlank { "剧情节点" }
+                appendLine("    ${safeId(id)}[\"${safeLabel(title)}\"]")
+            }
+            graphEdges.forEach { edge ->
+                val from = edge["from_node_id"] as? String ?: return@forEach
+                val to = edge["to_node_id"] as? String ?: return@forEach
+                val label = (edge["label"] as? String).orEmpty()
+                if (label.isBlank()) appendLine("    ${safeId(from)} --> ${safeId(to)}")
+                else appendLine("    ${safeId(from)} -- \"${safeLabel(label)}\" --> ${safeId(to)}")
+            }
+        }.trimEnd()
     }
 
     // ---- In-session Branching ----

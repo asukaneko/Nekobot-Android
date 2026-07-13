@@ -660,6 +660,12 @@ interface ApiService {
     @POST("api/sessions/{id}/restore")
     suspend fun restoreSession(@Path("id") id: String): Response<JsonElement>
 
+    @POST("api/sessions/{id}/archive-branch")
+    suspend fun archivePlotBranch(
+        @Path("id") id: String,
+        @Body body: PlotSwitchRequest
+    ): Response<JsonElement>
+
     // ==================== 故事图（Plot Graph）====================
     @POST("api/plot/toggle")
     suspend fun plotToggle(@Body body: PlotToggleRequest): Response<JsonElement>

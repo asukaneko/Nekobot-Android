@@ -2426,6 +2426,8 @@ class ChatViewModel : BaseViewModel() {
                         }
                         com.nekobot.app.ServiceContainer.localRepository
                             .savePlotChoices(currentSessionId, payload.toString())
+                        com.nekobot.app.data.local.ai.getGlobalPlotGraphManager().selectChoice(choiceId)
+                        com.nekobot.app.ServiceContainer.localRepository.persistPlotGraph()
                     } catch (_: Exception) { }
                 }
             }

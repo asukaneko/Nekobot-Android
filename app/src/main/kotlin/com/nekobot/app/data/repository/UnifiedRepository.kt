@@ -72,6 +72,7 @@ import com.nekobot.app.data.model.WorldBookEntryRequest
 import com.nekobot.app.data.model.WorldBookRequest
 import com.nekobot.app.data.remote.RealtimeEvent
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.firstOrNull
 import okhttp3.MultipartBody
 
 /**
@@ -695,25 +696,42 @@ class UnifiedRepository(
 
     suspend fun plotMermaid(conversationId: String): Resource<JsonElement> =
         if (isLocal) {
-            // 本地简化：返回空 mermaid
-            Resource.Success(JsonParser.parseString("{\"mermaid\":\"graph TD\\n\"}"))
+            val mermaid = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
+                .generateMermaid(conversationId)
+            Resource.Success(JsonParser.parseString(Gson().toJson(mapOf("mermaid" to mermaid))))
         } else remote.plotMermaid(conversationId)
 
     suspend fun plotSelect(conversationId: String, req: PlotSelectRequest): Resource<JsonElement> =
         if (isLocal) {
             val mgr = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
             val ok = mgr.selectChoice(req.choiceId)
-            Resource.Success(JsonParser.parseString("{\"success\":$ok,\"choice_id\":\"${req.choiceId}\"}"))
+            if (ok) {
+                local.persistPlotGraph()
+                Resource.Success(JsonParser.parseString("{\"success\":true,\"choice_id\":\"${req.choiceId}\"}"))
+            } else Resource.Error("剧情选项不存在")
         } else remote.plotSelect(conversationId, req)
 
     suspend fun plotRegenerateChoices(conversationId: String): Resource<JsonElement> =
-        if (isLocal) localNotSupported("剧情选项重新生成") else remote.plotRegenerateChoices(conversationId)
+        if (isLocal) {
+            when (val event = local.regeneratePlotChoicesLocal(conversationId).firstOrNull {
+                it is RealtimeEvent.PlotChoices || it is RealtimeEvent.Error
+            }) {
+                is RealtimeEvent.PlotChoices -> Resource.Success(event.choices)
+                is RealtimeEvent.Error -> Resource.Error(event.message)
+                else -> Resource.Error("未能生成剧情选项")
+            }
+        } else remote.plotRegenerateChoices(conversationId)
 
     suspend fun plotRollback(conversationId: String, req: PlotRollbackRequest): Resource<JsonElement> =
         if (isLocal) {
             val mgr = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
             val ok = mgr.rollback(req.nodeId)
-            Resource.Success(JsonParser.parseString("{\"success\":$ok,\"node_id\":\"${req.nodeId}\"}"))
+            if (ok) {
+                local.replaceMessagesWithPlotPath(conversationId, req.nodeId)
+                local.persistPlotGraph()
+                local.syncPlotChoicesFromGraph(conversationId)
+                Resource.Success(JsonParser.parseString("{\"success\":true,\"node_id\":\"${req.nodeId}\"}"))
+            } else Resource.Error("剧情节点不存在")
         } else remote.plotRollback(conversationId, req)
 
     suspend fun plotBranchPreview(conversationId: String, nodeId: String): Resource<JsonElement> =
@@ -724,15 +742,49 @@ class UnifiedRepository(
             Resource.Success(JsonParser.parseString("{\"node_id\":\"$nodeId\",\"messages\":${gson.toJson(path)}}"))
         } else remote.plotBranchPreview(conversationId, nodeId)
 
-    suspend fun plotSwitch(conversationId: String, req: PlotSwitchRequest): Resource<JsonElement> =
-        if (isLocal) {
+    suspend fun plotSwitch(conversationId: String, req: PlotSwitchRequest): Resource<JsonElement> {
+        return if (isLocal) {
             val mgr = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
+            val node = mgr.getNode(req.nodeId)
+            if (node == null || node.conversationId != conversationId) return Resource.Error("剧情节点不存在")
             mgr.setActiveNode(conversationId, req.nodeId)
+            local.replaceMessagesWithPlotPath(conversationId, req.nodeId)
+            local.persistPlotGraph()
+            local.syncPlotChoicesFromGraph(conversationId)
             Resource.Success(JsonParser.parseString("{\"success\":true,\"node_id\":\"${req.nodeId}\"}"))
         } else remote.plotSwitch(conversationId, req)
+    }
 
-    suspend fun plotBranch(conversationId: String, req: PlotBranchRequest): Resource<JsonElement> =
-        if (isLocal) localNotSupported("剧情分支创建") else remote.plotBranch(conversationId, req)
+    suspend fun plotBranch(conversationId: String, req: PlotBranchRequest): Resource<JsonElement> {
+        return if (isLocal) {
+            val manager = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
+            val choice = manager.getChoice(req.choiceId)
+                ?: return Resource.Error("剧情选项不存在")
+            if (choice.nodeId != req.nodeId) return Resource.Error("选项不属于当前节点")
+            val model = local.getActiveModel() ?: return Resource.Error("未配置激活的 AI 模型")
+            if (!manager.selectChoice(req.choiceId)) return Resource.Error("无法选择该剧情选项")
+            local.persistPlotGraph()
+            var generationError: String? = null
+            local.chatWithPipeline(conversationId, choice.text, model).collect { event ->
+                if (event is RealtimeEvent.Error) generationError = event.message
+            }
+            generationError?.let { Resource.Error(it) }
+                ?: Resource.Success(JsonParser.parseString("{\"success\":true,\"choice_id\":\"${req.choiceId}\"}"))
+        } else remote.plotBranch(conversationId, req)
+    }
+
+    suspend fun archivePlotBranch(conversationId: String, req: PlotSwitchRequest): Resource<JsonElement> =
+        if (isLocal) {
+            val node = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager().getNode(req.nodeId)
+            if (node == null || node.conversationId != conversationId) {
+                Resource.Error("剧情节点不存在")
+            } else {
+                val count = local.archivePlotBranch(conversationId, req.nodeId)
+                if (count > 0) {
+                    Resource.Success(JsonParser.parseString("{\"success\":true,\"archived_count\":$count}"))
+                } else Resource.Error("该分支没有可归档的对话")
+            }
+        } else remote.archivePlotBranch(conversationId, req)
 
     // ==================== 绑定角色 / 消息收藏 ====================
     suspend fun bindCharacter(sessionId: String, req: BindCharacterRequest): Resource<JsonElement> =

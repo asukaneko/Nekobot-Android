@@ -18,14 +18,18 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -34,8 +38,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -60,12 +68,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nekobot.app.data.model.PlotChoiceData
+import com.nekobot.app.data.model.PlotBranchRequest
 import com.nekobot.app.data.model.PlotGraphData
 import com.nekobot.app.data.model.PlotNodeData
 import com.nekobot.app.data.model.PlotRollbackRequest
-import com.nekobot.app.data.model.PlotSelectRequest
 import com.nekobot.app.data.model.PlotSwitchRequest
-import com.google.gson.GsonBuilder
 import com.google.gson.JsonElement
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.ErrorBanner
@@ -80,11 +87,22 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlin.math.roundToInt
 
-/** 用于格式化 JSON 输出 */
-private val prettyGson = GsonBuilder().setPrettyPrinting().setLenient().disableHtmlEscaping().create()
+private enum class StoryGraphView { Graph, Timeline }
+
+data class BranchPreviewMessage(
+    val role: String,
+    val sender: String?,
+    val content: String
+)
+
+private data class PlotUserTurn(
+    val content: String,
+    val kind: String,
+    val choiceText: String? = null
+)
 
 /**
- * 故事图 ViewModel：加载剧情分支图数据，支持选择选项、回滚、切换分支、重新生成选项、获取 Mermaid 代码。
+ * 故事图 ViewModel：加载剧情分支图数据并执行会改变当前剧情路径的操作。
  */
 class StoryGraphViewModel : BaseViewModel() {
 
@@ -99,12 +117,12 @@ class StoryGraphViewModel : BaseViewModel() {
         )
     }
 
-    fun selectChoice(sessionId: String, choiceId: String) {
+    fun createBranch(sessionId: String, nodeId: String, choiceId: String, onCreated: () -> Unit) {
         launchResult(
-            block = { unified.plotSelect(sessionId, PlotSelectRequest(choiceId)) },
+            block = { unified.plotBranch(sessionId, PlotBranchRequest(nodeId, choiceId)) },
             onSuccess = {
-                showToast("已选择分支")
-                loadGraph(sessionId)
+                showToast("已创建分支，正在生成新剧情")
+                onCreated()
             }
         )
     }
@@ -125,6 +143,17 @@ class StoryGraphViewModel : BaseViewModel() {
             onSuccess = {
                 showToast("已切换到此分支")
                 loadGraph(sessionId)
+            }
+        )
+    }
+
+    fun archiveBranch(sessionId: String, nodeId: String) {
+        launchResult(
+            block = { unified.archivePlotBranch(sessionId, PlotSwitchRequest(nodeId)) },
+            onSuccess = { response ->
+                val count = response?.takeIf { it.isJsonObject }?.asJsonObject
+                    ?.get("archived_count")?.takeIf { !it.isJsonNull }?.asInt
+                showToast(if (count != null) "已归档该分支（$count 条消息）" else "已归档该分支")
             }
         )
     }
@@ -150,71 +179,28 @@ class StoryGraphViewModel : BaseViewModel() {
         )
     }
 
-    fun getBranchPreview(sessionId: String, nodeId: String, onResult: (String) -> Unit) {
+    fun getBranchPreview(sessionId: String, nodeId: String, onResult: (List<BranchPreviewMessage>) -> Unit) {
         launchResult(
             block = { unified.plotBranchPreview(sessionId, nodeId) },
-            onSuccess = { el ->
-                val formatted = formatBranchPreview(el)
-                onResult(formatted)
-            }
+            onSuccess = { onResult(parseBranchPreview(it)) }
         )
     }
 
-    /** 将分支预览的 JSON 响应格式化为易读的文本 */
-    private fun formatBranchPreview(el: JsonElement?): String {
-        if (el == null) return "（无内容）"
+    private fun parseBranchPreview(el: JsonElement?): List<BranchPreviewMessage> {
+        if (el == null || !el.isJsonObject) return emptyList()
         return try {
-            val obj = el.asJsonObject
-            val sb = StringBuilder()
-            // 标题
-            obj.get("title")?.takeIf { !it.isJsonNull }?.asString?.let {
-                sb.append("标题：$it\n")
-            }
-            // 摘要
-            obj.get("summary")?.takeIf { !it.isJsonNull }?.asString?.let {
-                sb.append("摘要：$it\n")
-            }
-            // 节点路径
-            obj.getAsJsonArray("nodes")?.let { arr ->
-                sb.append("\n节点路径（${arr.size()}）：\n")
-                arr.forEachIndexed { idx, node ->
-                    val n = node.asJsonObject
-                    val title = n.get("title")?.takeIf { !it.isJsonNull }?.asString ?: "未命名"
-                    val level = n.get("level")?.takeIf { !it.isJsonNull }?.asString ?: "normal"
-                    sb.append("${idx + 1}. [$level] $title\n")
-                    n.get("summary")?.takeIf { !it.isJsonNull }?.asString?.let { s ->
-                        sb.append("   $s\n")
-                    }
-                }
-            }
-            // 消息列表
-            obj.getAsJsonArray("messages")?.let { arr ->
-                sb.append("\n消息记录（${arr.size()}）：\n")
-                arr.forEachIndexed { idx, msg ->
-                    val m = msg.asJsonObject
-                    val role = m.get("role")?.takeIf { !it.isJsonNull }?.asString ?: "unknown"
-                    val content = m.get("content")?.takeIf { !it.isJsonNull }?.asString ?: ""
-                    val preview = content.take(100) + if (content.length > 100) "..." else ""
-                    sb.append("${idx + 1}. [$role] $preview\n")
-                }
-            }
-            // 选项列表
-            obj.getAsJsonArray("choices")?.let { arr ->
-                sb.append("\n可选分支（${arr.size()}）：\n")
-                arr.forEach { c ->
-                    val co = c.asJsonObject
-                    val text = co.get("text")?.takeIf { !it.isJsonNull }?.asString ?: ""
-                    val level = co.get("level")?.takeIf { !it.isJsonNull }?.asString ?: "normal"
-                    sb.append("  • [$level] $text\n")
-                }
-            }
-            if (sb.isBlank()) {
-                prettyGson.toJson(el)
-            } else {
-                sb.toString().trimEnd()
-            }
+            el.asJsonObject.getAsJsonArray("messages")?.mapNotNull { item ->
+                val message = item.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
+                val content = message.get("content")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                if (content.isBlank()) return@mapNotNull null
+                BranchPreviewMessage(
+                    role = message.get("role")?.takeIf { !it.isJsonNull }?.asString ?: "assistant",
+                    sender = message.get("sender")?.takeIf { !it.isJsonNull }?.asString,
+                    content = content
+                )
+            }.orEmpty()
         } catch (_: Exception) {
-            el.toString()
+            emptyList()
         }
     }
 }
@@ -234,37 +220,78 @@ fun StoryGraphScreen(
     val error by vm.error.collectAsState()
     val toast by vm.toast.collectAsState()
 
+    var graphView by remember { mutableStateOf(StoryGraphView.Graph) }
     var selectedNode by remember { mutableStateOf<PlotNodeData?>(null) }
     var showMermaid by remember { mutableStateOf(false) }
     var mermaidText by remember { mutableStateOf("") }
-    var showBranchPreview by remember { mutableStateOf(false) }
-    var branchPreviewText by remember { mutableStateOf("") }
+    var branchPreview by remember { mutableStateOf<List<BranchPreviewMessage>>(emptyList()) }
+    var previewLoading by remember { mutableStateOf(false) }
+    var pendingAction by remember { mutableStateOf<Pair<String, PlotNodeData>?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    val topology = remember(graphData) { buildGraphTopology(graphData) }
+    val activePathIds = remember(topology) {
+        topology.currentPath.mapNotNull { it.id }.toSet()
+    }
 
     LaunchedEffect(sessionId) { vm.loadGraph(sessionId) }
+    LaunchedEffect(graphData) {
+        if (graphData.nodes.isNotEmpty() && selectedNode?.id !in graphData.nodes.map { it.id }) {
+            val initialNode = topology.currentNode ?: graphData.nodes.last()
+            selectedNode = initialNode
+            previewLoading = true
+            vm.getBranchPreview(sessionId, initialNode.id.orEmpty()) {
+                if (selectedNode?.id == initialNode.id) {
+                    branchPreview = it
+                    previewLoading = false
+                }
+            }
+        }
+    }
     LaunchedEffect(toast) {
-        if (!toast.isNullOrBlank()) vm.clearToast()
+        toast?.takeIf { it.isNotBlank() }?.let {
+            snackbarHostState.showSnackbar(it)
+            vm.clearToast()
+        }
     }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text("故事图", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                ),
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+            Column {
+                TopAppBar(
+                    title = { Text("故事地图", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface
+                    ),
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { vm.loadGraph(sessionId) }) {
+                            Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.primary)
+                        }
                     }
-                },
-                actions = {
-                    IconButton(onClick = { vm.loadGraph(sessionId) }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.primary)
-                    }
+                )
+                PrimaryTabRow(selectedTabIndex = graphView.ordinal) {
+                    Tab(
+                        selected = graphView == StoryGraphView.Graph,
+                        onClick = { graphView = StoryGraphView.Graph },
+                        text = { Text("图谱") },
+                        icon = { Icon(Icons.Filled.AccountTree, contentDescription = null) }
+                    )
+                    Tab(
+                        selected = graphView == StoryGraphView.Timeline,
+                        onClick = { graphView = StoryGraphView.Timeline },
+                        text = { Text("时间线") },
+                        icon = { Icon(Icons.Filled.Timeline, contentDescription = null) }
+                    )
                 }
-            )
+            }
         },
         bottomBar = {
             BottomActionBar(
@@ -293,11 +320,44 @@ fun StoryGraphScreen(
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
             } else {
-                StoryGraphCanvas(
-                    graphData = graphData,
-                    onNodeClick = { selectedNode = it },
-                    modifier = Modifier.fillMaxSize()
-                )
+                if (graphView == StoryGraphView.Graph) {
+                    StoryGraphCanvas(
+                        graphData = graphData,
+                        topology = topology,
+                        activePathIds = activePathIds,
+                        onNodeClick = { node ->
+                            selectedNode = node
+                            previewLoading = true
+                            branchPreview = emptyList()
+                            vm.getBranchPreview(sessionId, node.id.orEmpty()) {
+                                if (selectedNode?.id == node.id) {
+                                    branchPreview = it
+                                    previewLoading = false
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    StoryTimeline(
+                        graphData = graphData,
+                        nodes = topology.currentPath,
+                        selectedNodeId = selectedNode?.id,
+                        onNodeClick = { node ->
+                            selectedNode = node
+                            previewLoading = true
+                            branchPreview = emptyList()
+                            vm.getBranchPreview(sessionId, node.id.orEmpty()) {
+                                if (selectedNode?.id == node.id) {
+                                    branchPreview = it
+                                    previewLoading = false
+                                }
+                            }
+                        },
+                        onRollback = { pendingAction = "rollback" to it },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
 
                 // 节点统计信息（放在右上角，避免遮挡左上角内容）
                 if (graphData.nodes.isNotEmpty()) {
@@ -355,24 +415,18 @@ fun StoryGraphScreen(
         NodeDetailDialog(
             node = node,
             choices = nodeChoices,
+            displayedLevel = topology.levelFor(node),
+            userTurn = topology.userTurnFor(node),
+            isActive = node.id == graphData.activeNodeId,
+            isOnActivePath = node.id in activePathIds,
+            preview = branchPreview,
+            previewLoading = previewLoading,
             onDismiss = { selectedNode = null },
-            onSwitch = {
-                vm.switchBranch(sessionId, node.id.orEmpty())
-                selectedNode = null
-            },
-            onRollback = {
-                vm.rollback(sessionId, node.id.orEmpty())
-                selectedNode = null
-            },
-            onBranchPreview = {
-                vm.getBranchPreview(sessionId, node.id.orEmpty()) { text ->
-                    branchPreviewText = text
-                    showBranchPreview = true
-                }
-            },
-            onSelectChoice = { choiceId ->
-                vm.selectChoice(sessionId, choiceId)
-                selectedNode = null
+            onSwitch = { pendingAction = "switch" to node },
+            onRollback = { pendingAction = "rollback" to node },
+            onArchive = { pendingAction = "archive" to node },
+            onCreateBranch = { choiceId ->
+                vm.createBranch(sessionId, node.id.orEmpty(), choiceId, onBack)
             }
         )
     }
@@ -386,17 +440,150 @@ fun StoryGraphScreen(
         )
     }
 
-    // 分支预览弹窗
-    if (showBranchPreview) {
-        TextContentDialog(
-            title = "分支预览",
-            content = branchPreviewText,
-            onDismiss = { showBranchPreview = false }
+    pendingAction?.let { (action, node) ->
+        val isRollback = action == "rollback"
+        val isArchive = action == "archive"
+        NekoDialog(
+            onDismiss = { pendingAction = null },
+            title = when {
+                isRollback -> "回溯到此节点"
+                isArchive -> "归档此分支"
+                else -> "切换分支"
+            },
+            message = when {
+                isRollback -> "将移除此节点之后的剧情分支与对话，且不可恢复。"
+                isArchive -> "将把根节点到“${node.title ?: "该节点"}”的对话复制到归档会话。"
+                else -> "将把当前对话切换到“${node.title ?: "该分支"}”所在位置。"
+            },
+            confirmText = when {
+                isRollback -> "确认回溯"
+                isArchive -> "确认归档"
+                else -> "确认切换"
+            },
+            onConfirm = {
+                when {
+                    isRollback -> vm.rollback(sessionId, node.id.orEmpty())
+                    isArchive -> vm.archiveBranch(sessionId, node.id.orEmpty())
+                    else -> vm.switchBranch(sessionId, node.id.orEmpty())
+                }
+                pendingAction = null
+                if (!isArchive) selectedNode = null
+            },
+            cancelText = "取消",
+            onCancel = { pendingAction = null }
         )
     }
 }
 
 // ==================== 图可视化 ====================
+
+private data class GraphTopology(
+    val sortedNodes: List<PlotNodeData>,
+    val byId: Map<String, PlotNodeData>,
+    val parentOf: Map<String, String>,
+    val childrenOf: Map<String, List<String>>,
+    val choicesById: Map<String, PlotChoiceData>,
+    val incomingEdgeByNode: Map<String, com.nekobot.app.data.model.PlotEdgeData>,
+    val currentPath: List<PlotNodeData>,
+    val currentNode: PlotNodeData?
+) {
+    fun pathTo(nodeId: String?): List<PlotNodeData> {
+        var current = nodeId?.let(byId::get) ?: return emptyList()
+        val result = ArrayDeque<PlotNodeData>()
+        val visited = mutableSetOf<String>()
+        while (current.id != null && visited.add(current.id)) {
+            result.addFirst(current)
+            current = parentOf[current.id]?.let(byId::get) ?: break
+        }
+        return result.toList()
+    }
+
+    fun levelFor(node: PlotNodeData): String {
+        val incomingChoiceId = node.id?.let { incomingEdgeByNode[it]?.choiceId }
+        val parentChoiceId = node.id?.let(parentOf::get)?.let(byId::get)?.selectedChoiceId
+        val inherited = choicesById[incomingChoiceId]?.level ?: choicesById[parentChoiceId]?.level
+        return when (inherited ?: node.level ?: "normal") {
+            "hidden" -> "important"
+            else -> inherited ?: node.level ?: "normal"
+        }
+    }
+
+    fun userTurnFor(node: PlotNodeData): PlotUserTurn? {
+        val content = node.userMessage.asMessageContent().trim()
+        if (content.isBlank()) return null
+        val choiceText = node.id
+            ?.let { incomingEdgeByNode[it]?.choiceId }
+            ?.let(choicesById::get)
+            ?.text
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+        val kind = when {
+            choiceText == null -> "manual"
+            content == choiceText -> "selected"
+            else -> "edited"
+        }
+        return PlotUserTurn(content, kind, choiceText)
+    }
+}
+
+private fun JsonElement?.asMessageContent(): String = try {
+    when {
+        this == null || isJsonNull -> ""
+        isJsonPrimitive -> asString
+        isJsonObject -> asJsonObject.get("content")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+        else -> ""
+    }
+} catch (_: Exception) {
+    ""
+}
+
+private fun buildGraphTopology(graph: PlotGraphData): GraphTopology {
+    val sorted = graph.nodes
+        .filter { !it.id.isNullOrBlank() }
+        .sortedBy { it.createdAt.orEmpty() }
+    val byId = sorted.associateBy { it.id!! }
+    val parentOf = linkedMapOf<String, String>()
+
+    sorted.forEach { node ->
+        val id = node.id ?: return@forEach
+        node.parentNodeId?.takeIf(byId::containsKey)?.let { parentOf[id] = it }
+    }
+    graph.edges.forEach { edge ->
+        val from = edge.fromNodeId
+        val to = edge.toNodeId
+        if (from != null && to != null && from in byId && to in byId && to !in parentOf) {
+            parentOf[to] = from
+        }
+    }
+    var previous: PlotNodeData? = null
+    sorted.forEach { node ->
+        val id = node.id ?: return@forEach
+        if (id !in parentOf) previous?.id?.let { parentOf[id] = it }
+        previous = node
+    }
+
+    val children = parentOf.entries.groupBy({ it.value }, { it.key }).mapValues { (_, ids) ->
+        ids.sortedBy { byId[it]?.createdAt.orEmpty() }
+    }
+    var tip = graph.activeNodeId?.let(byId::get) ?: sorted.lastOrNull()
+    val descentGuard = mutableSetOf<String>()
+    while (tip?.id != null && descentGuard.add(tip.id)) {
+        val newestChild = children[tip.id].orEmpty().lastOrNull()?.let(byId::get) ?: break
+        tip = newestChild
+    }
+
+    val base = GraphTopology(
+        sortedNodes = sorted,
+        byId = byId,
+        parentOf = parentOf,
+        childrenOf = children,
+        choicesById = graph.choices.mapNotNull { choice -> choice.id?.let { it to choice } }.toMap(),
+        incomingEdgeByNode = graph.edges.mapNotNull { edge -> edge.toNodeId?.let { it to edge } }.toMap(),
+        currentPath = emptyList(),
+        currentNode = tip
+    )
+    return base.copy(currentPath = base.pathTo(tip?.id))
+}
 
 /** 图布局计算结果 */
 private data class GraphLayout(
@@ -409,15 +596,16 @@ private data class GraphLayout(
  * 计算节点在图中的位置：按 parentNodeId 构建树结构，BFS 分配层级，同层节点水平居中分布。
  */
 private fun computeLayout(
-    nodes: List<PlotNodeData>,
+    topology: GraphTopology,
     nodeWidth: Float,
     nodeHeight: Float,
     hGap: Float,
     vGap: Float
 ): GraphLayout {
+    val nodes = topology.sortedNodes
     if (nodes.isEmpty()) return GraphLayout(emptyMap(), 0f, 0f)
 
-    val nodeMap = nodes.filter { !it.id.isNullOrBlank() }.associateBy { it.id!! }
+    val nodeMap = topology.byId
     if (nodeMap.isEmpty()) return GraphLayout(emptyMap(), 0f, 0f)
 
     // 构建 parent -> children 映射，识别根节点
@@ -425,7 +613,7 @@ private fun computeLayout(
     val roots = mutableListOf<String>()
     for (n in nodes) {
         val id = n.id ?: continue
-        val pid = n.parentNodeId
+        val pid = topology.parentOf[id]
         if (pid.isNullOrBlank() || !nodeMap.containsKey(pid)) {
             roots.add(id)
         } else {
@@ -494,12 +682,27 @@ private fun nodeLevelColor(level: String?): Color {
     }
 }
 
+private fun levelLabel(level: String?): String = when (level) {
+    "important" -> "推进"
+    "turning_point" -> "转折"
+    "ending" -> "结局"
+    else -> "顺势"
+}
+
+private fun userTurnLabel(kind: String): String = when (kind) {
+    "selected" -> "选择项"
+    "edited" -> "选后编辑"
+    else -> "手动回复"
+}
+
 /**
  * 故事图画布：在可滚动区域内绘制节点与边。
  */
 @Composable
 private fun StoryGraphCanvas(
     graphData: PlotGraphData,
+    topology: GraphTopology,
+    activePathIds: Set<String>,
     onNodeClick: (PlotNodeData) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -535,8 +738,8 @@ private fun StoryGraphCanvas(
     val hGapPx = with(density) { hGapDp.toPx() }
     val vGapPx = with(density) { vGapDp.toPx() }
 
-    val layout = remember(graphData) {
-        computeLayout(graphData.nodes, nodeWidthPx, nodeHeightPx, hGapPx, vGapPx)
+    val layout = remember(topology) {
+        computeLayout(topology, nodeWidthPx, nodeHeightPx, hGapPx, vGapPx)
     }
 
     val totalWidthDp = with(density) { layout.totalWidth.toDp() }
@@ -569,8 +772,10 @@ private fun StoryGraphCanvas(
                         }
                         drawPath(
                             path = path,
-                            color = Color.Gray.copy(alpha = 0.5f),
-                            style = Stroke(width = 2f)
+                            color = if (edge.fromNodeId in activePathIds && edge.toNodeId in activePathIds) {
+                                nodeLevelColor(edge.toNodeId?.let(topology.byId::get)?.let(topology::levelFor)).copy(alpha = 0.8f)
+                            } else Color.Gray.copy(alpha = 0.3f),
+                            style = Stroke(width = if (edge.fromNodeId in activePathIds && edge.toNodeId in activePathIds) 4f else 2f)
                         )
                     }
                 }
@@ -607,7 +812,9 @@ private fun StoryGraphCanvas(
                 val isActive = id == activeNodeId
                 NodeCard(
                     node = node,
+                    displayedLevel = topology.levelFor(node),
                     isActive = isActive,
+                    isOnActivePath = id in activePathIds,
                     onClick = { onNodeClick(node) },
                     modifier = Modifier
                         .offset { IntOffset(pos.first.roundToInt(), pos.second.roundToInt()) }
@@ -622,17 +829,20 @@ private fun StoryGraphCanvas(
 @Composable
 private fun NodeCard(
     node: PlotNodeData,
+    displayedLevel: String,
     isActive: Boolean,
+    isOnActivePath: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val levelColor = nodeLevelColor(node.level)
+    val levelColor = nodeLevelColor(displayedLevel)
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
             .background(
                 if (isActive) levelColor.copy(alpha = 0.25f)
-                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                else if (isOnActivePath) levelColor.copy(alpha = 0.12f)
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
             )
             .border(
                 width = if (isActive) 2.dp else 1.dp,
@@ -670,7 +880,7 @@ private fun NodeCard(
                         .padding(horizontal = 4.dp, vertical = 1.dp)
                 ) {
                     Text(
-                        text = node.level ?: "normal",
+                        text = levelLabel(displayedLevel),
                         style = MaterialTheme.typography.labelSmall,
                         color = levelColor,
                         fontSize = 9.sp
@@ -690,6 +900,92 @@ private fun NodeCard(
     }
 }
 
+@Composable
+private fun StoryTimeline(
+    graphData: PlotGraphData,
+    nodes: List<PlotNodeData>,
+    selectedNodeId: String?,
+    onNodeClick: (PlotNodeData) -> Unit,
+    onRollback: (PlotNodeData) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (nodes.isEmpty()) {
+        Box(modifier = modifier.padding(32.dp), contentAlignment = Alignment.Center) {
+            Text("暂无当前分支时间线", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
+    }
+    LazyColumn(
+        modifier = modifier.padding(horizontal = 16.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TimelineStat("节点", graphData.nodes.size, Modifier.weight(1f))
+                TimelineStat("分支", graphData.choices.size, Modifier.weight(1f))
+                TimelineStat("当前线", nodes.size, Modifier.weight(1f))
+            }
+        }
+        items(nodes, key = { it.id.orEmpty() }) { node ->
+            val choices = graphData.choices.filter { it.nodeId == node.id }
+            GlassCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (node.id == selectedNodeId) Modifier.border(1.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
+                        else Modifier
+                    )
+                    .clickable { onNodeClick(node) },
+                cornerRadius = 16
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(nodeLevelColor(node.level))
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(node.title ?: "剧情节点", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                    Text(levelLabel(node.level), style = MaterialTheme.typography.labelSmall, color = nodeLevelColor(node.level))
+                }
+                if (!node.summary.isNullOrBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(node.summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                }
+                choices.forEach { choice ->
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Filled.Check,
+                            contentDescription = null,
+                            tint = if (choice.selected == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(choice.text.orEmpty(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                OutlinedButton(onClick = { onRollback(node) }, modifier = Modifier.align(Alignment.End)) {
+                    Text("回溯到此", fontSize = 11.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineStat(label: String, value: Int, modifier: Modifier = Modifier) {
+    Surface(modifier = modifier, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)) {
+        Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
 // ==================== 弹窗组件 ====================
 
 /** 节点详情弹窗：展示节点信息、选项列表、操作按钮 */
@@ -697,13 +993,19 @@ private fun NodeCard(
 private fun NodeDetailDialog(
     node: PlotNodeData,
     choices: List<PlotChoiceData>,
+    displayedLevel: String,
+    userTurn: PlotUserTurn?,
+    isActive: Boolean,
+    isOnActivePath: Boolean,
+    preview: List<BranchPreviewMessage>,
+    previewLoading: Boolean,
     onDismiss: () -> Unit,
     onSwitch: () -> Unit,
     onRollback: () -> Unit,
-    onBranchPreview: () -> Unit,
-    onSelectChoice: (String) -> Unit
+    onArchive: () -> Unit,
+    onCreateBranch: (String) -> Unit
 ) {
-    val levelColor = nodeLevelColor(node.level)
+    val levelColor = nodeLevelColor(displayedLevel)
     NekoDialog(
         onDismiss = onDismiss,
         title = node.title ?: "节点详情",
@@ -712,109 +1014,132 @@ private fun NodeDetailDialog(
         cancelText = null,
         onCancel = null
     ) {
-        // 级别 + 创建时间
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(levelColor.copy(alpha = 0.2f))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    node.level ?: "normal",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = levelColor
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 520.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(levelColor.copy(alpha = 0.2f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(levelLabel(displayedLevel), style = MaterialTheme.typography.labelSmall, color = levelColor)
+                }
+                if (isActive) {
+                    Spacer(Modifier.width(8.dp))
+                    Text("当前位置", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                }
+                Spacer(Modifier.weight(1f))
+                node.createdAt?.let {
+                    Text(it.take(19), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
+            userTurn?.let { turn ->
+                Spacer(Modifier.height(10.dp))
+                DetailMessageCard(
+                    label = "我 · ${userTurnLabel(turn.kind)}",
+                    text = turn.content,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                )
+                if (turn.kind == "edited" && !turn.choiceText.isNullOrBlank()) {
+                    Text(
+                        "原选项：${turn.choiceText}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp, start = 8.dp)
+                    )
+                }
+            }
+
+            if (!node.summary.isNullOrBlank()) {
+                Spacer(Modifier.height(8.dp))
+                DetailMessageCard(
+                    label = "AI",
+                    text = node.summary,
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
                 )
             }
-            Spacer(Modifier.width(8.dp))
-            node.createdAt?.let {
+
+            RelationshipSnapshot(node.relationshipSnapshot)
+
+            if (!node.location.isNullOrBlank() || !node.mood.isNullOrBlank() || !node.activityType.isNullOrBlank()) {
+                Spacer(Modifier.height(8.dp))
                 Text(
-                    "创建：${it.take(19)}",
+                    listOfNotNull(
+                        node.location?.takeIf(String::isNotBlank)?.let { "地点：$it" },
+                        node.mood?.takeIf(String::isNotBlank)?.let { "氛围：$it" },
+                        node.activityType?.takeIf(String::isNotBlank)?.let { "活动：$it" }
+                    ).joinToString("  ·  "),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-        }
 
-        // 摘要
-        if (!node.summary.isNullOrBlank()) {
-            Spacer(Modifier.height(8.dp))
-            Text("摘要", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                node.summary,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-        }
-
-        // 地点 / 氛围
-        node.location?.takeIf { it.isNotBlank() }?.let {
-            Spacer(Modifier.height(8.dp))
-            Text("地点：$it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        node.mood?.takeIf { it.isNotBlank() }?.let {
-            Text("氛围：$it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        node.activityType?.takeIf { it.isNotBlank() }?.let {
-            Text("活动：$it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-
-        // 操作按钮
-        Spacer(Modifier.height(12.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            OutlinedButton(
-                onClick = onSwitch,
-                modifier = Modifier.weight(1f),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 6.dp)
-            ) {
-                Text("切换分支", style = MaterialTheme.typography.labelSmall, maxLines = 1, fontSize = 11.sp)
-            }
-            OutlinedButton(
-                onClick = onRollback,
-                modifier = Modifier.weight(1f),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 6.dp)
-            ) {
-                Text("回滚节点", style = MaterialTheme.typography.labelSmall, maxLines = 1, fontSize = 11.sp)
-            }
-            OutlinedButton(
-                onClick = onBranchPreview,
-                modifier = Modifier.weight(1f),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 6.dp)
-            ) {
-                Text("预览分支", style = MaterialTheme.typography.labelSmall, maxLines = 1, fontSize = 11.sp)
-            }
-        }
-
-        // 选项列表
-        if (choices.isNotEmpty()) {
-            Spacer(Modifier.height(12.dp))
-            Text(
-                "选项列表（${choices.size}）",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.SemiBold
-            )
-            Spacer(Modifier.height(8.dp))
-            choices.forEach { choice ->
-                ChoiceItem(
-                    choice = choice,
-                    onSelect = { choice.id?.let { onSelectChoice(it) } }
-                )
+            if (choices.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                Text("分支选项", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(6.dp))
+                choices.forEach { choice ->
+                    ChoiceItem(choice = choice, onCreateBranch = { choice.id?.let(onCreateBranch) })
+                    Spacer(Modifier.height(6.dp))
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = onSwitch,
+                    enabled = !isActive && !isOnActivePath,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        when {
+                            isActive -> "当前位置"
+                            isOnActivePath -> "同一分支"
+                            else -> "切换分支"
+                        },
+                        fontSize = 11.sp,
+                        maxLines = 1
+                    )
+                }
+                OutlinedButton(onClick = onRollback, modifier = Modifier.weight(1f)) {
+                    Text("回溯到此", fontSize = 11.sp, maxLines = 1)
+                }
+            }
+            OutlinedButton(onClick = onArchive, modifier = Modifier.fillMaxWidth()) {
+                Text("归档此分支", fontSize = 11.sp)
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Text("分支预览", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(6.dp))
+            when {
+                previewLoading -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                preview.isEmpty() -> Text("该分支暂无可预览的对话", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else -> preview.forEach { message ->
+                    DetailMessageCard(
+                        label = if (message.role == "user") "我" else message.sender ?: "AI",
+                        text = message.content.take(500),
+                        containerColor = if (message.role == "user") MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                    )
+                    Spacer(Modifier.height(6.dp))
+                }
             }
         }
     }
 }
 
-/** 选项条目：展示文本、级别、风险、选中状态，点击选择 */
+/** 选项条目：未走过的选项可真正创建新分支，已走过的选项只展示状态。 */
 @Composable
 private fun ChoiceItem(
     choice: PlotChoiceData,
-    onSelect: () -> Unit
+    onCreateBranch: () -> Unit
 ) {
     val choiceColor = nodeLevelColor(choice.level)
     Row(
@@ -825,7 +1150,6 @@ private fun ChoiceItem(
                 if (choice.selected == true) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                 else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
             )
-            .clickable(onClick = onSelect)
             .padding(10.dp),
         verticalAlignment = Alignment.Top
     ) {
@@ -846,7 +1170,7 @@ private fun ChoiceItem(
                         .padding(horizontal = 4.dp, vertical = 1.dp)
                 ) {
                     Text(
-                        choice.level ?: "normal",
+                        levelLabel(choice.level),
                         style = MaterialTheme.typography.labelSmall,
                         color = choiceColor,
                         fontSize = 10.sp
@@ -882,6 +1206,55 @@ private fun ChoiceItem(
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(16.dp)
             )
+        } else {
+            Spacer(Modifier.width(6.dp))
+            OutlinedButton(
+                onClick = onCreateBranch,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+            ) {
+                Icon(Icons.AutoMirrored.Filled.CallSplit, contentDescription = null, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("创建分支", fontSize = 10.sp, maxLines = 1)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailMessageCard(label: String, text: String, containerColor: Color) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(containerColor)
+            .padding(10.dp)
+    ) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(3.dp))
+        Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+@Composable
+private fun RelationshipSnapshot(snapshot: JsonElement?) {
+    val entries = remember(snapshot) {
+        try {
+            snapshot?.takeIf { it.isJsonObject }?.asJsonObject?.entrySet()?.mapNotNull { (key, value) ->
+                value.takeIf { !it.isJsonNull }?.let { key to it.asString }
+            }.orEmpty()
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+    if (entries.isEmpty()) return
+    Spacer(Modifier.height(10.dp))
+    Text("当时关系", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(Modifier.height(4.dp))
+    Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        entries.forEach { (key, value) ->
+            Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)) {
+                Text("$key  $value", modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall)
+            }
         }
     }
 }
