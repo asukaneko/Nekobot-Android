@@ -2,6 +2,7 @@ package com.nekobot.app.ui.screens.tokens
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,9 +13,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material3.AssistChip
@@ -23,6 +24,7 @@ import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
@@ -39,6 +41,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,11 +50,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewModelScope
 import com.google.gson.JsonElement
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.TokenRankings
 import com.nekobot.app.data.model.TokenStats
 import com.nekobot.app.ui.BaseViewModel
+import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
@@ -66,6 +71,11 @@ import com.nekobot.app.ui.theme.Tertiary
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -73,6 +83,23 @@ import java.util.Locale
 /**
  * Token 用量页 ViewModel
  */
+@Immutable
+internal data class TokenRecordUi(
+    val id: String,
+    val timestamp: String,
+    val date: String,
+    val model: String,
+    val purpose: String,
+    val source: String,
+    val sessionId: String,
+    val input: Long,
+    val output: Long,
+    val total: Long,
+    val cost: String?,
+    val durationMs: Double?,
+    val ttftMs: Double?
+)
+
 class TokensViewModel : BaseViewModel() {
 
     private val _stats = MutableStateFlow<TokenStats?>(null)
@@ -80,6 +107,9 @@ class TokensViewModel : BaseViewModel() {
 
     private val _rankings = MutableStateFlow<TokenRankings?>(null)
     val rankings: StateFlow<TokenRankings?> = _rankings.asStateFlow()
+
+    private val _records = MutableStateFlow<List<TokenRecordUi>>(emptyList())
+    internal val records: StateFlow<List<TokenRecordUi>> = _records.asStateFlow()
 
     private val _dateRange = MutableStateFlow("today")
     val dateRange: StateFlow<String> = _dateRange.asStateFlow()
@@ -90,24 +120,46 @@ class TokensViewModel : BaseViewModel() {
     private val _endDate = MutableStateFlow<String?>(null)
     val endDate: StateFlow<String?> = _endDate.asStateFlow()
 
-    init {
-        load()
-    }
-
     fun load() {
         val range = _dateRange.value
         val isCustom = range == "custom"
         val start = if (isCustom) _startDate.value else null
         val end = if (isCustom) _endDate.value else null
         val effectiveRange = if (isCustom) null else range
-        launchResult(
-            block = { unified.tokenStats(effectiveRange, start, end) },
-            onSuccess = { _stats.value = it }
-        )
-        launchResult(
-            block = { unified.tokenRankings() },
-            onSuccess = { _rankings.value = it }
-        )
+        viewModelScope.launch {
+            setLoading(true)
+            clearError()
+            try {
+                val (statsResult, rankingsResult) = coroutineScope {
+                    val statsRequest = async { unified.tokenStats(effectiveRange, start, end) }
+                    val rankingsRequest = async { unified.tokenRankings() }
+                    statsRequest.await() to rankingsRequest.await()
+                }
+                when (statsResult) {
+                    is Resource.Success -> {
+                        val value = statsResult.data
+                        val parsedRecords = withContext(Dispatchers.Default) {
+                            (value.records ?: value.recentRecords ?: emptyList())
+                                .mapNotNull(::parseTokenRecord)
+                                .sortedByDescending { it.timestamp }
+                        }
+                        _stats.value = value
+                        _records.value = parsedRecords
+                    }
+                    is Resource.Error -> showError(statsResult.message)
+                    is Resource.Loading -> Unit
+                }
+                when (rankingsResult) {
+                    is Resource.Success -> _rankings.value = rankingsResult.data
+                    is Resource.Error -> if (_stats.value == null) showError(rankingsResult.message)
+                    is Resource.Loading -> Unit
+                }
+            } catch (e: Exception) {
+                showError(e.message ?: "加载 Token 用量失败")
+            } finally {
+                setLoading(false)
+            }
+        }
     }
 
     fun setDateRange(range: String) {
@@ -129,6 +181,7 @@ fun TokensScreen() {
     val vm: TokensViewModel = viewModel()
     val stats by vm.stats.collectAsState()
     val rankings by vm.rankings.collectAsState()
+    val records by vm.records.collectAsState()
     val dateRange by vm.dateRange.collectAsState()
     val startDate by vm.startDate.collectAsState()
     val endDate by vm.endDate.collectAsState()
@@ -140,6 +193,35 @@ fun TokensScreen() {
     var showStartPicker by remember { mutableStateOf(false) }
     var showEndPicker by remember { mutableStateOf(false) }
     var rankingTab by remember { mutableStateOf(0) }
+    var recordPage by remember(records.size, dateRange) { mutableStateOf(0) }
+
+    val rankingData = remember(rankings, stats, rankingTab) {
+        val fromRankings: List<JsonElement>? = when (rankingTab) {
+            0 -> rankings?.sessions
+            1 -> rankings?.models
+            else -> rankings?.purposes ?: rankings?.users
+        }
+        if (!fromRankings.isNullOrEmpty()) {
+            fromRankings
+        } else {
+            val fallback = when (rankingTab) {
+                0 -> stats?.sessions
+                1 -> stats?.models
+                else -> stats?.purposes ?: stats?.users
+            }
+            fallback?.takeIf { it.isJsonArray }?.asJsonArray?.toList()
+        }
+    }
+    val parsedRanking = remember(rankingData) {
+        rankingData.orEmpty().map(::extractRankEntry)
+            .filter { it.first.isNotBlank() }
+            .sortedByDescending { it.second }
+            .take(10)
+    }
+    val pageSize = 30
+    val totalPages = ((records.size + pageSize - 1) / pageSize).coerceAtLeast(1)
+    val pageRecords = records.drop(recordPage * pageSize).take(pageSize)
+    val groupedRecords = remember(pageRecords) { pageRecords.groupBy { it.date } }
 
     // 模式切换时自动刷新 Token 用量
     val appMode by ServiceContainer.appModeFlow.collectAsState()
@@ -169,198 +251,133 @@ fun TokensScreen() {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            Column(
+            LazyColumn(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
+                    .fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // 日期范围选择器
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    FilterChip(
-                        selected = dateRange == "today",
-                        onClick = { vm.setDateRange("today") },
-                        label = { Text("今日") }
-                    )
-                    FilterChip(
-                        selected = dateRange == "month",
-                        onClick = { vm.setDateRange("month") },
-                        label = { Text("本月") }
-                    )
-                    FilterChip(
-                        selected = dateRange == "total",
-                        onClick = { vm.setDateRange("total") },
-                        label = { Text("全部") }
-                    )
-                    FilterChip(
-                        selected = dateRange == "custom",
-                        onClick = {
-                            if (startDate == null) showStartPicker = true
-                            else vm.setDateRange("custom")
-                        },
-                        label = { Text("自定义") }
-                    )
+                item(key = "date_filters", contentType = "controls") {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        FilterChip(selected = dateRange == "today", onClick = { vm.setDateRange("today") }, label = { Text("今日") })
+                        FilterChip(selected = dateRange == "month", onClick = { vm.setDateRange("month") }, label = { Text("本月") })
+                        FilterChip(selected = dateRange == "total", onClick = { vm.setDateRange("total") }, label = { Text("全部") })
+                        FilterChip(
+                            selected = dateRange == "custom",
+                            onClick = {
+                                if (startDate == null) showStartPicker = true
+                                else vm.setDateRange("custom")
+                            },
+                            label = { Text("自定义") }
+                        )
+                    }
                 }
 
                 // 自定义日期显示
                 if (dateRange == "custom") {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        AssistChip(
-                            onClick = { showStartPicker = true },
-                            label = { Text("起: ${startDate ?: "选择"}") },
-                            leadingIcon = { Icon(Icons.Filled.CalendarMonth, contentDescription = null) }
-                        )
-                        AssistChip(
-                            onClick = { showEndPicker = true },
-                            label = { Text("止: ${endDate ?: "选择"}") },
-                            leadingIcon = { Icon(Icons.Filled.CalendarMonth, contentDescription = null) }
-                        )
+                    item(key = "custom_dates", contentType = "controls") {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            AssistChip(
+                                onClick = { showStartPicker = true },
+                                label = { Text("起: ${startDate ?: "选择"}") },
+                                leadingIcon = { Icon(Icons.Filled.CalendarMonth, contentDescription = null) }
+                            )
+                            AssistChip(
+                                onClick = { showEndPicker = true },
+                                label = { Text("止: ${endDate ?: "选择"}") },
+                                leadingIcon = { Icon(Icons.Filled.CalendarMonth, contentDescription = null) }
+                            )
+                        }
                     }
                 }
 
                 // 错误提示
                 error?.let {
-                    ErrorBanner(message = it, onRetry = {
-                        vm.clearError()
-                        vm.load()
-                    })
+                    item(key = "error", contentType = "status") {
+                        ErrorBanner(message = it, onRetry = {
+                            vm.clearError()
+                            vm.load()
+                        })
+                    }
                 }
 
                 // 统计网格
                 stats?.let { s ->
-                    StatChipGrid(stats = s)
-
-                    // 今日输入/输出拆分
-                    GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "今日 Token 拆分")
-                        Spacer(Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
-                                Text("输入", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(
-                                    "${s.todayInput ?: 0L}",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text("输出", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(
-                                    "${s.todayOutput ?: 0L}",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    color = MaterialTheme.colorScheme.secondary,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // 排行榜：优先用 rankings 接口数据，若为空则回退到 stats 内嵌的 sessions/models/purposes
-                val rankingData = remember(rankings, stats, rankingTab) {
-                    val r = rankings
-                    val fromRankings: List<JsonElement>? = when (rankingTab) {
-                        0 -> r?.sessions
-                        1 -> r?.models
-                        else -> r?.purposes ?: r?.users
-                    }
-                    if (!fromRankings.isNullOrEmpty()) {
-                        fromRankings
-                    } else {
-                        // 回退：从 tokenStats 中提取 sessions/models/purposes（JsonElement，可能是数组）
-                        val fallback = when (rankingTab) {
-                            0 -> stats?.sessions
-                            1 -> stats?.models
-                            else -> stats?.purposes ?: stats?.users
-                        }
-                        fallback?.takeIf { it.isJsonArray }?.asJsonArray?.toList()
-                    }
-                }
-                GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    SectionHeader(title = "Token 排行榜")
-                    Spacer(Modifier.height(8.dp))
-                    TabRow(selectedTabIndex = rankingTab) {
-                        listOf("会话", "模型", "用途").forEachIndexed { index, title ->
-                            Tab(
-                                selected = rankingTab == index,
-                                onClick = { rankingTab = index },
-                                text = { Text(title) }
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    if (rankingData.isNullOrEmpty()) {
-                        Text("暂无数据", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    } else {
-                        // 解析为 (name, tokens) 列表并按 token 数降序
-                        val parsed = rankingData.map { extractRankEntry(it) }
-                            .filter { it.first.isNotBlank() }
-                            .sortedByDescending { it.second }
-                            .take(10)
-                        if (parsed.isEmpty()) {
-                            Text("暂无数据", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        } else {
-                            val maxTokens = parsed.maxOf { it.second }.coerceAtLeast(1L)
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                parsed.forEachIndexed { idx, (name, tokens) ->
-                                    RankingBarRow(
-                                        rank = idx + 1,
-                                        name = name,
-                                        tokens = tokens,
-                                        maxTokens = maxTokens
-                                    )
+                    item(key = "stats", contentType = "summary") {
+                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            StatChipGrid(stats = s)
+                            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                                SectionHeader(title = "今日 Token 拆分")
+                                Spacer(Modifier.height(8.dp))
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Column {
+                                        Text("输入", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text("${s.todayInput ?: 0L}", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                    }
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text("输出", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text("${s.todayOutput ?: 0L}", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
                     }
                 }
 
-                // 选定时间段的 Token 记录列表（分页，每页 100 条）
-                val allRecords = stats?.records ?: stats?.recentRecords ?: emptyList()
-                if (allRecords.isNotEmpty()) {
-                    var recordPage by remember(allRecords.size) { mutableStateOf(0) }
-                    val pageSize = 100
-                    val totalPages = (allRecords.size + pageSize - 1) / pageSize
-                    val pageRecords = allRecords.drop(recordPage * pageSize).take(pageSize)
+                item(key = "rankings", contentType = "rankings") {
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "Token 记录", subtitle = "共 ${allRecords.size} 条，第 ${recordPage + 1}/$totalPages 页")
+                        SectionHeader(title = "Token 排行榜")
                         Spacer(Modifier.height(8.dp))
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            pageRecords.forEach { elem ->
-                                TokenRecordRow(elem = elem)
+                        TabRow(selectedTabIndex = rankingTab) {
+                            listOf("会话", "模型", "用途").forEachIndexed { index, title ->
+                                Tab(selected = rankingTab == index, onClick = { rankingTab = index }, text = { Text(title) })
                             }
                         }
-                        if (totalPages > 1) {
-                            Spacer(Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                TextButton(
-                                    onClick = { if (recordPage > 0) recordPage-- },
-                                    enabled = recordPage > 0
-                                ) { Text("上一页", color = if (recordPage > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
-                                Text("${recordPage + 1} / $totalPages", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                TextButton(
-                                    onClick = { if (recordPage < totalPages - 1) recordPage++ },
-                                    enabled = recordPage < totalPages - 1
-                                ) { Text("下一页", color = if (recordPage < totalPages - 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+                        Spacer(Modifier.height(12.dp))
+                        if (parsedRanking.isEmpty()) {
+                            Text("暂无数据", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            val maxTokens = parsedRanking.maxOf { it.second }.coerceAtLeast(1L)
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                parsedRanking.forEachIndexed { idx, (name, tokens) ->
+                                    RankingBarRow(rank = idx + 1, name = name, tokens = tokens, maxTokens = maxTokens)
+                                }
                             }
                         }
                     }
                 }
+
+                if (records.isNotEmpty()) {
+                    item(key = "records_header", contentType = "section_header") {
+                        GlassCard(modifier = Modifier.fillMaxWidth()) {
+                            SectionHeader(title = "Token 记录", subtitle = "共 ${records.size} 条，第 ${recordPage + 1}/$totalPages 页 · 每页 $pageSize 条")
+                        }
+                    }
+                    groupedRecords.forEach { (date, dateRecords) ->
+                        item(key = "date_$date", contentType = "date_header") {
+                            TokenRecordDateHeader(date)
+                        }
+                        dateRecords.forEach { record ->
+                            item(key = record.id, contentType = "token_record") {
+                                TokenRecordCard(record = record)
+                            }
+                        }
+                    }
+                    if (totalPages > 1) {
+                        item(key = "records_pagination", contentType = "controls") {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                TextButton(onClick = { if (recordPage > 0) recordPage-- }, enabled = recordPage > 0) { Text("上一页") }
+                                Text("${recordPage + 1} / $totalPages", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                TextButton(onClick = { if (recordPage < totalPages - 1) recordPage++ }, enabled = recordPage < totalPages - 1) { Text("下一页") }
+                            }
+                        }
+                    }
+                }
+                item(key = "bottom_space", contentType = "spacer") { Spacer(Modifier.height(8.dp)) }
             }
 
             // 仅首次（尚无数据）加载时盖全屏遮罩；已有数据的刷新不再黑屏，避免切回本页时生硬闪烁。
@@ -510,56 +527,182 @@ private fun formatTokenCount(tokens: Long): String {
 }
 
 /**
- * 单条 Token 记录行：展示时间、用途/模型、输入/输出/合计。
+ * 单条 Token 记录卡片：将身份信息、Token 指标和性能数据分层展示。
  */
 @Composable
-private fun TokenRecordRow(elem: JsonElement) {
-    val obj = if (elem.isJsonObject) elem.asJsonObject else return
-    val timestamp = obj.get("timestamp")?.asString
-        ?: obj.get("created_at")?.asString
-        ?: obj.get("time")?.asString
-        ?: ""
-    val model = obj.get("model")?.asString ?: obj.get("model_name")?.asString ?: ""
-    val purpose = obj.get("purpose")?.asString ?: ""
-    val input = obj.get("input")?.asLong ?: obj.get("input_tokens")?.asLong ?: 0L
-    val output = obj.get("output")?.asLong ?: obj.get("output_tokens")?.asLong ?: 0L
-    val total = obj.get("total")?.asLong
-        ?: obj.get("total_tokens")?.asLong
-        ?: obj.get("tokens")?.asLong
-        ?: (input + output)
-    val cost = obj.get("cost")?.asString
+private fun TokenRecordCard(record: TokenRecordUi) {
+    val compactTs = compactTimestamp(record.timestamp)?.substringAfter(' ')
+    val purposeLabel = purposeLabel(record.purpose)
 
-    val compactTs = compactTimestamp(timestamp)
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .padding(12.dp)
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (compactTs != null) {
-                    Text(compactTs, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.width(6.dp))
-                }
-                if (purpose.isNotBlank()) {
-                    Text(purpose, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(6.dp))
-                }
-                if (model.isNotBlank()) {
-                    Text(model, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    record.model.ifBlank { "未知模型" },
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (record.source.isNotBlank() || record.sessionId.isNotBlank()) {
+                    Text(
+                        listOfNotNull(
+                            record.source.takeIf { it.isNotBlank() }?.let { "来源 $it" },
+                            record.sessionId.takeIf { it.isNotBlank() }?.let { "会话 ${it.take(8)}" }
+                        ).joinToString(" · "),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
-            Spacer(Modifier.height(2.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("入 ${formatTokenCount(input)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("出 ${formatTokenCount(output)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("合 ${formatTokenCount(total)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
-                if (!cost.isNullOrBlank()) {
-                    Text("¥$cost", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+            Column(horizontalAlignment = Alignment.End) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                        .padding(horizontal = 7.dp, vertical = 3.dp)
+                ) {
+                    Text(purposeLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
+                }
+                if (!compactTs.isNullOrBlank()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(compactTs, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        Spacer(Modifier.height(10.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TokenMetric(label = "输入", value = record.input, modifier = Modifier.weight(1f))
+            TokenMetric(label = "输出", value = record.output, modifier = Modifier.weight(1f))
+            TokenMetric(label = "合计", value = record.total, emphasized = true, modifier = Modifier.weight(1f))
+        }
+        if (!record.cost.isNullOrBlank() || record.durationMs != null || record.ttftMs != null) {
+            Spacer(Modifier.height(10.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+            Spacer(Modifier.height(8.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (!record.cost.isNullOrBlank()) {
+                    Text("费用 ¥${record.cost}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                }
+                record.durationMs?.let {
+                    Text("耗时 ${formatDuration(it)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                record.ttftMs?.let {
+                    Text("首字 ${formatDuration(it)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
     }
+}
+
+@Composable
+private fun TokenRecordDateHeader(date: String) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(date, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.width(10.dp))
+        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+    }
+}
+
+@Composable
+private fun TokenMetric(
+    label: String,
+    value: Long,
+    modifier: Modifier = Modifier,
+    emphasized: Boolean = false
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                if (emphasized) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            )
+            .padding(horizontal = 8.dp, vertical = 7.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            formatTokenCount(value),
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (emphasized) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+private fun parseTokenRecord(elem: JsonElement): TokenRecordUi? {
+    if (!elem.isJsonObject) return null
+    val obj = elem.asJsonObject
+    fun string(vararg keys: String): String = keys.firstNotNullOfOrNull { key ->
+        obj.get(key)?.takeIf { !it.isJsonNull && it.isJsonPrimitive }?.runCatching { asString }?.getOrNull()
+    }.orEmpty()
+    fun long(vararg keys: String): Long? = keys.firstNotNullOfOrNull { key ->
+        obj.get(key)?.takeIf { !it.isJsonNull }?.runCatching { asLong }?.getOrNull()
+    }
+    fun double(key: String): Double? = obj.get(key)?.takeIf { !it.isJsonNull }?.runCatching { asDouble }?.getOrNull()
+
+    val timestamp = string("timestamp", "created_at", "time")
+    val date = string("date").ifBlank {
+        when {
+            timestamp.contains('T') -> timestamp.substringBefore('T')
+            timestamp.contains(' ') -> timestamp.substringBefore(' ')
+            else -> "日期未知"
+        }
+    }
+    val input = long("input", "input_tokens") ?: 0L
+    val output = long("output", "output_tokens") ?: 0L
+    return TokenRecordUi(
+        id = string("id").ifBlank { "$timestamp:${string("model")}:$input:$output" },
+        timestamp = timestamp,
+        date = date,
+        model = string("model", "model_name"),
+        purpose = string("purpose"),
+        source = string("source", "channel_type"),
+        sessionId = string("session_id"),
+        input = input,
+        output = output,
+        total = long("total", "total_tokens", "tokens") ?: (input + output),
+        cost = string("cost").takeIf { it.isNotBlank() },
+        durationMs = double("duration_ms"),
+        ttftMs = double("ttft_ms")
+    )
+}
+
+private fun purposeLabel(purpose: String): String = when (purpose.lowercase()) {
+    "chat" -> "对话"
+    "vision" -> "图片理解"
+    "video" -> "视频理解"
+    "tts" -> "语音合成"
+    "stt" -> "语音识别"
+    "embedding" -> "向量嵌入"
+    "memory" -> "记忆"
+    "plot" -> "剧情"
+    "utility" -> "工具调用"
+    "decision" -> "决策"
+    "heartbeat" -> "心跳"
+    else -> purpose.ifBlank { "未分类" }
+}
+
+private fun formatDuration(milliseconds: Double): String = when {
+    milliseconds >= 1000 -> String.format(Locale.US, "%.1fs", milliseconds / 1000.0)
+    else -> "${milliseconds.toLong()}ms"
 }
 
 /** 精简时间戳到 MM-dd HH:mm */
