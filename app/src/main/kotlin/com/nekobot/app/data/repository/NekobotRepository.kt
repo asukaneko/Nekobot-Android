@@ -298,6 +298,28 @@ class NekobotRepository(
     suspend fun fetchModels(req: FetchModelsRequest): Resource<FetchModelsResponse> = safeCall { api.fetchModels(req) }
     suspend fun listProtocols(): Resource<JsonElement> = safeCall { api.listProtocols() }
     suspend fun listPurposes(): Resource<JsonElement> = safeCall { api.listPurposes() }
+    suspend fun getFailoverQueue(purpose: String): Resource<JsonElement> = safeCall { api.getFailoverQueue(purpose) }
+    suspend fun resetFailover(modelId: String? = null): Resource<JsonElement> {
+        val body = com.google.gson.JsonObject().apply {
+            modelId?.let { addProperty("model_id", it) }
+        }
+        return safeCall { api.resetFailover(body) }
+    }
+    suspend fun reorderFailover(purpose: String, modelIds: List<String>): Resource<JsonElement> {
+        val priorities = com.google.gson.JsonArray().apply {
+            modelIds.forEachIndexed { priority, id ->
+                add(com.google.gson.JsonObject().apply {
+                    addProperty("id", id)
+                    addProperty("priority", priority)
+                })
+            }
+        }
+        val body = com.google.gson.JsonObject().apply {
+            addProperty("purpose", purpose)
+            add("priorities", priorities)
+        }
+        return safeCall { api.reorderFailover(body) }
+    }
     suspend fun activeByPurpose(): Resource<JsonElement> = safeCall { api.activeByPurpose() }
 
     // ==================== Token 用量 ====================
@@ -340,25 +362,14 @@ class NekobotRepository(
 
     // ==================== 绑定角色 ====================
     suspend fun bindCharacter(sessionId: String, req: BindCharacterRequest): Resource<JsonElement> =
-        safeCall { api.bindCharacter(sessionId, mapOf(
-            "sender_name" to req.senderName,
-            "character_id" to (req.characterId ?: ""),
-            "sender_avatar" to (req.senderAvatar ?: ""),
-            "sender_portrait" to (req.senderPortrait ?: ""),
-            "scenario" to (req.scenario ?: ""),
-            "system_prompt" to (req.systemPrompt ?: "")
-        )) }
+        safeCall { api.bindCharacter(sessionId, req) }
 
     // ==================== 消息收藏 ====================
     suspend fun listMessageFavorites(sessionId: String): Resource<JsonElement> =
         safeCall { api.listMessageFavorites(sessionId) }
 
     suspend fun updateMessageFavorites(sessionId: String, req: MessageFavoriteRequest): Resource<JsonElement> =
-        safeCall { api.updateMessageFavorites(sessionId, mapOf(
-            "message_ids" to req.messageIds,
-            "title" to (req.title ?: ""),
-            "collection_id" to (req.collectionId ?: "")
-        )) }
+        safeCall { api.updateMessageFavorites(sessionId, req) }
 
     // ==================== 工具 ====================
     fun toJson(obj: Any): JsonElement = gson.toJsonTree(obj)

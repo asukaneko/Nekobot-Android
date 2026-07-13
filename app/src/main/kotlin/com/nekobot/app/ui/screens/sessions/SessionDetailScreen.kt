@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -49,6 +51,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -348,11 +351,30 @@ class SessionDetailViewModel : BaseViewModel() {
         )
     }
 
-    /** 切换某注入项的启用/禁用状态 */
-    fun togglePromptKey(key: String) {
-        val current = _disabledPromptKeys.value.toMutableSet()
-        if (key in current) current.remove(key) else current.add(key)
-        _disabledPromptKeys.value = current
+    /** 设置某注入项是否关闭，并立即持久化到会话。 */
+    fun setPromptKeyDisabled(key: String, disabled: Boolean) {
+        val s = _session.value ?: return
+        val previous = _disabledPromptKeys.value
+        val updated = previous.toMutableSet().apply {
+            if (disabled) add(key) else remove(key)
+        }
+        if (updated == previous) return
+        _disabledPromptKeys.value = updated
+        launchResult(
+            block = {
+                unified.updateSession(
+                    s.id.orEmpty(),
+                    UpdateSessionRequest(disabledPromptKeys = updated.toList())
+                )
+            },
+            onSuccess = {
+                showToast(if (disabled) "已关闭 $key 注入" else "已启用 $key 注入")
+            },
+            onError = { message ->
+                _disabledPromptKeys.value = previous
+                showError(message)
+            }
+        )
     }
 
     // ---- custom_prompts 编辑 ----
@@ -507,6 +529,18 @@ fun SessionDetailScreen(
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showBindCharacterDialog by remember { mutableStateOf(false) }
+    var selectedPromptStackItem by remember { mutableStateOf<PromptStackItem?>(null) }
+
+    // 通知权限请求 launcher
+    val notifPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val sid = vm.session.value?.id
+        if (!granted) {
+            vm.notificationEnabled.value = false
+            sid?.let { com.nekobot.app.ServiceContainer.prefs.setSessionNotificationEnabled(it, false) }
+        }
+    }
     val clipboard = LocalClipboardManager.current
 
     LaunchedEffect(sessionId) { vm.init(sessionId) }
@@ -739,7 +773,7 @@ fun SessionDetailScreen(
                                 SectionHeader(title = "提示词注入栈")
                                 Spacer(Modifier.height(8.dp))
                                 Text(
-                                    "运行时动态注入的提示词（每次对话后更新），点击切换启用状态",
+                                    "运行时动态注入的提示词（每次对话后更新），点击查看完整内容和开关",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -748,14 +782,14 @@ fun SessionDetailScreen(
                                     PromptStackChip(
                                         item = inj,
                                         disabled = inj.key in disabledPromptKeys,
-                                        onClick = { vm.togglePromptKey(inj.key) }
+                                        onClick = { selectedPromptStackItem = inj }
                                     )
                                     Spacer(Modifier.height(6.dp))
                                 }
                                 if (disabledPromptKeys.isNotEmpty()) {
                                     Spacer(Modifier.height(4.dp))
                                     Text(
-                                        "已禁用 ${disabledPromptKeys.size} 项，保存会话以生效",
+                                        "已关闭 ${disabledPromptKeys.size} 项提示词注入",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = WarningAmber
                                     )
@@ -1014,8 +1048,15 @@ fun SessionDetailScreen(
                                 selected = notificationEnabled,
                                 onClick = {
                                     val newVal = !notificationEnabled
-                                    vm.notificationEnabled.value = newVal
-                                    s.id?.let { com.nekobot.app.ServiceContainer.prefs.setSessionNotificationEnabled(it, newVal) }
+                                    if (newVal && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                        // 开启通知时先请求运行时权限
+                                        vm.notificationEnabled.value = true
+                                        s.id?.let { com.nekobot.app.ServiceContainer.prefs.setSessionNotificationEnabled(it, true) }
+                                        notifPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                    } else {
+                                        vm.notificationEnabled.value = newVal
+                                        s.id?.let { com.nekobot.app.ServiceContainer.prefs.setSessionNotificationEnabled(it, newVal) }
+                                    }
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -1070,15 +1111,81 @@ fun SessionDetailScreen(
         )
     }
 
+    selectedPromptStackItem?.let { item ->
+        PromptStackDetailDialog(
+            item = item,
+            disabled = item.key in disabledPromptKeys,
+            onDisabledChange = { vm.setPromptKeyDisabled(item.key, it) },
+            onDismiss = { selectedPromptStackItem = null }
+        )
+    }
+
     if (showBindCharacterDialog) {
         BindCharacterPickerDialog(
             characters = characters,
             onDismiss = { showBindCharacterDialog = false },
             onSelect = { char ->
-                showBindCharacterDialog = false
-                vm.bindCharacter(char) {}
+                vm.bindCharacter(char) {
+                    showBindCharacterDialog = false
+                }
             }
         )
+    }
+}
+
+/** 提示词注入详情：展示完整内容，并允许直接关闭或重新启用该项。 */
+@Composable
+private fun PromptStackDetailDialog(
+    item: PromptStackItem,
+    disabled: Boolean,
+    onDisabledChange: (Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    NekoDialog(
+        onDismiss = onDismiss,
+        title = "提示词注入详情",
+        confirmText = "完成",
+        onConfirm = onDismiss
+    ) {
+        Text(item.key, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            BadgeChip("优先级 ${item.priority}")
+            BadgeChip("作用域 ${item.scope}")
+            BadgeChip("角色 ${item.role}")
+        }
+        Spacer(Modifier.height(12.dp))
+        Text("注入内容", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(4.dp))
+        SelectionContainer {
+            Text(
+                text = item.content.ifBlank { "（该注入项没有文本内容）" },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 320.dp)
+                    .verticalScroll(rememberScrollState())
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                    .padding(12.dp)
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .clickable { onDisabledChange(!disabled) }
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("关闭此提示词注入", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+                Text("切换后立即保存，下轮对话生效", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked = disabled, onCheckedChange = onDisabledChange)
+        }
     }
 }
 
@@ -1114,11 +1221,18 @@ private fun BindCharacterPickerDialog(
     onDismiss: () -> Unit,
     onSelect: (com.nekobot.app.data.model.CharacterPreset) -> Unit
 ) {
+    var selectedCharacter by remember(characters) {
+        mutableStateOf<com.nekobot.app.data.model.CharacterPreset?>(null)
+    }
+
     NekoDialog(
         onDismiss = onDismiss,
         title = "选择角色",
-        confirmText = "",
-        onConfirm = null
+        confirmText = "绑定",
+        confirmEnabled = selectedCharacter != null,
+        onConfirm = { selectedCharacter?.let(onSelect) },
+        cancelText = "取消",
+        onCancel = onDismiss
     ) {
         if (characters.isEmpty()) {
             Text("暂无可用角色", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1128,22 +1242,38 @@ private fun BindCharacterPickerDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(characters, key = { it.id ?: it.name ?: "" }) { char ->
+                    val selected = selectedCharacter?.id == char.id
                     GlassCard(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onSelect(char) },
-                        cornerRadius = 12
+                            .clickable { selectedCharacter = char },
+                        cornerRadius = 12,
+                        containerColor = if (selected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                        }
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            // 头像
-                            char.avatar?.let { url ->
+                            val avatarUrl = resolveAvatarUrl(char.avatarUrl)
+                            if (avatarUrl != null) {
                                 AsyncImage(
-                                    model = resolveAvatarUrl(url),
-                                    contentDescription = null,
+                                    model = avatarUrl,
+                                    contentDescription = "${char.displayName}立绘",
                                     modifier = Modifier.size(40.dp).clip(RoundedCornerShape(20.dp))
                                 )
-                                Spacer(Modifier.width(12.dp))
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Filled.Person, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
+                            Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     char.displayName,
@@ -1160,6 +1290,9 @@ private fun BindCharacterPickerDialog(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 }
+                            }
+                            if (selected) {
+                                Icon(Icons.Filled.Check, contentDescription = "已选择", tint = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }

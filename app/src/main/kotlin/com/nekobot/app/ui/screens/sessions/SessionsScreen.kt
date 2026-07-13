@@ -648,7 +648,10 @@ private fun CreateSessionDialog(
                     sessionMode = "group",
                     characterIds = selectedGroupCharacterIds,
                     senderName = "群聊",
-                    userId = ServiceContainer.prefs.username.takeIf { it.isNotBlank() }
+                    userId = ServiceContainer.prefs.username.takeIf { it.isNotBlank() },
+                    groupConfig = com.google.gson.JsonObject().apply {
+                        addProperty("speaker_strategy", speechStrategy)
+                    }
                 )
                 else -> CreateSessionRequest(
                     name = name.ifBlank { char?.displayName },
@@ -734,7 +737,10 @@ private fun CreateSessionDialog(
                         "world_engine" to "世界引擎"
                     )
                     val currentStrategyLabel = strategies.firstOrNull { it.first == speechStrategy }?.second ?: speechStrategy
-                    Box {
+                    androidx.compose.material3.ExposedDropdownMenuBox(
+                        expanded = speechStrategyExpanded,
+                        onExpandedChange = { speechStrategyExpanded = !speechStrategyExpanded }
+                    ) {
                         OutlinedTextField(
                             value = currentStrategyLabel,
                             onValueChange = {},
@@ -742,15 +748,16 @@ private fun CreateSessionDialog(
                             label = { Text("发言策略") },
                             singleLine = true,
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { speechStrategyExpanded = true },
+                                .menuAnchor(androidx.compose.material3.MenuAnchorType.PrimaryNotEditable)
+                                .fillMaxWidth(),
                             trailingIcon = {
-                                Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                androidx.compose.material3.ExposedDropdownMenuDefaults.TrailingIcon(expanded = speechStrategyExpanded)
                             }
                         )
                         DropdownMenu(
                             expanded = speechStrategyExpanded,
-                            onDismissRequest = { speechStrategyExpanded = false }
+                            onDismissRequest = { speechStrategyExpanded = false },
+                            modifier = Modifier.exposedDropdownSize()
                         ) {
                             strategies.forEach { (value, label) ->
                                 DropdownMenuItem(

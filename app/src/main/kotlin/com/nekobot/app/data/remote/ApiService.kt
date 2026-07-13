@@ -218,6 +218,15 @@ interface ApiService {
     @GET("api/ai-models/purposes")
     suspend fun listPurposes(): Response<JsonElement>
 
+    @GET("api/ai-models/failover-queue/{purpose}")
+    suspend fun getFailoverQueue(@Path("purpose") purpose: String): Response<JsonElement>
+
+    @POST("api/ai-models/failover-reset")
+    suspend fun resetFailover(@Body body: JsonElement): Response<JsonElement>
+
+    @POST("api/ai-models/failover-reorder")
+    suspend fun reorderFailover(@Body body: JsonElement): Response<JsonElement>
+
     @GET("api/ai-models/active-by-purpose")
     suspend fun activeByPurpose(): Response<JsonElement>
 
@@ -752,7 +761,7 @@ interface ApiService {
     @PUT("api/sessions/{id}/bind-character")
     suspend fun bindCharacter(
         @Path("id") id: String,
-        @Body body: Map<String, Any>
+        @Body body: BindCharacterRequest
     ): Response<JsonElement>
 
     // ==================== 消息收藏 ====================
@@ -762,7 +771,6 @@ interface ApiService {
     @PUT("api/sessions/{id}/message-favorites")
     suspend fun updateMessageFavorites(
         @Path("id") id: String,
-        @Body body: Map<String, Any>
+        @Body body: MessageFavoriteRequest
     ): Response<JsonElement>
 }
-

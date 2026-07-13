@@ -20,8 +20,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.ui.screens.aiconfig.AiConfigCenterScreen
 import com.nekobot.app.ui.screens.aiconfig.AiConfigScreen
 import com.nekobot.app.ui.screens.aiconfig.AiModelsScreen
+import com.nekobot.app.ui.screens.aiconfig.FailoverQueueScreen
 import com.nekobot.app.ui.screens.aiconfig.LocalAiModelsScreen
 import com.nekobot.app.ui.screens.characters.CharacterDetailScreen
 import com.nekobot.app.ui.screens.characters.CharactersScreen
@@ -98,6 +100,16 @@ fun NekobotNavGraph() {
             navController.navigate(Routes.SESSIONS) {
                 popUpTo(Routes.LOGIN) { inclusive = true }
             }
+        }
+    }
+
+    // 观察通知点击的待跳转会话 ID
+    val pendingSessionId by ServiceContainer.pendingSessionId.collectAsState()
+    LaunchedEffect(pendingSessionId) {
+        val sid = pendingSessionId ?: return@LaunchedEffect
+        ServiceContainer.setPendingSessionId(null) // 消费掉
+        if (isLoggedIn) {
+            navController.navigate(Routes.chat(sid))
         }
     }
 
@@ -258,11 +270,20 @@ fun NekobotNavGraph() {
             composable(Routes.SYSTEM_SETTINGS) {
                 SystemSettingsScreen(onBack = { navController.popBackStack() })
             }
+            composable(Routes.AI_CONFIG_CENTER) {
+                AiConfigCenterScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigate = { route -> navController.navigate(route) }
+                )
+            }
             composable(Routes.AI_CONFIG) {
                 AiConfigScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.AI_MODELS) {
                 AiModelsScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.AI_FAILOVER) {
+                FailoverQueueScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.LOCAL_AI_MODELS) {
                 LocalAiModelsScreen(onBack = { navController.popBackStack() })

@@ -45,6 +45,12 @@ object ServiceContainer {
     private val _loginStateFlow = MutableStateFlow(false)
     val loginStateFlow: StateFlow<Boolean> = _loginStateFlow.asStateFlow()
 
+    /** 通知点击待跳转的会话 ID（NavGraph 观察并消费） */
+    private val _pendingSessionId = MutableStateFlow<String?>(null)
+    val pendingSessionId: StateFlow<String?> = _pendingSessionId.asStateFlow()
+
+    fun setPendingSessionId(id: String?) { _pendingSessionId.value = id }
+
     fun init(app: Application) {
         appContext = app.applicationContext
         prefs = PrefsManager(app)

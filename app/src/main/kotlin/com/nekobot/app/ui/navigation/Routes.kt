@@ -29,8 +29,10 @@ object Routes {
     const val WORLD_BOOK_DETAIL = "worldbook/{bookId}"
     fun worldBookDetail(id: String) = "worldbook/$id"
 
+    const val AI_CONFIG_CENTER = "ai_config_center"
     const val AI_CONFIG = "ai_config"
     const val AI_MODELS = "ai_models"
+    const val AI_FAILOVER = "ai_failover"
     const val LOCAL_AI_MODELS = "local_ai_models"
     const val SETTINGS = "settings"
     const val SYSTEM_SETTINGS = "system_settings"

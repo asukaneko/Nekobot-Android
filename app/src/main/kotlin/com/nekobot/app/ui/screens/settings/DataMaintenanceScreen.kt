@@ -2,6 +2,7 @@ package com.nekobot.app.ui.screens.settings
 
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,15 +11,22 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Button
@@ -32,6 +40,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -247,6 +256,7 @@ fun DataMaintenanceScreen(onBack: () -> Unit) {
     val context = LocalContext.current
 
     var showClearDataDialog by remember { mutableStateOf(false) }
+    var showCacheFiles by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         vm.refreshStorageInfo(context)
@@ -297,15 +307,31 @@ fun DataMaintenanceScreen(onBack: () -> Unit) {
                 .padding(padding)
         ) {
             if (appMode == AppMode.LOCAL) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Text(
-                        text = "此功能仅服务器模式可用",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        SectionHeader(title = "缓存文件", subtitle = "查看应用缓存目录中的文件")
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = "应用缓存目录包含导出的数据库文件、下载的临时文件等。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = { showCacheFiles = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Filled.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(8.dp))
+                            Text("打开缓存文件夹")
+                        }
+                    }
                 }
             } else {
                 Column(
@@ -415,6 +441,26 @@ fun DataMaintenanceScreen(onBack: () -> Unit) {
                             )
                         }
                     }
+
+                    // 5. 缓存文件
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        SectionHeader(title = "缓存文件", subtitle = "查看应用缓存目录中的文件")
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = "查看应用缓存目录中的文件，包括导出的数据库备份、下载的临时文件等。点击文件可分享或打开。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = { showCacheFiles = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Filled.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(8.dp))
+                            Text("打开缓存文件夹")
+                        }
+                    }
                 }
             }
 
@@ -436,6 +482,130 @@ fun DataMaintenanceScreen(onBack: () -> Unit) {
             cancelText = "取消",
             onCancel = { showClearDataDialog = false }
         )
+    }
+
+    // 缓存文件列表对话框
+    if (showCacheFiles) {
+        CacheFilesDialog(context = context, onDismiss = { showCacheFiles = false })
+    }
+}
+
+/** 缓存文件列表对话框：列出 cacheDir 下的文件，点击可用 FileProvider 打开 */
+@Composable
+private fun CacheFilesDialog(context: android.content.Context, onDismiss: () -> Unit) {
+    val cacheFiles = remember {
+        val dir = context.cacheDir
+        val files = mutableListOf<Pair<java.io.File, String>>()
+        // 列出 cacheDir 下的文件和子目录
+        dir.listFiles()?.forEach { f ->
+            if (f.isDirectory) {
+                files.add(f to "文件夹")
+                f.listFiles()?.forEach { sub ->
+                    if (sub.isFile) {
+                        files.add(sub to "${f.name}/")
+                    }
+                }
+            } else {
+                files.add(f to "")
+            }
+        }
+        files.sortedByDescending { it.first.lastModified() }
+    }
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        androidx.compose.material3.Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            modifier = Modifier.fillMaxWidth().heightIn(max = 500.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "缓存文件 (${cacheFiles.size})",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = context.cacheDir.absolutePath,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+                if (cacheFiles.isEmpty()) {
+                    Text(
+                        text = "缓存目录为空",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        items(cacheFiles, key = { "${it.first.absolutePath}_${it.first.lastModified()}" }) { (file, prefix) ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        if (file.isFile) {
+                                            try {
+                                                val uri = androidx.core.content.FileProvider.getUriForFile(
+                                                    context,
+                                                    "${context.packageName}.fileprovider",
+                                                    file
+                                                )
+                                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                                    setDataAndType(uri, "application/octet-stream")
+                                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                }
+                                                context.startActivity(intent)
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "无法打开文件: ${e.message}", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                    .padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (file.isDirectory) Icons.Filled.Folder else Icons.Filled.InsertDriveFile,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "$prefix${file.name}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = formatFileSize(file.length()),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                    Text("关闭")
+                }
+            }
+        }
     }
 }
 

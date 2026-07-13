@@ -52,11 +52,12 @@ fun MarkdownText(
     text: String,
     modifier: Modifier = Modifier,
     color: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
-    style: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyMedium
+    style: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyMedium,
+    processParens: Boolean = true
 ) {
     if (text.isBlank()) return
     // 预处理：内心独白、括号斜体、删除线占位
-    val preprocessed = remember(text) { preprocessMarkdown(text) }
+    val preprocessed = remember(text, processParens) { preprocessMarkdown(text, processParens) }
     val blocks = remember(preprocessed) { parseBlocks(preprocessed) }
 
     Column(modifier = modifier) {
@@ -78,7 +79,7 @@ private const val INNER_CLOSE = "\u0003"
  * 2. 将 `（内心：...）` 或 `(内心：...)` 转为内心独白占位符
  * 3. 将全角括号 `（非内心内容）` 转为斜体 *内容*
  */
-fun preprocessMarkdown(text: String): String {
+fun preprocessMarkdown(text: String, processParens: Boolean = true): String {
     var result = text
     // 1. 禁用删除线：把 ~~ 替换为占位符
     result = result.replace("~~", TILDE_PLACEHOLDER)
@@ -93,10 +94,13 @@ fun preprocessMarkdown(text: String): String {
 
     // 3. 全角括号内容斜体：剩余的 `（...）` 转为 *...*
     // 仅处理短括号内容（避免误伤长文本）
-    val parenRegex = Regex("[（(]([^（）()]{1,50})[）)]")
-    result = parenRegex.replace(result) { m ->
-        val content = m.groupValues[1]
-        "*$content*"
+    // 用户发送的气泡不处理括号（保留原始括号字符）
+    if (processParens) {
+        val parenRegex = Regex("[（(]([^（）()]{1,50})[）)]")
+        result = parenRegex.replace(result) { m ->
+            val content = m.groupValues[1]
+            "*$content*"
+        }
     }
 
     return result

@@ -106,7 +106,8 @@ data class CreateSessionRequest(
     @SerializedName("sender_name") val senderName: String? = null,
     @SerializedName("sender_avatar") val senderAvatar: String? = null,
     @SerializedName("sender_portrait") val senderPortrait: String? = null,
-    val tags: List<String>? = null
+    val tags: List<String>? = null,
+    @SerializedName("group_config") val groupConfig: com.google.gson.JsonElement? = null
 )
 
 data class UpdateSessionRequest(

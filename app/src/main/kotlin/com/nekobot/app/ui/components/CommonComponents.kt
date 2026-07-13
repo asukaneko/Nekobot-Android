@@ -124,6 +124,7 @@ fun NekoDialog(
     title: String,
     message: String? = null,
     confirmText: String = "确定",
+    confirmEnabled: Boolean = true,
     onConfirm: (() -> Unit)? = null,
     cancelText: String? = "取消",
     onCancel: (() -> Unit)? = null,
@@ -172,6 +173,7 @@ fun NekoDialog(
                 }
                 Button(
                     onClick = { onConfirm?.invoke() ?: onDismiss() },
+                    enabled = confirmEnabled,
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                 ) {
                     Text(confirmText, color = MaterialTheme.colorScheme.onPrimary)

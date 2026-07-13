@@ -22,7 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.CloudUpload
@@ -172,7 +171,7 @@ class SettingsViewModel : BaseViewModel() {
         )
     }
 
-    /** 解析日志 JSON 数组为 LogEntry 列表。 */
+    /** 解析日志 JSON 数组为 LogEntry 列表（按时间降序）。 */
     private fun parseLogs(json: JsonElement?): List<LogEntry> {
         if (json == null) return emptyList()
         val arr = if (json.isJsonArray) json.asJsonArray else return emptyList()
@@ -184,7 +183,7 @@ class SettingsViewModel : BaseViewModel() {
                 level = obj.get("level")?.asString ?: "info",
                 message = obj.get("message")?.asString ?: ""
             )
-        }
+        }.sortedByDescending { it.time }
     }
 
     fun dismissLogs() {
@@ -370,36 +369,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                     }
                 }
 
-                // 2. AI 管理（仅服务器模式）
-                if (appMode != AppMode.LOCAL) {
-                    GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "AI 管理")
-                        Spacer(Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = { onNavigate("ai_config") },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                Spacer(Modifier.width(8.dp))
-                                Text("AI 配置")
-                            }
-                            OutlinedButton(
-                                onClick = { onNavigate("ai_models") },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Filled.Memory, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                Spacer(Modifier.width(8.dp))
-                                Text("AI 模型")
-                            }
-                        }
-                    }
-                }
-
-                // 3. 系统设置（仅服务器模式）
+                // 2. 系统设置（仅服务器模式）
                 if (appMode != AppMode.LOCAL) {
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         Row(

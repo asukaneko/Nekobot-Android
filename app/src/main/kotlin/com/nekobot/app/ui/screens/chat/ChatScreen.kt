@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -32,6 +33,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -40,8 +42,10 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
 import androidx.compose.material.icons.filled.Mic
@@ -53,6 +57,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.AccountTree
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -99,6 +104,7 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import com.nekobot.app.data.model.Message
+import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.remote.RealtimeEvent
 import com.nekobot.app.data.remote.SocketState
@@ -140,6 +146,8 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
     val error by viewModel.error.collectAsState()
     val plotChoices by viewModel.plotChoices.collectAsState()
     val plotChoicesLoading by viewModel.plotChoicesLoading.collectAsState()
+    val selectionMode by viewModel.selectionMode.collectAsState()
+    val selectedIds by viewModel.selectedMessageIds.collectAsState()
 
     var input by remember { mutableStateOf("") }
     var menuExpanded by remember { mutableStateOf(false) }
@@ -157,6 +165,8 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
 
     // ===== 收藏夹 & 搜索 =====
     var showFavoritesDialog by remember { mutableStateOf(false) }
+    var showAddFavoritesDialog by remember { mutableStateOf(false) }
+    var favTitleInput by remember { mutableStateOf("") }
     var showSearchDialog by remember { mutableStateOf(false) }
     var favorites by remember { mutableStateOf<List<JsonObject>>(emptyList()) }
     var favoritesLoading by remember { mutableStateOf(false) }
@@ -373,118 +383,153 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = session?.displayName ?: "对话",
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+            if (selectionMode) {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = "已选 ${selectedIds.size} 条",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { viewModel.exitSelectionMode() }) {
+                            Icon(Icons.Filled.Close, contentDescription = "退出选择", tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { viewModel.deleteSelectedMessages() }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                        IconButton(onClick = {
+                            favTitleInput = ""
+                            showAddFavoritesDialog = true
+                        }) {
+                            Icon(Icons.Filled.Star, contentDescription = "添加到收藏夹", tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface
                     )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
-                    }
-                },
-                actions = {
-                    Box {
-                        IconButton(onClick = { menuExpanded = true }) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = "更多", tint = MaterialTheme.colorScheme.onSurface)
-                        }
-                        DropdownMenu(
-                            expanded = menuExpanded,
-                            onDismissRequest = { menuExpanded = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("会话详情") },
-                                onClick = {
-                                    menuExpanded = false
-                                    session?.id?.let { onOpenSessionDetail(it) }
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("故事图") },
-                                onClick = {
-                                    menuExpanded = false
-                                    session?.id?.let { onOpenStoryGraph(it) }
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("重新生成") },
-                                onClick = {
-                                    menuExpanded = false
-                                    viewModel.regenerate()
-                                },
-                                enabled = !sending
-                            )
-                            DropdownMenuItem(
-                                text = { Text("停止生成") },
-                                onClick = {
-                                    menuExpanded = false
-                                    viewModel.stop()
-                                },
-                                enabled = sending
-                            )
-                            DropdownMenuItem(
-                                text = { Text("清空消息", color = Color(0xFFFF6B6B)) },
-                                onClick = {
-                                    menuExpanded = false
-                                    showClearConfirm = true
-                                }
-                            )
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
                 )
-            )
+            } else {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = session?.displayName ?: "对话",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                    },
+                    actions = {
+                        Box {
+                            IconButton(onClick = { menuExpanded = true }) {
+                                Icon(Icons.Filled.MoreVert, contentDescription = "更多", tint = MaterialTheme.colorScheme.onSurface)
+                            }
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = { menuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("会话详情") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        session?.id?.let { onOpenSessionDetail(it) }
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("故事图") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        session?.id?.let { onOpenStoryGraph(it) }
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("重新生成") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        viewModel.regenerate()
+                                    },
+                                    enabled = !sending
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("停止生成") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        viewModel.stop()
+                                    },
+                                    enabled = sending
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("清空消息", color = Color(0xFFFF6B6B)) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        showClearConfirm = true
+                                    }
+                                )
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    )
+                )
+            }
         },
         bottomBar = {
-            // 底部输入栏：左侧 + 按钮展开数据/操作面板，中间输入框，右侧发送
-            ChatInputBar(
-                input = input,
-                onInputChange = { input = it },
-                sending = sending,
-                messageCount = messages.size,
-                plotChoices = plotChoices,
-                plotChoicesLoading = plotChoicesLoading,
-                onSelectPlotChoice = { choice ->
-                    // 填入输入框（用户可编辑后手动发送），后台标记选中
-                    input = choice.title
-                    viewModel.selectPlotChoice(choice.id)
-                },
-                onRegeneratePlotChoices = { viewModel.regeneratePlotChoices() },
-                onScrollToBottom = {
-                    if (messages.isNotEmpty()) {
-                        scope.launch { listState.animateScrollToItem(messages.lastIndex) }
-                    }
-                },
-                onShowMyMessages = { showMyMessages = true },
-                onSend = {
-                    val text = input
-                    input = ""
-                    keyboard?.hide()
-                    viewModel.sendMessage(text)
-                },
-                onStop = { viewModel.stop() },
-                onClear = { showClearConfirm = true },
-                onCompress = { viewModel.compressContext() },
-                onSendFile = {
-                    filePickMode = "send"
-                    pickFile.launch("*/*")
-                },
-                onUploadToWorkspace = {
-                    filePickMode = "upload"
-                    pickFile.launch("*/*")
-                },
-                onOpenWorkspace = { onOpenWorkspace(sessionId) },
-                onVoiceInput = { startVoiceInput() },
-                onShowFavorites = { showFavoritesDialog = true },
-                onShowSearch = { showSearchDialog = true },
-                fileBusy = fileBusy
-            )
+            // 多选模式下隐藏输入栏
+            if (!selectionMode) {
+                // 底部输入栏：左侧 + 按钮展开数据/操作面板，中间输入框，右侧发送
+                ChatInputBar(
+                    input = input,
+                    onInputChange = { input = it },
+                    sending = sending,
+                    messageCount = messages.size,
+                    plotChoices = plotChoices,
+                    plotChoicesLoading = plotChoicesLoading,
+                    onSelectPlotChoice = { choice ->
+                        // 填入输入框（用户可编辑后手动发送），后台标记选中
+                        input = choice.title
+                        viewModel.selectPlotChoice(choice.id)
+                    },
+                    onRegeneratePlotChoices = { viewModel.regeneratePlotChoices() },
+                    onScrollToBottom = {
+                        if (messages.isNotEmpty()) {
+                            scope.launch { listState.animateScrollToItem(messages.lastIndex) }
+                        }
+                    },
+                    onShowMyMessages = { showMyMessages = true },
+                    onSend = {
+                        val text = input
+                        input = ""
+                        keyboard?.hide()
+                        viewModel.sendMessage(text)
+                    },
+                    onStop = { viewModel.stop() },
+                    onClear = { showClearConfirm = true },
+                    onCompress = { viewModel.compressContext() },
+                    onSendFile = {
+                        filePickMode = "send"
+                        pickFile.launch("*/*")
+                    },
+                    onUploadToWorkspace = {
+                        filePickMode = "upload"
+                        pickFile.launch("*/*")
+                    },
+                    onOpenWorkspace = { onOpenWorkspace(sessionId) },
+                    onVoiceInput = { startVoiceInput() },
+                    onShowFavorites = { showFavoritesDialog = true },
+                    onShowSearch = { showSearchDialog = true },
+                    fileBusy = fileBusy
+                )
+            }
         },
         snackbarHost = { androidx.compose.material3.SnackbarHost(snackbarHostState) }
     ) { padding ->
@@ -526,11 +571,18 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                             MessageBubble(
                                 message = msg,
                                 portraitUrl = session?.portraitUrl,
-                                onLongClick = { deletingMessage = msg },
+                                onLongClick = {
+                                    if (!selectionMode && msg.id != null) {
+                                        viewModel.enterSelectionMode(msg.id)
+                                    }
+                                },
                                 onRegenerate = { viewModel.regenerate() },
                                 onFork = { msg.id?.let { mid -> viewModel.forkFromMessage(mid) { onOpenChat(it) } } },
                                 onCopy = { msg.displayContent },
-                                sessionId = sessionId
+                                sessionId = sessionId,
+                                selectionMode = selectionMode,
+                                isSelected = msg.id != null && msg.id in selectedIds,
+                                onToggleSelection = { msg.id?.let { viewModel.toggleSelection(it) } }
                             )
                         }
                     }
@@ -672,6 +724,65 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
             }
         )
     }
+
+    // 添加到收藏夹弹窗（多选模式）
+    if (showAddFavoritesDialog) {
+        NekoDialog(
+            onDismiss = { showAddFavoritesDialog = false },
+            title = "添加到收藏夹",
+            message = "已选 ${selectedIds.size} 条消息",
+            confirmText = "确认",
+            onConfirm = {
+                val visibleMessageIds = messages.asSequence()
+                    .mapNotNull { it.id }
+                    .filter { it != ChatViewModel.STREAMING_ID }
+                    .toSet()
+                val ids = selectedIds.filter { it in visibleMessageIds }
+                if (ids.isEmpty()) {
+                    showAddFavoritesDialog = false
+                    scope.launch { snackbarHostState.showSnackbar("所选消息尚未同步到服务器，请重新选择") }
+                    return@NekoDialog
+                }
+                scope.launch {
+                    val res = try {
+                        ServiceContainer.unified.updateMessageFavorites(
+                            sessionId,
+                            MessageFavoriteRequest(messageIds = ids, title = favTitleInput.ifBlank { null })
+                        )
+                    } catch (e: Exception) {
+                        com.nekobot.app.data.repository.Resource.Error(e.message ?: "收藏失败")
+                    }
+                    when (res) {
+                        is com.nekobot.app.data.repository.Resource.Success -> {
+                            val response = res.data?.takeIf { it.isJsonObject }?.asJsonObject
+                            if (response?.get("success")?.takeIf { !it.isJsonNull }?.asBoolean == false) {
+                                val message = response.get("error")?.asString ?: "服务器未保存收藏"
+                                snackbarHostState.showSnackbar("收藏失败: $message")
+                                return@launch
+                            }
+                            viewModel.exitSelectionMode()
+                            showAddFavoritesDialog = false
+                            snackbarHostState.showSnackbar("已添加到收藏夹")
+                        }
+                        is com.nekobot.app.data.repository.Resource.Error -> {
+                            snackbarHostState.showSnackbar("收藏失败: ${res.message}")
+                        }
+                        is com.nekobot.app.data.repository.Resource.Loading -> {}
+                    }
+                }
+            },
+            cancelText = "取消",
+            onCancel = { showAddFavoritesDialog = false }
+        ) {
+            OutlinedTextField(
+                value = favTitleInput,
+                onValueChange = { favTitleInput = it },
+                label = { Text("收藏名（可选）") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
 }
 
 /** 语音录制中弹窗：显示录音时长 + 停止/取消按钮。 */
@@ -729,15 +840,40 @@ private fun MessageFavoritesDialog(
     loading: Boolean,
     onDismiss: () -> Unit
 ) {
+    var selectedCollection by remember(favorites) { mutableStateOf<JsonObject?>(null) }
+    val selectedTitle = selectedCollection?.get("title")?.takeIf { !it.isJsonNull }?.asString
+
     NekoDialog(
         onDismiss = onDismiss,
-        title = "收藏夹",
+        title = selectedTitle ?: "收藏夹",
         confirmText = "关闭",
         onConfirm = onDismiss
     ) {
         if (loading) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            }
+        } else if (selectedCollection != null) {
+            val collection = selectedCollection!!
+            val messages = collection.getAsJsonArray("messages")
+                ?.mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject }
+                .orEmpty()
+            TextButton(onClick = { selectedCollection = null }) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("返回收藏列表")
+            }
+            if (messages.isEmpty()) {
+                Text("该收藏暂无消息", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(messages, key = { it.get("message_id")?.asString ?: it.get("id")?.asString ?: it.hashCode().toString() }) { message ->
+                        FavoriteMessageCard(message)
+                    }
+                }
             }
         } else if (favorites.isEmpty()) {
             Text("暂无收藏", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
@@ -751,14 +887,19 @@ private fun MessageFavoritesDialog(
                     val createdAt = collection.get("created_at")?.asString?.take(10) ?: ""
                     val messages = collection.getAsJsonArray("messages")
                         ?.mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject } ?: emptyList()
-                    GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 12) {
+                    GlassCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedCollection = collection },
+                        cornerRadius = 12
+                    ) {
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
                                 Text(createdAt, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Spacer(Modifier.height(4.dp))
-                            Text("${messages.size} 条消息", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${messages.size} 条消息 · 点击查看详情", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                             messages.take(2).forEach { msg ->
                                 val role = msg.get("role")?.asString ?: ""
                                 val content = msg.get("content")?.asString?.take(60) ?: ""
@@ -768,6 +909,49 @@ private fun MessageFavoritesDialog(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun FavoriteMessageCard(message: JsonObject) {
+    val role = message.get("role")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+    val roleLabel = when (role.lowercase()) {
+        "user", "human" -> "用户"
+        "assistant", "ai" -> "AI"
+        "system" -> "系统"
+        else -> message.get("sender")?.takeIf { !it.isJsonNull }?.asString ?: role.ifBlank { "消息" }
+    }
+    val content = message.get("content")?.takeIf { !it.isJsonNull }?.let {
+        runCatching { it.asString }.getOrElse { it.toString() }
+    }.orEmpty()
+    val timestamp = message.get("timestamp")?.takeIf { !it.isJsonNull }?.asString
+        ?.replace('T', ' ')?.take(19).orEmpty()
+
+    GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 12) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                roleLabel,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (role.equals("user", true) || role.equals("human", true)) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.tertiary
+                },
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(Modifier.weight(1f))
+            if (timestamp.isNotBlank()) {
+                Text(timestamp, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        SelectionContainer {
+            Text(
+                content.ifBlank { "（空消息）" },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }
@@ -850,7 +1034,10 @@ private fun MessageBubble(
     onRegenerate: () -> Unit = {},
     onFork: () -> Unit = {},
     onCopy: () -> String = { "" },
-    sessionId: String = ""
+    sessionId: String = "",
+    selectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    onToggleSelection: () -> Unit = {}
 ) {
     val isUser = message.isUser
     val isDark = isSystemInDarkTheme()
@@ -883,8 +1070,18 @@ private fun MessageBubble(
 
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = arrangement
+        horizontalArrangement = arrangement,
+        verticalAlignment = Alignment.Top
     ) {
+        // 多选模式：AI 气泡左侧显示勾选框
+        if (selectionMode && !isUser) {
+            Checkbox(
+                checked = isSelected,
+                onCheckedChange = { onToggleSelection() },
+                modifier = Modifier.size(40.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+        }
         // AI 头像（使用角色立绘，回退到图标）
         if (!isUser) {
             val resolved = resolveAvatarUrl(portraitUrl)
@@ -937,8 +1134,20 @@ private fun MessageBubble(
                             )
                         )
                         .background(bgColor)
+                        .then(
+                            if (isSelected) Modifier.border(
+                                width = 2.dp,
+                                color = MaterialTheme.colorScheme.primary,
+                                shape = RoundedCornerShape(
+                                    topStart = 16.dp,
+                                    topEnd = 16.dp,
+                                    bottomStart = if (isUser) 16.dp else if (isLast) 16.dp else 4.dp,
+                                    bottomEnd = if (isUser) if (isLast) 4.dp else 16.dp else 16.dp
+                                )
+                            ) else Modifier
+                        )
                         .combinedClickable(
-                            onClick = {},
+                            onClick = { if (selectionMode) onToggleSelection() },
                             onLongClick = onLongClick
                         )
                         .padding(horizontal = 12.dp, vertical = 8.dp)
@@ -958,6 +1167,7 @@ private fun MessageBubble(
                             text = segment,
                             color = textColor,
                             style = MaterialTheme.typography.bodyMedium,
+                            processParens = !isUser,
                             modifier = if (isUser) Modifier.widthIn(max = maxBubbleWidth) else Modifier.fillMaxWidth()
                         )
                     }
@@ -987,15 +1197,26 @@ private fun MessageBubble(
                 }
             }
 
-            // 操作按钮（小且不显眼）：AI 有 重新生成/分支/复制，用户只有 复制
-            BubbleActions(
-                isUser = isUser,
-                onRegenerate = onRegenerate,
-                onFork = onFork,
-                onCopy = {
-                    val text = onCopy()
-                    clipboard.setText(AnnotatedString(text))
-                }
+            // 操作按钮（小且不显眼）：AI 有 重新生成/分支/复制，用户只有 复制。多选模式下隐藏。
+            if (!selectionMode) {
+                BubbleActions(
+                    isUser = isUser,
+                    onRegenerate = onRegenerate,
+                    onFork = onFork,
+                    onCopy = {
+                        val text = onCopy()
+                        clipboard.setText(AnnotatedString(text))
+                    }
+                )
+            }
+        }
+        // 多选模式：用户气泡右侧显示勾选框
+        if (selectionMode && isUser) {
+            Spacer(Modifier.width(4.dp))
+            Checkbox(
+                checked = isSelected,
+                onCheckedChange = { onToggleSelection() },
+                modifier = Modifier.size(40.dp)
             )
         }
     }
@@ -1628,6 +1849,12 @@ class ChatViewModel : BaseViewModel() {
     private val _plotChoicesLoading = MutableStateFlow(false)
     val plotChoicesLoading: StateFlow<Boolean> = _plotChoicesLoading.asStateFlow()
 
+    // 多选模式状态
+    private val _selectionMode = MutableStateFlow(false)
+    val selectionMode: StateFlow<Boolean> = _selectionMode.asStateFlow()
+    private val _selectedMessageIds = MutableStateFlow<Set<String>>(emptySet())
+    val selectedMessageIds: StateFlow<Set<String>> = _selectedMessageIds.asStateFlow()
+
     private var currentSessionId: String = ""
 
     /** 流式生成中的临时消息内容累加器 */
@@ -1934,11 +2161,21 @@ class ChatViewModel : BaseViewModel() {
                     ).apply { description = "AI 回复时若不在聊天界面则弹出通知" }
                     androidx.core.app.NotificationManagerCompat.from(ctx).createNotificationChannel(channel)
                 }
+                // 点击通知跳转到对应会话聊天界面
+                val launchIntent = android.content.Intent(ctx, com.nekobot.app.MainActivity::class.java).apply {
+                    putExtra("session_id", sid)
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                }
+                val pendingIntent = android.app.PendingIntent.getActivity(
+                    ctx, sid.hashCode(), launchIntent,
+                    android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                )
                 val notif = androidx.core.app.NotificationCompat.Builder(ctx, channelId)
                     .setSmallIcon(android.R.drawable.ic_dialog_info)
                     .setContentTitle(sender)
                     .setContentText(preview)
                     .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(content.take(500)))
+                    .setContentIntent(pendingIntent)
                     .setAutoCancel(true)
                     .setPriority(androidx.core.app.NotificationCompat.PRIORITY_DEFAULT)
                     .build()
@@ -2076,6 +2313,40 @@ class ChatViewModel : BaseViewModel() {
                 onSuccess()
             }
         )
+    }
+
+    /** 进入多选模式，并预选指定消息。 */
+    fun enterSelectionMode(messageId: String) {
+        _selectionMode.value = true
+        _selectedMessageIds.value = setOf(messageId)
+    }
+
+    /** 切换某条消息的选中状态；全部取消后自动退出多选模式。 */
+    fun toggleSelection(messageId: String) {
+        val current = _selectedMessageIds.value.toMutableSet()
+        if (messageId in current) current.remove(messageId) else current.add(messageId)
+        _selectedMessageIds.value = current
+        if (current.isEmpty()) _selectionMode.value = false
+    }
+
+    /** 退出多选模式并清空选中。 */
+    fun exitSelectionMode() {
+        _selectionMode.value = false
+        _selectedMessageIds.value = emptySet()
+    }
+
+    /** 删除所有选中的消息，完成后退出多选模式并刷新列表。 */
+    fun deleteSelectedMessages() {
+        val ids = _selectedMessageIds.value.toList()
+        if (ids.isEmpty()) return
+        val sid = currentSessionId
+        viewModelScope.launch {
+            ids.forEach { id ->
+                try { unified.deleteMessage(sid, id) } catch (_: Exception) {}
+            }
+            exitSelectionMode()
+            loadMessages()
+        }
     }
 
     /** 清空会话所有消息，成功后回调 [onSuccess]。 */
