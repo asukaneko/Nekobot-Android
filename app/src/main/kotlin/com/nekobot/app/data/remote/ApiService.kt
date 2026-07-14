@@ -139,12 +139,16 @@ interface ApiService {
     @DELETE("api/personality/custom-presets/{id}")
     suspend fun deleteCharacterPreset(@Path("id") id: String): Response<JsonElement>
 
+    /** AI 根据自然语言描述生成完整角色卡 */
+    @POST("api/personality/ai-generate")
+    suspend fun aiGenerateCharacter(@Body body: Map<String, String>): Response<JsonElement>
+
     // ==================== 世界书 ====================
     @GET("api/world-books")
     suspend fun listWorldBooks(): Response<List<WorldBook>>
 
     @POST("api/world-books")
-    suspend fun createWorldBook(@Body body: WorldBookRequest): Response<WorldBook>
+    suspend fun createWorldBook(@Body body: WorldBookRequest): Response<JsonElement>
 
     @GET("api/world-books/{id}")
     suspend fun getWorldBook(@Path("id") id: String): Response<WorldBook>
@@ -153,7 +157,7 @@ interface ApiService {
     suspend fun updateWorldBook(
         @Path("id") id: String,
         @Body body: WorldBookRequest
-    ): Response<WorldBook>
+    ): Response<JsonElement>
 
     @DELETE("api/world-books/{id}")
     suspend fun deleteWorldBook(@Path("id") id: String): Response<ApiResult>
@@ -179,6 +183,13 @@ interface ApiService {
         @Path("id") bookId: String,
         @Path("entryId") entryId: String
     ): Response<ApiResult>
+
+    /** AI 根据绑定角色与主题批量生成世界书条目（已持久化到后端） */
+    @POST("api/world-books/{id}/ai-generate")
+    suspend fun aiGenerateWorldBookEntries(
+        @Path("id") bookId: String,
+        @Body body: Map<String, String?>
+    ): Response<JsonElement>
 
     // ==================== AI 配置 ====================
     @GET("api/ai-config")

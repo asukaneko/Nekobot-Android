@@ -220,6 +220,28 @@ class NekobotRepository(
     }
 
     /**
+     * AI 生成角色卡：调用 /api/personality/ai-generate，返回完整 CharacterPreset。
+     * 后端返回 {"success": true, "character": {...}}，提取 character 字段。
+     */
+    suspend fun aiGenerateCharacter(description: String): Resource<CharacterPreset> {
+        val raw: Resource<JsonElement> = safeCall { api.aiGenerateCharacter(mapOf("description" to description)) }
+        return when (raw) {
+            is Resource.Success -> {
+                val obj = raw.data?.takeIf { it.isJsonObject }?.asJsonObject
+                val success = obj?.get("success")?.asBoolean ?: true
+                if (!success) {
+                    Resource.Error(obj?.get("error")?.asString ?: "AI 生成失败")
+                } else {
+                    val charEl = obj?.get("character") ?: obj
+                    Resource.Success(extractPreset(charEl ?: JsonParser.parseString("{}")))
+                }
+            }
+            is Resource.Error -> raw
+            is Resource.Loading -> raw
+        }
+    }
+
+    /**
      * 上传角色卡文件到 /api/personality/import 解析（不保存）。
      * 服务器返回 {"success": true, "character": {...}}，这里提取 character 对象。
      * 调用方拿到结果后应再调用 [createCharacter] 保存。
@@ -261,15 +283,55 @@ class NekobotRepository(
     }
 
     // ==================== 世界书 ====================
+    /**
+     * 从响应中提取 WorldBook 对象。
+     * 原仓库 POST/PUT /api/world-books 返回 {"success": true, "world_book": {...}} 包装格式，
+     * 但 GET 直接返回 book 对象本身，这里两种格式都兼容。
+     */
+    private fun extractWorldBook(el: JsonElement?): WorldBook {
+        if (el == null || el.isJsonNull) return WorldBook()
+        if (el.isJsonObject) {
+            val obj = el.asJsonObject
+            // 包装格式：{"success": true, "world_book": {...}}
+            obj.get("world_book")?.takeIf { it.isJsonObject }?.let {
+                return gson.fromJson(it, WorldBook::class.java)
+            }
+            // 直接是 book 对象
+            return gson.fromJson(el, WorldBook::class.java)
+        }
+        return WorldBook()
+    }
+
     suspend fun listWorldBooks(): Resource<List<WorldBook>> = safeCall { api.listWorldBooks() }
     suspend fun getWorldBook(id: String): Resource<WorldBook> = safeCall { api.getWorldBook(id) }
-    suspend fun createWorldBook(req: WorldBookRequest): Resource<WorldBook> = safeCall { api.createWorldBook(req) }
-    suspend fun updateWorldBook(id: String, req: WorldBookRequest): Resource<WorldBook> = safeCall { api.updateWorldBook(id, req) }
+    suspend fun createWorldBook(req: WorldBookRequest): Resource<WorldBook> =
+        safeCall { api.createWorldBook(req) }.let { res ->
+            when (res) {
+                is Resource.Success -> Resource.Success(extractWorldBook(res.data))
+                is Resource.Error -> res
+                is Resource.Loading -> res
+            }
+        }
+    suspend fun updateWorldBook(id: String, req: WorldBookRequest): Resource<WorldBook> =
+        safeCall { api.updateWorldBook(id, req) }.let { res ->
+            when (res) {
+                is Resource.Success -> Resource.Success(extractWorldBook(res.data))
+                is Resource.Error -> res
+                is Resource.Loading -> res
+            }
+        }
     suspend fun deleteWorldBook(id: String): Resource<Unit> = safeCall { api.deleteWorldBook(id) }.map { }
     suspend fun listEntries(bookId: String): Resource<List<WorldBookEntry>> = safeCall { api.listEntries(bookId) }
     suspend fun createEntry(bookId: String, req: WorldBookEntryRequest): Resource<WorldBookEntry> = safeCall { api.createEntry(bookId, req) }
     suspend fun updateEntry(bookId: String, entryId: String, req: WorldBookEntryRequest): Resource<WorldBookEntry> = safeCall { api.updateEntry(bookId, entryId, req) }
     suspend fun deleteEntry(bookId: String, entryId: String): Resource<Unit> = safeCall { api.deleteEntry(bookId, entryId) }.map { }
+
+    /**
+     * AI 批量生成世界书条目：调用 /api/world-books/{id}/ai-generate。
+     * 后端会立即持久化新增的条目，并返回 {"success": true, "count": N, "entries": [...]}。
+     */
+    suspend fun aiGenerateWorldBookEntries(bookId: String, topic: String?): Resource<JsonElement> =
+        safeCall { api.aiGenerateWorldBookEntries(bookId, mapOf("topic" to topic)) }
 
     // ==================== AI 配置 ====================
     suspend fun getAiConfig(): Resource<JsonElement> = safeCall { api.getAiConfig() }

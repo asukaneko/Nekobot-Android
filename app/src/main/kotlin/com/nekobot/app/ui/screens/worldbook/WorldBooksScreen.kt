@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
@@ -72,6 +73,38 @@ class WorldBooksViewModel : com.nekobot.app.ui.BaseViewModel() {
             }
         )
     }
+
+    /**
+     * AI 生成世界书：先创建一本空世界书，再调用 AI 按主题生成条目。
+     * 生成完成后回调 onSuccess(bookId)，由调用方跳转到详情页。
+     */
+    fun aiGenerateWorldBook(
+        name: String,
+        description: String?,
+        topic: String?,
+        onSuccess: (String) -> Unit
+    ) {
+        launchResult(
+            block = {
+                // 1. 先创建空世界书
+                val created = unified.createWorldBook(
+                    WorldBookRequest(name = name, description = description)
+                )
+                val bookId = (created as? com.nekobot.app.data.repository.Resource.Success)
+                    ?.data?.id
+                    ?: throw IllegalStateException("创建世界书失败")
+                // 2. 调用 AI 生成条目（本地模式会立即落库，远程模式返回条目列表已落库）
+                unified.aiGenerateWorldBookEntries(bookId, topic)
+                com.nekobot.app.data.repository.Resource.Success(bookId)
+            },
+            onSuccess = { bookId ->
+                // 重新加载列表以显示新书
+                load()
+                showToast("AI 已生成世界书")
+                onSuccess(bookId)
+            }
+        )
+    }
 }
 
 /**
@@ -88,6 +121,9 @@ fun WorldBooksScreen(
     val error by viewModel.error.collectAsState()
 
     var showCreateDialog by remember { mutableStateOf(false) }
+    var showAddMenu by remember { mutableStateOf(false) }
+    var showAiDialog by remember { mutableStateOf(false) }
+    var showAiGeneratingHint by remember { mutableStateOf(false) }
 
     // 模式切换时自动刷新世界书列表
     val appMode by ServiceContainer.appModeFlow.collectAsState()
@@ -106,8 +142,32 @@ fun WorldBooksScreen(
                     IconButton(onClick = { viewModel.load() }) {
                         Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
                     }
-                    IconButton(onClick = { showCreateDialog = true }) {
-                        Icon(Icons.Filled.Add, contentDescription = "新建世界书", tint = MaterialTheme.colorScheme.primary)
+                    // 新建按钮 + 下拉菜单：新建 / AI 生成
+                    Box {
+                        IconButton(onClick = { showAddMenu = true }) {
+                            Icon(Icons.Filled.Add, contentDescription = "新建世界书", tint = MaterialTheme.colorScheme.primary)
+                        }
+                        DropdownMenu(
+                            expanded = showAddMenu,
+                            onDismissRequest = { showAddMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("新建世界书") },
+                                leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                onClick = {
+                                    showAddMenu = false
+                                    showCreateDialog = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("AI 生成世界书") },
+                                leadingIcon = { Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                onClick = {
+                                    showAddMenu = false
+                                    showAiDialog = true
+                                }
+                            )
+                        }
                     }
                 }
             )
@@ -166,6 +226,37 @@ fun WorldBooksScreen(
                 viewModel.create(WorldBookRequest(name = name, description = desc))
                 showCreateDialog = false
             }
+        )
+    }
+
+    // AI 生成世界书对话框
+    if (showAiDialog) {
+        AiGenerateWorldBookDialog(
+            onDismiss = { showAiDialog = false },
+            onConfirm = { name, desc, topic ->
+                showAiDialog = false
+                // 立即弹出"后台生成中"提示，AI 任务继续在后台执行
+                showAiGeneratingHint = true
+                viewModel.aiGenerateWorldBook(name, desc, topic) { bookId ->
+                    // 生成完成：关闭提示并跳转详情页
+                    showAiGeneratingHint = false
+                    onOpenBook(bookId)
+                }
+            }
+        )
+    }
+
+    // "后台生成中"提示对话框（任务已在后台执行，用户可关闭本提示）
+    if (showAiGeneratingHint) {
+        NekoDialog(
+            onDismiss = { showAiGeneratingHint = false },
+            title = "后台生成中",
+            message = "AI 正在生成世界书及条目，请稍候片刻。生成完成后将自动跳转到详情页。",
+            confirmText = "知道了",
+            confirmEnabled = true,
+            onConfirm = { showAiGeneratingHint = false },
+            cancelText = null,
+            onCancel = null
         )
     }
 }
@@ -286,6 +377,99 @@ private fun CreateWorldBookDialog(
                 focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                 unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
             )
+        )
+    }
+}
+
+/**
+ * AI 生成世界书对话框：用户输入书名、描述和生成主题，
+ * 由 ViewModel 先创建空书，再调用 AI 按主题生成条目。
+ *
+ * 参考原仓库 nbot/web/routes/world_book.py 的 ai-generate 接口。
+ */
+@Composable
+private fun AiGenerateWorldBookDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (name: String, description: String?, topic: String?) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var desc by remember { mutableStateOf("") }
+    var topic by remember { mutableStateOf("") }
+
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+        focusedBorderColor = MaterialTheme.colorScheme.primary,
+        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+        cursorColor = MaterialTheme.colorScheme.primary,
+        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
+    )
+
+    NekoDialog(
+        onDismiss = onDismiss,
+        title = "AI 生成世界书",
+        confirmText = "生成",
+        cancelText = "取消",
+        confirmEnabled = name.isNotBlank(),
+        onConfirm = {
+            if (name.isBlank()) return@NekoDialog
+            onConfirm(
+                name.trim(),
+                desc.trim().takeIf { it.isNotBlank() },
+                topic.trim().takeIf { it.isNotBlank() }
+            )
+        },
+        onCancel = onDismiss
+    ) {
+        Text("书名", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(4.dp))
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = fieldColors
+        )
+        Spacer(Modifier.height(10.dp))
+        Text("描述（可选）", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(4.dp))
+        OutlinedTextField(
+            value = desc,
+            onValueChange = { desc = it },
+            singleLine = false,
+            minLines = 2,
+            maxLines = 4,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = fieldColors
+        )
+        Spacer(Modifier.height(10.dp))
+        Text("生成主题（可选）", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(4.dp))
+        OutlinedTextField(
+            value = topic,
+            onValueChange = { topic = it },
+            singleLine = false,
+            minLines = 3,
+            maxLines = 6,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = {
+                Text(
+                    "例如：这个角色所在的学院背景、重要地点、关键 NPC、世界规则等",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            shape = RoundedCornerShape(12.dp),
+            colors = fieldColors
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "提示：留空将由 AI 根据书名自动构思主题；填写后 AI 会围绕主题生成 5-10 条目。",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }

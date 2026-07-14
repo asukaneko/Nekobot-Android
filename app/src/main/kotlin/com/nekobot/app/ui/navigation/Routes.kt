@@ -26,6 +26,9 @@ object Routes {
     const val CHARACTER_DETAIL = "character/{characterId}"
     fun characterDetail(id: String) = "character/$id"
 
+    const val CHARACTER_VIEW = "character_view/{characterId}"
+    fun characterView(id: String) = "character_view/$id"
+
     const val WORLD_BOOK_DETAIL = "worldbook/{bookId}"
     fun worldBookDetail(id: String) = "worldbook/$id"
 

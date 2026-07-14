@@ -26,6 +26,7 @@ import com.nekobot.app.ui.screens.aiconfig.AiModelsScreen
 import com.nekobot.app.ui.screens.aiconfig.FailoverQueueScreen
 import com.nekobot.app.ui.screens.aiconfig.LocalAiModelsScreen
 import com.nekobot.app.ui.screens.characters.CharacterDetailScreen
+import com.nekobot.app.ui.screens.characters.CharacterViewScreen
 import com.nekobot.app.ui.screens.characters.CharactersScreen
 import com.nekobot.app.ui.screens.chat.ChatScreen
 import com.nekobot.app.ui.screens.chat.WorkspaceScreen
@@ -214,9 +215,26 @@ fun NekobotNavGraph() {
                 )
             }
             composable(Routes.CHARACTERS) {
-                CharactersScreen(onOpenCharacter = { id ->
-                    navController.navigate(Routes.characterDetail(id))
-                })
+                CharactersScreen(
+                    onOpenCharacter = { id ->
+                        // 列表点击 → 只读详情视图；新建仍走编辑页
+                        if (id == "new") navController.navigate(Routes.characterDetail(id))
+                        else navController.navigate(Routes.characterView(id))
+                    },
+                    onOpenEdit = { id ->
+                        navController.navigate(Routes.characterDetail(id))
+                    }
+                )
+            }
+            composable(
+                route = Routes.CHARACTER_VIEW,
+                arguments = listOf(navArgument("characterId") { type = NavType.StringType })
+            ) { entry ->
+                CharacterViewScreen(
+                    characterId = entry.arguments?.getString("characterId").orEmpty(),
+                    onBack = { navController.popBackStack() },
+                    onEdit = { id -> navController.navigate(Routes.characterDetail(id)) }
+                )
             }
             composable(
                 route = Routes.CHARACTER_DETAIL,

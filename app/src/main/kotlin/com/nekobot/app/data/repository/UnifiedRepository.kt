@@ -1,6 +1,7 @@
 package com.nekobot.app.data.repository
 
 import com.google.gson.Gson
+import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonParser
 import com.nekobot.app.data.local.LocalRepository
@@ -260,6 +261,21 @@ class UnifiedRepository(
     suspend fun deleteCharacter(id: String): Resource<Unit> =
         if (isLocal) { local.deleteCharacter(id); Resource.Success(Unit) } else remote.deleteCharacter(id)
 
+    /**
+     * AI 生成角色卡：根据自然语言描述生成完整角色卡。
+     * - 本地模式：使用激活的本地 AI 模型，未持久化（调用方需再调用 createCharacter 保存）
+     * - 服务器模式：调用 /api/personality/ai-generate，未持久化
+     * @return 生成的 CharacterPreset
+     */
+    suspend fun aiGenerateCharacter(description: String): Resource<CharacterPreset> =
+        if (isLocal) {
+            try {
+                Resource.Success(local.aiGenerateCharacter(description))
+            } catch (e: Exception) {
+                Resource.Error(e.message ?: "AI 生成失败")
+            }
+        } else remote.aiGenerateCharacter(description)
+
     // ==================== 世界书 ====================
 
     suspend fun listWorldBooks(): Resource<List<WorldBook>> =
@@ -336,6 +352,33 @@ class UnifiedRepository(
 
     suspend fun deleteEntry(bookId: String, entryId: String): Resource<Unit> =
         if (isLocal) { local.deleteEntry(entryId); Resource.Success(Unit) } else remote.deleteEntry(bookId, entryId)
+
+    /**
+     * AI 批量生成世界书条目：根据绑定角色与主题生成 5-10 个条目并立即持久化。
+     * - 本地模式：使用激活的本地 AI 模型，直接写入 Room
+     * - 服务器模式：调用 /api/world-books/{id}/ai-generate，由后端持久化
+     * @return 生成的条目列表
+     */
+    suspend fun aiGenerateWorldBookEntries(bookId: String, topic: String?): Resource<List<WorldBookEntry>> =
+        if (isLocal) {
+            try {
+                Resource.Success(local.aiGenerateWorldBookEntries(bookId, topic))
+            } catch (e: Exception) {
+                Resource.Error(e.message ?: "AI 生成失败")
+            }
+        } else {
+            when (val res = remote.aiGenerateWorldBookEntries(bookId, topic)) {
+                is Resource.Success -> {
+                    val arr = res.data?.takeIf { it.isJsonObject }?.asJsonObject
+                        ?.get("entries")?.takeIf { it.isJsonArray }?.asJsonArray
+                        ?: JsonArray()
+                    val entries = arr.map { gson.fromJson(it, WorldBookEntry::class.java) }
+                    Resource.Success(entries)
+                }
+                is Resource.Error -> res
+                is Resource.Loading -> res
+            }
+        }
 
     // ==================== 本地模式独有：AI 模型管理 ====================
 

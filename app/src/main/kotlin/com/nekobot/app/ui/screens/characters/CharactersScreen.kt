@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Upload
@@ -40,6 +41,7 @@ import com.nekobot.app.ui.components.EmptyState
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
+import com.nekobot.app.ui.components.NekoDialog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -86,6 +88,30 @@ class CharactersViewModel : com.nekobot.app.ui.BaseViewModel() {
             }
         )
     }
+
+    /**
+     * AI 生成角色卡：根据描述生成完整角色卡后调用 createCharacter 保存到库。
+     * 保存成功后跳转到该角色编辑页（由 onSuccess 回调处理）。
+     */
+    fun aiGenerateCharacter(description: String, onSuccess: (CharacterPreset) -> Unit) {
+        launchResult(
+            block = { unified.aiGenerateCharacter(description) },
+            onSuccess = { preset ->
+                // 持久化保存生成的角色
+                launchResult(
+                    block = {
+                        val json = com.nekobot.app.ServiceContainer.gson.toJsonTree(preset)
+                        unified.createCharacter(json)
+                    },
+                    onSuccess = { saved ->
+                        _characters.value = _characters.value + saved
+                        showToast("AI 已生成角色：${saved.displayName}")
+                        onSuccess(saved)
+                    }
+                )
+            }
+        )
+    }
 }
 
 /**
@@ -96,6 +122,7 @@ class CharactersViewModel : com.nekobot.app.ui.BaseViewModel() {
 @Composable
 fun CharactersScreen(
     onOpenCharacter: (String) -> Unit,
+    onOpenEdit: (String) -> Unit = onOpenCharacter,
     viewModel: CharactersViewModel = viewModel()
 ) {
     val characters by viewModel.characters.collectAsState()
@@ -105,6 +132,9 @@ fun CharactersScreen(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     var viewMode by remember { mutableStateOf(CharacterViewMode.LIST) }
+    var showAddMenu by remember { mutableStateOf(false) }
+    var showAiDialog by remember { mutableStateOf(false) }
+    var showAiGeneratingHint by remember { mutableStateOf(false) }
 
     // 模式切换或返回页面时自动刷新角色列表
     val appMode by ServiceContainer.appModeFlow.collectAsState()
@@ -154,8 +184,32 @@ fun CharactersScreen(
                     }) {
                         Icon(Icons.Filled.Upload, contentDescription = "导入角色卡", tint = MaterialTheme.colorScheme.onSurface)
                     }
-                    IconButton(onClick = { onOpenCharacter("new") }) {
-                        Icon(Icons.Filled.Add, contentDescription = "新建角色", tint = MaterialTheme.colorScheme.primary)
+                    // 新建按钮 + 下拉菜单：新建 / AI 生成
+                    Box {
+                        IconButton(onClick = { showAddMenu = true }) {
+                            Icon(Icons.Filled.Add, contentDescription = "新建角色", tint = MaterialTheme.colorScheme.primary)
+                        }
+                        DropdownMenu(
+                            expanded = showAddMenu,
+                            onDismissRequest = { showAddMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("新建角色") },
+                                leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                onClick = {
+                                    showAddMenu = false
+                                    onOpenCharacter("new")
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("AI 生成角色") },
+                                leadingIcon = { Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                onClick = {
+                                    showAddMenu = false
+                                    showAiDialog = true
+                                }
+                            )
+                        }
                     }
                 }
             )
@@ -226,6 +280,37 @@ fun CharactersScreen(
             }
             LoadingOverlay(visible = loading && characters.isEmpty())
         }
+    }
+
+    // AI 生成角色对话框
+    if (showAiDialog) {
+        AiGenerateCharacterDialog(
+            onDismiss = { showAiDialog = false },
+            onConfirm = { description ->
+                showAiDialog = false
+                // 立即弹出"后台生成中"提示，AI 任务继续在后台执行
+                showAiGeneratingHint = true
+                viewModel.aiGenerateCharacter(description) { preset ->
+                    // 生成完成：关闭提示并跳转编辑页
+                    showAiGeneratingHint = false
+                    preset.id?.let { onOpenEdit(it) }
+                }
+            }
+        )
+    }
+
+    // "后台生成中"提示对话框（任务已在后台执行，用户可关闭本提示）
+    if (showAiGeneratingHint) {
+        NekoDialog(
+            onDismiss = { showAiGeneratingHint = false },
+            title = "后台生成中",
+            message = "AI 正在生成角色卡，请稍候片刻。生成完成后将自动跳转到编辑页。",
+            confirmText = "知道了",
+            confirmEnabled = true,
+            onConfirm = { showAiGeneratingHint = false },
+            cancelText = null,
+            onCancel = null
+        )
     }
 }
 
@@ -393,4 +478,69 @@ private fun readUriToBytes(context: android.content.Context, uri: android.net.Ur
     }
     val fileName = name ?: uri.lastPathSegment ?: "character.json"
     return bytes to fileName
+}
+
+/**
+ * AI 生成角色卡对话框：用户输入角色描述，点击生成后回调 onConfirm。
+ *
+ * 参考原仓库 nbot/web/routes/personality.py 的 ai-generate 接口，
+ * 描述越具体生成质量越高（性格/外貌/背景/说话风格等）。
+ */
+@Composable
+private fun AiGenerateCharacterDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (description: String) -> Unit
+) {
+    var description by remember { mutableStateOf("") }
+
+    NekoDialog(
+        onDismiss = onDismiss,
+        title = "AI 生成角色",
+        confirmText = "生成角色卡",
+        cancelText = "取消",
+        confirmEnabled = description.isNotBlank(),
+        onConfirm = {
+            if (description.isBlank()) return@NekoDialog
+            onConfirm(description.trim())
+        },
+        onCancel = onDismiss
+    ) {
+        Text(
+            "角色描述",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(4.dp))
+        OutlinedTextField(
+            value = description,
+            onValueChange = { description = it },
+            singleLine = false,
+            minLines = 6,
+            maxLines = 12,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = {
+                Text(
+                    "例如：一个来自异世界的精灵弓箭手，外表高冷但内心温柔，擅长吐槽，喜欢在月光下喝蜂蜜茶……",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                cursorColor = MaterialTheme.colorScheme.primary,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "提示：描述越具体（性格、外貌、背景、说话风格），生成质量越高。",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
 }

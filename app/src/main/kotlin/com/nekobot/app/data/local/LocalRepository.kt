@@ -1103,6 +1103,275 @@ class LocalRepository(
             }
         }
 
+    // ==================== AI 生成（本地模式）====================
+
+    /**
+     * AI 生成角色卡：使用当前激活的本地 AI 模型，按后端相同的 system prompt 生成。
+     * @return 生成的 CharacterPreset（未持久化，由调用方决定 createCharacter 保存）
+     */
+    suspend fun aiGenerateCharacter(description: String): CharacterPreset = withContext(Dispatchers.IO) {
+        val activeModel = aiModelDao.getActive()
+            ?: throw IllegalStateException("未配置激活的 AI 模型")
+        val systemPrompt = buildCharacterSystemPrompt()
+        val messages = listOf(
+            mapOf("role" to "system", "content" to systemPrompt),
+            mapOf("role" to "user", "content" to "请根据以下描述创建角色卡：\n\n${description.trim()}")
+        )
+        val result = aiClient.chatOnce(activeModel, messages)
+        if (result.error != null) throw IllegalStateException(result.error)
+        // 记账
+        val usage = result.usage
+        if (usage.isNotEmpty()) {
+            val input = usage["prompt_tokens"] ?: usage["input_tokens"] ?: 0
+            val output = usage["completion_tokens"] ?: usage["output_tokens"] ?: 0
+            appendTokenUsageRecord(
+                sessionId = currentSessionId,
+                model = activeModel.model,
+                inputTokens = input,
+                outputTokens = output,
+                timestamp = nowIsoTimestamp(),
+                source = "web",
+                purpose = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_UTILITY
+            )
+        }
+        val content = stripMarkdownCodeFence(result.content)
+        val obj = JsonParser.parseString(content).asJsonObject
+        // 填充默认值，与后端保持一致
+        val defaultState = JsonObject().apply {
+            addProperty("affection", 50)
+            addProperty("trust", 50)
+            addProperty("familiarity", 30)
+            addProperty("dependency", 30)
+            addProperty("security", 50)
+            addProperty("mood", "开心")
+        }
+        val stateEl = obj.get("state")
+        val mergedState = if (stateEl != null && stateEl.isJsonObject) {
+            val s = stateEl.asJsonObject
+            defaultState.keySet().forEach { k ->
+                if (!s.has(k) || s.get(k).isJsonNull) s.add(k, defaultState.get(k))
+            }
+            s
+        } else defaultState
+        obj.add("state", mergedState)
+        if (!obj.has("portrait") || obj.get("portrait").isJsonNull) obj.addProperty("portrait", "")
+        gson.fromJson(obj, CharacterPreset::class.java)
+    }
+
+    /**
+     * AI 批量生成世界书条目：使用当前激活的本地 AI 模型生成 5-10 个条目并立即持久化。
+     * @return 生成的条目列表（已写入数据库）
+     */
+    suspend fun aiGenerateWorldBookEntries(bookId: String, topic: String?): List<WorldBookEntry> =
+        withContext(Dispatchers.IO) {
+            val activeModel = aiModelDao.getActive()
+                ?: throw IllegalStateException("未配置激活的 AI 模型")
+            val book = worldBookDao.getById(bookId)
+                ?: throw IllegalStateException("世界书不存在")
+            // 收集绑定角色的信息
+            val charInfos = mutableListOf<String>()
+            book.characterId?.takeIf { it.isNotBlank() }?.let { cid ->
+                val c = characterDao.getById(cid)
+                if (c != null) {
+                    charInfos.add(
+                        buildString {
+                            append("【${c.name ?: "未命名角色"}】\n")
+                            c.description?.takeIf { it.isNotBlank() }?.let { append("描述: $it\n") }
+                            c.basicInfo?.takeIf { it.isNotBlank() }?.let { append("基本信息: $it\n") }
+                            c.personality?.takeIf { it.isNotBlank() }?.let { append("性格: $it\n") }
+                            c.scenario?.takeIf { it.isNotBlank() }?.let { append("背景设定: $it\n") }
+                            c.rules?.takeIf { it.isNotBlank() }?.let {
+                                val rulesText = try {
+                                    JsonParser.parseString(it).asJsonArray.joinToString(", ") { r -> r.asString }
+                                } catch (_: Exception) { it }
+                                append("行为规则: $rulesText")
+                            }
+                        }
+                    )
+                }
+            }
+            val systemPrompt = buildWorldBookSystemPrompt(charInfos, topic)
+            val userMsg = buildString {
+                append("请为世界书「${book.name ?: "未命名"}」生成世界观条目。")
+                book.description?.takeIf { it.isNotBlank() }?.let { append("\n世界书描述：$it") }
+                topic?.takeIf { it.isNotBlank() }?.let { append("\n主题方向：$it") }
+                if (charInfos.isEmpty() && topic.isNullOrBlank()) {
+                    append("\n（未绑定角色也未指定主题，请根据世界书名称自由发挥）")
+                }
+            }
+            val messages = listOf(
+                mapOf("role" to "system", "content" to systemPrompt),
+                mapOf("role" to "user", "content" to userMsg)
+            )
+            val result = aiClient.chatOnce(activeModel, messages)
+            if (result.error != null) throw IllegalStateException(result.error)
+            // 记账
+            val usage = result.usage
+            if (usage.isNotEmpty()) {
+                val input = usage["prompt_tokens"] ?: usage["input_tokens"] ?: 0
+                val output = usage["completion_tokens"] ?: usage["output_tokens"] ?: 0
+                appendTokenUsageRecord(
+                    sessionId = currentSessionId,
+                    model = activeModel.model,
+                    inputTokens = input,
+                    outputTokens = output,
+                    timestamp = nowIsoTimestamp(),
+                    source = "web",
+                    purpose = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_UTILITY
+                )
+            }
+            val content = stripMarkdownCodeFence(result.content)
+            val parsed = JsonParser.parseString(content).asJsonObject
+            val arr = parsed.get("entries")?.takeIf { it.isJsonArray }?.asJsonArray
+                ?: throw IllegalStateException("AI 未生成有效条目")
+            val created = mutableListOf<WorldBookEntry>()
+            for (el in arr) {
+                if (!el.isJsonObject) continue
+                val o = el.asJsonObject
+                val keysEl = o.get("keywords") ?: o.get("keys")
+                val keys = keysEl?.takeIf { it.isJsonArray }?.asJsonArray
+                    ?.map { it.asString } ?: emptyList()
+                val contentStr = o.get("content")?.takeIf { !it.isJsonNull }?.asString ?: ""
+                if (contentStr.isBlank()) continue
+                val priority = o.get("priority")?.takeIf { !it.isJsonNull }?.asInt ?: 10
+                val position = o.get("position")?.takeIf { !it.isJsonNull }?.asString ?: "before_char"
+                val entry = WorldBookEntry(
+                    id = UUID.randomUUID().toString(),
+                    keys = keys.takeIf { it.isNotEmpty() },
+                    content = contentStr,
+                    comment = o.get("comment")?.takeIf { !it.isJsonNull }?.asString,
+                    enabled = true,
+                    constant = o.get("always_on")?.takeIf { !it.isJsonNull }?.asBoolean ?: false,
+                    selective = true,
+                    priority = priority,
+                    position = position,
+                    caseSensitive = false
+                )
+                val saved = upsertEntry(bookId, entry)
+                created.add(saved)
+            }
+            created
+        }
+
+    /** 剥离可能的 markdown 代码块围栏，返回纯 JSON 字符串 */
+    private fun stripMarkdownCodeFence(raw: String): String {
+        val trimmed = raw.trim()
+        val regex = Regex("```(?:json)?\\s*([\\s\\S]*?)\\s*```")
+        return regex.find(trimmed)?.groupValues?.get(1)?.trim() ?: trimmed
+    }
+
+    /** 角色卡 AI 生成的 system prompt（与后端 personality.py 一致） */
+    private fun buildCharacterSystemPrompt(): String = """你是一个角色卡生成专家。用户会描述一个角色，你需要根据描述生成一个完整的角色卡JSON。
+
+你必须严格按照以下JSON格式返回（不要包含任何额外的文字说明，只返回JSON）：
+
+{
+    "name": "角色名称",
+    "description": "简短角色描述（用于卡片显示，20字以内）",
+    "avatar": "fas fa-star（FontAwesome图标类名，从以下选择最合适的：fas fa-cat, fas fa-dragon, fas fa-hat-wizard, fas fa-skull, fas fa-robot, fas fa-user-secret, fas fa-user-ninja, fas fa-user-astronaut, fas fa-user-graduate, fas fa-user-tie, fas fa-user, fas fa-crown, fas fa-heart, fas fa-star, fas fa-moon, fas fa-sun, fas fa-fire, fas fa-ghost, fas fa-magic, fas fa-shield-haltered, fas fa-wand-sparkles）",
+    "tags": ["标签1", "标签2", "标签3"],
+    "basicInfo": "角色的基本资料（身高、年龄、职业、外貌、喜好等），每行一项",
+    "personality": "性格特点的详细描述",
+    "scenario": "角色的背景故事和世界观设定",
+    "firstMessage": "新会话中AI自动发送的第一条消息（要符合角色风格）",
+    "exampleDialogues": "<user>用户消息示例\n<assistant>角色回复示例（要符合角色风格和语气）",
+    "responseFormat": "期望的回复格式描述，如：（动作描写）对话内容【心情/附加信息】",
+    "rules": ["行为规则1", "行为规则2", "行为规则3"],
+    "state": {
+        "affection": 50,
+        "trust": 50,
+        "familiarity": 30,
+        "dependency": 30,
+        "security": 50,
+        "mood": "开心"
+    }
+}
+
+要求：
+1. name 必须有创意且贴合描述
+2. tags 至少3个，最多5个
+3. basicInfo 要具体详细，包含形象特征
+4. personality 要生动、有层次
+5. scenario 要有沉浸感
+6. firstMessage 要符合角色性格，自然不做作
+7. exampleDialogues 至少包含2轮对话示例
+8. rules 要覆盖角色行为约束和特色
+9. state 中的关系初始值必须根据角色设定合理设置：
+   - affection（好感）：根据角色对用户的初始态度设置（0-100）
+   - trust（信任）：根据角色对用户的初始信任程度设置（0-100）
+   - familiarity（熟悉）：根据角色与用户的初始熟悉度设置（0-100）
+   - dependency（依赖）：根据角色对用户的初始依赖程度设置（0-100）
+   - security（安全感）：根据角色在关系中的初始安全感设置（0-100）
+   - mood（心情）：根据角色当前心情设置
+10. 所有字段都用中文填写"""
+
+    /** 世界书 AI 生成的 system prompt（与后端 world_book.py 一致） */
+    private fun buildWorldBookSystemPrompt(charInfos: List<String>, topic: String?): String {
+        val charSection = if (charInfos.isNotEmpty()) {
+            "\n\n以下是已绑定的角色信息，请根据这些角色的世界观和设定来生成内容：\n\n" + charInfos.joinToString("\n\n")
+        } else ""
+        val topicSection = if (!topic.isNullOrBlank()) "\n\n用户指定的主题/方向：$topic" else ""
+        return """你是一个世界观设定专家。请为一个世界书生成条目。
+
+每个条目包含以下字段：
+- name: 条目名称（简短有辨识度）
+- keywords: 关键词列表（3-5个，用于在用户消息中匹配触发此条目）
+- content: 注入内容（当关键词命中时，这段内容会被注入到 AI 的提示词中，帮助 AI 理解世界观）
+- match_mode: "any"（任一关键词命中即触发）或 "all"（全部命中才触发）
+- priority: 优先级数字（0-100，越高越优先注入）
+- entry_type: 条目类型，可选值：
+  - "lore" 世界观设定
+  - "location" 地点
+  - "npc" NPC角色
+  - "faction" 阵营/组织
+  - "relationship" 角色与用户关系
+  - "rule" 世界规则
+  - "style" 叙事风格
+  - "event" 剧情事件
+  - "secret" 隐藏真相（不会被助手回复自动触发）
+- trigger_sources: 触发源列表，可选值：
+  - "user" 用户消息触发（默认）
+  - "assistant_recent" 助手最近回复触发（用于维持场景连续性）
+  - "history" 历史上下文触发
+  - "scene_state" 场景状态触发
+  一般条目用 ["user"]，地点/NPC/事件类建议加上 "assistant_recent" 和 "scene_state"
+- weight: 额外权重（0-50，用于微调优先级）
+- always_on: 是否常驻注入（true/false，只有核心规则才设为true）
+- cooldown_turns: 冷却轮数（命中后需间隔多少轮才能再次触发，0=无冷却）
+
+请生成 5-10 个条目，覆盖该世界观的核心设定。
+$charSection$topicSection
+
+你必须严格按照以下JSON格式返回（不要包含任何额外的文字说明，只返回JSON）：
+
+{
+    "entries": [
+        {
+            "name": "条目名称",
+            "keywords": ["关键词1", "关键词2", "关键词3"],
+            "content": "当用户消息命中关键词时注入的内容...",
+            "match_mode": "any",
+            "priority": 50,
+            "entry_type": "lore",
+            "trigger_sources": ["user"],
+            "weight": 0,
+            "always_on": false,
+            "cooldown_turns": 0
+        }
+    ]
+}
+
+要求：
+1. keywords 应该是用户聊天中可能出现的词语，不要太生僻
+2. content 要具体、有信息量，帮助 AI 角色扮演时理解世界观
+3. 优先级根据条目重要程度分配（核心设定 > 细节设定）
+4. 如果有绑定角色，生成的设定要与角色背景契合
+5. entry_type 和 trigger_sources 要根据条目内容合理选择
+6. 地点、NPC、事件类条目的 trigger_sources 建议包含 "assistant_recent"
+7. secret 类型不要设置 "assistant_recent" 触发源，防止提前暴露
+"""
+    }
+
     // ==================== AI 模型 ====================
 
     fun observeAiModels(): Flow<List<LocalAiModelEntity>> = aiModelDao.observeAll()

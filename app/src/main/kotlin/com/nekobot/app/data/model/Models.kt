@@ -343,10 +343,12 @@ data class WorldBook(
 data class WorldBookEntry(
     @SerializedName(value = "id", alternate = ["entry_id", "_id"])
     val id: String? = null,
+    @SerializedName(value = "keys", alternate = ["keywords"])
     val keys: List<String>? = null,
     val content: String? = null,
     val comment: String? = null,
     val enabled: Boolean? = null,
+    @SerializedName(value = "constant", alternate = ["always_on"])
     val constant: Boolean? = null,
     val selective: Boolean? = null,
     @SerializedName("insertion_order") val insertionOrder: Int? = null,
@@ -361,15 +363,18 @@ data class WorldBookEntry(
 data class WorldBookRequest(
     val name: String,
     val description: String? = null,
-    @SerializedName("character_ids") val characterIds: List<String>? = null,
+    @SerializedName(value = "character_ids", alternate = ["character_id", "characterId", "characterIds"])
+    val characterIds: List<String>? = null,
     val enabled: Boolean? = null
 )
 
 data class WorldBookEntryRequest(
+    @SerializedName(value = "keys", alternate = ["keywords"])
     val keys: List<String>? = null,
     val content: String? = null,
     val comment: String? = null,
     val enabled: Boolean? = null,
+    @SerializedName(value = "constant", alternate = ["always_on"])
     val constant: Boolean? = null,
     val selective: Boolean? = null,
     @SerializedName("insertion_order") val insertionOrder: Int? = null,
