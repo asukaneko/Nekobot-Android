@@ -3,6 +3,7 @@ package com.nekobot.app.ui.screens.tokens
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,8 +28,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -343,11 +342,11 @@ fun TokensScreen() {
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         SectionHeader(title = "Token 排行榜")
                         Spacer(Modifier.height(8.dp))
-                        TabRow(selectedTabIndex = rankingTab) {
-                            listOf("会话", "模型", "用途").forEachIndexed { index, title ->
-                                Tab(selected = rankingTab == index, onClick = { rankingTab = index }, text = { Text(title) })
-                            }
-                        }
+                        RankingSegmentedBar(
+                            tabs = listOf("会话", "模型", "用途"),
+                            selectedIndex = rankingTab,
+                            onSelect = { rankingTab = it }
+                        )
                         Spacer(Modifier.height(12.dp))
                         if (parsedRanking.isEmpty()) {
                             Text("暂无数据", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -468,6 +467,52 @@ private fun StatChipGrid(
             }
             if (row.size == 1) {
                 Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/**
+ * 排行榜分段切换条：圆角药丸式 segmented control，替代默认 TabRow。
+ * 选中态以主色填充胶囊 + 白色文字；未选中态透明背景 + 次级文字色。
+ */
+@Composable
+private fun RankingSegmentedBar(
+    tabs: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .padding(4.dp)
+    ) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            tabs.forEachIndexed { index, title ->
+                val selected = index == selectedIndex
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(
+                            if (selected) MaterialTheme.colorScheme.primary
+                            else androidx.compose.ui.graphics.Color.Transparent
+                        )
+                        .clickable { onSelect(index) }
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (selected) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+                    )
+                }
             }
         }
     }
