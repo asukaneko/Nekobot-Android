@@ -216,14 +216,22 @@ fun parseBlocks(text: String): List<MdBlock> {
             continue
         }
 
-        // 内心独白占位符（整段）
+        // 内心独白占位符（可能内联在同一行，需保留占位符前后的文本）
         if (line.contains(INNER_OPEN)) {
-            val content = extractInner(line)
-            if (content != null) {
-                blocks.add(MdBlock.InnerMonologue(content))
+            val segments = splitInnerSegments(line)
+            // 仅在确实解析到至少一个完整的内心独白段时按分段处理
+            if (segments.any { it.first == SEG_INNER }) {
+                segments.forEach { (type, content) ->
+                    if (type == SEG_INNER) {
+                        blocks.add(MdBlock.InnerMonologue(content))
+                    } else if (content.isNotBlank()) {
+                        blocks.add(MdBlock.Paragraph(content))
+                    }
+                }
                 i++
                 continue
             }
+            // 未找到完整 INNER_CLOSE：保留原文，按段落处理
         }
 
         // 普通段落（连续非空行合并）
@@ -251,12 +259,42 @@ private fun parseTableRow(line: String): List<String> {
     return line.trim().trim('|').split("|").map { it.trim() }
 }
 
-private fun extractInner(text: String): String? {
-    val start = text.indexOf(INNER_OPEN)
-    if (start < 0) return null
-    val end = text.indexOf(INNER_CLOSE, start + INNER_OPEN.length)
-    if (end < 0) return null
-    return text.substring(start + INNER_OPEN.length, end)
+/** 分段类型：普通文本 / 内心独白 */
+private const val SEG_TEXT = 0
+private const val SEG_INNER = 1
+
+/**
+ * 将一行文本按内心独白占位符切分为交替的「普通文本」与「内心独白」段。
+ * 保留占位符前、后及多个占位符之间的文本，避免折叠块吃掉前后内容。
+ * 未配对到 INNER_CLOSE 的残余 INNER_OPEN 原样作为文本返回。
+ */
+private fun splitInnerSegments(line: String): List<Pair<Int, String>> {
+    val result = mutableListOf<Pair<Int, String>>()
+    var pos = 0
+    while (pos <= line.length) {
+        val start = line.indexOf(INNER_OPEN, pos)
+        if (start < 0) {
+            val rest = line.substring(pos)
+            if (rest.isNotEmpty()) result.add(SEG_TEXT to rest)
+            break
+        }
+        // 占位符之前的文本
+        if (start > pos) {
+            val before = line.substring(pos, start)
+            if (before.isNotEmpty()) result.add(SEG_TEXT to before)
+        }
+        val end = line.indexOf(INNER_CLOSE, start + INNER_OPEN.length)
+        if (end < 0) {
+            // 未闭合：保留占位符原文，作为普通文本处理
+            val rest = line.substring(start)
+            if (rest.isNotEmpty()) result.add(SEG_TEXT to rest)
+            break
+        }
+        val content = line.substring(start + INNER_OPEN.length, end)
+        result.add(SEG_INNER to content)
+        pos = end + INNER_CLOSE.length
+    }
+    return result
 }
 
 // ==================== 区块渲染 ====================
