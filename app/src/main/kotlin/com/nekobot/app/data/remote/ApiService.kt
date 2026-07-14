@@ -572,6 +572,13 @@ interface ApiService {
         @Part("text") text: RequestBody
     ): Response<TtsVoiceUploadResponse>
 
+    /** 上传角色立绘/头像图片到服务器，返回服务器相对 URL */
+    @Multipart
+    @POST("api/personality/portrait")
+    suspend fun uploadPortrait(
+        @Part file: MultipartBody.Part
+    ): Response<PortraitUploadResponse>
+
     // ==================== 登录令牌 ====================
     @GET("api/login-tokens")
     suspend fun listLoginTokens(): Response<LoginTokenListResponse>

@@ -616,6 +616,12 @@ class NekobotRepository(
             TtsVoice(id = res.voiceId ?: "", name = res.name ?: "")
         }
 
+    /** 上传角色立绘/头像图片到服务器，返回服务器相对 URL 字符串 */
+    suspend fun uploadPortrait(file: MultipartBody.Part): Resource<String> =
+        safeCall { api.uploadPortrait(file) }.mapData { res ->
+            res.url ?: throw IllegalStateException(res.error ?: "上传失败")
+        }
+
     // ==================== 登录令牌 ====================
     suspend fun listLoginTokens(): Resource<List<LoginToken>> =
         safeCall { api.listLoginTokens() }.mapData { it.tokens }

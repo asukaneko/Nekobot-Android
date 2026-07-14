@@ -655,6 +655,10 @@ class UnifiedRepository(
     suspend fun uploadTtsVoice(file: okhttp3.MultipartBody.Part, customName: okhttp3.RequestBody, text: okhttp3.RequestBody): Resource<TtsVoice> =
         if (isLocal) localNotSupported("TTS 试验场") else remote.uploadTtsVoice(file, customName, text)
 
+    // ---- 角色立绘/头像上传（远程模式专用，本地模式不支持） ----
+    suspend fun uploadPortrait(file: okhttp3.MultipartBody.Part): Resource<String> =
+        if (isLocal) localNotSupported("立绘上传") else remote.uploadPortrait(file)
+
     // ---- 登录令牌 ----
     suspend fun listLoginTokens(): Resource<List<LoginToken>> =
         if (isLocal) localNotSupported("登录令牌") else remote.listLoginTokens()

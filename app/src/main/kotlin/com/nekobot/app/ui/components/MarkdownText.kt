@@ -46,6 +46,9 @@ import androidx.compose.ui.unit.sp
  * 4. 代码块带语言标签和复制按钮
  * 5. 表格可横向滚动
  * 6. 流式渲染友好：每次 recomposition 重新解析
+ *
+ * 上述 1/2/3 项预处理仅在 [chatMode] = true 时生效，仅用于聊天对话气泡；
+ * 其他界面（角色卡、状态历史等）使用标准 Markdown 渲染。
  */
 @Composable
 fun MarkdownText(
@@ -53,11 +56,12 @@ fun MarkdownText(
     modifier: Modifier = Modifier,
     color: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
     style: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyMedium,
+    chatMode: Boolean = false,
     processParens: Boolean = true
 ) {
     if (text.isBlank()) return
-    // 预处理：内心独白、括号斜体、删除线占位
-    val preprocessed = remember(text, processParens) { preprocessMarkdown(text, processParens) }
+    // 预处理：内心独白、括号斜体、删除线占位（仅在 chatMode 下生效）
+    val preprocessed = remember(text, chatMode, processParens) { preprocessMarkdown(text, chatMode, processParens) }
     val blocks = remember(preprocessed) { parseBlocks(preprocessed) }
 
     Column(modifier = modifier) {
@@ -74,12 +78,15 @@ private const val INNER_OPEN = "\u0002INNER:"
 private const val INNER_CLOSE = "\u0003"
 
 /**
- * 预处理 Markdown 文本：
+ * 预处理 Markdown 文本（仅在 chatMode = true 时执行）：
  * 1. 将 ~~text~~ 中的 ~~ 替换为占位符（禁用删除线）
  * 2. 将 `（内心：...）` 或 `(内心：...)` 转为内心独白占位符
  * 3. 将全角括号 `（非内心内容）` 转为斜体 *内容*
+ *
+ * chatMode = false 时直接返回原文，使用标准 Markdown 渲染（保留 `~~`、`（...）` 原样）。
  */
-fun preprocessMarkdown(text: String, processParens: Boolean = true): String {
+fun preprocessMarkdown(text: String, chatMode: Boolean = false, processParens: Boolean = true): String {
+    if (!chatMode) return text
     var result = text
     // 1. 禁用删除线：把 ~~ 替换为占位符
     result = result.replace("~~", TILDE_PLACEHOLDER)

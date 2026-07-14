@@ -1037,6 +1037,13 @@ data class TtsVoiceUploadResponse(
     val name: String? = null
 )
 
+/** 角色立绘/头像上传响应：返回服务器相对 URL，写入 character.portrait/avatar 字段 */
+data class PortraitUploadResponse(
+    val success: Boolean? = null,
+    val url: String? = null,
+    val error: String? = null
+)
+
 // ---- Login Tokens ----
 data class LoginTokenListResponse(
     val success: Boolean? = null,

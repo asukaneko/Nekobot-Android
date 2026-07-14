@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
@@ -1058,7 +1059,7 @@ private fun CreateSessionDialog(
                             GlassCard(
                                 modifier = Modifier
                                     .height(56.dp)
-                                    .clickable { dropdownExpanded = true },
+                                    .clickable { dropdownExpanded = !dropdownExpanded },
                                 cornerRadius = 12,
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant
                             ) {
@@ -1068,37 +1069,71 @@ private fun CreateSessionDialog(
                                 ) {
                                     Text("选择", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
                                     Spacer(Modifier.size(2.dp))
-                                    Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    Icon(
+                                        if (dropdownExpanded) Icons.Filled.ArrowDropUp else Icons.Filled.ArrowDropDown,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
                                 }
                             }
-                            DropdownMenu(
-                                expanded = dropdownExpanded,
-                                onDismissRequest = { dropdownExpanded = false }
+                        }
+                    }
+
+                    // 内联角色选择列表：点击「选择」按钮展开/收起，可滚动，不受下拉菜单高度限制
+                    if (dropdownExpanded) {
+                        Spacer(Modifier.height(8.dp))
+                        if (characters.isEmpty()) {
+                            Text(
+                                "暂无可用角色",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 240.dp)
+                                    .verticalScroll(rememberScrollState())
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
                             ) {
-                                if (characters.isEmpty()) {
-                                    DropdownMenuItem(
-                                        text = { Text("暂无可用角色", color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                                        onClick = { dropdownExpanded = false }
-                                    )
-                                } else {
-                                    DropdownMenuItem(
-                                        text = { Text("（不选）", color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                                        onClick = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
                                             dropdownExpanded = false
                                             characterId = ""
                                             selectedCharacter = null
                                         }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                                ) {
+                                    Text(
+                                        "（不选）",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
-                                    characters.forEach { c ->
-                                        DropdownMenuItem(
-                                            text = { Text(c.displayName, color = MaterialTheme.colorScheme.onSurface) },
-                                            onClick = {
+                                }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
+                                characters.forEach { c ->
+                                    val selected = c.id == selectedCharacter?.id
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent)
+                                            .clickable {
                                                 dropdownExpanded = false
                                                 // 切换角色时同步会话名 + 首条消息（除非用户已手动编辑）
                                                 characterId = c.id.orEmpty()
                                                 applyCharacter(c)
                                             }
+                                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                                    ) {
+                                        Text(
+                                            c.displayName,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                         )
                                     }
                                 }

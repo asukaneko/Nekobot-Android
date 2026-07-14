@@ -38,6 +38,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.util.UUID
 
@@ -233,9 +235,14 @@ fun CharacterDetailScreen(
     ) { uri ->
         if (uri != null) {
             scope.launch {
-                val path = withContext(Dispatchers.IO) { saveImageAndGetPath(context, uri, isLocalMode, "portrait") }
-                if (path != null) vm.portrait.value = path
-                else vm.showToast("图片加载失败")
+                vm.setLoading(true)
+                try {
+                    val path = withContext(Dispatchers.IO) { saveImageAndGetPath(context, uri, isLocalMode, "portrait") }
+                    if (path != null) vm.portrait.value = path
+                    else vm.showToast(if (isLocalMode) "图片加载失败" else "立绘上传失败")
+                } finally {
+                    vm.setLoading(false)
+                }
             }
         }
     }
@@ -245,9 +252,14 @@ fun CharacterDetailScreen(
     ) { uri ->
         if (uri != null) {
             scope.launch {
-                val path = withContext(Dispatchers.IO) { saveImageAndGetPath(context, uri, isLocalMode, "avatar") }
-                if (path != null) vm.avatar.value = path
-                else vm.showToast("图片加载失败")
+                vm.setLoading(true)
+                try {
+                    val path = withContext(Dispatchers.IO) { saveImageAndGetPath(context, uri, isLocalMode, "avatar") }
+                    if (path != null) vm.avatar.value = path
+                    else vm.showToast(if (isLocalMode) "图片加载失败" else "头像上传失败")
+                } finally {
+                    vm.setLoading(false)
+                }
             }
         }
     }
@@ -548,12 +560,12 @@ private fun LabeledFieldWithUpload(
 }
 
 /**
- * 把 Uri 图片保存到本地（本地模式）或缓存目录（远程模式待上传）。
+ * 把 Uri 图片保存到本地（本地模式）或上传到服务器（远程模式）。
  * - 本地模式：保存到 filesDir/portraits，返回 file:// URI 字符串
- * - 远程模式：保存到 cacheDir 临时文件，返回 file:// URI 字符串
- *   （远程模式保存时会用此本地路径展示，提交时由后端处理 URL）
+ * - 远程模式：上传至 /api/personality/portrait，返回服务器相对 URL 字符串
+ *   （保存时 portrait/avatar 字段直接存 URL，由后端静态服务提供图片）
  */
-private fun saveImageAndGetPath(
+private suspend fun saveImageAndGetPath(
     context: Context,
     uri: Uri,
     isLocalMode: Boolean,
@@ -562,16 +574,31 @@ private fun saveImageAndGetPath(
     return try {
         val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
         val ext = guessImageExt(context, uri)
-        val dir = if (isLocalMode) {
-            File(context.filesDir, "portraits")
+        if (isLocalMode) {
+            // 本地模式：保存到 filesDir/portraits，返回 file:// URI
+            val dir = File(context.filesDir, "portraits")
+            if (!dir.exists()) dir.mkdirs()
+            val file = File(dir, "${prefix}_${UUID.randomUUID().toString().take(16)}.$ext")
+            file.writeBytes(bytes)
+            android.net.Uri.fromFile(file).toString()
         } else {
-            File(context.cacheDir, "portraits")
+            // 远程模式：上传到服务器，返回 URL 字符串
+            val fileName = "${prefix}_${UUID.randomUUID().toString().take(16)}.$ext"
+            val mime = context.contentResolver.getType(uri) ?: "image/$ext"
+            val mediaType = mime.toMediaTypeOrNull() ?: "image/png".toMediaTypeOrNull()
+            val body = bytes.toRequestBody(mediaType)
+            val part = okhttp3.MultipartBody.Part.createFormData("file", fileName, body)
+            when (val res = com.nekobot.app.ServiceContainer.unified.uploadPortrait(part)) {
+                is com.nekobot.app.data.repository.Resource.Success -> res.data
+                is com.nekobot.app.data.repository.Resource.Error -> {
+                    android.util.Log.e("CharacterDetail", "立绘上传失败: ${res.message}")
+                    null
+                }
+                is com.nekobot.app.data.repository.Resource.Loading -> null
+            }
         }
-        if (!dir.exists()) dir.mkdirs()
-        val file = File(dir, "${prefix}_${UUID.randomUUID().toString().take(16)}.$ext")
-        file.writeBytes(bytes)
-        android.net.Uri.fromFile(file).toString()
     } catch (e: Exception) {
+        android.util.Log.e("CharacterDetail", "saveImageAndGetPath error", e)
         null
     }
 }

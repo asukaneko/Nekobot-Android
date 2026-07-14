@@ -1249,6 +1249,7 @@ private fun MessageBubble(
                             text = segment,
                             color = textColor,
                             style = MaterialTheme.typography.bodyMedium,
+                            chatMode = true,
                             processParens = !isUser,
                             modifier = if (isUser) Modifier.widthIn(max = maxBubbleWidth) else Modifier.fillMaxWidth()
                         )
