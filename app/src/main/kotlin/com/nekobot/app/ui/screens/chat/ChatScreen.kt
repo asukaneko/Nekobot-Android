@@ -48,10 +48,14 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
+import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.KeyboardHide
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.VerticalSplit
+import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
@@ -104,6 +108,7 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import com.nekobot.app.data.model.Message
+import com.nekobot.app.data.local.ChatInputLayoutMode
 import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.remote.RealtimeEvent
@@ -150,6 +155,10 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
     val selectedIds by viewModel.selectedMessageIds.collectAsState()
 
     var input by remember { mutableStateOf("") }
+    var pendingPlotChoiceId by remember { mutableStateOf<String?>(null) }
+    var chatInputLayout by remember {
+        mutableStateOf(ServiceContainer.prefs.chatInputLayoutMode)
+    }
     var menuExpanded by remember { mutableStateOf(false) }
     var deletingMessage by remember { mutableStateOf<Message?>(null) }
     var showClearConfirm by remember { mutableStateOf(false) }
@@ -497,12 +506,21 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                     messageCount = messages.size,
                     plotChoices = plotChoices,
                     plotChoicesLoading = plotChoicesLoading,
-                    onSelectPlotChoice = { choice ->
-                        // 填入输入框（用户可编辑后手动发送），后台标记选中
-                        input = choice.title
-                        viewModel.selectPlotChoice(choice.id)
+                    pendingPlotChoiceId = pendingPlotChoiceId,
+                    layoutMode = chatInputLayout,
+                    onLayoutModeChange = { mode ->
+                        chatInputLayout = mode
+                        ServiceContainer.prefs.chatInputLayoutMode = mode
                     },
-                    onRegeneratePlotChoices = { viewModel.regeneratePlotChoices() },
+                    onSelectPlotChoice = { choice ->
+                        // 点击仅作为待发送候选，真正发送时才提交最终选项。
+                        input = choice.title
+                        pendingPlotChoiceId = choice.id
+                    },
+                    onRegeneratePlotChoices = {
+                        pendingPlotChoiceId = null
+                        viewModel.regeneratePlotChoices()
+                    },
                     onScrollToBottom = {
                         if (messages.isNotEmpty()) {
                             scope.launch { listState.animateScrollToItem(messages.lastIndex) }
@@ -511,9 +529,11 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                     onShowMyMessages = { showMyMessages = true },
                     onSend = {
                         val text = input
+                        val plotChoiceId = pendingPlotChoiceId
                         input = ""
+                        pendingPlotChoiceId = null
                         keyboard?.hide()
-                        viewModel.sendMessage(text)
+                        viewModel.sendMessage(text, plotChoiceId)
                     },
                     onStop = { viewModel.stop() },
                     onClear = { showClearConfirm = true },
@@ -1443,11 +1463,6 @@ private fun PlotChoicesSkeleton() {
             .padding(horizontal = 12.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
-            Spacer(Modifier.width(4.dp))
-            Text("剧情选项生成中...", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1456,7 +1471,7 @@ private fun PlotChoicesSkeleton() {
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(56.dp)
+                        .height(44.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha))
                 )
@@ -1471,11 +1486,18 @@ private fun PlotChoicesSkeleton() {
 @Composable
 private fun PlotChoicesBar(
     choices: List<PlotChoice>,
+    pendingChoiceId: String?,
     onSelect: (PlotChoice) -> Unit,
     onRegenerate: () -> Unit,
     enabled: Boolean = true,
-    collapsed: Boolean = false,
-    onToggleCollapse: () -> Unit = {}
+    layoutMode: ChatInputLayoutMode,
+    inputVisible: Boolean,
+    panelExpanded: Boolean,
+    sending: Boolean,
+    onToggleInput: () -> Unit,
+    onTogglePanel: () -> Unit,
+    onToggleLayout: () -> Unit,
+    onStop: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -1483,86 +1505,150 @@ private fun PlotChoicesBar(
             .padding(horizontal = 12.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
+        PlotChoicesHeader(
+            title = "剧情选项",
+            layoutMode = layoutMode,
+            inputVisible = inputVisible,
+            panelExpanded = panelExpanded,
+            sending = sending,
+            refreshEnabled = enabled,
+            onToggleInput = onToggleInput,
+            onTogglePanel = onTogglePanel,
+            onToggleLayout = onToggleLayout,
+            onRegenerate = onRegenerate,
+            onStop = onStop
+        )
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
-            Spacer(Modifier.width(4.dp))
-            Text("剧情选项", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.weight(1f))
-            TextButton(
-                onClick = onToggleCollapse,
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-            ) {
-                Text(
-                    if (collapsed) "显示" else "隐藏",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            TextButton(
-                onClick = onRegenerate,
-                enabled = enabled,
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-            ) {
-                Text("换一组", style = MaterialTheme.typography.labelSmall, color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        // 折叠时不显示选项卡片
-        if (!collapsed) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                choices.forEach { choice ->
-                    // 根据等级选择强调色
-                    val levelColor = when (choice.level) {
-                        "turning_point" -> Color(0xFFFF6B6B)
-                        "important" -> Color(0xFFFFB347)
-                        else -> MaterialTheme.colorScheme.primary
-                    }
-                    GlassCard(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable(enabled = enabled) { onSelect(choice) },
-                        cornerRadius = 12,
-                        containerColor = if (choice.selected) levelColor.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .clip(CircleShape)
-                                    .background(levelColor)
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                text = when (choice.level) {
-                                    "turning_point" -> "转折"
-                                    "important" -> "重要"
-                                    else -> "普通"
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = levelColor,
-                                fontSize = androidx.compose.ui.unit.TextUnit(9f, androidx.compose.ui.unit.TextUnitType.Sp)
-                            )
-                        }
-                        Spacer(Modifier.height(2.dp))
+            choices.forEach { choice ->
+                val levelColor = when (choice.level) {
+                    "turning_point" -> Color(0xFFFF6B6B)
+                    "important" -> Color(0xFFFFB347)
+                    else -> MaterialTheme.colorScheme.primary
+                }
+                GlassCard(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(enabled = enabled) { onSelect(choice) },
+                    cornerRadius = 12,
+                    containerColor = if (choice.id == pendingChoiceId || choice.selected) {
+                        levelColor.copy(alpha = 0.15f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    },
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        horizontal = 8.dp,
+                        vertical = 6.dp
+                    )
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(levelColor)
+                        )
+                        Spacer(Modifier.width(4.dp))
                         Text(
-                            text = choice.title.ifBlank { "选项" },
+                            text = when (choice.level) {
+                                "turning_point" -> "转折"
+                                "important" -> "重要"
+                                else -> "普通"
+                            },
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
+                            color = levelColor,
+                            fontSize = androidx.compose.ui.unit.TextUnit(9f, androidx.compose.ui.unit.TextUnitType.Sp)
                         )
                     }
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = choice.title.ifBlank { "选项" },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
     }
 }
+
+@Composable
+private fun PlotChoicesHeader(
+    title: String,
+    layoutMode: ChatInputLayoutMode,
+    inputVisible: Boolean,
+    panelExpanded: Boolean,
+    sending: Boolean,
+    refreshEnabled: Boolean,
+    onToggleInput: () -> Unit,
+    onTogglePanel: () -> Unit,
+    onToggleLayout: () -> Unit,
+    onRegenerate: () -> Unit,
+    onStop: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(4.dp))
+        Text(title, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.weight(1f))
+        if (layoutMode == ChatInputLayoutMode.MERGED) {
+            IconButton(onClick = onTogglePanel, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    if (panelExpanded) Icons.Filled.MoreVert else Icons.Filled.Add,
+                    contentDescription = if (panelExpanded) "收起更多操作" else "更多操作",
+                    tint = if (panelExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            IconButton(onClick = onToggleInput, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    if (inputVisible) Icons.Filled.KeyboardHide else Icons.Filled.Keyboard,
+                    contentDescription = if (inputVisible) "隐藏输入框" else "展开输入框",
+                    tint = if (inputVisible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+        IconButton(onClick = onToggleLayout, modifier = Modifier.size(36.dp)) {
+            Icon(
+                if (layoutMode == ChatInputLayoutMode.MERGED) Icons.Filled.VerticalSplit else Icons.Filled.ViewAgenda,
+                contentDescription = if (layoutMode == ChatInputLayoutMode.MERGED) "切换为分离布局" else "切换为合并布局",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        if (sending) {
+            IconButton(onClick = onStop, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    Icons.Filled.Stop,
+                    contentDescription = "停止",
+                    tint = Color(0xFFFF6B6B),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        } else {
+            IconButton(onClick = onRegenerate, enabled = refreshEnabled, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Filled.Refresh, contentDescription = "换一组", modifier = Modifier.size(20.dp))
+            }
+        }
+    }
+}
+
+internal fun shouldShowChatInput(
+    layoutMode: ChatInputLayoutMode,
+    inputExpanded: Boolean,
+    hasPlotSurface: Boolean,
+    hasDraft: Boolean
+): Boolean = layoutMode == ChatInputLayoutMode.SEPARATE ||
+    !hasPlotSurface || inputExpanded || hasDraft
 
 /**
  * 把时间戳/时间字符串精简到「分钟」级，尽量短以节省气泡下方空间。
@@ -1614,6 +1700,9 @@ private fun ChatInputBar(
     messageCount: Int,
     plotChoices: List<PlotChoice> = emptyList(),
     plotChoicesLoading: Boolean = false,
+    pendingPlotChoiceId: String? = null,
+    layoutMode: ChatInputLayoutMode = ChatInputLayoutMode.MERGED,
+    onLayoutModeChange: (ChatInputLayoutMode) -> Unit = {},
     onSelectPlotChoice: (PlotChoice) -> Unit = {},
     onRegeneratePlotChoices: () -> Unit = {},
     onScrollToBottom: () -> Unit = {},
@@ -1631,12 +1720,28 @@ private fun ChatInputBar(
     fileBusy: Boolean = false
 ) {
     var panelExpanded by remember { mutableStateOf(false) }
-    var plotChoicesCollapsed by remember { mutableStateOf(false) }
+    var inputExpanded by remember { mutableStateOf(false) }
     // 字符数与 token 估算：中文字符约 1 token/字，英文约 0.25 token/字符
     val charCount = input.length
     val chineseCount = input.count { it.code in 0x4E00..0x9FFF }
     val otherCount = charCount - chineseCount
     val tokenEstimate = (chineseCount + otherCount / 4).coerceAtLeast(if (charCount > 0) 1 else 0)
+    val hasPlotSurface = plotChoicesLoading || plotChoices.isNotEmpty()
+    val inputVisible = shouldShowChatInput(
+        layoutMode = layoutMode,
+        inputExpanded = inputExpanded,
+        hasPlotSurface = hasPlotSurface,
+        hasDraft = input.isNotBlank()
+    )
+    val toggleInput = {
+        if (input.isBlank()) inputExpanded = !inputVisible
+    }
+    val toggleLayout = {
+        onLayoutModeChange(
+            if (layoutMode == ChatInputLayoutMode.MERGED) ChatInputLayoutMode.SEPARATE
+            else ChatInputLayoutMode.MERGED
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -1647,16 +1752,40 @@ private fun ChatInputBar(
     ) {
         // 剧情模式选项（输入框上方，最多展示 3 个）
         if (plotChoicesLoading) {
-            // 剧情选项生成中：显示骨架动画
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                PlotChoicesHeader(
+                    title = "剧情选项生成中...",
+                    layoutMode = layoutMode,
+                    inputVisible = inputVisible,
+                    panelExpanded = panelExpanded,
+                    sending = sending,
+                    refreshEnabled = false,
+                    onToggleInput = toggleInput,
+                    onTogglePanel = { panelExpanded = !panelExpanded },
+                    onToggleLayout = toggleLayout,
+                    onRegenerate = onRegeneratePlotChoices,
+                    onStop = onStop
+                )
+            }
             PlotChoicesSkeleton()
         } else if (plotChoices.isNotEmpty()) {
             PlotChoicesBar(
                 choices = plotChoices.take(3),
-                onSelect = onSelectPlotChoice,
+                pendingChoiceId = pendingPlotChoiceId,
+                onSelect = {
+                    inputExpanded = true
+                    onSelectPlotChoice(it)
+                },
                 onRegenerate = onRegeneratePlotChoices,
                 enabled = !sending,
-                collapsed = plotChoicesCollapsed,
-                onToggleCollapse = { plotChoicesCollapsed = !plotChoicesCollapsed }
+                layoutMode = layoutMode,
+                inputVisible = inputVisible,
+                panelExpanded = panelExpanded,
+                sending = sending,
+                onToggleInput = toggleInput,
+                onTogglePanel = { panelExpanded = !panelExpanded },
+                onToggleLayout = toggleLayout,
+                onStop = onStop
             )
         }
         // 展开面板（向上展开）
@@ -1762,74 +1891,77 @@ private fun ChatInputBar(
             }
         }
 
-        // 字符数与 token 估算（输入框上方，始终可见）
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.End
-        ) {
-            Text(
-                "$charCount 字 / ~$tokenEstimate tok",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        // 输入行：+ 按钮 + 输入框 + 发送/停止（三者同高 48dp）
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // 左侧 + 按钮：展开/收起面板
-            IconButton(
-                onClick = { panelExpanded = !panelExpanded },
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(if (panelExpanded) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Icon(
-                    if (panelExpanded) Icons.Filled.MoreVert else Icons.Filled.Add,
-                    contentDescription = "更多操作",
-                    tint = if (panelExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            OutlinedTextField(
-                value = input,
-                onValueChange = onInputChange,
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 48.dp, max = 140.dp),
-                placeholder = { Text(if (sending) "AI 思考中..." else "输入消息...") },
-                enabled = !sending,
-                maxLines = 5,
-                shape = RoundedCornerShape(24.dp)
-            )
-            Spacer(Modifier.width(8.dp))
-            // 右侧按钮：发送中→停止；有内容→发送；空内容→语音输入
-            val showSend = sending || input.isNotBlank()
-            IconButton(
-                onClick = if (sending) onStop else if (input.isNotBlank()) onSend else onVoiceInput,
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (sending) androidx.compose.ui.graphics.Color(0xFFFF6B6B)
-                        else if (showSend) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.surfaceVariant
+        AnimatedVisibility(visible = inputVisible) {
+            Column {
+                if (input.isNotBlank()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Text(
+                            "$charCount 字 / ~$tokenEstimate tok",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 左侧 + 按钮：展开/收起面板
+                    IconButton(
+                        onClick = { panelExpanded = !panelExpanded },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(if (panelExpanded) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Icon(
+                            if (panelExpanded) Icons.Filled.MoreVert else Icons.Filled.Add,
+                            contentDescription = "更多操作",
+                            tint = if (panelExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedTextField(
+                        value = input,
+                        onValueChange = onInputChange,
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp, max = 140.dp),
+                        placeholder = { Text(if (sending) "AI 思考中..." else "输入消息...") },
+                        enabled = !sending,
+                        maxLines = 5,
+                        shape = RoundedCornerShape(24.dp)
                     )
-            ) {
-                if (sending) {
-                    Icon(Icons.Filled.Stop, contentDescription = "停止", tint = Color.White, modifier = Modifier.size(22.dp))
-                } else if (input.isNotBlank()) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送", tint = Color.White, modifier = Modifier.size(22.dp))
-                } else {
-                    Icon(Icons.Filled.Mic, contentDescription = "语音输入", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(8.dp))
+                    val showSend = sending || input.isNotBlank()
+                    val primaryAction: () -> Unit = when {
+                        sending -> onStop
+                        input.isNotBlank() -> {{ inputExpanded = false; onSend() }}
+                        else -> onVoiceInput
+                    }
+                    IconButton(
+                        onClick = primaryAction,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (sending) Color(0xFFFF6B6B)
+                                else if (showSend) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.surfaceVariant
+                            )
+                    ) {
+                        if (sending) {
+                            Icon(Icons.Filled.Stop, contentDescription = "停止", tint = Color.White, modifier = Modifier.size(22.dp))
+                        } else if (input.isNotBlank()) {
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送", tint = Color.White, modifier = Modifier.size(22.dp))
+                        } else {
+                            Icon(Icons.Filled.Mic, contentDescription = "语音输入", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                        }
+                    }
                 }
             }
         }
@@ -2122,9 +2254,16 @@ class ChatViewModel : BaseViewModel() {
      * - 服务器模式：优先通过 Socket.IO send_message 触发 AI（服务端会推送流式回复），
      *   Socket 未连接时回退到 HTTP /chat
      */
-    fun sendMessage(text: String) {
+    fun sendMessage(text: String, plotChoiceId: String? = null) {
         val content = text.trim()
         if (content.isBlank() || _sending.value || currentSessionId.isBlank()) return
+        if (plotChoiceId != null) {
+            viewModelScope.launch {
+                commitPlotChoiceSelection(plotChoiceId)
+                sendMessage(content)
+            }
+            return
+        }
         // 乐观更新
         val optimistic = Message(
             role = "user",
@@ -2517,44 +2656,39 @@ class ChatViewModel : BaseViewModel() {
         }
     }
 
-    /** 选择一个剧情选项：后台标记选中（fire-and-forget），不清除选项列表。 */
-    fun selectPlotChoice(choiceId: String) {
+    /** 在发送消息前提交最终剧情选项，并清除同节点的其他选中状态。 */
+    private suspend fun commitPlotChoiceSelection(choiceId: String) {
         if (currentSessionId.isBlank()) return
+        _plotChoices.value = _plotChoices.value.map { choice ->
+            choice.copy(selected = choice.id == choiceId)
+        }
         if (isLocalMode) {
-            // 本地模式：标记选中状态，并记录到 SharedPreferences
-            _plotChoices.value = _plotChoices.value.map { if (it.id == choiceId) it.copy(selected = true) else it }
-            viewModelScope.launch {
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    try {
-                        // 已保存的 JSON 格式为 {"choices": [...]}，直接解析后修改 selected 字段
-                        val raw = com.nekobot.app.ServiceContainer.localRepository
-                            .getPlotChoices(currentSessionId) ?: "{\"choices\":[]}"
-                        val payload = com.google.gson.JsonParser.parseString(raw).asJsonObject
-                        val choicesArr = payload.get("choices")?.takeIf { it.isJsonArray }?.asJsonArray
-                        choicesArr?.forEach { el ->
-                            if (el.isJsonObject) {
-                                val obj = el.asJsonObject
-                                val id = obj.get("id")?.takeIf { it.isJsonPrimitive }?.asString
-                                if (id == choiceId) {
-                                    obj.addProperty("selected", true)
-                                }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val raw = ServiceContainer.localRepository
+                        .getPlotChoices(currentSessionId) ?: "{\"choices\":[]}"
+                    val payload = com.google.gson.JsonParser.parseString(raw).asJsonObject
+                    val choicesArr = payload.get("choices")?.takeIf { it.isJsonArray }?.asJsonArray
+                    choicesArr?.forEach { element ->
+                        if (element.isJsonObject) {
+                            val obj = element.asJsonObject
+                            val id = obj.get("id")?.takeIf { it.isJsonPrimitive }?.asString
+                                ?: obj.get("choice_id")?.takeIf { it.isJsonPrimitive }?.asString
+                            if (id != null) {
+                                obj.addProperty("selected", id == choiceId)
                             }
                         }
-                        com.nekobot.app.ServiceContainer.localRepository
-                            .savePlotChoices(currentSessionId, payload.toString())
-                        com.nekobot.app.data.local.ai.getGlobalPlotGraphManager().selectChoice(choiceId)
-                        com.nekobot.app.ServiceContainer.localRepository.persistPlotGraph()
-                    } catch (_: Exception) { }
-                }
+                    }
+                    ServiceContainer.localRepository.savePlotChoices(currentSessionId, payload.toString())
+                    com.nekobot.app.data.local.ai.getGlobalPlotGraphManager().selectChoice(choiceId)
+                    ServiceContainer.localRepository.persistPlotGraph()
+                } catch (_: Exception) { }
             }
             return
         }
-        // 后台标记选中，不阻塞用户操作
-        viewModelScope.launch {
-            try { repo.selectPlotChoice(currentSessionId, choiceId) } catch (_: Exception) {}
-        }
-        // 标记已选中状态（UI 可高亮），不清除列表
-        _plotChoices.value = _plotChoices.value.map { if (it.id == choiceId) it.copy(selected = true) else it }
+        try {
+            repo.selectPlotChoice(currentSessionId, choiceId)
+        } catch (_: Exception) { }
     }
 
     /** 重新生成剧情选项。 */

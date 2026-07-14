@@ -213,7 +213,9 @@ class PlotGraphManager {
      */
     fun selectChoice(choiceId: String): Boolean {
         val choice = choices[choiceId] ?: return false
-        choice.selected = true
+        choices.values
+            .filter { it.nodeId == choice.nodeId }
+            .forEach { it.selected = it.id == choiceId }
 
         // 设父节点 selected_choice_id
         nodes[choice.nodeId]?.selectedChoiceId = choiceId

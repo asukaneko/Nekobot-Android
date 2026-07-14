@@ -16,6 +16,16 @@ enum class AppMode {
     val isLocal: Boolean get() = this == LOCAL
 }
 
+enum class ChatInputLayoutMode {
+    MERGED,
+    SEPARATE;
+
+    companion object {
+        fun fromStorage(value: String?): ChatInputLayoutMode =
+            entries.firstOrNull { it.name == value } ?: MERGED
+    }
+}
+
 /**
  * 单条登录记录：服务器地址 + 用户名 + token（密码不保存，快速登录靠 token 复用）。
  * 若 token 已失效，后端会返回 401，届时用户需重新输入密码登录。
@@ -116,6 +126,13 @@ class PrefsManager(context: Context) {
 
     val isLocalMode: Boolean get() = appMode.isLocal
 
+    /** 聊天底部输入栏的全局布局偏好。 */
+    var chatInputLayoutMode: ChatInputLayoutMode
+        get() = ChatInputLayoutMode.fromStorage(prefs.getString(KEY_CHAT_INPUT_LAYOUT, null))
+        set(value) {
+            prefs.edit().putString(KEY_CHAT_INPUT_LAYOUT, value.name).apply()
+        }
+
     /** 字体类型：system / serif / monospace / rounded / custom */
     var fontFamily: String
         get() = prefs.getString(KEY_FONT_FAMILY, FONT_FAMILY_SYSTEM) ?: FONT_FAMILY_SYSTEM
@@ -187,6 +204,7 @@ class PrefsManager(context: Context) {
         private const val KEY_USERNAME = "username"
         private const val KEY_APP_MODE = "app_mode"
         private const val KEY_LOGIN_RECORDS = "login_records"
+        private const val KEY_CHAT_INPUT_LAYOUT = "chat_input_layout"
         private const val DEFAULT_SERVER = "http://localhost:5000"
 
         // 样式相关 KEY
