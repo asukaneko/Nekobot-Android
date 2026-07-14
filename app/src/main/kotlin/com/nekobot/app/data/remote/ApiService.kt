@@ -169,14 +169,14 @@ interface ApiService {
     suspend fun createEntry(
         @Path("id") bookId: String,
         @Body body: WorldBookEntryRequest
-    ): Response<WorldBookEntry>
+    ): Response<JsonElement>
 
     @PUT("api/world-books/{id}/entries/{entryId}")
     suspend fun updateEntry(
         @Path("id") bookId: String,
         @Path("entryId") entryId: String,
         @Body body: WorldBookEntryRequest
-    ): Response<WorldBookEntry>
+    ): Response<JsonElement>
 
     @DELETE("api/world-books/{id}/entries/{entryId}")
     suspend fun deleteEntry(

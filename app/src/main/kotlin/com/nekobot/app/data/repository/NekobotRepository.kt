@@ -302,6 +302,25 @@ class NekobotRepository(
         return WorldBook()
     }
 
+    /**
+     * 解析世界书条目响应。
+     * 原仓库 POST/PUT /api/world-books/{id}/entries[/...] 返回 {"success": true, "entry": {...}} 包装格式，
+     * 但 GET 列表直接返回数组。这里兼容包装格式与裸 entry 对象两种情况。
+     */
+    private fun extractEntry(el: JsonElement?): WorldBookEntry {
+        if (el == null || el.isJsonNull) return WorldBookEntry()
+        if (el.isJsonObject) {
+            val obj = el.asJsonObject
+            // 包装格式：{"success": true, "entry": {...}}
+            obj.get("entry")?.takeIf { it.isJsonObject }?.let {
+                return gson.fromJson(it, WorldBookEntry::class.java)
+            }
+            // 直接是 entry 对象
+            return gson.fromJson(el, WorldBookEntry::class.java)
+        }
+        return WorldBookEntry()
+    }
+
     suspend fun listWorldBooks(): Resource<List<WorldBook>> = safeCall { api.listWorldBooks() }
     suspend fun getWorldBook(id: String): Resource<WorldBook> = safeCall { api.getWorldBook(id) }
     suspend fun createWorldBook(req: WorldBookRequest): Resource<WorldBook> =
@@ -322,8 +341,22 @@ class NekobotRepository(
         }
     suspend fun deleteWorldBook(id: String): Resource<Unit> = safeCall { api.deleteWorldBook(id) }.map { }
     suspend fun listEntries(bookId: String): Resource<List<WorldBookEntry>> = safeCall { api.listEntries(bookId) }
-    suspend fun createEntry(bookId: String, req: WorldBookEntryRequest): Resource<WorldBookEntry> = safeCall { api.createEntry(bookId, req) }
-    suspend fun updateEntry(bookId: String, entryId: String, req: WorldBookEntryRequest): Resource<WorldBookEntry> = safeCall { api.updateEntry(bookId, entryId, req) }
+    suspend fun createEntry(bookId: String, req: WorldBookEntryRequest): Resource<WorldBookEntry> =
+        safeCall { api.createEntry(bookId, req) }.let { res ->
+            when (res) {
+                is Resource.Success -> Resource.Success(extractEntry(res.data))
+                is Resource.Error -> res
+                is Resource.Loading -> res
+            }
+        }
+    suspend fun updateEntry(bookId: String, entryId: String, req: WorldBookEntryRequest): Resource<WorldBookEntry> =
+        safeCall { api.updateEntry(bookId, entryId, req) }.let { res ->
+            when (res) {
+                is Resource.Success -> Resource.Success(extractEntry(res.data))
+                is Resource.Error -> res
+                is Resource.Loading -> res
+            }
+        }
     suspend fun deleteEntry(bookId: String, entryId: String): Resource<Unit> = safeCall { api.deleteEntry(bookId, entryId) }.map { }
 
     /**

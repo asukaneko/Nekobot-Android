@@ -375,12 +375,12 @@ data class WorldBookRequest(
 )
 
 data class WorldBookEntryRequest(
-    @SerializedName(value = "keys", alternate = ["keywords"])
+    @SerializedName(value = "keywords", alternate = ["keys"])
     val keys: List<String>? = null,
     val content: String? = null,
     val comment: String? = null,
     val enabled: Boolean? = null,
-    @SerializedName(value = "constant", alternate = ["always_on"])
+    @SerializedName(value = "always_on", alternate = ["constant"])
     val constant: Boolean? = null,
     val selective: Boolean? = null,
     @SerializedName("insertion_order") val insertionOrder: Int? = null,
