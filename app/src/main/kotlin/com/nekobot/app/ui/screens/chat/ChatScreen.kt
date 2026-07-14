@@ -154,6 +154,8 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
     var deletingMessage by remember { mutableStateOf<Message?>(null) }
     var showClearConfirm by remember { mutableStateOf(false) }
     var showMyMessages by remember { mutableStateOf(false) }
+    var showRestoreArchiveDialog by remember { mutableStateOf(false) }
+    var showArchiveViewer by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val keyboard = LocalSoftwareKeyboardController.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -451,22 +453,23 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                                         session?.id?.let { onOpenStoryGraph(it) }
                                     }
                                 )
-                                DropdownMenuItem(
-                                    text = { Text("重新生成") },
-                                    onClick = {
-                                        menuExpanded = false
-                                        viewModel.regenerate()
-                                    },
-                                    enabled = !sending
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("停止生成") },
-                                    onClick = {
-                                        menuExpanded = false
-                                        viewModel.stop()
-                                    },
-                                    enabled = sending
-                                )
+                                // 仅当当前会话绑定了归档会话时显示
+                                if (!session?.archiveSessionId.isNullOrBlank()) {
+                                    DropdownMenuItem(
+                                        text = { Text("提取归档") },
+                                        onClick = {
+                                            menuExpanded = false
+                                            showRestoreArchiveDialog = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("查看归档") },
+                                        onClick = {
+                                            menuExpanded = false
+                                            showArchiveViewer = true
+                                        }
+                                    )
+                                }
                                 DropdownMenuItem(
                                     text = { Text("清空消息", color = Color(0xFFFF6B6B)) },
                                     onClick = {
@@ -630,6 +633,85 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                 viewModel.clearMessages(sessionId) { showClearConfirm = false }
             }
         )
+    }
+
+    // 提取归档对话框：输入要提取的对话轮数
+    if (showRestoreArchiveDialog) {
+        var turnsText by remember { mutableStateOf("5") }
+        NekoDialog(
+            onDismiss = { showRestoreArchiveDialog = false },
+            title = "提取归档",
+            message = "从归档会话末尾提取 N 轮对话回到当前会话（1-100）。",
+            confirmText = "提取",
+            onConfirm = {
+                val turns = turnsText.trim().toIntOrNull()?.coerceIn(1, 100) ?: 5
+                viewModel.restoreFromArchive(turns)
+                showRestoreArchiveDialog = false
+            }
+        ) {
+            OutlinedTextField(
+                value = turnsText,
+                onValueChange = { s -> turnsText = s.filter { it.isDigit() }.take(3) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                ),
+                label = { Text("轮数") }
+            )
+        }
+    }
+
+    // 查看归档对话框：拉取归档会话消息并展示
+    if (showArchiveViewer) {
+        val archiveSession = remember { androidx.compose.runtime.mutableStateOf<Session?>(null) }
+        val archiveMessages = remember { androidx.compose.runtime.mutableStateOf<List<Message>>(emptyList()) }
+        androidx.compose.runtime.LaunchedEffect(showArchiveViewer) {
+            if (showArchiveViewer) {
+                viewModel.viewArchive { s, msgs ->
+                    archiveSession.value = s
+                    archiveMessages.value = msgs
+                }
+            }
+        }
+        NekoDialog(
+            onDismiss = {
+                showArchiveViewer = false
+                archiveSession.value = null
+                archiveMessages.value = emptyList()
+            },
+            title = "归档会话：${archiveSession.value?.displayName ?: "加载中..."}",
+            message = if (archiveMessages.value.isEmpty()) "暂无归档消息" else null,
+            confirmText = "关闭",
+            onConfirm = null
+        ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items(archiveMessages.value, key = { it.id ?: it.content.hashCode().toString() }) { msg ->
+                    androidx.compose.material3.Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                        color = if (msg.isUser) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Text(
+                                text = if (msg.isUser) "我" else "AI",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = msg.content.orEmpty(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // 我的消息列表弹窗：点击可跳转到对应气泡
@@ -2274,9 +2356,42 @@ class ChatViewModel : BaseViewModel() {
         if (currentSessionId.isBlank()) return
         launchResult(
             block = { unified.compressContext(currentSessionId) },
-            onSuccess = {
+            onSuccess = { json ->
+                // 后端返回 archive_session_id，写回当前 session 状态
+                val archiveId = json?.takeIf { it.isJsonObject }
+                    ?.asJsonObject?.get("archive_session_id")?.asString
+                if (archiveId != null) {
+                    _session.value = _session.value?.copy(archiveSessionId = archiveId)
+                }
                 showToast("上下文已压缩")
                 loadMessages()
+            }
+        )
+    }
+
+    /** 从归档会话提取 N 轮对话回到当前会话。 */
+    fun restoreFromArchive(turns: Int) {
+        if (currentSessionId.isBlank()) return
+        launchResult(
+            block = { unified.restoreFromArchive(currentSessionId, turns) },
+            onSuccess = {
+                showToast("已从归档提取 $turns 轮对话")
+                loadMessages()
+            }
+        )
+    }
+
+    /** 查看归档会话：拉取归档会话详情并以只读方式展示。 */
+    fun viewArchive(onLoaded: (Session, List<Message>) -> Unit) {
+        val archiveId = _session.value?.archiveSessionId ?: return
+        launchResult(
+            block = { unified.getSession(archiveId) },
+            onSuccess = { archiveSession ->
+                val sid = archiveSession.id ?: return@launchResult
+                launchResult(
+                    block = { unified.listMessages(sid) },
+                    onSuccess = { msgs -> onLoaded(archiveSession, msgs ?: emptyList()) }
+                )
             }
         )
     }

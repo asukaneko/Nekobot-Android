@@ -116,11 +116,25 @@ class PrefsManager(context: Context) {
 
     val isLocalMode: Boolean get() = appMode.isLocal
 
-    /** 字体类型：system / serif / monospace / rounded */
+    /** 字体类型：system / serif / monospace / rounded / custom */
     var fontFamily: String
         get() = prefs.getString(KEY_FONT_FAMILY, FONT_FAMILY_SYSTEM) ?: FONT_FAMILY_SYSTEM
         set(value) {
             prefs.edit().putString(KEY_FONT_FAMILY, value).apply()
+        }
+
+    /** 自定义字体文件绝对路径（fontFamily == "custom" 时生效），null 表示未上传 */
+    var customFontPath: String?
+        get() = prefs.getString(KEY_CUSTOM_FONT_PATH, null)
+        set(value) {
+            prefs.edit().putString(KEY_CUSTOM_FONT_PATH, value).apply()
+        }
+
+    /** 自定义字体显示名（用于设置页展示），null 表示未上传 */
+    var customFontName: String?
+        get() = prefs.getString(KEY_CUSTOM_FONT_NAME, null)
+        set(value) {
+            prefs.edit().putString(KEY_CUSTOM_FONT_NAME, value).apply()
         }
 
     /** 字体缩放因子：0.85f / 1.0f / 1.15f / 1.3f */
@@ -180,11 +194,14 @@ class PrefsManager(context: Context) {
         const val KEY_FONT_SCALE = "font_scale"
         const val KEY_FONT_COLOR = "font_color"
         const val KEY_THEME_COLOR = "theme_color"
+        const val KEY_CUSTOM_FONT_PATH = "custom_font_path"
+        const val KEY_CUSTOM_FONT_NAME = "custom_font_name"
 
         // 字体类型可选值
         const val FONT_FAMILY_SYSTEM = "system"
         const val FONT_FAMILY_SERIF = "serif"
         const val FONT_FAMILY_MONOSPACE = "monospace"
         const val FONT_FAMILY_ROUNDED = "rounded"
+        const val FONT_FAMILY_CUSTOM = "custom"
     }
 }

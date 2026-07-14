@@ -1172,8 +1172,11 @@ class SessionsViewModel : BaseViewModel() {
     val displayedSessions: StateFlow<List<Session>> = combine(
         _sessions, _filter, _channelFilterValue, _characterFilterId, _searchQuery
     ) { all, f, chVal, charId, query ->
+        // 先排除压缩上下文自动创建的归档会话（is_archive == true）；
+        // 手动归档的会话（archived == true 但 is_archive != true）仍可展示
+        val visible = all.filter { it.isArchive != true }
         // 先按频道筛选
-        val byChannel = applyChannelFilter(all, chVal)
+        val byChannel = applyChannelFilter(visible, chVal)
         val filtered = applyFilter(byChannel, f, charId)
         val searched = applySearch(filtered, query)
         // 置顶强制置顶；非置顶按时间倒序（updatedAt 回退到 createdAt）

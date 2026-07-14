@@ -218,6 +218,13 @@ class UnifiedRepository(
         else Resource.Error("压缩失败")
     }
 
+    /** 从归档会话提取 N 轮对话回到当前会话（仅远程模式支持） */
+    suspend fun restoreFromArchive(id: String, turns: Int): Resource<JsonElement> {
+        if (!isLocal) return remote.restoreFromArchive(id, turns)
+        // 本地模式暂不支持归档提取
+        return Resource.Error("本地模式暂不支持提取归档")
+    }
+
     // ==================== 提示词栈 / 自定义提示词 ====================
 
     /** 获取会话的自定义提示词列表 */

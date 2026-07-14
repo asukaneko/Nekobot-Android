@@ -1,6 +1,7 @@
 package com.nekobot.app.ui.screens.statehistory
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -322,7 +324,7 @@ class StateHistoryViewModel : BaseViewModel() {
  * 状态历程页：通过下拉菜单选择会话，展示该会话的状态时间线。
  * 重写后向原仓库看齐：雷达图 + 趋势线 + Delta卡片 + 对话回放 + 时间轴滑块。
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun StateHistoryScreen(onBack: () -> Unit) {
     val vm: StateHistoryViewModel = viewModel()
@@ -375,68 +377,219 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                     }
                 }
                 else -> {
-                    Column(
-                        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+                    val selectedSession = selected
+                    val sessionName = selectedSession?.get("name")?.asString ?: "未命名会话"
+                    val timelineEl = selectedSession?.get("character_runtime_timeline")
+                        ?: selectedSession?.get("timeline")
+                    val timeline: List<JsonObject> = remember(selectedSession) {
+                        when {
+                            timelineEl?.isJsonArray == true -> timelineEl.asJsonArray
+                                .mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject }
+                            else -> emptyList()
+                        }
+                    }
+
+                    // 状态提升到外层，供 stickyHeader 和 body 共享
+                    var currentIndex by remember { mutableStateOf(0) }
+                    var isPlaying by remember { mutableStateOf(false) }
+                    var selectedMetricIndex by remember { mutableStateOf(0) }
+
+                    // 切换会话时重置
+                    LaunchedEffect(timeline) {
+                        currentIndex = 0
+                        isPlaying = false
+                    }
+                    // 自动播放：每 1.5 秒推进一节，到末尾自动停止
+                    LaunchedEffect(isPlaying, timeline) {
+                        if (isPlaying && timeline.isNotEmpty()) {
+                            while (isActive) {
+                                delay(1500)
+                                val next = currentIndex + 1
+                                if (next >= timeline.size) {
+                                    isPlaying = false
+                                    break
+                                }
+                                currentIndex = next
+                            }
+                        }
+                    }
+
+                    val currentNode = if (timeline.isNotEmpty())
+                        timeline.getOrElse(currentIndex.coerceIn(0, timeline.lastIndex)) { timeline.first() }
+                    else null
+                    val prevNode = if (currentIndex > 0 && timeline.isNotEmpty()) timeline[currentIndex - 1] else null
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize().padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         // 会话选择下拉菜单
-                        var dropdownExpanded by remember { mutableStateOf(false) }
-                        val selectedName = selected?.get("name")?.asString ?: "选择会话"
-                        Box {
-                            GlassCard(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(56.dp)
-                                    .clickable { dropdownExpanded = true },
-                                cornerRadius = 16,
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 12.dp)
+                        item {
+                            var dropdownExpanded by remember { mutableStateOf(false) }
+                            Box {
+                                GlassCard(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(56.dp)
+                                        .clickable { dropdownExpanded = true },
+                                    cornerRadius = 16,
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant
                                 ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 12.dp)
+                                    ) {
+                                        Text(
+                                            text = sessionName,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                                DropdownMenu(
+                                    expanded = dropdownExpanded,
+                                    onDismissRequest = { dropdownExpanded = false }
+                                ) {
+                                    sessions.forEach { s ->
+                                        val name = s.get("name")?.asString ?: "未命名会话"
+                                        val isActive = s == selectedSession
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    name,
+                                                    color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                                    fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            },
+                                            onClick = {
+                                                dropdownExpanded = false
+                                                vm.select(s)
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 会话标题 + 记录数
+                        item {
+                            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                                SectionHeader(title = sessionName, subtitle = "${timeline.size} 条状态记录")
+                                if (timeline.isEmpty()) {
+                                    Spacer(Modifier.height(12.dp))
+                                    Text("该会话暂无状态历程数据", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
+                        }
+
+                        if (timeline.isNotEmpty() && currentNode != null) {
+                            // 时间轴 sticky header：紧凑单行布局，向下滚动时保持在顶部不被隐藏
+                            stickyHeader {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
+                                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // 节点序号（紧凑）
                                     Text(
-                                        text = selectedName,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
+                                        text = "${currentIndex + 1}/${timeline.size}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    // 紧凑滑块
+                                    val lastIndex = (timeline.size - 1).coerceAtLeast(0)
+                                    val single = timeline.size <= 1
+                                    Slider(
+                                        value = if (single) 0f else currentIndex.toFloat(),
+                                        onValueChange = { if (!single) currentIndex = it.roundToInt().coerceIn(0, lastIndex) },
+                                        valueRange = if (single) 0f..1f else 0f..lastIndex.toFloat(),
+                                        steps = if (timeline.size > 2) timeline.size - 2 else 0,
+                                        enabled = !single,
                                         modifier = Modifier.weight(1f)
                                     )
-                                    Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(Modifier.width(4.dp))
+                                    // 紧凑播放控制
+                                    IconButton(
+                                        onClick = { currentIndex = (currentIndex - 1).coerceAtLeast(0); isPlaying = false },
+                                        enabled = currentIndex > 0,
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Filled.SkipPrevious, contentDescription = "上一节", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                    }
+                                    IconButton(
+                                        onClick = { isPlaying = !isPlaying },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                            contentDescription = if (isPlaying) "暂停" else "播放",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { currentIndex = (currentIndex + 1).coerceAtMost(lastIndex); isPlaying = false },
+                                        enabled = currentIndex < lastIndex,
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Filled.SkipNext, contentDescription = "下一节", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                    }
                                 }
                             }
-                            DropdownMenu(
-                                expanded = dropdownExpanded,
-                                onDismissRequest = { dropdownExpanded = false }
-                            ) {
-                                sessions.forEach { s ->
-                                    val name = s.get("name")?.asString ?: "未命名会话"
-                                    val isActive = s == selected
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                name,
-                                                color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        },
-                                        onClick = {
-                                            dropdownExpanded = false
-                                            vm.select(s)
-                                        }
+
+                            // 其他内容：节点元信息/雷达图/趋势图/Delta/对话回放
+                            item {
+                                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                                    NodeMetaPanel(node = currentNode, index = currentIndex, total = timeline.size)
+                                    Spacer(Modifier.height(12.dp))
+
+                                    SectionHeader(title = "六维雷达图", subtitle = "好感/信任/熟悉/依赖/安全感/精力")
+                                    Spacer(Modifier.height(8.dp))
+                                    val radarValues = metricDefs.map { (label, key, _) -> label to currentNode.intOr(key) }
+                                    RadarChart(values = radarValues)
+                                    Spacer(Modifier.height(12.dp))
+
+                                    SectionHeader(title = "趋势折线图", subtitle = "点击下方指标切换")
+                                    Spacer(Modifier.height(8.dp))
+                                    MetricSelector(selectedIndex = selectedMetricIndex, onSelect = { selectedMetricIndex = it })
+                                    Spacer(Modifier.height(8.dp))
+                                    val (_, metricKey, metricColor) = metricDefs[selectedMetricIndex]
+                                    TrendLineChart(
+                                        timeline = timeline,
+                                        metricKey = metricKey,
+                                        metricColor = metricColor,
+                                        currentIndex = currentIndex
                                     )
+                                    Spacer(Modifier.height(12.dp))
+
+                                    SectionHeader(title = "Delta 差分", subtitle = "与上一节点的差值")
+                                    Spacer(Modifier.height(8.dp))
+                                    DeltaCardGrid(current = currentNode, previous = prevNode)
+                                    Spacer(Modifier.height(12.dp))
+
+                                    SectionHeader(title = "对话回放", subtitle = "当前节点关联消息")
+                                    Spacer(Modifier.height(8.dp))
+                                    DialogueReplay(node = currentNode)
                                 }
                             }
                         }
-
-                        selected?.let { StateTimelineSection(it) }
 
                         error?.let {
-                            ErrorBanner(message = it, onRetry = { vm.clearError(); vm.refresh() })
+                            item {
+                                ErrorBanner(message = it, onRetry = { vm.clearError(); vm.refresh() })
+                            }
                         }
                     }
                 }
@@ -445,111 +598,7 @@ fun StateHistoryScreen(onBack: () -> Unit) {
     }
 }
 
-/** 选中会话的状态时间线展示：包含元信息/雷达图/趋势线/Delta/对话回放/时间轴滑块。 */
-@Composable
-private fun StateTimelineSection(session: JsonObject) {
-    val name = session.get("name")?.asString ?: "未命名会话"
-    val timelineEl = session.get("character_runtime_timeline")
-        ?: session.get("timeline")
-    val timeline: List<JsonObject> = remember(session) {
-        when {
-            timelineEl?.isJsonArray == true -> timelineEl.asJsonArray
-                .mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject }
-            else -> emptyList()
-        }
-    }
-
-    GlassCard(modifier = Modifier.fillMaxWidth()) {
-        SectionHeader(title = name, subtitle = "${timeline.size} 条状态记录")
-
-        if (timeline.isEmpty()) {
-            Spacer(Modifier.height(12.dp))
-            Text("该会话暂无状态历程数据", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
-            return@GlassCard
-        }
-
-        // 播放状态
-        var currentIndex by remember { mutableStateOf(0) }
-        var isPlaying by remember { mutableStateOf(false) }
-        // 趋势线选中指标
-        var selectedMetricIndex by remember { mutableStateOf(0) }
-
-        // 切换会话时重置
-        LaunchedEffect(timeline) {
-            currentIndex = 0
-            isPlaying = false
-        }
-        // 自动播放：每 1.5 秒推进一节，到末尾自动停止
-        LaunchedEffect(isPlaying, timeline) {
-            if (isPlaying && timeline.isNotEmpty()) {
-                while (isActive) {
-                    delay(1500)
-                    val next = currentIndex + 1
-                    if (next >= timeline.size) {
-                        isPlaying = false
-                        break
-                    }
-                    currentIndex = next
-                }
-            }
-        }
-
-        val currentNode = timeline.getOrElse(currentIndex.coerceIn(0, timeline.lastIndex)) { timeline.first() }
-        val prevNode = if (currentIndex > 0) timeline[currentIndex - 1] else null
-
-        Spacer(Modifier.height(12.dp))
-
-        // 1. 当前节点元信息面板
-        NodeMetaPanel(node = currentNode, index = currentIndex, total = timeline.size)
-        Spacer(Modifier.height(12.dp))
-
-        // 2. 六维雷达图
-        SectionHeader(title = "六维雷达图", subtitle = "好感/信任/熟悉/依赖/安全感/精力")
-        Spacer(Modifier.height(8.dp))
-        val radarValues = metricDefs.map { (label, key, _) -> label to currentNode.intOr(key) }
-        RadarChart(values = radarValues)
-        Spacer(Modifier.height(12.dp))
-
-        // 3. 趋势折线图
-        SectionHeader(title = "趋势折线图", subtitle = "点击下方指标切换")
-        Spacer(Modifier.height(8.dp))
-        MetricSelector(selectedIndex = selectedMetricIndex, onSelect = { selectedMetricIndex = it })
-        Spacer(Modifier.height(8.dp))
-        val (_, metricKey, metricColor) = metricDefs[selectedMetricIndex]
-        TrendLineChart(
-            timeline = timeline,
-            metricKey = metricKey,
-            metricColor = metricColor,
-            currentIndex = currentIndex
-        )
-        Spacer(Modifier.height(12.dp))
-
-        // 4. Delta 差分卡片网格
-        SectionHeader(title = "Delta 差分", subtitle = "与上一节点的差值")
-        Spacer(Modifier.height(8.dp))
-        DeltaCardGrid(current = currentNode, previous = prevNode)
-        Spacer(Modifier.height(12.dp))
-
-        // 5. 对话回放
-        SectionHeader(title = "对话回放", subtitle = "当前节点关联消息")
-        Spacer(Modifier.height(8.dp))
-        DialogueReplay(node = currentNode)
-        Spacer(Modifier.height(12.dp))
-
-        // 6. 时间轴滑块 + 播放控制
-        SectionHeader(title = "时间轴", subtitle = "节点 ${currentIndex + 1} / ${timeline.size}")
-        Spacer(Modifier.height(8.dp))
-        TimelineSlider(
-            currentIndex = currentIndex,
-            total = timeline.size,
-            isPlaying = isPlaying,
-            onIndexChange = { currentIndex = it.coerceIn(0, timeline.lastIndex) },
-            onPlayPause = { isPlaying = !isPlaying },
-            onPrev = { currentIndex = (currentIndex - 1).coerceAtLeast(0); isPlaying = false },
-            onNext = { currentIndex = (currentIndex + 1).coerceAtMost(timeline.lastIndex); isPlaying = false }
-        )
-    }
-}
+/** 选中会话的状态时间线展示已内联到 StateHistoryScreen 的 LazyColumn 中，时间轴作为 stickyHeader。 */
 
 // ==================== 节点元信息面板 ====================
 
@@ -593,21 +642,18 @@ private fun NodeMetaPanel(node: JsonObject, index: Int, total: Int) {
         Spacer(Modifier.height(10.dp))
 
         // 心情 + 强度
-        val mood = node.strOr("mood")
+        val mood = node.strOrNull("mood")?.takeIf { it.isNotBlank() } ?: "—"
         val intensity = node.floatOrNull("mood_intensity")
         val intensityStr = intensity?.let { " (${(it * 100).roundToInt()}%)" } ?: ""
         MetaRow(label = "当前心情", value = "$mood$intensityStr", valueColor = MaterialTheme.colorScheme.primary)
 
-        // 表层情绪
-        val visible = node.strOrNull("visible_emotion")
-        if (!visible.isNullOrBlank()) {
-            MetaRow(label = "表层情绪", value = visible, valueColor = Tertiary)
-        }
-        // 隐藏情绪
-        val hidden = node.strOrNull("hidden_emotion")
-        if (!hidden.isNullOrBlank()) {
-            MetaRow(label = "隐藏情绪", value = hidden, valueColor = WarningAmber)
-        }
+        // 表层情绪（无则显示 —，保持卡片高度稳定）
+        val visible = node.strOrNull("visible_emotion")?.takeIf { it.isNotBlank() } ?: "—"
+        MetaRow(label = "表层情绪", value = visible, valueColor = Tertiary)
+
+        // 隐藏情绪（无则显示 —，保持卡片高度稳定）
+        val hidden = node.strOrNull("hidden_emotion")?.takeIf { it.isNotBlank() } ?: "—"
+        MetaRow(label = "隐藏情绪", value = hidden, valueColor = WarningAmber)
     }
 }
 

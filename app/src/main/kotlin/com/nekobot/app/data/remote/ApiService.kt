@@ -280,6 +280,13 @@ interface ApiService {
     @POST("api/sessions/{id}/compress")
     suspend fun compressContext(@Path("id") id: String): Response<JsonElement>
 
+    /** 从归档会话提取 N 轮对话回到当前会话。 */
+    @POST("api/sessions/{id}/restore-from-archive")
+    suspend fun restoreFromArchive(
+        @Path("id") id: String,
+        @Body body: Map<String, Int>
+    ): Response<JsonElement>
+
     /** 从指定消息处分叉新会话（分支）。 */
     @POST("api/sessions/{id}/fork")
     suspend fun forkSession(@Path("id") id: String, @Body body: ForkRequest): Response<JsonElement>

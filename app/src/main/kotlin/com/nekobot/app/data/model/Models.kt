@@ -66,6 +66,12 @@ data class Session(
     val archived: Boolean? = null,
     @SerializedName("is_archive") val isArchive: Boolean? = null,
     @SerializedName("read_only") val readOnly: Boolean? = null,
+    /** 当前会话绑定的归档会话 ID（压缩上下文时由后端写入） */
+    @SerializedName(value = "archive_session_id", alternate = ["archiveSessionId"])
+    val archiveSessionId: String? = null,
+    /** 归档会话指向的原会话 ID（自动归档会话独有） */
+    @SerializedName(value = "source_session_id", alternate = ["sourceSessionId"])
+    val sourceSessionId: String? = null,
     @SerializedName("tts_config") val ttsConfig: JsonElement? = null,
     /** 公开分享配置 JSON: {expires_days, password, include_character, include_user_messages, message_start, message_end} */
     @SerializedName("share_config") val shareConfig: JsonElement? = null,

@@ -309,9 +309,20 @@ fun TokensScreen() {
                 stats?.let { s ->
                     item(key = "stats", contentType = "summary") {
                         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            StatChipGrid(stats = s)
+                            StatChipGrid(stats = s, dateRange = dateRange, startDate = startDate, endDate = endDate)
+                            // 拆分卡片标题随选择日期变化
+                            val breakdownTitle = when (dateRange) {
+                                "today" -> "今日 Token 拆分"
+                                "month" -> "本月 Token 拆分"
+                                "total" -> "累计 Token 拆分"
+                                "custom" -> {
+                                    val seg = listOfNotNull(startDate, endDate).joinToString(" ~ ")
+                                    if (seg.isBlank()) "自定义范围 Token 拆分" else "自定义范围 Token 拆分（$seg）"
+                                }
+                                else -> "Token 拆分"
+                            }
                             GlassCard(modifier = Modifier.fillMaxWidth()) {
-                                SectionHeader(title = "今日 Token 拆分")
+                                SectionHeader(title = breakdownTitle)
                                 Spacer(Modifier.height(8.dp))
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Column {
@@ -414,13 +425,29 @@ fun TokensScreen() {
 
 /**
  * 统计芯片网格：两列布局
+ * 顶部第一张卡片随选择的日期范围变化（今日/本月/累计/自定义范围），
+ * 后端 today_input/today_output 字段实际代表当前查询范围内的输入/输出，
+ * 因此今日 Token 数也随选择日期变化。整体共 6 张卡片。
  */
 @Composable
-private fun StatChipGrid(stats: TokenStats) {
+private fun StatChipGrid(
+    stats: TokenStats,
+    dateRange: String,
+    startDate: String?,
+    endDate: String?
+) {
+    // 根据选择的日期范围决定展示哪个时间维度的 token 数
+    val (rangeLabel, rangeValue) = when (dateRange) {
+        "today" -> "今日 Token" to "${stats.today ?: stats.todayTotal}"
+        "month" -> "本月 Token" to "${stats.month ?: 0L}"
+        "total" -> "累计 Token" to "${stats.totalDisplay}"
+        "custom" -> {
+            "自定义范围 Token" to "${(stats.todayInput ?: 0L) + (stats.todayOutput ?: 0L)}"
+        }
+        else -> "Token" to "${stats.totalDisplay}"
+    }
     val items = listOf(
-        "今日 Token" to "${stats.today ?: stats.todayTotal}",
-        "本月 Token" to "${stats.month ?: 0L}",
-        "累计 Token" to "${stats.totalDisplay}",
+        rangeLabel to rangeValue,
         "消息数" to "${stats.messageCount ?: 0L}",
         "平均/条" to String.format(Locale.US, "%.0f", stats.avgTokensPerMsg ?: 0.0),
         "估算费用" to (stats.estimatedCost ?: "—"),

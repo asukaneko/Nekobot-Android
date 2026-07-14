@@ -1,6 +1,8 @@
 package com.nekobot.app.ui.screens.settings
 
 import android.app.Activity
+import android.content.Context
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,11 +18,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -47,11 +52,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.theme.buildTypography
 import com.nekobot.app.ui.theme.defaultPrimaryColor
 import com.nekobot.app.ui.theme.parseHexColor
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import androidx.compose.runtime.rememberCoroutineScope
+import java.io.File
+import java.util.UUID
 
 /**
  * 样式设置：主题色、字体类型、字体大小、字体颜色，带实时预览。
@@ -61,21 +75,25 @@ import com.nekobot.app.ui.theme.parseHexColor
 @Composable
 fun StyleSettingsScreen(onBack: () -> Unit) {
     val prefs = ServiceContainer.prefs
-    val context = LocalContext.current
 
     var themeColorOverride by remember { mutableStateOf(prefs.themeColorOverride) }
     var fontFamily by remember { mutableStateOf(prefs.fontFamily) }
+    var customFontPath by remember { mutableStateOf(prefs.customFontPath) }
+    var customFontName by remember { mutableStateOf(prefs.customFontName) }
     var fontScale by remember { mutableStateOf(prefs.fontScale) }
     var fontColorOverride by remember { mutableStateOf(prefs.fontColorOverride) }
     var showCustomColorDialog by remember { mutableStateOf(false) }
     var showCustomThemeColorDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     // 字体类型选项
     val fontFamilyOptions = listOf(
-        "system" to "系统默认",
-        "serif" to "衬线",
-        "monospace" to "等宽",
-        "rounded" to "圆角",
+        PrefsManager.FONT_FAMILY_SYSTEM to "系统默认",
+        PrefsManager.FONT_FAMILY_SERIF to "衬线",
+        PrefsManager.FONT_FAMILY_MONOSPACE to "等宽",
+        PrefsManager.FONT_FAMILY_ROUNDED to "圆角",
+        PrefsManager.FONT_FAMILY_CUSTOM to "自定义"
     )
 
     // 字体大小选项
@@ -110,9 +128,31 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
     fun applyAndRecreate() {
         prefs.themeColorOverride = themeColorOverride
         prefs.fontFamily = fontFamily
+        prefs.customFontPath = customFontPath
+        prefs.customFontName = customFontName
         prefs.fontScale = fontScale
         prefs.fontColorOverride = fontColorOverride
         (context as Activity).recreate()
+    }
+
+    // 字体文件选择器：选择 TTF/OTF 字体文件
+    val fontLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val saved = withContext(Dispatchers.IO) { saveFontFile(context, uri) }
+                if (saved != null) {
+                    customFontPath = saved.first
+                    customFontName = saved.second
+                    fontFamily = PrefsManager.FONT_FAMILY_CUSTOM
+                    // 立即保存，确保 buildTypography 在 recreate 后能读到
+                    prefs.customFontPath = saved.first
+                    prefs.customFontName = saved.second
+                    prefs.fontFamily = PrefsManager.FONT_FAMILY_CUSTOM
+                }
+            }
+        }
     }
 
     Scaffold(
@@ -212,11 +252,70 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
                         FilterChip(
                             selected = fontFamily == value,
                             onClick = {
-                                fontFamily = value
-                                prefs.fontFamily = value
+                                if (value == PrefsManager.FONT_FAMILY_CUSTOM) {
+                                    if (!customFontPath.isNullOrBlank()) {
+                                        // 已有持久化的自定义字体，直接切换使用
+                                        fontFamily = PrefsManager.FONT_FAMILY_CUSTOM
+                                        prefs.fontFamily = PrefsManager.FONT_FAMILY_CUSTOM
+                                    } else {
+                                        // 首次选择自定义时触发文件选择器
+                                        fontLauncher.launch(arrayOf("font/ttf", "font/otf", "application/x-font-ttf", "application/x-font-otf", "application/octet-stream"))
+                                    }
+                                } else {
+                                    fontFamily = value
+                                    prefs.fontFamily = value
+                                }
                             },
                             label = { Text(label) }
                         )
+                    }
+                }
+                // 已上传自定义字体时，展示文件名、更换和删除按钮（不依赖当前字体类型）
+                if (customFontPath != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.small)
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.UploadFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = customFontName ?: "自定义字体",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
+                        )
+                        // 更换字体按钮：重新触发文件选择器
+                        TextButton(onClick = {
+                            fontLauncher.launch(arrayOf("font/ttf", "font/otf", "application/x-font-ttf", "application/x-font-otf", "application/octet-stream"))
+                        }) {
+                            Text("更换", color = MaterialTheme.colorScheme.primary)
+                        }
+                        IconButton(onClick = {
+                            // 删除自定义字体文件（兼容 file:/// 前缀和裸路径）
+                            customFontPath?.let { path ->
+                                runCatching {
+                                    val raw = Uri.parse(path).path ?: path
+                                    val file = File(raw)
+                                    if (file.exists()) file.delete()
+                                }
+                            }
+                            customFontPath = null
+                            customFontName = null
+                            prefs.customFontPath = null
+                            prefs.customFontName = null
+                            // 若当前正在使用自定义字体，则回退到系统默认
+                            if (fontFamily == PrefsManager.FONT_FAMILY_CUSTOM) {
+                                fontFamily = PrefsManager.FONT_FAMILY_SYSTEM
+                                prefs.fontFamily = PrefsManager.FONT_FAMILY_SYSTEM
+                            }
+                        }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "删除自定义字体", tint = MaterialTheme.colorScheme.error)
+                        }
                     }
                 }
             }
@@ -387,5 +486,37 @@ private fun ColorCircleButton(
             style = MaterialTheme.typography.labelSmall,
             color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+/**
+ * 将用户选择的字体文件复制到应用内部存储 fonts/ 目录，
+ * 返回 (file:/// 绝对路径, 显示文件名)，失败返回 null。
+ */
+private fun saveFontFile(context: Context, uri: Uri): Pair<String, String>? {
+    return try {
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+        // 推断扩展名
+        val mime = context.contentResolver.getType(uri) ?: "font/ttf"
+        val ext = when {
+            mime.contains("otf") -> "otf"
+            mime.contains("ttf") -> "ttf"
+            else -> "ttf"
+        }
+        val dir = File(context.filesDir, "fonts").apply { if (!exists()) mkdirs() }
+        // 用原文件名（若可获取），否则随机命名
+        val displayName = runCatching {
+            val cursor = context.contentResolver.query(uri, null, null, null, null)
+            cursor?.use {
+                val idx = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (idx >= 0 && it.moveToFirst()) it.getString(idx) else null
+            }
+        }.getOrNull() ?: "custom_${UUID.randomUUID().toString().take(8)}.$ext"
+        val safeName = displayName.replace(Regex("[^A-Za-z0-9._\\-一-龥]"), "_")
+        val file = File(dir, safeName)
+        file.writeBytes(bytes)
+        android.net.Uri.fromFile(file).toString() to displayName
+    } catch (e: Exception) {
+        null
     }
 }
