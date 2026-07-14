@@ -6,7 +6,9 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,19 +16,23 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -52,6 +58,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -110,6 +117,7 @@ fun SessionsScreen(
 ) {
     val viewModel: SessionsViewModel = viewModel()
     val sessions by viewModel.displayedSessions.collectAsState()
+    val overview by viewModel.overview.collectAsState()
     val characters by viewModel.characters.collectAsState()
     val loading by viewModel.loading.collectAsState()
     val error by viewModel.error.collectAsState()
@@ -135,7 +143,13 @@ fun SessionsScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("会话", color = MaterialTheme.colorScheme.onSurface) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("会话", color = MaterialTheme.colorScheme.onSurface)
+                        Spacer(Modifier.size(8.dp))
+                        SessionCountBadge(sessions.size)
+                    }
+                },
                 actions = {
                     IconButton(onClick = { viewModel.loadAll() }) {
                         Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
@@ -155,6 +169,8 @@ fun SessionsScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            SessionOverviewCard(overview)
+
             // 搜索栏（点击展开半屏搜索面板）
             SearchEntryBar(
                 searchQuery = searchQuery,
@@ -162,6 +178,11 @@ fun SessionsScreen(
                 channelFilterValue = channelFilterValue,
                 availableChannels = availableChannels,
                 onClick = { showSearchPanel = true }
+            )
+
+            QuickSessionFilters(
+                selected = filter,
+                onSelect = viewModel::setFilter
             )
 
             Box(modifier = Modifier.fillMaxSize()) {
@@ -191,7 +212,7 @@ fun SessionsScreen(
                             hint = emptyHint,
                             icon = {
                                 Icon(
-                                    Icons.Outlined.Chat,
+                                    Icons.AutoMirrored.Outlined.Chat,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(56.dp)
@@ -202,17 +223,34 @@ fun SessionsScreen(
                     else -> {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            item(key = "session-section-header") {
+                                SessionSectionHeader(sessions.size)
+                            }
                             items(sessions, key = { it.id ?: it.name ?: it.hashCode().toString() }) { session ->
                                 // 当 session 自身没有立绘时，回退到已加载角色列表里同 characterId 的立绘
-                                val fallbackPortrait = characters
+                                val fallbackCharacter = characters
                                     .firstOrNull { it.id == session.characterId }
-                                    ?.avatarUrl
+                                val relatedCharacterIds = buildList {
+                                    session.characterId?.takeIf { it.isNotBlank() }?.let(::add)
+                                    session.characterIds.orEmpty()
+                                        .filter { it.isNotBlank() }
+                                        .forEach(::add)
+                                }.distinct()
+                                val fallbackCharacterName = relatedCharacterIds
+                                    .map { characterId ->
+                                        characters.firstOrNull { it.id == characterId }
+                                            ?.displayName
+                                            ?: characterId
+                                    }
+                                    .joinToString("、")
+                                    .takeIf { it.isNotBlank() }
                                 SessionItem(
                                     session = session,
-                                    fallbackPortraitUrl = fallbackPortrait,
+                                    fallbackPortraitUrl = fallbackCharacter?.avatarUrl,
+                                    fallbackCharacterName = fallbackCharacterName,
                                     onClick = { session.id?.let(onOpenChat) },
                                     onOpenDetail = { session.id?.let(onOpenDetail) },
                                     onRename = { renaming = session },
@@ -322,6 +360,147 @@ fun SessionsScreen(
     }
 }
 
+@Composable
+private fun SessionCountBadge(count: Int) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+            .padding(horizontal = 7.dp, vertical = 2.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = count.toString(),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+private fun SessionOverviewCard(overview: SessionOverview) {
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        cornerRadius = 18,
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 9.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            OverviewStat("会话", overview.total, Icons.AutoMirrored.Outlined.Chat)
+            OverviewStat("置顶", overview.pinned, Icons.Filled.PushPin)
+            OverviewStat("收藏", overview.favorite, Icons.Filled.Favorite)
+            OverviewStat("归档", overview.archived, Icons.Filled.Archive)
+        }
+    }
+}
+
+@Composable
+private fun RowScope.OverviewStat(label: String, value: Int, icon: ImageVector) {
+    Row(
+        modifier = Modifier.weight(1f),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(15.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.size(5.dp))
+        Column {
+            Text(
+                text = value.toString(),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickSessionFilters(
+    selected: SessionFilter,
+    onSelect: (SessionFilter) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        QUICK_SESSION_FILTERS.forEach { filter ->
+            QuickFilterPill(
+                label = if (filter == SessionFilter.ALL) "全部" else filter.label,
+                selected = selected == filter,
+                onClick = { onSelect(filter) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickFilterPill(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .height(40.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(
+                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+        )
+    }
+}
+
+@Composable
+private fun SessionSectionHeader(resultCount: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 2.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "最近会话",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold
+        )
+        Spacer(Modifier.weight(1f))
+        Text(
+            text = "$resultCount 个结果",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
 /** 搜索入口栏：点击展开半屏搜索面板。展示当前搜索词和活跃筛选标签。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -338,16 +517,19 @@ private fun SearchEntryBar(
     GlassCard(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .height(56.dp)
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .height(48.dp)
             .clickable { onClick() },
-        cornerRadius = 28,
-        containerColor = MaterialTheme.colorScheme.surfaceVariant
+        cornerRadius = 16,
+        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        contentPadding = PaddingValues(0.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(horizontal = 16.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 14.dp)
         ) {
             Icon(Icons.Filled.Search, contentDescription = null, tint = if (hasActiveFilter) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             if (searchQuery.isNotBlank()) {
@@ -944,6 +1126,38 @@ private fun CreateSessionDialog(
     )
 }
 
+@Composable
+private fun SessionMetaLabel(text: String, emphasized: Boolean = false) {
+    Box(
+        modifier = Modifier
+            .widthIn(max = 120.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(
+                if (emphasized) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                else MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)
+            )
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (emphasized) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun SessionStatusIcon(icon: ImageVector, description: String) {
+    Icon(
+        imageVector = icon,
+        contentDescription = description,
+        tint = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.size(14.dp)
+    )
+}
+
 /** 单个会话项卡片。 */
 @Composable
 private fun SessionItem(
@@ -955,16 +1169,31 @@ private fun SessionItem(
     onTogglePinned: () -> Unit,
     /** 会话自身无立绘时的回退 URL（来自已加载角色列表）。 */
     fallbackPortraitUrl: String? = null,
+    /** 会话自身无角色名时的回退名称（来自已加载角色列表）。 */
+    fallbackCharacterName: String? = null,
     onOpenDetail: () -> Unit = {},
     onToggleArchived: () -> Unit = {},
     onOpenStoryGraph: () -> Unit = {}
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    val isAgentSession = session.sessionMode == "agent"
+    val isGroupSession = session.sessionMode == "group" || !session.characterIds.isNullOrEmpty()
+    val senderCharacterName = session.senderName?.takeIf {
+        it.isNotBlank() && it !in setOf("AI", "Agent", "群聊")
+    }
+    val characterLabel = when {
+        isAgentSession -> null
+        isGroupSession -> fallbackCharacterName
+        else -> session.characterName?.takeIf { it.isNotBlank() }
+            ?: senderCharacterName
+            ?: fallbackCharacterName?.takeIf { it.isNotBlank() && it != "未命名角色" }
+    }
     GlassCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        cornerRadius = 18
+        cornerRadius = 16,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             // 角色立绘图片（竖向圆角矩形）：优先 session 自带立绘，回退到角色列表
@@ -972,7 +1201,7 @@ private fun SessionItem(
             val portraitUrl = resolveAvatarUrl(rawPortrait)
             Box(
                 modifier = Modifier
-                    .size(width = 54.dp, height = 70.dp)
+                    .size(width = 48.dp, height = 60.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.surface),
                 contentAlignment = Alignment.Center
@@ -980,44 +1209,42 @@ private fun SessionItem(
                 if (!portraitUrl.isNullOrBlank()) {
                     AsyncImage(
                         model = portraitUrl,
-                        contentDescription = session.characterName ?: "角色立绘",
+                        contentDescription = characterLabel ?: "角色立绘",
                         contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
-                    Icon(Icons.Outlined.Chat, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(28.dp))
+                    Icon(Icons.AutoMirrored.Outlined.Chat, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(28.dp))
                 }
             }
-            Spacer(Modifier.size(12.dp))
+            Spacer(Modifier.size(10.dp))
 
             // 主体信息
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = session.displayName,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
+                        modifier = Modifier.weight(1f)
                     )
-                    if (session.pinned == true) {
-                        Spacer(Modifier.size(6.dp))
-                        Text("📌", style = MaterialTheme.typography.titleSmall)
-                    }
-                    if (session.favorite == true) {
-                        Spacer(Modifier.size(6.dp))
-                        Text("★", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleSmall)
-                    }
-                    if (session.archived == true) {
-                        Spacer(Modifier.size(6.dp))
-                        Text("📦", style = MaterialTheme.typography.titleSmall)
+                    session.updatedAt?.takeIf { it.isNotBlank() }?.let { time ->
+                        Spacer(Modifier.size(8.dp))
+                        Text(
+                            text = time,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 96.dp)
+                        )
                     }
                 }
-                val preview = session.lastMessage
-                if (!preview.isNullOrBlank()) {
-                    Spacer(Modifier.height(2.dp))
+                session.lastMessage?.takeIf { it.isNotBlank() }?.let { preview ->
+                    Spacer(Modifier.height(3.dp))
                     Text(
                         text = preview,
                         style = MaterialTheme.typography.bodySmall,
@@ -1026,33 +1253,18 @@ private fun SessionItem(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (!session.characterName.isNullOrBlank()) {
-                        Text(
-                            text = session.characterName,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(Modifier.size(8.dp))
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    characterLabel?.let {
+                        SessionMetaLabel(text = it, emphasized = true)
                     }
-                    session.messageCount?.let { count ->
-                        Text(
-                            text = "$count 条",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.size(8.dp))
-                    }
-                    session.updatedAt?.let { time ->
-                        Text(
-                            text = time,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                    session.messageCount?.let { SessionMetaLabel(text = "$it 条") }
+                    if (session.pinned == true) SessionStatusIcon(Icons.Filled.PushPin, "已置顶")
+                    if (session.favorite == true) SessionStatusIcon(Icons.Filled.Favorite, "已收藏")
+                    if (session.archived == true) SessionStatusIcon(Icons.Filled.Archive, "已归档")
                 }
             }
 
@@ -1131,6 +1343,14 @@ private fun SessionItem(
 class SessionsViewModel : BaseViewModel() {
 
     private val _sessions = MutableStateFlow<List<Session>>(emptyList())
+    val overview: StateFlow<SessionOverview> = _sessions
+        .map(::buildSessionOverview)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = SessionOverview()
+        )
+
     private val _characters = MutableStateFlow<List<CharacterPreset>>(emptyList())
     val characters: StateFlow<List<CharacterPreset>> = _characters.asStateFlow()
 

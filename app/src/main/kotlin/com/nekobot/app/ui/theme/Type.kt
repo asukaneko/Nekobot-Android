@@ -70,14 +70,20 @@ fun buildTypography(fontFamily: String, fontScale: Float): Typography {
     )
 
     return NekobotTypography.copy(
+        displayLarge = NekobotTypography.displayLarge.scaled(),
+        displayMedium = NekobotTypography.displayMedium.scaled(),
+        displaySmall = NekobotTypography.displaySmall.scaled(),
         headlineLarge = NekobotTypography.headlineLarge.scaled(),
         headlineMedium = NekobotTypography.headlineMedium.scaled(),
+        headlineSmall = NekobotTypography.headlineSmall.scaled(),
         titleLarge = NekobotTypography.titleLarge.scaled(),
         titleMedium = NekobotTypography.titleMedium.scaled(),
+        titleSmall = NekobotTypography.titleSmall.scaled(),
         bodyLarge = NekobotTypography.bodyLarge.scaled(),
         bodyMedium = NekobotTypography.bodyMedium.scaled(),
         bodySmall = NekobotTypography.bodySmall.scaled(),
         labelLarge = NekobotTypography.labelLarge.scaled(),
         labelMedium = NekobotTypography.labelMedium.scaled(),
+        labelSmall = NekobotTypography.labelSmall.scaled(),
     )
 }

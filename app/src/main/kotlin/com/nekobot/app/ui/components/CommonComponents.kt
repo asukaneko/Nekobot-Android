@@ -37,6 +37,7 @@ fun GlassCard(
     containerColor: Color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
     borderWidth: Int = 1,
     borderColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+    contentPadding: PaddingValues = PaddingValues(16.dp),
     content: @Composable ColumnScope.() -> Unit
 ) {
     Box(
@@ -57,7 +58,7 @@ fun GlassCard(
             )
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(contentPadding),
             content = content
         )
     }
