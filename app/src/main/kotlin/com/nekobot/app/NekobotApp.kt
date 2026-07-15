@@ -1,6 +1,7 @@
 package com.nekobot.app
 
 import android.app.Application
+import android.os.Build
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.nekobot.app.data.local.AppMode
@@ -94,6 +95,14 @@ class NekobotApp : Application(), coil.ImageLoaderFactory {
     override fun newImageLoader(): coil.ImageLoader {
         return coil.ImageLoader.Builder(this)
             .crossfade(true)
+            .components {
+                // GIF 动图解码器：API 28+ 用系统 ImageDecoder（性能更优），低版本用纯 Kotlin 解码器
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    add(coil.decode.ImageDecoderDecoder.Factory())
+                } else {
+                    add(coil.decode.GifDecoder.Factory())
+                }
+            }
             .memoryCache {
                 coil.memory.MemoryCache.Builder(this)
                     .maxSizePercent(0.25)

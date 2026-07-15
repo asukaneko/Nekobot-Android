@@ -35,6 +35,7 @@ okhttp-logging-interceptor = { group = "com.squareup.okhttp3", name = "logging-i
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+coil-gif = { group = "io.coil-kt", name = "coil-gif", version.ref = "coil" }
 socket-io-client = { group = "io.socket", name = "socket.io-client", version.ref = "socketIo" }
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }

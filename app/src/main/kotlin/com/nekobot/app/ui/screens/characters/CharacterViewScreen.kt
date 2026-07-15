@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.IosShare
@@ -34,6 +35,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import coil.compose.AsyncImage
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.CharacterPreset
+import com.nekobot.app.data.model.CreateSessionRequest
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
 import com.nekobot.app.ui.components.MarkdownText
@@ -70,6 +72,36 @@ class CharacterViewModelView(characterId: String) : com.nekobot.app.ui.BaseViewM
         launchResult(
             block = { unified.deleteCharacter(id) },
             onSuccess = { onSuccess() }
+        )
+    }
+
+    /**
+     * 用当前角色直接创建一个名为"新会话"的会话，成功后回调 [onSuccess] 传入新会话 ID。
+     * 复用与 SessionsScreen 一致的请求结构（character 模式）。
+     */
+    fun createSessionWithCharacter(onSuccess: (String) -> Unit, onError: () -> Unit = {}) {
+        val c = _character.value ?: return
+        val req = CreateSessionRequest(
+            name = "新会话",
+            sessionMode = "character",
+            characterId = c.id,
+            systemPrompt = "",
+            firstMessage = "",
+            senderName = c.displayName,
+            senderAvatar = c.avatar,
+            senderPortrait = c.portrait,
+            userId = ServiceContainer.prefs.username.takeIf { it.isNotBlank() }
+        )
+        launchResult(
+            block = { unified.createSession(req) },
+            onSuccess = { session ->
+                val id = session?.id
+                if (id != null) onSuccess(id) else onError()
+            },
+            onError = {
+                showError(it)
+                onError()
+            }
         )
     }
 
@@ -128,7 +160,8 @@ class CharacterViewModelView(characterId: String) : com.nekobot.app.ui.BaseViewM
 fun CharacterViewScreen(
     characterId: String,
     onBack: () -> Unit,
-    onEdit: (String) -> Unit
+    onEdit: (String) -> Unit,
+    onOpenChat: (String) -> Unit = {}
 ) {
     val vm: CharacterViewModelView = viewModel(
         key = "char_view_$characterId",
@@ -139,6 +172,7 @@ fun CharacterViewScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var exporting by remember { mutableStateOf(false) }
     var exportResult by remember { mutableStateOf<String?>(null) }
+    var creatingSession by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
@@ -220,6 +254,35 @@ fun CharacterViewScreen(
                 if (c != null) {
                     // 顶部：头像/立绘 + 名称 + 标签
                     HeaderCard(c)
+                    // 用此角色新建会话
+                    Button(
+                        onClick = {
+                            if (!creatingSession) {
+                                creatingSession = true
+                                vm.createSessionWithCharacter(
+                                    onSuccess = { sessionId ->
+                                        creatingSession = false
+                                        onOpenChat(sessionId)
+                                    },
+                                    onError = { creatingSession = false }
+                                )
+                            }
+                        },
+                        enabled = !creatingSession,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (creatingSession) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        } else {
+                            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Text("新建会话")
+                    }
                     // 各字段分区
                     FieldSection("基础信息", c.basicInfo)
                     FieldSection("人格设定", c.personality)

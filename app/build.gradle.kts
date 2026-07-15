@@ -72,6 +72,7 @@ dependencies {
     implementation(libs.gson)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.coil.compose)
+    implementation(libs.coil.gif)
     implementation(libs.socket.io.client) {
         // 排除冲突的 org.json（Android 系统自带）
         exclude(group = "org.json", module = "json")

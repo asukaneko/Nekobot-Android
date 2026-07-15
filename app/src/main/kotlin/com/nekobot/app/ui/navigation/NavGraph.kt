@@ -233,7 +233,8 @@ fun NekobotNavGraph() {
                 CharacterViewScreen(
                     characterId = entry.arguments?.getString("characterId").orEmpty(),
                     onBack = { navController.popBackStack() },
-                    onEdit = { id -> navController.navigate(Routes.characterDetail(id)) }
+                    onEdit = { id -> navController.navigate(Routes.characterDetail(id)) },
+                    onOpenChat = { id -> navController.navigate(Routes.chat(id)) }
                 )
             }
             composable(
