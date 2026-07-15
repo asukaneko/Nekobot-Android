@@ -55,6 +55,14 @@ abstract class NekobotDatabase : RoomDatabase() {
     abstract fun apiKeyDao(): ApiKeyDao
     abstract fun messageFavoriteDao(): MessageFavoriteDao
 
+    /**
+     * 当前 db 文件名（含 .db 扩展），用于派生 SharedPreferences 文件名（如 token 用量隔离）。
+     * 由 [get] / [switchProfile] 在创建实例时通过反射注入。
+     */
+    @Volatile
+    var dbName: String = com.nekobot.app.data.local.PrefsManager.DEFAULT_DB_NAME + ".db"
+        private set
+
     companion object {
         /**
          * v1 → v2：local_sessions 新增 custom_prompts 列。
@@ -327,7 +335,10 @@ abstract class NekobotDatabase : RoomDatabase() {
                 // 仅当迁移脚本未覆盖的未来版本变更时才回退到破坏性迁移（保护现有数据）
                 .fallbackToDestructiveMigration()
                 .build()
-                .also { INSTANCES[dbName] = it }
+                .also {
+                    it.dbName = dbName
+                    INSTANCES[dbName] = it
+                }
         }
 
         /** 切换激活的数据库：关闭并移除当前实例缓存，下次 get() 时按新名重建。 */

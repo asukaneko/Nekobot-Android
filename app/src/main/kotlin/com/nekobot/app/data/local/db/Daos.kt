@@ -53,6 +53,10 @@ interface SessionDao {
 
     @Query("UPDATE local_sessions SET is_public = :isPublic, share_config = :shareConfig, tts_config = :ttsConfig, proactive_chat = :proactiveChat, updated_at = :updatedAt WHERE id = :id")
     suspend fun updatePublicShareConfig(id: String, isPublic: Boolean, shareConfig: String?, ttsConfig: String?, proactiveChat: String?, updatedAt: String)
+
+    /** nbotcfg 导入后批量改写立绘 URL 为本地路径（portrait / sender_avatar / character_avatar）。 */
+    @Query("UPDATE local_sessions SET portrait = :portrait, sender_avatar = :senderAvatar, character_avatar = :characterAvatar WHERE id = :id")
+    suspend fun updatePortraits(id: String, portrait: String?, senderAvatar: String?, characterAvatar: String?)
 }
 
 @Dao
@@ -129,6 +133,10 @@ interface CharacterDao {
 
     @Query("DELETE FROM local_characters WHERE id = :id")
     suspend fun deleteById(id: String)
+
+    /** nbotcfg 导入后批量改写立绘 URL 为本地路径（portrait / avatar）。 */
+    @Query("UPDATE local_characters SET portrait = :portrait, avatar = :avatar WHERE id = :id")
+    suspend fun updatePortraits(id: String, portrait: String?, avatar: String?)
 }
 
 @Dao

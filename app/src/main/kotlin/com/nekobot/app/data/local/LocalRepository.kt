@@ -470,8 +470,13 @@ class LocalRepository(
 
     // ==================== 独立 Token 用量存储（与会话生命周期解耦）====================
 
+    /**
+     * Token 用量存储：SharedPreferences 文件名带 db 名后缀，
+     * 切换 db 后自动隔离到对应 profile 的用量记录。
+     */
     private val tokenUsagePrefs by lazy {
-        appContext?.getSharedPreferences("token_usage", android.content.Context.MODE_PRIVATE)
+        val dbName = db.dbName
+        appContext?.getSharedPreferences("token_usage_$dbName", android.content.Context.MODE_PRIVATE)
     }
 
     /**
@@ -1159,7 +1164,12 @@ class LocalRepository(
     // ==================== 世界书 ====================
 
     suspend fun listWorldBooks(): List<WorldBook> = withContext(Dispatchers.IO) {
-        worldBookDao.listAll().map { it.toWorldBook() }
+        // 列表页用 book.entries.size 显示条目数，所以每个 book 都要附带 entries
+        worldBookDao.listAll().map { entity ->
+            entity.toWorldBook().copy(
+                entries = worldBookDao.listEntries(entity.id).map { it.toEntry() }
+            )
+        }
     }
 
     suspend fun getWorldBook(id: String): WorldBook? = withContext(Dispatchers.IO) {

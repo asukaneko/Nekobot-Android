@@ -3,14 +3,17 @@ package com.nekobot.app.data.local
 import android.content.Context
 import android.util.Base64
 import com.google.gson.Gson
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.JsonPrimitive
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.local.db.LocalApiKeyEntity
 import com.nekobot.app.data.local.db.LocalCharacterEntity
+import com.nekobot.app.data.local.db.LocalCharacterMemoryEntity
 import com.nekobot.app.data.local.db.LocalHookEntity
 import com.nekobot.app.data.local.db.LocalMcpServerEntity
+import com.nekobot.app.data.local.db.LocalMessageEntity
 import com.nekobot.app.data.local.db.LocalSessionEntity
 import com.nekobot.app.data.local.db.LocalSkillEntity
 import com.nekobot.app.data.local.db.LocalTaskEntity
@@ -122,26 +125,43 @@ object NbotConfigImporter {
             // 5. 关闭目标 profile 已有连接（若存在），清空 db 文件以便重建
             NekobotDatabase.deleteProfileFile(context, profileName)
             Thread.sleep(100)
+            // 同步清空目标 profile 的 token 用量记录（SharedPreferences 与 db 文件独立存储）
+            val tokenPrefs = context.getSharedPreferences("token_usage_${profileName}.db", android.content.Context.MODE_PRIVATE)
+            tokenPrefs.edit().clear().apply()
             // 创建空 db 并写入数据
             val db = NekobotDatabase.get(context, profileName)
             val importedCount = applyBundleToDb(db, bundleJson)
+            // 把导入消息中的 token 用量同步写入 token_usage，让统计页能看到历史用量
+            syncTokenUsageFromMessages(db, tokenPrefs)
 
             // 6. 立绘还原：将 portraits/ 下的图片复制到 cacheDir/portraits/<profile>/
+            //    并把 bundle 中 /static/uploads/portraits/<filename> 形式的 URL 改写为本地 file:// URI，
+            //    使 CharacterScreen / SessionScreen 等能直接加载本地立绘。
             val portraitDir = File(context.cacheDir, "portraits/$profileName")
             if (portraitDir.exists()) portraitDir.deleteRecursively()
             portraitDir.mkdirs()
+            val portraitUrlMap = mutableMapOf<String, String>()  // 旧 filename → 新本地路径
+            var portraitCount = 0
             extracted.entries.filter { it.key.startsWith("portraits/") }.forEach { (path, data) ->
                 val name = path.removePrefix("portraits/")
                 if (name.isNotEmpty()) {
-                    File(portraitDir, name).writeBytes(data)
+                    val destFile = File(portraitDir, name)
+                    destFile.writeBytes(data)
+                    // 项目约定：portrait URI 用 Uri.fromFile() 生成标准 file:/// URI，Coil 才能正确加载
+                    portraitUrlMap[name] = android.net.Uri.fromFile(destFile).toString()
+                    portraitCount++
                 }
+            }
+            // 用本地路径覆盖 db 中所有引用了 /static/uploads/portraits/ 的 portrait / sender_portrait / avatar 字段
+            if (portraitUrlMap.isNotEmpty()) {
+                rewritePortraitUrls(db, portraitUrlMap)
             }
 
             ImportResult(
                 success = true,
                 profileName = profileName,
                 displayName = displayName,
-                message = "导入成功，共迁移 $importedCount 项配置",
+                message = "导入成功，共迁移 $importedCount 项配置，$portraitCount 张立绘",
                 imported = importedCount
             )
         } catch (e: Exception) {
@@ -247,20 +267,55 @@ object NbotConfigImporter {
         get(key)?.takeIf { it.isJsonPrimitive }?.asJsonPrimitive?.asInt
     private fun JsonObject.jsonStr(key: String): String? = get(key)?.let { if (it.isJsonNull) null else it.toString() }
 
-    /** 将 bundle 中的 18 个 CONFIG_KEYS 转换为本地 entity 并写入 db。返回写入条数。 */
+    /**
+     * 将 bundle 转换为本地 entity 并写入 db。返回写入条数。
+     *
+     * bundle 结构（与后端 build_plain_bundle 一致）：
+     * {
+     *   "version": 1, "type": "nbot_config_bundle", "exported_at": ...,
+     *   "source": {...},
+     *   "configs": {
+     *     "ai_models": [...], "api_keys": [...], "personality": {...},
+     *     "custom_personality_presets": [...], "sessions": {...}, "world_books": {...},
+     *     "skills": [...], "tools": [...], "hooks": [...],
+     *     "scheduled_tasks": [...], "workflows": [...], "mcp_servers": [...],
+     *     "active_model_id": "...", "active_models_by_purpose": {...},
+     *     "settings": {...}, "ai_config": {...}, "channels": [...],
+     *     "heartbeat": {...}, "memories": [...]
+     *   }
+     * }
+     */
     private suspend fun applyBundleToDb(db: NekobotDatabase, bundle: JsonObject): Int {
         var count = 0
         val now = nowIso()
 
+        // 所有配置项在 bundle.configs 下
+        val configs = bundle.getAsJsonObject("configs") ?: bundle
+        // 兼容 active_model_id / active_models_by_purpose：可能在顶层也可能在 configs 下
+        val activeModelId = configs.str("active_model_id") ?: bundle.str("active_model_id")
+        val activeByPurpose = configs.getAsJsonObject("active_models_by_purpose")
+            ?: bundle.getAsJsonObject("active_models_by_purpose")
+
+        // 将 dict 形式的对象统一转成 List<JsonObject>（sessions/world_books 是 dict 而非 list）
+        fun asList(ele: JsonElement?): List<JsonObject> {
+            if (ele == null || ele.isJsonNull) return emptyList()
+            return when {
+                ele.isJsonArray -> ele.asJsonArray.mapNotNull { it.takeIf { e -> e.isJsonObject }?.asJsonObject }
+                ele.isJsonObject -> ele.asJsonObject.entrySet().mapNotNull { e ->
+                    e.value.takeIf { it.isJsonObject }?.asJsonObject
+                }
+                else -> emptyList()
+            }
+        }
+
         // AI 模型
-        bundle.getAsJsonArray("ai_models")?.forEach { ele ->
-            val obj = ele.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
+        asList(configs.get("ai_models")).forEach { obj ->
             val id = obj.str("id") ?: UUID.randomUUID().toString()
             val purpose = obj.str("purpose") ?: "chat"
-            val activeModelsByPurpose = bundle.getAsJsonObject("active_models_by_purpose")
+            // 后端活动模型用 active_models_by_purpose 记录，旧版用 active_model_id
             val active = obj.get("active")?.takeIf { it.isJsonPrimitive }?.asBoolean
-                ?: activeModelsByPurpose?.get(purpose)?.asString?.let { it == id }
-                ?: (bundle.str("active_model_id") == id)
+                ?: activeByPurpose?.get(purpose)?.asString?.let { it == id }
+                ?: (activeModelId == id)
             db.aiModelDao().upsert(
                 LocalAiModelEntity(
                     id = id,
@@ -286,8 +341,7 @@ object NbotConfigImporter {
         }
 
         // API Keys
-        bundle.getAsJsonArray("api_keys")?.forEach { ele ->
-            val obj = ele.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
+        asList(configs.get("api_keys")).forEach { obj ->
             val id = obj.str("id") ?: UUID.randomUUID().toString()
             db.apiKeyDao().upsert(
                 LocalApiKeyEntity(
@@ -301,10 +355,17 @@ object NbotConfigImporter {
             count++
         }
 
-        // 角色卡（personality + custom_personality_presets）
+        // 角色卡：personality（dict 或 list）+ custom_personality_presets（list）
+        // personality 是主角色，通常为单个对象或含 name/avatar 的 dict
+        val personalityEle = configs.get("personality")
         val personalities = mutableListOf<JsonObject>()
-        bundle.getAsJsonArray("personality")?.forEach { if (it.isJsonObject) personalities.add(it.asJsonObject) }
-        bundle.getAsJsonArray("custom_personality_presets")?.forEach { if (it.isJsonObject) personalities.add(it.asJsonObject) }
+        if (personalityEle?.isJsonObject == true) {
+            // personality 是单个对象（主角色），直接加入
+            personalities.add(personalityEle.asJsonObject)
+        } else {
+            asList(personalityEle).forEach { personalities.add(it) }
+        }
+        asList(configs.get("custom_personality_presets")).forEach { personalities.add(it) }
         personalities.forEach { obj ->
             val id = obj.str("id") ?: obj.str("preset_id") ?: UUID.randomUUID().toString()
             db.characterDao().upsert(
@@ -333,9 +394,17 @@ object NbotConfigImporter {
             count++
         }
 
-        // 世界书
-        bundle.getAsJsonArray("world_books")?.forEach { ele ->
-            val obj = ele.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
+        // 世界书：configs.world_books 可能是 dict（{"world_books": {...}}）或 list
+        val wbRoot = configs.get("world_books")
+        val wbList: List<JsonObject> = when {
+            wbRoot?.isJsonObject == true -> {
+                // 内部可能是 {"world_books": [...]} 或直接是 {id: bookObj, ...}
+                val inner = wbRoot.asJsonObject.get("world_books")
+                if (inner != null) asList(inner) else asList(wbRoot)
+            }
+            else -> asList(wbRoot)
+        }
+        wbList.forEach { obj ->
             val id = obj.str("id") ?: UUID.randomUUID().toString()
             db.worldBookDao().upsert(
                 LocalWorldBookEntity(
@@ -349,8 +418,7 @@ object NbotConfigImporter {
                 )
             )
             // 世界书条目
-            obj.getAsJsonArray("entries")?.forEach { entryEle ->
-                val entry = entryEle.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
+            asList(obj.get("entries")).forEach { entry ->
                 db.worldBookDao().upsertEntry(
                     LocalWorldBookEntryEntity(
                         id = entry.str("id") ?: UUID.randomUUID().toString(),
@@ -372,9 +440,8 @@ object NbotConfigImporter {
             count++
         }
 
-        // 会话
-        bundle.getAsJsonArray("sessions")?.forEach { ele ->
-            val obj = ele.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
+        // 会话：configs.sessions 是 dict（{session_id: sessionObj}）
+        asList(configs.get("sessions")).forEach { obj ->
             val id = obj.str("id") ?: obj.str("session_id") ?: UUID.randomUUID().toString()
             db.sessionDao().upsert(
                 LocalSessionEntity(
@@ -388,7 +455,7 @@ object NbotConfigImporter {
                     senderAvatar = obj.str("sender_avatar"),
                     characterName = obj.str("character_name"),
                     characterAvatar = obj.str("character_avatar"),
-                    portrait = obj.str("portrait"),
+                    portrait = obj.str("portrait") ?: obj.str("sender_portrait"),
                     tags = obj.get("tags")?.let { if (it.isJsonArray) it.toString().trim('[', ']').replace("\"", "") else it.asString },
                     favorite = obj.bool("favorite"),
                     pinned = obj.bool("pinned"),
@@ -413,11 +480,38 @@ object NbotConfigImporter {
                 )
             )
             count++
+
+            // 导入会话消息（session.messages 是 list）
+            // 注意：跳过 role=system 的首条消息（已存入 session.system_prompt），避免重复
+            asList(obj.get("messages")).forEachIndexed { idx, msg ->
+                val msgId = msg.str("id") ?: "${id}_msg_$idx"
+                val role = msg.str("role") ?: "user"
+                // 跳过首条 system 消息（通常是 system_prompt 的副本，已存入 session）
+                if (role == "system" && idx == 0) return@forEachIndexed
+                val metadata = msg.getAsJsonObject("metadata")
+                val inputTokens = metadata?.int("input_tokens", -1) ?: -1
+                val outputTokens = metadata?.int("output_tokens", -1) ?: -1
+                val model = metadata?.str("model") ?: msg.str("model")
+                db.messageDao().upsert(
+                    LocalMessageEntity(
+                        id = msgId,
+                        sessionId = id,
+                        role = role,
+                        content = msg.str("content") ?: "",
+                        sender = msg.str("sender") ?: msg.str("sender_name"),
+                        timestamp = msg.str("timestamp") ?: msg.str("created_at") ?: now,
+                        model = model,
+                        inputTokens = if (inputTokens >= 0) inputTokens else null,
+                        outputTokens = if (outputTokens >= 0) outputTokens else null,
+                        createdAt = msg.str("timestamp") ?: msg.str("created_at") ?: now
+                    )
+                )
+                count++
+            }
         }
 
         // Skills
-        bundle.getAsJsonArray("skills")?.forEach { ele ->
-            val obj = ele.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
+        asList(configs.get("skills")).forEach { obj ->
             db.skillDao().upsert(
                 LocalSkillEntity(
                     id = obj.str("id") ?: UUID.randomUUID().toString(),
@@ -433,8 +527,7 @@ object NbotConfigImporter {
         }
 
         // Tools（仅导入用户自定义工具，跳过与内置工具 ID 冲突的）
-        bundle.getAsJsonArray("tools")?.forEach { ele ->
-            val obj = ele.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
+        asList(configs.get("tools")).forEach { obj ->
             val id = obj.str("id") ?: UUID.randomUUID().toString()
             if (com.nekobot.app.data.local.db.BuiltinTools.isBuiltin(id)) return@forEach
             db.toolDao().upsert(
@@ -453,8 +546,7 @@ object NbotConfigImporter {
         }
 
         // Hooks
-        bundle.getAsJsonArray("hooks")?.forEach { ele ->
-            val obj = ele.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
+        asList(configs.get("hooks")).forEach { obj ->
             db.hookDao().upsert(
                 LocalHookEntity(
                     id = obj.str("id") ?: UUID.randomUUID().toString(),
@@ -482,8 +574,7 @@ object NbotConfigImporter {
         }
 
         // Scheduled tasks（映射到 LocalTaskEntity）
-        bundle.getAsJsonArray("scheduled_tasks")?.forEach { ele ->
-            val obj = ele.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
+        asList(configs.get("scheduled_tasks")).forEach { obj ->
             db.taskDao().upsert(
                 LocalTaskEntity(
                     id = obj.str("id") ?: UUID.randomUUID().toString(),
@@ -504,8 +595,7 @@ object NbotConfigImporter {
         }
 
         // Workflows
-        bundle.getAsJsonArray("workflows")?.forEach { ele ->
-            val obj = ele.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
+        asList(configs.get("workflows")).forEach { obj ->
             db.workflowDao().upsert(
                 LocalWorkflowEntity(
                     id = obj.str("id") ?: UUID.randomUUID().toString(),
@@ -521,8 +611,7 @@ object NbotConfigImporter {
         }
 
         // MCP servers
-        bundle.getAsJsonArray("mcp_servers")?.forEach { ele ->
-            val obj = ele.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
+        asList(configs.get("mcp_servers")).forEach { obj ->
             db.mcpServerDao().upsert(
                 LocalMcpServerEntity(
                     id = obj.str("id") ?: UUID.randomUUID().toString(),
@@ -537,7 +626,7 @@ object NbotConfigImporter {
                     command = obj.str("command"),
                     argsJson = obj.jsonStr("args"),
                     envJson = obj.jsonStr("env"),
-                    builtin = obj.bool("builtin", false),
+                    builtin = obj.bool("builtin", false) || obj.bool("_builtin", false),
                     createdAt = obj.str("created_at") ?: now,
                     lastConnectedAt = obj.str("last_connected_at")
                 )
@@ -545,11 +634,181 @@ object NbotConfigImporter {
             count++
         }
 
+        // MemoryFS：configs.memory_fs 是 dict（{path: MemoryFile}）
+        // 路径模板（与原仓库 nbot/memory/fs.py 对齐）：
+        //   characters/{char_id}/users/{user_id}/user_persona.md
+        //   characters/{char_id}/users/{user_id}/character_persona.md
+        //   characters/{char_id}/events/{conversation_id}.md
+        //   characters/{char_id}/timeline.md
+        //   characters/{char_id}/life_sim/{conversation_id}.md
+        //   characters/{char_id}/users/{user_id}/recent_digest.md
+        // 安卓端 LocalCharacterMemoryEntity 用 category 字段代替 path，需做映射
+        val memoryFsRoot = configs.get("memory_fs")
+        if (memoryFsRoot?.isJsonObject == true) {
+            val fsObj = memoryFsRoot.asJsonObject
+            val entities = mutableListOf<LocalCharacterMemoryEntity>()
+            fsObj.entrySet().forEach { (path, fileEle) ->
+                val file = fileEle.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
+                val parsed = parseMemoryFsPath(path) ?: return@forEach
+                // importance 原为 0-1 float，安卓端为 Int（0-100）
+                val importanceFloat = file.get("importance")?.takeIf { it.isJsonPrimitive }?.asFloat ?: 0f
+                val importanceInt = (importanceFloat * 100f).toInt().coerceIn(0, 100)
+                val memoryIds = file.getAsJsonArray("memory_ids")?.toString() ?: "[]"
+                entities.add(
+                    LocalCharacterMemoryEntity(
+                        id = file.str("path") ?: path,  // 用 path 作为唯一 ID（同 path 覆盖）
+                        characterId = parsed.characterId,
+                        targetId = parsed.targetId,
+                        type = parsed.type,
+                        category = parsed.category,
+                        title = file.str("title") ?: parsed.defaultTitle,
+                        summary = file.str("summary") ?: "",
+                        content = file.str("content") ?: "",
+                        importance = importanceInt,
+                        emotionImpact = null,
+                        sourceTurnId = file.str("source_event_id"),
+                        createdAt = file.str("updated_at") ?: now,
+                        expiresAt = null
+                    ).also {
+                        // memory_ids 暂不入库（LocalCharacterMemoryEntity 无对应字段），日志记录
+                        @Suppress("UNUSED_VARIABLE")
+                        val _ids = memoryIds
+                    }
+                )
+            }
+            if (entities.isNotEmpty()) {
+                db.memoryDao().upsertAll(entities)
+                count += entities.size
+            }
+        }
+
         return count
+    }
+
+    /**
+     * 解析 MemoryFS 路径，提取 character_id / target_id / category / type。
+     *
+     * 返回 null 表示路径格式不匹配（如 legacy 路径），跳过该条记忆。
+     */
+    private data class ParsedMemoryPath(
+        val characterId: String,
+        val targetId: String,
+        val category: String,
+        val type: String,           // long / short / flash
+        val defaultTitle: String
+    )
+
+    private fun parseMemoryFsPath(path: String): ParsedMemoryPath? {
+        // 标准化：去掉开头 / 和空白
+        val p = path.trim().trimStart('/')
+        val parts = p.split('/')
+        if (parts.size < 3 || parts[0] != "characters") return null
+        val charId = parts[1]
+        // characters/{char_id}/users/{user_id}/user_persona.md
+        if (parts.size >= 5 && parts[2] == "users" && parts[4].endsWith(".md")) {
+            val userId = parts[3]
+            val fileName = parts[4].removeSuffix(".md")
+            return when (fileName) {
+                "user_persona" -> ParsedMemoryPath(charId, userId, "user_persona", "long", "用户人格")
+                "character_persona" -> ParsedMemoryPath(charId, userId, "character_persona", "long", "角色人格")
+                "recent_digest" -> ParsedMemoryPath(charId, userId, "recent_digest", "short", "近期摘要")
+                else -> ParsedMemoryPath(charId, userId, "legacy", "long", fileName)
+            }
+        }
+        // characters/{char_id}/events/{conversation_id}.md
+        if (parts.size >= 4 && parts[2] == "events" && parts[3].endsWith(".md")) {
+            val convId = parts[3].removeSuffix(".md")
+            return ParsedMemoryPath(charId, convId, "important_event", "long", "重要事件")
+        }
+        // characters/{char_id}/timeline.md
+        if (parts.size == 3 && parts[2] == "timeline.md") {
+            return ParsedMemoryPath(charId, "", "important_event", "long", "时间线")
+        }
+        // characters/{char_id}/life_sim/{conversation_id}.md
+        if (parts.size >= 4 && parts[2] == "life_sim" && parts[3].endsWith(".md")) {
+            val convId = parts[3].removeSuffix(".md")
+            return ParsedMemoryPath(charId, convId, "important_event", "long", "生活片段")
+        }
+        // legacy 路径：users/{id}.md / diary/* / plot/* / world/* / general.md
+        return ParsedMemoryPath(charId, "", "legacy", "long", path.substringAfterLast('/').removeSuffix(".md"))
     }
 
     private fun nowIso(): String {
         val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
         return sdf.format(java.util.Date())
+    }
+
+    /**
+     * 把 db 中所有 assistant 消息的 token 用量同步写入 token_usage SharedPreferences，
+     * 让 TokenStatsScreen 能看到导入的历史用量。
+     *
+     * 仅写入有 input/output token 的消息，避免重复无意义记录。
+     */
+    private suspend fun syncTokenUsageFromMessages(db: NekobotDatabase, prefs: android.content.SharedPreferences) {
+        try {
+            val messages = db.messageDao().listAllAssistant()
+            if (messages.isEmpty()) return
+            val arr = com.google.gson.JsonArray()
+            for (msg in messages) {
+                val input = msg.inputTokens ?: continue
+                val output = msg.outputTokens ?: continue
+                if (input <= 0 && output <= 0) continue
+                val ts = msg.timestamp.ifBlank { msg.createdAt }
+                com.google.gson.JsonObject().apply {
+                    addProperty("session_id", msg.sessionId)
+                    addProperty("model", msg.model ?: "")
+                    addProperty("input_tokens", input)
+                    addProperty("output_tokens", output)
+                    addProperty("total_tokens", input + output)
+                    addProperty("timestamp", ts)
+                    addProperty("source", "chat")
+                    addProperty("purpose", "chat")
+                    addProperty("date", ts.substringBefore("T").substringBefore(" ").ifBlank { ts })
+                }.also { arr.add(it) }
+            }
+            if (arr.size() > 0) {
+                prefs.edit().putString("records", arr.toString()).apply()
+            }
+        } catch (_: Exception) { }
+    }
+
+    /**
+     * 遍历 db 中已导入的 sessions/characters，将引用了 /static/uploads/portraits/xxx
+     * 的 portrait / sender_portrait / avatar / sender_avatar / character_avatar 字段
+     * 改写为本地文件路径，使 UI 能直接通过 Coil 加载本地立绘。
+     *
+     * @param urlMap key=旧文件名（如 portrait_xxx.png），value=新本地绝对路径
+     */
+    private suspend fun rewritePortraitUrls(db: NekobotDatabase, urlMap: Map<String, String>) {
+        if (urlMap.isEmpty()) return
+        // 提取旧 URL 中的文件名 → 映射到本地路径
+        fun rewrite(url: String?): String? {
+            if (url.isNullOrBlank()) return url
+            // 形如 /static/uploads/portraits/portrait_xxx.png 或 http://host/static/uploads/portraits/xxx.png
+            val filename = url.substringAfterLast('/')
+            return urlMap[filename] ?: url
+        }
+
+        db.sessionDao().listAll().forEach { sess ->
+            val newPortrait = rewrite(sess.portrait)
+            val newSenderAvatar = rewrite(sess.senderAvatar)
+            val newCharAvatar = rewrite(sess.characterAvatar)
+            if (newPortrait != sess.portrait || newSenderAvatar != sess.senderAvatar || newCharAvatar != sess.characterAvatar) {
+                db.sessionDao().updatePortraits(
+                    sess.id,
+                    newPortrait,
+                    newSenderAvatar,
+                    newCharAvatar
+                )
+            }
+        }
+
+        db.characterDao().listAll().forEach { ch ->
+            val newPortrait = rewrite(ch.portrait)
+            val newAvatar = rewrite(ch.avatar)
+            if (newPortrait != ch.portrait || newAvatar != ch.avatar) {
+                db.characterDao().updatePortraits(ch.id, newPortrait, newAvatar)
+            }
+        }
     }
 }
