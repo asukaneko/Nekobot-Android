@@ -57,7 +57,7 @@ object ServiceContainer {
         prefs = PrefsManager(app)
         network = NetworkClient(prefs)
         repository = NekobotRepository(network, prefs)
-        val db = NekobotDatabase.get(app)
+        val db = NekobotDatabase.get(app, prefs.activeDbName)
         localRepository = LocalRepository(db, LocalAiClient(), app)
         unified = UnifiedRepository(prefs, repository, localRepository, app)
         socket = SocketManager(prefs)
@@ -70,6 +70,18 @@ object ServiceContainer {
 
     fun rebuildNetwork() {
         network.rebuild()
+    }
+
+    /** 切换本地 db profile：重建 LocalRepository/UnifiedRepository，广播全局刷新。 */
+    fun switchLocalDb(profileName: String) {
+        appContext?.let { ctx ->
+            NekobotDatabase.switchProfile(ctx, profileName)
+            val db = NekobotDatabase.get(ctx, profileName)
+            localRepository = LocalRepository(db, LocalAiClient(), ctx)
+            unified = UnifiedRepository(prefs, repository, localRepository, ctx)
+            // 触发模式流刷新，所有观察页自动重载
+            _appModeFlow.value = prefs.appMode
+        }
     }
 
     /** 切换运行模式并广播 */

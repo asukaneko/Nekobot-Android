@@ -153,6 +153,147 @@ class LocalAiClient(
         return chatOnce(model, testMessages)
     }
 
+    /**
+     * 视觉模型：理解图片内容（purpose = vision）。
+     * 支持 OpenAI vision API 兼容格式：messages.content 为数组，含 image_url + text。
+     */
+    suspend fun describeImage(
+        model: LocalAiModelEntity,
+        imageUrl: String,
+        question: String = "请描述这张图片的内容。"
+    ): LocalAiResult {
+        // 仅支持 OpenAI 兼容协议；Anthropic 的 vision 格式略有不同，但 chat 端点也支持
+        val url = if (model.appendBaseUrlPath) {
+            model.baseUrl.trimEnd('/') + "/chat/completions"
+        } else {
+            model.baseUrl.trimEnd('/')
+        }
+        val payload = mapOf(
+            "model" to model.model,
+            "max_tokens" to (model.maxTokens ?: 1024),
+            "messages" to listOf(
+                mapOf(
+                    "role" to "user",
+                    "content" to listOf(
+                        mapOf("type" to "text", "text" to question),
+                        mapOf("type" to "image_url", "image_url" to mapOf("url" to imageUrl))
+                    )
+                )
+            )
+        )
+        val body = gson.toJson(payload).toRequestBody(JSON_TYPE)
+        val req = Request.Builder().url(url).post(body)
+            .header("Authorization", "Bearer ${model.apiKey}")
+            .header("Content-Type", "application/json")
+            .build()
+        return try {
+            client.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) {
+                    val err = resp.body?.string().orEmpty().take(500)
+                    return@use LocalAiResult("", error = "HTTP ${resp.code}: $err")
+                }
+                val raw = resp.body?.string().orEmpty()
+                @Suppress("UNCHECKED_CAST")
+                val data = (gson.fromJson(raw, Map::class.java) as? Map<String, Any>) ?: emptyMap()
+                val choices = data["choices"] as? List<Map<String, Any>> ?: emptyList()
+                val msg = choices.firstOrNull()?.get("message") as? Map<String, Any>
+                val content = (msg?.get("content") as? String).orEmpty()
+                LocalAiResult(content)
+            }
+        } catch (e: Exception) {
+            Log.e("LocalAiClient", "describeImage failed: ${e.message}")
+            LocalAiResult("", error = e.message ?: "图片理解请求异常")
+        }
+    }
+
+    /**
+     * TTS 语音合成（purpose = tts）。
+     * 调用 OpenAI 兼容 /audio/speech 端点，返回音频字节。
+     * 语音格式：mp3。
+     */
+    suspend fun synthesizeSpeech(
+        model: LocalAiModelEntity,
+        text: String,
+        voice: String = "alloy",
+        speed: Float = 1.0f
+    ): Pair<ByteArray?, String?> {
+        val url = if (model.appendBaseUrlPath) {
+            model.baseUrl.trimEnd('/') + "/audio/speech"
+        } else {
+            model.baseUrl.trimEnd('/')
+        }
+        val payload = mapOf(
+            "model" to model.model,
+            "input" to text,
+            "voice" to voice,
+            "speed" to speed,
+            "response_format" to "mp3"
+        )
+        val body = gson.toJson(payload).toRequestBody(JSON_TYPE)
+        val req = Request.Builder().url(url).post(body)
+            .header("Authorization", "Bearer ${model.apiKey}")
+            .header("Content-Type", "application/json")
+            .build()
+        return try {
+            client.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) {
+                    val err = resp.body?.string().orEmpty().take(500)
+                    return@use Pair(null, "HTTP ${resp.code}: $err")
+                }
+                val bytes = resp.body?.bytes()
+                Pair(bytes, null)
+            }
+        } catch (e: Exception) {
+            Log.e("LocalAiClient", "synthesizeSpeech failed: ${e.message}")
+            Pair(null, e.message ?: "TTS 请求异常")
+        }
+    }
+
+    /**
+     * STT 语音识别（purpose = stt）。
+     * 调用 OpenAI 兼容 /audio/transcriptions 端点。
+     * audioBytes 为音频字节数组（mp3/wav/m4a 等），返回识别文本。
+     */
+    suspend fun transcribeSpeech(
+        model: LocalAiModelEntity,
+        audioBytes: ByteArray,
+        filename: String = "audio.mp3",
+        language: String? = null
+    ): LocalAiResult {
+        val url = if (model.appendBaseUrlPath) {
+            model.baseUrl.trimEnd('/') + "/audio/transcriptions"
+        } else {
+            model.baseUrl.trimEnd('/')
+        }
+        val audioMediaType = "audio/mpeg".toMediaType()
+        val audioPart = okhttp3.MultipartBody.Builder()
+            .setType(okhttp3.MultipartBody.FORM)
+            .addFormDataPart("model", model.model)
+            .addFormDataPart("file", filename, audioBytes.toRequestBody(audioMediaType))
+            .apply {
+                if (!language.isNullOrBlank()) addFormDataPart("language", language)
+            }
+            .build()
+        val req = Request.Builder().url(url).post(audioPart)
+            .header("Authorization", "Bearer ${model.apiKey}")
+            .build()
+        return try {
+            client.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) {
+                    val err = resp.body?.string().orEmpty().take(500)
+                    return@use LocalAiResult("", error = "HTTP ${resp.code}: $err")
+                }
+                val raw = resp.body?.string().orEmpty()
+                @Suppress("UNCHECKED_CAST")
+                val data = (gson.fromJson(raw, Map::class.java) as? Map<String, Any>) ?: emptyMap()
+                LocalAiResult(data["text"] as? String ?: "")
+            }
+        } catch (e: Exception) {
+            Log.e("LocalAiClient", "transcribeSpeech failed: ${e.message}")
+            LocalAiResult("", error = e.message ?: "STT 请求异常")
+        }
+    }
+
     companion object {
         private val JSON_TYPE = "application/json; charset=utf-8".toMediaType()
 

@@ -38,6 +38,7 @@ import com.nekobot.app.ui.screens.sessions.SessionDetailScreen
 import com.nekobot.app.ui.screens.plot.StoryGraphScreen
 import com.nekobot.app.ui.screens.settings.ConfigTransferScreen
 import com.nekobot.app.ui.screens.settings.DataMaintenanceScreen
+import com.nekobot.app.ui.screens.settings.DbProfileScreen
 import com.nekobot.app.ui.screens.settings.FeatureSwitchesScreen
 import com.nekobot.app.ui.screens.settings.SettingsScreen
 import com.nekobot.app.ui.screens.settings.StyleSettingsScreen
@@ -385,6 +386,9 @@ fun NekobotNavGraph() {
             }
             composable(Routes.API_KEYS) {
                 ApiKeysScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.DB_PROFILE) {
+                DbProfileScreen(onBack = { navController.popBackStack() })
             }
         }
     }

@@ -52,7 +52,9 @@ data class LocalSessionEntity(
     /** TTS 配置 JSON 字符串 {"enabled":bool,"model_id":str,"voice":str} */
     @ColumnInfo(name = "tts_config") val ttsConfig: String? = null,
     /** 公开分享配置 JSON 字符串 {expires_days,password,include_character,include_user_messages,message_start,message_end} */
-    @ColumnInfo(name = "share_config") val shareConfig: String? = null
+    @ColumnInfo(name = "share_config") val shareConfig: String? = null,
+    /** 压缩上下文时产生的归档会话 ID（用于"提取归档 N 轮"功能） */
+    @ColumnInfo(name = "archive_session_id") val archiveSessionId: String? = null
 )
 
 /**
@@ -279,4 +281,130 @@ data class LocalStateSnapshotEntity(
     val jealousy: Int,
     @ColumnInfo(name = "quality_scores_json") val qualityScoresJson: String? = null,
     @ColumnInfo(name = "trigger_type") val triggerType: String
+)
+
+// ==================== 扩展功能表（v10，本地模式补齐远程同款能力）====================
+
+/** 本地 Hook 配置。actions/conditions/permissions 以 JSON 字符串存储。 */
+@Entity(tableName = "local_hooks")
+data class LocalHookEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val event: String,
+    val description: String? = null,
+    val enabled: Boolean = true,
+    val scope: String = "global",
+    val priority: Int = 100,
+    @ColumnInfo(name = "actions_json") val actionsJson: String = "[]",
+    @ColumnInfo(name = "conditions_json") val conditionsJson: String? = null,
+    @ColumnInfo(name = "permissions_json") val permissionsJson: String? = null,
+    @ColumnInfo(name = "timeout_ms") val timeoutMs: Int = 3000,
+    @ColumnInfo(name = "max_retries") val maxRetries: Int = 0,
+    @ColumnInfo(name = "trigger_mode") val triggerMode: String = "always",
+    @ColumnInfo(name = "condition_logic") val conditionLogic: String = "and",
+    @ColumnInfo(name = "character_id") val characterId: String? = null,
+    @ColumnInfo(name = "conversation_id") val conversationId: String? = null,
+    @ColumnInfo(name = "user_id") val userId: String? = null,
+    @ColumnInfo(name = "created_at") val createdAt: String,
+    @ColumnInfo(name = "updated_at") val updatedAt: String
+)
+
+/** 本地任务中心条目。config 为 JSON 字符串。 */
+@Entity(tableName = "local_tasks")
+data class LocalTaskEntity(
+    @PrimaryKey val id: String,
+    val kind: String = "custom",
+    val name: String,
+    val description: String? = null,
+    val enabled: Boolean = true,
+    val trigger: String = "manual",
+    @ColumnInfo(name = "config_json") val configJson: String? = null,
+    @ColumnInfo(name = "target_session_id") val targetSessionId: String? = null,
+    val prompt: String? = null,
+    @ColumnInfo(name = "created_at") val createdAt: String,
+    @ColumnInfo(name = "last_run") val lastRun: String? = null,
+    @ColumnInfo(name = "next_run") val nextRun: String? = null
+)
+
+/** 本地工作流。config 为 JSON 字符串（节点+连线）。 */
+@Entity(tableName = "local_workflows")
+data class LocalWorkflowEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val description: String? = null,
+    val enabled: Boolean = true,
+    val trigger: String = "manual",
+    @ColumnInfo(name = "config_json") val configJson: String? = null,
+    @ColumnInfo(name = "created_at") val createdAt: String
+)
+
+/** 本地 Skill 元数据。aliases/parameters 以 JSON 字符串存储。 */
+@Entity(tableName = "local_skills")
+data class LocalSkillEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val description: String? = null,
+    @ColumnInfo(name = "aliases_json") val aliasesJson: String = "[]",
+    val enabled: Boolean = true,
+    @ColumnInfo(name = "parameters_json") val parametersJson: String? = null,
+    @ColumnInfo(name = "created_at") val createdAt: String
+)
+
+/** 本地 Tool 配置。parameters/implementation 以 JSON 字符串存储。 */
+@Entity(tableName = "local_tools")
+data class LocalToolEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val description: String? = null,
+    val enabled: Boolean = true,
+    @ColumnInfo(name = "parameters_json") val parametersJson: String? = null,
+    @ColumnInfo(name = "implementation_json") val implementationJson: String? = null,
+    val builtin: Boolean = false,
+    @ColumnInfo(name = "created_at") val createdAt: String
+)
+
+/** 本地 MCP 服务。args/env 以 JSON 字符串存储。 */
+@Entity(tableName = "local_mcp_servers")
+data class LocalMcpServerEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val transport: String = "streamable-http",
+    val description: String? = null,
+    val enabled: Boolean = true,
+    @ColumnInfo(name = "auto_connect") val autoConnect: Boolean = false,
+    val connected: Boolean = false,
+    @ColumnInfo(name = "tool_count") val toolCount: Int = 0,
+    val url: String? = null,
+    val command: String? = null,
+    @ColumnInfo(name = "args_json") val argsJson: String? = null,
+    @ColumnInfo(name = "env_json") val envJson: String? = null,
+    val builtin: Boolean = false,
+    @ColumnInfo(name = "created_at") val createdAt: String,
+    @ColumnInfo(name = "last_connected_at") val lastConnectedAt: String? = null
+)
+
+/** 本地 API Key。key 仅在详情时返回。 */
+@Entity(tableName = "local_api_keys")
+data class LocalApiKeyEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val key: String,
+    @ColumnInfo(name = "created_at") val createdAt: String,
+    @ColumnInfo(name = "updated_at") val updatedAt: String
+)
+
+/**
+ * 本地消息收藏夹。每条记录对应一个收藏集合（collection）。
+ * message_ids_json 为该收藏夹包含的消息 ID 列表（JSON 数组字符串）。
+ */
+@Entity(
+    tableName = "local_message_favorites",
+    indices = [Index("session_id")]
+)
+data class LocalMessageFavoriteEntity(
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "session_id") val sessionId: String,
+    val title: String,
+    @ColumnInfo(name = "message_ids_json") val messageIdsJson: String = "[]",
+    @ColumnInfo(name = "created_at") val createdAt: String
 )

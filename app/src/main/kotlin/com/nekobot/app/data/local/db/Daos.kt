@@ -187,11 +187,21 @@ interface AiModelDao {
     @Query("SELECT * FROM local_ai_models WHERE active = 1 LIMIT 1")
     fun observeActive(): Flow<LocalAiModelEntity?>
 
+    @Query("SELECT * FROM local_ai_models WHERE purpose = :purpose AND active = 1 LIMIT 1")
+    suspend fun getActiveByPurpose(purpose: String): LocalAiModelEntity?
+
+    @Query("SELECT * FROM local_ai_models WHERE purpose = :purpose AND enabled = 1 ORDER BY priority ASC, created_at ASC")
+    suspend fun listByPurpose(purpose: String): List<LocalAiModelEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(model: LocalAiModelEntity)
 
     @Query("UPDATE local_ai_models SET active = (id = :id)")
     suspend fun setActive(id: String)
+
+    /** 将指定 purpose 下其他模型的 active 全部置 0，再置目标模型 active = 1。 */
+    @Query("UPDATE local_ai_models SET active = CASE WHEN id = :id THEN 1 ELSE 0 END WHERE purpose = :purpose")
+    suspend fun setActiveForPurpose(id: String, purpose: String)
 
     @Query("DELETE FROM local_ai_models WHERE id = :id")
     suspend fun deleteById(id: String)
@@ -266,4 +276,153 @@ interface MemoryDao {
 
     @Query("SELECT * FROM local_character_memories WHERE character_id = :characterId ORDER BY importance DESC, created_at DESC")
     suspend fun listByCharacter(characterId: String): List<LocalCharacterMemoryEntity>
+}
+
+// ==================== 扩展功能 DAOs (v10) ====================
+
+@Dao
+interface HookDao {
+    @Query("SELECT * FROM local_hooks ORDER BY priority ASC, created_at DESC")
+    suspend fun listAll(): List<LocalHookEntity>
+
+    @Query("SELECT * FROM local_hooks WHERE enabled = 1 ORDER BY priority ASC")
+    suspend fun listEnabled(): List<LocalHookEntity>
+
+    @Query("SELECT * FROM local_hooks WHERE id = :id")
+    suspend fun getById(id: String): LocalHookEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(hook: LocalHookEntity)
+
+    @Query("DELETE FROM local_hooks WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("UPDATE local_hooks SET enabled = :enabled WHERE id = :id")
+    suspend fun setEnabled(id: String, enabled: Boolean)
+}
+
+@Dao
+interface TaskDao {
+    @Query("SELECT * FROM local_tasks ORDER BY created_at DESC")
+    suspend fun listAll(): List<LocalTaskEntity>
+
+    @Query("SELECT * FROM local_tasks WHERE id = :id")
+    suspend fun getById(id: String): LocalTaskEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(task: LocalTaskEntity)
+
+    @Query("DELETE FROM local_tasks WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("UPDATE local_tasks SET enabled = :enabled WHERE id = :id")
+    suspend fun setEnabled(id: String, enabled: Boolean)
+
+    @Query("UPDATE local_tasks SET last_run = :lastRun WHERE id = :id")
+    suspend fun touchRun(id: String, lastRun: String)
+}
+
+@Dao
+interface WorkflowDao {
+    @Query("SELECT * FROM local_workflows ORDER BY created_at DESC")
+    suspend fun listAll(): List<LocalWorkflowEntity>
+
+    @Query("SELECT * FROM local_workflows WHERE id = :id")
+    suspend fun getById(id: String): LocalWorkflowEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(workflow: LocalWorkflowEntity)
+
+    @Query("DELETE FROM local_workflows WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("UPDATE local_workflows SET enabled = :enabled WHERE id = :id")
+    suspend fun setEnabled(id: String, enabled: Boolean)
+}
+
+@Dao
+interface SkillDao {
+    @Query("SELECT * FROM local_skills ORDER BY created_at DESC")
+    suspend fun listAll(): List<LocalSkillEntity>
+
+    @Query("SELECT * FROM local_skills WHERE id = :id")
+    suspend fun getById(id: String): LocalSkillEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(skill: LocalSkillEntity)
+
+    @Query("DELETE FROM local_skills WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("UPDATE local_skills SET enabled = :enabled WHERE id = :id")
+    suspend fun setEnabled(id: String, enabled: Boolean)
+}
+
+@Dao
+interface ToolDao {
+    @Query("SELECT * FROM local_tools ORDER BY created_at DESC")
+    suspend fun listAll(): List<LocalToolEntity>
+
+    @Query("SELECT * FROM local_tools WHERE id = :id")
+    suspend fun getById(id: String): LocalToolEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(tool: LocalToolEntity)
+
+    @Query("DELETE FROM local_tools WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("UPDATE local_tools SET enabled = :enabled WHERE id = :id")
+    suspend fun setEnabled(id: String, enabled: Boolean)
+}
+
+@Dao
+interface McpServerDao {
+    @Query("SELECT * FROM local_mcp_servers ORDER BY created_at DESC")
+    suspend fun listAll(): List<LocalMcpServerEntity>
+
+    @Query("SELECT * FROM local_mcp_servers WHERE id = :id")
+    suspend fun getById(id: String): LocalMcpServerEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(server: LocalMcpServerEntity)
+
+    @Query("DELETE FROM local_mcp_servers WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("UPDATE local_mcp_servers SET connected = :connected, last_connected_at = :lastConnectedAt WHERE id = :id")
+    suspend fun setConnected(id: String, connected: Boolean, lastConnectedAt: String?)
+}
+
+@Dao
+interface ApiKeyDao {
+    @Query("SELECT * FROM local_api_keys ORDER BY created_at DESC")
+    suspend fun listAll(): List<LocalApiKeyEntity>
+
+    @Query("SELECT * FROM local_api_keys WHERE id = :id")
+    suspend fun getById(id: String): LocalApiKeyEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(key: LocalApiKeyEntity)
+
+    @Query("DELETE FROM local_api_keys WHERE id = :id")
+    suspend fun deleteById(id: String)
+}
+
+@Dao
+interface MessageFavoriteDao {
+    @Query("SELECT * FROM local_message_favorites WHERE session_id = :sessionId ORDER BY created_at DESC")
+    suspend fun listBySession(sessionId: String): List<LocalMessageFavoriteEntity>
+
+    @Query("SELECT * FROM local_message_favorites WHERE id = :id")
+    suspend fun getById(id: String): LocalMessageFavoriteEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(favorite: LocalMessageFavoriteEntity)
+
+    @Query("DELETE FROM local_message_favorites WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM local_message_favorites WHERE session_id = :sessionId")
+    suspend fun deleteBySession(sessionId: String)
 }

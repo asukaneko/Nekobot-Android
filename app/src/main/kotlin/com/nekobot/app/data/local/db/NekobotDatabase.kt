@@ -23,9 +23,17 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalCharacterStateEntity::class,
         LocalRelationshipStateEntity::class,
         LocalCharacterMemoryEntity::class,
-        LocalStateSnapshotEntity::class
+        LocalStateSnapshotEntity::class,
+        LocalHookEntity::class,
+        LocalTaskEntity::class,
+        LocalWorkflowEntity::class,
+        LocalSkillEntity::class,
+        LocalToolEntity::class,
+        LocalMcpServerEntity::class,
+        LocalApiKeyEntity::class,
+        LocalMessageFavoriteEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -38,11 +46,16 @@ abstract class NekobotDatabase : RoomDatabase() {
     abstract fun relationshipDao(): RelationshipDao
     abstract fun memoryDao(): MemoryDao
     abstract fun stateSnapshotDao(): StateSnapshotDao
+    abstract fun hookDao(): HookDao
+    abstract fun taskDao(): TaskDao
+    abstract fun workflowDao(): WorkflowDao
+    abstract fun skillDao(): SkillDao
+    abstract fun toolDao(): ToolDao
+    abstract fun mcpServerDao(): McpServerDao
+    abstract fun apiKeyDao(): ApiKeyDao
+    abstract fun messageFavoriteDao(): MessageFavoriteDao
 
     companion object {
-        @Volatile
-        private var INSTANCE: NekobotDatabase? = null
-
         /**
          * v1 → v2：local_sessions 新增 custom_prompts 列。
          */
@@ -148,18 +161,204 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
-        fun get(context: Context): NekobotDatabase =
-            INSTANCE ?: synchronized(this) {
-                INSTANCE ?: Room.databaseBuilder(
-                    context.applicationContext,
-                    NekobotDatabase::class.java,
-                    "nekobot_local.db"
+        /**
+         * v9 → v10：
+         * 1) local_sessions 新增 archive_session_id 列（用于"提取归档 N 轮"功能）。
+         * 2) 新增 8 张扩展功能表（hooks / tasks / workflows / skills / tools / mcp_servers / api_keys / message_favorites），
+         *    让本地模式具备与远程模式同款的扩展能力。
+         */
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_sessions ADD COLUMN archive_session_id TEXT")
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_hooks (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        event TEXT NOT NULL,
+                        description TEXT,
+                        enabled INTEGER NOT NULL DEFAULT 1,
+                        scope TEXT NOT NULL DEFAULT 'global',
+                        priority INTEGER NOT NULL DEFAULT 100,
+                        actions_json TEXT NOT NULL DEFAULT '[]',
+                        conditions_json TEXT,
+                        permissions_json TEXT,
+                        timeout_ms INTEGER NOT NULL DEFAULT 3000,
+                        max_retries INTEGER NOT NULL DEFAULT 0,
+                        trigger_mode TEXT NOT NULL DEFAULT 'always',
+                        condition_logic TEXT NOT NULL DEFAULT 'and',
+                        character_id TEXT,
+                        conversation_id TEXT,
+                        user_id TEXT,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                    """.trimIndent()
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
-                    // 仅当迁移脚本未覆盖的未来版本变更时才回退到破坏性迁移（保护现有数据）
-                    .fallbackToDestructiveMigration()
-                    .build()
-                    .also { INSTANCE = it }
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_tasks (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        kind TEXT NOT NULL DEFAULT 'custom',
+                        name TEXT NOT NULL,
+                        description TEXT,
+                        enabled INTEGER NOT NULL DEFAULT 1,
+                        trigger TEXT NOT NULL DEFAULT 'manual',
+                        config_json TEXT,
+                        target_session_id TEXT,
+                        prompt TEXT,
+                        created_at TEXT NOT NULL,
+                        last_run TEXT,
+                        next_run TEXT
+                    )
+                    """.trimIndent()
+                )
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_workflows (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        description TEXT,
+                        enabled INTEGER NOT NULL DEFAULT 1,
+                        trigger TEXT NOT NULL DEFAULT 'manual',
+                        config_json TEXT,
+                        created_at TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_skills (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        description TEXT,
+                        aliases_json TEXT NOT NULL DEFAULT '[]',
+                        enabled INTEGER NOT NULL DEFAULT 1,
+                        parameters_json TEXT,
+                        created_at TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_tools (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        description TEXT,
+                        enabled INTEGER NOT NULL DEFAULT 1,
+                        parameters_json TEXT,
+                        implementation_json TEXT,
+                        builtin INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_mcp_servers (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        transport TEXT NOT NULL DEFAULT 'streamable-http',
+                        description TEXT,
+                        enabled INTEGER NOT NULL DEFAULT 1,
+                        auto_connect INTEGER NOT NULL DEFAULT 0,
+                        connected INTEGER NOT NULL DEFAULT 0,
+                        tool_count INTEGER NOT NULL DEFAULT 0,
+                        url TEXT,
+                        command TEXT,
+                        args_json TEXT,
+                        env_json TEXT,
+                        builtin INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT NOT NULL,
+                        last_connected_at TEXT
+                    )
+                    """.trimIndent()
+                )
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_api_keys (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        key TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_message_favorites (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        session_id TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        message_ids_json TEXT NOT NULL DEFAULT '[]',
+                        created_at TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_local_message_favorites_session_id ON local_message_favorites (session_id)")
             }
+        }
+
+        /** 数据库实例缓存：按 db 名（含扩展）区分，支持多 profile 切换。 */
+        private val INSTANCES = mutableMapOf<String, NekobotDatabase>()
+
+        fun get(context: Context): NekobotDatabase =
+            get(context, com.nekobot.app.data.local.PrefsManager.DEFAULT_DB_NAME)
+
+        /** 按指定 profile 名获取数据库实例。同名 db 复用缓存。 */
+        fun get(context: Context, profileName: String): NekobotDatabase = synchronized(this) {
+            val dbName = if (profileName.endsWith(".db")) profileName else "$profileName.db"
+            INSTANCES[dbName]?.let { return@synchronized it }
+            Room.databaseBuilder(
+                context.applicationContext,
+                NekobotDatabase::class.java,
+                dbName
+            )
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                // 仅当迁移脚本未覆盖的未来版本变更时才回退到破坏性迁移（保护现有数据）
+                .fallbackToDestructiveMigration()
+                .build()
+                .also { INSTANCES[dbName] = it }
+        }
+
+        /** 切换激活的数据库：关闭并移除当前实例缓存，下次 get() 时按新名重建。 */
+        fun switchProfile(context: Context, profileName: String) = synchronized(this) {
+            val newName = if (profileName.endsWith(".db")) profileName else "$profileName.db"
+            // 关闭并移除所有已缓存的实例（避免持有旧 db 连接）
+            INSTANCES.values.forEach { runCatching { it.close() } }
+            INSTANCES.clear()
+            // 预热新 profile
+            get(context, profileName)
+        }
+
+        /** 关闭并清理指定 profile（用于删除 db 文件前）。 */
+        fun closeProfile(profileName: String) = synchronized(this) {
+            val dbName = if (profileName.endsWith(".db")) profileName else "$profileName.db"
+            INSTANCES.remove(dbName)?.run { runCatching { close() } }
+        }
+
+        /** 删除指定 profile 的 db 文件（需先关闭连接）。 */
+        fun deleteProfileFile(context: Context, profileName: String): Boolean = synchronized(this) {
+            if (profileName == com.nekobot.app.data.local.PrefsManager.DEFAULT_DB_NAME) return@synchronized false
+            closeProfile(profileName)
+            val dbName = if (profileName.endsWith(".db")) profileName else "$profileName.db"
+            val files = listOf(
+                context.getDatabasePath(dbName),
+                context.getDatabasePath("$dbName-journal"),
+                context.getDatabasePath("$dbName-wal"),
+                context.getDatabasePath("$dbName-shm")
+            )
+            files.forEach { runCatching { if (it.exists()) it.delete() } }
+            true
+        }
     }
 }

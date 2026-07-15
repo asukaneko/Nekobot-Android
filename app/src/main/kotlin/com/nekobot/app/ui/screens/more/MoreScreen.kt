@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -105,6 +106,16 @@ fun MoreScreen(
                     desc = if (appMode == AppMode.LOCAL) "管理本地直连 AI 模型" else "管理 AI 配置、模型与故障转移队列",
                     onClick = { onNavigate("ai_config_center") }
                 )
+                if (appMode == AppMode.LOCAL) {
+                    // 本地模式：DB Profile 管理（从远程导入 nbotcfg / 切换 / 删除）
+                    Spacer(Modifier.height(8.dp))
+                    MoreRow(
+                        icon = Icons.Filled.Storage,
+                        title = "数据库管理",
+                        desc = "从远程地址导入 nbotcfg，切换或删除本地 db",
+                        onClick = { onNavigate("db_profile") }
+                    )
+                }
                 if (appMode != AppMode.LOCAL) {
                     // 扩展功能（仅远程模式）：Hook/任务/工作流/知识库/Skills/Tools/MCP/频道/消息过滤/TTS/令牌
                     Spacer(Modifier.height(8.dp))
@@ -112,6 +123,15 @@ fun MoreScreen(
                         icon = Icons.Filled.Extension,
                         title = "扩展功能",
                         desc = "Hook、任务、工作流、知识库、MCP、频道等高级配置",
+                        onClick = { onNavigate("extensions") }
+                    )
+                } else {
+                    // 本地模式：开放本地可用的扩展功能（Hook/任务/工作流/Skills/Tools/MCP/API Keys）
+                    Spacer(Modifier.height(8.dp))
+                    MoreRow(
+                        icon = Icons.Filled.Extension,
+                        title = "扩展功能",
+                        desc = "Hook、任务、工作流、Skills、Tools、MCP、API Keys 等本地配置",
                         onClick = { onNavigate("extensions") }
                     )
                 }

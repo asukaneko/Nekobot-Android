@@ -53,12 +53,14 @@ import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.navigation.Routes
 
 /**
- * 扩展功能聚合页：12 个高级配置模块入口（仅远程模式可用）。
+ * 扩展功能聚合页：12 个高级配置模块入口。
+ * 本地模式仅展示本地可用模块（Hook/任务/工作流/Skills/Tools/MCP/API Keys）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExtensionsScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
-    val items = listOf(
+    val isLocalMode = com.nekobot.app.ServiceContainer.prefs.isLocalMode
+    val allItems = listOf(
         ExtensionItem("Hook 管理", "事件钩子与动作自动化", Icons.Filled.Extension, Routes.HOOKS),
         ExtensionItem("任务中心", "定时/周期任务聚合管理", Icons.Filled.Schedule, Routes.TASK_CENTER),
         ExtensionItem("工作流", "多步骤自动化流程", Icons.Filled.AppRegistration, Routes.WORKFLOWS),
@@ -72,6 +74,12 @@ fun ExtensionsScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
         ExtensionItem("登录令牌", "Web 控制台访问令牌", Icons.Filled.VpnKey, Routes.LOGIN_TOKENS),
         ExtensionItem("API Keys", "外部 API 密钥管理", Icons.Filled.Key, Routes.API_KEYS)
     )
+    // 本地模式仅展示本地已实现的 7 项
+    val localSupportedRoutes = setOf(
+        Routes.HOOKS, Routes.TASK_CENTER, Routes.WORKFLOWS,
+        Routes.SKILLS, Routes.TOOLS, Routes.MCP_SERVERS, Routes.API_KEYS
+    )
+    val items = if (isLocalMode) allItems.filter { it.route in localSupportedRoutes } else allItems
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,

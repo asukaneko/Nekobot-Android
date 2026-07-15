@@ -3,8 +3,10 @@ package com.nekobot.app.data.repository
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.nekobot.app.data.local.LocalRepository
+import com.nekobot.app.data.local.NbotConfigImporter
 import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.local.db.LocalMessageEntity
@@ -214,16 +216,29 @@ class UnifiedRepository(
         if (!isLocal) return remote.compressContext(id)
         val model = local.getActiveModel() ?: return Resource.Error("未配置 AI 模型")
         val ok = local.compressContext(id, model)
-        return if (ok) Resource.Success(JsonParser.parseString("{\"success\":true}"))
-        else Resource.Error("压缩失败")
+        return if (ok) {
+            // 读取 archive_session_id 回写响应，供 ChatScreen 写回 session 状态
+            val archiveId = local.getSession(id)?.archiveSessionId
+            val payload = if (archiveId != null) {
+                "{\"success\":true,\"archive_session_id\":\"$archiveId\"}"
+            } else {
+                "{\"success\":true}"
+            }
+            Resource.Success(JsonParser.parseString(payload))
+        } else Resource.Error("压缩失败")
     }
 
-    /** 从归档会话提取 N 轮对话回到当前会话（仅远程模式支持） */
+    /** 从归档会话提取 N 轮对话回到当前会话。 */
     suspend fun restoreFromArchive(id: String, turns: Int): Resource<JsonElement> {
         if (!isLocal) return remote.restoreFromArchive(id, turns)
-        // 本地模式暂不支持归档提取
-        return Resource.Error("本地模式暂不支持提取归档")
+        val ok = local.restoreFromArchive(id, turns)
+        return if (ok) Resource.Success(JsonParser.parseString("{\"success\":true,\"turns\":$turns}"))
+        else Resource.Error("提取归档失败：未找到归档会话或无可提取的对话轮")
     }
+
+    /** 本地模式查看归档会话和消息（远程模式由 UI 自行调用 getSession + listMessages）。 */
+    suspend fun viewArchive(id: String): Pair<Session?, List<Message>>? =
+        if (isLocal) local.viewArchive(id) else null
 
     // ==================== 提示词栈 / 自定义提示词 ====================
 
@@ -406,7 +421,15 @@ class UnifiedRepository(
     }
 
     suspend fun setActiveLocalModel(id: String) {
-        if (isLocal) local.setActiveModel(id)
+        if (isLocal) {
+            // 按 purpose 设置激活：取消同 purpose 其他模型，激活本模型
+            val model = local.listAiModels().firstOrNull { it.id == id }
+            if (model != null) {
+                local.setActiveModelForPurpose(id, model.purpose)
+            } else {
+                local.setActiveModel(id)
+            }
+        }
     }
 
     suspend fun deleteLocalAiModel(id: String) {
@@ -415,6 +438,10 @@ class UnifiedRepository(
 
     suspend fun getActiveLocalModel(): LocalAiModelEntity? =
         if (isLocal) local.getActiveModel() else null
+
+    /** 获取指定 purpose 的激活模型（用于 vision/tts/stt 等场景）。 */
+    suspend fun getActiveLocalModelByPurpose(purpose: String): LocalAiModelEntity? =
+        if (isLocal) local.getActiveModel(purpose) else null
 
     suspend fun testLocalModel(model: LocalAiModelEntity) =
         if (isLocal) local.testModel(model) else null
@@ -471,37 +498,58 @@ class UnifiedRepository(
     fun local(): LocalRepository = local
 
     // ==================== 工作区 ====================
-    /** 列出工作区文件：本地模式返回空数组，远程模式转发 */
+    /** 列出工作区文件。 */
     suspend fun listWorkspaceFiles(sessionId: String, path: String? = null): Resource<JsonElement> {
         return if (isLocal) {
-            Resource.Success(JsonParser.parseString("[]"))
+            Resource.Success(local.listWorkspaceFiles(sessionId, path))
         } else {
             remote.listWorkspaceFiles(sessionId, path)
         }
     }
 
-    /** 上传文件到工作区：本地模式不支持，远程模式转发 */
+    /** 上传文件到工作区。本地模式直接落盘到 filesDir/workspace/<sessionId>/。 */
     suspend fun uploadWorkspaceFile(sessionId: String, file: MultipartBody.Part): Resource<JsonElement> {
         return if (isLocal) {
-            Resource.Error("本地模式不支持工作区上传")
+            try {
+                val body = file.body ?: return Resource.Error("文件内容为空")
+                val bytes = okio.Buffer().use { buf ->
+                    body.writeTo(buf)
+                    buf.readByteArray()
+                }
+                val name = file.headers?.get("Content-Disposition")
+                    ?.substringAfter("filename=")
+                    ?.trim('"')
+                    ?: "uploaded_${System.currentTimeMillis()}"
+                Resource.Success(local.uploadWorkspaceFile(sessionId, bytes, name))
+            } catch (e: Exception) {
+                Resource.Error(e.message ?: "上传失败")
+            }
         } else {
             remote.uploadWorkspaceFile(sessionId, file)
         }
     }
 
-    /** 删除工作区文件：本地模式不支持，远程模式转发 */
+    /** 删除工作区文件。 */
     suspend fun deleteWorkspaceFile(sessionId: String, filename: String): Resource<JsonElement> {
         return if (isLocal) {
-            Resource.Error("本地模式不支持工作区操作")
+            Resource.Success(local.deleteWorkspaceFile(sessionId, filename))
         } else {
             remote.deleteWorkspaceFile(sessionId, filename)
         }
     }
 
-    /** 下载工作区文件：本地模式返回 null，远程模式转发 */
+    /**
+     * 下载工作区文件。
+     * - 远程模式：返回 retrofit2.Response<ResponseBody>
+     * - 本地模式：返回 null（调用方应改用 [downloadWorkspaceFileLocal]）
+     */
     suspend fun downloadWorkspaceFile(sessionId: String, filename: String): retrofit2.Response<okhttp3.ResponseBody>? {
         return if (isLocal) null else remote.downloadWorkspaceFile(sessionId, filename)
     }
+
+    /** 本地模式下载工作区文件：直接返回本地 File 对象。 */
+    suspend fun downloadWorkspaceFileLocal(sessionId: String, filename: String): java.io.File? =
+        if (isLocal) local.downloadWorkspaceFile(sessionId, filename) else null
 
     // ==================== 扩展功能（仅远程模式，本地模式返回错误）====================
     // 以下 12 组模块仅在远程模式可用，本地模式返回 Resource.Error
@@ -511,49 +559,79 @@ class UnifiedRepository(
 
     // ---- Hook 管理 ----
     suspend fun listHooks(scope: String? = null, event: String? = null, enabled: String? = null): Resource<List<Hook>> =
-        if (isLocal) localNotSupported("Hook 管理") else remote.listHooks(scope, event, enabled)
+        if (isLocal) runCatching { Resource.Success(local.listHooks()) }
+            .getOrElse { Resource.Error(it.message ?: "加载失败") }
+        else remote.listHooks(scope, event, enabled)
     suspend fun createHook(req: HookRequest): Resource<Hook> =
-        if (isLocal) localNotSupported("Hook 管理") else remote.createHook(req)
+        if (isLocal) runCatching { Resource.Success(local.createHook(req)) }
+            .getOrElse { Resource.Error(it.message ?: "创建失败") }
+        else remote.createHook(req)
     suspend fun updateHook(id: String, req: HookRequest): Resource<Hook> =
-        if (isLocal) localNotSupported("Hook 管理") else remote.updateHook(id, req)
+        if (isLocal) runCatching { Resource.Success(local.updateHook(id, req)) }
+            .getOrElse { Resource.Error(it.message ?: "更新失败") }
+        else remote.updateHook(id, req)
     suspend fun deleteHook(id: String): Resource<Unit> =
-        if (isLocal) localNotSupported("Hook 管理") else remote.deleteHook(id)
+        if (isLocal) runCatching { local.deleteHook(id); Resource.Success(Unit) }
+            .getOrElse { Resource.Error(it.message ?: "删除失败") }
+        else remote.deleteHook(id)
     suspend fun toggleHook(id: String): Resource<Hook> =
-        if (isLocal) localNotSupported("Hook 管理") else remote.toggleHook(id)
+        if (isLocal) runCatching { Resource.Success(local.toggleHook(id)) }
+            .getOrElse { Resource.Error(it.message ?: "切换失败") }
+        else remote.toggleHook(id)
     suspend fun testHook(body: JsonElement): Resource<JsonElement> =
-        if (isLocal) localNotSupported("Hook 管理") else remote.testHook(body)
+        if (isLocal) Resource.Success(local.testHook(body)) else remote.testHook(body)
     suspend fun listHookLogs(hookId: String? = null, limit: Int = 100): Resource<List<HookExecutionLog>> =
-        if (isLocal) localNotSupported("Hook 管理") else remote.listHookLogs(hookId, limit)
+        if (isLocal) Resource.Success(local.listHookLogs(hookId, limit)) else remote.listHookLogs(hookId, limit)
     suspend fun hookStats(): Resource<JsonElement> =
-        if (isLocal) localNotSupported("Hook 管理") else remote.hookStats()
+        if (isLocal) Resource.Success(local.hookStats()) else remote.hookStats()
 
     // ---- 任务中心 ----
     suspend fun listTasks(): Resource<List<TaskItem>> =
-        if (isLocal) localNotSupported("任务中心") else remote.listTasks()
+        if (isLocal) runCatching { Resource.Success(local.listTasks()) }
+            .getOrElse { Resource.Error(it.message ?: "加载失败") }
+        else remote.listTasks()
     suspend fun createTask(req: TaskRequest): Resource<TaskItem> =
-        if (isLocal) localNotSupported("任务中心") else remote.createTask(req)
+        if (isLocal) runCatching { Resource.Success(local.createTask(req)) }
+            .getOrElse { Resource.Error(it.message ?: "创建失败") }
+        else remote.createTask(req)
     suspend fun updateTask(id: String, req: TaskRequest): Resource<TaskItem> =
-        if (isLocal) localNotSupported("任务中心") else remote.updateTask(id, req)
+        if (isLocal) runCatching { Resource.Success(local.updateTask(id, req)) }
+            .getOrElse { Resource.Error(it.message ?: "更新失败") }
+        else remote.updateTask(id, req)
     suspend fun deleteTask(id: String): Resource<Unit> =
-        if (isLocal) localNotSupported("任务中心") else remote.deleteTask(id)
+        if (isLocal) runCatching { local.deleteTask(id); Resource.Success(Unit) }
+            .getOrElse { Resource.Error(it.message ?: "删除失败") }
+        else remote.deleteTask(id)
     suspend fun toggleTask(id: String): Resource<TaskItem> =
-        if (isLocal) localNotSupported("任务中心") else remote.toggleTask(id)
+        if (isLocal) runCatching { Resource.Success(local.toggleTask(id)) }
+            .getOrElse { Resource.Error(it.message ?: "切换失败") }
+        else remote.toggleTask(id)
     suspend fun runTask(id: String): Resource<JsonElement> =
-        if (isLocal) localNotSupported("任务中心") else remote.runTask(id)
+        if (isLocal) Resource.Success(local.runTask(id)) else remote.runTask(id)
 
     // ---- 工作流 ----
     suspend fun listWorkflows(): Resource<List<Workflow>> =
-        if (isLocal) localNotSupported("工作流") else remote.listWorkflows()
+        if (isLocal) runCatching { Resource.Success(local.listWorkflows()) }
+            .getOrElse { Resource.Error(it.message ?: "加载失败") }
+        else remote.listWorkflows()
     suspend fun createWorkflow(req: WorkflowRequest): Resource<Workflow> =
-        if (isLocal) localNotSupported("工作流") else remote.createWorkflow(req)
+        if (isLocal) runCatching { Resource.Success(local.createWorkflow(req)) }
+            .getOrElse { Resource.Error(it.message ?: "创建失败") }
+        else remote.createWorkflow(req)
     suspend fun updateWorkflow(id: String, req: WorkflowRequest): Resource<Workflow> =
-        if (isLocal) localNotSupported("工作流") else remote.updateWorkflow(id, req)
+        if (isLocal) runCatching { Resource.Success(local.updateWorkflow(id, req)) }
+            .getOrElse { Resource.Error(it.message ?: "更新失败") }
+        else remote.updateWorkflow(id, req)
     suspend fun deleteWorkflow(id: String): Resource<Unit> =
-        if (isLocal) localNotSupported("工作流") else remote.deleteWorkflow(id)
+        if (isLocal) runCatching { local.deleteWorkflow(id); Resource.Success(Unit) }
+            .getOrElse { Resource.Error(it.message ?: "删除失败") }
+        else remote.deleteWorkflow(id)
     suspend fun toggleWorkflow(id: String): Resource<Workflow> =
-        if (isLocal) localNotSupported("工作流") else remote.toggleWorkflow(id)
+        if (isLocal) runCatching { Resource.Success(local.toggleWorkflow(id)) }
+            .getOrElse { Resource.Error(it.message ?: "切换失败") }
+        else remote.toggleWorkflow(id)
     suspend fun executeWorkflow(id: String): Resource<JsonElement> =
-        if (isLocal) localNotSupported("工作流") else remote.executeWorkflow(id)
+        if (isLocal) Resource.Success(local.executeWorkflow(id)) else remote.executeWorkflow(id)
 
     // ---- 知识库 ----
     suspend fun listKnowledge(): Resource<List<KnowledgeDocument>> =
@@ -575,45 +653,73 @@ class UnifiedRepository(
 
     // ---- Skills 配置 ----
     suspend fun listSkills(): Resource<List<Skill>> =
-        if (isLocal) localNotSupported("Skills 配置") else remote.listSkills()
+        if (isLocal) runCatching { Resource.Success(local.listSkills()) }
+            .getOrElse { Resource.Error(it.message ?: "加载失败") }
+        else remote.listSkills()
     suspend fun createSkill(req: SkillRequest): Resource<Skill> =
-        if (isLocal) localNotSupported("Skills 配置") else remote.createSkill(req)
+        if (isLocal) runCatching { Resource.Success(local.createSkill(req)) }
+            .getOrElse { Resource.Error(it.message ?: "创建失败") }
+        else remote.createSkill(req)
     suspend fun updateSkill(id: String, req: SkillRequest): Resource<Skill> =
-        if (isLocal) localNotSupported("Skills 配置") else remote.updateSkill(id, req)
+        if (isLocal) runCatching { Resource.Success(local.updateSkill(id, req)) }
+            .getOrElse { Resource.Error(it.message ?: "更新失败") }
+        else remote.updateSkill(id, req)
     suspend fun deleteSkill(id: String): Resource<Unit> =
-        if (isLocal) localNotSupported("Skills 配置") else remote.deleteSkill(id)
+        if (isLocal) runCatching { local.deleteSkill(id); Resource.Success(Unit) }
+            .getOrElse { Resource.Error(it.message ?: "删除失败") }
+        else remote.deleteSkill(id)
     suspend fun toggleSkill(id: String): Resource<Skill> =
-        if (isLocal) localNotSupported("Skills 配置") else remote.toggleSkill(id)
+        if (isLocal) runCatching { Resource.Success(local.toggleSkill(id)) }
+            .getOrElse { Resource.Error(it.message ?: "切换失败") }
+        else remote.toggleSkill(id)
 
     // ---- Tools 配置 ----
     suspend fun listTools(): Resource<List<Tool>> =
-        if (isLocal) localNotSupported("Tools 配置") else remote.listTools()
+        if (isLocal) runCatching { Resource.Success(local.listTools()) }
+            .getOrElse { Resource.Error(it.message ?: "加载失败") }
+        else remote.listTools()
     suspend fun createTool(req: ToolRequest): Resource<Tool> =
-        if (isLocal) localNotSupported("Tools 配置") else remote.createTool(req)
+        if (isLocal) runCatching { Resource.Success(local.createTool(req)) }
+            .getOrElse { Resource.Error(it.message ?: "创建失败") }
+        else remote.createTool(req)
     suspend fun updateTool(id: String, req: ToolRequest): Resource<Tool> =
-        if (isLocal) localNotSupported("Tools 配置") else remote.updateTool(id, req)
+        if (isLocal) runCatching { Resource.Success(local.updateTool(id, req)) }
+            .getOrElse { Resource.Error(it.message ?: "更新失败") }
+        else remote.updateTool(id, req)
     suspend fun deleteTool(id: String): Resource<Unit> =
-        if (isLocal) localNotSupported("Tools 配置") else remote.deleteTool(id)
+        if (isLocal) runCatching { local.deleteTool(id); Resource.Success(Unit) }
+            .getOrElse { Resource.Error(it.message ?: "删除失败") }
+        else remote.deleteTool(id)
     suspend fun toggleTool(id: String): Resource<Tool> =
-        if (isLocal) localNotSupported("Tools 配置") else remote.toggleTool(id)
+        if (isLocal) runCatching { Resource.Success(local.toggleTool(id)) }
+            .getOrElse { Resource.Error(it.message ?: "切换失败") }
+        else remote.toggleTool(id)
 
     // ---- MCP 服务 ----
     suspend fun listMcpServers(): Resource<List<McpServer>> =
-        if (isLocal) localNotSupported("MCP 服务") else remote.listMcpServers()
+        if (isLocal) runCatching { Resource.Success(local.listMcpServers()) }
+            .getOrElse { Resource.Error(it.message ?: "加载失败") }
+        else remote.listMcpServers()
     suspend fun createMcpServer(req: McpServerRequest): Resource<McpServer> =
-        if (isLocal) localNotSupported("MCP 服务") else remote.createMcpServer(req)
+        if (isLocal) runCatching { Resource.Success(local.createMcpServer(req)) }
+            .getOrElse { Resource.Error(it.message ?: "创建失败") }
+        else remote.createMcpServer(req)
     suspend fun updateMcpServer(id: String, req: McpServerRequest): Resource<McpServer> =
-        if (isLocal) localNotSupported("MCP 服务") else remote.updateMcpServer(id, req)
+        if (isLocal) runCatching { Resource.Success(local.updateMcpServer(id, req)) }
+            .getOrElse { Resource.Error(it.message ?: "更新失败") }
+        else remote.updateMcpServer(id, req)
     suspend fun deleteMcpServer(id: String): Resource<Unit> =
-        if (isLocal) localNotSupported("MCP 服务") else remote.deleteMcpServer(id)
+        if (isLocal) runCatching { local.deleteMcpServer(id); Resource.Success(Unit) }
+            .getOrElse { Resource.Error(it.message ?: "删除失败") }
+        else remote.deleteMcpServer(id)
     suspend fun connectMcpServer(id: String): Resource<JsonElement> =
-        if (isLocal) localNotSupported("MCP 服务") else remote.connectMcpServer(id)
+        if (isLocal) Resource.Success(local.connectMcpServer(id)) else remote.connectMcpServer(id)
     suspend fun disconnectMcpServer(id: String): Resource<JsonElement> =
-        if (isLocal) localNotSupported("MCP 服务") else remote.disconnectMcpServer(id)
+        if (isLocal) Resource.Success(local.disconnectMcpServer(id)) else remote.disconnectMcpServer(id)
     suspend fun mcpServerTools(id: String): Resource<JsonElement> =
-        if (isLocal) localNotSupported("MCP 服务") else remote.mcpServerTools(id)
+        if (isLocal) Resource.Success(local.mcpServerTools(id)) else remote.mcpServerTools(id)
     suspend fun testMcpServer(id: String): Resource<JsonElement> =
-        if (isLocal) localNotSupported("MCP 服务") else remote.testMcpServer(id)
+        if (isLocal) Resource.Success(local.testMcpServer(id)) else remote.testMcpServer(id)
 
     // ---- 频道管理 ----
     suspend fun channelPresets(): Resource<List<ChannelPreset>> =
@@ -671,15 +777,26 @@ class UnifiedRepository(
 
     // ---- API Keys ----
     suspend fun listApiKeys(): Resource<List<ApiKey>> =
-        if (isLocal) localNotSupported("API Keys") else remote.listApiKeys()
+        if (isLocal) runCatching { Resource.Success(local.listApiKeys()) }
+            .getOrElse { Resource.Error(it.message ?: "加载失败") }
+        else remote.listApiKeys()
     suspend fun getApiKey(id: String): Resource<ApiKey> =
-        if (isLocal) localNotSupported("API Keys") else remote.getApiKey(id)
+        if (isLocal) runCatching {
+            local.getApiKey(id)?.let { Resource.Success(it) } ?: Resource.Error("API Key 不存在")
+        }.getOrElse { Resource.Error(it.message ?: "加载失败") }
+        else remote.getApiKey(id)
     suspend fun createApiKey(req: ApiKeyRequest): Resource<ApiKey> =
-        if (isLocal) localNotSupported("API Keys") else remote.createApiKey(req)
+        if (isLocal) runCatching { Resource.Success(local.createApiKey(req)) }
+            .getOrElse { Resource.Error(it.message ?: "创建失败") }
+        else remote.createApiKey(req)
     suspend fun updateApiKey(id: String, req: ApiKeyRequest): Resource<ApiKey> =
-        if (isLocal) localNotSupported("API Keys") else remote.updateApiKey(id, req)
+        if (isLocal) runCatching { Resource.Success(local.updateApiKey(id, req)) }
+            .getOrElse { Resource.Error(it.message ?: "更新失败") }
+        else remote.updateApiKey(id, req)
     suspend fun deleteApiKey(id: String): Resource<Unit> =
-        if (isLocal) localNotSupported("API Keys") else remote.deleteApiKey(id)
+        if (isLocal) runCatching { local.deleteApiKey(id); Resource.Success(Unit) }
+            .getOrElse { Resource.Error(it.message ?: "删除失败") }
+        else remote.deleteApiKey(id)
 
     // ==================== 会话归档 ====================
     suspend fun archiveSession(id: String): Resource<JsonElement> {
@@ -842,13 +959,76 @@ class UnifiedRepository(
 
     // ==================== 绑定角色 / 消息收藏 ====================
     suspend fun bindCharacter(sessionId: String, req: BindCharacterRequest): Resource<JsonElement> =
-        if (isLocal) Resource.Error("本地模式不支持更改绑定角色") else remote.bindCharacter(sessionId, req)
+        if (isLocal) runCatching { Resource.Success(local.bindCharacter(sessionId, req)) }
+            .getOrElse { Resource.Error(it.message ?: "绑定失败") }
+        else remote.bindCharacter(sessionId, req)
 
     suspend fun listMessageFavorites(sessionId: String): Resource<JsonElement> =
-        if (isLocal) Resource.Success(com.google.gson.JsonParser.parseString("""{"collections":[]}""")) else remote.listMessageFavorites(sessionId)
+        if (isLocal) runCatching { Resource.Success(local.listMessageFavorites(sessionId)) }
+            .getOrElse { Resource.Error(it.message ?: "加载失败") }
+        else remote.listMessageFavorites(sessionId)
 
     suspend fun updateMessageFavorites(sessionId: String, req: MessageFavoriteRequest): Resource<JsonElement> =
-        if (isLocal) Resource.Error("本地模式不支持消息收藏") else remote.updateMessageFavorites(sessionId, req)
+        if (isLocal) runCatching { Resource.Success(local.updateMessageFavorites(sessionId, req)) }
+            .getOrElse { Resource.Error(it.message ?: "保存失败") }
+        else remote.updateMessageFavorites(sessionId, req)
+
+    // ==================== AI 配置中心 ====================
+    suspend fun getAiConfig(): Resource<JsonElement> =
+        if (isLocal) runCatching { Resource.Success(local.getAiConfig()) }
+            .getOrElse { Resource.Error(it.message ?: "加载失败") }
+        else remote.getAiConfig()
+
+    suspend fun updateAiConfig(json: JsonElement): Resource<ApiResult> =
+        if (isLocal) runCatching {
+            val res = local.updateAiConfig(json)
+            val apiResult = ApiResult(
+                success = res.takeIf { it.isJsonObject }?.asJsonObject?.get("success")?.asBoolean,
+                message = res.takeIf { it.isJsonObject }?.asJsonObject?.get("message")
+            )
+            Resource.Success(apiResult)
+        }.getOrElse { Resource.Error(it.message ?: "保存失败") }
+        else remote.updateAiConfig(json)
+
+    suspend fun testAiConfig(json: JsonElement): Resource<com.nekobot.app.data.model.TestResponse> =
+        if (isLocal) runCatching {
+            val res = local.testAiConfig()
+            val obj = res.takeIf { it.isJsonObject }?.asJsonObject
+            Resource.Success(
+                com.nekobot.app.data.model.TestResponse(
+                    success = obj?.get("success")?.asBoolean,
+                    message = obj?.get("message")?.asString
+                )
+            )
+        }.getOrElse { Resource.Error(it.message ?: "测试失败") }
+        else remote.testAiConfig(json)
+
+    suspend fun getAllPurposesConfig(): Resource<JsonElement> =
+        if (isLocal) Resource.Success(local.allPurposes())
+        else remote.getAllPurposesConfig()
+
+    // ==================== 故障转移队列 ====================
+    suspend fun getFailoverQueue(purpose: String): Resource<JsonElement> =
+        if (isLocal) runCatching { Resource.Success(local.getFailoverQueue(purpose)) }
+            .getOrElse { Resource.Error(it.message ?: "加载失败") }
+        else remote.getFailoverQueue(purpose)
+
+    suspend fun resetFailover(modelId: String? = null): Resource<JsonElement> =
+        if (isLocal) runCatching { Resource.Success(local.resetFailover(modelId)) }
+            .getOrElse { Resource.Error(it.message ?: "重置失败") }
+        else remote.resetFailover(modelId)
+
+    suspend fun reorderFailover(purpose: String, modelIds: List<String>): Resource<JsonElement> {
+        return if (isLocal) {
+            runCatching {
+                val body = JsonObject().apply {
+                    addProperty("purpose", purpose)
+                    add("model_ids", gson.toJsonTree(modelIds))
+                }
+                Resource.Success(local.reorderFailover(body))
+            }.getOrElse { Resource.Error(it.message ?: "排序失败") }
+        } else remote.reorderFailover(purpose, modelIds)
+    }
 
     // ==================== WebDAV 备份 ====================
     suspend fun getWebDavConfig(): Resource<WebDavConfig> =
@@ -879,5 +1059,36 @@ class UnifiedRepository(
     // ==================== 语音识别（STT）====================
     suspend fun sttTranscribe(audio: okhttp3.MultipartBody.Part, language: okhttp3.RequestBody): Resource<SttTranscribeResponse> =
         if (isLocal) localNotSupported("语音识别") else remote.sttTranscribe(audio, language)
+
+    // ==================== 本地 DB Profile 管理 ====================
+
+    /**
+     * 从远程服务器下载 nbotcfg 配置包并导入为新本地 db profile。
+     * 流程：POST /api/config-transfer/export 下载 zip → Fernet 解密 → 写入新 db。
+     *
+     * @param url 远程服务器地址（如 https://server.com）
+     * @param token 远程服务器认证 token
+     * @param password nbotcfg 加密密码
+     * @param profileName 目标 db profile 名（不含扩展名，需唯一）
+     * @param displayName profile 显示名
+     */
+    suspend fun importNbotConfigFromRemote(
+        url: String,
+        token: String,
+        password: String,
+        profileName: String,
+        displayName: String
+    ): NbotConfigImporter.ImportResult {
+        val ctx = appContext
+            ?: return NbotConfigImporter.ImportResult(false, message = "应用上下文未初始化")
+        return NbotConfigImporter.importFromRemote(
+            context = ctx,
+            url = url,
+            token = token,
+            password = password,
+            profileName = profileName,
+            displayName = displayName
+        )
+    }
 
 }

@@ -3,25 +3,51 @@ package com.nekobot.app.data.local
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonArray
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.nekobot.app.data.local.ai.LocalAiClient
 import com.nekobot.app.data.local.ai.LocalAiResult
 import com.nekobot.app.data.local.ai.LocalPromptBuilder
 import com.nekobot.app.data.local.db.LocalAiModelEntity
+import com.nekobot.app.data.local.db.LocalApiKeyEntity
 import com.nekobot.app.data.local.db.LocalCharacterEntity
+import com.nekobot.app.data.local.db.LocalHookEntity
+import com.nekobot.app.data.local.db.LocalMcpServerEntity
 import com.nekobot.app.data.local.db.LocalMessageEntity
+import com.nekobot.app.data.local.db.LocalMessageFavoriteEntity
 import com.nekobot.app.data.local.db.LocalSessionEntity
+import com.nekobot.app.data.local.db.LocalSkillEntity
+import com.nekobot.app.data.local.db.LocalTaskEntity
+import com.nekobot.app.data.local.db.LocalToolEntity
+import com.nekobot.app.data.local.db.LocalWorkflowEntity
 import com.nekobot.app.data.local.db.LocalWorldBookEntity
 import com.nekobot.app.data.local.db.LocalWorldBookEntryEntity
 import com.nekobot.app.data.local.db.NekobotDatabase
+import com.nekobot.app.data.model.ApiKey
+import com.nekobot.app.data.model.ApiKeyRequest
 import com.nekobot.app.data.model.ApiResult
+import com.nekobot.app.data.model.BindCharacterRequest
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.model.CreateSessionRequest
+import com.nekobot.app.data.model.Hook
+import com.nekobot.app.data.model.HookExecutionLog
+import com.nekobot.app.data.model.HookRequest
+import com.nekobot.app.data.model.McpServer
+import com.nekobot.app.data.model.McpServerRequest
 import com.nekobot.app.data.model.Message
+import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.Session
+import com.nekobot.app.data.model.Skill
+import com.nekobot.app.data.model.SkillRequest
+import com.nekobot.app.data.model.TaskItem
+import com.nekobot.app.data.model.TaskRequest
 import com.nekobot.app.data.model.TokenRankings
 import com.nekobot.app.data.model.TokenStats
+import com.nekobot.app.data.model.Tool
+import com.nekobot.app.data.model.ToolRequest
+import com.nekobot.app.data.model.Workflow
+import com.nekobot.app.data.model.WorkflowRequest
 import com.nekobot.app.data.model.WorldBook
 import com.nekobot.app.data.model.WorldBookEntry
 import com.nekobot.app.data.remote.RealtimeEvent
@@ -1008,10 +1034,33 @@ class LocalRepository(
             return@withContext false
         }
 
+        // 把被压缩的原始消息归档为一个独立会话（archive session），供"提取归档 N 轮"使用
+        val source = sessionDao.getById(sessionId)
+        val archiveId = UUID.randomUUID().toString()
+        val now = nowIso()
+        if (source != null) {
+            val archiveEntity = source.copy(
+                id = archiveId,
+                name = "${source.name}（归档 ${now.take(10)})",
+                archived = true,
+                createdAt = now,
+                updatedAt = now,
+                archiveSessionId = null
+            )
+            sessionDao.upsert(archiveEntity)
+            // 复制被压缩的消息到归档会话
+            val archiveMsgs = toCompress.map { m ->
+                m.copy(id = UUID.randomUUID().toString(), sessionId = archiveId, createdAt = m.createdAt)
+            }
+            if (archiveMsgs.isNotEmpty()) messageDao.upsertAll(archiveMsgs)
+            // 把归档会话 id 回写到源会话
+            val updated = source.copy(archiveSessionId = archiveId, updatedAt = now)
+            sessionDao.update(updated)
+        }
+
         // 删除被压缩的消息
         toCompress.forEach { messageDao.deleteById(it.id) }
         // 在最前面插入摘要 system 消息（用 system role，prompt 构建时会被跳过）
-        val now = nowIso()
         val summaryMsg = LocalMessageEntity(
             id = UUID.randomUUID().toString(),
             sessionId = sessionId,
@@ -1031,6 +1080,56 @@ class LocalRepository(
             updatedAt = now
         )
         true
+    }
+
+    /**
+     * 从归档会话末尾提取 N 轮对话回到当前会话。
+     *
+     * 本地模式：从 [LocalSessionEntity.archiveSessionId] 找到归档会话，
+     * 取末尾 N 轮（user+assistant 配对），追加到当前会话消息列表末尾。
+     */
+    suspend fun restoreFromArchive(sessionId: String, turns: Int): Boolean = withContext(Dispatchers.IO) {
+        val source = sessionDao.getById(sessionId) ?: return@withContext false
+        val archiveId = source.archiveSessionId ?: return@withContext false
+        val archiveMsgs = messageDao.listBySession(archiveId)
+        if (archiveMsgs.isEmpty()) return@withContext false
+
+        // 一轮 = 一条 user + 一条 assistant；从末尾取 N 轮
+        val pairs = mutableListOf<List<LocalMessageEntity>>()
+        var i = archiveMsgs.lastIndex
+        while (i >= 0 && pairs.size < turns) {
+            // 找到一对 user+assistant
+            if (archiveMsgs[i].role == "assistant" && i > 0 && archiveMsgs[i - 1].role == "user") {
+                pairs.add(0, listOf(archiveMsgs[i - 1], archiveMsgs[i]))
+                i -= 2
+            } else {
+                i -= 1
+            }
+        }
+        if (pairs.isEmpty()) return@withContext false
+
+        val base = Instant.now()
+        val toAppend = pairs.flatten().mapIndexed { idx, m ->
+            val ts = base.plusMillis(idx.toLong()).toString()
+            m.copy(id = UUID.randomUUID().toString(), sessionId = sessionId, timestamp = ts, createdAt = ts)
+        }
+        messageDao.upsertAll(toAppend)
+        sessionDao.touch(
+            sessionId,
+            lastMessage = toAppend.lastOrNull()?.content?.take(200) ?: "",
+            count = messageDao.countBySession(sessionId),
+            updatedAt = base.toString()
+        )
+        true
+    }
+
+    /** 获取归档会话及其消息（用于"查看归档"对话框）。 */
+    suspend fun viewArchive(sessionId: String): Pair<Session?, List<Message>> = withContext(Dispatchers.IO) {
+        val source = sessionDao.getById(sessionId) ?: return@withContext null to emptyList()
+        val archiveId = source.archiveSessionId ?: return@withContext null to emptyList()
+        val archiveSession = sessionDao.getById(archiveId)?.toSession()
+        val archiveMsgs = messageDao.listBySession(archiveId).map { it.toMessage() }
+        archiveSession to archiveMsgs
     }
 
     // ==================== 角色卡 ====================
@@ -1386,12 +1485,34 @@ $charSection$topicSection
         aiModelDao.getActive()
     }
 
+    /** 获取指定 purpose 的激活模型。未指定 purpose 时回退到默认 chat。 */
+    suspend fun getActiveModel(purpose: String): LocalAiModelEntity? = withContext(Dispatchers.IO) {
+        val p = purpose.ifBlank { "chat" }
+        aiModelDao.getActiveByPurpose(p) ?: aiModelDao.getActive()
+    }
+
+    /** 获取指定 purpose 下所有启用的模型（按 priority 升序，用于故障转移队列）。 */
+    suspend fun listModelsByPurpose(purpose: String): List<LocalAiModelEntity> = withContext(Dispatchers.IO) {
+        aiModelDao.listByPurpose(purpose.ifBlank { "chat" })
+    }
+
     suspend fun upsertAiModel(model: LocalAiModelEntity) = withContext(Dispatchers.IO) {
         aiModelDao.upsert(model)
     }
 
     suspend fun setActiveModel(id: String) = withContext(Dispatchers.IO) {
         aiModelDao.setActive(id)
+    }
+
+    /** 设置指定 purpose 的激活模型，同 purpose 下其他模型自动取消激活。 */
+    suspend fun setActiveModelForPurpose(id: String, purpose: String) = withContext(Dispatchers.IO) {
+        val p = purpose.ifBlank { "chat" }
+        // 若目标模型 purpose 与传入 purpose 不一致，则先校正
+        val target = aiModelDao.getById(id)
+        if (target != null && target.purpose != p) {
+            aiModelDao.upsert(target.copy(purpose = p))
+        }
+        aiModelDao.setActiveForPurpose(id, p)
     }
 
     suspend fun deleteAiModel(id: String) = withContext(Dispatchers.IO) {
@@ -1676,7 +1797,8 @@ $charSection$topicSection
         isPublic = isPublic,
         proactiveChat = proactiveChat?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
         ttsConfig = ttsConfig?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
-        shareConfig = shareConfig?.let { runCatching { JsonParser.parseString(it) }.getOrNull() }
+        shareConfig = shareConfig?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
+        archiveSessionId = archiveSessionId
     )
 
     private fun LocalMessageEntity.toMessage(): Message = Message(
@@ -1902,5 +2024,842 @@ $charSection$topicSection
             }
             entry
         }
+    }
+
+    // ==================== 扩展功能：Hook ====================
+
+    suspend fun listHooks(): List<Hook> = withContext(Dispatchers.IO) {
+        db.hookDao().listAll().map { it.toHook() }
+    }
+
+    suspend fun createHook(req: HookRequest): Hook = withContext(Dispatchers.IO) {
+        val now = nowIso()
+        val entity = LocalHookEntity(
+            id = UUID.randomUUID().toString(),
+            name = req.name,
+            event = req.event,
+            description = req.description,
+            enabled = req.enabled,
+            scope = req.scope,
+            priority = req.priority,
+            actionsJson = gson.toJson(req.actions),
+            conditionsJson = req.conditions?.let { gson.toJson(it) },
+            permissionsJson = req.permissions?.let { gson.toJson(it) },
+            timeoutMs = req.timeoutMs,
+            maxRetries = req.maxRetries,
+            triggerMode = req.triggerMode,
+            conditionLogic = req.conditionLogic,
+            characterId = req.characterId,
+            conversationId = req.conversationId,
+            userId = req.userId,
+            createdAt = now,
+            updatedAt = now
+        )
+        db.hookDao().upsert(entity)
+        entity.toHook()
+    }
+
+    suspend fun updateHook(id: String, req: HookRequest): Hook = withContext(Dispatchers.IO) {
+        val existing = db.hookDao().getById(id) ?: throw IllegalStateException("Hook 不存在")
+        val updated = existing.copy(
+            name = req.name,
+            event = req.event,
+            description = req.description,
+            enabled = req.enabled,
+            scope = req.scope,
+            priority = req.priority,
+            actionsJson = gson.toJson(req.actions),
+            conditionsJson = req.conditions?.let { gson.toJson(it) },
+            permissionsJson = req.permissions?.let { gson.toJson(it) },
+            timeoutMs = req.timeoutMs,
+            maxRetries = req.maxRetries,
+            triggerMode = req.triggerMode,
+            conditionLogic = req.conditionLogic,
+            characterId = req.characterId,
+            conversationId = req.conversationId,
+            userId = req.userId,
+            updatedAt = nowIso()
+        )
+        db.hookDao().upsert(updated)
+        updated.toHook()
+    }
+
+    suspend fun deleteHook(id: String) = withContext(Dispatchers.IO) {
+        db.hookDao().deleteById(id)
+    }
+
+    suspend fun toggleHook(id: String): Hook = withContext(Dispatchers.IO) {
+        val existing = db.hookDao().getById(id) ?: throw IllegalStateException("Hook 不存在")
+        val newEnabled = !existing.enabled
+        db.hookDao().setEnabled(id, newEnabled)
+        existing.copy(enabled = newEnabled).toHook()
+    }
+
+    /** 本地模式无 Hook 执行引擎，testHook 仅返回入参回显与"已记录"状态。 */
+    suspend fun testHook(body: JsonElement): JsonElement = withContext(Dispatchers.IO) {
+        JsonObject().apply {
+            addProperty("success", true)
+            addProperty("message", "本地模式仅保存配置，不实际执行 Hook")
+            add("input", body)
+        }
+    }
+
+    suspend fun listHookLogs(hookId: String?, limit: Int): List<HookExecutionLog> = withContext(Dispatchers.IO) {
+        // 本地模式不持久化执行日志，返回空列表
+        emptyList()
+    }
+
+    suspend fun hookStats(): JsonElement = withContext(Dispatchers.IO) {
+        val total = db.hookDao().listAll().size
+        val enabled = db.hookDao().listEnabled().size
+        JsonObject().apply {
+            addProperty("total", total)
+            addProperty("enabled", enabled)
+            addProperty("disabled", total - enabled)
+        }
+    }
+
+    private fun LocalHookEntity.toHook(): Hook = Hook(
+        id = id,
+        name = name,
+        event = event,
+        actions = runCatching { JsonParser.parseString(actionsJson).asJsonArray.map { it } }.getOrDefault(emptyList()),
+        description = description,
+        enabled = enabled,
+        scope = scope,
+        priority = priority,
+        conditions = conditionsJson?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
+        permissions = permissionsJson?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
+        timeoutMs = timeoutMs,
+        maxRetries = maxRetries,
+        triggerMode = triggerMode,
+        conditionLogic = conditionLogic,
+        characterId = characterId,
+        conversationId = conversationId,
+        userId = userId,
+        createdAt = createdAt,
+        updatedAt = updatedAt
+    )
+
+    // ==================== 扩展功能：任务中心 ====================
+
+    suspend fun listTasks(): List<TaskItem> = withContext(Dispatchers.IO) {
+        db.taskDao().listAll().map { it.toTaskItem() }
+    }
+
+    suspend fun createTask(req: TaskRequest): TaskItem = withContext(Dispatchers.IO) {
+        val now = nowIso()
+        val entity = LocalTaskEntity(
+            id = UUID.randomUUID().toString(),
+            name = req.name,
+            description = req.description,
+            enabled = req.enabled,
+            trigger = req.trigger,
+            configJson = req.config?.let { gson.toJson(it) },
+            targetSessionId = req.targetSessionId,
+            prompt = req.prompt,
+            createdAt = now
+        )
+        db.taskDao().upsert(entity)
+        entity.toTaskItem()
+    }
+
+    suspend fun updateTask(id: String, req: TaskRequest): TaskItem = withContext(Dispatchers.IO) {
+        val existing = db.taskDao().getById(id) ?: throw IllegalStateException("任务不存在")
+        val updated = existing.copy(
+            name = req.name,
+            description = req.description,
+            enabled = req.enabled,
+            trigger = req.trigger,
+            configJson = req.config?.let { gson.toJson(it) },
+            targetSessionId = req.targetSessionId,
+            prompt = req.prompt
+        )
+        db.taskDao().upsert(updated)
+        updated.toTaskItem()
+    }
+
+    suspend fun deleteTask(id: String) = withContext(Dispatchers.IO) {
+        db.taskDao().deleteById(id)
+    }
+
+    suspend fun toggleTask(id: String): TaskItem = withContext(Dispatchers.IO) {
+        val existing = db.taskDao().getById(id) ?: throw IllegalStateException("任务不存在")
+        val newEnabled = !existing.enabled
+        db.taskDao().setEnabled(id, newEnabled)
+        existing.copy(enabled = newEnabled).toTaskItem()
+    }
+
+    /** 本地模式无调度器，runTask 仅记录 last_run 时间并返回回显。 */
+    suspend fun runTask(id: String): JsonElement = withContext(Dispatchers.IO) {
+        db.taskDao().touchRun(id, nowIso())
+        JsonObject().apply {
+            addProperty("success", true)
+            addProperty("message", "本地模式仅记录执行时间，不实际调度任务")
+            addProperty("task_id", id)
+        }
+    }
+
+    private fun LocalTaskEntity.toTaskItem(): TaskItem = TaskItem(
+        id = id,
+        kind = kind,
+        name = name,
+        description = description,
+        enabled = enabled,
+        trigger = trigger,
+        config = configJson?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
+        targetSessionId = targetSessionId,
+        prompt = prompt,
+        createdAt = createdAt,
+        lastRun = lastRun,
+        nextRun = nextRun
+    )
+
+    // ==================== 扩展功能：工作流 ====================
+
+    suspend fun listWorkflows(): List<Workflow> = withContext(Dispatchers.IO) {
+        db.workflowDao().listAll().map { it.toWorkflow() }
+    }
+
+    suspend fun createWorkflow(req: WorkflowRequest): Workflow = withContext(Dispatchers.IO) {
+        val entity = LocalWorkflowEntity(
+            id = UUID.randomUUID().toString(),
+            name = req.name,
+            description = req.description,
+            enabled = req.enabled,
+            trigger = req.trigger,
+            configJson = req.config?.let { gson.toJson(it) },
+            createdAt = nowIso()
+        )
+        db.workflowDao().upsert(entity)
+        entity.toWorkflow()
+    }
+
+    suspend fun updateWorkflow(id: String, req: WorkflowRequest): Workflow = withContext(Dispatchers.IO) {
+        val existing = db.workflowDao().getById(id) ?: throw IllegalStateException("工作流不存在")
+        val updated = existing.copy(
+            name = req.name,
+            description = req.description,
+            enabled = req.enabled,
+            trigger = req.trigger,
+            configJson = req.config?.let { gson.toJson(it) }
+        )
+        db.workflowDao().upsert(updated)
+        updated.toWorkflow()
+    }
+
+    suspend fun deleteWorkflow(id: String) = withContext(Dispatchers.IO) {
+        db.workflowDao().deleteById(id)
+    }
+
+    suspend fun toggleWorkflow(id: String): Workflow = withContext(Dispatchers.IO) {
+        val existing = db.workflowDao().getById(id) ?: throw IllegalStateException("工作流不存在")
+        val newEnabled = !existing.enabled
+        db.workflowDao().setEnabled(id, newEnabled)
+        existing.copy(enabled = newEnabled).toWorkflow()
+    }
+
+    /** 本地模式无工作流执行引擎，executeWorkflow 仅返回回显。 */
+    suspend fun executeWorkflow(id: String): JsonElement = withContext(Dispatchers.IO) {
+        JsonObject().apply {
+            addProperty("success", true)
+            addProperty("message", "本地模式仅保存配置，不实际执行工作流")
+            addProperty("workflow_id", id)
+        }
+    }
+
+    private fun LocalWorkflowEntity.toWorkflow(): Workflow = Workflow(
+        id = id,
+        name = name,
+        description = description,
+        enabled = enabled,
+        trigger = trigger,
+        config = configJson?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
+        createdAt = createdAt
+    )
+
+    // ==================== 扩展功能：Skills ====================
+
+    suspend fun listSkills(): List<Skill> = withContext(Dispatchers.IO) {
+        db.skillDao().listAll().map { it.toSkill() }
+    }
+
+    suspend fun createSkill(req: SkillRequest): Skill = withContext(Dispatchers.IO) {
+        val entity = LocalSkillEntity(
+            id = UUID.randomUUID().toString(),
+            name = req.name,
+            description = req.description,
+            aliasesJson = gson.toJson(req.aliases),
+            enabled = req.enabled,
+            parametersJson = req.parameters?.let { gson.toJson(it) },
+            createdAt = nowIso()
+        )
+        db.skillDao().upsert(entity)
+        entity.toSkill()
+    }
+
+    suspend fun updateSkill(id: String, req: SkillRequest): Skill = withContext(Dispatchers.IO) {
+        val existing = db.skillDao().getById(id) ?: throw IllegalStateException("Skill 不存在")
+        val updated = existing.copy(
+            name = req.name,
+            description = req.description,
+            aliasesJson = gson.toJson(req.aliases),
+            enabled = req.enabled,
+            parametersJson = req.parameters?.let { gson.toJson(it) }
+        )
+        db.skillDao().upsert(updated)
+        updated.toSkill()
+    }
+
+    suspend fun deleteSkill(id: String) = withContext(Dispatchers.IO) {
+        db.skillDao().deleteById(id)
+    }
+
+    suspend fun toggleSkill(id: String): Skill = withContext(Dispatchers.IO) {
+        val existing = db.skillDao().getById(id) ?: throw IllegalStateException("Skill 不存在")
+        val newEnabled = !existing.enabled
+        db.skillDao().setEnabled(id, newEnabled)
+        existing.copy(enabled = newEnabled).toSkill()
+    }
+
+    private fun LocalSkillEntity.toSkill(): Skill = Skill(
+        id = id,
+        name = name,
+        description = description,
+        aliases = runCatching { JsonParser.parseString(aliasesJson).asJsonArray.map { it.asString } }.getOrDefault(emptyList()),
+        enabled = enabled,
+        parameters = parametersJson?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
+        createdAt = createdAt
+    )
+
+    // ==================== 扩展功能：Tools ====================
+
+    /**
+     * 确保内置工具已写入数据库（幂等）。
+     * 在 LocalRepository 初始化或首次 listTools 时调用。
+     */
+    suspend fun ensureBuiltinTools() = withContext(Dispatchers.IO) {
+        val existing = db.toolDao().listAll().map { it.id }.toSet()
+        val toInsert = com.nekobot.app.data.local.db.BuiltinTools.all.filter { it.id !in existing }
+        for (spec in toInsert) {
+            db.toolDao().upsert(
+                com.nekobot.app.data.local.db.LocalToolEntity(
+                    id = spec.id,
+                    name = spec.name,
+                    description = spec.description,
+                    enabled = spec.enabled,
+                    parametersJson = spec.parametersJson,
+                    implementationJson = spec.implementationJson,
+                    builtin = true,
+                    createdAt = nowIso()
+                )
+            )
+        }
+    }
+
+    suspend fun listTools(): List<Tool> = withContext(Dispatchers.IO) {
+        ensureBuiltinTools()
+        // 内置工具按预设顺序置顶，用户自定义工具按创建时间倒序
+        val builtinOrder = com.nekobot.app.data.local.db.BuiltinTools.all.mapIndexed { i, s -> s.id to i }.toMap()
+        db.toolDao().listAll()
+            .sortedWith(compareBy({ builtinOrder[it.id] ?: Int.MAX_VALUE }, { it.createdAt }))
+            .map { it.toTool() }
+    }
+
+    suspend fun createTool(req: ToolRequest): Tool = withContext(Dispatchers.IO) {
+        val entity = LocalToolEntity(
+            id = UUID.randomUUID().toString(),
+            name = req.name,
+            description = req.description,
+            enabled = req.enabled,
+            parametersJson = req.parameters?.let { gson.toJson(it) },
+            implementationJson = req.implementation?.let { gson.toJson(it) },
+            builtin = false,
+            createdAt = nowIso()
+        )
+        db.toolDao().upsert(entity)
+        entity.toTool()
+    }
+
+    suspend fun updateTool(id: String, req: ToolRequest): Tool = withContext(Dispatchers.IO) {
+        val existing = db.toolDao().getById(id) ?: throw IllegalStateException("Tool 不存在")
+        val updated = existing.copy(
+            name = req.name,
+            description = req.description,
+            enabled = req.enabled,
+            parametersJson = req.parameters?.let { gson.toJson(it) },
+            implementationJson = req.implementation?.let { gson.toJson(it) }
+        )
+        db.toolDao().upsert(updated)
+        updated.toTool()
+    }
+
+    suspend fun deleteTool(id: String) = withContext(Dispatchers.IO) {
+        val existing = db.toolDao().getById(id)
+        // 内置工具不允许删除
+        if (existing?.builtin == true) {
+            throw IllegalStateException("内置工具不可删除")
+        }
+        db.toolDao().deleteById(id)
+    }
+
+    suspend fun toggleTool(id: String): Tool = withContext(Dispatchers.IO) {
+        val existing = db.toolDao().getById(id) ?: throw IllegalStateException("Tool 不存在")
+        if (existing.builtin) throw IllegalStateException("内置工具不可切换")
+        val newEnabled = !existing.enabled
+        db.toolDao().setEnabled(id, newEnabled)
+        existing.copy(enabled = newEnabled).toTool()
+    }
+
+    private fun LocalToolEntity.toTool(): Tool = Tool(
+        id = id,
+        name = name,
+        description = description,
+        enabled = enabled,
+        parameters = parametersJson?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
+        implementation = implementationJson?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
+        builtin = builtin,
+        createdAt = createdAt
+    )
+
+    // ==================== 扩展功能：MCP 服务 ====================
+
+    suspend fun listMcpServers(): List<McpServer> = withContext(Dispatchers.IO) {
+        db.mcpServerDao().listAll().map { it.toMcpServer() }
+    }
+
+    suspend fun createMcpServer(req: McpServerRequest): McpServer = withContext(Dispatchers.IO) {
+        val entity = LocalMcpServerEntity(
+            id = UUID.randomUUID().toString(),
+            name = req.name,
+            transport = req.transport,
+            description = req.description,
+            enabled = req.enabled,
+            autoConnect = req.autoConnect,
+            url = req.url,
+            command = req.command,
+            argsJson = gson.toJson(req.args),
+            envJson = req.env?.let { gson.toJson(it) },
+            builtin = false,
+            createdAt = nowIso()
+        )
+        db.mcpServerDao().upsert(entity)
+        entity.toMcpServer()
+    }
+
+    suspend fun updateMcpServer(id: String, req: McpServerRequest): McpServer = withContext(Dispatchers.IO) {
+        val existing = db.mcpServerDao().getById(id) ?: throw IllegalStateException("MCP 服务不存在")
+        val updated = existing.copy(
+            name = req.name,
+            transport = req.transport,
+            description = req.description,
+            enabled = req.enabled,
+            autoConnect = req.autoConnect,
+            url = req.url,
+            command = req.command,
+            argsJson = gson.toJson(req.args),
+            envJson = req.env?.let { gson.toJson(it) }
+        )
+        db.mcpServerDao().upsert(updated)
+        updated.toMcpServer()
+    }
+
+    suspend fun deleteMcpServer(id: String) = withContext(Dispatchers.IO) {
+        val existing = db.mcpServerDao().getById(id)
+        if (existing?.builtin == true) throw IllegalStateException("内置 MCP 服务不可删除")
+        db.mcpServerDao().deleteById(id)
+    }
+
+    /** 本地模式无 MCP 客户端运行时，connect/disconnect 仅切换 connected 标志位。 */
+    suspend fun connectMcpServer(id: String): JsonElement = withContext(Dispatchers.IO) {
+        db.mcpServerDao().setConnected(id, true, nowIso())
+        JsonObject().apply {
+            addProperty("success", true)
+            addProperty("connected", true)
+            addProperty("message", "本地模式仅标记连接状态，未实际建立 MCP 连接")
+        }
+    }
+
+    suspend fun disconnectMcpServer(id: String): JsonElement = withContext(Dispatchers.IO) {
+        db.mcpServerDao().setConnected(id, false, null)
+        JsonObject().apply {
+            addProperty("success", true)
+            addProperty("connected", false)
+        }
+    }
+
+    suspend fun mcpServerTools(id: String): JsonElement = withContext(Dispatchers.IO) {
+        val server = db.mcpServerDao().getById(id)
+        JsonObject().apply {
+            addProperty("success", true)
+            add("tools", JsonArray())
+            addProperty("tool_count", server?.toolCount ?: 0)
+            addProperty("message", "本地模式未实际拉取 MCP 工具列表")
+        }
+    }
+
+    suspend fun testMcpServer(id: String): JsonElement = withContext(Dispatchers.IO) {
+        JsonObject().apply {
+            addProperty("success", true)
+            addProperty("message", "本地模式仅校验配置已保存")
+            addProperty("server_id", id)
+        }
+    }
+
+    private fun LocalMcpServerEntity.toMcpServer(): McpServer = McpServer(
+        id = id,
+        name = name,
+        transport = transport,
+        description = description,
+        enabled = enabled,
+        autoConnect = autoConnect,
+        connected = connected,
+        toolCount = toolCount,
+        url = url,
+        command = command,
+        args = runCatching { JsonParser.parseString(argsJson ?: "[]").asJsonArray.map { it.asString } }.getOrDefault(emptyList()),
+        env = envJson?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
+        createdAt = createdAt,
+        lastConnectedAt = lastConnectedAt,
+        builtin = builtin
+    )
+
+    // ==================== 扩展功能：API Keys ====================
+
+    suspend fun listApiKeys(): List<ApiKey> = withContext(Dispatchers.IO) {
+        db.apiKeyDao().listAll().map { it.toApiKey(maskKey = true) }
+    }
+
+    suspend fun getApiKey(id: String): ApiKey? = withContext(Dispatchers.IO) {
+        db.apiKeyDao().getById(id)?.toApiKey(maskKey = false)
+    }
+
+    suspend fun createApiKey(req: ApiKeyRequest): ApiKey = withContext(Dispatchers.IO) {
+        val now = nowIso()
+        val entity = LocalApiKeyEntity(
+            id = UUID.randomUUID().toString(),
+            name = req.name,
+            key = req.key,
+            createdAt = now,
+            updatedAt = now
+        )
+        db.apiKeyDao().upsert(entity)
+        entity.toApiKey(maskKey = false)
+    }
+
+    suspend fun updateApiKey(id: String, req: ApiKeyRequest): ApiKey = withContext(Dispatchers.IO) {
+        val existing = db.apiKeyDao().getById(id) ?: throw IllegalStateException("API Key 不存在")
+        val updated = existing.copy(name = req.name, key = req.key, updatedAt = nowIso())
+        db.apiKeyDao().upsert(updated)
+        updated.toApiKey(maskKey = false)
+    }
+
+    suspend fun deleteApiKey(id: String) = withContext(Dispatchers.IO) {
+        db.apiKeyDao().deleteById(id)
+    }
+
+    private fun LocalApiKeyEntity.toApiKey(maskKey: Boolean): ApiKey = ApiKey(
+        id = id,
+        name = name,
+        key = if (maskKey) maskKeyValue(key) else key,
+        createdAt = createdAt,
+        updatedAt = updatedAt
+    )
+
+    private fun maskKeyValue(key: String): String =
+        if (key.length <= 8) "****" else key.take(4) + "****" + key.takeLast(4)
+
+    // ==================== 扩展功能：AI 配置中心（基于激活模型生成 AiConfig）====================
+
+    /**
+     * 本地模式无独立 AiConfig 表，配置由激活的 LocalAiModelEntity 推导：
+     * - model / temperature / max_tokens / top_p 来自激活模型
+     * - system_prompt 留空（由角色卡 + 自定义提示词运行时合成）
+     * - purpose 固定为 "chat"
+     */
+    suspend fun getAiConfig(): JsonElement = withContext(Dispatchers.IO) {
+        val active = aiModelDao.getActive()
+        JsonObject().apply {
+            addProperty("model", active?.model ?: "")
+            addProperty("temperature", active?.temperature ?: 0.7)
+            addProperty("max_tokens", active?.maxTokens ?: 2048)
+            addProperty("top_p", active?.topP ?: 1.0)
+            addProperty("frequency_penalty", 0.0)
+            addProperty("presence_penalty", 0.0)
+            addProperty("system_prompt", "")
+            addProperty("purpose", "chat")
+        }
+    }
+
+    /** 本地模式更新 AiConfig 等价于更新激活模型的生成参数。 */
+    suspend fun updateAiConfig(config: JsonElement): JsonElement = withContext(Dispatchers.IO) {
+        val active = aiModelDao.getActive()
+            ?: throw IllegalStateException("未配置激活的 AI 模型")
+        val obj = config.takeIf { it.isJsonObject }?.asJsonObject
+        val updated = active.copy(
+            model = obj?.get("model")?.takeIf { it.isJsonPrimitive }?.asString ?: active.model,
+            temperature = obj?.get("temperature")?.takeIf { it.isJsonPrimitive }?.asFloat ?: active.temperature,
+            maxTokens = obj?.get("max_tokens")?.takeIf { it.isJsonPrimitive }?.asInt ?: active.maxTokens,
+            topP = obj?.get("top_p")?.takeIf { it.isJsonPrimitive }?.asFloat ?: active.topP
+        )
+        aiModelDao.upsert(updated)
+        JsonObject().apply {
+            addProperty("success", true)
+            addProperty("message", "已同步到当前激活的本地 AI 模型")
+        }
+    }
+
+    /** 测试 AI 配置：用激活模型发送一条 "你好"。 */
+    suspend fun testAiConfig(): JsonElement = withContext(Dispatchers.IO) {
+        val active = aiModelDao.getActive()
+            ?: return@withContext JsonObject().apply {
+                addProperty("success", false)
+                addProperty("message", "未配置激活的 AI 模型")
+            }
+        val result = aiClient.testModel(active)
+        JsonObject().apply {
+            addProperty("success", result.error == null)
+            addProperty("message", result.error ?: result.content)
+        }
+    }
+
+    /** 用途列表（与远程保持一致）。 */
+    fun allPurposes(): JsonElement = JsonParser.parseString(
+        """["chat","vision","video","tts","stt","embedding","image_generation"]"""
+    )
+
+    // ==================== 扩展功能：故障转移队列 ====================
+
+    /**
+     * 本地模式无独立故障转移队列，由 [LocalAiModelEntity.purpose] + [LocalAiModelEntity.priority]
+     * 推导：取该 purpose 下所有启用模型按 priority 升序组成队列。
+     */
+    suspend fun getFailoverQueue(purpose: String): JsonElement = withContext(Dispatchers.IO) {
+        val models = aiModelDao.listAll()
+            .filter { it.purpose == purpose && it.enabled }
+            .sortedBy { it.priority }
+        val arr = JsonArray()
+        models.forEach { m ->
+            JsonObject().also { o ->
+                o.addProperty("model_id", m.id)
+                o.addProperty("id", m.id)
+                o.addProperty("name", m.name)
+                o.addProperty("model", m.model)
+                o.addProperty("provider", m.provider ?: m.protocol)
+                o.addProperty("priority", m.priority)
+                o.add("health", JsonObject().also { h ->
+                    h.addProperty("available", true)
+                    h.addProperty("daily_failures", 0)
+                    h.addProperty("consecutive_failures", 0)
+                    h.addProperty("last_failure_code", 0)
+                    h.addProperty("cooldown_remaining", 0.0)
+                })
+            }.also { arr.add(it) }
+        }
+        JsonObject().apply {
+            addProperty("purpose", purpose)
+            add("queue", arr)
+        }
+    }
+
+    /** 本地模式无失败计数，resetFailover 直接返回成功回显。 */
+    suspend fun resetFailover(modelId: String?): JsonElement = withContext(Dispatchers.IO) {
+        JsonObject().apply {
+            addProperty("success", true)
+            addProperty("message", "本地模式无失败计数，无需重置")
+            modelId?.let { addProperty("model_id", it) }
+        }
+    }
+
+    /**
+     * 重排故障转移队列：按传入的 id 顺序重写 priority。
+     * @param body JSON: {"purpose":"chat","model_ids":["id1","id2",...]}
+     */
+    suspend fun reorderFailover(body: JsonElement): JsonElement = withContext(Dispatchers.IO) {
+        val obj = body.takeIf { it.isJsonObject }?.asJsonObject
+        val purpose = obj?.get("purpose")?.asString ?: "chat"
+        val ids: List<String> = obj?.get("model_ids")?.takeIf { it.isJsonArray }?.asJsonArray?.map { it.asString } ?: emptyList()
+        for ((index, id) in ids.withIndex()) {
+            val m = aiModelDao.getById(id)
+            if (m != null && m.purpose == purpose) {
+                aiModelDao.upsert(m.copy(priority = index))
+            }
+        }
+        JsonObject().apply {
+            addProperty("success", true)
+            addProperty("purpose", purpose)
+            addProperty("reordered_count", ids.size)
+        }
+    }
+
+    // ==================== 扩展功能：绑定角色变更 ====================
+
+    /** 本地模式绑定角色：更新 local_sessions.character_id 及关联角色信息。 */
+    suspend fun bindCharacter(sessionId: String, req: BindCharacterRequest): JsonElement = withContext(Dispatchers.IO) {
+        val session = sessionDao.getById(sessionId)
+            ?: return@withContext JsonObject().apply {
+                addProperty("success", false)
+                addProperty("message", "会话不存在")
+            }
+        val character = req.characterId?.let { characterDao.getById(it) }
+        val updated = session.copy(
+            characterId = req.characterId,
+            characterName = character?.name ?: req.characterId,
+            characterAvatar = character?.avatar ?: session.characterAvatar,
+            portrait = character?.portrait ?: session.portrait,
+            senderName = req.senderName.ifBlank { session.senderName ?: "我" },
+            senderAvatar = req.senderAvatar ?: session.senderAvatar,
+            scenario = req.scenario ?: character?.scenario ?: session.scenario,
+            systemPrompt = req.systemPrompt ?: character?.systemPrompt ?: session.systemPrompt,
+            firstMessage = character?.firstMessage ?: session.firstMessage,
+            updatedAt = nowIso()
+        )
+        sessionDao.update(updated)
+        JsonObject().apply {
+            addProperty("success", true)
+            addProperty("session_id", sessionId)
+            addProperty("character_id", req.characterId ?: "")
+        }
+    }
+
+    // ==================== 扩展功能：消息收藏 ====================
+
+    suspend fun listMessageFavorites(sessionId: String): JsonElement = withContext(Dispatchers.IO) {
+        val favs = db.messageFavoriteDao().listBySession(sessionId)
+        val arr = JsonArray()
+        favs.forEach { f ->
+            val msgIds = runCatching { JsonParser.parseString(f.messageIdsJson).asJsonArray.map { it.asString } }
+                .getOrDefault(emptyList())
+            val msgs = msgIds.mapNotNull { id -> messageDao.listBySession(sessionId).find { it.id == id } }
+            JsonObject().also { o ->
+                o.addProperty("id", f.id)
+                o.addProperty("title", f.title)
+                o.addProperty("collection_id", f.id)
+                o.addProperty("created_at", f.createdAt)
+                o.add("message_ids", gson.toJsonTree(msgIds))
+                val msgsArr = JsonArray()
+                msgs.forEach { m ->
+                    JsonObject().also { mo ->
+                        mo.addProperty("id", m.id)
+                        mo.addProperty("role", m.role)
+                        mo.addProperty("content", m.content)
+                        mo.addProperty("timestamp", m.timestamp)
+                    }.also { msgsArr.add(it) }
+                }
+                o.add("messages", msgsArr)
+            }.also { arr.add(it) }
+        }
+        JsonObject().apply { add("collections", arr) }
+    }
+
+    /**
+     * 更新消息收藏：根据 req.collectionId 决定更新已有收藏夹还是新建。
+     * 若 messageIds 为空则删除该收藏夹。
+     */
+    suspend fun updateMessageFavorites(sessionId: String, req: MessageFavoriteRequest): JsonElement = withContext(Dispatchers.IO) {
+        val now = nowIso()
+        val collectionId = req.collectionId ?: UUID.randomUUID().toString()
+        if (req.messageIds.isEmpty()) {
+            db.messageFavoriteDao().deleteById(collectionId)
+            return@withContext JsonObject().apply {
+                addProperty("success", true)
+                addProperty("deleted", true)
+                addProperty("collection_id", collectionId)
+            }
+        }
+        val entity = LocalMessageFavoriteEntity(
+            id = collectionId,
+            sessionId = sessionId,
+            title = req.title?.ifBlank { "未命名收藏" } ?: "未命名收藏",
+            messageIdsJson = gson.toJson(req.messageIds),
+            createdAt = now
+        )
+        db.messageFavoriteDao().upsert(entity)
+        JsonObject().apply {
+            addProperty("success", true)
+            addProperty("collection_id", collectionId)
+            addProperty("title", entity.title)
+            addProperty("message_count", req.messageIds.size)
+        }
+    }
+
+    // ==================== 扩展功能：工作区文件 ====================
+
+    /** 工作区根目录：filesDir/workspace/<sessionId>/。 */
+    private fun workspaceDir(sessionId: String): java.io.File? {
+        val ctx = appContext ?: return null
+        val dir = java.io.File(ctx.filesDir, "workspace/$sessionId")
+        if (!dir.exists()) dir.mkdirs()
+        return dir
+    }
+
+    suspend fun listWorkspaceFiles(sessionId: String, path: String?): JsonElement = withContext(Dispatchers.IO) {
+        val dir = workspaceDir(sessionId) ?: return@withContext JsonArray()
+        val target = if (path.isNullOrBlank()) dir else java.io.File(dir, path)
+        val arr = JsonArray()
+        if (!target.exists()) return@withContext arr
+        target.listFiles()?.forEach { f ->
+            JsonObject().also { o ->
+                o.addProperty("name", f.name)
+                o.addProperty("type", if (f.isDirectory) "directory" else "file")
+                o.addProperty("size", f.length())
+                o.addProperty("path", f.relativeTo(dir).path)
+                o.addProperty("mime_type", guessMime(f.name))
+            }.also { arr.add(it) }
+        }
+        arr
+    }
+
+    suspend fun uploadWorkspaceFile(sessionId: String, bytes: ByteArray, fileName: String): JsonElement = withContext(Dispatchers.IO) {
+        val dir = workspaceDir(sessionId) ?: return@withContext JsonObject().apply {
+            addProperty("success", false)
+            addProperty("message", "工作区目录不可用")
+        }
+        val safeName = fileName.substringAfterLast('/').ifBlank { UUID.randomUUID().toString() }
+        val file = java.io.File(dir, safeName)
+        file.writeBytes(bytes)
+        JsonObject().apply {
+            addProperty("success", true)
+            addProperty("name", safeName)
+            addProperty("size", bytes.size)
+            addProperty("path", safeName)
+            addProperty("mime_type", guessMime(safeName))
+        }
+    }
+
+    suspend fun deleteWorkspaceFile(sessionId: String, filename: String): JsonElement = withContext(Dispatchers.IO) {
+        val dir = workspaceDir(sessionId) ?: return@withContext JsonObject().apply {
+            addProperty("success", false)
+            addProperty("message", "工作区目录不可用")
+        }
+        val file = java.io.File(dir, filename)
+        val ok = if (file.exists()) file.deleteRecursively() else false
+        JsonObject().apply {
+            addProperty("success", ok)
+            addProperty("filename", filename)
+        }
+    }
+
+    suspend fun downloadWorkspaceFile(sessionId: String, filename: String): java.io.File? = withContext(Dispatchers.IO) {
+        val dir = workspaceDir(sessionId) ?: return@withContext null
+        val file = java.io.File(dir, filename)
+        if (file.exists() && file.isFile) file else null
+    }
+
+    private fun guessMime(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
+        "txt" -> "text/plain"
+        "json" -> "application/json"
+        "xml" -> "application/xml"
+        "html", "htm" -> "text/html"
+        "pdf" -> "application/pdf"
+        "doc" -> "application/msword"
+        "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        "jpg", "jpeg" -> "image/jpeg"
+        "png" -> "image/png"
+        "gif" -> "image/gif"
+        "webp" -> "image/webp"
+        "mp4" -> "video/mp4"
+        "mp3" -> "audio/mpeg"
+        else -> "application/octet-stream"
     }
 }

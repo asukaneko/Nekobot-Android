@@ -83,7 +83,7 @@ class AiConfigViewModel : BaseViewModel() {
 
     fun load() {
         launchResult(
-            block = { repo.getAiConfig() },
+            block = { unified.getAiConfig() },
             onSuccess = { json ->
                 _rawJson.value = json
                 _config.value = try {
@@ -102,7 +102,7 @@ class AiConfigViewModel : BaseViewModel() {
     fun save() {
         val json = ServiceContainer.gson.toJsonTree(_config.value)
         launchResult(
-            block = { repo.updateAiConfig(json) },
+            block = { unified.updateAiConfig(json) },
             onSuccess = {
                 showToast("保存成功")
                 _navigateBack.value = true
@@ -113,7 +113,7 @@ class AiConfigViewModel : BaseViewModel() {
     fun test() {
         val json = ServiceContainer.gson.toJsonTree(_config.value)
         launchResult(
-            block = { repo.testAiConfig(json) },
+            block = { unified.testAiConfig(json) },
             onSuccess = { res ->
                 _testResult.value = buildString {
                     append("状态: ${if (res.success == true) "成功" else "失败"}\n")

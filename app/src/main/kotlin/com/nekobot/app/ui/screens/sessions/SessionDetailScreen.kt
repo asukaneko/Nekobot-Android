@@ -906,22 +906,20 @@ fun SessionDetailScreen(
                                 DetailLine(label = "群聊角色", value = it.joinToString(", "))
                             }
                             Spacer(Modifier.height(12.dp))
-                            // 更改绑定角色按钮（仅服务器模式可用）
-                            val isLocal = com.nekobot.app.ServiceContainer.prefs.isLocalMode
+                            // 更改绑定角色按钮
                             OutlinedButton(
                                 onClick = { showBindCharacterDialog = true },
-                                enabled = !isLocal,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Icon(
                                     Icons.Filled.SwapHoriz,
                                     contentDescription = null,
-                                    tint = if (isLocal) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary
+                                    tint = MaterialTheme.colorScheme.primary
                                 )
                                 Spacer(Modifier.width(8.dp))
                                 Text(
-                                    if (isLocal) "本地模式不支持更改绑定角色" else "更改绑定角色",
-                                    color = if (isLocal) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary
+                                    "更改绑定角色",
+                                    color = MaterialTheme.colorScheme.primary
                                 )
                             }
                         }

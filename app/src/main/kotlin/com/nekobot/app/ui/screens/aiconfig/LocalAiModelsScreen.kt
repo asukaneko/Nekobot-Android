@@ -469,6 +469,25 @@ private fun ModelCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                val purposeLabel = remember(model.purpose) {
+                    when (model.purpose) {
+                        "chat" -> "💬 对话"
+                        "vision" -> "🖼️ 图片理解"
+                        "video" -> "🎬 视频理解"
+                        "tts" -> "🔊 语音合成"
+                        "stt" -> "🎤 语音识别"
+                        "embedding" -> "📊 向量嵌入"
+                        "image_generation" -> "🎨 图片生成"
+                        else -> model.purpose
+                    }
+                }
+                Text(
+                    purposeLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
@@ -520,6 +539,17 @@ private fun LocalAiModelEditDialog(
     onSave: (LocalAiModelEntity) -> Unit
 ) {
     val protocols = remember { LocalProtocols.names() }
+    val purposes = remember {
+        listOf(
+            "chat" to "💬 对话模型",
+            "vision" to "🖼️ 图片理解",
+            "video" to "🎬 视频理解",
+            "tts" to "🔊 语音合成",
+            "stt" to "🎤 语音识别",
+            "embedding" to "📊 向量嵌入",
+            "image_generation" to "🎨 图片生成"
+        )
+    }
     val now = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()) }
 
     var name by remember(model) { mutableStateOf(model?.name ?: "") }
@@ -527,11 +557,18 @@ private fun LocalAiModelEditDialog(
     var apiKey by remember(model) { mutableStateOf(model?.apiKey ?: "") }
     var baseUrl by remember(model) { mutableStateOf(model?.baseUrl ?: "") }
     var modelName by remember(model) { mutableStateOf(model?.model ?: "") }
+    var purpose by remember(model) { mutableStateOf(model?.purpose ?: "chat") }
+    var priority by remember(model) { mutableStateOf(model?.priority.toString()) }
     var temperature by remember(model) { mutableStateOf(model?.temperature?.toString() ?: "") }
     var maxTokens by remember(model) { mutableStateOf(model?.maxTokens?.toString() ?: "") }
     var topP by remember(model) { mutableStateOf(model?.topP?.toString() ?: "") }
     var appendPath by remember(model) { mutableStateOf(model?.appendBaseUrlPath ?: true) }
     var protocolMenuExpanded by remember { mutableStateOf(false) }
+    var purposeMenuExpanded by remember { mutableStateOf(false) }
+
+    val purposeLabel = remember(purpose) {
+        purposes.firstOrNull { it.first == purpose }?.second ?: "💬 对话模型"
+    }
 
     NekoDialog(
         onDismiss = onDismiss,
@@ -546,6 +583,8 @@ private fun LocalAiModelEditDialog(
                     apiKey = apiKey.trim(),
                     baseUrl = baseUrl.trim(),
                     model = modelName.trim(),
+                    purpose = purpose,
+                    priority = priority.toIntOrNull() ?: 0,
                     active = model?.active ?: false,
                     temperature = temperature.toFloatOrNull(),
                     maxTokens = maxTokens.toIntOrNull(),
@@ -570,6 +609,37 @@ private fun LocalAiModelEditDialog(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
+            // 用途选择（7 种 purpose）
+            Box {
+                OutlinedTextField(
+                    value = purposeLabel,
+                    onValueChange = {},
+                    label = { Text("用途 (purpose)") },
+                    readOnly = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { purposeMenuExpanded = true },
+                    trailingIcon = {
+                        IconButton(onClick = { purposeMenuExpanded = true }) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = null)
+                        }
+                    }
+                )
+                DropdownMenu(
+                    expanded = purposeMenuExpanded,
+                    onDismissRequest = { purposeMenuExpanded = false }
+                ) {
+                    purposes.forEach { (key, label) ->
+                        DropdownMenuItem(
+                            text = { Text(label) },
+                            onClick = {
+                                purpose = key
+                                purposeMenuExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
             // 协议选择
             Box {
                 OutlinedTextField(
@@ -644,6 +714,13 @@ private fun LocalAiModelEditDialog(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedTextField(
+                    value = priority,
+                    onValueChange = { priority = it.filter { c -> c.isDigit() } },
+                    label = { Text("优先级") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedTextField(
                     value = temperature,
                     onValueChange = { temperature = it },
                     label = { Text("温度") },
@@ -663,6 +740,21 @@ private fun LocalAiModelEditDialog(
                     label = { Text("Top P") },
                     singleLine = true,
                     modifier = Modifier.weight(1f)
+                )
+            }
+            if (purpose != "chat") {
+                Text(
+                    when (purpose) {
+                        "vision" -> "用于图片消息理解，将作为图片描述的回退模型"
+                        "video" -> "用于视频消息理解（暂未在本地模式自动调用）"
+                        "tts" -> "用于文本转语音，可在聊天界面手动触发"
+                        "stt" -> "用于语音转文字，可在录音后自动调用"
+                        "embedding" -> "用于向量嵌入（本地模式暂未接入知识库）"
+                        "image_generation" -> "用于 AI 生图（本地模式暂未接入）"
+                        else -> ""
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

@@ -87,7 +87,7 @@ fun AiConfigCenterScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 if (isLocalMode) {
-                    // 本地模式：仅展示本地 AI 模型入口
+                    // 本地模式：本地 AI 模型 + AI 配置 + 故障转移队列 + API Key 管理（均基于本地数据）
                     SectionHeader(title = "本地 AI")
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         ConfigCenterEntry(
@@ -95,6 +95,27 @@ fun AiConfigCenterScreen(
                             title = "本地 AI 模型",
                             subtitle = "管理本地推理模型与参数"
                         ) { onNavigate("local_ai_models") }
+                    }
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        ConfigCenterEntry(
+                            icon = Icons.Filled.AutoAwesome,
+                            title = "AI 配置",
+                            subtitle = "查看并同步当前激活模型的生成参数"
+                        ) { onNavigate("ai_config") }
+                    }
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        ConfigCenterEntry(
+                            icon = Icons.Filled.SwapVert,
+                            title = "故障转移队列",
+                            subtitle = "按用途查看本地模型优先级顺序"
+                        ) { onNavigate("ai_failover") }
+                    }
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        ConfigCenterEntry(
+                            icon = Icons.Filled.Key,
+                            title = "API Key 管理",
+                            subtitle = "管理本地保存的 API 密钥"
+                        ) { onNavigate("api_keys") }
                     }
                 } else {
                     // 服务器模式：AI 配置 / AI 模型 / API Key 管理

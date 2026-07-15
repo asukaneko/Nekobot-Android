@@ -123,6 +123,14 @@ class WorkspaceViewModel : BaseViewModel() {
     suspend fun download(context: Context, filename: String): File? = withContext(Dispatchers.IO) {
         if (sessionId.isBlank()) return@withContext null
         try {
+            // 本地模式：直接复制本地工作区文件
+            val localFile = unified.downloadWorkspaceFileLocal(sessionId, filename)
+            if (localFile != null && localFile.exists()) {
+                val target = File(context.cacheDir, "workspace_$filename")
+                localFile.copyTo(target, overwrite = true)
+                return@withContext target
+            }
+            // 远程模式：走 retrofit Response
             val resp = unified.downloadWorkspaceFile(sessionId, filename)
             if (resp != null && resp.isSuccessful) {
                 val body = resp.body() ?: return@withContext null

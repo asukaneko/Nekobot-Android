@@ -102,7 +102,7 @@ internal class FailoverQueueViewModel : BaseViewModel() {
 
     fun load() {
         launchResult(
-            block = { repo.getFailoverQueue(_purpose.value) },
+            block = { unified.getFailoverQueue(_purpose.value) },
             onSuccess = { json ->
                 val array = json.takeIf { it.isJsonObject }?.asJsonObject?.getAsJsonArray("queue")
                 _queue.value = array?.mapNotNull { element ->
@@ -121,7 +121,7 @@ internal class FailoverQueueViewModel : BaseViewModel() {
             add(target, item)
         }.mapIndexed { priority, item -> item.copy(priority = priority) }
         launchResult(
-            block = { repo.reorderFailover(_purpose.value, reordered.map { it.id }) },
+            block = { unified.reorderFailover(_purpose.value, reordered.map { it.id }) },
             onSuccess = {
                 _queue.value = reordered
                 showToast("队列顺序已保存")
@@ -131,7 +131,7 @@ internal class FailoverQueueViewModel : BaseViewModel() {
 
     fun reset(modelId: String? = null) {
         launchResult(
-            block = { repo.resetFailover(modelId) },
+            block = { unified.resetFailover(modelId) },
             onSuccess = {
                 showToast(if (modelId == null) "已重置全部健康状态" else "已重置模型健康状态")
                 load()

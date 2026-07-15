@@ -192,6 +192,84 @@ class PrefsManager(context: Context) {
         prefs.edit().remove(KEY_TOKEN).apply()
     }
 
+    // ==================== nbotcfg 导入密码记忆 ====================
+
+    /** 上次使用的 nbotcfg 导出/导入密码（用于自动填充，避免每次重新输入）。 */
+    var lastNbotcfgPassword: String
+        get() = prefs.getString(KEY_LAST_NBOTCFG_PWD, "") ?: ""
+        set(value) {
+            prefs.edit().putString(KEY_LAST_NBOTCFG_PWD, value).apply()
+        }
+
+    // ==================== 本地 DB Profile 切换 ====================
+
+    /**
+     * 本地 db profile：用于支持多 db 切换。
+     * - name: db 文件名（不含扩展，如 "nekobot_local"）
+     * - displayName: 显示名
+     * - source: 来源（local / imported）
+     * - createdAt: 创建时间戳
+     */
+    data class DbProfile(
+        val name: String,
+        val displayName: String,
+        val source: String,
+        val createdAt: Long = System.currentTimeMillis()
+    )
+
+    /** 当前激活的 db profile 名（不含扩展名）。默认 "nekobot_local"。 */
+    var activeDbName: String
+        get() = prefs.getString(KEY_ACTIVE_DB_NAME, DEFAULT_DB_NAME) ?: DEFAULT_DB_NAME
+        set(value) {
+            prefs.edit().putString(KEY_ACTIVE_DB_NAME, value).apply()
+        }
+
+    /** 列出所有已记录的 db profile。 */
+    fun listDbProfiles(): List<DbProfile> {
+        val raw = prefs.getString(KEY_DB_PROFILES, null) ?: return listOf(
+            DbProfile(DEFAULT_DB_NAME, "默认本地数据库", "local", 0L)
+        )
+        return try {
+            val type = object : TypeToken<List<JsonObject>>() {}.type
+            val list: List<JsonObject> = gson.fromJson(raw, type)
+            val profiles = list.mapNotNull { obj ->
+                try {
+                    DbProfile(
+                        name = obj.get("name")?.asString ?: return@mapNotNull null,
+                        displayName = obj.get("displayName")?.asString ?: obj.get("name")?.asString ?: "",
+                        source = obj.get("source")?.asString ?: "local",
+                        createdAt = obj.get("createdAt")?.asLong ?: 0L
+                    )
+                } catch (_: Exception) { null }
+            }.toMutableList()
+            // 始终确保默认 profile 存在
+            if (profiles.none { it.name == DEFAULT_DB_NAME }) {
+                profiles.add(0, DbProfile(DEFAULT_DB_NAME, "默认本地数据库", "local", 0L))
+            }
+            profiles
+        } catch (_: Exception) {
+            listOf(DbProfile(DEFAULT_DB_NAME, "默认本地数据库", "local", 0L))
+        }
+    }
+
+    /** 保存/新增一个 db profile（按 name 去重）。 */
+    fun saveDbProfile(profile: DbProfile) {
+        val current = listDbProfiles().toMutableList()
+        current.removeAll { it.name == profile.name }
+        current.add(profile)
+        prefs.edit().putString(KEY_DB_PROFILES, gson.toJson(current)).apply()
+    }
+
+    /** 删除指定 db profile（默认 profile 不可删除）。 */
+    fun removeDbProfile(name: String) {
+        if (name == DEFAULT_DB_NAME) return
+        val remaining = listDbProfiles().filterNot { it.name == name }
+        prefs.edit().putString(KEY_DB_PROFILES, gson.toJson(remaining)).apply()
+        if (activeDbName == name) {
+            activeDbName = DEFAULT_DB_NAME
+        }
+    }
+
     // ==================== 会话通知提醒 ====================
 
     /** 获取指定会话的通知提醒开关 */
@@ -229,5 +307,13 @@ class PrefsManager(context: Context) {
         const val FONT_FAMILY_MONOSPACE = "monospace"
         const val FONT_FAMILY_ROUNDED = "rounded"
         const val FONT_FAMILY_CUSTOM = "custom"
+
+        // DB Profile 相关 KEY
+        const val KEY_ACTIVE_DB_NAME = "active_db_name"
+        const val KEY_DB_PROFILES = "db_profiles"
+        const val DEFAULT_DB_NAME = "nekobot_local"
+
+        // nbotcfg 导入密码记忆
+        const val KEY_LAST_NBOTCFG_PWD = "last_nbotcfg_password"
     }
 }
