@@ -77,6 +77,8 @@ import com.nekobot.app.data.remote.RealtimeEvent
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 import okhttp3.MultipartBody
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
  * 统一仓库：根据 [PrefsManager.appMode] 分发到本地或远程实现。
@@ -1059,6 +1061,34 @@ class UnifiedRepository(
     // ==================== 语音识别（STT）====================
     suspend fun sttTranscribe(audio: okhttp3.MultipartBody.Part, language: okhttp3.RequestBody): Resource<SttTranscribeResponse> =
         if (isLocal) localNotSupported("语音识别") else remote.sttTranscribe(audio, language)
+
+    /**
+     * 统一 STT 接口：接受音频字节数组，本地/远程模式均可用。
+     * - 本地模式：调用配置的 purpose=stt 激活模型
+     * - 远程模式：将字节包装为 multipart 后调用 remote.sttTranscribe
+     */
+    suspend fun transcribeAudio(
+        audioBytes: ByteArray,
+        filename: String,
+        language: String? = "zh"
+    ): Resource<SttTranscribeResponse> = if (isLocal) {
+        try {
+            val text = local.transcribeSpeech(audioBytes, filename, language)
+            Resource.Success(SttTranscribeResponse(success = true, text = text, language = language, provider = "local"))
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "本地 STT 识别失败")
+        }
+    } else {
+        try {
+            val mediaType = "audio/mpeg".toMediaTypeOrNull()
+            val body = audioBytes.toRequestBody(mediaType)
+            val part = okhttp3.MultipartBody.Part.createFormData("audio", filename, body)
+            val lang = (language ?: "").toRequestBody("text/plain".toMediaTypeOrNull())
+            remote.sttTranscribe(part, lang)
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "STT 请求异常")
+        }
+    }
 
     // ==================== 本地 DB Profile 管理 ====================
 

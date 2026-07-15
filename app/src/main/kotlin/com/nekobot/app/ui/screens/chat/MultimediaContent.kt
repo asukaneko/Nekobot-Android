@@ -1,12 +1,16 @@
 package com.nekobot.app.ui.screens.chat
 
+import android.graphics.Bitmap
+import android.graphics.pdf.PdfRenderer
 import android.media.MediaPlayer
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.VideoView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,6 +23,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -47,8 +53,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -60,6 +68,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Request
+import java.io.File
 
 /** 多媒体内容段类型 */
 enum class SegmentType { TEXT, IMAGE, VIDEO, AUDIO, TXT, HTML, FILE }
@@ -83,6 +92,8 @@ private val AUDIO_EXTS = setOf("mp3", "wav", "ogg", "m4a", "aac", "flac")
 private val TXT_EXTS = setOf("txt")
 /** html 扩展名 */
 private val HTML_EXTS = setOf("html", "htm")
+/** pdf 扩展名 */
+private val PDF_EXTS = setOf("pdf")
 
 /** URL 正则 */
 private val URL_REGEX = Regex("""https?://[^\s<>"'\]]+""")
@@ -635,13 +646,14 @@ private fun buildWorkspaceFileUrl(sessionId: String, fileName: String): String? 
 }
 
 /** 判断文件类型是否可直接预览 */
-private enum class FilePreviewType { IMAGE, TEXT, HTML, UNSUPPORTED }
+private enum class FilePreviewType { IMAGE, TEXT, HTML, PDF, UNSUPPORTED }
 private fun classifyFilePreview(fileName: String): FilePreviewType {
     val ext = fileExt(fileName)
     return when (ext) {
         in IMAGE_EXTS -> FilePreviewType.IMAGE
         in TXT_EXTS, "md", "json", "csv", "log", "yaml", "yml", "xml", "py", "js", "ts", "kt", "java", "c", "cpp", "go", "rs", "sh" -> FilePreviewType.TEXT
         in HTML_EXTS -> FilePreviewType.HTML
+        in PDF_EXTS -> FilePreviewType.PDF
         else -> FilePreviewType.UNSUPPORTED
     }
 }
@@ -684,6 +696,10 @@ fun FileCardRenderer(fileName: String, sessionId: String, modifier: Modifier = M
             } else {
                 UnsupportedFileCard(fileName, fileUrl, modifier)
             }
+        }
+        FilePreviewType.PDF -> {
+            // 聊天消息中的 PDF 卡片：远程模式下显示下载按钮（预览需先下载到本地）
+            UnsupportedFileCard(fileName, fileUrl, modifier)
         }
         FilePreviewType.UNSUPPORTED -> {
             UnsupportedFileCard(fileName, fileUrl, modifier)
@@ -808,4 +824,211 @@ private fun formatTime(ms: Int): String {
     val min = totalSec / 60
     val sec = totalSec % 60
     return "%02d:%02d".format(min, sec)
+}
+
+/**
+ * PDF 渲染器：使用系统 [PdfRenderer] 将 PDF 各页渲染为 Bitmap 并可滚动展示。
+ * 入参为本地 [File]（已下载到缓存目录）。
+ */
+@Composable
+fun PdfRendererFromFile(file: File, modifier: Modifier = Modifier) {
+    var bitmaps by remember(file) { mutableStateOf<List<Bitmap>>(emptyList()) }
+    var loading by remember(file) { mutableStateOf(true) }
+    var error by remember(file) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(file) {
+        loading = true
+        error = null
+        bitmaps = emptyList()
+        try {
+            bitmaps = withContext(Dispatchers.IO) {
+                if (!file.exists()) return@withContext emptyList()
+                ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+                    PdfRenderer(pfd).use { renderer ->
+                        (0 until renderer.pageCount).map { idx ->
+                            val page = renderer.openPage(idx)
+                            try {
+                                // 按宽度 1080 像素等比缩放渲染
+                                val targetWidth = 1080
+                                val scale = targetWidth.toFloat() / page.width.toFloat()
+                                val targetHeight = (page.height * scale).toInt()
+                                val bmp = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+                                page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                bmp
+                            } finally {
+                                page.close()
+                            }
+                        }
+                    }
+                }
+            }
+            if (bitmaps.isEmpty()) error = "无法读取 PDF 内容"
+        } catch (e: Exception) {
+            error = e.message ?: "PDF 渲染失败"
+        } finally {
+            loading = false
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        when {
+            loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+            }
+            error != null -> Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
+                Text(text = "PDF 加载失败: $error", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+            }
+            else -> LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(bitmaps) { bmp ->
+                    AsyncImage(
+                        model = bmp.asImageBitmap(),
+                        contentDescription = "PDF 页",
+                        contentScale = ContentScale.FillWidth,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 文件预览 Dialog：根据本地 [file] 的扩展名选择渲染方式。
+ * 支持图片/文本/HTML/PDF；其他类型显示不支持提示。
+ */
+@Composable
+fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
+    val previewType = remember(fileName) { classifyFilePreview(fileName) }
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.96f))
+        ) {
+            // 顶部标题 + 关闭按钮
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = fileName,
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Filled.Close, contentDescription = "关闭", tint = Color.White)
+                }
+            }
+            // 内容区
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 48.dp)
+            ) {
+                when (previewType) {
+                    FilePreviewType.IMAGE -> {
+                        AsyncImage(
+                            model = file,
+                            contentDescription = "图片预览",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    FilePreviewType.TEXT -> {
+                        var content by remember(file) { mutableStateOf<String?>(null) }
+                        var loadErr by remember(file) { mutableStateOf<String?>(null) }
+                        LaunchedEffect(file) {
+                            try {
+                                content = withContext(Dispatchers.IO) { file.readText() }
+                            } catch (e: Exception) {
+                                loadErr = e.message ?: "读取失败"
+                            }
+                        }
+                        when {
+                            content != null -> Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(12.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(12.dp)
+                            ) {
+                                Text(
+                                    text = content!!,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            loadErr != null -> Text(
+                                "加载失败: $loadErr",
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.align(Alignment.Center)
+                            )
+                            else -> CircularProgressIndicator(
+                                color = Color.White,
+                                modifier = Modifier.align(Alignment.Center)
+                            )
+                        }
+                    }
+                    FilePreviewType.HTML -> {
+                        AndroidView(
+                            factory = { ctx ->
+                                WebView(ctx).apply {
+                                    settings.javaScriptEnabled = true
+                                    settings.domStorageEnabled = true
+                                    settings.loadWithOverviewMode = true
+                                    settings.useWideViewPort = true
+                                    webViewClient = WebViewClient()
+                                    file.absolutePath.let { loadDataWithBaseURL("file://$it", file.readText(), "text/html", "UTF-8", null) }
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    FilePreviewType.PDF -> {
+                        PdfRendererFromFile(file = file, modifier = Modifier.fillMaxSize())
+                    }
+                    FilePreviewType.UNSUPPORTED -> {
+                        Column(
+                            modifier = Modifier.align(Alignment.Center),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                "该文件类型暂不支持预览",
+                                color = Color.White,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "文件已下载到: ${file.name}",
+                                color = Color.White.copy(alpha = 0.7f),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

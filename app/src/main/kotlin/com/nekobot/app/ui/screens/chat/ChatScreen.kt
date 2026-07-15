@@ -242,10 +242,7 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
         scope.launch {
             try {
                 val bytes = withContext(kotlinx.coroutines.Dispatchers.IO) { file.readBytes() }
-                val body = bytes.toRequestBody("audio/mp4".toMediaTypeOrNull())
-                val part = MultipartBody.Part.createFormData("audio", file.name, body)
-                val lang = "zh".toRequestBody("text/plain".toMediaTypeOrNull())
-                when (val res = ServiceContainer.unified.sttTranscribe(part, lang)) {
+                when (val res = ServiceContainer.unified.transcribeAudio(bytes, file.name, "zh")) {
                     is com.nekobot.app.data.repository.Resource.Success -> {
                         val text = res.data?.text
                         if (!text.isNullOrBlank()) {
@@ -299,10 +296,6 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
     }
 
     fun startVoiceInput() {
-        if (com.nekobot.app.ServiceContainer.prefs.isLocalMode) {
-            scope.launch { snackbarHostState.showSnackbar("语音输入仅在服务器模式可用") }
-            return
-        }
         requestMicPermission.launch(android.Manifest.permission.RECORD_AUDIO)
     }
 

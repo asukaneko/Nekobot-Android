@@ -291,10 +291,6 @@ object NbotConfigImporter {
 
         // 所有配置项在 bundle.configs 下
         val configs = bundle.getAsJsonObject("configs") ?: bundle
-        // 兼容 active_model_id / active_models_by_purpose：可能在顶层也可能在 configs 下
-        val activeModelId = configs.str("active_model_id") ?: bundle.str("active_model_id")
-        val activeByPurpose = configs.getAsJsonObject("active_models_by_purpose")
-            ?: bundle.getAsJsonObject("active_models_by_purpose")
 
         // 将 dict 形式的对象统一转成 List<JsonObject>（sessions/world_books 是 dict 而非 list）
         fun asList(ele: JsonElement?): List<JsonObject> {
@@ -309,13 +305,10 @@ object NbotConfigImporter {
         }
 
         // AI 模型
+        // 导入阶段先全部置 active=false，后续按 purpose 选 p0（priority 最小且 enabled）为当前模型
         asList(configs.get("ai_models")).forEach { obj ->
             val id = obj.str("id") ?: UUID.randomUUID().toString()
             val purpose = obj.str("purpose") ?: "chat"
-            // 后端活动模型用 active_models_by_purpose 记录，旧版用 active_model_id
-            val active = obj.get("active")?.takeIf { it.isJsonPrimitive }?.asBoolean
-                ?: activeByPurpose?.get(purpose)?.asString?.let { it == id }
-                ?: (activeModelId == id)
             db.aiModelDao().upsert(
                 LocalAiModelEntity(
                     id = id,
@@ -328,7 +321,7 @@ object NbotConfigImporter {
                     enabled = obj.bool("enabled", true),
                     purpose = purpose,
                     priority = obj.int("priority", 0),
-                    active = active,
+                    active = false,
                     temperature = obj.floatOrNull("temperature"),
                     maxTokens = obj.intOrNull("max_tokens"),
                     topP = obj.floatOrNull("top_p"),
@@ -338,6 +331,19 @@ object NbotConfigImporter {
                 )
             )
             count++
+        }
+        // 按 purpose 分组，每组选 priority 最小（p0）且 enabled=true 的模型设为 active
+        run {
+            val all = db.aiModelDao().listAll()
+            all.groupBy { it.purpose.ifBlank { "chat" } }
+                .forEach { (_, list) ->
+                    val p0 = list
+                        .filter { it.enabled }
+                        .minByOrNull { it.priority }
+                        ?: list.minByOrNull { it.priority }
+                        ?: return@forEach
+                    db.aiModelDao().setActiveForPurpose(p0.id, p0.purpose.ifBlank { "chat" })
+                }
         }
 
         // API Keys

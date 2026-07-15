@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -24,11 +25,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -344,6 +350,7 @@ fun CharacterViewScreen(
 /** 顶部头像/立绘 + 名称 + 标签卡片 */
 @Composable
 private fun HeaderCard(c: CharacterPreset) {
+    var fullscreenUrl by remember { mutableStateOf<String?>(null) }
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             val avatarUrl = c.avatarUrl?.let { resolveImageUrl(it) }
@@ -355,6 +362,9 @@ private fun HeaderCard(c: CharacterPreset) {
                     .size(72.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable {
+                        if (!avatarUrl.isNullOrBlank()) fullscreenUrl = avatarUrl
+                    }
             )
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -402,6 +412,60 @@ private fun HeaderCard(c: CharacterPreset) {
                             containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                             labelColor = MaterialTheme.colorScheme.primary
                         )
+                    )
+                }
+            }
+        }
+    }
+
+    // 全屏立绘预览：支持双指缩放与拖动，单击或点击关闭按钮退出
+    val url = fullscreenUrl
+    if (url != null) {
+        Dialog(onDismissRequest = { fullscreenUrl = null }) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.92f))
+            ) {
+                var scale by remember { mutableStateOf(1f) }
+                var offsetX by remember { mutableStateOf(0f) }
+                var offsetY by remember { mutableStateOf(0f) }
+                AsyncImage(
+                    model = url,
+                    contentDescription = "立绘",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                scale = (scale * zoom).coerceIn(0.5f, 5f)
+                                offsetX += pan.x
+                                offsetY += pan.y
+                            }
+                        }
+                        .graphicsLayer(
+                            scaleX = scale,
+                            scaleY = scale,
+                            translationX = offsetX,
+                            translationY = offsetY
+                        )
+                        .clickable { fullscreenUrl = null }
+                )
+                // 顶部关闭按钮
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(12.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .clickable { fullscreenUrl = null }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "关闭",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium
                     )
                 }
             }

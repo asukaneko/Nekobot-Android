@@ -542,6 +542,7 @@ class LocalRepository(
 
     /**
      * 流式聊天：保存用户消息 → 调用 AI → 边推 Flow 边累积 → 保存 assistant。
+     * 自动启用故障转移：传入的 [activeModel] 作为首选，失败时按 purpose=chat 队列重试。
      */
     fun chat(
         sessionId: String,
@@ -576,12 +577,20 @@ class LocalRepository(
             activeModel.topP?.let { put("top_p", it) }
         }
 
-        // 5. 流式调用
+        // 5. 构造故障转移队列：activeModel 优先，附加同 purpose 其他启用模型
+        val queue = buildList {
+            add(activeModel)
+            aiModelDao.listByPurpose(activeModel.purpose.ifBlank { "chat" })
+                .filter { it.id != activeModel.id }
+                .forEach { add(it) }
+        }
+
+        // 6. 流式调用（带故障转移）
         val fullContent = StringBuilder()
         var inputTokens: Int? = null
         var outputTokens: Int? = null
         var modelName: String? = null
-        aiClient.chatStream(activeModel, messages, extra).collect { event ->
+        aiClient.chatStreamWithFailover(queue, messages, extra).collect { event ->
             when (event) {
                 is RealtimeEvent.StreamChunk -> fullContent.append(event.chunk)
                 is RealtimeEvent.Usage -> {
@@ -711,12 +720,15 @@ class LocalRepository(
             channel = "local"
         )
 
-        // 4. 构建回调
+        // 4. 构建回调（传入故障转移备选队列：同 purpose 其他启用模型）
+        val failoverQueue = aiModelDao.listByPurpose(activeModel.purpose.ifBlank { "chat" })
+            .filter { it.id != activeModel.id }
         val callbacks = com.nekobot.app.data.local.ai.LocalPipelineCallbacks(
             db, aiClient, activeModel, session, character, worldBookEntries, runtime, identity,
             onTokenRecorded = { sid, model, input, output, ts, purpose ->
                 appendTokenUsageRecord(sid, model, input, output, ts, purpose = purpose)
-            }
+            },
+            failoverQueue = failoverQueue
         )
 
         // 5. 构建上下文（含会话级配置：剧情模式、禁用注入项、自动状态间隔等）
@@ -1530,6 +1542,25 @@ $charSection$topicSection
     }
 
     suspend fun testModel(model: LocalAiModelEntity): LocalAiResult = aiClient.testModel(model)
+
+    /**
+     * 本地 STT 语音识别：调用配置的 purpose=stt 激活模型，将音频字节数组转为文字。
+     * @param audioBytes 音频字节（mp3/wav/m4a 等）
+     * @param filename 文件名（用于 multipart 上传字段）
+     * @param language 语言提示（如 "zh"），可为空
+     * @return 识别结果文本，失败抛异常
+     */
+    suspend fun transcribeSpeech(
+        audioBytes: ByteArray,
+        filename: String = "audio.m4a",
+        language: String? = "zh"
+    ): String = withContext(Dispatchers.IO) {
+        val model = aiModelDao.getActiveByPurpose("stt") ?: aiModelDao.getActive()
+            ?: throw IllegalStateException("未配置 STT 模型，请在 AI 配置中心启用 purpose=stt 的模型")
+        val result = aiClient.transcribeSpeech(model, audioBytes, filename, language)
+        if (result.error != null) throw IllegalStateException(result.error)
+        result.content
+    }
 
     // ==================== Token 用量统计（从独立存储聚合，不受会话删除影响）====================
 
@@ -2683,6 +2714,7 @@ $charSection$topicSection
 
     /**
      * 重排故障转移队列：按传入的 id 顺序重写 priority。
+     * 重排后将 priority=0（P0）的模型设为该 purpose 的当前激活模型。
      * @param body JSON: {"purpose":"chat","model_ids":["id1","id2",...]}
      */
     suspend fun reorderFailover(body: JsonElement): JsonElement = withContext(Dispatchers.IO) {
@@ -2695,10 +2727,15 @@ $charSection$topicSection
                 aiModelDao.upsert(m.copy(priority = index))
             }
         }
+        // P0 自动设为当前激活模型
+        ids.firstOrNull()?.let { p0Id ->
+            aiModelDao.setActiveForPurpose(p0Id, purpose)
+        }
         JsonObject().apply {
             addProperty("success", true)
             addProperty("purpose", purpose)
             addProperty("reordered_count", ids.size)
+            addProperty("active_model_id", ids.firstOrNull() ?: "")
         }
     }
 

@@ -229,7 +229,7 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
                     items(models, key = { it.id }) { model ->
                         ModelCard(
                             model = model,
-                            isActive = model.id == activeModel?.id,
+                            isActive = model.active,
                             onSetActive = { vm.setActive(model.id) },
                             onEdit = {
                                 editingModel = model

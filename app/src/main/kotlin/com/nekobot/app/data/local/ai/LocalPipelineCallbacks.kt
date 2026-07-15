@@ -35,7 +35,9 @@ class LocalPipelineCallbacks(
     private val worldBookEntries: List<LocalWorldBookEntryEntity> = emptyList(),
     private val characterRuntime: CharacterRuntime? = null,
     private val characterIdentity: CharacterIdentity? = null,
-    private val onTokenRecorded: ((sessionId: String, model: String, inputTokens: Int, outputTokens: Int, timestamp: String, purpose: String) -> Unit)? = null
+    private val onTokenRecorded: ((sessionId: String, model: String, inputTokens: Int, outputTokens: Int, timestamp: String, purpose: String) -> Unit)? = null,
+    /** 故障转移队列：除 activeModel 外可用的备选模型（同 purpose，按 priority 升序） */
+    private val failoverQueue: List<LocalAiModelEntity> = emptyList()
 ) : PipelineCallbacks() {
 
     companion object {
@@ -150,6 +152,9 @@ class LocalPipelineCallbacks(
 
     // ---- AI 模型交互 ----
 
+    /** 故障转移队列：activeModel 优先，附加 [failoverQueue] */
+    private val modelQueue: List<LocalAiModelEntity> = listOf(activeModel) + failoverQueue.filter { it.id != activeModel.id }
+
     override fun buildModelCall(ctx: PipelineContext, tools: List<Map<String, Any>>): ModelCall {
         return { messages, stopped ->
             val extra = buildMap<String, Any?> {
@@ -159,9 +164,9 @@ class LocalPipelineCallbacks(
                 if (tools.isNotEmpty()) put("tools", tools)
             }
 
-            // 使用 LocalAiClient.chatOnce 同步调用
+            // 使用带故障转移的 chatOnceWithFailover
             val result = kotlinx.coroutines.runBlocking {
-                aiClient.chatOnce(activeModel, messages, extra)
+                aiClient.chatOnceWithFailover(modelQueue, messages, extra)
             }
 
             if (result.error != null) {
@@ -172,8 +177,8 @@ class LocalPipelineCallbacks(
                 put("content", result.content)
                 put("usage", result.usage)
                 put("finish_reason", "stop")
-                put("_model_id", activeModel.id)
-                put("_model_name", activeModel.name)
+                put("_model_id", result.usedModelId ?: activeModel.id)
+                put("_model_name", result.usedModelName ?: activeModel.name)
             }
         }
     }
@@ -192,7 +197,7 @@ class LocalPipelineCallbacks(
             // 为了复用 LocalAiClient 的流式能力，我们在 onStreamStart/onStreamChunk 中处理
             // 此方法返回包含完整内容的列表（简化）
             val result = kotlinx.coroutines.runBlocking {
-                aiClient.chatOnce(activeModel, messages, extra)
+                aiClient.chatOnceWithFailover(modelQueue, messages, extra)
             }
 
             if (result.error != null) {
@@ -202,8 +207,8 @@ class LocalPipelineCallbacks(
             listOf(buildMap<String, Any> {
                 put("content", result.content)
                 put("usage", result.usage)
-                put("_model_id", activeModel.id)
-                put("_model_name", activeModel.name)
+                put("_model_id", result.usedModelId ?: activeModel.id)
+                put("_model_name", result.usedModelName ?: activeModel.name)
             })
         }
     }

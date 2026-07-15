@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -224,6 +225,9 @@ fun WorkspaceScreen(
 
     var deletingFile by remember { mutableStateOf<WorkspaceFile?>(null) }
     var downloading by remember { mutableStateOf<String?>(null) }
+    var previewFile by remember { mutableStateOf<java.io.File?>(null) }
+    var previewFileName by remember { mutableStateOf("") }
+    var previewLoading by remember { mutableStateOf(false) }
     val snackbarHost = remember { SnackbarHostState() }
 
     LaunchedEffect(sessionId) { viewModel.init(sessionId) }
@@ -289,6 +293,7 @@ fun WorkspaceScreen(
                             WorkspaceFileItem(
                                 file = f,
                                 downloading = downloading == f.name,
+                                previewLoading = previewLoading && previewFileName == f.name,
                                 onDelete = { deletingFile = f },
                                 onDownload = {
                                     if (downloading == null) {
@@ -300,6 +305,21 @@ fun WorkspaceScreen(
                                                 snackbarHost.showSnackbar("已下载到: ${saved.name}")
                                             } else {
                                                 snackbarHost.showSnackbar("下载失败")
+                                            }
+                                        }
+                                    }
+                                },
+                                onPreview = {
+                                    if (!previewLoading && previewFile == null) {
+                                        previewFileName = f.name
+                                        previewLoading = true
+                                        scope.launch {
+                                            val saved = viewModel.download(context, f.name)
+                                            previewLoading = false
+                                            if (saved != null) {
+                                                previewFile = saved
+                                            } else {
+                                                snackbarHost.showSnackbar("加载文件失败，无法预览")
                                             }
                                         }
                                     }
@@ -326,14 +346,29 @@ fun WorkspaceScreen(
             }
         )
     }
+
+    // 文件预览 Dialog：支持图片/文本/HTML/PDF
+    val pf = previewFile
+    if (pf != null) {
+        FilePreviewDialog(
+            fileName = previewFileName,
+            file = pf,
+            onDismiss = {
+                previewFile = null
+                previewFileName = ""
+            }
+        )
+    }
 }
 
 @Composable
 private fun WorkspaceFileItem(
     file: WorkspaceFile,
     downloading: Boolean,
+    previewLoading: Boolean,
     onDelete: () -> Unit,
-    onDownload: () -> Unit
+    onDownload: () -> Unit,
+    onPreview: () -> Unit
 ) {
     GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 14) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -344,15 +379,26 @@ private fun WorkspaceFileItem(
                 modifier = Modifier.size(28.dp)
             )
             Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    file.name,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(enabled = !file.isDirectory && !previewLoading) { onPreview() }
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        file.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (file.isDirectory) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (previewLoading) {
+                        Spacer(Modifier.width(8.dp))
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
                 Text(
                     if (file.isDirectory) "文件夹" else formatSize(file.size),
                     style = MaterialTheme.typography.labelSmall,
