@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
@@ -1227,7 +1228,10 @@ private fun MessageBubble(
             Spacer(Modifier.width(8.dp))
         }
 
-        Column(modifier = Modifier.widthIn(max = maxBubbleWidth)) {
+        Column(modifier = Modifier
+            .widthIn(max = maxBubbleWidth)
+            .then(if (isUser) Modifier.width(IntrinsicSize.Max) else Modifier)
+        ) {
             // 多段气泡：每段一个气泡，段间小间距
             segments.forEachIndexed { idx, segment ->
                 val isFirst = idx == 0
@@ -1295,23 +1299,39 @@ private fun MessageBubble(
                 AudioRenderer(url = resolvedAudioUrl, modifier = Modifier.widthIn(max = 280.dp))
             }
 
-            // 元信息：时间（精简到分钟）/ token 数
+            // 元信息：时间（精简到分钟）/ token 数；用户气泡把复制按钮放同行最右边
             val compactTs = compactTime(message.timestamp)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(top = 2.dp)
+                modifier = Modifier
+                    .padding(top = 2.dp)
+                    .then(if (isUser) Modifier.fillMaxWidth() else Modifier),
+                horizontalArrangement = if (isUser) Arrangement.SpaceBetween else Arrangement.Start
             ) {
-                if (compactTs != null) {
-                    Text(compactTs, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (compactTs != null) {
+                        Text(compactTs, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    message.tokens?.let { tokens ->
+                        if (compactTs != null) Spacer(Modifier.width(6.dp))
+                        Text("${tokens} tok", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
-                message.tokens?.let { tokens ->
-                    if (compactTs != null) Spacer(Modifier.width(6.dp))
-                    Text("${tokens} tok", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // 用户气泡：复制按钮放最右边
+                if (isUser && !selectionMode) {
+                    IconActionButton(
+                        icon = Icons.Filled.ContentCopy,
+                        description = "复制",
+                        onClick = {
+                            val text = onCopy()
+                            clipboard.setText(AnnotatedString(text))
+                        }
+                    )
                 }
             }
 
-            // 操作按钮（小且不显眼）：AI 有 重新生成/分支/复制，用户只有 复制。多选模式下隐藏。
-            if (!selectionMode) {
+            // AI 操作按钮（重新生成/分支/复制）。多选模式下隐藏。
+            if (!isUser && !selectionMode) {
                 BubbleActions(
                     isUser = isUser,
                     onRegenerate = onRegenerate,

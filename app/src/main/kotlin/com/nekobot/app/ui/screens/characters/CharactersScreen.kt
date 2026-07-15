@@ -131,7 +131,12 @@ fun CharactersScreen(
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
-    var viewMode by remember { mutableStateOf(CharacterViewMode.LIST) }
+    var viewMode by remember {
+        mutableStateOf(
+            runCatching { CharacterViewMode.valueOf(ServiceContainer.prefs.characterViewMode) }
+                .getOrDefault(CharacterViewMode.LIST)
+        )
+    }
     var showAddMenu by remember { mutableStateOf(false) }
     var showAiDialog by remember { mutableStateOf(false) }
     var showAiGeneratingHint by remember { mutableStateOf(false) }
@@ -173,7 +178,9 @@ fun CharactersScreen(
                 actions = {
                     // 视图切换按钮
                     IconButton(onClick = {
-                        viewMode = if (viewMode == CharacterViewMode.LIST) CharacterViewMode.GRID else CharacterViewMode.LIST
+                        val newMode = if (viewMode == CharacterViewMode.LIST) CharacterViewMode.GRID else CharacterViewMode.LIST
+                        viewMode = newMode
+                        ServiceContainer.prefs.characterViewMode = newMode.name
                     }) {
                         Icon(
                             if (viewMode == CharacterViewMode.LIST) Icons.Filled.Apps else Icons.Filled.ViewList,

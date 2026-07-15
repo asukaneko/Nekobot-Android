@@ -133,6 +133,13 @@ class PrefsManager(context: Context) {
             prefs.edit().putString(KEY_CHAT_INPUT_LAYOUT, value.name).apply()
         }
 
+    /** 角色列表视图模式：LIST / GRID，持久化用户选择 */
+    var characterViewMode: String
+        get() = prefs.getString(KEY_CHARACTER_VIEW_MODE, "LIST") ?: "LIST"
+        set(value) {
+            prefs.edit().putString(KEY_CHARACTER_VIEW_MODE, value).apply()
+        }
+
     /** 字体类型：system / serif / monospace / rounded / custom */
     var fontFamily: String
         get() = prefs.getString(KEY_FONT_FAMILY, FONT_FAMILY_SYSTEM) ?: FONT_FAMILY_SYSTEM
@@ -205,6 +212,7 @@ class PrefsManager(context: Context) {
         private const val KEY_APP_MODE = "app_mode"
         private const val KEY_LOGIN_RECORDS = "login_records"
         private const val KEY_CHAT_INPUT_LAYOUT = "chat_input_layout"
+        private const val KEY_CHARACTER_VIEW_MODE = "character_view_mode"
         private const val DEFAULT_SERVER = "http://localhost:5000"
 
         // 样式相关 KEY
