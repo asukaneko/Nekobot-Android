@@ -1,0 +1,651 @@
+name: Apply modern chat input redesign
+
+on:
+  push:
+    branches:
+      - agent/modern-chat-input-menu
+
+permissions:
+  contents: write
+
+jobs:
+  patch-chat-input:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/modern-chat-input-menu
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Replace chat input and menu
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/kotlin/com/nekobot/app/ui/screens/chat/ChatScreen.kt')
+          source = path.read_text(encoding='utf-8')
+          start_marker = '@Composable\nprivate fun ChatInputBar('
+          end_marker = '/** 操作胶囊按钮'
+          start = source.index(start_marker)
+          end = source.index(end_marker, start)
+
+          replacement = r'''@Composable
+private fun ChatInputBar(
+    input: String,
+    onInputChange: (String) -> Unit,
+    sending: Boolean,
+    messageCount: Int,
+    plotChoices: List<PlotChoice> = emptyList(),
+    plotChoicesLoading: Boolean = false,
+    pendingPlotChoiceId: String? = null,
+    layoutMode: ChatInputLayoutMode = ChatInputLayoutMode.MERGED,
+    onLayoutModeChange: (ChatInputLayoutMode) -> Unit = {},
+    onSelectPlotChoice: (PlotChoice) -> Unit = {},
+    onRegeneratePlotChoices: () -> Unit = {},
+    onScrollToBottom: () -> Unit = {},
+    onShowMyMessages: () -> Unit = {},
+    onSend: () -> Unit,
+    onStop: () -> Unit,
+    onClear: () -> Unit,
+    onCompress: () -> Unit,
+    onSendFile: () -> Unit = {},
+    onUploadToWorkspace: () -> Unit = {},
+    onOpenWorkspace: () -> Unit = {},
+    onVoiceInput: () -> Unit = {},
+    onShowFavorites: () -> Unit = {},
+    onShowSearch: () -> Unit = {},
+    fileBusy: Boolean = false
+) {
+    var panelExpanded by remember { mutableStateOf(false) }
+    var inputExpanded by remember { mutableStateOf(false) }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val charCount = input.length
+    val tokenEstimate = estimateChatDraftTokens(input)
+    val hasPlotSurface = plotChoicesLoading || plotChoices.isNotEmpty()
+    val inputVisible = shouldShowChatInput(
+        layoutMode = layoutMode,
+        inputExpanded = inputExpanded,
+        hasPlotSurface = hasPlotSurface,
+        hasDraft = input.isNotBlank()
+    )
+    val toggleInput = {
+        if (input.isBlank()) inputExpanded = !inputVisible
+    }
+    val toggleLayout = {
+        onLayoutModeChange(
+            if (layoutMode == ChatInputLayoutMode.MERGED) ChatInputLayoutMode.SEPARATE
+            else ChatInputLayoutMode.MERGED
+        )
+    }
+    val closePanel = { panelExpanded = false }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .navigationBarsPadding()
+            .imePadding()
+    ) {
+        if (plotChoicesLoading) {
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                PlotChoicesHeader(
+                    title = "剧情选项生成中...",
+                    layoutMode = layoutMode,
+                    inputVisible = inputVisible,
+                    panelExpanded = panelExpanded,
+                    sending = sending,
+                    refreshEnabled = false,
+                    onToggleInput = toggleInput,
+                    onTogglePanel = {
+                        panelExpanded = !panelExpanded
+                        if (panelExpanded) keyboard?.hide()
+                    },
+                    onToggleLayout = toggleLayout,
+                    onRegenerate = onRegeneratePlotChoices,
+                    onStop = onStop
+                )
+            }
+            PlotChoicesSkeleton()
+        } else if (plotChoices.isNotEmpty()) {
+            PlotChoicesBar(
+                choices = plotChoices.take(3),
+                pendingChoiceId = pendingPlotChoiceId,
+                onSelect = {
+                    inputExpanded = true
+                    closePanel()
+                    onSelectPlotChoice(it)
+                },
+                onRegenerate = onRegeneratePlotChoices,
+                enabled = !sending,
+                layoutMode = layoutMode,
+                inputVisible = inputVisible,
+                panelExpanded = panelExpanded,
+                sending = sending,
+                onToggleInput = toggleInput,
+                onTogglePanel = {
+                    panelExpanded = !panelExpanded
+                    if (panelExpanded) keyboard?.hide()
+                },
+                onToggleLayout = toggleLayout,
+                onStop = onStop
+            )
+        }
+
+        AnimatedVisibility(
+            visible = panelExpanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            GlassCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                cornerRadius = 24,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+            ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 460.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    item {
+                        ChatContextSummaryCard(
+                            messageCount = messageCount,
+                            charCount = charCount,
+                            tokenEstimate = tokenEstimate,
+                            sending = sending,
+                            compressEnabled = !sending && messageCount > 0,
+                            onCompress = {
+                                closePanel()
+                                onCompress()
+                            }
+                        )
+                    }
+
+                    item { ChatMenuSectionTitle("常用") }
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            ChatQuickActionCard(
+                                icon = Icons.Filled.AttachFile,
+                                title = "发送文件",
+                                subtitle = "交给 AI 阅读",
+                                enabled = !fileBusy,
+                                onClick = { closePanel(); onSendFile() },
+                                modifier = Modifier.weight(1f)
+                            )
+                            ChatQuickActionCard(
+                                icon = Icons.Filled.Folder,
+                                title = "工作区",
+                                subtitle = "浏览会话文件",
+                                enabled = true,
+                                onClick = { closePanel(); onOpenWorkspace() },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            ChatQuickActionCard(
+                                icon = Icons.Filled.Search,
+                                title = "搜索对话",
+                                subtitle = "定位历史内容",
+                                enabled = messageCount > 0,
+                                onClick = { closePanel(); onShowSearch() },
+                                modifier = Modifier.weight(1f)
+                            )
+                            ChatQuickActionCard(
+                                icon = Icons.Filled.Star,
+                                title = "收藏夹",
+                                subtitle = "查看收藏消息",
+                                enabled = true,
+                                onClick = { closePanel(); onShowFavorites() },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    item { ChatMenuSectionTitle("会话工具") }
+                    item {
+                        androidx.compose.material3.Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
+                        ) {
+                            Column {
+                                ChatMenuToolRow(
+                                    icon = Icons.Filled.KeyboardDoubleArrowDown,
+                                    title = "回到最新消息",
+                                    subtitle = "快速滚动到对话底部",
+                                    enabled = messageCount > 0,
+                                    onClick = { closePanel(); onScrollToBottom() }
+                                )
+                                ChatMenuDivider()
+                                ChatMenuToolRow(
+                                    icon = Icons.Outlined.AccountTree,
+                                    title = "我的消息",
+                                    subtitle = "浏览并定位我发送的内容",
+                                    enabled = messageCount > 0,
+                                    onClick = { closePanel(); onShowMyMessages() }
+                                )
+                                ChatMenuDivider()
+                                ChatMenuToolRow(
+                                    icon = Icons.Filled.CloudUpload,
+                                    title = "仅上传到工作区",
+                                    subtitle = "保存文件，不触发 AI",
+                                    enabled = !fileBusy,
+                                    onClick = { closePanel(); onUploadToWorkspace() }
+                                )
+                            }
+                        }
+                    }
+
+                    item { ChatMenuSectionTitle("危险操作") }
+                    item {
+                        androidx.compose.material3.Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.error.copy(alpha = 0.07f)
+                        ) {
+                            ChatMenuToolRow(
+                                icon = Icons.Filled.CleaningServices,
+                                title = "清空当前会话",
+                                subtitle = "删除全部消息且无法恢复",
+                                enabled = !sending && messageCount > 0,
+                                danger = true,
+                                onClick = { closePanel(); onClear() }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        AnimatedVisibility(visible = inputVisible) {
+            Column {
+                if (input.isNotBlank()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Text(
+                            "$charCount 字 / ~$tokenEstimate tok",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                androidx.compose.material3.Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(30.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.78f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                    ),
+                    shadowElevation = 4.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                panelExpanded = !panelExpanded
+                                if (panelExpanded) keyboard?.hide()
+                            },
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (panelExpanded) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                                    else MaterialTheme.colorScheme.surface.copy(alpha = 0.54f)
+                                )
+                        ) {
+                            Icon(
+                                if (panelExpanded) Icons.Filled.Close else Icons.Filled.Add,
+                                contentDescription = if (panelExpanded) "关闭更多操作" else "更多操作",
+                                tint = if (panelExpanded) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = input,
+                            onValueChange = {
+                                if (panelExpanded) closePanel()
+                                onInputChange(it)
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 44.dp, max = 128.dp)
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            enabled = !sending,
+                            maxLines = 5,
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            decorationBox = { innerTextField ->
+                                Box(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    if (input.isEmpty()) {
+                                        Text(
+                                            if (sending) "AI 思考中..." else "输入消息...",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            }
+                        )
+
+                        val primaryAction: () -> Unit = when {
+                            sending -> onStop
+                            input.isNotBlank() -> {{
+                                inputExpanded = false
+                                closePanel()
+                                onSend()
+                            }}
+                            else -> onVoiceInput
+                        }
+                        val primaryColor = when {
+                            sending -> Color(0xFFFF6B6B)
+                            input.isNotBlank() -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.54f)
+                        }
+                        IconButton(
+                            onClick = primaryAction,
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(primaryColor)
+                        ) {
+                            when {
+                                sending -> Icon(
+                                    Icons.Filled.Stop,
+                                    contentDescription = "停止",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(21.dp)
+                                )
+                                input.isNotBlank() -> Icon(
+                                    Icons.AutoMirrored.Filled.Send,
+                                    contentDescription = "发送",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(21.dp)
+                                )
+                                else -> Icon(
+                                    Icons.Filled.Mic,
+                                    contentDescription = "语音输入",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(21.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+internal fun estimateChatDraftTokens(text: String): Int {
+    if (text.isEmpty()) return 0
+    val chineseCount = text.count { it.code in 0x4E00..0x9FFF }
+    val otherCount = text.length - chineseCount
+    return (chineseCount + otherCount / 4).coerceAtLeast(1)
+}
+
+@Composable
+private fun ChatContextSummaryCard(
+    messageCount: Int,
+    charCount: Int,
+    tokenEstimate: Int,
+    sending: Boolean,
+    compressEnabled: Boolean,
+    onCompress: () -> Unit
+) {
+    androidx.compose.material3.Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.56f),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.AutoAwesome,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(21.dp)
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "上下文",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "当前会话与输入统计",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                TextButton(onClick = onCompress, enabled = compressEnabled) {
+                    Icon(Icons.Filled.Compress, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("压缩")
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ChatContextMetric("消息", messageCount.toString(), Modifier.weight(1f))
+                ChatContextMetric("草稿字符", charCount.toString(), Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ChatContextMetric("估算 Token", tokenEstimate.toString(), Modifier.weight(1f))
+                ChatContextMetric("状态", if (sending) "生成中" else "就绪", Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatContextMetric(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.48f))
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(3.dp))
+        Text(value, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun ChatMenuSectionTitle(title: String) {
+    Text(
+        title,
+        modifier = Modifier.padding(start = 2.dp, top = 2.dp),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontWeight = FontWeight.SemiBold
+    )
+}
+
+@Composable
+private fun ChatQuickActionCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .height(88.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(
+                if (enabled) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.54f)
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.26f)
+            )
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(Modifier.height(7.dp))
+        Text(
+            title,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1
+        )
+        Text(
+            subtitle,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun ChatMenuToolRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    danger: Boolean = false
+) {
+    val accent = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(accent.copy(alpha = if (enabled) 0.13f else 0.06f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = if (enabled) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (enabled) {
+                    if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                } else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Text(
+            "›",
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 0.62f else 0.28f)
+        )
+    }
+}
+
+@Composable
+private fun ChatMenuDivider() {
+    androidx.compose.material3.HorizontalDivider(
+        modifier = Modifier.padding(start = 64.dp),
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
+    )
+}
+
+'''
+
+          path.write_text(source[:start] + replacement + source[end:], encoding='utf-8')
+
+          test_path = Path('app/src/test/kotlin/com/nekobot/app/ui/screens/chat/ChatInputMenuTest.kt')
+          test_path.parent.mkdir(parents=True, exist_ok=True)
+          test_path.write_text('''package com.nekobot.app.ui.screens.chat\n\nimport org.junit.Assert.assertEquals\nimport org.junit.Test\n\nclass ChatInputMenuTest {\n    @Test\n    fun estimateChatDraftTokens_handlesMixedText() {\n        assertEquals(0, estimateChatDraftTokens(""))\n        assertEquals(4, estimateChatDraftTokens("测试文本"))\n        assertEquals(1, estimateChatDraftTokens("abcd"))\n        assertEquals(3, estimateChatDraftTokens("测试abcd"))\n    }\n}\n''', encoding='utf-8')
+          PY
+
+      - name: Run unit tests
+        continue-on-error: true
+        run: ./gradlew :app:testDebugUnitTest
+
+      - name: Commit generated changes
+        shell: bash
+        run: |
+          rm -f .github/workflows/agent-modern-chat-input.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: redesign chat action menu and input capsule"
+          git push origin HEAD:agent/modern-chat-input-menu
