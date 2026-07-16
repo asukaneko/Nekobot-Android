@@ -767,6 +767,18 @@ class UnifiedRepository(
     suspend fun uploadPortrait(file: okhttp3.MultipartBody.Part): Resource<String> =
         if (isLocal) localNotSupported("立绘上传") else remote.uploadPortrait(file)
 
+    // ---- AI 立绘生成（远程模式专用，本地模式不支持） ----
+    suspend fun generatePortrait(
+        characterName: String,
+        description: String,
+        basicInfo: String,
+        personality: String
+    ): Resource<JsonElement> =
+        if (isLocal) localNotSupported("AI 立绘生成")
+        else remote.generatePortrait(characterName, description, basicInfo, personality)
+    suspend fun getPortraitGenerationStatus(taskId: String): Resource<JsonElement> =
+        if (isLocal) localNotSupported("AI 立绘生成") else remote.getPortraitGenerationStatus(taskId)
+
     // ---- 登录令牌 ----
     suspend fun listLoginTokens(): Resource<List<LoginToken>> =
         if (isLocal) localNotSupported("登录令牌") else remote.listLoginTokens()

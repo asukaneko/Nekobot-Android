@@ -44,6 +44,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -605,6 +606,7 @@ private fun formatTokenCount(tokens: Long): String {
 private fun TokenRecordCard(record: TokenRecordUi) {
     val compactTs = compactTimestamp(record.timestamp)?.substringAfter(' ')
     val purposeLabel = purposeLabel(record.purpose)
+    val badgeColor = purposeColor(record.purpose)
 
     Column(
         modifier = Modifier
@@ -631,7 +633,7 @@ private fun TokenRecordCard(record: TokenRecordUi) {
                 if (record.source.isNotBlank() || record.sessionId.isNotBlank()) {
                     Text(
                         listOfNotNull(
-                            record.source.takeIf { it.isNotBlank() }?.let { "来源 $it" },
+                            record.source.takeIf { it.isNotBlank() }?.let { "来源 ${sourceLabel(it)}" },
                             record.sessionId.takeIf { it.isNotBlank() }?.let { "会话 ${it.take(8)}" }
                         ).joinToString(" · "),
                         style = MaterialTheme.typography.labelSmall,
@@ -645,10 +647,10 @@ private fun TokenRecordCard(record: TokenRecordUi) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                        .background(badgeColor.copy(alpha = 0.18f))
                         .padding(horizontal = 7.dp, vertical = 3.dp)
                 ) {
-                    Text(purposeLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
+                    Text(purposeLabel, style = MaterialTheme.typography.labelSmall, color = badgeColor, fontWeight = FontWeight.Medium)
                 }
                 if (!compactTs.isNullOrBlank()) {
                     Spacer(Modifier.height(4.dp))
@@ -769,7 +771,35 @@ private fun purposeLabel(purpose: String): String = when (purpose.lowercase()) {
     "utility" -> "工具调用"
     "decision" -> "决策"
     "heartbeat" -> "心跳"
+    "react" -> "ReAct"
+    "image_gen" -> "图片生成"
     else -> purpose.ifBlank { "未分类" }
+}
+
+/**
+ * purpose 对应的徽章颜色：按用途分组，对话类→primary，记忆/理解类→secondary，
+ * 生成类→tertiary，系统/工具类→error。
+ */
+@Composable
+private fun purposeColor(purpose: String): Color = when (purpose.lowercase()) {
+    "chat", "react" -> MaterialTheme.colorScheme.primary
+    "memory", "vision", "video", "embedding" -> MaterialTheme.colorScheme.secondary
+    "plot", "decision", "tts", "stt" -> MaterialTheme.colorScheme.tertiary
+    "utility", "heartbeat", "image_gen" -> MaterialTheme.colorScheme.error
+    else -> MaterialTheme.colorScheme.primary
+}
+
+/** source 字段中文映射 */
+private fun sourceLabel(source: String): String = when (source.lowercase()) {
+    "plot" -> "剧情"
+    "state" -> "状态评估"
+    "memory" -> "记忆抽取"
+    "web" -> "联网搜索"
+    "vision" -> "视觉识别"
+    "stt" -> "语音识别"
+    "rule" -> "规则审查"
+    "heartbeat" -> "心跳"
+    else -> source
 }
 
 private fun formatDuration(milliseconds: Double): String = when {

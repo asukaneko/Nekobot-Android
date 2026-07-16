@@ -827,43 +827,29 @@ private fun formatTime(ms: Int): String {
 }
 
 /**
- * PDF 渲染器：使用系统 [PdfRenderer] 将 PDF 各页渲染为 Bitmap 并可滚动展示。
+ * PDF 渲染器：使用系统 [PdfRenderer] 按需渲染各页为 Bitmap 并滚动展示。
  * 入参为本地 [File]（已下载到缓存目录）。
+ * 每页独立加载，避免一次性渲染所有页导致 OOM。
  */
 @Composable
 fun PdfRendererFromFile(file: File, modifier: Modifier = Modifier) {
-    var bitmaps by remember(file) { mutableStateOf<List<Bitmap>>(emptyList()) }
+    var pageCount by remember(file) { mutableStateOf(0) }
     var loading by remember(file) { mutableStateOf(true) }
     var error by remember(file) { mutableStateOf<String?>(null) }
 
     LaunchedEffect(file) {
         loading = true
         error = null
-        bitmaps = emptyList()
+        pageCount = 0
         try {
-            bitmaps = withContext(Dispatchers.IO) {
-                if (!file.exists()) return@withContext emptyList()
+            pageCount = withContext(Dispatchers.IO) {
+                if (!file.exists()) return@withContext 0
                 ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
-                    PdfRenderer(pfd).use { renderer ->
-                        (0 until renderer.pageCount).map { idx ->
-                            val page = renderer.openPage(idx)
-                            try {
-                                // 按宽度 1080 像素等比缩放渲染
-                                val targetWidth = 1080
-                                val scale = targetWidth.toFloat() / page.width.toFloat()
-                                val targetHeight = (page.height * scale).toInt()
-                                val bmp = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
-                                page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                                bmp
-                            } finally {
-                                page.close()
-                            }
-                        }
-                    }
+                    PdfRenderer(pfd).use { it.pageCount }
                 }
             }
-            if (bitmaps.isEmpty()) error = "无法读取 PDF 内容"
-        } catch (e: Exception) {
+            if (pageCount == 0) error = "无法读取 PDF 内容"
+        } catch (e: Throwable) {
             error = e.message ?: "PDF 渲染失败"
         } finally {
             loading = false
@@ -887,18 +873,78 @@ fun PdfRendererFromFile(file: File, modifier: Modifier = Modifier) {
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(bitmaps) { bmp ->
-                    AsyncImage(
-                        model = bmp.asImageBitmap(),
-                        contentDescription = "PDF 页",
-                        contentScale = ContentScale.FillWidth,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                    )
+                items(pageCount) { idx ->
+                    PdfPageBitmap(file = file, pageIndex = idx)
                 }
             }
+        }
+    }
+}
+
+/** 单页 PDF 渲染：按需加载，加载失败显示该页错误而不影响其他页。 */
+@Composable
+private fun PdfPageBitmap(file: File, pageIndex: Int) {
+    var bmp by remember(file, pageIndex) { mutableStateOf<Bitmap?>(null) }
+    var loading by remember(file, pageIndex) { mutableStateOf(true) }
+    var error by remember(file, pageIndex) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(file, pageIndex) {
+        loading = true
+        error = null
+        bmp = null
+        try {
+            bmp = withContext(Dispatchers.IO) {
+                ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+                    PdfRenderer(pfd).use { renderer ->
+                        val page = renderer.openPage(pageIndex)
+                        try {
+                            // 按宽度 1080 像素等比缩放渲染
+                            val targetWidth = 1080
+                            val scale = targetWidth.toFloat() / page.width.toFloat()
+                            val targetHeight = (page.height * scale).toInt()
+                            val b = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+                            page.render(b, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                            b
+                        } finally {
+                            page.close()
+                        }
+                    }
+                }
+            }
+        } catch (e: Throwable) {
+            error = e.message ?: "第 ${pageIndex + 1} 页渲染失败"
+        } finally {
+            loading = false
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 120.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        val b = bmp
+        when {
+            loading -> CircularProgressIndicator(
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(28.dp)
+            )
+            error != null -> Text(
+                text = "第 ${pageIndex + 1} 页加载失败: $error",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(8.dp)
+            )
+            b != null -> AsyncImage(
+                model = b.asImageBitmap(),
+                contentDescription = "PDF 第 ${pageIndex + 1} 页",
+                contentScale = ContentScale.FillWidth,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
+                    .clip(RoundedCornerShape(6.dp))
+            )
         }
     }
 }
@@ -992,19 +1038,42 @@ fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
                         }
                     }
                     FilePreviewType.HTML -> {
-                        AndroidView(
-                            factory = { ctx ->
-                                WebView(ctx).apply {
-                                    settings.javaScriptEnabled = true
-                                    settings.domStorageEnabled = true
-                                    settings.loadWithOverviewMode = true
-                                    settings.useWideViewPort = true
-                                    webViewClient = WebViewClient()
-                                    file.absolutePath.let { loadDataWithBaseURL("file://$it", file.readText(), "text/html", "UTF-8", null) }
-                                }
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        var htmlContent by remember(file) { mutableStateOf<String?>(null) }
+                        var htmlErr by remember(file) { mutableStateOf<String?>(null) }
+                        LaunchedEffect(file) {
+                            try {
+                                htmlContent = withContext(Dispatchers.IO) { file.readText() }
+                            } catch (e: Exception) {
+                                htmlErr = e.message ?: "读取失败"
+                            }
+                        }
+                        when {
+                            htmlContent != null -> {
+                                val content = htmlContent!!
+                                AndroidView(
+                                    factory = { ctx ->
+                                        WebView(ctx).apply {
+                                            settings.javaScriptEnabled = true
+                                            settings.domStorageEnabled = true
+                                            settings.loadWithOverviewMode = true
+                                            settings.useWideViewPort = true
+                                            webViewClient = WebViewClient()
+                                            loadDataWithBaseURL("about:blank", content, "text/html", "UTF-8", null)
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                            htmlErr != null -> Text(
+                                "加载失败: $htmlErr",
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.align(Alignment.Center)
+                            )
+                            else -> CircularProgressIndicator(
+                                color = Color.White,
+                                modifier = Modifier.align(Alignment.Center)
+                            )
+                        }
                     }
                     FilePreviewType.PDF -> {
                         PdfRendererFromFile(file = file, modifier = Modifier.fillMaxSize())

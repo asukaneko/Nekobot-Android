@@ -585,6 +585,14 @@ interface ApiService {
         @Part file: MultipartBody.Part
     ): Response<PortraitUploadResponse>
 
+    /** 提交 AI 立绘生成任务（异步，返回 task_id） */
+    @POST("api/personality/generate-portrait")
+    suspend fun generatePortrait(@Body body: Map<String, String>): Response<JsonElement>
+
+    /** 查询 AI 立绘生成任务状态 */
+    @GET("api/personality/generate-portrait/{taskId}")
+    suspend fun getPortraitGenerationStatus(@Path("taskId") taskId: String): Response<JsonElement>
+
     // ==================== 登录令牌 ====================
     @GET("api/login-tokens")
     suspend fun listLoginTokens(): Response<LoginTokenListResponse>

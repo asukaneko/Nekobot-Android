@@ -676,6 +676,30 @@ class NekobotRepository(
             res.url ?: throw IllegalStateException(res.error ?: "上传失败")
         }
 
+    /**
+     * 提交 AI 立绘生成任务（异步）。返回包含 task_id 的 JSON，需轮询 [getPortraitGenerationStatus]。
+     * 后端响应：{ success, task_id, status, message } 或 { success: false, need_config, error }
+     */
+    suspend fun generatePortrait(
+        characterName: String,
+        description: String,
+        basicInfo: String,
+        personality: String
+    ): Resource<JsonElement> = safeCall {
+        api.generatePortrait(
+            mapOf(
+                "character_name" to characterName,
+                "description" to description,
+                "basic_info" to basicInfo,
+                "personality" to personality
+            )
+        )
+    }
+
+    /** 查询 AI 立绘生成任务状态。后端响应：{ success, status, portrait_url, error, ... } */
+    suspend fun getPortraitGenerationStatus(taskId: String): Resource<JsonElement> =
+        safeCall { api.getPortraitGenerationStatus(taskId) }
+
     // ==================== 登录令牌 ====================
     suspend fun listLoginTokens(): Resource<List<LoginToken>> =
         safeCall { api.listLoginTokens() }.mapData { it.tokens }

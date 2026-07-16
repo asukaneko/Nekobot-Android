@@ -2,9 +2,12 @@ package com.nekobot.app.ui.screens.characters
 
 import android.content.Context
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -12,6 +15,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Upload
@@ -19,20 +23,30 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.lifecycle.viewModelScope
+import coil.compose.AsyncImage
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.data.model.CharacterPreset
+import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.components.LoadingOverlay
 import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -181,6 +195,101 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
             onSuccess = { onSuccess() }
         )
     }
+
+    /**
+     * AI 生成立绘：提交异步任务并轮询直到完成，成功后将 URL 写入 portrait 字段。
+     * 需先填写角色名；远程模式专用。
+     */
+    fun generatePortraitAI() {
+        val characterName = name.value.trim()
+        if (characterName.isBlank()) {
+            showToast("请先输入角色名")
+            return
+        }
+        launchResult(
+            block = {
+                unified.generatePortrait(
+                    characterName = characterName,
+                    description = description.value.trim(),
+                    basicInfo = basicInfo.value.trim(),
+                    personality = personality.value.trim()
+                )
+            },
+            onSuccess = { result ->
+                val obj = result?.takeIf { it.isJsonObject }?.asJsonObject
+                val success = obj?.get("success")?.takeIf { !it.isJsonNull }?.asBoolean ?: false
+                if (!success) {
+                    val needConfig = obj?.get("need_config")?.takeIf { !it.isJsonNull }?.asBoolean ?: false
+                    val error = obj?.get("error")?.takeIf { !it.isJsonNull }?.asString
+                    showToast(if (needConfig) "未配置图片生成模型，请先在AI配置中添加" else (error ?: "立绘生成失败"))
+                    return@launchResult
+                }
+                val taskId = obj?.get("task_id")?.takeIf { !it.isJsonNull }?.asString
+                if (taskId.isNullOrBlank()) {
+                    showToast("立绘生成任务提交失败")
+                    return@launchResult
+                }
+                showToast("立绘生成中…")
+                pollPortraitTask(taskId)
+            }
+        )
+    }
+
+    /** 轮询 AI 立绘生成任务状态，完成或失败时结束。 */
+    private fun pollPortraitTask(taskId: String) {
+        viewModelScope.launch {
+            setLoading(true)
+            try {
+                var attempts = 0
+                val maxAttempts = 60  // 最多轮询 60 次（约 2 分钟）
+                var resultUrl: String? = null
+                while (attempts < maxAttempts) {
+                    delay(2000)
+                    when (val res = unified.getPortraitGenerationStatus(taskId)) {
+                        is Resource.Success -> {
+                            val obj = res.data?.takeIf { it.isJsonObject }?.asJsonObject
+                            when (obj?.get("status")?.takeIf { !it.isJsonNull }?.asString) {
+                                "completed" -> {
+                                    resultUrl = obj?.get("portrait_url")?.takeIf { !it.isJsonNull }?.asString
+                                    if (!resultUrl.isNullOrBlank()) break
+                                }
+                                "failed" -> {
+                                    val error = obj?.get("error")?.takeIf { !it.isJsonNull }?.asString ?: "立绘生成失败"
+                                    throw Exception(error)
+                                }
+                            }
+                        }
+                        is Resource.Error -> throw Exception(res.message)
+                        else -> {}
+                    }
+                    attempts++
+                }
+                if (!resultUrl.isNullOrBlank()) {
+                    portrait.value = resultUrl
+                    // 编辑模式下自动保存 portrait 到后端角色卡，避免用户忘记保存
+                    val id = _character.value?.id
+                    if (!isNew && !id.isNullOrBlank()) {
+                        try {
+                            val payload = mapOf("portrait" to resultUrl)
+                            val json = com.nekobot.app.ServiceContainer.gson.toJsonTree(payload)
+                            unified.updateCharacter(id, json)
+                            showToast("立绘生成成功，已自动保存")
+                        } catch (_: Exception) {
+                            showToast("立绘生成成功，请点击保存按钮")
+                        }
+                    } else {
+                        showToast("立绘生成成功，请点击保存按钮")
+                    }
+                } else {
+                    showToast("立绘生成超时")
+                }
+            } catch (e: Exception) {
+                showToast(e.message ?: "立绘生成失败")
+            } finally {
+                setLoading(false)
+            }
+        }
+    }
 }
 
 /**
@@ -228,6 +337,15 @@ fun CharacterDetailScreen(
     // 订阅全局 appMode Flow，模式切换时自动刷新
     val appMode by ServiceContainer.appModeFlow.collectAsState()
     val isLocalMode = appMode == AppMode.LOCAL
+    val toast by vm.toast.collectAsState()
+    var fullscreenPortrait by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(toast) {
+        if (toast != null) {
+            Toast.makeText(context, toast, Toast.LENGTH_SHORT).show()
+            vm.clearToast()
+        }
+    }
 
     // 立绘图片文件选择器
     val portraitLauncher = rememberLauncherForActivityResult(
@@ -337,8 +455,11 @@ fun CharacterDetailScreen(
                     onValueChange = { vm.portrait.value = it },
                     onUploadClick = {
                         portraitLauncher.launch(arrayOf("image/*"))
-                    }
+                    },
+                    onAiGenerateClick = if (isLocalMode) null else { { vm.generatePortraitAI() } }
                 )
+                // 立绘预览：点击查看大图
+                PortraitPreview(portrait = portrait, onClick = { fullscreenPortrait = it })
                 // 基础信息（多行）
                 LabeledField(
                     label = "基础信息（basicInfo，身高/年龄/职业等）",
@@ -435,6 +556,12 @@ fun CharacterDetailScreen(
             onCancel = { showDeleteDialog = false }
         )
     }
+
+    // 全屏立绘查看
+    val fsUrl = fullscreenPortrait
+    if (fsUrl != null) {
+        FullscreenPortraitDialog(url = fsUrl, onDismiss = { fullscreenPortrait = null })
+    }
 }
 
 /** 六维滑块：标签 + 数值 + 滑块（0-100） */
@@ -509,13 +636,14 @@ private fun LabeledField(
     }
 }
 
-/** 带上传按钮的标签输入框：单行文本 + 右侧上传图标按钮 */
+/** 带上传按钮的标签输入框：单行文本 + 右侧上传图标按钮（可选 AI 生成按钮） */
 @Composable
 private fun LabeledFieldWithUpload(
     label: String,
     value: String,
     onValueChange: (String) -> Unit,
-    onUploadClick: () -> Unit
+    onUploadClick: () -> Unit,
+    onAiGenerateClick: (() -> Unit)? = null
 ) {
     Column {
         Text(
@@ -554,6 +682,16 @@ private fun LabeledFieldWithUpload(
                     contentDescription = "上传图片",
                     tint = MaterialTheme.colorScheme.primary
                 )
+            }
+            if (onAiGenerateClick != null) {
+                Spacer(Modifier.width(4.dp))
+                IconButton(onClick = onAiGenerateClick) {
+                    Icon(
+                        Icons.Filled.AutoAwesome,
+                        contentDescription = "AI 生成立绘",
+                        tint = MaterialTheme.colorScheme.tertiary
+                    )
+                }
             }
         }
     }
@@ -612,5 +750,101 @@ private fun guessImageExt(context: Context, uri: Uri): String {
         mime.contains("webp") -> "webp"
         mime.contains("gif") -> "gif"
         else -> "png"
+    }
+}
+
+/** 把相对路径图片地址拼成完整 URL（兼容本地 file: 路径） */
+private fun resolveImageUrl(path: String): String {
+    if (path.startsWith("file:") || path.startsWith("content://")) return path
+    if (path.startsWith("http://") || path.startsWith("https://")) return path
+    val base = ServiceContainer.network.baseUrl().trimEnd('/')
+    return base + "/" + path.trimStart('/')
+}
+
+/**
+ * 立绘预览卡片：非空时展示缩略图，点击进入全屏查看。
+ */
+@Composable
+private fun PortraitPreview(portrait: String, onClick: (String) -> Unit) {
+    if (portrait.isBlank()) return
+    val url = remember(portrait) { resolveImageUrl(portrait) }
+    Column {
+        Text(
+            text = "立绘预览（点击查看大图）",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(6.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(220.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .clickable { onClick(url) },
+            contentAlignment = Alignment.Center
+        ) {
+            AsyncImage(
+                model = url,
+                contentDescription = "立绘预览",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+    }
+}
+
+/**
+ * 全屏立绘查看：支持双指缩放与拖动，单击或点击关闭按钮退出。
+ */
+@Composable
+private fun FullscreenPortraitDialog(url: String, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.92f))
+        ) {
+            var scale by remember { mutableStateOf(1f) }
+            var offsetX by remember { mutableStateOf(0f) }
+            var offsetY by remember { mutableStateOf(0f) }
+            AsyncImage(
+                model = url,
+                contentDescription = "立绘大图",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            scale = (scale * zoom).coerceIn(0.5f, 5f)
+                            offsetX += pan.x
+                            offsetY += pan.y
+                        }
+                    }
+                    .graphicsLayer(
+                        scaleX = scale,
+                        scaleY = scale,
+                        translationX = offsetX,
+                        translationY = offsetY
+                    )
+                    .clickable { onDismiss() }
+            )
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(12.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .clickable { onDismiss() }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "关闭",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
+        }
     }
 }
