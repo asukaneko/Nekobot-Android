@@ -1,12 +1,14 @@
 name: Apply modern chat input redesign
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/modern-chat-input-menu
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: write
+  pull-requests: read
 
 jobs:
   patch-chat-input:
@@ -364,11 +366,13 @@ private fun ChatInputBar(
 
                         val primaryAction: () -> Unit = when {
                             sending -> onStop
-                            input.isNotBlank() -> {{
-                                inputExpanded = false
-                                closePanel()
-                                onSend()
-                            }}
+                            input.isNotBlank() -> {
+                                {
+                                    inputExpanded = false
+                                    closePanel()
+                                    onSend()
+                                }
+                            }
                             else -> onVoiceInput
                         }
                         val primaryColor = when {
@@ -636,10 +640,6 @@ private fun ChatMenuDivider() {
           test_path.write_text('''package com.nekobot.app.ui.screens.chat\n\nimport org.junit.Assert.assertEquals\nimport org.junit.Test\n\nclass ChatInputMenuTest {\n    @Test\n    fun estimateChatDraftTokens_handlesMixedText() {\n        assertEquals(0, estimateChatDraftTokens(""))\n        assertEquals(4, estimateChatDraftTokens("测试文本"))\n        assertEquals(1, estimateChatDraftTokens("abcd"))\n        assertEquals(3, estimateChatDraftTokens("测试abcd"))\n    }\n}\n''', encoding='utf-8')
           PY
 
-      - name: Run unit tests
-        continue-on-error: true
-        run: ./gradlew :app:testDebugUnitTest
-
       - name: Commit generated changes
         shell: bash
         run: |
@@ -649,3 +649,6 @@ private fun ChatMenuDivider() {
           git add -A
           git commit -m "feat: redesign chat action menu and input capsule"
           git push origin HEAD:agent/modern-chat-input-menu
+
+      - name: Run unit tests
+        run: ./gradlew :app:testDebugUnitTest
