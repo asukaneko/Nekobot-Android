@@ -116,45 +116,39 @@ fun ModernChatScreen(
     val sending by viewModel.sending.collectAsState()
     val plotChoices by viewModel.plotChoices.collectAsState()
     val plotChoicesLoading by viewModel.plotChoicesLoading.collectAsState()
-    val selectionMode by viewModel.selectionMode.collectAsState()
     val listState = rememberLazyListState()
     val composerScope = rememberCoroutineScope()
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        ChatScreen(
+    ChatScreen(
+    sessionId = sessionId,
+    onBack = onBack,
+    onOpenChat = onOpenChat,
+    onOpenSessionDetail = onOpenSessionDetail,
+    onOpenWorkspace = onOpenWorkspace,
+    onOpenStoryGraph = onOpenStoryGraph,
+    externalListState = listState,
+    customBottomBar = {
+        ModernChatComposer(
+            modifier = Modifier.fillMaxWidth(),
             sessionId = sessionId,
-            onBack = onBack,
-            onOpenChat = onOpenChat,
-            onOpenSessionDetail = onOpenSessionDetail,
-            onOpenWorkspace = onOpenWorkspace,
-            onOpenStoryGraph = onOpenStoryGraph,
-            externalListState = listState
+            messages = messages,
+            sending = sending,
+            plotChoices = plotChoices,
+            plotChoicesLoading = plotChoicesLoading,
+            onSend = { text, plotChoiceId -> viewModel.sendMessage(text, plotChoiceId) },
+            onStop = viewModel::stop,
+            onCompress = viewModel::compressContext,
+            onClear = { viewModel.clearMessages(sessionId) },
+            onRegeneratePlotChoices = viewModel::regeneratePlotChoices,
+            onOpenWorkspace = { onOpenWorkspace(sessionId) },
+            onJumpToLatest = onJumpToLatest,
+            onJumpToMessage = { msg ->
+                val idx = messages.indexOfFirst { it.id == msg.id }
+                if (idx >= 0) composerScope.launch { listState.animateScrollToItem(idx + 1) }
+            }
         )
-
-        if (!selectionMode) {
-            ModernChatComposer(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .zIndex(20f),
-                sessionId = sessionId,
-                messages = messages,
-                sending = sending,
-                plotChoices = plotChoices,
-                plotChoicesLoading = plotChoicesLoading,
-                onSend = { text, plotChoiceId -> viewModel.sendMessage(text, plotChoiceId) },
-                onStop = viewModel::stop,
-                onCompress = viewModel::compressContext,
-                onClear = { viewModel.clearMessages(sessionId) },
-                onRegeneratePlotChoices = viewModel::regeneratePlotChoices,
-                onOpenWorkspace = { onOpenWorkspace(sessionId) },
-                onJumpToLatest = onJumpToLatest,
-                onJumpToMessage = { msg ->
-                    val idx = messages.indexOfFirst { it.id == msg.id }
-                    if (idx >= 0) composerScope.launch { listState.animateScrollToItem(idx + 1) }
-                }
-            )
-        }
     }
+)
 }
 
 @Composable

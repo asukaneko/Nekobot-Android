@@ -153,7 +153,16 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Unit = {}, onOpenSessionDetail: (String) -> Unit = {}, onOpenWorkspace: (String) -> Unit = {}, onOpenStoryGraph: (String) -> Unit = {}, externalListState: androidx.compose.foundation.lazy.LazyListState? = null) {
+fun ChatScreen(
+    sessionId: String,
+    onBack: () -> Unit,
+    onOpenChat: (String) -> Unit = {},
+    onOpenSessionDetail: (String) -> Unit = {},
+    onOpenWorkspace: (String) -> Unit = {},
+    onOpenStoryGraph: (String) -> Unit = {},
+    externalListState: androidx.compose.foundation.lazy.LazyListState? = null,
+    customBottomBar: (@Composable () -> Unit)? = null
+) {
     val viewModel: ChatViewModel = viewModel()
     val messages by viewModel.messages.collectAsState()
     val session by viewModel.session.collectAsState()
@@ -502,6 +511,9 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
         bottomBar = {
             // 多选模式下隐藏输入栏
             if (!selectionMode) {
+        if (customBottomBar != null) {
+            customBottomBar()
+        } else {
                 // 底部输入栏：左侧 + 按钮展开数据/操作面板，中间输入框，右侧发送
                 ChatInputBar(
                     input = input,
@@ -556,6 +568,7 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
                     onShowSearch = { showSearchDialog = true },
                     fileBusy = fileBusy
                 )
+                }
             }
         },
         snackbarHost = { androidx.compose.material3.SnackbarHost(snackbarHostState) }
