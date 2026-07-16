@@ -25,6 +25,8 @@ import kotlinx.coroutines.channels.Channel
  * @param worldBookEntries 世界书条目（已加载）
  * @param characterRuntime 角色运行时（可空，启用角色模式时传入）
  * @param characterIdentity 角色身份标识（可空）
+ * @param coordinator 故障转移协调器（可空，传入则使用持久化队列；否则回退到内存版 chatOnceWithFailover）
+ * @param failoverQueue 故障转移队列：除 activeModel 外可用的备选模型（同 purpose，按 priority 升序）
  */
 class LocalPipelineCallbacks(
     private val db: NekobotDatabase,
@@ -36,8 +38,10 @@ class LocalPipelineCallbacks(
     private val characterRuntime: CharacterRuntime? = null,
     private val characterIdentity: CharacterIdentity? = null,
     private val onTokenRecorded: ((sessionId: String, model: String, inputTokens: Int, outputTokens: Int, timestamp: String, purpose: String) -> Unit)? = null,
-    /** 故障转移队列：除 activeModel 外可用的备选模型（同 purpose，按 priority 升序） */
-    private val failoverQueue: List<LocalAiModelEntity> = emptyList()
+    /** 故障转移队列：activeModel 优先 + 同 purpose 其他启用模型，按 priority 升序 */
+    private val failoverQueue: List<LocalAiModelEntity> = emptyList(),
+    /** 持久化故障转移协调器；非空时 [buildModelCall] 走 coordinator，否则回退到 chatOnceWithFailover */
+    private val coordinator: FailoverCoordinator? = null
 ) : PipelineCallbacks() {
 
     companion object {
@@ -164,9 +168,28 @@ class LocalPipelineCallbacks(
                 if (tools.isNotEmpty()) put("tools", tools)
             }
 
-            // 使用带故障转移的 chatOnceWithFailover
-            val result = kotlinx.coroutines.runBlocking {
-                aiClient.chatOnceWithFailover(modelQueue, messages, extra)
+            // 优先走 coordinator（持久化健康状态 + token 限额 + 超时）；为空时回退到内存版
+            val result = if (coordinator != null) {
+                kotlinx.coroutines.runBlocking {
+                    try {
+                        val exec = coordinator.execute(modelQueue, activeModel.purpose.ifBlank { "chat" }) { model ->
+                            aiClient.chatOnce(model, messages, extra)
+                        }
+                        // 用实际使用的模型构造结果
+                        LocalAiResult(
+                            content = exec.value.content,
+                            usage = exec.value.usage,
+                            usedModelId = exec.model.id,
+                            usedModelName = exec.model.name
+                        )
+                    } catch (e: FailoverAllFailedException) {
+                        LocalAiResult("", error = e.message ?: "所有模型均失败")
+                    }
+                }
+            } else {
+                kotlinx.coroutines.runBlocking {
+                    aiClient.chatOnceWithFailover(modelQueue, messages, extra)
+                }
             }
 
             if (result.error != null) {
@@ -193,11 +216,27 @@ class LocalPipelineCallbacks(
                 activeModel.topP?.let { put("top_p", it) }
             }
 
-            // 这里返回单个"chunk"，实际流式由 runStreaming 内部处理
-            // 为了复用 LocalAiClient 的流式能力，我们在 onStreamStart/onStreamChunk 中处理
-            // 此方法返回包含完整内容的列表（简化）
-            val result = kotlinx.coroutines.runBlocking {
-                aiClient.chatOnceWithFailover(modelQueue, messages, extra)
+            // 流式回退到非流式 coordinator/chatOnceWithFailover（流式故障转移在 LocalRepository.chat 中处理）
+            val result = if (coordinator != null) {
+                kotlinx.coroutines.runBlocking {
+                    try {
+                        val exec = coordinator.execute(modelQueue, activeModel.purpose.ifBlank { "chat" }) { model ->
+                            aiClient.chatOnce(model, messages, extra)
+                        }
+                        LocalAiResult(
+                            content = exec.value.content,
+                            usage = exec.value.usage,
+                            usedModelId = exec.model.id,
+                            usedModelName = exec.model.name
+                        )
+                    } catch (e: FailoverAllFailedException) {
+                        LocalAiResult("", error = e.message ?: "所有模型均失败")
+                    }
+                }
+            } else {
+                kotlinx.coroutines.runBlocking {
+                    aiClient.chatOnceWithFailover(modelQueue, messages, extra)
+                }
             }
 
             if (result.error != null) {

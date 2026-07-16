@@ -20,6 +20,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalWorldBookEntity::class,
         LocalWorldBookEntryEntity::class,
         LocalAiModelEntity::class,
+        LocalFailoverHealthEntity::class,
         LocalCharacterStateEntity::class,
         LocalRelationshipStateEntity::class,
         LocalCharacterMemoryEntity::class,
@@ -33,7 +34,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalApiKeyEntity::class,
         LocalMessageFavoriteEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -42,6 +43,7 @@ abstract class NekobotDatabase : RoomDatabase() {
     abstract fun characterDao(): CharacterDao
     abstract fun worldBookDao(): WorldBookDao
     abstract fun aiModelDao(): AiModelDao
+    abstract fun failoverHealthDao(): FailoverHealthDao
     abstract fun characterStateDao(): CharacterStateDao
     abstract fun relationshipDao(): RelationshipDao
     abstract fun memoryDao(): MemoryDao
@@ -316,6 +318,34 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v10 → v11：
+         * 1) local_ai_models 新增故障转移策略列：token_limit_daily / token_limit_weekly / failover_timeout / input_price / output_price。
+         * 2) 新增 local_failover_health 表：持久化模型健康状态（连续失败/冷却期），跨重启保留。
+         */
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN token_limit_daily INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN token_limit_weekly INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN failover_timeout INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN input_price REAL")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN output_price REAL")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_failover_health (
+                        model_id TEXT NOT NULL PRIMARY KEY,
+                        consecutive_failures INTEGER NOT NULL DEFAULT 0,
+                        last_failure_code INTEGER NOT NULL DEFAULT 0,
+                        last_failure_at_ms INTEGER NOT NULL DEFAULT 0,
+                        cooldown_until_ms INTEGER NOT NULL DEFAULT 0,
+                        daily_failures INTEGER NOT NULL DEFAULT 0,
+                        daily_failures_date TEXT NOT NULL DEFAULT ''
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         /** 数据库实例缓存：按 db 名（含扩展）区分，支持多 profile 切换。 */
         private val INSTANCES = mutableMapOf<String, NekobotDatabase>()
 
@@ -331,7 +361,7 @@ abstract class NekobotDatabase : RoomDatabase() {
                 NekobotDatabase::class.java,
                 dbName
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                 // 仅当迁移脚本未覆盖的未来版本变更时才回退到破坏性迁移（保护现有数据）
                 .fallbackToDestructiveMigration()
                 .build()

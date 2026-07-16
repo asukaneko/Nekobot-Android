@@ -68,6 +68,7 @@ object Routes {
     const val CHANNELS = "channels"
     const val MESSAGE_FILTER = "message_filter"
     const val TTS_PLAYGROUND = "tts_playground"
+    const val IMAGE_GENERATION_PLAYGROUND = "image_generation_playground"
     const val LOGIN_TOKENS = "login_tokens"
     const val API_KEYS = "api_keys"
 }

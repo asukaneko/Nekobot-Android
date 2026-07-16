@@ -59,6 +59,7 @@ import com.nekobot.app.ui.screens.extensions.McpServersScreen
 import com.nekobot.app.ui.screens.extensions.ChannelsScreen
 import com.nekobot.app.ui.screens.extensions.MessageFilterScreen
 import com.nekobot.app.ui.screens.extensions.TtsPlaygroundScreen
+import com.nekobot.app.ui.screens.extensions.ImageGenerationPlaygroundScreen
 import com.nekobot.app.ui.screens.extensions.LoginTokensScreen
 import com.nekobot.app.ui.screens.extensions.ApiKeysScreen
 
@@ -380,6 +381,9 @@ fun NekobotNavGraph() {
             }
             composable(Routes.TTS_PLAYGROUND) {
                 TtsPlaygroundScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.IMAGE_GENERATION_PLAYGROUND) {
+                ImageGenerationPlaygroundScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.LOGIN_TOKENS) {
                 LoginTokensScreen(onBack = { navController.popBackStack() })

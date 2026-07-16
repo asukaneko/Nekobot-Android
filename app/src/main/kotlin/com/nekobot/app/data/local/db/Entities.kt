@@ -182,7 +182,27 @@ data class LocalAiModelEntity(
     @ColumnInfo(name = "top_p") val topP: Float? = null,
     @ColumnInfo(name = "append_base_url_path") val appendBaseUrlPath: Boolean = true,
     @ColumnInfo(name = "supports_stream") val supportsStream: Boolean = true,
-    @ColumnInfo(name = "created_at") val createdAt: String
+    @ColumnInfo(name = "created_at") val createdAt: String,
+    @ColumnInfo(name = "token_limit_daily") val tokenLimitDaily: Long = 0,
+    @ColumnInfo(name = "token_limit_weekly") val tokenLimitWeekly: Long = 0,
+    @ColumnInfo(name = "failover_timeout") val failoverTimeout: Int = 0,
+    @ColumnInfo(name = "input_price") val inputPrice: Double? = null,
+    @ColumnInfo(name = "output_price") val outputPrice: Double? = null
+)
+
+/**
+ * 本地故障转移健康状态：追踪每个模型的连续失败次数、冷却期等。
+ * 由 [com.nekobot.app.data.local.ai.FailoverCoordinator] 读写。
+ */
+@Entity(tableName = "local_failover_health")
+data class LocalFailoverHealthEntity(
+    @PrimaryKey @ColumnInfo(name = "model_id") val modelId: String,
+    @ColumnInfo(name = "consecutive_failures") val consecutiveFailures: Int = 0,
+    @ColumnInfo(name = "last_failure_code") val lastFailureCode: Int = 0,
+    @ColumnInfo(name = "last_failure_at_ms") val lastFailureAtMs: Long = 0,
+    @ColumnInfo(name = "cooldown_until_ms") val cooldownUntilMs: Long = 0,
+    @ColumnInfo(name = "daily_failures") val dailyFailures: Int = 0,
+    @ColumnInfo(name = "daily_failures_date") val dailyFailuresDate: String = ""
 )
 
 // ==================== 角色运行时存储 (Stage 4) ====================

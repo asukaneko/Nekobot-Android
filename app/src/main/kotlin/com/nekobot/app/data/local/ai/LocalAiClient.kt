@@ -5,10 +5,14 @@ import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.remote.RealtimeEvent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -17,6 +21,8 @@ import okhttp3.Response
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * AI 请求结果（非流式）。
@@ -28,6 +34,12 @@ data class LocalAiResult(
     val statusCode: Int = 0,
     val usedModelId: String? = null,
     val usedModelName: String? = null
+)
+
+/** 图片生成结果：url 或 bytes 二选一 */
+data class GeneratedImage(
+    val url: String?,
+    val bytes: ByteArray?
 )
 
 /**
@@ -113,6 +125,7 @@ class LocalAiClient(
 
     /**
      * 非流式聊天（用于压缩上下文等辅助任务）。
+     * 非 2xx 响应抛出 [FailoverHttpException] 供协调器捕获。
      */
     suspend fun chatOnce(
         model: LocalAiModelEntity,
@@ -129,10 +142,10 @@ class LocalAiClient(
         headers.forEach { (k, v) -> reqBuilder.header(k, v) }
 
         return try {
-            client.newCall(reqBuilder.build()).execute().use { resp ->
+            client.newCall(reqBuilder.build()).awaitResponse().use { resp ->
                 if (!resp.isSuccessful) {
                     val errBody = resp.body?.string().orEmpty().take(500)
-                    return@use LocalAiResult("", error = "HTTP ${resp.code}: $errBody", statusCode = resp.code)
+                    throw FailoverHttpException(resp.code, "HTTP ${resp.code}: $errBody")
                 }
                 val raw = resp.body?.string().orEmpty()
                 @Suppress("UNCHECKED_CAST")
@@ -140,29 +153,41 @@ class LocalAiClient(
                 val (content, usage) = protocol.parseNonStreamResponse(data)
                 LocalAiResult(content, usage, usedModelId = model.id, usedModelName = model.name)
             }
+        } catch (e: FailoverHttpException) {
+            throw e
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("LocalAiClient", "chatOnce failed: ${e.message}")
-            LocalAiResult("", error = e.message ?: "请求异常")
+            throw e
         }
     }
 
     /**
      * 测试模型连通性，返回成功/失败 + 提示。
+     * 捕获 [FailoverHttpException] 等异常，转换为 [LocalAiResult]。
      */
     suspend fun testModel(model: LocalAiModelEntity): LocalAiResult {
         val testMessages = listOf(
             mapOf("role" to "user", "content" to "说一句“你好”，不超过 10 个字。")
         )
-        return chatOnce(model, testMessages)
+        return try {
+            chatOnce(model, testMessages)
+        } catch (e: FailoverHttpException) {
+            LocalAiResult("", error = e.message ?: "HTTP ${e.statusCode}", statusCode = e.statusCode)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            LocalAiResult("", error = e.message ?: "请求异常")
+        }
     }
 
     // ==================== 带故障转移的调用 ====================
 
     /**
-     * 带故障转移的非流式聊天：按 [models] 顺序尝试，遇到可恢复错误（429/5xx/超时）自动切换下一个。
-     * - config 错误（401/400 等）也切换，避免单模型配置错误阻塞整个请求
-     * - 全部失败时返回最后一个错误
-     * - 通过 [FailoverState] 跟踪健康状态，冷却中的模型会跳过
+     * 带故障转移的非流式聊天：按 [models] 顺序尝试，遇到错误自动切换下一个。
+     * 兼容旧 API：捕获 [FailoverHttpException] 转换为 [LocalAiResult.error]。
+     * 新代码应通过 [FailoverCoordinator] + [chatOnce] 实现。
      */
     suspend fun chatOnceWithFailover(
         models: List<LocalAiModelEntity>,
@@ -173,25 +198,29 @@ class LocalAiClient(
         val failover = getFailoverState()
         val exclude = mutableSetOf<String>()
         var lastError: LocalAiResult? = null
-        // 最多尝试 models.size 次（每个模型一次）
         for (i in models.indices) {
-            // 通过 FailoverState 选择最佳可用模型（跳过冷却中的）
             val modelConfigs = models.map { mapOf("model_id" to it.id) }
             val selected = failover.selectModel(modelConfigs, exclude)
             val modelId = (selected?.get("model_id") as? String)
             val model = models.firstOrNull { it.id == modelId } ?: models[i]
             exclude.add(model.id)
 
-            val result = chatOnce(model, messages, extra)
-            if (result.error == null && result.content.isNotEmpty()) {
+            try {
+                val result = chatOnce(model, messages, extra)
                 failover.recordSuccess(model.id)
                 return result.copy(usedModelId = model.id, usedModelName = model.name)
+            } catch (e: FailoverHttpException) {
+                failover.recordFailure(model.id, e.statusCode)
+                Log.w("LocalAiClient", "模型 ${model.name} 调用失败 (HTTP ${e.statusCode})，尝试下一个: ${e.message?.take(120)}")
+                lastError = LocalAiResult("", error = e.message, statusCode = e.statusCode)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val code = extractStatusCode(e)
+                failover.recordFailure(model.id, code)
+                Log.w("LocalAiClient", "模型 ${model.name} 调用异常，尝试下一个: ${e.message?.take(120)}")
+                lastError = LocalAiResult("", error = e.message ?: "请求异常", statusCode = code)
             }
-            // 失败：记录健康状态
-            val code = result.statusCode
-            failover.recordFailure(model.id, code)
-            Log.w("LocalAiClient", "模型 ${model.name} 调用失败 (HTTP $code)，尝试下一个: ${result.error?.take(120)}")
-            lastError = result
         }
         return lastError ?: LocalAiResult("", error = "所有模型均不可用")
     }
@@ -309,18 +338,17 @@ class LocalAiClient(
     /**
      * 视觉模型：理解图片内容（purpose = vision）。
      * 支持 OpenAI vision API 兼容格式：messages.content 为数组，含 image_url + text。
+     * 非 2xx 响应抛出 [FailoverHttpException] 供协调器捕获。
      */
     suspend fun describeImage(
         model: LocalAiModelEntity,
         imageUrl: String,
         question: String = "请描述这张图片的内容。"
     ): LocalAiResult {
-        // 仅支持 OpenAI 兼容协议；Anthropic 的 vision 格式略有不同，但 chat 端点也支持
-        val url = if (model.appendBaseUrlPath) {
-            model.baseUrl.trimEnd('/') + "/chat/completions"
-        } else {
-            model.baseUrl.trimEnd('/')
-        }
+        val protocol = LocalProtocols.get(model.protocol)
+        val url = protocol.resolveUrl(model.baseUrl, model.model, model.appendBaseUrlPath)
+        val headers = protocol.buildHeaders(model.apiKey, stream = false)
+        // vision 使用 chat/completions 端点，消息体包含 image_url
         val payload = mapOf(
             "model" to model.model,
             "max_tokens" to (model.maxTokens ?: 1024),
@@ -335,15 +363,14 @@ class LocalAiClient(
             )
         )
         val body = gson.toJson(payload).toRequestBody(JSON_TYPE)
-        val req = Request.Builder().url(url).post(body)
-            .header("Authorization", "Bearer ${model.apiKey}")
-            .header("Content-Type", "application/json")
-            .build()
+        val reqBuilder = Request.Builder().url(url).post(body)
+        headers.forEach { (k, v) -> reqBuilder.header(k, v) }
+
         return try {
-            client.newCall(req).execute().use { resp ->
+            client.newCall(reqBuilder.build()).awaitResponse().use { resp ->
                 if (!resp.isSuccessful) {
                     val err = resp.body?.string().orEmpty().take(500)
-                    return@use LocalAiResult("", error = "HTTP ${resp.code}: $err")
+                    throw FailoverHttpException(resp.code, "HTTP ${resp.code}: $err")
                 }
                 val raw = resp.body?.string().orEmpty()
                 @Suppress("UNCHECKED_CAST")
@@ -351,25 +378,29 @@ class LocalAiClient(
                 val choices = data["choices"] as? List<Map<String, Any>> ?: emptyList()
                 val msg = choices.firstOrNull()?.get("message") as? Map<String, Any>
                 val content = (msg?.get("content") as? String).orEmpty()
-                LocalAiResult(content)
+                LocalAiResult(content, usedModelId = model.id, usedModelName = model.name)
             }
+        } catch (e: FailoverHttpException) {
+            throw e
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("LocalAiClient", "describeImage failed: ${e.message}")
-            LocalAiResult("", error = e.message ?: "图片理解请求异常")
+            throw e
         }
     }
 
     /**
      * TTS 语音合成（purpose = tts）。
      * 调用 OpenAI 兼容 /audio/speech 端点，返回音频字节。
-     * 语音格式：mp3。
+     * 语音格式：mp3。非 2xx 抛出 [FailoverHttpException]。
      */
     suspend fun synthesizeSpeech(
         model: LocalAiModelEntity,
         text: String,
         voice: String = "alloy",
         speed: Float = 1.0f
-    ): Pair<ByteArray?, String?> {
+    ): ByteArray {
         val url = resolveAudioUrl(model.baseUrl, model.appendBaseUrlPath, "audio/speech")
         val payload = mapOf(
             "model" to model.model,
@@ -384,17 +415,20 @@ class LocalAiClient(
             .header("Content-Type", "application/json")
             .build()
         return try {
-            client.newCall(req).execute().use { resp ->
+            client.newCall(req).awaitResponse().use { resp ->
                 if (!resp.isSuccessful) {
                     val err = resp.body?.string().orEmpty().take(500)
-                    return@use Pair(null, "HTTP ${resp.code}: $err")
+                    throw FailoverHttpException(resp.code, "HTTP ${resp.code}: $err")
                 }
-                val bytes = resp.body?.bytes()
-                Pair(bytes, null)
+                resp.body?.bytes() ?: throw FailoverHttpException(resp.code, "TTS 响应体为空")
             }
+        } catch (e: FailoverHttpException) {
+            throw e
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("LocalAiClient", "synthesizeSpeech failed: ${e.message}")
-            Pair(null, e.message ?: "TTS 请求异常")
+            throw e
         }
     }
 
@@ -402,6 +436,7 @@ class LocalAiClient(
      * STT 语音识别（purpose = stt）。
      * 调用 OpenAI 兼容 /audio/transcriptions 端点。
      * audioBytes 为音频字节数组（mp3/wav/m4a 等），返回识别文本。
+     * 非 2xx 抛出 [FailoverHttpException] 供协调器捕获。
      */
     suspend fun transcribeSpeech(
         model: LocalAiModelEntity,
@@ -410,7 +445,6 @@ class LocalAiClient(
         language: String? = null
     ): LocalAiResult {
         val url = resolveAudioUrl(model.baseUrl, model.appendBaseUrlPath, "audio/transcriptions")
-        // 根据文件后缀选择正确的 MIME 类型，避免某些代理因类型不匹配返回 404/415
         val audioMediaType = guessAudioMediaType(filename).toMediaType()
         Log.i("LocalAiClient", "STT 请求: url=$url, model=${model.model}, file=$filename, size=${audioBytes.size}, mime=$audioMediaType")
         val audioPart = okhttp3.MultipartBody.Builder()
@@ -425,20 +459,81 @@ class LocalAiClient(
             .header("Authorization", "Bearer ${model.apiKey}")
             .build()
         return try {
-            client.newCall(req).execute().use { resp ->
+            client.newCall(req).awaitResponse().use { resp ->
                 if (!resp.isSuccessful) {
                     val err = resp.body?.string().orEmpty().take(500)
                     Log.e("LocalAiClient", "STT 失败: HTTP ${resp.code} url=$url resp=$err")
-                    return@use LocalAiResult("", error = "HTTP ${resp.code} [POST $url]: $err", statusCode = resp.code)
+                    throw FailoverHttpException(resp.code, "HTTP ${resp.code} [POST $url]: $err")
                 }
                 val raw = resp.body?.string().orEmpty()
                 @Suppress("UNCHECKED_CAST")
                 val data = (gson.fromJson(raw, Map::class.java) as? Map<String, Any>) ?: emptyMap()
-                LocalAiResult(data["text"] as? String ?: "")
+                LocalAiResult(
+                    data["text"] as? String ?: "",
+                    usedModelId = model.id,
+                    usedModelName = model.name
+                )
             }
+        } catch (e: FailoverHttpException) {
+            throw e
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("LocalAiClient", "transcribeSpeech failed: ${e.message}")
-            LocalAiResult("", error = e.message ?: "STT 请求异常")
+            throw e
+        }
+    }
+
+    /**
+     * 图片生成（purpose = image_generation）。
+     * 调用 OpenAI 兼容 /images/generations 端点，返回图片字节 + MIME 类型。
+     * 支持 URL 和 b64_json 两种响应格式。非 2xx 抛出 [FailoverHttpException]。
+     */
+    suspend fun generateImage(
+        model: LocalAiModelEntity,
+        prompt: String,
+        size: String = "1024x1024",
+        n: Int = 1
+    ): List<GeneratedImage> {
+        val url = resolveImageUrl(model.baseUrl, model.appendBaseUrlPath)
+        val payload = mapOf(
+            "model" to model.model,
+            "prompt" to prompt,
+            "size" to size,
+            "n" to n
+        )
+        val body = gson.toJson(payload).toRequestBody(JSON_TYPE)
+        val req = Request.Builder().url(url).post(body)
+            .header("Authorization", "Bearer ${model.apiKey}")
+            .header("Content-Type", "application/json")
+            .build()
+        return try {
+            client.newCall(req).awaitResponse().use { resp ->
+                if (!resp.isSuccessful) {
+                    val err = resp.body?.string().orEmpty().take(500)
+                    throw FailoverHttpException(resp.code, "HTTP ${resp.code}: $err")
+                }
+                val raw = resp.body?.string().orEmpty()
+                val root = JsonParser.parseString(raw).asJsonObject
+                val dataArr = root.getAsJsonArray("data") ?: return@use emptyList()
+                dataArr.mapNotNull { item ->
+                    val obj = item.asJsonObject
+                    val urlStr = obj.get("url")?.takeIf { !it.isJsonNull }?.asString
+                    val b64 = obj.get("b64_json")?.takeIf { !it.isJsonNull }?.asString
+                    if (urlStr != null) {
+                        GeneratedImage(url = urlStr, bytes = null)
+                    } else if (b64 != null) {
+                        GeneratedImage(url = null, bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT))
+                    } else null
+                }
+            }
+        } catch (e: FailoverHttpException) {
+            throw e
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e("LocalAiClient", "generateImage failed: ${e.message}")
+            throw e
         }
     }
 
@@ -450,6 +545,44 @@ class LocalAiClient(
             .readTimeout(300, TimeUnit.SECONDS)   // 流式可能较慢
             .writeTimeout(60, TimeUnit.SECONDS)
             .build()
+
+        /**
+         * 可取消的 OkHttp Call 执行：协程取消时自动调用 [Call.cancel]，
+         * 中断阻塞的 HTTP 请求。避免用户点"停止"后底层请求仍在进行。
+         */
+        private suspend fun Call.awaitResponse(): Response = suspendCancellableCoroutine { cont ->
+            cont.invokeOnCancellation { runCatching { cancel() } }
+            enqueue(object : Callback {
+                override fun onFailure(call: Call, e: java.io.IOException) {
+                    if (cont.isActive) cont.resumeWithException(e)
+                }
+                override fun onResponse(call: Call, response: Response) {
+                    if (cont.isActive) {
+                        cont.resume(response) { _, _, _ -> response.close() }
+                    } else {
+                        response.close()
+                    }
+                }
+            })
+        }
+
+        /**
+         * 解析图片生成端点 URL（/images/generations）。
+         * 逻辑同 [resolveAudioUrl]：智能处理各种 baseUrl 格式。
+         */
+        private fun resolveImageUrl(baseUrl: String, appendBaseUrlPath: Boolean): String {
+            val base = baseUrl.trimEnd('/')
+            if (base.contains("/images/generations")) return base
+            if (base.contains("/chat/completions")) {
+                return base.replace("/chat/completions", "/images/generations")
+            }
+            if (base.contains("/chatcompletion")) {
+                return base.replace("/chatcompletion", "/images/generations")
+            }
+            if (!appendBaseUrlPath) return base
+            if (base.endsWith("/v1")) return "$base/images/generations"
+            return "$base/v1/images/generations"
+        }
 
         /**
          * 解析 audio 端点 URL（STT: audio/transcriptions, TTS: audio/speech）。

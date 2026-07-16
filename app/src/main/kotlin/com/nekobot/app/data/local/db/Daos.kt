@@ -215,6 +215,27 @@ interface AiModelDao {
     suspend fun deleteById(id: String)
 }
 
+/**
+ * 故障转移健康状态 DAO：持久化模型失败/冷却记录，跨重启保留。
+ */
+@Dao
+interface FailoverHealthDao {
+    @Query("SELECT * FROM local_failover_health")
+    suspend fun listAll(): List<LocalFailoverHealthEntity>
+
+    @Query("SELECT * FROM local_failover_health WHERE model_id = :modelId")
+    suspend fun get(modelId: String): LocalFailoverHealthEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(value: LocalFailoverHealthEntity)
+
+    @Query("DELETE FROM local_failover_health WHERE model_id = :modelId")
+    suspend fun delete(modelId: String)
+
+    @Query("DELETE FROM local_failover_health")
+    suspend fun clear()
+}
+
 // ==================== 角色运行时 DAOs (Stage 4) ====================
 
 @Dao

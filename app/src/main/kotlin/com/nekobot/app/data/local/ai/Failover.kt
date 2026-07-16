@@ -72,7 +72,7 @@ private fun cooldownCategory(statusCode: Int): String = when {
 }
 
 /** 计算冷却秒数（指数退避） */
-private fun computeCooldown(consecutiveFailures: Int, statusCode: Int): Float {
+internal fun computeCooldown(consecutiveFailures: Int, statusCode: Int): Float {
     val category = cooldownCategory(statusCode)
     val (base, maxVal) = cooldownParams(category)
     if (base <= 0f) return 0f
@@ -89,6 +89,7 @@ private fun Float.pow(n: Int): Float = Math.pow(this.toDouble(), n.toDouble()).t
 /**
  * 单个模型的健康状态追踪。
  * 对应原仓库 ModelHealth。
+ * 保留内存版用于向后兼容；新代码应使用 [FailoverHealthStore]。
  */
 data class ModelHealth(
     val modelId: String,
@@ -101,26 +102,66 @@ data class ModelHealth(
 )
 
 // ============================================================================
-// 故障转移状态管理器
+// 故障转移类型定义（持久化版）
+// ============================================================================
+
+/** 模型 token 用量快照，用于限额检查 */
+data class FailoverUsage(
+    val dailyTokens: Long = 0,
+    val weeklyTokens: Long = 0
+)
+
+/** 单次执行结果 */
+data class FailoverExecution<T>(
+    val value: T,
+    val model: com.nekobot.app.data.local.db.LocalAiModelEntity,
+    val attempts: List<String>
+)
+
+/** 单次失败记录 */
+data class FailoverFailure(
+    val modelId: String,
+    val statusCode: Int,
+    val message: String
+)
+
+/** 所有模型都失败时抛出 */
+class FailoverAllFailedException(
+    val purpose: String,
+    val attempts: List<String>,
+    val failures: List<FailoverFailure>,
+    message: String
+) : Exception(message)
+
+/** HTTP 失败异常，携带状态码供协调器分类冷却 */
+class FailoverHttpException(val statusCode: Int, message: String) : Exception(message)
+
+/** 健康状态持久化接口（实现可委托给 Room DAO） */
+interface FailoverHealthStore {
+    suspend fun get(modelId: String): com.nekobot.app.data.local.db.LocalFailoverHealthEntity?
+    suspend fun upsert(entity: com.nekobot.app.data.local.db.LocalFailoverHealthEntity)
+    suspend fun listAll(): List<com.nekobot.app.data.local.db.LocalFailoverHealthEntity>
+    suspend fun delete(modelId: String)
+    suspend fun clear()
+}
+
+/** token 用量读取接口 */
+interface FailoverUsageReader {
+    suspend fun getUsage(modelId: String): FailoverUsage
+}
+
+// ============================================================================
+// 故障转移状态管理器（内存版，向后兼容）
 // ============================================================================
 
 /**
  * 线程安全的模型故障转移队列管理器。
  * 对应原仓库 FailoverState。
+ * @deprecated 新代码应使用 [FailoverCoordinator] + [FailoverHealthStore]。
  */
 class FailoverState {
     private val healthMap = ConcurrentHashMap<String, ModelHealth>()
 
-    /**
-     * 从有序模型配置列表中选择最佳可用模型。
-     *
-     * 跳过处于冷却期的模型。
-     * 返回第一个可用模型，或作为最后手段返回第一个模型。
-     *
-     * @param modelConfigs 按优先级排序的模型配置列表
-     * @param excludeIds 需排除的模型 ID 集合
-     * @return 选中的模型配置，或 null
-     */
     fun selectModel(
         modelConfigs: List<Map<String, Any>>,
         excludeIds: Set<String> = emptySet()
@@ -141,7 +182,6 @@ class FailoverState {
         return fallback
     }
 
-    /** 记录模型调用成功，重置连续失败计数 */
     fun recordSuccess(modelId: String) {
         healthMap[modelId]?.let {
             it.consecutiveFailures = 0
@@ -149,12 +189,6 @@ class FailoverState {
         }
     }
 
-    /**
-     * 记录模型调用失败，更新健康状态并计算冷却期。
-     *
-     * @param modelId 模型 ID
-     * @param statusCode HTTP 状态码
-     */
     fun recordFailure(modelId: String, statusCode: Int = 0) {
         val now = System.nanoTime() / 1e9f
         val health = healthMap.computeIfAbsent(modelId) { ModelHealth(modelId) }
@@ -164,10 +198,7 @@ class FailoverState {
         health.cooldownUntil = now + computeCooldown(health.consecutiveFailures, statusCode)
     }
 
-    /** 获取模型健康状态（调试用） */
     fun getHealth(modelId: String): ModelHealth? = healthMap[modelId]
-
-    /** 清除所有健康状态记录 */
     fun clear() = healthMap.clear()
 }
 
@@ -175,8 +206,5 @@ class FailoverState {
 // 单例
 // ============================================================================
 
-/** 全局故障转移状态单例 */
 private val globalFailoverState = FailoverState()
-
-/** 获取全局故障转移状态实例 */
 fun getFailoverState(): FailoverState = globalFailoverState

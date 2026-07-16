@@ -250,6 +250,12 @@ interface ApiService {
     @POST("api/ai-models/failover-reorder")
     suspend fun reorderFailover(@Body body: JsonElement): Response<JsonElement>
 
+    @GET("api/ai-models/failover-detail/{modelId}")
+    suspend fun getFailoverDetail(@Path("modelId") modelId: String): Response<com.nekobot.app.data.model.FailoverModelDetail>
+
+    @POST("api/ai-models/failover-token-limit")
+    suspend fun updateFailoverPolicy(@Body body: com.nekobot.app.data.model.FailoverPolicyUpdate): Response<JsonElement>
+
     @GET("api/ai-models/active-by-purpose")
     suspend fun activeByPurpose(): Response<JsonElement>
 

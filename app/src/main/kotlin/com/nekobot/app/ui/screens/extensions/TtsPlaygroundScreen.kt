@@ -50,14 +50,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.LocalAudioResult
 import com.nekobot.app.data.model.TtsPreviewRequest
 import com.nekobot.app.data.model.TtsVoice
+import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.EmptyState
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
 import com.nekobot.app.ui.components.SectionHeader
+import com.nekobot.app.ui.screens.chat.AudioRenderer
 import com.nekobot.app.ui.theme.SuccessGreen
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -71,8 +74,13 @@ class TtsPlaygroundViewModel : BaseViewModel() {
     private val _voices = MutableStateFlow<List<TtsVoice>>(emptyList())
     val voices: StateFlow<List<TtsVoice>> = _voices.asStateFlow()
 
+    /** 远程模式：预览音频 URL；本地模式不使用 */
     private val _previewUrl = MutableStateFlow<String?>(null)
     val previewUrl: StateFlow<String?> = _previewUrl.asStateFlow()
+
+    /** 本地模式：合成的音频缓存结果（含 cacheUri + 实际使用模型） */
+    private val _localAudio = MutableStateFlow<LocalAudioResult?>(null)
+    val localAudio: StateFlow<LocalAudioResult?> = _localAudio.asStateFlow()
 
     init {
         load()
@@ -86,24 +94,35 @@ class TtsPlaygroundViewModel : BaseViewModel() {
         )
     }
 
-    /** 生成语音预览，成功后写入 previewUrl */
+    /** 生成语音预览：本地模式走 synthesizeAudio 播放缓存 URI，远程模式走 ttsPreview 返回 URL */
     fun preview(text: String, voice: String, speed: Float, pitch: Float, volume: Float) {
-        val req = TtsPreviewRequest(
-            text = text,
-            voice = voice,
-            speed = speed,
-            pitch = pitch,
-            volume = volume
-        )
-        launchResult(
-            block = { unified.ttsPreview(req) },
-            onSuccess = { res ->
-                _previewUrl.value = res.audioUrl
-                if (res.audioUrl.isNullOrBlank()) {
-                    showToast(res.message ?: "未返回音频地址")
+        // 清空上一次结果
+        _previewUrl.value = null
+        _localAudio.value = null
+        if (isLocalMode) {
+            launchResult(
+                block = { unified.synthesizeAudio(text, voice, speed) },
+                onSuccess = { res -> _localAudio.value = res },
+                onError = { msg -> showToast(msg) }
+            )
+        } else {
+            val req = TtsPreviewRequest(
+                text = text,
+                voice = voice,
+                speed = speed,
+                pitch = pitch,
+                volume = volume
+            )
+            launchResult(
+                block = { unified.ttsPreview(req) },
+                onSuccess = { res ->
+                    _previewUrl.value = res.audioUrl
+                    if (res.audioUrl.isNullOrBlank()) {
+                        showToast(res.message ?: "未返回音频地址")
+                    }
                 }
-            }
-        )
+            )
+        }
     }
 }
 
@@ -116,6 +135,7 @@ fun TtsPlaygroundScreen(onBack: () -> Unit) {
     val vm: TtsPlaygroundViewModel = viewModel()
     val voices by vm.voices.collectAsState()
     val previewUrl by vm.previewUrl.collectAsState()
+    val localAudio by vm.localAudio.collectAsState()
     val loading by vm.loading.collectAsState()
     val error by vm.error.collectAsState()
     val toast by vm.toast.collectAsState()
@@ -237,8 +257,20 @@ fun TtsPlaygroundScreen(onBack: () -> Unit) {
                     }
                 }
 
-                // 预览结果
-                previewUrl?.let { url ->
+                // 预览结果：本地模式播放缓存音频，远程模式显示 URL
+                localAudio?.let { audio ->
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        SectionHeader(title = "预览结果")
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "模型: ${audio.usedModelName}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        AudioRenderer(url = audio.cacheUri, modifier = Modifier.fillMaxWidth())
+                    }
+                } ?: previewUrl?.let { url ->
                     if (url.isNotBlank()) {
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
                             SectionHeader(title = "预览结果")

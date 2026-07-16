@@ -1032,6 +1032,44 @@ class UnifiedRepository(
         } else remote.reorderFailover(purpose, modelIds)
     }
 
+    /**
+     * 取单个模型的故障转移详情：本地从 Room + 健康存储 + 用量读取器组装；
+     * 远程走 GET /api/ai-models/failover-detail/{modelId}。
+     */
+    suspend fun getFailoverDetail(
+        modelId: String
+    ): Resource<com.nekobot.app.data.model.FailoverModelDetail> = if (isLocal) {
+        runCatching {
+            local.getFailoverDetail(modelId)?.let { Resource.Success(it) }
+                ?: Resource.Error("模型不存在: $modelId")
+        }.getOrElse { Resource.Error(it.message ?: "加载详情失败") }
+    } else {
+        remote.getFailoverDetail(modelId)
+    }
+
+    /**
+     * 更新模型故障转移策略（token 限额 + 超时秒数）。
+     * 三个数值字段必须非负，否则直接返回错误，不分发到本地/远程。
+     */
+    suspend fun updateFailoverPolicy(
+        modelId: String,
+        tokenLimitDaily: Long,
+        tokenLimitWeekly: Long,
+        failoverTimeout: Int
+    ): Resource<JsonElement> {
+        // 非负校验：拦截非法输入
+        if (tokenLimitDaily < 0 || tokenLimitWeekly < 0 || failoverTimeout < 0) {
+            return Resource.Error("token_limit_daily / token_limit_weekly / failover_timeout 必须为非负数")
+        }
+        return if (isLocal) {
+            runCatching {
+                Resource.Success(local.updateFailoverPolicy(modelId, tokenLimitDaily, tokenLimitWeekly, failoverTimeout))
+            }.getOrElse { Resource.Error(it.message ?: "更新策略失败") }
+        } else {
+            remote.updateFailoverPolicy(modelId, tokenLimitDaily, tokenLimitWeekly, failoverTimeout)
+        }
+    }
+
     // ==================== WebDAV 备份 ====================
     suspend fun getWebDavConfig(): Resource<WebDavConfig> =
         if (isLocal) localNotSupported("WebDAV 备份") else remote.getWebDavConfig()
@@ -1088,6 +1126,63 @@ class UnifiedRepository(
         } catch (e: Exception) {
             Resource.Error(e.message ?: "STT 请求异常")
         }
+    }
+
+    // ==================== TTS 语音合成（本地优先）====================
+
+    /**
+     * 统一 TTS 接口：本地模式走故障转移队列合成并返回缓存 URI；
+     * 远程模式暂不支持（远程 TTS 走会话内 session.ttsConfig 触发，由后端推送音频 URL）。
+     */
+    suspend fun synthesizeAudio(
+        text: String,
+        voice: String = "alloy",
+        speed: Float = 1.0f
+    ): Resource<com.nekobot.app.data.local.LocalAudioResult> = if (isLocal) {
+        try {
+            Resource.Success(local.synthesizeAudio(text, voice, speed))
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "本地 TTS 合成失败")
+        }
+    } else {
+        Resource.Error("远程模式不支持独立 TTS 合成，请在会话设置中启用 TTS")
+    }
+
+    // ==================== 图片生成（本地优先）====================
+
+    /**
+     * 统一图片生成接口：本地模式走故障转移队列生成并返回缓存 URI 列表；
+     * 远程模式暂不支持（远程图片生成需扩展后端 API）。
+     */
+    suspend fun generateImages(
+        prompt: String,
+        size: String = "1024x1024",
+        n: Int = 1
+    ): Resource<List<com.nekobot.app.data.local.LocalImageResult>> = if (isLocal) {
+        try {
+            Resource.Success(local.generateImages(prompt, size, n))
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "本地图片生成失败")
+        }
+    } else {
+        Resource.Error("远程模式不支持独立图片生成")
+    }
+
+    /**
+     * 统一视觉识别接口：本地模式走故障转移队列解析图片，返回描述或非阻塞失败标记。
+     * 远程模式暂不支持。
+     */
+    suspend fun describeImage(
+        imageUrl: String,
+        question: String = "请详细描述这张图片的内容。"
+    ): Resource<String> = if (isLocal) {
+        try {
+            Resource.Success(local.describeImageViaQueue(imageUrl, question))
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "本地视觉识别失败")
+        }
+    } else {
+        Resource.Error("远程模式不支持独立视觉识别")
     }
 
     // ==================== 本地 DB Profile 管理 ====================

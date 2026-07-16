@@ -265,6 +265,10 @@ object NbotConfigImporter {
         get(key)?.takeIf { it.isJsonPrimitive }?.asJsonPrimitive?.asFloat
     private fun JsonObject.intOrNull(key: String): Int? =
         get(key)?.takeIf { it.isJsonPrimitive }?.asJsonPrimitive?.asInt
+    private fun JsonObject.longOrNull(key: String): Long? =
+        get(key)?.takeIf { it.isJsonPrimitive }?.asJsonPrimitive?.asLong
+    private fun JsonObject.doubleOrNull(key: String): Double? =
+        get(key)?.takeIf { it.isJsonPrimitive }?.asJsonPrimitive?.asDouble
     private fun JsonObject.jsonStr(key: String): String? = get(key)?.let { if (it.isJsonNull) null else it.toString() }
 
     /**
@@ -327,7 +331,12 @@ object NbotConfigImporter {
                     topP = obj.floatOrNull("top_p"),
                     appendBaseUrlPath = obj.bool("append_base_url_path", true),
                     supportsStream = obj.bool("supports_stream", true),
-                    createdAt = obj.str("created_at") ?: now
+                    createdAt = obj.str("created_at") ?: now,
+                    tokenLimitDaily = obj.longOrNull("token_limit_daily") ?: 0L,
+                    tokenLimitWeekly = obj.longOrNull("token_limit_weekly") ?: 0L,
+                    failoverTimeout = obj.intOrNull("failover_timeout") ?: 0,
+                    inputPrice = obj.doubleOrNull("input_price"),
+                    outputPrice = obj.doubleOrNull("output_price")
                 )
             )
             count++

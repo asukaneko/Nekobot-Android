@@ -6,11 +6,18 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.nekobot.app.data.local.ai.FailoverAllFailedException
+import com.nekobot.app.data.local.ai.FailoverCoordinator
+import com.nekobot.app.data.local.ai.FailoverHealthStore
+import com.nekobot.app.data.local.ai.FailoverUsage
+import com.nekobot.app.data.local.ai.FailoverUsageReader
 import com.nekobot.app.data.local.ai.LocalAiClient
 import com.nekobot.app.data.local.ai.LocalAiResult
 import com.nekobot.app.data.local.ai.LocalPromptBuilder
+import com.nekobot.app.data.local.ai.TokenStatsManager
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.local.db.LocalApiKeyEntity
+import com.nekobot.app.data.local.db.LocalFailoverHealthEntity
 import com.nekobot.app.data.local.db.LocalCharacterEntity
 import com.nekobot.app.data.local.db.LocalHookEntity
 import com.nekobot.app.data.local.db.LocalMcpServerEntity
@@ -51,6 +58,7 @@ import com.nekobot.app.data.model.WorkflowRequest
 import com.nekobot.app.data.model.WorldBook
 import com.nekobot.app.data.model.WorldBookEntry
 import com.nekobot.app.data.remote.RealtimeEvent
+import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
@@ -61,6 +69,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.text.SimpleDateFormat
 import java.time.Instant
 import java.util.Date
@@ -90,6 +99,33 @@ class LocalRepository(
     private val characterDao = db.characterDao()
     private val worldBookDao = db.worldBookDao()
     private val aiModelDao = db.aiModelDao()
+    private val failoverHealthDao = db.failoverHealthDao()
+
+    // ==================== 故障转移协调器（持久化健康状态 + token 限额）====================
+
+    /** Room DAO 适配器：将 [FailoverHealthDao] 暴露为 [FailoverHealthStore] */
+    private val failoverHealthStore: FailoverHealthStore by lazy { RoomFailoverHealthStore(failoverHealthDao) }
+
+    /** SharedPreferences 适配器：聚合每个模型的日/周 token 用量供 [FailoverCoordinator] 限额检查 */
+    private val failoverUsageReader: FailoverUsageReader by lazy {
+        PrefsFailoverUsageReader(tokenUsagePrefs) { id ->
+            // records 中存储的是 model 名（如 "gpt-4o"），需要把 modelId (UUID) 解析为对应的 model 名
+            aiModelDao.getById(id)?.model
+        }
+    }
+
+    /** 通用故障转移协调器：按 priority 顺序尝试模型，自动跳过冷却中/超限额的模型 */
+    val failoverCoordinator: FailoverCoordinator by lazy {
+        FailoverCoordinator(failoverHealthStore, failoverUsageReader)
+    }
+
+    /**
+     * 取指定 purpose 的故障转移队列：所有启用模型按 (priority, createdAt) 升序排序。
+     * P0 在前，作为首选模型；其余作为故障转移备选。
+     */
+    private suspend fun queueFor(purpose: String): List<LocalAiModelEntity> =
+        aiModelDao.listByPurpose(purpose)
+            .sortedWith(compareBy(LocalAiModelEntity::priority, LocalAiModelEntity::createdAt))
 
     init {
         val savedGraph = appContext
@@ -720,7 +756,7 @@ class LocalRepository(
             channel = "local"
         )
 
-        // 4. 构建回调（传入故障转移备选队列：同 purpose 其他启用模型）
+        // 4. 构建回调（传入故障转移备选队列：同 purpose 其他启用模型 + 持久化协调器）
         val failoverQueue = aiModelDao.listByPurpose(activeModel.purpose.ifBlank { "chat" })
             .filter { it.id != activeModel.id }
         val callbacks = com.nekobot.app.data.local.ai.LocalPipelineCallbacks(
@@ -728,7 +764,8 @@ class LocalRepository(
             onTokenRecorded = { sid, model, input, output, ts, purpose ->
                 appendTokenUsageRecord(sid, model, input, output, ts, purpose = purpose)
             },
-            failoverQueue = failoverQueue
+            failoverQueue = failoverQueue,
+            coordinator = failoverCoordinator
         )
 
         // 5. 构建上下文（含会话级配置：剧情模式、禁用注入项、自动状态间隔等）
@@ -1544,7 +1581,10 @@ $charSection$topicSection
     suspend fun testModel(model: LocalAiModelEntity): LocalAiResult = aiClient.testModel(model)
 
     /**
-     * 本地 STT 语音识别：调用配置的 purpose=stt 激活模型，将音频字节数组转为文字。
+     * 本地 STT 语音识别：通过故障转移队列调用 purpose=stt 模型，将音频字节数组转为文字。
+     *
+     * 队列执行：按 (priority, createdAt) 升序逐个尝试，自动跳过冷却中/超限额的模型。
+     *
      * @param audioBytes 音频字节（mp3/wav/m4a 等）
      * @param filename 文件名（用于 multipart 上传字段）
      * @param language 语言提示（如 "zh"），可为空
@@ -1555,11 +1595,190 @@ $charSection$topicSection
         filename: String = "audio.m4a",
         language: String? = "zh"
     ): String = withContext(Dispatchers.IO) {
-        val model = aiModelDao.getActiveByPurpose("stt") ?: aiModelDao.getActive()
-            ?: throw IllegalStateException("未配置 STT 模型，请在 AI 配置中心启用 purpose=stt 的模型")
-        val result = aiClient.transcribeSpeech(model, audioBytes, filename, language)
-        if (result.error != null) throw IllegalStateException(result.error)
-        result.content
+        val queue = queueFor("stt")
+        if (queue.isEmpty()) {
+            throw IllegalStateException("未配置 STT 模型，请在 AI 配置中心启用 purpose=stt 的模型")
+        }
+        val exec = try {
+            failoverCoordinator.execute(queue, "stt") { model ->
+                aiClient.transcribeSpeech(model, audioBytes, filename, language)
+            }
+        } catch (e: FailoverAllFailedException) {
+            throw IllegalStateException(e.message ?: "STT 全部模型失败")
+        }
+        // STT 通常无 token 用量；若返回结果携带 usage，则按 purpose=chat 记账
+        exec.value.usage.takeIf { it.isNotEmpty() }?.let { u ->
+            val input = u["prompt_tokens"] ?: u["input_tokens"] ?: 0
+            val output = u["completion_tokens"] ?: u["output_tokens"] ?: 0
+            if (input > 0 || output > 0) {
+                appendTokenUsageRecord(
+                    sessionId = currentSessionId,
+                    model = exec.model.model,
+                    inputTokens = input,
+                    outputTokens = output,
+                    timestamp = nowIso(),
+                    source = "stt",
+                    purpose = TokenStatsManager.PURPOSE_CHAT
+                )
+            }
+        }
+        exec.value.content
+    }
+
+    // ==================== 故障转移队列驱动的多媒体生成 ===================
+
+    /**
+     * 本地 TTS 语音合成：通过故障转移队列调用 purpose=tts 模型。
+     * 返回缓存到 cacheDir/tts/ 的音频文件 URI。
+     *
+     * @param text 待合成文本
+     * @param voice OpenAI 兼容音色（如 "alloy"/"nova"/"echo"），默认 "alloy"
+     * @param speed 语速倍率，默认 1.0
+     * @return [LocalAudioResult] 包含缓存 URI 与所用模型信息
+     */
+    suspend fun synthesizeAudio(
+        text: String,
+        voice: String = "alloy",
+        speed: Float = 1.0f
+    ): LocalAudioResult = withContext(Dispatchers.IO) {
+        val queue = queueFor("tts")
+        if (queue.isEmpty()) {
+            throw IllegalStateException("未配置 TTS 模型，请在 AI 配置中心启用 purpose=tts 的模型")
+        }
+        val exec = try {
+            failoverCoordinator.execute(queue, "tts") { model ->
+                aiClient.synthesizeSpeech(model, text, voice, speed)
+            }
+        } catch (e: FailoverAllFailedException) {
+            throw IllegalStateException(e.message ?: "TTS 全部模型失败")
+        }
+        val cacheDir = appContext?.cacheDir
+            ?: throw IllegalStateException("应用上下文未初始化，无法缓存 TTS 音频")
+        val cacheFile = File(cacheDir, "tts/${UUID.randomUUID()}.mp3").apply {
+            parentFile?.mkdirs()
+            writeBytes(exec.value)
+        }
+        LocalAudioResult(
+            cacheUri = android.net.Uri.fromFile(cacheFile).toString(),
+            mimeType = "audio/mpeg",
+            usedModelId = exec.model.id,
+            usedModelName = exec.model.name
+        )
+    }
+
+    /**
+     * 本地图片生成：通过故障转移队列调用 purpose=image_generation 模型。
+     * 返回缓存到 cacheDir/image_gen/ 的图片文件 URI 列表。
+     *
+     * @param prompt 图片描述
+     * @param size 图片尺寸（如 "1024x1024"/"1792x1024"），默认 "1024x1024"
+     * @param n 生成数量，默认 1
+     * @return [LocalImageResult] 列表（每张图一个）
+     */
+    suspend fun generateImages(
+        prompt: String,
+        size: String = "1024x1024",
+        n: Int = 1
+    ): List<LocalImageResult> = withContext(Dispatchers.IO) {
+        val queue = queueFor("image_generation")
+        if (queue.isEmpty()) {
+            throw IllegalStateException("未配置图片生成模型，请在 AI 配置中心启用 purpose=image_generation 的模型")
+        }
+        val exec = try {
+            failoverCoordinator.execute(queue, "image_generation") { model ->
+                aiClient.generateImage(model, prompt, size, n)
+            }
+        } catch (e: FailoverAllFailedException) {
+            throw IllegalStateException(e.message ?: "图片生成全部模型失败")
+        }
+        val cacheDir = appContext?.cacheDir
+            ?: throw IllegalStateException("应用上下文未初始化，无法缓存生成图片")
+        exec.value.mapNotNull { img ->
+            val bytes = img.bytes ?: run {
+                // 通过 URL 下载
+                val url = img.url ?: return@mapNotNull null
+                try {
+                    val resp = okhttp3.OkHttpClient().newCall(
+                        okhttp3.Request.Builder().url(url).build()
+                    ).execute()
+                    resp.body?.bytes() ?: return@mapNotNull null
+                } catch (_: Exception) {
+                    null
+                } ?: return@mapNotNull null
+            }
+            val cacheFile = File(cacheDir, "image_gen/${UUID.randomUUID()}.png").apply {
+                parentFile?.mkdirs()
+                writeBytes(bytes)
+            }
+            LocalImageResult(
+                cacheUri = android.net.Uri.fromFile(cacheFile).toString(),
+                mimeType = "image/png",
+                usedModelId = exec.model.id,
+                usedModelName = exec.model.name
+            )
+        }
+    }
+
+    /**
+     * 通过故障转移队列调用 purpose=vision 模型理解单张图片。
+     * 用于聊天流程中解析用户上传的图片附件，生成文本描述注入到 prompt。
+     *
+     * 成功：返回模型给出的描述文本。
+     * 失败：返回非阻塞失败标记文本，包含 [VISION_FAILURE_MARKER]，提示后续 LLM 不得猜测图片内容。
+     */
+    suspend fun describeImageViaQueue(
+        imageUrl: String,
+        question: String = "请详细描述这张图片的内容。"
+    ): String = withContext(Dispatchers.IO) {
+        val queue = queueFor("vision")
+        if (queue.isEmpty()) {
+            return@withContext VISION_FAILURE_MARKER + "未配置视觉模型，不得猜测图片内容。"
+        }
+        try {
+            val exec = failoverCoordinator.execute(queue, "vision") { model ->
+                aiClient.describeImage(model, imageUrl, question)
+            }
+            exec.value.usage.takeIf { it.isNotEmpty() }?.let { u ->
+                val input = u["prompt_tokens"] ?: u["input_tokens"] ?: 0
+                val output = u["completion_tokens"] ?: u["output_tokens"] ?: 0
+                if (input > 0 || output > 0) {
+                    appendTokenUsageRecord(
+                        sessionId = currentSessionId,
+                        model = exec.model.model,
+                        inputTokens = input,
+                        outputTokens = output,
+                        timestamp = nowIso(),
+                        source = "vision",
+                        purpose = TokenStatsManager.PURPOSE_VISION
+                    )
+                }
+            }
+            exec.value.content
+        } catch (e: FailoverAllFailedException) {
+            VISION_FAILURE_MARKER + "视觉识别失败：" + (e.message ?: "所有视觉模型均不可用") + "。不得猜测图片内容。"
+        }
+    }
+
+    /**
+     * 批量解析图片附件：对每个 (url, name) 调用 [describeImageViaQueue]。
+     * 失败的图片使用非阻塞标记文本占位，不阻断主聊天流程。
+     *
+     * @param images 待解析的图片列表（imageUrl + 可选附件名）
+     * @return 每个图片对应的描述或失败标记文本，与输入顺序一致
+     */
+    suspend fun resolveImagesViaQueue(
+        images: List<Pair<String, String?>>
+    ): List<String> = withContext(Dispatchers.IO) {
+        if (images.isEmpty()) return@withContext emptyList()
+        images.map { (url, name) ->
+            val desc = runCatching { describeImageViaQueue(url) }.getOrDefault(
+                VISION_FAILURE_MARKER + "视觉识别异常，不得猜测图片内容。"
+            )
+            buildString {
+                if (!name.isNullOrBlank()) append("【附件: $name】\n")
+                append(desc)
+            }
+        }
     }
 
     // ==================== Token 用量统计（从独立存储聚合，不受会话删除影响）====================
@@ -2672,15 +2891,21 @@ $charSection$topicSection
     // ==================== 扩展功能：故障转移队列 ====================
 
     /**
-     * 本地模式无独立故障转移队列，由 [LocalAiModelEntity.purpose] + [LocalAiModelEntity.priority]
-     * 推导：取该 purpose 下所有启用模型按 priority 升序组成队列。
+     * 取该 purpose 下所有启用模型按 (priority, createdAt) 升序组成队列，
+     * 并附带从 [failoverHealthStore] 读取的真实健康状态（连续失败次数、冷却剩余时间等）。
      */
     suspend fun getFailoverQueue(purpose: String): JsonElement = withContext(Dispatchers.IO) {
-        val models = aiModelDao.listAll()
-            .filter { it.purpose == purpose && it.enabled }
-            .sortedBy { it.priority }
+        val models = queueFor(purpose)
+        val now = System.currentTimeMillis()
         val arr = JsonArray()
         models.forEach { m ->
+            val h = failoverHealthStore.get(m.id)
+            val cooldownRemaining = if (h != null && h.cooldownUntilMs > now) {
+                (h.cooldownUntilMs - now) / 1000.0
+            } else 0.0
+            val available = cooldownRemaining <= 0.0
+            val usage = runCatching { failoverUsageReader.getUsage(m.id) }
+                .getOrDefault(com.nekobot.app.data.local.ai.FailoverUsage())
             JsonObject().also { o ->
                 o.addProperty("model_id", m.id)
                 o.addProperty("id", m.id)
@@ -2688,12 +2913,28 @@ $charSection$topicSection
                 o.addProperty("model", m.model)
                 o.addProperty("provider", m.provider ?: m.protocol)
                 o.addProperty("priority", m.priority)
-                o.add("health", JsonObject().also { h ->
-                    h.addProperty("available", true)
-                    h.addProperty("daily_failures", 0)
-                    h.addProperty("consecutive_failures", 0)
-                    h.addProperty("last_failure_code", 0)
-                    h.addProperty("cooldown_remaining", 0.0)
+                o.addProperty("active", m.active)
+                o.addProperty("purpose", m.purpose)
+                o.addProperty("enabled", m.enabled)
+                o.addProperty("token_limit_daily", m.tokenLimitDaily)
+                o.addProperty("token_limit_weekly", m.tokenLimitWeekly)
+                o.addProperty("failover_timeout", m.failoverTimeout)
+                o.addProperty("input_price", m.inputPrice)
+                o.addProperty("output_price", m.outputPrice)
+                o.add("health", JsonObject().also { ho ->
+                    ho.addProperty("available", available)
+                    ho.addProperty("daily_failures", h?.dailyFailures?.takeIf { h.dailyFailuresDate == todayDateString() } ?: 0)
+                    ho.addProperty("consecutive_failures", h?.consecutiveFailures ?: 0)
+                    ho.addProperty("last_failure_code", h?.lastFailureCode ?: 0)
+                    ho.addProperty("cooldown_remaining", cooldownRemaining)
+                    ho.addProperty("cooldown_until_ms", h?.cooldownUntilMs ?: 0)
+                    ho.addProperty("last_failure_at_ms", h?.lastFailureAtMs ?: 0)
+                })
+                o.add("usage", JsonObject().also { uo ->
+                    uo.addProperty("daily_tokens", usage.dailyTokens)
+                    uo.addProperty("weekly_tokens", usage.weeklyTokens)
+                    uo.addProperty("daily_limit", m.tokenLimitDaily)
+                    uo.addProperty("weekly_limit", m.tokenLimitWeekly)
                 })
             }.also { arr.add(it) }
         }
@@ -2703,34 +2944,152 @@ $charSection$topicSection
         }
     }
 
-    /** 本地模式无失败计数，resetFailover 直接返回成功回显。 */
+    /** 当日字符串（yyyy-MM-dd），用于判断 daily_failures 是否属于今天 */
+    private fun todayDateString(): String =
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+
+    /**
+     * 重置模型健康状态：清除冷却记录与失败计数。
+     * @param modelId 待重置的模型 ID；为 null 时清空所有模型的健康状态
+     */
     suspend fun resetFailover(modelId: String?): JsonElement = withContext(Dispatchers.IO) {
+        if (modelId.isNullOrBlank()) {
+            failoverHealthStore.clear()
+        } else {
+            failoverHealthStore.delete(modelId)
+        }
         JsonObject().apply {
             addProperty("success", true)
-            addProperty("message", "本地模式无失败计数，无需重置")
+            addProperty("message", if (modelId.isNullOrBlank()) "已重置所有模型健康状态" else "已重置模型健康状态")
             modelId?.let { addProperty("model_id", it) }
         }
     }
 
     /**
+     * 取单个模型的故障转移详情：基础信息 + 健康状态（来自 [failoverHealthStore]）+
+     * token 用量（来自 [failoverUsageReader]）+ 策略与价格（来自 [LocalAiModelEntity]）。
+     *
+     * 供 [com.nekobot.app.data.repository.UnifiedRepository] 在本地模式下返回类型化详情。
+     */
+    suspend fun getFailoverDetail(modelId: String): com.nekobot.app.data.model.FailoverModelDetail? =
+        withContext(Dispatchers.IO) {
+            val model = aiModelDao.getById(modelId) ?: return@withContext null
+            val now = System.currentTimeMillis()
+            val health = failoverHealthStore.get(modelId)
+            val cooldownRemaining = if (health != null && health.cooldownUntilMs > now) {
+                (health.cooldownUntilMs - now) / 1000.0
+            } else 0.0
+            val usage = runCatching { failoverUsageReader.getUsage(modelId) }
+                .getOrDefault(com.nekobot.app.data.local.ai.FailoverUsage())
+            val today = todayDateString()
+            com.nekobot.app.data.model.FailoverModelDetail(
+                modelId = model.id,
+                name = model.name,
+                model = model.model,
+                provider = model.provider ?: model.protocol,
+                priority = model.priority,
+                active = model.active,
+                purpose = model.purpose,
+                enabled = model.enabled,
+                health = com.nekobot.app.data.model.FailoverHealth(
+                    available = cooldownRemaining <= 0.0,
+                    dailyFailures = health?.dailyFailures?.takeIf { health.dailyFailuresDate == today } ?: 0,
+                    consecutiveFailures = health?.consecutiveFailures ?: 0,
+                    lastFailureCode = health?.lastFailureCode ?: 0,
+                    cooldownRemaining = cooldownRemaining,
+                    cooldownUntilMs = health?.cooldownUntilMs ?: 0,
+                    lastFailureAtMs = health?.lastFailureAtMs ?: 0
+                ),
+                usage = com.nekobot.app.data.model.FailoverTokenUsage(
+                    dailyTokens = usage.dailyTokens,
+                    weeklyTokens = usage.weeklyTokens,
+                    dailyLimit = model.tokenLimitDaily,
+                    weeklyLimit = model.tokenLimitWeekly
+                ),
+                tokenLimitDaily = model.tokenLimitDaily,
+                tokenLimitWeekly = model.tokenLimitWeekly,
+                failoverTimeout = model.failoverTimeout,
+                inputPrice = model.inputPrice,
+                outputPrice = model.outputPrice,
+                maxTokens = model.maxTokens,
+                temperature = model.temperature?.toDouble(),
+                topP = model.topP?.toDouble()
+            )
+        }
+
+    /**
+     * 更新模型故障转移策略：token 限额 + 超时秒数。
+     * 三个数值字段必须非负（由调用方 [com.nekobot.app.data.repository.UnifiedRepository] 校验）。
+     */
+    suspend fun updateFailoverPolicy(
+        modelId: String,
+        tokenLimitDaily: Long,
+        tokenLimitWeekly: Long,
+        failoverTimeout: Int
+    ): JsonElement = withContext(Dispatchers.IO) {
+        val model = aiModelDao.getById(modelId) ?: return@withContext JsonObject().apply {
+            addProperty("success", false)
+            addProperty("message", "模型不存在: $modelId")
+        }
+        aiModelDao.upsert(
+            model.copy(
+                tokenLimitDaily = tokenLimitDaily,
+                tokenLimitWeekly = tokenLimitWeekly,
+                failoverTimeout = failoverTimeout
+            )
+        )
+        JsonObject().apply {
+            addProperty("success", true)
+            addProperty("model_id", modelId)
+            addProperty("token_limit_daily", tokenLimitDaily)
+            addProperty("token_limit_weekly", tokenLimitWeekly)
+            addProperty("failover_timeout", failoverTimeout)
+        }
+    }
+
+    /**
      * 重排故障转移队列：按传入的 id 顺序重写 priority。
-     * 重排后将 priority=0（P0）的模型设为该 purpose 的当前激活模型。
+     * - 使用 [db.withTransaction] 保证原子性
+     * - 校验每个 id 都属于 [purpose]，否则拒绝整次重排
+     * - 重排后将 priority=0（P0）的模型设为该 purpose 的当前激活模型
+     *
      * @param body JSON: {"purpose":"chat","model_ids":["id1","id2",...]}
      */
     suspend fun reorderFailover(body: JsonElement): JsonElement = withContext(Dispatchers.IO) {
         val obj = body.takeIf { it.isJsonObject }?.asJsonObject
         val purpose = obj?.get("purpose")?.asString ?: "chat"
         val ids: List<String> = obj?.get("model_ids")?.takeIf { it.isJsonArray }?.asJsonArray?.map { it.asString } ?: emptyList()
-        for ((index, id) in ids.withIndex()) {
-            val m = aiModelDao.getById(id)
-            if (m != null && m.purpose == purpose) {
-                aiModelDao.upsert(m.copy(priority = index))
+
+        if (ids.isEmpty()) {
+            return@withContext JsonObject().apply {
+                addProperty("success", false)
+                addProperty("message", "model_ids 不能为空")
             }
         }
-        // P0 自动设为当前激活模型
-        ids.firstOrNull()?.let { p0Id ->
-            aiModelDao.setActiveForPurpose(p0Id, purpose)
+
+        // 校验：所有 id 必须属于该 purpose 的当前启用模型
+        val validIds = queueFor(purpose).map { it.id }.toSet()
+        val invalid = ids.filter { it !in validIds }
+        if (invalid.isNotEmpty()) {
+            return@withContext JsonObject().apply {
+                addProperty("success", false)
+                addProperty("message", "以下模型不属于 purpose=$purpose 的启用队列: ${invalid.joinToString(",")}")
+                add("invalid_ids", gson.toJsonTree(invalid))
+            }
         }
+
+        // 事务内重写 priority
+        db.withTransaction {
+            for ((index, id) in ids.withIndex()) {
+                val m = aiModelDao.getById(id) ?: continue
+                aiModelDao.upsert(m.copy(priority = index))
+            }
+            // P0 自动设为当前激活模型
+            ids.firstOrNull()?.let { p0Id ->
+                aiModelDao.setActiveForPurpose(p0Id, purpose)
+            }
+        }
+
         JsonObject().apply {
             addProperty("success", true)
             addProperty("purpose", purpose)
@@ -2908,5 +3267,88 @@ $charSection$topicSection
         "mp4" -> "video/mp4"
         "mp3" -> "audio/mpeg"
         else -> "application/octet-stream"
+    }
+}
+
+// ============================================================================
+// 顶层类型：故障转移队列的多媒体结果 + 视觉失败标记 + 适配器实现
+// ============================================================================
+
+/** 视觉识别失败的非阻塞标记前缀。出现此前缀的描述表示图片解析失败，后续 LLM 不得猜测图片内容。 */
+const val VISION_FAILURE_MARKER: String = "[视觉识别失败] "
+
+/** 本地 TTS 合成结果：缓存 URI + MIME + 实际使用的模型信息。 */
+data class LocalAudioResult(
+    val cacheUri: String,
+    val mimeType: String,
+    val usedModelId: String,
+    val usedModelName: String
+)
+
+/** 本地图片生成结果：缓存 URI + MIME + 实际使用的模型信息。 */
+data class LocalImageResult(
+    val cacheUri: String,
+    val mimeType: String,
+    val usedModelId: String,
+    val usedModelName: String
+)
+
+/**
+ * Room DAO 适配器：将 [com.nekobot.app.data.local.db.FailoverHealthDao] 暴露为
+ * [com.nekobot.app.data.local.ai.FailoverHealthStore] 供 [FailoverCoordinator] 使用。
+ */
+private class RoomFailoverHealthStore(
+    private val dao: com.nekobot.app.data.local.db.FailoverHealthDao
+) : FailoverHealthStore {
+    override suspend fun get(modelId: String): LocalFailoverHealthEntity? = dao.get(modelId)
+    override suspend fun upsert(entity: LocalFailoverHealthEntity) = dao.upsert(entity)
+    override suspend fun listAll(): List<LocalFailoverHealthEntity> = dao.listAll()
+    override suspend fun delete(modelId: String) = dao.delete(modelId)
+    override suspend fun clear() = dao.clear()
+}
+
+/**
+ * SharedPreferences 适配器：从 token_usage_<dbName>.xml 中聚合每个模型的日/周 token 用量，
+ * 供 [FailoverCoordinator] 在执行前检查 [LocalAiModelEntity.tokenLimitDaily] /
+ * [LocalAiModelEntity.tokenLimitWeekly] 限额。
+ *
+ * 记录字段约定见 [LocalRepository.appendTokenUsageRecord]：每条记录含 model + total_tokens + date。
+ * 由于 records 中存储的是 model 名（如 "gpt-4o"），而协调器传入的是 model.id (UUID)，
+ * 需通过 [resolveModelName] 回调把 id 解析为对应的 model 名后再做匹配。
+ */
+private class PrefsFailoverUsageReader(
+    private val prefs: android.content.SharedPreferences?,
+    private val resolveModelName: suspend (String) -> String?
+) : FailoverUsageReader {
+    override suspend fun getUsage(modelId: String): FailoverUsage {
+        val p = prefs ?: return FailoverUsage()
+        // 先把 modelId (UUID) 解析为对应的 model 名，再按名匹配历史 records
+        val modelName = resolveModelName(modelId) ?: return FailoverUsage()
+        val raw = p.getString("records", "[]") ?: "[]"
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val weekStart = weekStartDateString()
+        var daily = 0L
+        var weekly = 0L
+        try {
+            val arr = JsonParser.parseString(raw).asJsonArray
+            for (item in arr) {
+                val obj = item.takeIf { it.isJsonObject }?.asJsonObject ?: continue
+                val model = obj.get("model")?.asString ?: continue
+                if (model != modelName) continue
+                val total = obj.get("total_tokens")?.asLong ?: continue
+                val date = obj.get("date")?.asString ?: continue
+                if (date == today) daily += total
+                if (date >= weekStart) weekly += total
+            }
+        } catch (_: Exception) { }
+        return FailoverUsage(dailyTokens = daily, weeklyTokens = weekly)
+    }
+
+    /** 返回本周一日期字符串（yyyy-MM-dd），用于聚合周用量 */
+    private fun weekStartDateString(): String {
+        val cal = java.util.Calendar.getInstance(Locale.US)
+        cal.firstDayOfWeek = java.util.Calendar.MONDAY
+        cal.set(java.util.Calendar.DAY_OF_WEEK, java.util.Calendar.MONDAY)
+        return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
     }
 }

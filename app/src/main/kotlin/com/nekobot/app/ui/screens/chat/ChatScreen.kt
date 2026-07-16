@@ -64,6 +64,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VerticalSplit
 import androidx.compose.material.icons.filled.ViewAgenda
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
@@ -117,10 +118,12 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.local.ChatInputLayoutMode
+import com.nekobot.app.data.local.VISION_FAILURE_MARKER
 import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.remote.RealtimeEvent
 import com.nekobot.app.data.remote.SocketState
+import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.ui.BaseViewModel
 import com.google.gson.JsonElement
@@ -1225,6 +1228,31 @@ private fun MessageBubble(
             .widthIn(max = maxBubbleWidth)
             .then(if (isUser) Modifier.width(IntrinsicSize.Max) else Modifier)
         ) {
+            // 视觉识别失败警告：当消息内容包含 VISION_FAILURE_MARKER 时显示非阻塞提示
+            if (message.displayContent.contains(VISION_FAILURE_MARKER)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.error.copy(alpha = 0.12f))
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Filled.Warning,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "部分图片识别失败，AI 不会猜测图片内容",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+            }
             // 多段气泡：每段一个气泡，段间小间距
             segments.forEachIndexed { idx, segment ->
                 val isFirst = idx == 0
@@ -2265,6 +2293,13 @@ class ChatViewModel : BaseViewModel() {
                 _sending.value = false
                 // 流式结束，刷新列表获取服务端持久化的真实消息
                 loadMessages()
+                // 本地模式：会话 TTS 启用时，为刚生成的助手消息合成语音（延迟等待 loadMessages 完成）
+                if (isLocalMode) {
+                    viewModelScope.launch {
+                        kotlinx.coroutines.delay(800)
+                        synthesizeTtsForLastAssistant()
+                    }
+                }
                 // 检查是否需要发送通知（用户不在聊天界面时）
                 trySendNotification(streamingContent.toString())
                 // 如果剧情模式开启，显示骨架并加载新剧情选项
@@ -2356,6 +2391,36 @@ class ChatViewModel : BaseViewModel() {
             block = { unified.listMessages(currentSessionId) },
             onSuccess = { _messages.value = (it ?: emptyList()).filterNot { msg -> msg.isThinkingCard } }
         )
+    }
+
+    /**
+     * 本地模式：会话 TTS 启用时，为最后一条助手消息合成语音并注入 audioUrl。
+     * 在 StreamEnd 后调用（loadMessages 完成后），audioUrl 为缓存 URI（file://），
+     * 由 MessageBubble 的 AudioRenderer 播放。不持久化到数据库（瞬态）。
+     */
+    fun synthesizeTtsForLastAssistant() {
+        if (!isLocalMode) return
+        val session = _session.value ?: return
+        val ttsConfig = session.ttsConfig?.takeIf { it.isJsonObject }?.asJsonObject ?: return
+        if (ttsConfig.get("enabled")?.takeIf { !it.isJsonNull }?.asBoolean != true) return
+        val voice = ttsConfig.get("voice")?.takeIf { !it.isJsonNull }?.asString ?: "alloy"
+        val lastAssistant = _messages.value.lastOrNull { !it.isUser } ?: return
+        val content = lastAssistant.displayContent.trim()
+        if (content.isBlank()) return
+        viewModelScope.launch {
+            try {
+                when (val res = unified.synthesizeAudio(content, voice)) {
+                    is Resource.Success -> {
+                        val audioUri = res.data.cacheUri
+                        _messages.value = _messages.value.map { msg ->
+                            if (msg.id == lastAssistant.id) msg.copy(audioUrl = audioUri) else msg
+                        }
+                    }
+                    is Resource.Error -> { /* TTS 失败不阻断聊天，静默忽略 */ }
+                    is Resource.Loading -> {}
+                }
+            } catch (_: Exception) { /* 瞬态 TTS，失败不提示 */ }
+        }
     }
 
     /**

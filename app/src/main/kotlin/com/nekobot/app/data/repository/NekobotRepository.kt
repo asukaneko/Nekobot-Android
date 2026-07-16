@@ -421,6 +421,27 @@ class NekobotRepository(
         }
         return safeCall { api.reorderFailover(body) }
     }
+
+    /** 取单个模型的故障转移详情：健康状态 + token 用量 + 策略 + 价格。 */
+    suspend fun getFailoverDetail(modelId: String): Resource<com.nekobot.app.data.model.FailoverModelDetail> =
+        safeCall { api.getFailoverDetail(modelId) }
+
+    /** 更新模型 token 限额与超时策略；三个数值字段必须非负，由调用方校验。 */
+    suspend fun updateFailoverPolicy(
+        modelId: String,
+        tokenLimitDaily: Long,
+        tokenLimitWeekly: Long,
+        failoverTimeout: Int
+    ): Resource<JsonElement> {
+        val body = com.nekobot.app.data.model.FailoverPolicyUpdate(
+            modelId = modelId,
+            tokenLimitDaily = tokenLimitDaily,
+            tokenLimitWeekly = tokenLimitWeekly,
+            failoverTimeout = failoverTimeout
+        )
+        return safeCall { api.updateFailoverPolicy(body) }
+    }
+
     suspend fun activeByPurpose(): Resource<JsonElement> = safeCall { api.activeByPurpose() }
 
     // ==================== Token 用量 ====================

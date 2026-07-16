@@ -2,6 +2,7 @@ package com.nekobot.app.ui.screens.aiconfig
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,35 +18,48 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonObject
+import com.nekobot.app.data.model.FailoverModelDetail
+import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.EmptyState
 import com.nekobot.app.ui.components.ErrorBanner
@@ -54,6 +68,7 @@ import com.nekobot.app.ui.components.LoadingOverlay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 private data class FailoverPurpose(val id: String, val label: String)
 
@@ -73,6 +88,7 @@ internal data class FailoverQueueItem(
     val model: String,
     val provider: String,
     val priority: Int,
+    val active: Boolean = false,
     val available: Boolean,
     val dailyFailures: Int,
     val consecutiveFailures: Int,
@@ -80,8 +96,21 @@ internal data class FailoverQueueItem(
     val cooldownRemaining: Double,
     val dailyTokenLimit: Long,
     val weeklyTokenLimit: Long,
-    val timeoutSeconds: Int
-)
+    val timeoutSeconds: Int,
+    val dailyTokens: Long = 0,
+    val weeklyTokens: Long = 0
+) {
+    /** 是否为 P0（首选模型） */
+    val isPrimary: Boolean get() = priority == 0
+
+    /** 日用量百分比 0..100，无限额时返回 0 */
+    val dailyUsagePercent: Int
+        get() = if (dailyTokenLimit <= 0) 0 else ((dailyTokens.toDouble() / dailyTokenLimit) * 100).toInt().coerceIn(0, 100)
+
+    /** 周用量百分比 0..100，无限额时返回 0 */
+    val weeklyUsagePercent: Int
+        get() = if (weeklyTokenLimit <= 0) 0 else ((weeklyTokens.toDouble() / weeklyTokenLimit) * 100).toInt().coerceIn(0, 100)
+}
 
 internal class FailoverQueueViewModel : BaseViewModel() {
     private val _purpose = MutableStateFlow(failoverPurposes.first().id)
@@ -89,6 +118,18 @@ internal class FailoverQueueViewModel : BaseViewModel() {
 
     private val _queue = MutableStateFlow<List<FailoverQueueItem>>(emptyList())
     val queue: StateFlow<List<FailoverQueueItem>> = _queue.asStateFlow()
+
+    /** 当前打开的详情对话框数据；null 表示对话框关闭 */
+    private val _selectedDetail = MutableStateFlow<FailoverModelDetail?>(null)
+    val selectedDetail: StateFlow<FailoverModelDetail?> = _selectedDetail.asStateFlow()
+
+    /** 详情对话框加载状态（独立于列表 loading，避免覆盖） */
+    private val _detailLoading = MutableStateFlow(false)
+    val detailLoading: StateFlow<Boolean> = _detailLoading.asStateFlow()
+
+    /** 详情保存中状态 */
+    private val _detailSaving = MutableStateFlow(false)
+    val detailSaving: StateFlow<Boolean> = _detailSaving.asStateFlow()
 
     init {
         load()
@@ -125,6 +166,11 @@ internal class FailoverQueueViewModel : BaseViewModel() {
             onSuccess = {
                 _queue.value = reordered
                 showToast("队列顺序已保存")
+            },
+            onError = { msg ->
+                // 重排失败：恢复服务端实际顺序，并显示错误
+                showError(msg)
+                load()
             }
         )
     }
@@ -135,19 +181,82 @@ internal class FailoverQueueViewModel : BaseViewModel() {
             onSuccess = {
                 showToast(if (modelId == null) "已重置全部健康状态" else "已重置模型健康状态")
                 load()
+                // 如果详情对话框打开且被重置的模型是当前详情，也刷新详情
+                _selectedDetail.value?.let { d ->
+                    if (modelId == null || modelId == d.modelId) openDetail(d.modelId)
+                }
             }
         )
+    }
+
+    /** 打开详情对话框：通过类型化 API 加载完整详情（含用量/价格） */
+    fun openDetail(modelId: String) {
+        // 直接使用 viewModelScope 而非 launchResult，避免触发全屏 LoadingOverlay
+        _detailLoading.value = true
+        viewModelScope.launch {
+            try {
+                when (val res = unified.getFailoverDetail(modelId)) {
+                    is Resource.Success -> _selectedDetail.value = res.data
+                    is Resource.Error -> {
+                        showError(res.message)
+                        _selectedDetail.value = null
+                    }
+                    is Resource.Loading -> {}
+                }
+            } catch (e: Exception) {
+                showError(e.message ?: "加载详情失败")
+                _selectedDetail.value = null
+            } finally {
+                _detailLoading.value = false
+            }
+        }
+    }
+
+    /** 保存详情对话框中的策略编辑：token 限额 + 超时秒数 */
+    fun saveDetail(tokenLimitDaily: Long, tokenLimitWeekly: Long, failoverTimeout: Int) {
+        val detail = _selectedDetail.value ?: return
+        // 非负校验：UI 层兜底
+        if (tokenLimitDaily < 0 || tokenLimitWeekly < 0 || failoverTimeout < 0) {
+            showError("限额与超时必须为非负数")
+            return
+        }
+        // 直接使用 viewModelScope，避免全屏 LoadingOverlay 覆盖对话框
+        _detailSaving.value = true
+        viewModelScope.launch {
+            try {
+                when (val res = unified.updateFailoverPolicy(detail.modelId, tokenLimitDaily, tokenLimitWeekly, failoverTimeout)) {
+                    is Resource.Success -> {
+                        showToast("策略已保存")
+                        _selectedDetail.value = null
+                        load() // 刷新列表以反映新限额
+                    }
+                    is Resource.Error -> showError(res.message)
+                    is Resource.Loading -> {}
+                }
+            } catch (e: Exception) {
+                showError(e.message ?: "保存策略失败")
+            } finally {
+                _detailSaving.value = false
+            }
+        }
+    }
+
+    /** 关闭详情对话框 */
+    fun dismissDetail() {
+        _selectedDetail.value = null
     }
 
     private fun JsonObject.toQueueItem(): FailoverQueueItem? {
         val modelId = string("model_id") ?: return null
         val health = get("health")?.takeIf { it.isJsonObject }?.asJsonObject
+        val usage = get("usage")?.takeIf { it.isJsonObject }?.asJsonObject
         return FailoverQueueItem(
             id = modelId,
             name = string("name").orEmpty().ifBlank { string("model").orEmpty().ifBlank { modelId } },
             model = string("model").orEmpty(),
             provider = string("provider").orEmpty(),
             priority = int("priority"),
+            active = bool("active", false),
             available = health?.bool("available", true) ?: true,
             dailyFailures = health?.int("daily_failures") ?: 0,
             consecutiveFailures = health?.int("consecutive_failures") ?: 0,
@@ -155,7 +264,9 @@ internal class FailoverQueueViewModel : BaseViewModel() {
             cooldownRemaining = health?.double("cooldown_remaining") ?: 0.0,
             dailyTokenLimit = long("token_limit_daily"),
             weeklyTokenLimit = long("token_limit_weekly"),
-            timeoutSeconds = int("failover_timeout")
+            timeoutSeconds = int("failover_timeout"),
+            dailyTokens = usage?.long("daily_tokens") ?: 0L,
+            weeklyTokens = usage?.long("weekly_tokens") ?: 0L
         )
     }
 }
@@ -184,6 +295,9 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
     val loading by vm.loading.collectAsState()
     val error by vm.error.collectAsState()
     val toast by vm.toast.collectAsState()
+    val selectedDetail by vm.selectedDetail.collectAsState()
+    val detailLoading by vm.detailLoading.collectAsState()
+    val detailSaving by vm.detailSaving.collectAsState()
     val context = LocalContext.current
 
     LaunchedEffect(toast) {
@@ -248,7 +362,8 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
                                 canMoveDown = index < queue.lastIndex,
                                 onMoveUp = { vm.move(index, -1) },
                                 onMoveDown = { vm.move(index, 1) },
-                                onReset = { vm.reset(item.id) }
+                                onReset = { vm.reset(item.id) },
+                                onClick = { vm.openDetail(item.id) }
                             )
                         }
                         item { Spacer(Modifier.height(16.dp)) }
@@ -257,6 +372,18 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
             }
             LoadingOverlay(visible = loading, message = "正在加载队列...")
         }
+    }
+
+    // 详情对话框
+    selectedDetail?.let { detail ->
+        FailoverDetailDialog(
+            detail = detail,
+            loading = detailLoading,
+            saving = detailSaving,
+            onSave = { daily, weekly, timeout -> vm.saveDetail(daily, weekly, timeout) },
+            onReset = { vm.reset(detail.modelId) },
+            onDismiss = vm::dismissDetail
+        )
     }
 }
 
@@ -267,22 +394,65 @@ private fun FailoverModelCard(
     canMoveDown: Boolean,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
-    onReset: () -> Unit
+    onReset: () -> Unit,
+    onClick: () -> Unit
 ) {
-    GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 16) {
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        cornerRadius = 16
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
+                    .background(
+                        if (item.isPrimary) MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)
+                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                    ),
                 contentAlignment = Alignment.Center
             ) {
-                Text("P${item.priority}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Text(
+                    "P${item.priority}",
+                    color = if (item.isPrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Bold
+                )
             }
             Spacer(Modifier.size(10.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(item.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(item.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    if (item.isPrimary) {
+                        Spacer(Modifier.size(6.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                "首选",
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    if (item.active) {
+                        Spacer(Modifier.size(6.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.18f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                "当前",
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.tertiary
+                            )
+                        }
+                    }
+                }
                 Text(
                     listOf(item.provider, item.model).filter { it.isNotBlank() }.joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
@@ -309,6 +479,37 @@ private fun FailoverModelCard(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        // 用量条：仅在有限额时显示
+        if (item.dailyTokenLimit > 0 || item.weeklyTokenLimit > 0) {
+            Spacer(Modifier.height(6.dp))
+            if (item.dailyTokenLimit > 0) {
+                Text(
+                    "日用量 ${item.dailyTokens}/${item.dailyTokenLimit} (${item.dailyUsagePercent}%)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                LinearProgressIndicator(
+                    progress = { item.dailyUsagePercent / 100f },
+                    modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                    color = usageColor(item.dailyUsagePercent),
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            }
+            if (item.weeklyTokenLimit > 0) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "周用量 ${item.weeklyTokens}/${item.weeklyTokenLimit} (${item.weeklyUsagePercent}%)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                LinearProgressIndicator(
+                    progress = { item.weeklyUsagePercent / 100f },
+                    modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                    color = usageColor(item.weeklyUsagePercent),
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            }
+        }
         val limits = buildList {
             if (item.dailyTokenLimit > 0) add("日限额 ${item.dailyTokenLimit}")
             if (item.weeklyTokenLimit > 0) add("周限额 ${item.weeklyTokenLimit}")
@@ -336,4 +537,137 @@ private fun FailoverModelCard(
             }
         }
     }
+}
+
+/** 用量百分比颜色：<80% primary，80..99% tertiary，>=100% error */
+@Composable
+private fun usageColor(percent: Int): androidx.compose.ui.graphics.Color = when {
+    percent >= 100 -> MaterialTheme.colorScheme.error
+    percent >= 80 -> MaterialTheme.colorScheme.tertiary
+    else -> MaterialTheme.colorScheme.primary
+}
+
+@Composable
+private fun FailoverDetailDialog(
+    detail: FailoverModelDetail,
+    loading: Boolean,
+    saving: Boolean,
+    onSave: (dailyLimit: Long, weeklyLimit: Long, timeout: Int) -> Unit,
+    onReset: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var dailyLimitText by remember(detail.modelId) {
+        mutableStateOf(detail.tokenLimitDaily.takeIf { it > 0 }?.toString() ?: "")
+    }
+    var weeklyLimitText by remember(detail.modelId) {
+        mutableStateOf(detail.tokenLimitWeekly.takeIf { it > 0 }?.toString() ?: "")
+    }
+    var timeoutText by remember(detail.modelId) {
+        mutableStateOf(detail.failoverTimeout.takeIf { it > 0 }?.toString() ?: "")
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(detail.name.ifBlank { detail.model }, fontWeight = FontWeight.SemiBold)
+        },
+        text = {
+            if (loading) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    androidx.compose.material3.CircularProgressIndicator()
+                }
+            } else {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        listOfNotNull(detail.provider, detail.model).filter { it.isNotBlank() }.joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    // 健康状态摘要
+                    Text(
+                        buildString {
+                            append("状态：${if (detail.health.available) "可用" else "冷却中"}")
+                            if (detail.health.cooldownRemaining > 0) append(" · 剩余 ${detail.health.cooldownRemaining.toInt()}s")
+                            if (detail.health.consecutiveFailures > 0) append(" · 连续失败 ${detail.health.consecutiveFailures}")
+                            if (detail.health.lastFailureCode > 0) append(" · HTTP ${detail.health.lastFailureCode}")
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    // 用量摘要
+                    if (detail.usage.dailyLimit > 0 || detail.usage.weeklyLimit > 0) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            buildString {
+                                if (detail.usage.dailyLimit > 0) {
+                                    append("日用量 ${detail.usage.dailyTokens}/${detail.usage.dailyLimit} (${detail.usage.dailyPercent}%)")
+                                }
+                                if (detail.usage.weeklyLimit > 0) {
+                                    if (isNotEmpty()) append("\n")
+                                    append("周用量 ${detail.usage.weeklyTokens}/${detail.usage.weeklyLimit} (${detail.usage.weeklyPercent}%)")
+                                }
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = dailyLimitText,
+                        onValueChange = { dailyLimitText = it.filter { c -> c.isDigit() } },
+                        label = { Text("日 token 限额（0=不限）") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = weeklyLimitText,
+                        onValueChange = { weeklyLimitText = it.filter { c -> c.isDigit() } },
+                        label = { Text("周 token 限额（0=不限）") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = timeoutText,
+                        onValueChange = { timeoutText = it.filter { c -> c.isDigit() } },
+                        label = { Text("超时秒数（0=默认）") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val daily = dailyLimitText.toLongOrNull() ?: 0L
+                    val weekly = weeklyLimitText.toLongOrNull() ?: 0L
+                    val timeout = timeoutText.toIntOrNull() ?: 0
+                    onSave(daily, weekly, timeout)
+                },
+                enabled = !loading && !saving
+            ) {
+                Text(if (saving) "保存中..." else "保存")
+            }
+        },
+        dismissButton = {
+            Row {
+                OutlinedButton(onClick = onReset, enabled = !loading && !saving) {
+                    Text("重置健康")
+                }
+                Spacer(Modifier.size(8.dp))
+                TextButton(onClick = onDismiss, enabled = !saving) {
+                    Text("取消")
+                }
+            }
+        }
+    )
 }

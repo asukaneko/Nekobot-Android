@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.VpnKey
@@ -71,13 +72,15 @@ fun ExtensionsScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
         ExtensionItem("频道管理", "Telegram/飞书/QQ/Web 频道", Icons.Filled.Campaign, Routes.CHANNELS),
         ExtensionItem("消息过滤", "关键词/正则过滤规则", Icons.Filled.FilterAlt, Routes.MESSAGE_FILTER),
         ExtensionItem("TTS 试验场", "语音合成预览与音色管理", Icons.Filled.PlayCircle, Routes.TTS_PLAYGROUND),
+        ExtensionItem("图片生成", "本地图片生成实验室", Icons.Filled.Image, Routes.IMAGE_GENERATION_PLAYGROUND),
         ExtensionItem("登录令牌", "Web 控制台访问令牌", Icons.Filled.VpnKey, Routes.LOGIN_TOKENS),
         ExtensionItem("API Keys", "外部 API 密钥管理", Icons.Filled.Key, Routes.API_KEYS)
     )
-    // 本地模式仅展示本地已实现的 7 项
+    // 本地模式仅展示本地已实现的模块（含 TTS/图片生成实验室）
     val localSupportedRoutes = setOf(
         Routes.HOOKS, Routes.TASK_CENTER, Routes.WORKFLOWS,
-        Routes.SKILLS, Routes.TOOLS, Routes.MCP_SERVERS, Routes.API_KEYS
+        Routes.SKILLS, Routes.TOOLS, Routes.MCP_SERVERS, Routes.API_KEYS,
+        Routes.TTS_PLAYGROUND, Routes.IMAGE_GENERATION_PLAYGROUND
     )
     val items = if (isLocalMode) allItems.filter { it.route in localSupportedRoutes } else allItems
 
