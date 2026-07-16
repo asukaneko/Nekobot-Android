@@ -1,0 +1,148 @@
+name: Finalize chat input background fix
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/chat-input-background
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Clean formatting and compile
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          chat_path = Path('app/src/main/kotlin/com/nekobot/app/ui/screens/chat/ChatScreen.kt')
+          chat = chat_path.read_text(encoding='utf-8')
+          chat = chat.replace(
+              """            if (!selectionMode) {
+          if (customBottomBar != null) {
+              customBottomBar()
+          } else {
+          """,
+              """            if (!selectionMode) {
+                  if (customBottomBar != null) {
+                      customBottomBar()
+                  } else {
+          """,
+              1,
+          )
+          chat_path.write_text(chat, encoding='utf-8')
+
+          modern_path = Path('app/src/main/kotlin/com/nekobot/app/ui/screens/chat/ModernChatScreen.kt')
+          modern = modern_path.read_text(encoding='utf-8')
+          modern = modern.replace('import androidx.compose.ui.zIndex\n', '', 1)
+          modern = modern.replace(
+              """ * 消息区域、顶部栏、流式回复和多媒体渲染继续复用 [ChatScreen]；这里只在其上方覆盖
+           * 新的剧情选项栏、操作面板和一体式输入胶囊。两层通过同一 NavBackStackEntry 获取同一个
+           * [ChatViewModel]，因此不会复制会话状态或网络请求。
+          """,
+              """ * 消息区域、顶部栏、流式回复和多媒体渲染继续复用 [ChatScreen]；新版输入栏通过
+           * `customBottomBar` 直接交给 Scaffold 布局。两者使用同一个 [ChatViewModel]，不会复制
+           * 会话状态或网络请求，也不会再与旧输入栏发生视觉叠加。
+          """,
+              1,
+          )
+          modern = modern.replace(
+              """    ChatScreen(
+          sessionId = sessionId,
+          onBack = onBack,
+          onOpenChat = onOpenChat,
+          onOpenSessionDetail = onOpenSessionDetail,
+          onOpenWorkspace = onOpenWorkspace,
+          onOpenStoryGraph = onOpenStoryGraph,
+          externalListState = listState,
+          customBottomBar = {
+              ModernChatComposer(
+                  modifier = Modifier.fillMaxWidth(),
+                  sessionId = sessionId,
+                  messages = messages,
+                  sending = sending,
+                  plotChoices = plotChoices,
+                  plotChoicesLoading = plotChoicesLoading,
+                  onSend = { text, plotChoiceId -> viewModel.sendMessage(text, plotChoiceId) },
+                  onStop = viewModel::stop,
+                  onCompress = viewModel::compressContext,
+                  onClear = { viewModel.clearMessages(sessionId) },
+                  onRegeneratePlotChoices = viewModel::regeneratePlotChoices,
+                  onOpenWorkspace = { onOpenWorkspace(sessionId) },
+                  onJumpToLatest = onJumpToLatest,
+                  onJumpToMessage = { msg ->
+                      val idx = messages.indexOfFirst { it.id == msg.id }
+                      if (idx >= 0) composerScope.launch { listState.animateScrollToItem(idx + 1) }
+                  }
+              )
+          }
+      )""",
+              """    ChatScreen(
+              sessionId = sessionId,
+              onBack = onBack,
+              onOpenChat = onOpenChat,
+              onOpenSessionDetail = onOpenSessionDetail,
+              onOpenWorkspace = onOpenWorkspace,
+              onOpenStoryGraph = onOpenStoryGraph,
+              externalListState = listState,
+              customBottomBar = {
+                  ModernChatComposer(
+                      modifier = Modifier.fillMaxWidth(),
+                      sessionId = sessionId,
+                      messages = messages,
+                      sending = sending,
+                      plotChoices = plotChoices,
+                      plotChoicesLoading = plotChoicesLoading,
+                      onSend = { text, plotChoiceId -> viewModel.sendMessage(text, plotChoiceId) },
+                      onStop = viewModel::stop,
+                      onCompress = viewModel::compressContext,
+                      onClear = { viewModel.clearMessages(sessionId) },
+                      onRegeneratePlotChoices = viewModel::regeneratePlotChoices,
+                      onOpenWorkspace = { onOpenWorkspace(sessionId) },
+                      onJumpToLatest = onJumpToLatest,
+                      onJumpToMessage = { msg ->
+                          val idx = messages.indexOfFirst { it.id == msg.id }
+                          if (idx >= 0) composerScope.launch { listState.animateScrollToItem(idx + 1) }
+                      }
+                  )
+              }
+          )""",
+              1,
+          )
+          modern_path.write_text(modern, encoding='utf-8')
+          PY
+
+          chmod +x gradlew
+          set +e
+          ./gradlew :app:compileDebugKotlin --no-daemon > /tmp/compile.log 2>&1
+          status=$?
+
+          rm .github/workflows/finalize-chat-input-background-fix.yml
+          rm -f .github/chat-input-compile-result.txt
+          if [ "$status" -ne 0 ]; then
+            tail -n 180 /tmp/compile.log > .github/chat-input-compile-result.txt
+          fi
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app/src/main/kotlin/com/nekobot/app/ui/screens/chat/ChatScreen.kt \
+                  app/src/main/kotlin/com/nekobot/app/ui/screens/chat/ModernChatScreen.kt \
+                  .github/workflows/finalize-chat-input-background-fix.yml \
+                  .github/chat-input-compile-result.txt
+          git commit -m "fix: finalize chat input background integration [skip ci]"
+          git push origin HEAD:fix/chat-input-background
+          exit $status
