@@ -1,3 +1,4 @@
+# Trigger verification after the workflow exists on the PR branch.
 name: Finalize chat input background fix
 
 on:
