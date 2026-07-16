@@ -28,7 +28,7 @@ import com.nekobot.app.ui.screens.aiconfig.LocalAiModelsScreen
 import com.nekobot.app.ui.screens.characters.CharacterDetailScreen
 import com.nekobot.app.ui.screens.characters.CharacterViewScreen
 import com.nekobot.app.ui.screens.characters.CharactersScreen
-import com.nekobot.app.ui.screens.chat.ChatScreen
+import com.nekobot.app.ui.screens.chat.ModernChatScreen
 import com.nekobot.app.ui.screens.chat.WorkspaceScreen
 import com.nekobot.app.ui.screens.login.LoginScreen
 import com.nekobot.app.ui.screens.memory.MemoryScreen
@@ -207,13 +207,21 @@ fun NekobotNavGraph() {
                 route = Routes.CHAT,
                 arguments = listOf(navArgument("sessionId") { type = NavType.StringType })
             ) { entry ->
-                ChatScreen(
-                    sessionId = entry.arguments?.getString("sessionId").orEmpty(),
+                val sessionId = entry.arguments?.getString("sessionId").orEmpty()
+                ModernChatScreen(
+                    sessionId = sessionId,
                     onBack = { navController.popBackStack() },
                     onOpenChat = { id -> navController.navigate(Routes.chat(id)) },
                     onOpenSessionDetail = { id -> navController.navigate(Routes.sessionDetail(id)) },
                     onOpenWorkspace = { id -> navController.navigate(Routes.workspace(id)) },
-                    onOpenStoryGraph = { id -> navController.navigate(Routes.storyGraph(id)) }
+                    onOpenStoryGraph = { id -> navController.navigate(Routes.storyGraph(id)) },
+                    onJumpToLatest = {
+                        val route = Routes.chat(sessionId)
+                        navController.navigate(route) {
+                            popUpTo(route) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    }
                 )
             }
             composable(Routes.CHARACTERS) {
