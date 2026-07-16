@@ -765,8 +765,8 @@ private fun CreateSessionDialog(
     onLoadCharacters: () -> Unit
 ) {
     var sessionMode by remember { mutableStateOf("character") }
-    var name by remember { mutableStateOf("") }
-    var characterId by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("新会话") }
+    var characterName by remember { mutableStateOf("") }
     var firstMessage by remember { mutableStateOf("") }
     var dropdownExpanded by remember { mutableStateOf(false) }
     /** 选中的角色对象（来自下拉或 ID 输入匹配） */
@@ -785,27 +785,26 @@ private fun CreateSessionDialog(
         if (characters.isEmpty()) onLoadCharacters()
     }
 
-    /** 切换到指定角色时同步会话名 + 首条消息（仅覆盖未被手动编辑过的字段）。 */
+    /** 切换到指定角色时同步首条消息（仅覆盖未被手动编辑过的字段）。会话名保持默认不覆盖。 */
     fun applyCharacter(c: CharacterPreset?) {
         selectedCharacter = c
         if (c == null) return
-        if (!nameEditedByUser) name = c.displayName
         if (!firstMessageEditedByUser) firstMessage = c.firstMessage.orEmpty()
     }
 
-    // 当 ID 输入框变化时，尝试在已加载角色列表里匹配；命中则自动填充对应字段
-    LaunchedEffect(characterId, characters) {
-        val id = characterId.trim()
-        if (id.isEmpty()) {
-            // ID 清空时也清空已选角色（保留手动输入的 firstMessage / name）
+    // 当角色名输入框变化时，尝试在已加载角色列表里按名称匹配；命中则自动填充对应字段
+    LaunchedEffect(characterName, characters) {
+        val input = characterName.trim()
+        if (input.isEmpty()) {
+            // 名字清空时也清空已选角色（保留手动输入的 firstMessage）
             selectedCharacter = null
             return@LaunchedEffect
         }
-        val match = characters.firstOrNull { it.id == id }
+        val match = characters.firstOrNull { it.displayName == input }
         if (match != null && match != selectedCharacter) {
             applyCharacter(match)
         } else if (match == null) {
-            // 输入了不在列表中的 ID，认为是手动输入的自定义 ID
+            // 输入了不在列表中的名字，视为未匹配
             selectedCharacter = null
         }
     }
@@ -837,9 +836,9 @@ private fun CreateSessionDialog(
                     }
                 )
                 else -> CreateSessionRequest(
-                    name = name.ifBlank { char?.displayName },
+                    name = name.ifBlank { "新会话" },
                     sessionMode = "character",
-                    characterId = characterId.ifBlank { null },
+                    characterId = char?.id,
                     systemPrompt = char?.systemPrompt?.takeIf { it.isNotBlank() },
                     firstMessage = firstMessage.ifBlank { char?.firstMessage },
                     scenario = char?.scenario?.takeIf { it.isNotBlank() },
@@ -1041,12 +1040,12 @@ private fun CreateSessionDialog(
                     )
                     Spacer(Modifier.height(12.dp))
 
-                    // 角色 ID 输入 + 选择按钮（按钮高度对齐 OutlinedTextField）
+                    // 角色名输入 + 选择按钮（按钮高度对齐 OutlinedTextField）
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(
-                            value = characterId,
-                            onValueChange = { characterId = it },
-                            label = { Text("角色 ID") },
+                            value = characterName,
+                            onValueChange = { characterName = it },
+                            label = { Text("角色名") },
                             singleLine = true,
                             modifier = Modifier.weight(1f),
                             placeholder = { Text("手动输入或点击右侧选择", color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -1103,7 +1102,7 @@ private fun CreateSessionDialog(
                                         .fillMaxWidth()
                                         .clickable {
                                             dropdownExpanded = false
-                                            characterId = ""
+                                            characterName = ""
                                             selectedCharacter = null
                                         }
                                         .padding(horizontal = 12.dp, vertical = 10.dp)
@@ -1124,8 +1123,8 @@ private fun CreateSessionDialog(
                                             .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent)
                                             .clickable {
                                                 dropdownExpanded = false
-                                                // 切换角色时同步会话名 + 首条消息（除非用户已手动编辑）
-                                                characterId = c.id.orEmpty()
+                                                // 切换角色时同步角色名 + 首条消息（除非用户已手动编辑）
+                                                characterName = c.displayName
                                                 applyCharacter(c)
                                             }
                                             .padding(horizontal = 12.dp, vertical = 10.dp)
