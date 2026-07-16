@@ -1,7 +1,9 @@
-# Trigger verification after the workflow exists on the PR branch.
 name: Finalize chat input background fix
 
 on:
+  push:
+    branches:
+      - fix/chat-input-background
   pull_request:
     branches:
       - main
@@ -134,6 +136,7 @@ jobs:
 
           rm .github/workflows/finalize-chat-input-background-fix.yml
           rm -f .github/chat-input-compile-result.txt
+          rm -f .github/trigger-chat-input-finalize
           if [ "$status" -ne 0 ]; then
             tail -n 180 /tmp/compile.log > .github/chat-input-compile-result.txt
           fi
@@ -143,7 +146,8 @@ jobs:
           git add app/src/main/kotlin/com/nekobot/app/ui/screens/chat/ChatScreen.kt \
                   app/src/main/kotlin/com/nekobot/app/ui/screens/chat/ModernChatScreen.kt \
                   .github/workflows/finalize-chat-input-background-fix.yml \
-                  .github/chat-input-compile-result.txt
+                  .github/chat-input-compile-result.txt \
+                  .github/trigger-chat-input-finalize
           git commit -m "fix: finalize chat input background integration [skip ci]"
           git push origin HEAD:fix/chat-input-background
           exit $status
