@@ -23,8 +23,11 @@ data class FailoverHealth(
 
 /** 模型 token 用量快照，用于显示日/周用量百分比 */
 data class FailoverTokenUsage(
-    @SerializedName("daily_tokens") val dailyTokens: Long = 0,
-    @SerializedName("weekly_tokens") val weeklyTokens: Long = 0,
+    // 本地模式使用 daily_tokens/weekly_tokens；远程后端使用 today_total/weekly_total。
+    @SerializedName(value = "daily_tokens", alternate = ["today_total"])
+    val dailyTokens: Long = 0,
+    @SerializedName(value = "weekly_tokens", alternate = ["weekly_total"])
+    val weeklyTokens: Long = 0,
     @SerializedName("daily_limit") val dailyLimit: Long = 0,
     @SerializedName("weekly_limit") val weeklyLimit: Long = 0
 ) {
@@ -51,6 +54,8 @@ data class FailoverModelDetail(
     val purpose: String = "",
     val enabled: Boolean = true,
     val health: FailoverHealth = FailoverHealth(),
+    // 本地模式字段名为 usage；远程 Nekobot 后端字段名为 token_usage。
+    @SerializedName(value = "usage", alternate = ["token_usage"])
     val usage: FailoverTokenUsage = FailoverTokenUsage(),
     @SerializedName("token_limit_daily") val tokenLimitDaily: Long = 0,
     @SerializedName("token_limit_weekly") val tokenLimitWeekly: Long = 0,
