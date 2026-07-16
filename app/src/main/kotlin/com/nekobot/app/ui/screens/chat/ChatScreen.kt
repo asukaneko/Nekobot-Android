@@ -153,7 +153,7 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Unit = {}, onOpenSessionDetail: (String) -> Unit = {}, onOpenWorkspace: (String) -> Unit = {}, onOpenStoryGraph: (String) -> Unit = {}) {
+fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Unit = {}, onOpenSessionDetail: (String) -> Unit = {}, onOpenWorkspace: (String) -> Unit = {}, onOpenStoryGraph: (String) -> Unit = {}, externalListState: androidx.compose.foundation.lazy.LazyListState? = null) {
     val viewModel: ChatViewModel = viewModel()
     val messages by viewModel.messages.collectAsState()
     val session by viewModel.session.collectAsState()
@@ -176,7 +176,7 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit, onOpenChat: (String) -> Un
     var showMyMessages by remember { mutableStateOf(false) }
     var showRestoreArchiveDialog by remember { mutableStateOf(false) }
     var showArchiveViewer by remember { mutableStateOf(false) }
-    val listState = rememberLazyListState()
+    val listState = externalListState ?: rememberLazyListState()
     val keyboard = LocalSoftwareKeyboardController.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val context = LocalContext.current
@@ -1793,7 +1793,7 @@ internal fun shouldShowChatInput(
  * 支持毫秒时间戳、ISO 字符串、已格式化字符串三种输入。
  * 例：2026-07-10T14:30:45.123 → "14:30"；2026-07-10 14:30 → "14:30"；14:30:45 → "14:30"
  */
-private fun compactTime(raw: String?): String? {
+internal fun compactTime(raw: String?): String? {
     if (raw.isNullOrBlank()) return null
     val s = raw.trim()
     return try {

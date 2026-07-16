@@ -12,6 +12,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -116,6 +117,8 @@ fun ModernChatScreen(
     val plotChoices by viewModel.plotChoices.collectAsState()
     val plotChoicesLoading by viewModel.plotChoicesLoading.collectAsState()
     val selectionMode by viewModel.selectionMode.collectAsState()
+    val listState = rememberLazyListState()
+    val composerScope = rememberCoroutineScope()
 
     Box(modifier = Modifier.fillMaxSize()) {
         ChatScreen(
@@ -124,7 +127,8 @@ fun ModernChatScreen(
             onOpenChat = onOpenChat,
             onOpenSessionDetail = onOpenSessionDetail,
             onOpenWorkspace = onOpenWorkspace,
-            onOpenStoryGraph = onOpenStoryGraph
+            onOpenStoryGraph = onOpenStoryGraph,
+            externalListState = listState
         )
 
         if (!selectionMode) {
@@ -143,7 +147,11 @@ fun ModernChatScreen(
                 onClear = { viewModel.clearMessages(sessionId) },
                 onRegeneratePlotChoices = viewModel::regeneratePlotChoices,
                 onOpenWorkspace = { onOpenWorkspace(sessionId) },
-                onJumpToLatest = onJumpToLatest
+                onJumpToLatest = onJumpToLatest,
+                onJumpToMessage = { msg ->
+                    val idx = messages.indexOfFirst { it.id == msg.id }
+                    if (idx >= 0) composerScope.launch { listState.animateScrollToItem(idx + 1) }
+                }
             )
         }
     }
@@ -163,7 +171,8 @@ private fun ModernChatComposer(
     onClear: () -> Unit,
     onRegeneratePlotChoices: () -> Unit,
     onOpenWorkspace: () -> Unit,
-    onJumpToLatest: () -> Unit
+    onJumpToLatest: () -> Unit,
+    onJumpToMessage: (Message) -> Unit = {}
 ) {
     val context = LocalContext.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -384,23 +393,21 @@ private fun ModernChatComposer(
                     tokenEstimate = tokenEstimate,
                     sending = sending,
                     fileBusy = fileBusy,
-                    onCompress = { closePanel(); onCompress() },
+                    onCompress = { onCompress() },
                     onSendFile = {
-                        closePanel()
                         filePickMode = "send"
                         pickFile.launch("*/*")
                     },
-                    onOpenWorkspace = { closePanel(); onOpenWorkspace() },
-                    onSearch = { closePanel(); showSearch = true },
-                    onFavorites = { closePanel(); showFavorites = true },
-                    onJumpToLatest = { closePanel(); onJumpToLatest() },
-                    onMyMessages = { closePanel(); showMyMessages = true },
+                    onOpenWorkspace = { onOpenWorkspace() },
+                    onSearch = { showSearch = true },
+                    onFavorites = { showFavorites = true },
+                    onJumpToLatest = { onJumpToLatest() },
+                    onMyMessages = { showMyMessages = true },
                     onUploadOnly = {
-                        closePanel()
                         filePickMode = "upload"
                         pickFile.launch("*/*")
                     },
-                    onClear = { closePanel(); showClearConfirm = true }
+                    onClear = { showClearConfirm = true }
                 )
             }
 
@@ -564,6 +571,10 @@ private fun ModernChatComposer(
             title = "我的消息",
             messages = messages.filter { it.isUser },
             emptyText = "当前会话还没有用户消息",
+            onJump = { msg ->
+                showMyMessages = false
+                onJumpToMessage(msg)
+            },
             onDismiss = { showMyMessages = false }
         )
     }
@@ -947,7 +958,7 @@ private fun ModernQuickAction(
 ) {
     Column(
         modifier = modifier
-            .height(88.dp)
+            .heightIn(min = 88.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(
                 if (enabled) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.54f)
@@ -1053,6 +1064,7 @@ private fun ModernMessageListDialog(
     title: String,
     messages: List<Message>,
     emptyText: String,
+    onJump: (Message) -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -1064,20 +1076,33 @@ private fun ModernMessageListDialog(
             } else {
                 LazyColumn(
                     modifier = Modifier.heightIn(max = 430.dp),
-                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(messages, key = { it.id ?: it.hashCode().toString() }) { message ->
+                        val ts = remember(message.timestamp) { compactTime(message.timestamp) }
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            modifier = Modifier.clickable { onJump(message) }
                         ) {
-                            Text(
-                                text = message.displayContent.ifBlank { "（空消息）" },
-                                modifier = Modifier.padding(11.dp),
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 4,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                                if (!ts.isNullOrBlank()) {
+                                    Text(
+                                        ts,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                }
+                                Text(
+                                    text = message.displayContent.ifBlank { "（空消息）" },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 4,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }
