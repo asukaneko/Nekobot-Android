@@ -1394,14 +1394,14 @@ private fun MessageBubble(
                 AudioRenderer(url = resolvedAudioUrl, modifier = Modifier.widthIn(max = 280.dp))
             }
 
-            // 元信息：时间（精简到分钟）/ token 数；用户气泡把复制按钮放同行最右边
+            // 元信息：时间（精简到分钟）/ token 数 + 操作按钮，AI 气泡合并到同一行
             val compactTs = compactTime(message.timestamp)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .padding(top = 2.dp)
-                    .then(if (isUser) Modifier.fillMaxWidth() else Modifier),
-                horizontalArrangement = if (isUser) Arrangement.SpaceBetween else Arrangement.Start
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (compactTs != null) {
@@ -1412,30 +1412,29 @@ private fun MessageBubble(
                         Text("${tokens} tok", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                // 用户气泡：复制按钮放最右边
-                if (isUser && !selectionMode) {
-                    IconActionButton(
-                        icon = Icons.Filled.ContentCopy,
-                        description = "复制",
-                        onClick = {
-                            val text = onCopy()
-                            clipboard.setText(AnnotatedString(text))
-                        }
-                    )
-                }
-            }
-
-            // AI 操作按钮（重新生成/分支/复制）。多选模式下隐藏。
-            if (!isUser && !selectionMode) {
-                BubbleActions(
-                    isUser = isUser,
-                    onRegenerate = onRegenerate,
-                    onFork = onFork,
-                    onCopy = {
-                        val text = onCopy()
-                        clipboard.setText(AnnotatedString(text))
+                // 用户气泡：复制按钮放最右边；AI 气泡：三个操作按钮放最右边
+                if (!selectionMode) {
+                    if (isUser) {
+                        IconActionButton(
+                            icon = Icons.Filled.ContentCopy,
+                            description = "复制",
+                            onClick = {
+                                val text = onCopy()
+                                clipboard.setText(AnnotatedString(text))
+                            }
+                        )
+                    } else {
+                        BubbleActions(
+                            isUser = isUser,
+                            onRegenerate = onRegenerate,
+                            onFork = onFork,
+                            onCopy = {
+                                val text = onCopy()
+                                clipboard.setText(AnnotatedString(text))
+                            }
+                        )
                     }
-                )
+                }
             }
         }
         // 多选模式：用户气泡右侧显示勾选框
@@ -1459,7 +1458,6 @@ private fun BubbleActions(
     onCopy: () -> Unit
 ) {
     Row(
-        modifier = Modifier.padding(top = 2.dp),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -2513,17 +2511,18 @@ class ChatViewModel : BaseViewModel() {
                     _plotChoicesLoading.value = true
                     if (isLocalMode) {
                         // 本地模式：等待 PlotChoices 事件到达（chatWithPipeline 在 StreamEnd 后生成）
-                        // 5 秒超时保护：生成失败时自动关闭骨架
+                        // 15 秒超时保护：生成失败时自动关闭骨架（Phase 6 含 AI 调用，需充足时间）
                         viewModelScope.launch {
-                            kotlinx.coroutines.delay(5000)
+                            kotlinx.coroutines.delay(15000)
                             if (_plotChoicesLoading.value) {
                                 _plotChoicesLoading.value = false
                             }
                         }
                     } else {
-                        // 服务器模式：延迟 1 秒后通过 HTTP 加载（兜底：若 plot_choices socket 事件先到则覆盖）
+                        // 服务器模式：延迟 8 秒后通过 HTTP 加载（兜底：若 plot_choices socket 事件先到则覆盖）
+                        // 延迟足够长以避免拉到上一轮的旧选项（服务端生成新选项需要时间）
                         viewModelScope.launch {
-                            kotlinx.coroutines.delay(1000)
+                            kotlinx.coroutines.delay(8000)
                             if (_plotChoicesLoading.value) loadPlotChoices()
                         }
                     }

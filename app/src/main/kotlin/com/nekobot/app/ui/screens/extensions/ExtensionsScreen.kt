@@ -72,7 +72,7 @@ fun ExtensionsScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
         ExtensionItem("频道管理", "Telegram/飞书/QQ/Web 频道", Icons.Filled.Campaign, Routes.CHANNELS),
         ExtensionItem("消息过滤", "关键词/正则过滤规则", Icons.Filled.FilterAlt, Routes.MESSAGE_FILTER),
         ExtensionItem("TTS 试验场", "语音合成预览与音色管理", Icons.Filled.PlayCircle, Routes.TTS_PLAYGROUND),
-        ExtensionItem("图片生成", "本地图片生成实验室", Icons.Filled.Image, Routes.IMAGE_GENERATION_PLAYGROUND),
+        ExtensionItem("图片生成", "图片生成实验室", Icons.Filled.Image, Routes.IMAGE_GENERATION_PLAYGROUND),
         ExtensionItem("登录令牌", "Web 控制台访问令牌", Icons.Filled.VpnKey, Routes.LOGIN_TOKENS),
         ExtensionItem("API Keys", "外部 API 密钥管理", Icons.Filled.Key, Routes.API_KEYS)
     )

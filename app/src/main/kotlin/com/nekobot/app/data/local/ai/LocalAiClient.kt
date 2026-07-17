@@ -494,17 +494,39 @@ class LocalAiClient(
         prompt: String,
         size: String = "1024x1024",
         n: Int = 1
+    ): List<GeneratedImage> = generateImage(
+        baseUrl = model.baseUrl,
+        apiKey = model.apiKey,
+        modelName = model.model,
+        prompt = prompt,
+        size = size,
+        n = n,
+        appendBaseUrlPath = model.appendBaseUrlPath
+    )
+
+    /**
+     * 图片生成（基本参数重载）：供远程模式直接调用，无需构造 [LocalAiModelEntity]。
+     * 逻辑同上，调用 OpenAI 兼容 /images/generations 端点。
+     */
+    suspend fun generateImage(
+        baseUrl: String,
+        apiKey: String,
+        modelName: String,
+        prompt: String,
+        size: String = "1024x1024",
+        n: Int = 1,
+        appendBaseUrlPath: Boolean = true
     ): List<GeneratedImage> {
-        val url = resolveImageUrl(model.baseUrl, model.appendBaseUrlPath)
+        val url = resolveImageUrl(baseUrl, appendBaseUrlPath)
         val payload = mapOf(
-            "model" to model.model,
+            "model" to modelName,
             "prompt" to prompt,
             "size" to size,
             "n" to n
         )
         val body = gson.toJson(payload).toRequestBody(JSON_TYPE)
         val req = Request.Builder().url(url).post(body)
-            .header("Authorization", "Bearer ${model.apiKey}")
+            .header("Authorization", "Bearer $apiKey")
             .header("Content-Type", "application/json")
             .build()
         return try {

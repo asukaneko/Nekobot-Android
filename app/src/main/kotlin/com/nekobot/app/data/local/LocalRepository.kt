@@ -34,6 +34,7 @@ import com.nekobot.app.data.local.db.NekobotDatabase
 import com.nekobot.app.data.model.ApiKey
 import com.nekobot.app.data.model.ApiKeyRequest
 import com.nekobot.app.data.model.ApiResult
+import com.nekobot.app.data.model.AiModel
 import com.nekobot.app.data.model.BindCharacterRequest
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.model.CreateSessionRequest
@@ -1720,6 +1721,74 @@ $charSection$topicSection
     }
 
     /**
+     * 远程模式图片生成：直接调用远程 AI 模型列表中 purpose=image_generation 的模型供应商 API。
+     * 绕过后端（后端目前无通用图片生成端点），复用 [aiClient] 的 OpenAI 兼容 /images/generations 调用逻辑。
+     *
+     * 简单故障转移：按 priority 降序遍历模型，第一个成功即返回；全部失败则抛出聚合错误。
+     *
+     * @param models 远程模型列表（调用方需预先筛选 purpose=image_generation 且 enabled=true）
+     * @param prompt 图片描述
+     * @param size 图片尺寸
+     * @param n 生成数量
+     * @return [LocalImageResult] 列表（图片已缓存到 cacheDir/image_gen/）
+     */
+    suspend fun generateImagesFromRemoteModels(
+        models: List<AiModel>,
+        prompt: String,
+        size: String = "1024x1024",
+        n: Int = 1
+    ): List<LocalImageResult> = withContext(Dispatchers.IO) {
+        if (models.isEmpty()) {
+            throw IllegalStateException("未配置图片生成模型，请在 AI 配置中心启用 purpose=image_generation 的模型")
+        }
+        val cacheDir = appContext?.cacheDir
+            ?: throw IllegalStateException("应用上下文未初始化，无法缓存生成图片")
+
+        val errors = mutableListOf<String>()
+        for (model in models) {
+            val baseUrl = model.baseUrl ?: continue
+            val modelName = model.model ?: continue
+            try {
+                val images = aiClient.generateImage(
+                    baseUrl = baseUrl,
+                    apiKey = model.apiKey.orEmpty(),
+                    modelName = modelName,
+                    prompt = prompt,
+                    size = size,
+                    n = n
+                )
+                if (images.isNotEmpty()) {
+                    return@withContext images.mapNotNull { img ->
+                        val bytes = img.bytes ?: run {
+                            val url = img.url ?: return@mapNotNull null
+                            try {
+                                okhttp3.OkHttpClient().newCall(
+                                    okhttp3.Request.Builder().url(url).build()
+                                ).execute().body?.bytes() ?: return@mapNotNull null
+                            } catch (_: Exception) {
+                                null
+                            } ?: return@mapNotNull null
+                        }
+                        val cacheFile = File(cacheDir, "image_gen/${UUID.randomUUID()}.png").apply {
+                            parentFile?.mkdirs()
+                            writeBytes(bytes)
+                        }
+                        LocalImageResult(
+                            cacheUri = android.net.Uri.fromFile(cacheFile).toString(),
+                            mimeType = "image/png",
+                            usedModelId = model.id ?: "",
+                            usedModelName = model.displayName
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                errors.add("${model.displayName}: ${e.message}")
+            }
+        }
+        throw IllegalStateException("图片生成全部模型失败：\n${errors.joinToString("\n")}")
+    }
+
+    /**
      * 通过故障转移队列调用 purpose=vision 模型理解单张图片。
      * 用于聊天流程中解析用户上传的图片附件，生成文本描述注入到 prompt。
      *
@@ -1846,6 +1915,22 @@ $charSection$topicSection
             recentRecords = recent,
             records = recent
         )
+    }
+
+    /**
+     * 获取指定会话历史总 Token 数：从本地 token 用量记录按 session_id 聚合 input+output。
+     */
+    suspend fun sessionTokenUsage(sessionId: String): Long = withContext(Dispatchers.IO) {
+        val records = readTokenUsageRecords()
+        var sum = 0L
+        for (rec in records) {
+            val sid = rec.get("session_id")?.asString ?: continue
+            if (sid != sessionId) continue
+            val input = rec.get("input_tokens")?.asLong ?: 0L
+            val output = rec.get("output_tokens")?.asLong ?: 0L
+            sum += input + output
+        }
+        sum
     }
 
     /** 本地 token 用量排行榜（按 model / session 聚合，从独立存储读取）。 */
@@ -2070,6 +2155,8 @@ $charSection$topicSection
         model = model,
         inputTokens = inputTokens,
         outputTokens = outputTokens,
+        // 合并 input+output 作为总 token 数，供 UI 统计使用
+        tokens = listOfNotNull(inputTokens, outputTokens).takeIf { it.size == 2 }?.sum(),
         createdAt = createdAt
     )
 

@@ -76,6 +76,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
+ * 协议选项：key 为提交给后端的协议标识，displayName 为 UI 显示的友好名称
+ */
+data class ProtocolOption(val key: String, val displayName: String)
+
+/**
  * AI 模型管理页 ViewModel
  */
 class AiModelsViewModel : BaseViewModel() {
@@ -83,8 +88,8 @@ class AiModelsViewModel : BaseViewModel() {
     private val _models = MutableStateFlow<List<AiModel>>(emptyList())
     val models: StateFlow<List<AiModel>> = _models.asStateFlow()
 
-    private val _protocols = MutableStateFlow<List<String>>(emptyList())
-    val protocols: StateFlow<List<String>> = _protocols.asStateFlow()
+    private val _protocols = MutableStateFlow<List<ProtocolOption>>(emptyList())
+    val protocols: StateFlow<List<ProtocolOption>> = _protocols.asStateFlow()
 
     private val _purposes = MutableStateFlow<List<String>>(emptyList())
     val purposes: StateFlow<List<String>> = _purposes.asStateFlow()
@@ -111,8 +116,8 @@ class AiModelsViewModel : BaseViewModel() {
     fun loadProtocols() {
         launchResult(
             block = { repo.listProtocols() },
-            onSuccess = { json -> _protocols.value = parseStringList(json).ifEmpty { listOf("openai") } },
-            onError = { _protocols.value = listOf("openai") }
+            onSuccess = { json -> _protocols.value = parseProtocols(json).ifEmpty { listOf(ProtocolOption("openai", "openai")) } },
+            onError = { _protocols.value = listOf(ProtocolOption("openai", "openai")) }
         )
     }
 
@@ -201,6 +206,44 @@ class AiModelsViewModel : BaseViewModel() {
 
     fun clearTestResult() {
         _testResult.value = null
+    }
+
+    /**
+     * 将 JsonElement 解析为协议选项列表。
+     * 兼容三种服务端返回格式：
+     * 1. 字符串数组：["openai", "anthropic_messages"]
+     * 2. 协议对象数组：[{"key":"openai_responses","name":"OpenAI Responses API",...}]
+     * 3. 包裹对象：{"protocols": [...]} / {"items": [...]} / {"list": [...]}
+     */
+    private fun parseProtocols(json: JsonElement): List<ProtocolOption> {
+        return try {
+            when {
+                json.isJsonArray -> json.asJsonArray.mapNotNull { el ->
+                    when {
+                        el.isJsonObject -> {
+                            val obj = el.asJsonObject
+                            val key = obj.get("key")?.takeIf { !it.isJsonNull }?.asString
+                                ?: obj.get("protocol_key")?.takeIf { !it.isJsonNull }?.asString
+                                ?: obj.get("name")?.takeIf { !it.isJsonNull }?.asString
+                                ?: return@mapNotNull null
+                            val displayName = obj.get("name")?.takeIf { !it.isJsonNull }?.asString ?: key
+                            ProtocolOption(key, displayName)
+                        }
+                        else -> try { ProtocolOption(el.asString, el.asString) } catch (e: Exception) { null }
+                    }
+                }
+                json.isJsonObject -> {
+                    val obj = json.asJsonObject
+                    obj.get("protocols")?.let { return parseProtocols(it) }
+                    obj.get("items")?.let { return parseProtocols(it) }
+                    obj.get("list")?.let { return parseProtocols(it) }
+                    obj.keySet().map { ProtocolOption(it, it) }
+                }
+                else -> try { listOf(ProtocolOption(json.asString, json.asString)) } catch (e: Exception) { emptyList() }
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     /** 将 JsonElement 解析为字符串列表 */
@@ -456,7 +499,7 @@ private fun ModelCard(
 @Composable
 private fun AiModelFormDialog(
     initial: AiModel?,
-    protocols: List<String>,
+    protocols: List<ProtocolOption>,
     purposes: List<String>,
     availableModels: List<String>,
     onFetchModels: (baseUrl: String, apiKey: String?, protocol: String?) -> Unit,
@@ -504,12 +547,13 @@ private fun AiModelFormDialog(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            val protocolOptions = if (protocols.isEmpty()) listOf("openai") else protocols
+            val protocolOptions = if (protocols.isEmpty()) listOf(ProtocolOption("openai", "openai")) else protocols
             DropdownField(
                 label = "协议 (protocol)",
                 value = protocol,
-                options = protocolOptions,
-                onSelect = { protocol = it }
+                options = protocolOptions.map { it.key },
+                onSelect = { protocol = it },
+                labelFor = { key -> protocolOptions.find { it.key == key }?.displayName ?: key }
             )
 
             OutlinedTextField(
@@ -580,6 +624,8 @@ private fun AiModelFormDialog(
 
 /**
  * 下拉选择字段
+ * @param labelFor 可选的显示名转换函数：传入 option 的 value，返回用于 UI 显示的文本。
+ *                 若为 null，则直接显示 value 本身。用于协议等需要 key/label 分离的场景。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -588,9 +634,11 @@ private fun DropdownField(
     value: String,
     options: List<String>,
     onSelect: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    labelFor: ((String) -> String)? = null
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val displayValue = labelFor?.invoke(value) ?: value
     ExposedDropdownMenuBox(
         expanded = expanded,
         onExpandedChange = { expanded = it },
@@ -598,7 +646,7 @@ private fun DropdownField(
     ) {
         @Suppress("DEPRECATION")
         OutlinedTextField(
-            value = value,
+            value = displayValue,
             onValueChange = {},
             readOnly = true,
             label = { Text(label) },
@@ -619,7 +667,7 @@ private fun DropdownField(
             } else {
                 options.forEach { option ->
                     DropdownMenuItem(
-                        text = { Text(option) },
+                        text = { Text(labelFor?.invoke(option) ?: option) },
                         onClick = {
                             onSelect(option)
                             expanded = false

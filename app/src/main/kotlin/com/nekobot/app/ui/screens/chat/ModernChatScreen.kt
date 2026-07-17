@@ -19,6 +19,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -374,6 +375,22 @@ private fun ModernChatComposer(
     val messageCount = messages.count { !it.isThinkingCard }
     val charCount = input.length
     val tokenEstimate = estimateModernChatDraftTokens(input)
+
+    // 加载激活模型的 maxTokens，用于上下文圆环进度条百分比计算
+    var maxTokens by remember { mutableStateOf<Int?>(null) }
+    // 会话历史已用 Token：服务端消息不携带 token，需从 token 统计端点按 session_id 聚合
+    var usedTokens by remember { mutableStateOf(0L) }
+    // 消息条数变化或发送中状态变化时刷新（远程模式发送后服务端会先写 token 记录）
+    val refreshKey = messageCount.toString() + "_" + sending.toString()
+    LaunchedEffect(refreshKey) {
+        // 远程模式无激活模型，maxTokens 保持 null（百分比置 0）
+        maxTokens = withContext(Dispatchers.IO) {
+            ServiceContainer.unified.getActiveLocalModel()?.maxTokens
+        }
+        usedTokens = withContext(Dispatchers.IO) {
+            ServiceContainer.unified.sessionTokenUsage(sessionId)
+        }
+    }
     val hasPlotSurface = plotChoicesLoading || plotChoices.isNotEmpty()
     val inputVisible = shouldShowChatInput(
         layoutMode = chatInputLayout,
@@ -447,6 +464,8 @@ private fun ModernChatComposer(
                     messageCount = messageCount,
                     charCount = charCount,
                     tokenEstimate = tokenEstimate,
+                    usedTokens = usedTokens,
+                    maxTokens = maxTokens,
                     sending = sending,
                     fileBusy = fileBusy,
                     onCompress = { onCompress() },
@@ -794,6 +813,7 @@ private fun ModernChatComposer(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ModernPlotChoices(
     loading: Boolean,
@@ -811,6 +831,7 @@ private fun ModernPlotChoices(
     onRegenerate: () -> Unit,
     onStop: () -> Unit
 ) {
+    var detailChoice by remember { mutableStateOf<PlotChoice?>(null) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -942,7 +963,11 @@ private fun ModernPlotChoices(
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(min = 52.dp)
-                            .clickable(enabled = enabled) { onSelect(choice) },
+                            .combinedClickable(
+                                enabled = enabled,
+                                onClick = { onSelect(choice) },
+                                onLongClick = { detailChoice = choice }
+                            ),
                         shape = RoundedCornerShape(14.dp),
                         color = if (selected) levelColor.copy(alpha = 0.15f)
                         else MaterialTheme.colorScheme.surfaceVariant,
@@ -983,6 +1008,71 @@ private fun ModernPlotChoices(
             }
         }
     }
+
+    // 长按查看完整内容
+    detailChoice?.let { choice ->
+        val levelColor = when (choice.level) {
+            "turning_point" -> Color(0xFFFF6B6B)
+            "important" -> Color(0xFFFFB347)
+            else -> MaterialTheme.colorScheme.primary
+        }
+        AlertDialog(
+            onDismissRequest = { detailChoice = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(levelColor)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        when (choice.level) {
+                            "turning_point" -> "转折点选项"
+                            "important" -> "重要选项"
+                            else -> "普通选项"
+                        },
+                        color = levelColor,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        "标题",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        choice.title.ifBlank { "（无标题）" },
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    if (choice.description.isNotBlank()) {
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "意图",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            choice.description,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { detailChoice = null }) { Text("关闭") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -990,6 +1080,8 @@ private fun ModernChatActionPanel(
     messageCount: Int,
     charCount: Int,
     tokenEstimate: Int,
+    usedTokens: Long,
+    maxTokens: Int?,
     sending: Boolean,
     fileBusy: Boolean,
     onCompress: () -> Unit,
@@ -1021,6 +1113,8 @@ private fun ModernChatActionPanel(
                     messageCount = messageCount,
                     charCount = charCount,
                     tokenEstimate = tokenEstimate,
+                    usedTokens = usedTokens,
+                    maxTokens = maxTokens,
                     sending = sending,
                     onCompress = onCompress
                 )
@@ -1126,9 +1220,17 @@ private fun ModernContextCard(
     messageCount: Int,
     charCount: Int,
     tokenEstimate: Int,
+    usedTokens: Long,
+    maxTokens: Int?,
     sending: Boolean,
     onCompress: () -> Unit
 ) {
+    // 计算已用 Token 占最大上下文的比例；maxTokens 缺省时百分比置 0
+    val progress = if (maxTokens != null && maxTokens > 0) {
+        (usedTokens.toFloat() / maxTokens.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+    val percent = (progress * 100).toInt()
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -1137,18 +1239,23 @@ private fun ModernContextCard(
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // 圆环进度条：外圈 CircularProgressIndicator，内圈百分比数字
                 Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+                    modifier = Modifier.size(42.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        Icons.Filled.AutoAwesome,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(21.dp)
+                    CircularProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.size(42.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 4.dp,
+                        trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                    )
+                    Text(
+                        text = "$percent%",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
                 Spacer(Modifier.width(10.dp))
@@ -1177,7 +1284,7 @@ private fun ModernContextCard(
             }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ModernMetric("估算 Token", tokenEstimate.toString(), Modifier.weight(1f))
+                ModernMetric("聊天已用 Token", usedTokens.toString(), Modifier.weight(1f))
                 ModernMetric("状态", if (sending) "生成中" else "就绪", Modifier.weight(1f))
             }
         }

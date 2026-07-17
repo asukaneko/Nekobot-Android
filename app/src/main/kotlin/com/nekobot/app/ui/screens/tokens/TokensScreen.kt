@@ -608,6 +608,21 @@ private fun TokenRecordCard(record: TokenRecordUi) {
     val purposeLabel = purposeLabel(record.purpose)
     val badgeColor = purposeColor(record.purpose)
 
+    // 查询会话名，会话不存在时回退到截断的会话 ID
+    val sessionId = record.sessionId
+    val sessionDisplay by if (sessionId.isNotBlank()) {
+        androidx.compose.runtime.produceState(initialValue = "会话 ${sessionId.take(8)}", sessionId) {
+            value = withContext(Dispatchers.IO) {
+                when (val res = ServiceContainer.unified.getSession(sessionId)) {
+                    is Resource.Success -> "会话 ${res.data?.displayName?.takeIf { it.isNotBlank() } ?: sessionId.take(8)}"
+                    else -> "会话 ${sessionId.take(8)}"
+                }
+            }
+        }
+    } else {
+        androidx.compose.runtime.remember { mutableStateOf("") }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -634,7 +649,7 @@ private fun TokenRecordCard(record: TokenRecordUi) {
                     Text(
                         listOfNotNull(
                             record.source.takeIf { it.isNotBlank() }?.let { "来源 ${sourceLabel(it)}" },
-                            record.sessionId.takeIf { it.isNotBlank() }?.let { "会话 ${it.take(8)}" }
+                            sessionDisplay.takeIf { it.isNotBlank() }
                         ).joinToString(" · "),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

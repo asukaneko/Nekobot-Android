@@ -458,6 +458,43 @@ class UnifiedRepository(
         if (isLocal) Resource.Success(local.tokenRankings())
         else remote.tokenRankings()
 
+    /**
+     * 获取指定会话历史总 Token 数。
+     *
+     * - 本地模式：从 token 用量记录中按 session_id 聚合 input+output。
+     * - 远程模式：调用 GET /api/tokens?dateRange=all，从 records 数组按 session_id 过滤求和。
+     *   注意：服务端消息本身不携带 token 字段，必须依赖此聚合端点。
+     *
+     * 失败或无记录时返回 0。
+     */
+    suspend fun sessionTokenUsage(sessionId: String): Long {
+        return if (isLocal) {
+            local.sessionTokenUsage(sessionId)
+        } else {
+            when (val res = remote.tokenStats(dateRange = "all")) {
+                is Resource.Success -> {
+                    val data = res.data ?: return 0L
+                    // records 是按条记录的数组；按 session_id 过滤累加 total
+                    val records = data.records ?: data.recentRecords ?: emptyList()
+                    var sum = 0L
+                    for (rec in records) {
+                        if (!rec.isJsonObject) continue
+                        val obj = rec.asJsonObject
+                        val sid = obj.get("session_id")?.takeIf { !it.isJsonNull }?.asString ?: continue
+                        if (sid != sessionId) continue
+                        val total = obj.get("total")?.asLong
+                            ?: obj.get("total_tokens")?.asLong
+                            ?: ((obj.get("input")?.asLong ?: obj.get("input_tokens")?.asLong ?: 0L) +
+                                (obj.get("output")?.asLong ?: obj.get("output_tokens")?.asLong ?: 0L))
+                        sum += total
+                    }
+                    sum
+                }
+                else -> 0L
+            }
+        }
+    }
+
     // ==================== 角色卡导入 ====================
 
     /**
@@ -1160,24 +1197,42 @@ class UnifiedRepository(
         Resource.Error("远程模式不支持独立 TTS 合成，请在会话设置中启用 TTS")
     }
 
-    // ==================== 图片生成（本地优先）====================
+    // ==================== 图片生成（本地 + 远程）====================
 
     /**
-     * 统一图片生成接口：本地模式走故障转移队列生成并返回缓存 URI 列表；
-     * 远程模式暂不支持（远程图片生成需扩展后端 API）。
+     * 统一图片生成接口：
+     * - 本地模式：走故障转移队列生成并返回缓存 URI 列表。
+     * - 远程模式：从远程 AI 模型列表中筛选 purpose=image_generation 的模型，
+     *   直接调用模型供应商的 OpenAI 兼容 /images/generations 端点（后端目前无通用图片生成 API）。
      */
     suspend fun generateImages(
         prompt: String,
         size: String = "1024x1024",
         n: Int = 1
-    ): Resource<List<com.nekobot.app.data.local.LocalImageResult>> = if (isLocal) {
-        try {
-            Resource.Success(local.generateImages(prompt, size, n))
-        } catch (e: Exception) {
-            Resource.Error(e.message ?: "本地图片生成失败")
+    ): Resource<List<com.nekobot.app.data.local.LocalImageResult>> {
+        if (isLocal) {
+            return try {
+                Resource.Success(local.generateImages(prompt, size, n))
+            } catch (e: Exception) {
+                Resource.Error(e.message ?: "本地图片生成失败")
+            }
         }
-    } else {
-        Resource.Error("远程模式不支持独立图片生成")
+        return try {
+            val allModels = when (val res = remote.listAiModels()) {
+                is Resource.Success -> res.data
+                is Resource.Error -> return Resource.Error(res.message)
+                is Resource.Loading -> return Resource.Error("模型列表加载中")
+            }
+            val imageModels = allModels
+                .filter { it.purpose == "image_generation" && it.enabled != false }
+                .sortedByDescending { it.priority ?: 0 }
+            if (imageModels.isEmpty()) {
+                return Resource.Error("未配置图片生成模型，请在 AI 配置中心启用 purpose=image_generation 的模型")
+            }
+            Resource.Success(local.generateImagesFromRemoteModels(imageModels, prompt, size, n))
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "远程图片生成失败")
+        }
     }
 
     /**

@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.plot
 
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,6 +30,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.Button
@@ -66,6 +71,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nekobot.app.data.model.PlotChoiceData
 import com.nekobot.app.data.model.PlotBranchRequest
@@ -82,9 +88,12 @@ import com.nekobot.app.ui.theme.OnSurfaceVariant
 import com.nekobot.app.ui.theme.Primary
 import com.nekobot.app.ui.theme.Secondary
 import com.nekobot.app.ui.theme.WarningAmber
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 private enum class StoryGraphView { Graph, Timeline }
@@ -1266,6 +1275,74 @@ private fun TextContentDialog(
     content: String,
     onDismiss: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var fullscreen by remember { mutableStateOf(false) }
+    var renderFailed by remember { mutableStateOf(false) }
+    val html = remember(content) { buildMermaidHtml(content) }
+    // 桥接：JS 调用 savePng(base64) 后，由协程写入文件
+    val bridge = remember {
+        MermaidDownloadBridge { base64 ->
+            scope.launch {
+                val saved = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val dir = java.io.File(context.getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES), "Nekobot").apply { mkdirs() }
+                        val file = java.io.File(dir, "mermaid_${System.currentTimeMillis()}.png")
+                        val bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT)
+                        file.writeBytes(bytes)
+                        file
+                    }.getOrNull()
+                }
+                if (saved != null) {
+                    android.widget.Toast.makeText(context, "已保存到 ${saved.absolutePath}", android.widget.Toast.LENGTH_LONG).show()
+                } else {
+                    android.widget.Toast.makeText(context, "保存失败", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+    // WebView 引用，用于触发下载
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+
+    if (fullscreen) {
+        // 全屏 Dialog：WebView 占满屏幕 + 顶部操作栏
+        androidx.compose.ui.window.Dialog(onDismissRequest = { fullscreen = false }) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFF111111))
+            ) {
+                MermaidWebView(
+                    html = html,
+                    bridge = bridge,
+                    onWebViewReady = { webViewRef = it },
+                    onRenderFailed = { renderFailed = it },
+                    renderFailed = renderFailed,
+                    fallbackText = content,
+                    modifier = Modifier.fillMaxSize()
+                )
+                // 顶部操作栏：下载 + 退出全屏
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.IconButton(onClick = { webViewRef?.evaluateJavascript("downloadPng();", null) }) {
+                        androidx.compose.material3.Icon(Icons.Filled.Download, contentDescription = "下载 PNG", tint = Color.White, modifier = Modifier.size(18.dp))
+                    }
+                    androidx.compose.material3.IconButton(onClick = { fullscreen = false }) {
+                        androidx.compose.material3.Icon(Icons.Filled.FullscreenExit, contentDescription = "退出全屏", tint = Color.White, modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+        }
+        return
+    }
+
     NekoDialog(
         onDismiss = onDismiss,
         title = title,
@@ -1277,20 +1354,203 @@ private fun TextContentDialog(
         if (content.isBlank()) {
             Text("（无内容）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
-            Text(
-                content,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface,
+            // 操作栏：下载 PNG + 全屏
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                androidx.compose.material3.TextButton(onClick = { webViewRef?.evaluateJavascript("downloadPng();", null) }) {
+                    androidx.compose.material3.Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("下载 PNG")
+                }
+                androidx.compose.material3.TextButton(onClick = { fullscreen = true }) {
+                    androidx.compose.material3.Icon(Icons.Filled.Fullscreen, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("全屏")
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 400.dp)
-                    .verticalScroll(rememberScrollState())
+                    .heightIn(max = 420.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                    .padding(8.dp)
-            )
+            ) {
+                MermaidWebView(
+                    html = html,
+                    bridge = bridge,
+                    onWebViewReady = { webViewRef = it },
+                    onRenderFailed = { renderFailed = it },
+                    renderFailed = renderFailed,
+                    fallbackText = content,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
     }
+}
+
+/** Mermaid WebView：支持双指缩放，加载失败时回退到文本展示。 */
+@Composable
+private fun MermaidWebView(
+    html: String,
+    bridge: MermaidDownloadBridge,
+    onWebViewReady: (WebView) -> Unit,
+    onRenderFailed: (Boolean) -> Unit,
+    renderFailed: Boolean,
+    fallbackText: String,
+    modifier: Modifier = Modifier
+) {
+    if (renderFailed) {
+        Text(
+            fallbackText,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(8.dp)
+        )
+    } else {
+        AndroidView(
+            factory = { ctx ->
+                WebView(ctx).apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.loadWithOverviewMode = true
+                    settings.useWideViewPort = true
+                    // 启用双指缩放
+                    settings.builtInZoomControls = true
+                    settings.displayZoomControls = false
+                    settings.setSupportZoom(true)
+                    addJavascriptInterface(bridge, "AndroidBridge")
+                    webViewClient = object : WebViewClient() {
+                        override fun onReceivedError(
+                            view: WebView?,
+                            request: android.webkit.WebResourceRequest?,
+                            error: android.webkit.WebResourceError?
+                        ) {
+                            onRenderFailed(true)
+                        }
+                    }
+                    loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+                    onWebViewReady(this)
+                }
+            },
+            update = { webView ->
+                webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+            },
+            modifier = modifier
+        )
+    }
+}
+
+/** JS 桥接：把 PNG base64 传回 Kotlin。 */
+private class MermaidDownloadBridge(private val onSave: (String) -> Unit) {
+    @android.webkit.JavascriptInterface
+    fun savePng(base64: String) {
+        // 截掉 "data:image/png;base64," 前缀
+        val data = base64.substringAfter("base64,")
+        onSave(data)
+    }
+}
+
+/**
+ * 用 mermaid.js CDN 渲染 Mermaid 代码为 SVG 图。
+ * 浅色背景以匹配弹窗；脚本执行后调用 mermaid.run() 触发渲染。
+ * 暴露 downloadPng() 供 Kotlin 调用以导出 PNG。
+ */
+private fun buildMermaidHtml(mermaidCode: String): String {
+    // 用 Gson 把 mermaid 代码序列化为合法 JSON 字符串，避免手工转义出错
+    val codeJson = com.google.gson.Gson().toJson(mermaidCode)
+    return """
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+<style>
+  html, body { margin: 0; padding: 8px; background: transparent; }
+  body { font-family: -apple-system, "Helvetica Neue", sans-serif; }
+  #target { text-align: center; background: #ffffff; border-radius: 6px; padding: 8px; min-height: 60px; }
+  #target svg { max-width: 100%; height: auto; }
+  #fallback { display: none; white-space: pre-wrap; font-family: monospace; text-align: left; color: #333; padding: 8px; }
+  #loading { color: #888; font-size: 12px; padding: 8px; text-align: center; }
+</style>
+</head>
+<body>
+<div id="target"><div id="loading">渲染中…</div></div>
+<pre id="fallback"></pre>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  var code = $codeJson;
+  var target = document.getElementById('target');
+  var fallback = document.getElementById('fallback');
+  fallback.textContent = code;
+  function showFallback(err) {
+    target.style.display = 'none';
+    fallback.style.display = 'block';
+    if (err) console.error(err);
+  }
+  try {
+    if (typeof mermaid === 'undefined') { showFallback(new Error('mermaid.js 加载失败')); }
+    else {
+      target.textContent = code;
+      target.setAttribute('class', 'mermaid');
+      mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+      mermaid.run({ nodes: [target] })
+        .catch(showFallback);
+    }
+  } catch(e) {
+    showFallback(e);
+  }
+
+  // 导出 PNG：把 SVG 绘制到 canvas 后转 base64 回传 Kotlin
+  function downloadPng() {
+    try {
+      var svg = document.querySelector('#target svg');
+      if (!svg) { alert('SVG 尚未渲染完成'); return; }
+      // 克隆 SVG 并显式设置尺寸（避免 getBBox 在某些情况下返回 0）
+      var clone = svg.cloneNode(true);
+      var bbox = svg.getBoundingClientRect();
+      var width = Math.max(bbox.width, 320);
+      var height = Math.max(bbox.height, 200);
+      clone.setAttribute('width', width);
+      clone.setAttribute('height', height);
+      clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      var svgData = new XMLSerializer().serializeToString(clone);
+      var svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      var url = URL.createObjectURL(svgBlob);
+      var img = new Image();
+      img.onload = function() {
+        var scale = 2;  // 2x 分辨率以保证清晰度
+        var canvas = document.createElement('canvas');
+        canvas.width = width * scale;
+        canvas.height = height * scale;
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        var pngData = canvas.toDataURL('image/png');
+        AndroidBridge.savePng(pngData);
+        URL.revokeObjectURL(url);
+      };
+      img.onerror = function() {
+        alert('PNG 导出失败：图片加载错误');
+        URL.revokeObjectURL(url);
+      };
+      img.src = url;
+    } catch(e) {
+      alert('PNG 导出失败：' + e.message);
+    }
+  }
+</script>
+</body>
+</html>
+    """.trimIndent()
 }
 
 // ==================== 辅助组件 ====================

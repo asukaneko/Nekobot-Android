@@ -131,9 +131,6 @@ fun ImageGenerationPlaygroundScreen(onBack: () -> Unit) {
     var n by remember { mutableStateOf(1) }
     var sizeExpanded by remember { mutableStateOf(false) }
 
-    val appMode by ServiceContainer.appModeFlow.collectAsState()
-    val isLocalMode = ServiceContainer.prefs.isLocalMode
-
     LaunchedEffect(toast) {
         toast?.let {
             Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
@@ -170,10 +167,6 @@ fun ImageGenerationPlaygroundScreen(onBack: () -> Unit) {
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                if (!isLocalMode) {
-                    ErrorBanner(message = "图片生成实验室仅在本地模式可用，请在设置中切换到本地模式")
-                }
-
                 error?.let {
                     ErrorBanner(message = it, onRetry = { vm.clearError() })
                 }
@@ -239,7 +232,7 @@ fun ImageGenerationPlaygroundScreen(onBack: () -> Unit) {
                     Button(
                         onClick = { vm.generate(prompt, selectedSize.value, n) },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = isLocalMode && !loading,
+                        enabled = !loading,
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
                         Icon(Icons.Filled.Image, contentDescription = null, modifier = Modifier.size(18.dp))

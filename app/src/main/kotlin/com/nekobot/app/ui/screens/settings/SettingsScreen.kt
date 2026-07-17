@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.settings
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -32,6 +34,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Settings as SettingsIcon
 import androidx.compose.material3.Button
@@ -60,6 +63,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.GsonBuilder
@@ -483,6 +487,39 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                         }
                     }
                 }
+
+                // 7. 关于
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    SectionHeader(title = "关于")
+                    Spacer(Modifier.height(8.dp))
+                    AboutRow(
+                        icon = Icons.Filled.Person,
+                        iconColor = MaterialTheme.colorScheme.primary,
+                        title = "制作人",
+                        subtitle = "Asukaneko",
+                        onClick = { openUrl(context, "https://github.com/asukaneko") }
+                    )
+                    AboutRow(
+                        icon = Icons.Filled.Description,
+                        iconColor = MaterialTheme.colorScheme.tertiary,
+                        title = "Android 仓库",
+                        subtitle = "github.com/asukaneko/Nekobot-Android",
+                        onClick = { openUrl(context, "https://github.com/asukaneko/Nekobot-Android") }
+                    )
+                    AboutRow(
+                        icon = Icons.Filled.Memory,
+                        iconColor = MaterialTheme.colorScheme.secondary,
+                        title = "服务端仓库",
+                        subtitle = "github.com/asukaneko/nekobot",
+                        onClick = { openUrl(context, "https://github.com/asukaneko/nekobot") }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "Nekobot for Android · v${ getAppVersion(context) }",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             LoadingOverlay(visible = loading)
@@ -605,4 +642,55 @@ private fun SettingNavRow(
         }
         Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+/** 关于页面的导航行：与 [SettingNavRow] 等价，但右箭头前可显示更紧凑的副标题。 */
+@Composable
+private fun AboutRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconColor: Color,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** 用浏览器打开指定 URL，失败时 Toast 提示。 */
+private fun openUrl(context: android.content.Context, url: String) {
+    runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    }.onFailure {
+        Toast.makeText(context, "无法打开链接", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/** 获取当前应用版本名；失败时返回 "unknown"。 */
+private fun getAppVersion(context: android.content.Context): String {
+    return runCatching {
+        val pm = context.packageManager
+        val info = pm.getPackageInfo(context.packageName, 0)
+        info.versionName ?: "unknown"
+    }.getOrDefault("unknown")
 }
