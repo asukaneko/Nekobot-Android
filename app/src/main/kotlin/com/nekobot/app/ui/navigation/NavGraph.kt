@@ -5,13 +5,13 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -116,31 +116,11 @@ fun NekobotNavGraph() {
         }
     }
 
-    Scaffold(
-        bottomBar = {
-            if (showBottomBar) {
-                LiquidGlassBottomBar(
-                    items = bottomItems(),
-                    selectedRoute = currentRoute,
-                    onItemSelected = { item ->
-                        navController.navigate(item.route) {
-                            popUpTo(Routes.SESSIONS) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
-                )
-            }
-        }
-    ) { innerPadding ->
-        // 只应用底部 padding（bottomBar 高度 + 导航栏 inset），
-        // 顶部 inset 交给各 Screen 内部的 TopAppBar 消耗，避免状态栏 inset 被应用两次导致顶部空白过高。
+    Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
             startDestination = if (isLoggedIn) Routes.SESSIONS else Routes.LOGIN,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = innerPadding.calculateBottomPadding()),
+            modifier = Modifier.fillMaxSize(),
             // 主 Tab 之间：按底栏顺序做方向性横向滑动 + 淡入，呼应圆岛的滑动方向；
             // 进入/退出详情页：从右侧滑入、向右滑出，形成层级纵深感。
             enterTransition = {
@@ -402,6 +382,23 @@ fun NekobotNavGraph() {
             composable(Routes.DB_PROFILE) {
                 DbProfileScreen(onBack = { navController.popBackStack() })
             }
+        }
+
+        // 作为覆盖层悬浮在页面上方，不再为底栏预留整块背景；
+        // 胶囊外的透明区域没有手势处理，点击和滚动会继续交给下方内容。
+        if (showBottomBar) {
+            LiquidGlassBottomBar(
+                items = bottomItems(),
+                selectedRoute = currentRoute,
+                onItemSelected = { item ->
+                    navController.navigate(item.route) {
+                        popUpTo(Routes.SESSIONS) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
         }
     }
 }

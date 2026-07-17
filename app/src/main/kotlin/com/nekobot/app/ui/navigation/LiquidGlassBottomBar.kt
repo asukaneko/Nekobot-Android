@@ -135,34 +135,34 @@ fun LiquidGlassBottomBar(
     }
 }
 
-/** 外层玻璃胶囊：柔和投影 + 半透明渐变填充 + 顶部高光描边。 */
+/** 外层磨砂玻璃胶囊：高浓度半透明底色 + 柔和投影 + 顶部高光描边。 */
 @Composable
 private fun GlassPill(dark: Boolean, content: @Composable () -> Unit) {
     val shape = RoundedCornerShape(50)
-    // 更通透的玻璃：仅保留极淡的白色渐变，主要靠描边与投影勾勒轮廓，避免发灰发脏。
+    // 用高浓度半透明渐变压低背景细节，形成磨砂玻璃的乳化质感。
     val fill = if (dark) {
         Brush.verticalGradient(
-            listOf(Color(0x1FFFFFFF), Color(0x0AFFFFFF))
+            listOf(Color(0xE632353C), Color(0xD925282E))
         )
     } else {
         Brush.verticalGradient(
-            listOf(Color(0xB3FFFFFF), Color(0x80FFFFFF))
+            listOf(Color(0xF7FFFFFF), Color(0xE6F1F3F6))
         )
     }
     val borderBrush = if (dark) {
-        Brush.verticalGradient(listOf(Color(0x33FFFFFF), Color(0x0AFFFFFF)))
+        Brush.verticalGradient(listOf(Color(0x80FFFFFF), Color(0x1FFFFFFF)))
     } else {
-        Brush.verticalGradient(listOf(Color(0x80FFFFFF), Color(0x14000000)))
+        Brush.verticalGradient(listOf(Color.White, Color(0x29000000)))
     }
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .shadow(
-                elevation = if (dark) 12.dp else 10.dp,
+                elevation = if (dark) 14.dp else 12.dp,
                 shape = shape,
                 clip = false,
-                ambientColor = Color.Black.copy(alpha = 0.22f),
-                spotColor = Color.Black.copy(alpha = 0.22f)
+                ambientColor = Color.Black.copy(alpha = 0.26f),
+                spotColor = Color.Black.copy(alpha = 0.26f)
             )
             .clip(shape)
             .background(fill, shape)
@@ -325,4 +325,3 @@ private fun BarItem(
         )
     }
 }
-
