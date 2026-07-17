@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== TTS Playground ==================== -->
+    <string name="tts_title">TTS Playground</string>
+    <string name="tts_refresh">Refresh</string>
+    <string name="tts_no_audio_url">No audio URL returned</string>
+    <string name="tts_voice_preview">Voice Preview</string>
+    <string name="tts_voice_preview_subtitle">Enter text and select a voice to generate a preview</string>
+    <string name="tts_text_content">Text content</string>
+    <string name="tts_voice">Voice</string>
+    <string name="tts_speed">Speed</string>
+    <string name="tts_pitch">Pitch</string>
+    <string name="tts_volume">Volume</string>
+    <string name="tts_prompt_input_text">Please enter text content</string>
+    <string name="tts_prompt_select_voice">Please select a voice</string>
+    <string name="tts_generate_preview">Generate Preview</string>
+    <string name="tts_preview_result">Preview Result</string>
+    <string name="tts_model_label">Model: %1$s</string>
+    <string name="tts_audio_url_copied">Audio URL copied</string>
+    <string name="tts_copy_url">Copy URL</string>
+    <string name="tts_voice_list">Voice List</string>
+    <string name="tts_voice_count">%1$d voices</string>
+    <string name="tts_no_voices">No voices</string>
+    <string name="tts_default_test_text">Hello, this is a text-to-speech test.</string>
+    <string name="tts_custom">Custom</string>
+    <string name="tts_provider_label">Provider: %1$s</string>
+
+    <!-- ==================== Image Generation Lab ==================== -->
+    <string name="imggen_title">Image Generation Lab</string>
+    <string name="imggen_size_square">1024 × 1024 (Square)</string>
+    <string name="imggen_size_landscape">1792 × 1024 (Landscape)</string>
+    <string name="imggen_size_portrait">1024 × 1792 (Portrait)</string>
+    <string name="imggen_prompt_required">Please enter an image description</string>
+    <string name="imggen_generate_failed">Image generation failed</string>
+    <string name="imggen_params">Generation Parameters</string>
+    <string name="imggen_params_subtitle">Enter a description and select a size</string>
+    <string name="imggen_prompt_label">Image description (Prompt)</string>
+    <string name="imggen_size_label">Size</string>
+    <string name="imggen_count">Count</string>
+    <string name="imggen_count_unit">%1$d image(s)</string>
+    <string name="imggen_generate_button">Generate Image</string>
+    <string name="imggen_results">Results</string>
+    <string name="imggen_results_count">%1$d image(s) total</string>
+    <string name="imggen_generating">Generating image…</string>
+    <string name="imggen_model_label">Model: %1$s</string>
+    <string name="imggen_generated_image">Generated image</string>
+    <string name="imggen_save_to_gallery">Save to gallery</string>
+    <string name="imggen_file_not_found">File does not exist</string>
+    <string name="imggen_save_failed">Save failed</string>
+    <string name="imggen_saved_to_gallery">Saved to gallery</string>
+    <string name="imggen_save_failed_with_msg">Save failed: %1$s</string>
+    <string name="imggen_share_image">Share image</string>
+
+    <!-- ==================== Login Tokens ==================== -->
+    <string name="logintokens_title">Login Tokens</string>
+    <string name="logintokens_refresh">Refresh</string>
+    <string name="logintokens_revoked_all">All tokens revoked</string>
+    <string name="logintokens_revoke_all">Revoke all</string>
+    <string name="logintokens_revoke_all_title">Revoke All Tokens</string>
+    <string name="logintokens_revoke_all_confirm_msg">Are you sure you want to revoke all login tokens? This action cannot be undone.</string>
+    <string name="logintokens_new_token">New token</string>
+    <string name="logintokens_empty_title">No login tokens</string>
+    <string name="logintokens_empty_hint">Tap the top-right corner to create a new access token</string>
+    <string name="logintokens_confirm_delete_title">Confirm Delete</string>
+    <string name="logintokens_delete_confirm_msg">Delete token \"%1$s\"?</string>
+    <string name="logintokens_token_created_title">Token Created</string>
+    <string name="logintokens_saved">I have saved it</string>
+    <string name="logintokens_warning_msg">⚠️ This token is shown only once. Please copy and save it immediately; it cannot be retrieved after closing.</string>
+    <string name="logintokens_token_copied">Token copied</string>
+    <string name="logintokens_copy_token">Copy Token</string>
+    <string name="logintokens_prefix_label">Prefix: %1$s…</string>
+    <string name="logintokens_created_label">Created: %1$s</string>
+    <string name="logintokens_expires_label">Expires: %1$s</string>
+    <string name="logintokens_ip_label">IP: %1$s</string>
+    <string name="logintokens_new_token_title">New Login Token</string>
+    <string name="logintokens_username">Username</string>
+    <string name="logintokens_username_placeholder">Username bound to the access token</string>
+    <string name="logintokens_validity">Validity</string>
+    <string name="logintokens_days_count">%1$d days</string>
+
+    <!-- ==================== API Keys ==================== -->
+    <string name="apikeys_title">API Keys</string>
+    <string name="apikeys_refresh">Refresh</string>
+    <string name="apikeys_created">Key created</string>
+    <string name="apikeys_updated">Key updated</string>
+    <string name="apikeys_deleted">Key deleted</string>
+    <string name="apikeys_new_key">New key</string>
+    <string name="apikeys_empty_title">No API Key</string>
+    <string name="apikeys_empty_hint">Tap the top-right corner to create a new key</string>
+    <string name="apikeys_confirm_delete_title">Confirm Delete</string>
+    <string name="apikeys_delete_confirm_msg">Delete key \"%1$s\"?</string>
+    <string name="apikeys_full_key_title">Full Key</string>
+    <string name="apikeys_key_copied">Key copied</string>
+    <string name="apikeys_copy_key">Copy Key</string>
+    <string name="apikeys_created_label">Created: %1$s</string>
+    <string name="apikeys_actions">Actions</string>
+    <string name="apikeys_view_key">View Key</string>
+    <string name="apikeys_new_key_title">New API Key</string>
+    <string name="apikeys_edit_key_title">Edit API Key</string>
+    <string name="apikeys_name_required">Name (required)</string>
+    <string name="apikeys_key_required">Key (required, multi-line)</string>
+    <string name="apikeys_view_full_key">View Full Key</string>
+</resources>

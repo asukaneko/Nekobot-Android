@@ -48,8 +48,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.nekobot.app.R
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.navigation.Routes
 
@@ -62,19 +64,19 @@ import com.nekobot.app.ui.navigation.Routes
 fun ExtensionsScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
     val isLocalMode = com.nekobot.app.ServiceContainer.prefs.isLocalMode
     val allItems = listOf(
-        ExtensionItem("Hook 管理", "事件钩子与动作自动化", Icons.Filled.Extension, Routes.HOOKS),
-        ExtensionItem("任务中心", "定时/周期任务聚合管理", Icons.Filled.Schedule, Routes.TASK_CENTER),
-        ExtensionItem("工作流", "多步骤自动化流程", Icons.Filled.AppRegistration, Routes.WORKFLOWS),
-        ExtensionItem("知识库", "RAG 文档与向量检索", Icons.Filled.MenuBook, Routes.KNOWLEDGE),
-        ExtensionItem("Skills 配置", "技能元数据管理", Icons.Filled.Build, Routes.SKILLS),
-        ExtensionItem("Tools 配置", "工具函数与实现", Icons.Filled.Storage, Routes.TOOLS),
-        ExtensionItem("MCP 服务", "Model Context Protocol 服务器", Icons.Filled.Hub, Routes.MCP_SERVERS),
-        ExtensionItem("频道管理", "Telegram/飞书/QQ/Web 频道", Icons.Filled.Campaign, Routes.CHANNELS),
-        ExtensionItem("消息过滤", "关键词/正则过滤规则", Icons.Filled.FilterAlt, Routes.MESSAGE_FILTER),
-        ExtensionItem("TTS 试验场", "语音合成预览与音色管理", Icons.Filled.PlayCircle, Routes.TTS_PLAYGROUND),
-        ExtensionItem("图片生成", "图片生成实验室", Icons.Filled.Image, Routes.IMAGE_GENERATION_PLAYGROUND),
-        ExtensionItem("登录令牌", "Web 控制台访问令牌", Icons.Filled.VpnKey, Routes.LOGIN_TOKENS),
-        ExtensionItem("API Keys", "外部 API 密钥管理", Icons.Filled.Key, Routes.API_KEYS)
+        ExtensionItem(stringResource(R.string.extensions_hook_manage), stringResource(R.string.extensions_hook_desc), Icons.Filled.Extension, Routes.HOOKS),
+        ExtensionItem(stringResource(R.string.extensions_task_center), stringResource(R.string.extensions_task_center_desc), Icons.Filled.Schedule, Routes.TASK_CENTER),
+        ExtensionItem(stringResource(R.string.extensions_workflows), stringResource(R.string.extensions_workflows_desc), Icons.Filled.AppRegistration, Routes.WORKFLOWS),
+        ExtensionItem(stringResource(R.string.extensions_knowledge), stringResource(R.string.extensions_knowledge_desc), Icons.Filled.MenuBook, Routes.KNOWLEDGE),
+        ExtensionItem(stringResource(R.string.extensions_skills), stringResource(R.string.extensions_skills_desc), Icons.Filled.Build, Routes.SKILLS),
+        ExtensionItem(stringResource(R.string.extensions_tools), stringResource(R.string.extensions_tools_desc), Icons.Filled.Storage, Routes.TOOLS),
+        ExtensionItem(stringResource(R.string.extensions_mcp), stringResource(R.string.extensions_mcp_desc), Icons.Filled.Hub, Routes.MCP_SERVERS),
+        ExtensionItem(stringResource(R.string.extensions_channels), stringResource(R.string.extensions_channels_desc), Icons.Filled.Campaign, Routes.CHANNELS),
+        ExtensionItem(stringResource(R.string.extensions_message_filter), stringResource(R.string.extensions_message_filter_desc), Icons.Filled.FilterAlt, Routes.MESSAGE_FILTER),
+        ExtensionItem(stringResource(R.string.extensions_tts_playground), stringResource(R.string.extensions_tts_playground_desc), Icons.Filled.PlayCircle, Routes.TTS_PLAYGROUND),
+        ExtensionItem(stringResource(R.string.extensions_image_generation), stringResource(R.string.extensions_image_generation_desc), Icons.Filled.Image, Routes.IMAGE_GENERATION_PLAYGROUND),
+        ExtensionItem(stringResource(R.string.extensions_login_tokens), stringResource(R.string.extensions_login_tokens_desc), Icons.Filled.VpnKey, Routes.LOGIN_TOKENS),
+        ExtensionItem(stringResource(R.string.extensions_api_keys), stringResource(R.string.extensions_api_keys_desc), Icons.Filled.Key, Routes.API_KEYS)
     )
     // 本地模式仅展示本地已实现的模块（含 TTS/图片生成实验室）
     val localSupportedRoutes = setOf(
@@ -88,14 +90,14 @@ fun ExtensionsScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("扩展功能", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.extensions_title), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             )

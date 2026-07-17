@@ -51,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonObject
+import com.nekobot.app.R
 import com.nekobot.app.data.model.FailoverModelDetail
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.BaseViewModel
@@ -70,16 +72,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-private data class FailoverPurpose(val id: String, val label: String)
+private data class FailoverPurpose(val id: String, val labelResId: Int)
 
 private val failoverPurposes = listOf(
-    FailoverPurpose("chat", "对话"),
-    FailoverPurpose("vision", "图片理解"),
-    FailoverPurpose("video", "视频理解"),
-    FailoverPurpose("tts", "语音合成"),
-    FailoverPurpose("stt", "语音识别"),
-    FailoverPurpose("embedding", "向量嵌入"),
-    FailoverPurpose("image_generation", "图片生成")
+    FailoverPurpose("chat", R.string.failover_purpose_chat),
+    FailoverPurpose("vision", R.string.failover_purpose_vision),
+    FailoverPurpose("video", R.string.failover_purpose_video),
+    FailoverPurpose("tts", R.string.failover_purpose_tts),
+    FailoverPurpose("stt", R.string.failover_purpose_stt),
+    FailoverPurpose("embedding", R.string.failover_purpose_embedding),
+    FailoverPurpose("image_generation", R.string.failover_purpose_image_generation)
 )
 
 internal data class FailoverQueueItem(
@@ -165,7 +167,7 @@ internal class FailoverQueueViewModel : BaseViewModel() {
             block = { unified.reorderFailover(_purpose.value, reordered.map { it.id }) },
             onSuccess = {
                 _queue.value = reordered
-                showToast("队列顺序已保存")
+                showToast(string(R.string.failover_order_saved))
             },
             onError = { msg ->
                 // 重排失败：恢复服务端实际顺序，并显示错误
@@ -179,7 +181,7 @@ internal class FailoverQueueViewModel : BaseViewModel() {
         launchResult(
             block = { unified.resetFailover(modelId) },
             onSuccess = {
-                showToast(if (modelId == null) "已重置全部健康状态" else "已重置模型健康状态")
+                showToast(if (modelId == null) string(R.string.failover_reset_all) else string(R.string.failover_reset_model))
                 load()
                 // 如果详情对话框打开且被重置的模型是当前详情，也刷新详情
                 _selectedDetail.value?.let { d ->
@@ -204,7 +206,7 @@ internal class FailoverQueueViewModel : BaseViewModel() {
                     is Resource.Loading -> {}
                 }
             } catch (e: Exception) {
-                showError(e.message ?: "加载详情失败")
+                showError(e.message ?: string(R.string.failover_load_detail_failed))
                 _selectedDetail.value = null
             } finally {
                 _detailLoading.value = false
@@ -217,7 +219,7 @@ internal class FailoverQueueViewModel : BaseViewModel() {
         val detail = _selectedDetail.value ?: return
         // 非负校验：UI 层兜底
         if (tokenLimitDaily < 0 || tokenLimitWeekly < 0 || failoverTimeout < 0) {
-            showError("限额与超时必须为非负数")
+            showError(string(R.string.failover_invalid_limit))
             return
         }
         // 直接使用 viewModelScope，避免全屏 LoadingOverlay 覆盖对话框
@@ -226,7 +228,7 @@ internal class FailoverQueueViewModel : BaseViewModel() {
             try {
                 when (val res = unified.updateFailoverPolicy(detail.modelId, tokenLimitDaily, tokenLimitWeekly, failoverTimeout)) {
                     is Resource.Success -> {
-                        showToast("策略已保存")
+                        showToast(string(R.string.failover_policy_saved))
                         _selectedDetail.value = null
                         load() // 刷新列表以反映新限额
                     }
@@ -234,7 +236,7 @@ internal class FailoverQueueViewModel : BaseViewModel() {
                     is Resource.Loading -> {}
                 }
             } catch (e: Exception) {
-                showError(e.message ?: "保存策略失败")
+                showError(e.message ?: string(R.string.failover_save_policy_failed))
             } finally {
                 _detailSaving.value = false
             }
@@ -310,18 +312,18 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("故障转移队列") },
+                title = { Text(stringResource(R.string.failover_queue_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
                     IconButton(onClick = vm::load) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新")
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.failover_refresh))
                     }
                     IconButton(onClick = { vm.reset() }) {
-                        Icon(Icons.Filled.RestartAlt, contentDescription = "重置全部健康状态")
+                        Icon(Icons.Filled.RestartAlt, contentDescription = stringResource(R.string.failover_reset_all_health))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
@@ -339,7 +341,7 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
                         FilterChip(
                             selected = purpose == item.id,
                             onClick = { vm.selectPurpose(item.id) },
-                            label = { Text(item.label) }
+                            label = { Text(stringResource(item.labelResId)) }
                         )
                     }
                 }
@@ -349,7 +351,7 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
                     Spacer(Modifier.height(8.dp))
                 }
                 if (!loading && queue.isEmpty()) {
-                    EmptyState(title = "该用途暂无可用模型", hint = "请先在 AI 模型中启用并设置对应用途")
+                    EmptyState(title = stringResource(R.string.failover_empty_title), hint = stringResource(R.string.failover_empty_hint))
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
@@ -370,7 +372,7 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
                     }
                 }
             }
-            LoadingOverlay(visible = loading, message = "正在加载队列...")
+            LoadingOverlay(visible = loading, message = stringResource(R.string.failover_loading_queue))
         }
     }
 
@@ -431,7 +433,7 @@ private fun FailoverModelCard(
                             shape = RoundedCornerShape(6.dp)
                         ) {
                             Text(
-                                "首选",
+                                stringResource(R.string.failover_primary),
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary
@@ -445,7 +447,7 @@ private fun FailoverModelCard(
                             shape = RoundedCornerShape(6.dp)
                         ) {
                             Text(
-                                "当前",
+                                stringResource(R.string.failover_current),
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.tertiary
@@ -462,19 +464,22 @@ private fun FailoverModelCard(
                 )
             }
             Text(
-                if (item.available) "可用" else "冷却中",
+                if (item.available) stringResource(R.string.failover_available) else stringResource(R.string.failover_cooling),
                 color = if (item.available) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold
             )
         }
         Spacer(Modifier.height(10.dp))
+        val todayFailuresStr = stringResource(R.string.failover_today_failures, item.dailyFailures)
+        val consecutiveFailuresStr = stringResource(R.string.failover_consecutive_failures, item.consecutiveFailures)
+        val remainingSecondsStr = stringResource(R.string.failover_remaining_seconds, item.cooldownRemaining.toInt())
         Text(
             buildString {
-                append("今日失败 ${item.dailyFailures} 次")
-                if (item.consecutiveFailures > 0) append(" · 连续 ${item.consecutiveFailures} 次")
+                append(todayFailuresStr)
+                if (item.consecutiveFailures > 0) append(" · ").append(consecutiveFailuresStr)
                 if (item.lastFailureCode > 0) append(" · HTTP ${item.lastFailureCode}")
-                if (item.cooldownRemaining > 0) append(" · 剩余 ${item.cooldownRemaining.toInt()} 秒")
+                if (item.cooldownRemaining > 0) append(" · ").append(remainingSecondsStr)
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -484,7 +489,7 @@ private fun FailoverModelCard(
             Spacer(Modifier.height(6.dp))
             if (item.dailyTokenLimit > 0) {
                 Text(
-                    "日用量 ${item.dailyTokens}/${item.dailyTokenLimit} (${item.dailyUsagePercent}%)",
+                    stringResource(R.string.failover_daily_usage, item.dailyTokens, item.dailyTokenLimit, item.dailyUsagePercent),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -498,7 +503,7 @@ private fun FailoverModelCard(
             if (item.weeklyTokenLimit > 0) {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "周用量 ${item.weeklyTokens}/${item.weeklyTokenLimit} (${item.weeklyUsagePercent}%)",
+                    stringResource(R.string.failover_weekly_usage, item.weeklyTokens, item.weeklyTokenLimit, item.weeklyUsagePercent),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -510,10 +515,13 @@ private fun FailoverModelCard(
                 )
             }
         }
+        val dailyLimitStr = stringResource(R.string.failover_daily_limit, item.dailyTokenLimit)
+        val weeklyLimitStr = stringResource(R.string.failover_weekly_limit, item.weeklyTokenLimit)
+        val timeoutStr = stringResource(R.string.failover_timeout, item.timeoutSeconds)
         val limits = buildList {
-            if (item.dailyTokenLimit > 0) add("日限额 ${item.dailyTokenLimit}")
-            if (item.weeklyTokenLimit > 0) add("周限额 ${item.weeklyTokenLimit}")
-            if (item.timeoutSeconds > 0) add("超时 ${item.timeoutSeconds}s")
+            if (item.dailyTokenLimit > 0) add(dailyLimitStr)
+            if (item.weeklyTokenLimit > 0) add(weeklyLimitStr)
+            if (item.timeoutSeconds > 0) add(timeoutStr)
         }
         if (limits.isNotEmpty()) {
             Text(
@@ -525,15 +533,15 @@ private fun FailoverModelCard(
         Spacer(Modifier.height(8.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             IconButton(onClick = onMoveUp, enabled = canMoveUp) {
-                Icon(Icons.Filled.ArrowUpward, contentDescription = "上移")
+                Icon(Icons.Filled.ArrowUpward, contentDescription = stringResource(R.string.failover_move_up))
             }
             IconButton(onClick = onMoveDown, enabled = canMoveDown) {
-                Icon(Icons.Filled.ArrowDownward, contentDescription = "下移")
+                Icon(Icons.Filled.ArrowDownward, contentDescription = stringResource(R.string.failover_move_down))
             }
             OutlinedButton(onClick = onReset) {
                 Icon(Icons.Filled.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(6.dp))
-                Text("重置状态")
+                Text(stringResource(R.string.failover_reset_status))
             }
         }
     }
@@ -588,11 +596,14 @@ private fun FailoverDetailDialog(
                     )
                     Spacer(Modifier.height(8.dp))
                     // 健康状态摘要
+                    val statusStr = stringResource(R.string.failover_status_label, if (detail.health.available) stringResource(R.string.failover_available) else stringResource(R.string.failover_cooling))
+                    val remainingShortStr = stringResource(R.string.failover_remaining_seconds_short, detail.health.cooldownRemaining.toInt())
+                    val consecutiveFailDetailStr = stringResource(R.string.failover_consecutive_failures_detail, detail.health.consecutiveFailures)
                     Text(
                         buildString {
-                            append("状态：${if (detail.health.available) "可用" else "冷却中"}")
-                            if (detail.health.cooldownRemaining > 0) append(" · 剩余 ${detail.health.cooldownRemaining.toInt()}s")
-                            if (detail.health.consecutiveFailures > 0) append(" · 连续失败 ${detail.health.consecutiveFailures}")
+                            append(statusStr)
+                            if (detail.health.cooldownRemaining > 0) append(" · ").append(remainingShortStr)
+                            if (detail.health.consecutiveFailures > 0) append(" · ").append(consecutiveFailDetailStr)
                             if (detail.health.lastFailureCode > 0) append(" · HTTP ${detail.health.lastFailureCode}")
                         },
                         style = MaterialTheme.typography.bodySmall,
@@ -601,14 +612,16 @@ private fun FailoverDetailDialog(
                     // 用量摘要
                     if (detail.usage.dailyLimit > 0 || detail.usage.weeklyLimit > 0) {
                         Spacer(Modifier.height(6.dp))
+                        val dailyUsageStr = stringResource(R.string.failover_daily_usage, detail.usage.dailyTokens, detail.usage.dailyLimit, detail.usage.dailyPercent)
+                        val weeklyUsageStr = stringResource(R.string.failover_weekly_usage, detail.usage.weeklyTokens, detail.usage.weeklyLimit, detail.usage.weeklyPercent)
                         Text(
                             buildString {
                                 if (detail.usage.dailyLimit > 0) {
-                                    append("日用量 ${detail.usage.dailyTokens}/${detail.usage.dailyLimit} (${detail.usage.dailyPercent}%)")
+                                    append(dailyUsageStr)
                                 }
                                 if (detail.usage.weeklyLimit > 0) {
                                     if (isNotEmpty()) append("\n")
-                                    append("周用量 ${detail.usage.weeklyTokens}/${detail.usage.weeklyLimit} (${detail.usage.weeklyPercent}%)")
+                                    append(weeklyUsageStr)
                                 }
                             },
                             style = MaterialTheme.typography.bodySmall,
@@ -619,7 +632,7 @@ private fun FailoverDetailDialog(
                     OutlinedTextField(
                         value = dailyLimitText,
                         onValueChange = { dailyLimitText = it.filter { c -> c.isDigit() } },
-                        label = { Text("日 token 限额（0=不限）") },
+                        label = { Text(stringResource(R.string.failover_daily_token_limit)) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
@@ -628,7 +641,7 @@ private fun FailoverDetailDialog(
                     OutlinedTextField(
                         value = weeklyLimitText,
                         onValueChange = { weeklyLimitText = it.filter { c -> c.isDigit() } },
-                        label = { Text("周 token 限额（0=不限）") },
+                        label = { Text(stringResource(R.string.failover_weekly_token_limit)) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
@@ -637,7 +650,7 @@ private fun FailoverDetailDialog(
                     OutlinedTextField(
                         value = timeoutText,
                         onValueChange = { timeoutText = it.filter { c -> c.isDigit() } },
-                        label = { Text("超时秒数（0=默认）") },
+                        label = { Text(stringResource(R.string.failover_timeout_seconds)) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
@@ -655,17 +668,17 @@ private fun FailoverDetailDialog(
                 },
                 enabled = !loading && !saving
             ) {
-                Text(if (saving) "保存中..." else "保存")
+                Text(if (saving) stringResource(R.string.failover_saving) else stringResource(R.string.common_save))
             }
         },
         dismissButton = {
             Row {
                 OutlinedButton(onClick = onReset, enabled = !loading && !saving) {
-                    Text("重置健康")
+                    Text(stringResource(R.string.failover_reset_health))
                 }
                 Spacer(Modifier.size(8.dp))
                 TextButton(onClick = onDismiss, enabled = !saving) {
-                    Text("取消")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         }

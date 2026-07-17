@@ -37,11 +37,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonElement
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.AiConfig
 import com.nekobot.app.ui.BaseViewModel
@@ -104,7 +106,7 @@ class AiConfigViewModel : BaseViewModel() {
         launchResult(
             block = { unified.updateAiConfig(json) },
             onSuccess = {
-                showToast("保存成功")
+                showToast(string(R.string.aiconfig_saved))
                 _navigateBack.value = true
             }
         )
@@ -115,10 +117,11 @@ class AiConfigViewModel : BaseViewModel() {
         launchResult(
             block = { unified.testAiConfig(json) },
             onSuccess = { res ->
-                _testResult.value = buildString {
-                    append("状态: ${if (res.success == true) "成功" else "失败"}\n")
-                    append("消息: ${res.message ?: "无"}")
-                }
+                _testResult.value = string(
+                    R.string.aiconfig_test_result,
+                    if (res.success == true) string(R.string.aiconfig_test_success) else string(R.string.aiconfig_test_fail),
+                    res.message ?: string(R.string.common_none)
+                )
             }
         )
     }
@@ -161,18 +164,18 @@ fun AiConfigScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("AI 配置") },
+                title = { Text(stringResource(R.string.aiconfig_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
                     TextButton(onClick = { vm.test() }) {
-                        Text("测试", color = MaterialTheme.colorScheme.onSurface)
+                        Text(stringResource(R.string.aiconfig_test), color = MaterialTheme.colorScheme.onSurface)
                     }
                     TextButton(onClick = { vm.save() }) {
-                        Text("保存", color = MaterialTheme.colorScheme.onSurface)
+                        Text(stringResource(R.string.common_save), color = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -204,7 +207,7 @@ fun AiConfigScreen(onBack: () -> Unit) {
 
                 // 模型参数
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    SectionHeader(title = "模型参数")
+                    SectionHeader(title = stringResource(R.string.aiconfig_model_params))
                     Spacer(Modifier.height(12.dp))
 
                     OutlinedTextField(
@@ -212,7 +215,7 @@ fun AiConfigScreen(onBack: () -> Unit) {
                         onValueChange = { v ->
                             vm.updateConfig { it.copy(model = v.ifBlank { null }) }
                         },
-                        label = { Text("模型名称") },
+                        label = { Text(stringResource(R.string.aiconfig_model_name)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -220,7 +223,7 @@ fun AiConfigScreen(onBack: () -> Unit) {
                     // 温度
                     val temperature = config.temperature ?: 0.7
                     SliderRow(
-                        label = "温度 (temperature)",
+                        label = stringResource(R.string.aiconfig_temperature),
                         valueText = String.format(Locale.US, "%.2f", temperature),
                         value = temperature.toFloat(),
                         onValueChange = { v ->
@@ -236,7 +239,7 @@ fun AiConfigScreen(onBack: () -> Unit) {
                             val n = s.toIntOrNull()
                             vm.updateConfig { it.copy(maxTokens = n) }
                         },
-                        label = { Text("最大 Token (max_tokens)") },
+                        label = { Text(stringResource(R.string.aiconfig_max_tokens)) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
@@ -257,7 +260,7 @@ fun AiConfigScreen(onBack: () -> Unit) {
                     // 频率惩罚
                     val freqPenalty = config.frequencyPenalty ?: 0.0
                     SliderRow(
-                        label = "频率惩罚 (frequency_penalty)",
+                        label = stringResource(R.string.aiconfig_frequency_penalty),
                         valueText = String.format(Locale.US, "%.2f", freqPenalty),
                         value = freqPenalty.toFloat(),
                         onValueChange = { v ->
@@ -269,7 +272,7 @@ fun AiConfigScreen(onBack: () -> Unit) {
                     // presence_penalty
                     val presPenalty = config.presencePenalty ?: 0.0
                     SliderRow(
-                        label = "Presence 惩罚 (presence_penalty)",
+                        label = stringResource(R.string.aiconfig_presence_penalty),
                         valueText = String.format(Locale.US, "%.2f", presPenalty),
                         value = presPenalty.toFloat(),
                         onValueChange = { v ->
@@ -281,7 +284,7 @@ fun AiConfigScreen(onBack: () -> Unit) {
 
                 // 系统提示词
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    SectionHeader(title = "系统提示词")
+                    SectionHeader(title = stringResource(R.string.aiconfig_system_prompt))
                     Spacer(Modifier.height(12.dp))
                     OutlinedTextField(
                         value = config.systemPrompt ?: "",
@@ -303,7 +306,7 @@ fun AiConfigScreen(onBack: () -> Unit) {
                 ) {
                     Icon(Icons.Filled.Save, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
                     Spacer(Modifier.width(8.dp))
-                    Text("保存配置", color = MaterialTheme.colorScheme.onPrimary)
+                    Text(stringResource(R.string.aiconfig_save_config), color = MaterialTheme.colorScheme.onPrimary)
                 }
             }
 
@@ -315,9 +318,9 @@ fun AiConfigScreen(onBack: () -> Unit) {
     testResult?.let { result ->
         NekoDialog(
             onDismiss = { vm.clearTestResult() },
-            title = "测试结果",
+            title = stringResource(R.string.aiconfig_test_result_title),
             message = result,
-            confirmText = "确定",
+            confirmText = stringResource(R.string.common_ok),
             onConfirm = { vm.clearTestResult() },
             cancelText = null,
             onCancel = null

@@ -50,11 +50,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.LoginToken
 import com.nekobot.app.data.model.LoginTokenRequest
@@ -119,7 +121,7 @@ class LoginTokensViewModel : BaseViewModel() {
         launchResult(
             block = { unified.deleteAllLoginTokens() },
             onSuccess = {
-                showToast("已撤销全部令牌")
+                showToast(string(R.string.logintokens_revoked_all))
                 load()
             }
         )
@@ -165,25 +167,25 @@ fun LoginTokensScreen(onBack: () -> Unit) {
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("登录令牌", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.logintokens_title), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     IconButton(onClick = { vm.load() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.logintokens_refresh), tint = MaterialTheme.colorScheme.onSurface)
                     }
                     IconButton(onClick = { deleteAllConfirm = true }) {
-                        Icon(Icons.Filled.DeleteSweep, contentDescription = "撤销全部", tint = ErrorRed)
+                        Icon(Icons.Filled.DeleteSweep, contentDescription = stringResource(R.string.logintokens_revoke_all), tint = ErrorRed)
                     }
                     IconButton(onClick = { showCreateDialog = true }) {
-                        Icon(Icons.Filled.Add, contentDescription = "新建令牌", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.logintokens_new_token), tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             )
@@ -196,8 +198,8 @@ fun LoginTokensScreen(onBack: () -> Unit) {
         ) {
             if (tokens.isEmpty() && !loading) {
                 EmptyState(
-                    title = "暂无登录令牌",
-                    hint = "点击右上角新建一个访问令牌"
+                    title = stringResource(R.string.logintokens_empty_title),
+                    hint = stringResource(R.string.logintokens_empty_hint)
                 )
             } else {
                 LazyColumn(
@@ -240,9 +242,9 @@ fun LoginTokensScreen(onBack: () -> Unit) {
     if (deleteAllConfirm) {
         NekoDialog(
             onDismiss = { deleteAllConfirm = false },
-            title = "撤销全部令牌",
-            message = "确定撤销所有登录令牌吗？此操作不可恢复。",
-            confirmText = "撤销全部",
+            title = stringResource(R.string.logintokens_revoke_all_title),
+            message = stringResource(R.string.logintokens_revoke_all_confirm_msg),
+            confirmText = stringResource(R.string.logintokens_revoke_all),
             onConfirm = {
                 vm.deleteAll()
                 deleteAllConfirm = false
@@ -254,9 +256,9 @@ fun LoginTokensScreen(onBack: () -> Unit) {
     deleteTarget?.let { token ->
         NekoDialog(
             onDismiss = { deleteTarget = null },
-            title = "确认删除",
-            message = "确定删除令牌「${token.displayName}」吗？",
-            confirmText = "删除",
+            title = stringResource(R.string.logintokens_confirm_delete_title),
+            message = stringResource(R.string.logintokens_delete_confirm_msg, token.displayName),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 vm.delete(token.tokenHash)
                 deleteTarget = null
@@ -268,14 +270,14 @@ fun LoginTokensScreen(onBack: () -> Unit) {
     createdToken?.let { token ->
         NekoDialog(
             onDismiss = { vm.clearCreatedToken() },
-            title = "令牌已创建",
-            confirmText = "我已保存",
+            title = stringResource(R.string.logintokens_token_created_title),
+            confirmText = stringResource(R.string.logintokens_saved),
             cancelText = null,
             onCancel = null,
             onConfirm = { vm.clearCreatedToken() },
             content = {
                 Text(
-                    "⚠️ 此令牌仅显示一次，请立即复制保存，关闭后无法再次获取。",
+                    stringResource(R.string.logintokens_warning_msg),
                     style = MaterialTheme.typography.bodyMedium,
                     color = WarningAmber
                 )
@@ -300,13 +302,13 @@ fun LoginTokensScreen(onBack: () -> Unit) {
                     Button(
                         onClick = {
                             clipboard.setText(AnnotatedString(token))
-                            Toast.makeText(context, "已复制令牌", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, context.getString(R.string.logintokens_token_copied), Toast.LENGTH_SHORT).show()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
                         Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("复制令牌", color = MaterialTheme.colorScheme.onPrimary)
+                        Text(stringResource(R.string.logintokens_copy_token), color = MaterialTheme.colorScheme.onPrimary)
                     }
                 }
             }
@@ -334,7 +336,7 @@ private fun LoginTokenItem(token: LoginToken, onDelete: () -> Unit) {
                 if (!token.tokenPrefix.isNullOrBlank()) {
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "前缀: ${token.tokenPrefix}…",
+                        stringResource(R.string.logintokens_prefix_label, token.tokenPrefix),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -348,7 +350,7 @@ private fun LoginTokenItem(token: LoginToken, onDelete: () -> Unit) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (!token.createdAt.isNullOrBlank()) {
                         Text(
-                            "创建: ${formatIsoDateTime(token.createdAt)}",
+                            stringResource(R.string.logintokens_created_label, formatIsoDateTime(token.createdAt)),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -358,7 +360,7 @@ private fun LoginTokenItem(token: LoginToken, onDelete: () -> Unit) {
                     }
                     if (!token.expiresAt.isNullOrBlank()) {
                         Text(
-                            "过期: ${formatIsoDateTime(token.expiresAt)}",
+                            stringResource(R.string.logintokens_expires_label, formatIsoDateTime(token.expiresAt)),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -370,7 +372,7 @@ private fun LoginTokenItem(token: LoginToken, onDelete: () -> Unit) {
                 if (!token.ipAddress.isNullOrBlank()) {
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        "IP: ${token.ipAddress}",
+                        stringResource(R.string.logintokens_ip_label, token.ipAddress),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -379,7 +381,7 @@ private fun LoginTokenItem(token: LoginToken, onDelete: () -> Unit) {
                 }
             }
             IconButton(onClick = onDelete) {
-                Icon(Icons.Filled.Delete, contentDescription = "删除", tint = ErrorRed)
+                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.common_delete), tint = ErrorRed)
             }
         }
     }
@@ -416,25 +418,25 @@ private fun CreateLoginTokenDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = "新建登录令牌",
-        confirmText = "创建",
+        title = stringResource(R.string.logintokens_new_token_title),
+        confirmText = stringResource(R.string.common_create),
         onConfirm = {
             if (username.isBlank()) return@NekoDialog
             onConfirm(username.trim(), selectedDay)
         }
     ) {
-        Text("用户名", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.logintokens_username), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         OutlinedTextField(
             value = username,
             onValueChange = { username = it },
             singleLine = true,
-            placeholder = { Text("访问令牌绑定的用户名") },
+            placeholder = { Text(stringResource(R.string.logintokens_username_placeholder)) },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp)
         )
         Spacer(Modifier.height(8.dp))
-        Text("有效期", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.logintokens_validity), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         ExposedDropdownMenuBox(
             expanded = dayExpanded,
@@ -443,7 +445,7 @@ private fun CreateLoginTokenDialog(
         ) {
             @Suppress("DEPRECATION")
             OutlinedTextField(
-                value = "$selectedDay 天",
+                value = stringResource(R.string.logintokens_days_count, selectedDay),
                 onValueChange = {},
                 readOnly = true,
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dayExpanded) },
@@ -457,7 +459,7 @@ private fun CreateLoginTokenDialog(
             ) {
                 dayOptions.forEach { days ->
                     DropdownMenuItem(
-                        text = { Text("$days 天") },
+                        text = { Text(stringResource(R.string.logintokens_days_count, days)) },
                         onClick = {
                             selectedDay = days
                             dayExpanded = false

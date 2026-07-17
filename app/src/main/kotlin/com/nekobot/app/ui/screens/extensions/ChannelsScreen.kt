@@ -51,10 +51,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.R
 import com.nekobot.app.data.model.Channel
 import com.nekobot.app.data.model.ChannelPreset
 import com.nekobot.app.data.model.ChannelRequest
@@ -125,7 +127,7 @@ class ChannelsViewModel : BaseViewModel() {
     fun createFromPreset(presetId: String) = launchResult(
         block = { unified.createChannelFromPreset(presetId) },
         onSuccess = {
-            showToast("已从预设创建频道")
+            showToast(string(R.string.channels_created_from_preset))
             load()
         }
     )
@@ -154,31 +156,31 @@ fun ChannelsScreen(onBack: () -> Unit, viewModel: ChannelsViewModel = viewModel(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("频道管理", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.channels_title), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     IconButton(onClick = { viewModel.load() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.channels_refresh), tint = MaterialTheme.colorScheme.onSurface)
                     }
                     // 顶部右上角 Add 按钮打开菜单
                     Box {
                         IconButton(onClick = { addMenuExpanded = true }) {
-                            Icon(Icons.Filled.Add, contentDescription = "新建频道", tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.channels_new), tint = MaterialTheme.colorScheme.primary)
                         }
                         DropdownMenu(
                             expanded = addMenuExpanded,
                             onDismissRequest = { addMenuExpanded = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text("新建自定义频道") },
+                                text = { Text(stringResource(R.string.channels_new_custom)) },
                                 onClick = {
                                     addMenuExpanded = false
                                     editing = null
@@ -186,7 +188,7 @@ fun ChannelsScreen(onBack: () -> Unit, viewModel: ChannelsViewModel = viewModel(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("从预设创建") },
+                                text = { Text(stringResource(R.string.channels_new_from_preset)) },
                                 onClick = {
                                     addMenuExpanded = false
                                     viewModel.loadPresets()
@@ -207,8 +209,8 @@ fun ChannelsScreen(onBack: () -> Unit, viewModel: ChannelsViewModel = viewModel(
         ) {
             if (list.isEmpty() && !loading) {
                 EmptyState(
-                    title = "暂无频道",
-                    hint = "点击右上角新建或从预设创建频道",
+                    title = stringResource(R.string.channels_empty_title),
+                    hint = stringResource(R.string.channels_empty_hint),
                     icon = {
                         Icon(
                             Icons.Filled.Campaign,
@@ -269,9 +271,9 @@ fun ChannelsScreen(onBack: () -> Unit, viewModel: ChannelsViewModel = viewModel(
     deleteTarget?.let { channel ->
         NekoDialog(
             onDismiss = { deleteTarget = null },
-            title = "确认删除",
-            message = "确定删除频道「${channel.displayName}」吗？",
-            confirmText = "删除",
+            title = stringResource(R.string.channels_confirm_delete),
+            message = stringResource(R.string.channels_delete_message, channel.displayName),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 channel.id?.let { viewModel.delete(it) }
                 deleteTarget = null
@@ -317,7 +319,7 @@ private fun ChannelCard(
             )
             // 内置标记
             if (channel.builtin) {
-                BadgeChip(text = "内置", color = MaterialTheme.colorScheme.primary)
+                BadgeChip(text = stringResource(R.string.channels_builtin_badge), color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(8.dp))
             }
             // 启用状态标记
@@ -331,7 +333,7 @@ private fun ChannelCard(
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text = if (channel.enabled) "已启用" else "已禁用",
+                    text = if (channel.enabled) stringResource(R.string.channels_status_enabled) else stringResource(R.string.channels_status_disabled),
                     style = MaterialTheme.typography.labelSmall,
                     color = if (channel.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -341,21 +343,21 @@ private fun ChannelCard(
             var menuExpanded by remember { mutableStateOf(false) }
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "操作", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.channels_action), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false }
                 ) {
-                    DropdownMenuItem(text = { Text("编辑") }, onClick = { menuExpanded = false; onEdit() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.common_edit)) }, onClick = { menuExpanded = false; onEdit() })
                     DropdownMenuItem(
-                        text = { Text(if (channel.enabled) "停用" else "启用") },
+                        text = { Text(if (channel.enabled) stringResource(R.string.channels_disable) else stringResource(R.string.channels_enable)) },
                         onClick = { menuExpanded = false; onToggle() }
                     )
                     // 内置频道不可删除
                     if (!channel.builtin) {
                         DropdownMenuItem(text = {
-                            Text("删除", color = ErrorRed)
+                            Text(stringResource(R.string.common_delete), color = ErrorRed)
                         }, onClick = { menuExpanded = false; onDelete() })
                     }
                 }
@@ -365,8 +367,8 @@ private fun ChannelCard(
         Spacer(Modifier.height(8.dp))
 
         // 信息行
-        Text("类型: ${channel.type}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("传输: ${channel.transport}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.channels_type, channel.type), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.channels_transport, channel.transport), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (!channel.description.isNullOrBlank()) {
             Spacer(Modifier.height(4.dp))
             Text(channel.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -392,8 +394,8 @@ private fun ChannelFormDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = if (initial == null) "新建频道" else "编辑频道",
-        confirmText = "保存",
+        title = if (initial == null) stringResource(R.string.channels_new) else stringResource(R.string.channels_edit),
+        confirmText = stringResource(R.string.common_save),
         onConfirm = {
             if (name.isBlank()) return@NekoDialog
             val req = ChannelRequest(
@@ -412,7 +414,7 @@ private fun ChannelFormDialog(
                 .verticalScroll(rememberScrollState())
         ) {
             // 名称（必填）
-            LabeledField("名称 *")
+            LabeledField(stringResource(R.string.channels_name_label))
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
@@ -424,7 +426,7 @@ private fun ChannelFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 类型下拉
-            LabeledField("类型 (type)")
+            LabeledField(stringResource(R.string.channels_type_label))
             DropdownField(
                 value = type,
                 options = listOf("custom", "telegram", "feishu", "feishu_ws", "qqbot", "web", "qq"),
@@ -433,7 +435,7 @@ private fun ChannelFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 传输方式下拉
-            LabeledField("传输方式 (transport)")
+            LabeledField(stringResource(R.string.channels_transport_label))
             DropdownField(
                 value = transport,
                 options = listOf("webhook", "websocket", "socketio", "napcat"),
@@ -442,7 +444,7 @@ private fun ChannelFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 描述
-            LabeledField("描述")
+            LabeledField(stringResource(R.string.channels_description_label))
             OutlinedTextField(
                 value = description,
                 onValueChange = { description = it },
@@ -456,7 +458,7 @@ private fun ChannelFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 启用开关
-            ToggleRow(label = "启用", checked = enabled, onCheckedChange = { enabled = it })
+            ToggleRow(label = stringResource(R.string.channels_enabled_label), checked = enabled, onCheckedChange = { enabled = it })
         }
     }
 }
@@ -472,14 +474,14 @@ private fun PresetListDialog(
 ) {
     NekoDialog(
         onDismiss = onDismiss,
-        title = "从预设创建频道",
-        confirmText = "关闭",
+        title = stringResource(R.string.channels_preset_title),
+        confirmText = stringResource(R.string.common_close),
         onConfirm = onDismiss,
         cancelText = null,
         onCancel = null
     ) {
         if (presets.isEmpty()) {
-            Text("暂无可用预设", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.channels_no_presets), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             Column(
                 modifier = Modifier
@@ -509,7 +511,7 @@ private fun PresetListDialog(
                                 )
                                 Spacer(Modifier.height(4.dp))
                                 Text(
-                                    text = "类型: ${preset.type} · 传输: ${preset.transport}",
+                                    text = stringResource(R.string.channels_preset_info, preset.type, preset.transport),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -526,7 +528,7 @@ private fun PresetListDialog(
                             }
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                text = "创建",
+                                text = stringResource(R.string.common_create),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.SemiBold,

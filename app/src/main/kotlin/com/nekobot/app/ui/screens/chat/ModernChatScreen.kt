@@ -91,12 +91,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonObject
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.ChatInputLayoutMode
 import com.nekobot.app.data.model.Message
@@ -245,7 +247,7 @@ private fun ModernChatComposer(
             recordingDuration = 0
             isRecording = true
         } catch (e: Exception) {
-            toast("录音启动失败：${e.message ?: "未知错误"}")
+            toast(context.getString(R.string.chat_recording_start_failed, e.message ?: context.getString(R.string.common_unknown_error)))
         }
     }
 
@@ -279,14 +281,14 @@ private fun ModernChatComposer(
                         if (text.isNotEmpty()) {
                             input = if (input.isBlank()) text else "$input $text"
                         } else {
-                            toast("语音识别未返回文字")
+                            toast(context.getString(R.string.chat_voice_no_text))
                         }
                     }
-                    is Resource.Error -> toast("识别失败：${result.message}")
+                    is Resource.Error -> toast(context.getString(R.string.chat_voice_recognize_failed, result.message))
                     is Resource.Loading -> Unit
                 }
             } catch (e: Exception) {
-                toast("识别失败：${e.message ?: "未知错误"}")
+                toast(context.getString(R.string.chat_voice_recognize_failed, e.message ?: context.getString(R.string.common_unknown_error)))
             } finally {
                 voiceTranscribing = false
                 file.delete()
@@ -298,7 +300,7 @@ private fun ModernChatComposer(
     val requestMicPermission = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) startVoiceRecording() else toast("需要录音权限才能使用语音输入")
+        if (granted) startVoiceRecording() else toast(context.getString(R.string.chat_voice_permission_required))
     }
 
     val pickFile = rememberLauncherForActivityResult(
@@ -312,7 +314,7 @@ private fun ModernChatComposer(
         scope.launch {
             try {
                 val (name, bytes) = withContext(Dispatchers.IO) {
-                    modernReadUriFile(context, uri) ?: error("读取文件失败")
+                    modernReadUriFile(context, uri) ?: error(context.getString(R.string.chat_read_file_failed))
                 }
                 val body = bytes.toRequestBody(modernGuessMime(name).toMediaTypeOrNull())
                 val part = MultipartBody.Part.createFormData("file", name, body)
@@ -321,18 +323,18 @@ private fun ModernChatComposer(
                         if (mode == "send") {
                             input = buildString {
                                 if (input.isNotBlank()) append(input).append('\n')
-                                append("[已上传文件: ").append(name).append(']')
+                                append(context.getString(R.string.chat_file_uploaded_ref_inline, name))
                             }
-                            toast("文件已上传，引用已插入输入框")
+                            toast(context.getString(R.string.chat_file_uploaded_ref))
                         } else {
-                            toast("已上传到工作区：$name")
+                            toast(context.getString(R.string.chat_uploaded_to_workspace_colon, name))
                         }
                     }
-                    is Resource.Error -> toast("上传失败：${result.message}")
+                    is Resource.Error -> toast(context.getString(R.string.chat_upload_failed, result.message))
                     is Resource.Loading -> Unit
                 }
             } catch (e: Exception) {
-                toast("操作失败：${e.message ?: "未知错误"}")
+                toast(context.getString(R.string.chat_operation_failed, e.message ?: context.getString(R.string.common_unknown_error)))
             } finally {
                 fileBusy = false
             }
@@ -356,7 +358,7 @@ private fun ModernChatComposer(
                 array?.mapNotNull { it.takeIf { element -> element.isJsonObject }?.asJsonObject }.orEmpty()
             }
             is Resource.Error -> {
-                toast("加载收藏夹失败：${result.message}")
+                toast(context.getString(R.string.chat_load_favorites_failed, result.message))
                 emptyList()
             }
             is Resource.Loading -> emptyList()
@@ -504,7 +506,7 @@ private fun ModernChatComposer(
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
                         ) {
                             Text(
-                                text = "$charCount 字 / ~$tokenEstimate tok",
+                                text = stringResource(R.string.chat_draft_stats, charCount, tokenEstimate),
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -549,7 +551,7 @@ private fun ModernChatComposer(
                                 Crossfade(targetState = panelExpanded, label = "panel_icon") { expanded ->
                                     Icon(
                                         imageVector = if (expanded) Icons.Filled.Close else Icons.Filled.Add,
-                                        contentDescription = if (expanded) "关闭操作菜单" else "更多操作",
+                                        contentDescription = if (expanded) stringResource(R.string.chat_close_action_menu) else stringResource(R.string.chat_more_actions),
                                         tint = panelBtnTint,
                                         modifier = Modifier.size(24.dp)
                                     )
@@ -588,7 +590,7 @@ private fun ModernChatComposer(
                                         ) {
                                             if (input.isEmpty()) {
                                                 Text(
-                                                    text = if (sending) "AI 思考中..." else "输入消息...",
+                                                    text = if (sending) stringResource(R.string.chat_ai_thinking) else stringResource(R.string.chat_input_placeholder),
                                                     style = MaterialTheme.typography.bodyLarge,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
                                                 )
@@ -660,19 +662,19 @@ private fun ModernChatComposer(
                                     when (currentAction) {
                                         ModernComposerAction.STOP -> Icon(
                                             Icons.Filled.Stop,
-                                            contentDescription = "停止生成",
+                                            contentDescription = stringResource(R.string.chat_stop_generation),
                                             tint = Color.White,
                                             modifier = Modifier.size(21.dp)
                                         )
                                         ModernComposerAction.SEND -> Icon(
                                             Icons.AutoMirrored.Filled.Send,
-                                            contentDescription = "发送",
+                                            contentDescription = stringResource(R.string.chat_send),
                                             tint = Color.White,
                                             modifier = Modifier.size(21.dp)
                                         )
                                         ModernComposerAction.VOICE -> Icon(
                                             Icons.Filled.Mic,
-                                            contentDescription = "语音输入",
+                                            contentDescription = stringResource(R.string.chat_voice_input),
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.size(21.dp)
                                         )
@@ -689,27 +691,27 @@ private fun ModernChatComposer(
     if (showClearConfirm) {
         AlertDialog(
             onDismissRequest = { showClearConfirm = false },
-            title = { Text("清空当前会话") },
-            text = { Text("将删除当前会话的全部消息，此操作无法撤销。") },
+            title = { Text(stringResource(R.string.chat_clear_current_session)) },
+            text = { Text(stringResource(R.string.chat_clear_current_confirm)) },
             confirmButton = {
                 TextButton(
                     onClick = {
                         showClearConfirm = false
                         onClear()
                     }
-                ) { Text("清空", color = MaterialTheme.colorScheme.error) }
+                ) { Text(stringResource(R.string.common_clear), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { showClearConfirm = false }) { Text("取消") }
+                TextButton(onClick = { showClearConfirm = false }) { Text(stringResource(R.string.common_cancel)) }
             }
         )
     }
 
     if (showMyMessages) {
         ModernMessageListDialog(
-            title = "我的消息",
+            title = stringResource(R.string.chat_my_messages),
             messages = messages.filter { it.isUser },
-            emptyText = "当前会话还没有用户消息",
+            emptyText = stringResource(R.string.chat_no_user_messages_current),
             onJump = { msg ->
                 showMyMessages = false
                 onJumpToMessage(msg)
@@ -752,7 +754,7 @@ private fun ModernChatComposer(
         )
         AlertDialog(
             onDismissRequest = {},
-            title = { Text("正在录音") },
+            title = { Text(stringResource(R.string.chat_recording_now)) },
             text = {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
@@ -790,10 +792,10 @@ private fun ModernChatComposer(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { stopAndTranscribe() }) { Text("结束并识别") }
+                TextButton(onClick = { stopAndTranscribe() }) { Text(stringResource(R.string.chat_end_and_recognize)) }
             },
             dismissButton = {
-                TextButton(onClick = { cancelRecording() }) { Text("取消") }
+                TextButton(onClick = { cancelRecording() }) { Text(stringResource(R.string.common_cancel)) }
             }
         )
     }
@@ -801,7 +803,7 @@ private fun ModernChatComposer(
     if (voiceTranscribing) {
         AlertDialog(
             onDismissRequest = {},
-            title = { Text("语音识别中") },
+            title = { Text(stringResource(R.string.chat_voice_recognizing)) },
             text = {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -848,7 +850,7 @@ private fun ModernPlotChoices(
             )
             Spacer(Modifier.width(6.dp))
             Text(
-                if (loading) "剧情选项生成中..." else "剧情选项",
+                if (loading) stringResource(R.string.chat_plot_choices_loading) else stringResource(R.string.chat_plot_choices),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.SemiBold
@@ -858,7 +860,7 @@ private fun ModernPlotChoices(
                 IconButton(onClick = onTogglePanel, modifier = Modifier.size(34.dp)) {
                     Icon(
                         imageVector = if (panelExpanded) Icons.Filled.MoreVert else Icons.Filled.Add,
-                        contentDescription = if (panelExpanded) "收起更多操作" else "更多操作",
+                        contentDescription = if (panelExpanded) stringResource(R.string.chat_collapse_actions) else stringResource(R.string.chat_expand_actions),
                         tint = if (panelExpanded) {
                             MaterialTheme.colorScheme.primary
                         } else {
@@ -870,7 +872,7 @@ private fun ModernPlotChoices(
                 IconButton(onClick = onToggleInput, modifier = Modifier.size(34.dp)) {
                     Icon(
                         imageVector = if (inputVisible) Icons.Filled.KeyboardHide else Icons.Filled.Keyboard,
-                        contentDescription = if (inputVisible) "隐藏输入框" else "展开输入框",
+                        contentDescription = if (inputVisible) stringResource(R.string.chat_hide_input) else stringResource(R.string.chat_show_input),
                         tint = if (inputVisible) {
                             MaterialTheme.colorScheme.primary
                         } else {
@@ -888,9 +890,9 @@ private fun ModernPlotChoices(
                         Icons.Filled.ViewAgenda
                     },
                     contentDescription = if (layoutMode == ChatInputLayoutMode.MERGED) {
-                        "切换为分离布局"
+                        stringResource(R.string.chat_switch_separated)
                     } else {
-                        "切换为合并布局"
+                        stringResource(R.string.chat_switch_merged)
                     },
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(19.dp)
@@ -900,7 +902,7 @@ private fun ModernPlotChoices(
                 IconButton(onClick = onStop, modifier = Modifier.size(34.dp)) {
                     Icon(
                         Icons.Filled.Stop,
-                        contentDescription = "停止生成",
+                        contentDescription = stringResource(R.string.chat_stop_generation),
                         tint = Color(0xFFFF6B6B),
                         modifier = Modifier.size(19.dp)
                     )
@@ -913,7 +915,7 @@ private fun ModernPlotChoices(
                 ) {
                     Icon(
                         Icons.Filled.Refresh,
-                        contentDescription = "换一组",
+                        contentDescription = stringResource(R.string.chat_regenerate_group),
                         modifier = Modifier.size(19.dp)
                     )
                 }
@@ -985,9 +987,9 @@ private fun ModernPlotChoices(
                                 Spacer(Modifier.width(4.dp))
                                 Text(
                                     text = when (choice.level) {
-                                        "turning_point" -> "转折"
-                                        "important" -> "重要"
-                                        else -> "普通"
+                                        "turning_point" -> stringResource(R.string.chat_plot_turning)
+                                        "important" -> stringResource(R.string.chat_plot_important)
+                                        else -> stringResource(R.string.chat_plot_normal)
                                     },
                                     style = MaterialTheme.typography.labelSmall,
                                     color = levelColor
@@ -995,7 +997,7 @@ private fun ModernPlotChoices(
                             }
                             Spacer(Modifier.height(3.dp))
                             Text(
-                                text = choice.title.ifBlank { "选项" },
+                                text = choice.title.ifBlank { stringResource(R.string.chat_plot_choice) },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 fontWeight = FontWeight.SemiBold,
@@ -1029,9 +1031,9 @@ private fun ModernPlotChoices(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         when (choice.level) {
-                            "turning_point" -> "转折点选项"
-                            "important" -> "重要选项"
-                            else -> "普通选项"
+                            "turning_point" -> stringResource(R.string.chat_plot_turning_option)
+                            "important" -> stringResource(R.string.chat_plot_important_option)
+                            else -> stringResource(R.string.chat_plot_normal_option)
                         },
                         color = levelColor,
                         fontWeight = FontWeight.SemiBold
@@ -1041,13 +1043,13 @@ private fun ModernPlotChoices(
             text = {
                 Column {
                     Text(
-                        "标题",
+                        stringResource(R.string.chat_plot_title_label),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        choice.title.ifBlank { "（无标题）" },
+                        choice.title.ifBlank { stringResource(R.string.chat_plot_no_title) },
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold
@@ -1055,7 +1057,7 @@ private fun ModernPlotChoices(
                     if (choice.description.isNotBlank()) {
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            "意图",
+                            stringResource(R.string.chat_plot_intent),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1069,7 +1071,7 @@ private fun ModernPlotChoices(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { detailChoice = null }) { Text("关闭") }
+                TextButton(onClick = { detailChoice = null }) { Text(stringResource(R.string.common_close)) }
             }
         )
     }
@@ -1119,21 +1121,21 @@ private fun ModernChatActionPanel(
                     onCompress = onCompress
                 )
             }
-            item { ModernSectionTitle("常用") }
+            item { ModernSectionTitle(stringResource(R.string.chat_common_section)) }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     ModernQuickAction(
                         icon = Icons.Filled.AttachFile,
-                        title = "发送文件",
-                        subtitle = "交给 AI 阅读",
+                        title = stringResource(R.string.chat_send_file),
+                        subtitle = stringResource(R.string.chat_send_file_subtitle),
                         enabled = !fileBusy,
                         onClick = onSendFile,
                         modifier = Modifier.weight(1f)
                     )
                     ModernQuickAction(
                         icon = Icons.Filled.Folder,
-                        title = "工作区",
-                        subtitle = "浏览会话文件",
+                        title = stringResource(R.string.chat_workspace),
+                        subtitle = stringResource(R.string.chat_browse_files),
                         enabled = true,
                         onClick = onOpenWorkspace,
                         modifier = Modifier.weight(1f)
@@ -1144,23 +1146,23 @@ private fun ModernChatActionPanel(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     ModernQuickAction(
                         icon = Icons.Filled.Search,
-                        title = "搜索对话",
-                        subtitle = "查找历史内容",
+                        title = stringResource(R.string.chat_search_dialog),
+                        subtitle = stringResource(R.string.chat_search_subtitle),
                         enabled = messageCount > 0,
                         onClick = onSearch,
                         modifier = Modifier.weight(1f)
                     )
                     ModernQuickAction(
                         icon = Icons.Filled.Star,
-                        title = "收藏夹",
-                        subtitle = "查看收藏消息",
+                        title = stringResource(R.string.chat_favorites),
+                        subtitle = stringResource(R.string.chat_favorites_subtitle),
                         enabled = true,
                         onClick = onFavorites,
                         modifier = Modifier.weight(1f)
                     )
                 }
             }
-            item { ModernSectionTitle("会话工具") }
+            item { ModernSectionTitle(stringResource(R.string.chat_session_tools)) }
             item {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -1170,31 +1172,31 @@ private fun ModernChatActionPanel(
                     Column {
                         ModernToolRow(
                             icon = Icons.Filled.KeyboardDoubleArrowDown,
-                            title = "回到最新消息",
-                            subtitle = "重新定位到会话底部",
+                            title = stringResource(R.string.chat_jump_to_latest),
+                            subtitle = stringResource(R.string.chat_jump_to_latest_subtitle),
                             enabled = messageCount > 0,
                             onClick = onJumpToLatest
                         )
                         ModernMenuDivider()
                         ModernToolRow(
                             icon = Icons.Outlined.AccountTree,
-                            title = "我的消息",
-                            subtitle = "浏览我发送过的内容",
+                            title = stringResource(R.string.chat_my_messages),
+                            subtitle = stringResource(R.string.chat_my_messages_subtitle),
                             enabled = messageCount > 0,
                             onClick = onMyMessages
                         )
                         ModernMenuDivider()
                         ModernToolRow(
                             icon = Icons.Filled.CloudUpload,
-                            title = "仅上传到工作区",
-                            subtitle = "保存文件，不触发 AI",
+                            title = stringResource(R.string.chat_upload_only),
+                            subtitle = stringResource(R.string.chat_upload_only_subtitle),
                             enabled = !fileBusy,
                             onClick = onUploadOnly
                         )
                     }
                 }
             }
-            item { ModernSectionTitle("危险操作") }
+            item { ModernSectionTitle(stringResource(R.string.chat_danger_zone)) }
             item {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -1203,8 +1205,8 @@ private fun ModernChatActionPanel(
                 ) {
                     ModernToolRow(
                         icon = Icons.Filled.CleaningServices,
-                        title = "清空当前会话",
-                        subtitle = "删除全部消息且无法恢复",
+                        title = stringResource(R.string.chat_clear_current_session),
+                        subtitle = stringResource(R.string.chat_clear_current_subtitle),
                         enabled = !sending && messageCount > 0,
                         danger = true,
                         onClick = onClear
@@ -1261,12 +1263,12 @@ private fun ModernContextCard(
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "上下文",
+                        stringResource(R.string.chat_context_metric),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        "当前会话与输入统计",
+                        stringResource(R.string.chat_context_metric_desc),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1274,18 +1276,22 @@ private fun ModernContextCard(
                 TextButton(onClick = onCompress, enabled = !sending && messageCount > 0) {
                     Icon(Icons.Filled.Compress, contentDescription = null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("压缩")
+                    Text(stringResource(R.string.chat_compress))
                 }
             }
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ModernMetric("消息", messageCount.toString(), Modifier.weight(1f))
-                ModernMetric("草稿字符", charCount.toString(), Modifier.weight(1f))
+                ModernMetric(stringResource(R.string.chat_messages_metric), messageCount.toString(), Modifier.weight(1f))
+                ModernMetric(stringResource(R.string.chat_draft_chars), charCount.toString(), Modifier.weight(1f))
             }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ModernMetric("聊天已用 Token", usedTokens.toString(), Modifier.weight(1f))
-                ModernMetric("状态", if (sending) "生成中" else "就绪", Modifier.weight(1f))
+                ModernMetric(stringResource(R.string.chat_used_tokens), usedTokens.toString(), Modifier.weight(1f))
+                ModernMetric(
+                    label = stringResource(R.string.chat_status),
+                    value = if (sending) stringResource(R.string.chat_status_generating) else stringResource(R.string.chat_status_ready),
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
     }
@@ -1465,7 +1471,7 @@ private fun ModernMessageListDialog(
                                     Spacer(Modifier.height(4.dp))
                                 }
                                 Text(
-                                    text = message.displayContent.ifBlank { "（空消息）" },
+                                    text = message.displayContent.ifBlank { stringResource(R.string.chat_empty_message) },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     maxLines = 4,
@@ -1477,7 +1483,7 @@ private fun ModernMessageListDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } }
     )
 }
 
@@ -1497,20 +1503,20 @@ private fun ModernSearchDialog(
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("搜索对话") },
+        title = { Text(stringResource(R.string.chat_search_conversation)) },
         text = {
             Column {
                 OutlinedTextField(
                     value = query,
                     onValueChange = onQueryChange,
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("搜索当前会话...") },
+                    placeholder = { Text(stringResource(R.string.chat_search_placeholder)) },
                     singleLine = true
                 )
                 Spacer(Modifier.height(10.dp))
                 when {
-                    query.isBlank() -> Text("输入关键词开始搜索", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    results.isEmpty() -> Text("无匹配结果", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    query.isBlank() -> Text(stringResource(R.string.chat_search_keyword_hint), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    results.isEmpty() -> Text(stringResource(R.string.chat_no_match), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     else -> LazyColumn(
                         modifier = Modifier.heightIn(max = 360.dp),
                         verticalArrangement = Arrangement.spacedBy(7.dp)
@@ -1522,7 +1528,7 @@ private fun ModernSearchDialog(
                             ) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Text(
-                                        if (message.isUser) "我" else "AI",
+                                        if (message.isUser) stringResource(R.string.chat_me) else stringResource(R.string.chat_ai_label),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.primary
                                     )
@@ -1539,7 +1545,7 @@ private fun ModernSearchDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } }
     )
 }
 
@@ -1551,14 +1557,14 @@ private fun ModernFavoritesDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("收藏夹") },
+        title = { Text(stringResource(R.string.chat_favorites)) },
         text = {
             when {
                 loading -> Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center
                 ) { CircularProgressIndicator() }
-                favorites.isEmpty() -> Text("暂无收藏内容", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                favorites.isEmpty() -> Text(stringResource(R.string.chat_no_favorites_content), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else -> LazyColumn(
                     modifier = Modifier.heightIn(max = 420.dp),
                     verticalArrangement = Arrangement.spacedBy(7.dp)
@@ -1568,7 +1574,7 @@ private fun ModernFavoritesDialog(
                     }) { item ->
                         val title = item.get("title")?.takeIf { !it.isJsonNull }?.asString
                             ?: item.get("name")?.takeIf { !it.isJsonNull }?.asString
-                            ?: "未命名收藏"
+                            ?: stringResource(R.string.chat_unnamed_favorite)
                         val count = item.getAsJsonArray("messages")?.size()
                             ?: item.getAsJsonArray("message_ids")?.size()
                             ?: 0
@@ -1579,7 +1585,7 @@ private fun ModernFavoritesDialog(
                             Column(modifier = Modifier.padding(11.dp)) {
                                 Text(title, fontWeight = FontWeight.SemiBold)
                                 Text(
-                                    "$count 条消息",
+                                    stringResource(R.string.chat_message_count, count),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -1589,7 +1595,7 @@ private fun ModernFavoritesDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } }
     )
 }
 

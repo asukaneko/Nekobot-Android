@@ -60,6 +60,7 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -70,6 +71,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.nekobot.app.R
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.EmptyState
@@ -100,14 +102,14 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-/** 六维指标定义：(显示名, JSON键, 颜色)。雷达图与趋势线共用，不含嫉妒（用精力替代）。 */
+/** 六维指标定义：(显示名资源ID, JSON键, 颜色)。雷达图与趋势线共用，不含嫉妒（用精力替代）。 */
 private val metricDefs = listOf(
-    Triple("好感", "affection", Color(0xFFfb7185)),
-    Triple("信任", "trust", Color(0xFF38bdf8)),
-    Triple("熟悉", "familiarity", Color(0xFF34d399)),
-    Triple("依赖", "dependency", Color(0xFFa78bfa)),
-    Triple("安全感", "security", Color(0xFFf59e0b)),
-    Triple("精力", "energy", Color(0xFF22c55e))
+    Triple(R.string.state_history_metric_affection, "affection", Color(0xFFfb7185)),
+    Triple(R.string.state_history_metric_trust, "trust", Color(0xFF38bdf8)),
+    Triple(R.string.state_history_metric_familiarity, "familiarity", Color(0xFF34d399)),
+    Triple(R.string.state_history_metric_dependency, "dependency", Color(0xFFa78bfa)),
+    Triple(R.string.state_history_metric_security, "security", Color(0xFFf59e0b)),
+    Triple(R.string.state_history_metric_energy, "energy", Color(0xFF22c55e))
 )
 
 // ==================== JsonObject 取值辅助 ====================
@@ -338,19 +340,19 @@ fun StateHistoryScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("状态历程", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.state_history_title), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     IconButton(onClick = { vm.refresh() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.state_history_refresh), tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             )
@@ -373,12 +375,12 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                                 ErrorBanner(message = it, onRetry = { vm.clearError(); vm.refresh() })
                             }
                         }
-                        EmptyState(title = "暂无状态数据", hint = "开始对话后，角色状态历程会在此展示")
+                        EmptyState(title = stringResource(R.string.state_history_empty_title), hint = stringResource(R.string.state_history_empty_hint))
                     }
                 }
                 else -> {
                     val selectedSession = selected
-                    val sessionName = selectedSession?.get("name")?.asString ?: "未命名会话"
+                    val sessionName = selectedSession?.get("name")?.asString ?: stringResource(R.string.state_history_unnamed_session)
                     val timelineEl = selectedSession?.get("character_runtime_timeline")
                         ?: selectedSession?.get("timeline")
                     val timeline: List<JsonObject> = remember(selectedSession) {
@@ -456,7 +458,7 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                                     onDismissRequest = { dropdownExpanded = false }
                                 ) {
                                     sessions.forEach { s ->
-                                        val name = s.get("name")?.asString ?: "未命名会话"
+                                        val name = s.get("name")?.asString ?: stringResource(R.string.state_history_unnamed_session)
                                         val isActive = s == selectedSession
                                         DropdownMenuItem(
                                             text = {
@@ -481,10 +483,10 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                         // 会话标题 + 记录数
                         item {
                             GlassCard(modifier = Modifier.fillMaxWidth()) {
-                                SectionHeader(title = sessionName, subtitle = "${timeline.size} 条状态记录")
+                                SectionHeader(title = sessionName, subtitle = stringResource(R.string.state_history_record_count, timeline.size))
                                 if (timeline.isEmpty()) {
                                     Spacer(Modifier.height(12.dp))
-                                    Text("该会话暂无状态历程数据", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                                    Text(stringResource(R.string.state_history_no_timeline), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                                 }
                             }
                         }
@@ -526,7 +528,7 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                                         enabled = currentIndex > 0,
                                         modifier = Modifier.size(32.dp)
                                     ) {
-                                        Icon(Icons.Filled.SkipPrevious, contentDescription = "上一节", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                        Icon(Icons.Filled.SkipPrevious, contentDescription = stringResource(R.string.state_history_prev), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                                     }
                                     IconButton(
                                         onClick = { isPlaying = !isPlaying },
@@ -534,7 +536,7 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                                     ) {
                                         Icon(
                                             if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                            contentDescription = if (isPlaying) "暂停" else "播放",
+                                            contentDescription = if (isPlaying) stringResource(R.string.state_history_pause) else stringResource(R.string.state_history_play),
                                             tint = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.size(22.dp)
                                         )
@@ -544,7 +546,7 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                                         enabled = currentIndex < lastIndex,
                                         modifier = Modifier.size(32.dp)
                                     ) {
-                                        Icon(Icons.Filled.SkipNext, contentDescription = "下一节", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                        Icon(Icons.Filled.SkipNext, contentDescription = stringResource(R.string.state_history_next), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                                     }
                                 }
                             }
@@ -555,13 +557,13 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                                     NodeMetaPanel(node = currentNode, index = currentIndex, total = timeline.size)
                                     Spacer(Modifier.height(12.dp))
 
-                                    SectionHeader(title = "六维雷达图", subtitle = "好感/信任/熟悉/依赖/安全感/精力")
+                                    SectionHeader(title = stringResource(R.string.state_history_radar_title), subtitle = stringResource(R.string.state_history_radar_subtitle))
                                     Spacer(Modifier.height(8.dp))
-                                    val radarValues = metricDefs.map { (label, key, _) -> label to currentNode.intOr(key) }
+                                    val radarValues = metricDefs.map { (labelRes, key, _) -> stringResource(labelRes) to currentNode.intOr(key) }
                                     RadarChart(values = radarValues)
                                     Spacer(Modifier.height(12.dp))
 
-                                    SectionHeader(title = "趋势折线图", subtitle = "点击下方指标切换")
+                                    SectionHeader(title = stringResource(R.string.state_history_trend_title), subtitle = stringResource(R.string.state_history_trend_subtitle))
                                     Spacer(Modifier.height(8.dp))
                                     MetricSelector(selectedIndex = selectedMetricIndex, onSelect = { selectedMetricIndex = it })
                                     Spacer(Modifier.height(8.dp))
@@ -574,12 +576,12 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                                     )
                                     Spacer(Modifier.height(12.dp))
 
-                                    SectionHeader(title = "Delta 差分", subtitle = "与上一节点的差值")
+                                    SectionHeader(title = stringResource(R.string.state_history_delta_title), subtitle = stringResource(R.string.state_history_delta_subtitle))
                                     Spacer(Modifier.height(8.dp))
                                     DeltaCardGrid(current = currentNode, previous = prevNode)
                                     Spacer(Modifier.height(12.dp))
 
-                                    SectionHeader(title = "对话回放", subtitle = "当前节点关联消息")
+                                    SectionHeader(title = stringResource(R.string.state_history_dialogue_title), subtitle = stringResource(R.string.state_history_dialogue_subtitle))
                                     Spacer(Modifier.height(8.dp))
                                     DialogueReplay(node = currentNode)
                                 }
@@ -625,7 +627,7 @@ private fun NodeMetaPanel(node: JsonObject, index: Int, total: Int) {
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "节点 ${index + 1} / $total",
+                    text = stringResource(R.string.state_history_node_progress, index + 1, total),
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold
@@ -645,15 +647,15 @@ private fun NodeMetaPanel(node: JsonObject, index: Int, total: Int) {
         val mood = node.strOrNull("mood")?.takeIf { it.isNotBlank() } ?: "—"
         val intensity = node.floatOrNull("mood_intensity")
         val intensityStr = intensity?.let { " (${(it * 100).roundToInt()}%)" } ?: ""
-        MetaRow(label = "当前心情", value = "$mood$intensityStr", valueColor = MaterialTheme.colorScheme.primary)
+        MetaRow(label = stringResource(R.string.state_history_mood), value = "$mood$intensityStr", valueColor = MaterialTheme.colorScheme.primary)
 
         // 表层情绪（无则显示 —，保持卡片高度稳定）
         val visible = node.strOrNull("visible_emotion")?.takeIf { it.isNotBlank() } ?: "—"
-        MetaRow(label = "表层情绪", value = visible, valueColor = Tertiary)
+        MetaRow(label = stringResource(R.string.state_history_visible_emotion), value = visible, valueColor = Tertiary)
 
         // 隐藏情绪（无则显示 —，保持卡片高度稳定）
         val hidden = node.strOrNull("hidden_emotion")?.takeIf { it.isNotBlank() } ?: "—"
-        MetaRow(label = "隐藏情绪", value = hidden, valueColor = WarningAmber)
+        MetaRow(label = stringResource(R.string.state_history_hidden_emotion), value = hidden, valueColor = WarningAmber)
     }
 }
 
@@ -781,7 +783,7 @@ private fun RadarChart(values: List<Pair<String, Int>>) {
 @Composable
 private fun MetricSelector(selectedIndex: Int, onSelect: (Int) -> Unit) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        metricDefs.forEachIndexed { i, (label, _, color) ->
+        metricDefs.forEachIndexed { i, (labelRes, _, color) ->
             val selected = i == selectedIndex
             val bg = if (selected) color.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
             Row(
@@ -800,7 +802,7 @@ private fun MetricSelector(selectedIndex: Int, onSelect: (Int) -> Unit) {
                 )
                 Spacer(Modifier.width(4.dp))
                 Text(
-                    text = label,
+                    text = stringResource(labelRes),
                     style = MaterialTheme.typography.labelMedium,
                     color = if (selected) color else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
@@ -918,11 +920,11 @@ private fun DeltaCardGrid(current: JsonObject, previous: JsonObject?) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            rowDefs.forEach { (label, key, color) ->
+            rowDefs.forEach { (labelRes, key, color) ->
                 val cur = current.intOr(key)
                 val delta = if (previous != null) cur - previous.intOr(key) else null
                 DeltaCard(
-                    label = label,
+                    label = stringResource(labelRes),
                     value = cur,
                     delta = delta,
                     color = color,
@@ -1014,7 +1016,7 @@ private fun DialogueReplay(node: JsonObject) {
 
     if (userMsg == null && aiMsg == null) {
         Text(
-            "该节点无关联消息",
+            stringResource(R.string.state_history_no_messages),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -1024,7 +1026,7 @@ private fun DialogueReplay(node: JsonObject) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         msgIndex?.let {
             Text(
-                "消息序号 #$it",
+                stringResource(R.string.state_history_message_index, it),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1100,20 +1102,20 @@ private fun TimelineSlider(
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onPrev, enabled = currentIndex > 0) {
-            Icon(Icons.Filled.SkipPrevious, contentDescription = "上一节", tint = MaterialTheme.colorScheme.primary)
+            Icon(Icons.Filled.SkipPrevious, contentDescription = stringResource(R.string.state_history_prev), tint = MaterialTheme.colorScheme.primary)
         }
         Spacer(Modifier.width(8.dp))
         IconButton(onClick = onPlayPause) {
             Icon(
                 if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = if (isPlaying) "暂停" else "播放",
+                contentDescription = if (isPlaying) stringResource(R.string.state_history_pause) else stringResource(R.string.state_history_play),
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(32.dp)
             )
         }
         Spacer(Modifier.width(8.dp))
         IconButton(onClick = onNext, enabled = currentIndex < lastIndex) {
-            Icon(Icons.Filled.SkipNext, contentDescription = "下一节", tint = MaterialTheme.colorScheme.primary)
+            Icon(Icons.Filled.SkipNext, contentDescription = stringResource(R.string.state_history_next), tint = MaterialTheme.colorScheme.primary)
         }
     }
 }

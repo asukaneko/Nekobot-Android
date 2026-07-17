@@ -33,12 +33,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.data.repository.Resource
@@ -106,7 +108,7 @@ class FeatureSwitchesViewModel : BaseViewModel() {
         launchResult(
             block = { repo.updateSettings(settings) },
             onSuccess = {
-                showToast("已${if (newState) "开启" else "关闭"} $name")
+                showToast(if (newState) string(R.string.feature_switch_on, name) else string(R.string.feature_switch_off, name))
                 // 重新加载确保与服务器一致
                 load()
             },
@@ -137,13 +139,13 @@ class FeatureSwitchesViewModel : BaseViewModel() {
     /** 功能开关的中文描述映射 */
     private fun featureDescription(name: String): String {
         return when (name) {
-            "skills_prompt_injection" -> "技能提示词注入"
-            "live2d" -> "Live2D 表情"
-            "sticker" -> "表情贴图"
-            "image_generation" -> "图片生成"
-            "tts" -> "TTS 语音"
-            "auto_reply" -> "自动回复"
-            "active_chat" -> "主动聊天"
+            "skills_prompt_injection" -> string(R.string.feature_desc_skills_prompt_injection)
+            "live2d" -> string(R.string.feature_desc_live2d)
+            "sticker" -> string(R.string.feature_desc_sticker)
+            "image_generation" -> string(R.string.feature_desc_image_generation)
+            "tts" -> string(R.string.feature_desc_tts)
+            "auto_reply" -> string(R.string.feature_desc_auto_reply)
+            "active_chat" -> string(R.string.feature_desc_active_chat)
             else -> name
         }
     }
@@ -170,12 +172,12 @@ fun FeatureSwitchesScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("功能开关", color = MaterialTheme.colorScheme.onSurface) },
+                title = { Text(stringResource(R.string.feature_title), color = MaterialTheme.colorScheme.onSurface) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.common_back),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -185,7 +187,7 @@ fun FeatureSwitchesScreen(onBack: () -> Unit) {
                         IconButton(onClick = { vm.load() }) {
                             Icon(
                                 Icons.Filled.Refresh,
-                                contentDescription = "刷新",
+                                contentDescription = stringResource(R.string.feature_refresh),
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
@@ -210,7 +212,7 @@ fun FeatureSwitchesScreen(onBack: () -> Unit) {
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "此功能仅服务器模式可用",
+                        text = stringResource(R.string.feature_server_only),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -228,15 +230,15 @@ fun FeatureSwitchesScreen(onBack: () -> Unit) {
 
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         SectionHeader(
-                            title = "功能开关",
-                            subtitle = "控制各项功能的启用状态"
+                            title = stringResource(R.string.feature_title),
+                            subtitle = stringResource(R.string.feature_subtitle)
                         )
                     }
 
                     if (switches.isEmpty() && !loading) {
                         EmptyState(
-                            title = "暂无开关",
-                            hint = "点击右上角刷新重试",
+                            title = stringResource(R.string.feature_empty_title),
+                            hint = stringResource(R.string.feature_empty_hint),
                             icon = {
                                 Icon(
                                     Icons.Filled.ToggleOn,

@@ -55,12 +55,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.ui.components.GlassCard
 import kotlinx.coroutines.Dispatchers
@@ -200,10 +202,11 @@ fun parseContentSegments(content: String): List<ContentSegment> {
 @Composable
 fun ImageRenderer(url: String, modifier: Modifier = Modifier) {
     var fullscreen by remember { mutableStateOf(false) }
+    val imageDesc = stringResource(R.string.chat_media_image)
     Box(modifier = modifier) {
         AsyncImage(
             model = url,
-            contentDescription = "图片",
+            contentDescription = imageDesc,
             contentScale = ContentScale.FillWidth,
             modifier = Modifier
                 .fillMaxWidth()
@@ -222,7 +225,7 @@ fun ImageRenderer(url: String, modifier: Modifier = Modifier) {
             ) {
                 AsyncImage(
                     model = url,
-                    contentDescription = "图片",
+                    contentDescription = imageDesc,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -236,6 +239,8 @@ fun ImageRenderer(url: String, modifier: Modifier = Modifier) {
 fun VideoRenderer(url: String, modifier: Modifier = Modifier) {
     var isPlaying by remember { mutableStateOf(false) }
     var videoView by remember { mutableStateOf<VideoView?>(null) }
+    val pauseDesc = stringResource(R.string.chat_media_pause)
+    val playDesc = stringResource(R.string.chat_media_play)
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -283,7 +288,7 @@ fun VideoRenderer(url: String, modifier: Modifier = Modifier) {
         ) {
             Icon(
                 if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = if (isPlaying) "暂停" else "播放",
+                contentDescription = if (isPlaying) pauseDesc else playDesc,
                 tint = Color.White
             )
         }
@@ -297,6 +302,8 @@ fun AudioRenderer(url: String, modifier: Modifier = Modifier) {
     var currentPosition by remember { mutableStateOf(0) }
     var duration by remember { mutableStateOf(0) }
     var prepared by remember { mutableStateOf(false) }
+    val pauseDesc = stringResource(R.string.chat_media_pause)
+    val playDesc = stringResource(R.string.chat_media_play)
 
     val mediaPlayer = remember(url) {
         MediaPlayer().apply {
@@ -350,7 +357,7 @@ fun AudioRenderer(url: String, modifier: Modifier = Modifier) {
             }) {
                 Icon(
                     if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = if (isPlaying) "暂停" else "播放",
+                    contentDescription = if (isPlaying) pauseDesc else playDesc,
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
@@ -387,6 +394,8 @@ fun AudioRenderer(url: String, modifier: Modifier = Modifier) {
 fun TxtRenderer(url: String, modifier: Modifier = Modifier) {
     var content by remember(url) { mutableStateOf<String?>(null) }
     var error by remember(url) { mutableStateOf<String?>(null) }
+    val downloadFailed = stringResource(R.string.chat_media_download_failed)
+    val loadFailedFmt = stringResource(R.string.chat_media_load_failed)
 
     LaunchedEffect(url) {
         content = null
@@ -401,7 +410,7 @@ fun TxtRenderer(url: String, modifier: Modifier = Modifier) {
             }
             content = text
         } catch (e: Exception) {
-            error = e.message ?: "下载失败"
+            error = e.message ?: downloadFailed
         }
     }
 
@@ -422,7 +431,7 @@ fun TxtRenderer(url: String, modifier: Modifier = Modifier) {
                 fontFamily = FontFamily.Monospace
             )
             error != null -> Text(
-                text = "加载失败: $error",
+                text = loadFailedFmt.format(error),
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall
             )
@@ -446,6 +455,9 @@ fun HtmlRenderer(html: String, url: String, modifier: Modifier = Modifier) {
     var downloadedHtml by remember(url) { mutableStateOf<String?>(null) }
     var downloadError by remember(url) { mutableStateOf<String?>(null) }
     var fullscreen by remember { mutableStateOf(false) }
+    val downloadFailed = stringResource(R.string.chat_media_download_failed)
+    val fullscreenDesc = stringResource(R.string.chat_media_fullscreen)
+    val htmlLoadFailedFmt = stringResource(R.string.chat_media_html_load_failed)
 
     // 如果提供了 URL，用带认证的 OkHttp 下载 HTML 内容
     LaunchedEffect(url) {
@@ -462,7 +474,7 @@ fun HtmlRenderer(html: String, url: String, modifier: Modifier = Modifier) {
                 }
                 downloadedHtml = text
             } catch (e: Exception) {
-                downloadError = e.message ?: "下载失败"
+                downloadError = e.message ?: downloadFailed
             }
         }
     }
@@ -512,7 +524,7 @@ fun HtmlRenderer(html: String, url: String, modifier: Modifier = Modifier) {
             ) {
                 Icon(
                     imageVector = Icons.Filled.Fullscreen,
-                    contentDescription = "全屏查看",
+                    contentDescription = fullscreenDesc,
                     tint = Color.White,
                     modifier = Modifier.size(18.dp)
                 )
@@ -533,7 +545,7 @@ fun HtmlRenderer(html: String, url: String, modifier: Modifier = Modifier) {
     }
     if (downloadError != null) {
         Text(
-            text = "HTML 加载失败: $downloadError",
+            text = htmlLoadFailedFmt.format(downloadError),
             color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(4.dp)
@@ -552,6 +564,7 @@ fun HtmlRenderer(html: String, url: String, modifier: Modifier = Modifier) {
 /** 全屏 HTML 预览：顶栏标题 + 关闭按钮，WebView 填充剩余空间。 */
 @Composable
 private fun FullscreenHtmlDialog(content: String, onDismiss: () -> Unit) {
+    val exitFullscreenDesc = stringResource(R.string.chat_media_exit_fullscreen)
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
@@ -571,13 +584,13 @@ private fun FullscreenHtmlDialog(content: String, onDismiss: () -> Unit) {
             ) {
                 Icon(
                     imageVector = Icons.Filled.FullscreenExit,
-                    contentDescription = "退出全屏",
+                    contentDescription = exitFullscreenDesc,
                     tint = Color.White,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(Modifier.width(4.dp))
                 Text(
-                    text = "退出全屏",
+                    text = exitFullscreenDesc,
                     color = Color.White,
                     style = MaterialTheme.typography.labelMedium
                 )
@@ -746,7 +759,7 @@ private fun UnsupportedFileCard(
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
                 )
                 Text(
-                    text = "点击下载文件",
+                    text = stringResource(R.string.chat_media_click_to_download),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -766,6 +779,7 @@ private fun DownloadButton(fileName: String, fileUrl: String) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var downloading by remember { mutableStateOf(false) }
+    val downloadDesc = stringResource(R.string.chat_media_download)
 
     IconButton(onClick = {
         if (downloading) return@IconButton
@@ -776,7 +790,7 @@ private fun DownloadButton(fileName: String, fileUrl: String) {
                     val client = ServiceContainer.network.client
                     val request = Request.Builder().url(fileUrl).build()
                     client.newCall(request).execute().use { response ->
-                        val body = response.body ?: throw IllegalStateException("空响应")
+                        val body = response.body ?: throw IllegalStateException(ServiceContainer.getString(R.string.chat_media_empty_response))
                         val dir = java.io.File(context.cacheDir, "downloads")
                         if (!dir.exists()) dir.mkdirs()
                         val file = java.io.File(dir, fileName)
@@ -811,7 +825,7 @@ private fun DownloadButton(fileName: String, fileUrl: String) {
         } else {
             Icon(
                 imageVector = Icons.Filled.Download,
-                contentDescription = "下载",
+                contentDescription = downloadDesc,
                 tint = MaterialTheme.colorScheme.primary
             )
         }
@@ -836,6 +850,9 @@ fun PdfRendererFromFile(file: File, modifier: Modifier = Modifier) {
     var pageCount by remember(file) { mutableStateOf(0) }
     var loading by remember(file) { mutableStateOf(true) }
     var error by remember(file) { mutableStateOf<String?>(null) }
+    val pdfNoContent = stringResource(R.string.chat_media_pdf_no_content)
+    val pdfRenderFailed = stringResource(R.string.chat_media_pdf_render_failed)
+    val pdfLoadFailedFmt = stringResource(R.string.chat_media_pdf_load_failed)
 
     LaunchedEffect(file) {
         loading = true
@@ -848,9 +865,9 @@ fun PdfRendererFromFile(file: File, modifier: Modifier = Modifier) {
                     PdfRenderer(pfd).use { it.pageCount }
                 }
             }
-            if (pageCount == 0) error = "无法读取 PDF 内容"
+            if (pageCount == 0) error = pdfNoContent
         } catch (e: Throwable) {
-            error = e.message ?: "PDF 渲染失败"
+            error = e.message ?: pdfRenderFailed
         } finally {
             loading = false
         }
@@ -866,7 +883,7 @@ fun PdfRendererFromFile(file: File, modifier: Modifier = Modifier) {
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
             }
             error != null -> Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
-                Text(text = "PDF 加载失败: $error", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                Text(text = pdfLoadFailedFmt.format(error), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
             }
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -887,6 +904,9 @@ private fun PdfPageBitmap(file: File, pageIndex: Int) {
     var bmp by remember(file, pageIndex) { mutableStateOf<Bitmap?>(null) }
     var loading by remember(file, pageIndex) { mutableStateOf(true) }
     var error by remember(file, pageIndex) { mutableStateOf<String?>(null) }
+    val pageRenderFailed = stringResource(R.string.chat_media_pdf_page_render_failed, pageIndex + 1)
+    val pageLoadFailedFmt = stringResource(R.string.chat_media_pdf_page_load_failed, pageIndex + 1)
+    val pageDesc = stringResource(R.string.chat_media_pdf_page, pageIndex + 1)
 
     LaunchedEffect(file, pageIndex) {
         loading = true
@@ -912,7 +932,7 @@ private fun PdfPageBitmap(file: File, pageIndex: Int) {
                 }
             }
         } catch (e: Throwable) {
-            error = e.message ?: "第 ${pageIndex + 1} 页渲染失败"
+            error = e.message ?: pageRenderFailed
         } finally {
             loading = false
         }
@@ -931,14 +951,14 @@ private fun PdfPageBitmap(file: File, pageIndex: Int) {
                 modifier = Modifier.size(28.dp)
             )
             error != null -> Text(
-                text = "第 ${pageIndex + 1} 页加载失败: $error",
+                text = pageLoadFailedFmt.format(error),
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(8.dp)
             )
             b != null -> AsyncImage(
                 model = b.asImageBitmap(),
-                contentDescription = "PDF 第 ${pageIndex + 1} 页",
+                contentDescription = pageDesc,
                 contentScale = ContentScale.FillWidth,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -956,6 +976,12 @@ private fun PdfPageBitmap(file: File, pageIndex: Int) {
 @Composable
 fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
     val previewType = remember(fileName) { classifyFilePreview(fileName) }
+    val closeDesc = stringResource(R.string.common_close)
+    val imagePreviewDesc = stringResource(R.string.chat_media_image_preview)
+    val readFailed = stringResource(R.string.chat_media_read_failed)
+    val loadFailedFmt = stringResource(R.string.chat_media_load_failed)
+    val unsupportedPreview = stringResource(R.string.chat_media_unsupported_preview)
+    val fileDownloadedTo = stringResource(R.string.chat_media_file_downloaded_to, file.name)
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
@@ -981,7 +1007,7 @@ fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
                     modifier = Modifier.weight(1f)
                 )
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Filled.Close, contentDescription = "关闭", tint = Color.White)
+                    Icon(Icons.Filled.Close, contentDescription = closeDesc, tint = Color.White)
                 }
             }
             // 内容区
@@ -994,7 +1020,7 @@ fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
                     FilePreviewType.IMAGE -> {
                         AsyncImage(
                             model = file,
-                            contentDescription = "图片预览",
+                            contentDescription = imagePreviewDesc,
                             contentScale = ContentScale.Fit,
                             modifier = Modifier.fillMaxSize()
                         )
@@ -1006,7 +1032,7 @@ fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
                             try {
                                 content = withContext(Dispatchers.IO) { file.readText() }
                             } catch (e: Exception) {
-                                loadErr = e.message ?: "读取失败"
+                                loadErr = e.message ?: readFailed
                             }
                         }
                         when {
@@ -1027,7 +1053,7 @@ fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
                                 )
                             }
                             loadErr != null -> Text(
-                                "加载失败: $loadErr",
+                                loadFailedFmt.format(loadErr),
                                 color = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.align(Alignment.Center)
                             )
@@ -1044,7 +1070,7 @@ fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
                             try {
                                 htmlContent = withContext(Dispatchers.IO) { file.readText() }
                             } catch (e: Exception) {
-                                htmlErr = e.message ?: "读取失败"
+                                htmlErr = e.message ?: readFailed
                             }
                         }
                         when {
@@ -1065,7 +1091,7 @@ fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
                                 )
                             }
                             htmlErr != null -> Text(
-                                "加载失败: $htmlErr",
+                                loadFailedFmt.format(htmlErr),
                                 color = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.align(Alignment.Center)
                             )
@@ -1084,13 +1110,13 @@ fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
-                                "该文件类型暂不支持预览",
+                                unsupportedPreview,
                                 color = Color.White,
                                 style = MaterialTheme.typography.bodyLarge
                             )
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                "文件已下载到: ${file.name}",
+                                fileDownloadedTo,
                                 color = Color.White.copy(alpha = 0.7f),
                                 style = MaterialTheme.typography.bodySmall
                             )

@@ -1,5 +1,6 @@
 package com.nekobot.app.ui.screens.settings
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ImportExport
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Memory
@@ -62,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -69,9 +72,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonElement
 import com.google.gson.JsonParser
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.data.local.LocalLogger
+import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
@@ -127,7 +132,7 @@ class SettingsViewModel : BaseViewModel() {
         ServiceContainer.switchAppMode(mode)
         _appMode.value = mode
         ServiceContainer.rebuildNetwork()
-        showToast(if (mode == AppMode.LOCAL) "已切换到本地模式" else "已切换到服务器模式")
+        showToast(if (mode == AppMode.LOCAL) string(R.string.settings_switched_to_local) else string(R.string.settings_switched_to_server))
     }
 
     init {
@@ -151,17 +156,17 @@ class SettingsViewModel : BaseViewModel() {
             val json = JsonParser.parseString(jsonStr)
             launchResult(
                 block = { repo.updateSettings(json) },
-                onSuccess = { showToast("设置已保存") }
+                onSuccess = { showToast(string(R.string.settings_settings_saved)) }
             )
         } catch (e: Exception) {
-            showError("JSON 格式错误: ${e.message}")
+            showError(string(R.string.settings_json_format_error, e.message ?: ""))
         }
     }
 
     fun reloadConfig() {
         launchResult(
             block = { repo.reloadConfig() },
-            onSuccess = { showToast("配置已重载") }
+            onSuccess = { showToast(string(R.string.settings_config_reloaded)) }
         )
     }
 
@@ -212,7 +217,7 @@ class SettingsViewModel : BaseViewModel() {
         LocalLogger.clear()
         _logs.value = emptyList()
         _showLogs.value = false
-        showToast("已清空本地日志")
+        showToast(string(R.string.settings_local_logs_cleared))
     }
 
     fun logout() {
@@ -226,7 +231,7 @@ class SettingsViewModel : BaseViewModel() {
         ServiceContainer.prefs.serverUrl = url
         ServiceContainer.rebuildNetwork()
         _serverUrl.value = ServiceContainer.prefs.serverUrl
-        showToast("服务器地址已更新")
+        showToast(string(R.string.settings_server_url_updated))
     }
 }
 
@@ -248,6 +253,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
     // 本地编辑状态
     var serverUrlInput by remember(serverUrl) { mutableStateOf(serverUrl) }
     var settingsInput by remember(settingsJson) { mutableStateOf(settingsJson) }
+    var showLanguagePicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(toast) {
         if (toast != null) {
@@ -265,12 +271,12 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("设置") },
+                title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.common_back),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -301,7 +307,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
 
                 // 0. 运行模式切换
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    SectionHeader(title = "运行模式")
+                    SectionHeader(title = stringResource(R.string.settings_run_mode))
                     Spacer(Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -309,14 +315,14 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                if (appMode == AppMode.LOCAL) "本地模式" else "服务器模式",
+                                if (appMode == AppMode.LOCAL) stringResource(R.string.settings_local_mode) else stringResource(R.string.settings_server_mode),
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                if (appMode == AppMode.LOCAL) "直连 AI API，数据存储在本地"
-                                else "通过后端服务器进行 AI 对话",
+                                if (appMode == AppMode.LOCAL) stringResource(R.string.settings_local_mode_desc)
+                                else stringResource(R.string.settings_server_mode_desc),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -336,7 +342,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                         ) {
                             Icon(Icons.Filled.Memory, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(8.dp))
-                            Text("本地 AI 模型配置")
+                            Text(stringResource(R.string.settings_local_ai_config))
                         }
                     }
                 }
@@ -344,13 +350,13 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                 // 1. 服务器配置（仅服务器模式）
                 if (appMode != AppMode.LOCAL) {
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "服务器配置")
+                        SectionHeader(title = stringResource(R.string.settings_server_config))
                         Spacer(Modifier.height(12.dp))
 
                         OutlinedTextField(
                             value = serverUrlInput,
                             onValueChange = { serverUrlInput = it },
-                            label = { Text("服务器地址") },
+                            label = { Text(stringResource(R.string.settings_server_address)) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -361,12 +367,12 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                             onClick = { vm.saveServerUrl(serverUrlInput) },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                         ) {
-                            Text("保存地址", color = MaterialTheme.colorScheme.onPrimary)
+                            Text(stringResource(R.string.settings_save_address), color = MaterialTheme.colorScheme.onPrimary)
                         }
 
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "当前用户: ${ServiceContainer.prefs.username.ifBlank { "未登录" }}",
+                            text = stringResource(R.string.settings_current_user, ServiceContainer.prefs.username.ifBlank { stringResource(R.string.common_not_logged_in) }),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -387,8 +393,8 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                             Icon(Icons.Filled.SettingsIcon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("系统设置", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
-                                Text("以 JSON 格式编辑系统配置", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(stringResource(R.string.settings_system_settings), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                                Text(stringResource(R.string.settings_system_settings_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -398,7 +404,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                 // 4. 系统操作（仅服务器模式）
                 if (appMode != AppMode.LOCAL) {
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "系统操作")
+                        SectionHeader(title = stringResource(R.string.settings_system_actions))
                         Spacer(Modifier.height(12.dp))
                         Button(
                             onClick = { vm.reloadConfig() },
@@ -407,7 +413,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                         ) {
                             Icon(Icons.Filled.CloudSync, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
                             Spacer(Modifier.width(8.dp))
-                            Text("重载配置", color = MaterialTheme.colorScheme.onPrimary)
+                            Text(stringResource(R.string.settings_reload_config), color = MaterialTheme.colorScheme.onPrimary)
                         }
                     }
                 }
@@ -415,38 +421,38 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                 // 4.5 高级功能（仅服务器模式）：功能开关 / 数据维护 / 配置迁移 / WebDAV 备份
                 if (appMode != AppMode.LOCAL) {
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "高级功能")
+                        SectionHeader(title = stringResource(R.string.settings_advanced))
                         Spacer(Modifier.height(12.dp))
                         SettingNavRow(
                             icon = Icons.Filled.Tune,
                             iconColor = MaterialTheme.colorScheme.primary,
-                            title = "功能开关",
-                            subtitle = "开启或关闭各项功能模块"
+                            title = stringResource(R.string.settings_feature_switches),
+                            subtitle = stringResource(R.string.settings_feature_switches_desc)
                         ) { onNavigate("feature_switches") }
                         SettingNavRow(
                             icon = Icons.Filled.Build,
                             iconColor = MaterialTheme.colorScheme.tertiary,
-                            title = "数据维护",
-                            subtitle = "清理缓存、重建索引、压缩数据"
+                            title = stringResource(R.string.settings_data_maintenance),
+                            subtitle = stringResource(R.string.settings_data_maintenance_desc)
                         ) { onNavigate("data_maintenance") }
                         SettingNavRow(
                             icon = Icons.Filled.ImportExport,
                             iconColor = MaterialTheme.colorScheme.secondary,
-                            title = "配置迁移",
-                            subtitle = "导入或导出配置包"
+                            title = stringResource(R.string.settings_config_transfer),
+                            subtitle = stringResource(R.string.settings_config_transfer_desc)
                         ) { onNavigate("config_transfer") }
                         SettingNavRow(
                             icon = Icons.Filled.CloudUpload,
                             iconColor = MaterialTheme.colorScheme.primary,
-                            title = "WebDAV 备份",
-                            subtitle = "配置远程备份并定时同步"
+                            title = stringResource(R.string.settings_webdav_backup),
+                            subtitle = stringResource(R.string.settings_webdav_backup_desc)
                         ) { onNavigate("webdav_backup") }
                     }
                 }
 
                 // 5. 日志查看（服务器模式看服务端日志，本地模式看 LocalLogger）
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    SectionHeader(title = if (appMode == AppMode.LOCAL) "本地日志" else "日志查看")
+                    SectionHeader(title = if (appMode == AppMode.LOCAL) stringResource(R.string.settings_local_logs) else stringResource(R.string.settings_logs_view))
                     Spacer(Modifier.height(12.dp))
                     OutlinedButton(
                         onClick = {
@@ -456,7 +462,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                     ) {
                         Icon(Icons.Filled.Description, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(8.dp))
-                        Text(if (appMode == AppMode.LOCAL) "查看本地运行日志" else "查看最近日志")
+                        Text(if (appMode == AppMode.LOCAL) stringResource(R.string.settings_view_local_logs) else stringResource(R.string.settings_view_recent_logs))
                     }
                     if (appMode == AppMode.LOCAL) {
                         Spacer(Modifier.height(8.dp))
@@ -466,7 +472,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                         ) {
                             Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
                             Spacer(Modifier.width(8.dp))
-                            Text("清空本地日志", color = MaterialTheme.colorScheme.error)
+                            Text(stringResource(R.string.settings_clear_local_logs), color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
@@ -474,7 +480,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                 // 6. 账号（仅服务器模式，本地模式无需登录）
                 if (appMode != AppMode.LOCAL) {
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "账号")
+                        SectionHeader(title = stringResource(R.string.settings_account))
                         Spacer(Modifier.height(12.dp))
                         Button(
                             onClick = { vm.logout() },
@@ -483,39 +489,67 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                         ) {
                             Icon(Icons.Filled.Logout, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
                             Spacer(Modifier.width(8.dp))
-                            Text("退出登录", color = MaterialTheme.colorScheme.onPrimary)
+                            Text(stringResource(R.string.settings_logout), color = MaterialTheme.colorScheme.onPrimary)
                         }
                     }
                 }
 
-                // 7. 关于
+                // 7. 语言设置
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    SectionHeader(title = "关于")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { showLanguagePicker = true }
+                            .padding(vertical = 12.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.Language, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(stringResource(R.string.settings_language), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                when (ServiceContainer.prefs.language) {
+                                    PrefsManager.LANGUAGE_ZH -> stringResource(R.string.language_chinese)
+                                    PrefsManager.LANGUAGE_EN -> stringResource(R.string.language_english)
+                                    else -> stringResource(R.string.language_system)
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+
+                // 8. 关于
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    SectionHeader(title = stringResource(R.string.settings_about))
                     Spacer(Modifier.height(8.dp))
                     AboutRow(
                         icon = Icons.Filled.Person,
                         iconColor = MaterialTheme.colorScheme.primary,
-                        title = "制作人",
+                        title = stringResource(R.string.settings_about_producer),
                         subtitle = "Asukaneko",
                         onClick = { openUrl(context, "https://github.com/asukaneko") }
                     )
                     AboutRow(
                         icon = Icons.Filled.Description,
                         iconColor = MaterialTheme.colorScheme.tertiary,
-                        title = "Android 仓库",
+                        title = stringResource(R.string.settings_about_android_repo),
                         subtitle = "github.com/asukaneko/Nekobot-Android",
                         onClick = { openUrl(context, "https://github.com/asukaneko/Nekobot-Android") }
                     )
                     AboutRow(
                         icon = Icons.Filled.Memory,
                         iconColor = MaterialTheme.colorScheme.secondary,
-                        title = "服务端仓库",
+                        title = stringResource(R.string.settings_about_server_repo),
                         subtitle = "github.com/asukaneko/nekobot",
                         onClick = { openUrl(context, "https://github.com/asukaneko/nekobot") }
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "Nekobot for Android · v${ getAppVersion(context) }",
+                        text = stringResource(R.string.settings_about_version, getAppVersion(context)),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -526,19 +560,34 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
         }
     }
 
+    // 语言选择弹窗
+    if (showLanguagePicker) {
+        LanguagePickerDialog(
+            currentLanguage = ServiceContainer.prefs.language,
+            onSelect = { tag ->
+                ServiceContainer.prefs.language = tag
+                ServiceContainer.refreshLocale()
+                showLanguagePicker = false
+                // 重建 Activity 使新 locale 生效
+                (context as? Activity)?.recreate()
+            },
+            onDismiss = { showLanguagePicker = false }
+        )
+    }
+
     // 日志弹窗：卡片列表展示
     if (showLogs) {
         NekoDialog(
             onDismiss = { vm.dismissLogs() },
-            title = "系统日志 (${logs.size})",
-            confirmText = "关闭",
+            title = stringResource(R.string.settings_system_logs, logs.size),
+            confirmText = stringResource(R.string.common_close),
             onConfirm = { vm.dismissLogs() },
             cancelText = null,
             onCancel = null
         ) {
             if (logs.isEmpty()) {
                 Text(
-                    text = "暂无日志",
+                    text = stringResource(R.string.settings_no_logs),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(16.dp)
@@ -552,6 +601,55 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                 ) {
                     items(logs) { log ->
                         LogCard(log)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 语言选择弹窗：跟随系统 / 简体中文 / English。 */
+@Composable
+private fun LanguagePickerDialog(
+    currentLanguage: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val options = listOf(
+        PrefsManager.LANGUAGE_SYSTEM to stringResource(R.string.language_system),
+        PrefsManager.LANGUAGE_ZH to stringResource(R.string.language_chinese),
+        PrefsManager.LANGUAGE_EN to stringResource(R.string.language_english)
+    )
+    NekoDialog(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.settings_language),
+        confirmText = stringResource(R.string.common_close),
+        onConfirm = onDismiss,
+        cancelText = null,
+        onCancel = null
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            options.forEach { (tag, label) ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onSelect(tag) }
+                        .padding(vertical = 12.dp, horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (tag == currentLanguage) {
+                        Icon(
+                            Icons.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
             }
@@ -682,7 +780,7 @@ private fun openUrl(context: android.content.Context, url: String) {
     runCatching {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     }.onFailure {
-        Toast.makeText(context, "无法打开链接", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.common_cannot_open_link), Toast.LENGTH_SHORT).show()
     }
 }
 

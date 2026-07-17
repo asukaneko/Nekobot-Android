@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== 样式设置 ==================== -->
+    <string name="style_title">样式设置</string>
+    <string name="style_realtime_preview">实时预览</string>
+    <string name="style_preview_title">标题文字示例</string>
+    <string name="style_preview_body">这是正文内容示例，用于展示当前字体类型、大小与颜色配置的效果。</string>
+    <string name="style_preview_bubble">主题色 / 气泡预览</string>
+    <string name="style_theme_color">主题色</string>
+    <string name="style_font_type">字体类型</string>
+    <string name="style_font_size">字体大小</string>
+    <string name="style_font_color">字体颜色</string>
+    <string name="style_custom">自定义</string>
+    <string name="style_custom_color">自定义颜色</string>
+    <string name="style_custom_theme_color">自定义主题色</string>
+    <string name="style_color_hex_hint">请输入颜色 hex 值，例如 #FF6B6B</string>
+    <string name="style_color_hex_hint_theme">请输入颜色 hex 值，例如 #4D96FF</string>
+    <string name="style_color_hex_label">颜色 hex</string>
+    <string name="style_change_font">更换</string>
+    <string name="style_delete_custom_font">删除自定义字体</string>
+    <string name="style_custom_font_name">自定义字体</string>
+    <!-- 字体类型选项 -->
+    <string name="style_font_system">系统默认</string>
+    <string name="style_font_serif">衬线</string>
+    <string name="style_font_monospace">等宽</string>
+    <string name="style_font_rounded">圆角</string>
+    <!-- 字体大小选项 -->
+    <string name="style_size_small">小</string>
+    <string name="style_size_standard">标准</string>
+    <string name="style_size_large">大</string>
+    <string name="style_size_xlarge">超大</string>
+    <!-- 主题色选项 -->
+    <string name="style_color_purple">紫色</string>
+    <string name="style_color_blue">蓝色</string>
+    <string name="style_color_cyan">青色</string>
+    <string name="style_color_green">绿色</string>
+    <string name="style_color_orange">橙色</string>
+    <string name="style_color_pink">粉色</string>
+    <string name="style_color_red">红色</string>
+    <string name="style_color_follow_theme">跟随主题</string>
+
+    <!-- ==================== 系统设置 ==================== -->
+    <string name="system_title">系统设置</string>
+    <string name="system_edit_hint">以 JSON 格式编辑系统配置，保存后立即生效。</string>
+    <string name="system_settings_json">设置 JSON</string>
+    <string name="system_save_settings">保存设置</string>
+
+    <!-- ==================== 功能开关 ==================== -->
+    <string name="feature_title">功能开关</string>
+    <string name="feature_subtitle">控制各项功能的启用状态</string>
+    <string name="feature_server_only">此功能仅服务器模式可用</string>
+    <string name="feature_empty_title">暂无开关</string>
+    <string name="feature_empty_hint">点击右上角刷新重试</string>
+    <string name="feature_refresh">刷新</string>
+    <string name="feature_switch_on">已开启 %1$s</string>
+    <string name="feature_switch_off">已关闭 %1$s</string>
+    <!-- 功能开关描述 -->
+    <string name="feature_desc_skills_prompt_injection">技能提示词注入</string>
+    <string name="feature_desc_live2d">Live2D 表情</string>
+    <string name="feature_desc_sticker">表情贴图</string>
+    <string name="feature_desc_image_generation">图片生成</string>
+    <string name="feature_desc_tts">TTS 语音</string>
+    <string name="feature_desc_auto_reply">自动回复</string>
+    <string name="feature_desc_active_chat">主动聊天</string>
+
+    <!-- ==================== 数据维护 ==================== -->
+    <string name="maintenance_title">数据维护</string>
+    <string name="maintenance_refresh">刷新</string>
+    <string name="maintenance_cache_files">缓存文件</string>
+    <string name="maintenance_cache_files_subtitle">查看应用缓存目录中的文件</string>
+    <string name="maintenance_cache_desc_local">应用缓存目录包含导出的数据库文件、下载的临时文件等。</string>
+    <string name="maintenance_open_cache_folder">打开缓存文件夹</string>
+    <string name="maintenance_storage_usage">存储使用情况</string>
+    <string name="maintenance_storage_subtitle">本地缓存与数据库占用</string>
+    <string name="maintenance_cache_size">缓存大小</string>
+    <string name="maintenance_db_size">数据库大小</string>
+    <string name="maintenance_total_size">总占用</string>
+    <string name="maintenance_clear_cache_title">清除缓存</string>
+    <string name="maintenance_clear_cache_subtitle">删除临时缓存文件</string>
+    <string name="maintenance_clear_cache_desc">清除应用缓存目录中的临时文件，包括图片缓存、下载临时文件等。不会影响本地数据库。</string>
+    <string name="maintenance_clear_all_title">清除所有本地数据</string>
+    <string name="maintenance_clear_all_subtitle">删除本地数据库</string>
+    <string name="maintenance_clear_all_warning">警告：此操作将删除所有本地数据库（包括会话、消息、角色等数据），且不可恢复。请谨慎操作。</string>
+    <string name="maintenance_export_title">导出本地数据</string>
+    <string name="maintenance_export_subtitle">备份本地数据库到文件</string>
+    <string name="maintenance_export_desc">将本地数据库文件导出到应用缓存目录，可用于备份或迁移。</string>
+    <string name="maintenance_export_button">导出本地数据库</string>
+    <string name="maintenance_cache_files_detail">查看应用缓存目录中的文件，包括导出的数据库备份、下载的临时文件等。点击文件可分享或打开。</string>
+    <string name="maintenance_confirm_clear_title">确认清除所有本地数据</string>
+    <string name="maintenance_confirm_clear_msg">此操作将永久删除所有本地数据库（会话、消息、角色等），且不可恢复。确定继续吗？</string>
+    <string name="maintenance_confirm_clear">确认清除</string>
+    <string name="maintenance_folder">文件夹</string>
+    <string name="maintenance_cache_files_count">缓存文件 (%1$d)</string>
+    <string name="maintenance_cache_empty">缓存目录为空</string>
+    <string name="maintenance_cannot_open_file">无法打开文件: %1$s</string>
+    <!-- ViewModel 提示 -->
+    <string name="maintenance_cache_cleared">缓存已清除</string>
+    <string name="maintenance_clear_cache_failed">清除缓存失败</string>
+    <string name="maintenance_all_data_cleared">所有本地数据已清除</string>
+    <string name="maintenance_clear_data_failed">清除数据失败</string>
+    <string name="maintenance_exported_to_cache">已导出到缓存: %1$s</string>
+    <string name="maintenance_no_db_file">未找到本地数据库文件</string>
+    <string name="maintenance_export_failed">导出失败</string>
+
+    <!-- ==================== 配置迁移 ==================== -->
+    <string name="transfer_title">配置迁移</string>
+    <string name="transfer_server_only">此功能仅服务器模式可用</string>
+    <string name="transfer_export_title">导出配置</string>
+    <string name="transfer_export_subtitle">打包配置为加密 ZIP 文件</string>
+    <string name="transfer_password_optional">加密密码（可选）</string>
+    <string name="transfer_export_button">导出配置</string>
+    <string name="transfer_import_title">导入配置</string>
+    <string name="transfer_import_subtitle">从 ZIP 或 .nbotcfg 文件恢复配置</string>
+    <string name="transfer_select_file">选择配置文件</string>
+    <string name="transfer_overwrite">覆盖现有配置</string>
+    <string name="transfer_overwrite_desc">关闭则保留已存在的配置项</string>
+    <string name="transfer_select_file_first">请先选择配置文件</string>
+    <string name="transfer_import_button">导入配置</string>
+    <string name="transfer_file_selected">已选择文件</string>
+    <!-- ViewModel 提示 -->
+    <string name="transfer_export_failed_http">导出失败 (HTTP %1$d)</string>
+    <string name="transfer_export_failed">导出失败</string>
+    <string name="transfer_read_file_failed">读取文件失败</string>
+    <string name="transfer_import_success">导入成功</string>
+    <string name="transfer_import_configs_suffix">，配置项 %1$d 个</string>
+    <string name="transfer_import_portraits_suffix">，立绘 %1$d 张</string>
+    <string name="transfer_import_failed">导入失败</string>
+    <string name="transfer_exported_to_cache">已导出到缓存: %1$s</string>
+
+    <!-- ==================== WebDAV 备份 ==================== -->
+    <string name="webdav_title">WebDAV 备份</string>
+    <string name="webdav_server_only">此功能仅服务器模式可用</string>
+    <string name="webdav_config_title">WebDAV 配置</string>
+    <string name="webdav_config_subtitle">配置服务器地址与认证信息</string>
+    <string name="webdav_url">WebDAV 地址</string>
+    <string name="webdav_username">用户名</string>
+    <string name="webdav_password">密码</string>
+    <string name="webdav_password_set">密码（已设置，留空不修改）</string>
+    <string name="webdav_encryption_password">加密密码</string>
+    <string name="webdav_encryption_password_set">加密密码（已设置，留空不修改）</string>
+    <string name="webdav_test_connection">测试连接</string>
+    <string name="webdav_remote_info_title">远程文件信息</string>
+    <string name="webdav_remote_info_subtitle">备份文件元数据</string>
+    <string name="webdav_file_size">文件大小</string>
+    <string name="webdav_last_modified">最后修改</string>
+    <string name="webdav_last_backup">最后备份</string>
+    <string name="webdav_never_backup">从未备份</string>
+    <string name="webdav_last_sync">最后同步</string>
+    <string name="webdav_never_sync">从未同步</string>
+    <string name="webdav_file_url">文件地址</string>
+    <string name="webdav_recent_error">最近错误: %1$s</string>
+    <string name="webdav_refresh_info">刷新信息</string>
+    <string name="webdav_backup_upload_title">备份上传</string>
+    <string name="webdav_backup_upload_subtitle">将本地配置打包上传到 WebDAV</string>
+    <string name="webdav_encryption_password_optional_override">加密密码（可选，覆盖配置）</string>
+    <string name="webdav_include_portraits">包含角色立绘</string>
+    <string name="webdav_upload_portraits">同时上传立绘图片文件</string>
+    <string name="webdav_upload_backup">上传备份</string>
+    <string name="webdav_sync_pull_title">同步拉取</string>
+    <string name="webdav_sync_pull_subtitle">从 WebDAV 恢复配置到本地</string>
+    <string name="webdav_pull_portraits">同时拉取立绘图片文件</string>
+    <string name="webdav_sync_pull_button">同步拉取</string>
+    <!-- ViewModel 提示 -->
+    <string name="webdav_config_saved">配置已保存</string>
+    <string name="webdav_connection_success">连接成功</string>
+    <string name="webdav_connection_failed">连接失败</string>
+    <string name="webdav_backup_success">备份上传成功</string>
+    <string name="webdav_backup_failed">备份失败</string>
+    <string name="webdav_sync_success">同步拉取成功</string>
+    <string name="webdav_sync_failed">同步失败</string>
+
+    <!-- ==================== 数据库管理 ==================== -->
+    <string name="dbprofile_title">数据库管理</string>
+    <string name="dbprofile_refresh">刷新</string>
+    <string name="dbprofile_import_remote">从远程导入</string>
+    <string name="dbprofile_current_db">当前数据库</string>
+    <string name="dbprofile_internal_id">内部标识：%1$s</string>
+    <string name="dbprofile_saved_list">已保存的数据库列表</string>
+    <string name="dbprofile_empty">暂无 db profile</string>
+    <string name="dbprofile_import_button">从远程地址导入 nbotcfg</string>
+    <string name="dbprofile_tip">提示：导入会从已保存的远程服务器下载加密配置包，解密后写入新的本地数据库。可在多个 db 间自由切换，互不影响。默认数据库不可删除。</string>
+    <string name="dbprofile_delete_title">删除数据库</string>
+    <string name="dbprofile_delete_msg">确定删除「%1$s」吗？该 db 下的所有会话/角色卡/世界书等数据将永久丢失。</string>
+    <string name="dbprofile_source_imported">远程导入</string>
+    <string name="dbprofile_source_local">本地</string>
+    <string name="dbprofile_more">更多</string>
+    <string name="dbprofile_current_active">当前数据库</string>
+    <string name="dbprofile_switch_to">切换到此数据库</string>
+    <string name="dbprofile_import_dialog_title">从远程导入 nbotcfg</string>
+    <string name="dbprofile_importing">导入中…</string>
+    <string name="dbprofile_start_import">开始导入</string>
+    <string name="dbprofile_no_records">暂无已保存的远程服务器记录。请先在登录页登录远程服务器并勾选「保存登录信息」。</string>
+    <string name="dbprofile_select_server">选择远程服务器</string>
+    <string name="dbprofile_please_select">请选择</string>
+    <string name="dbprofile_new_display_name">新数据库显示名</string>
+    <string name="dbprofile_display_name_placeholder">如：服务器A 配置</string>
+    <string name="dbprofile_downloading">正在下载并解密配置包…</string>
+    <string name="dbprofile_dialog_tip">配置包在传输过程中会自动加密，无需手动输入密码。导入成功后将自动切换到新数据库。</string>
+    <!-- ViewModel 提示 -->
+    <string name="dbprofile_switched_to">已切换到「%1$s」</string>
+    <string name="dbprofile_default_no_delete">默认数据库不可删除</string>
+    <string name="dbprofile_deleted">已删除 db「%1$s」</string>
+    <string name="dbprofile_input_display_name">请输入显示名</string>
+</resources>

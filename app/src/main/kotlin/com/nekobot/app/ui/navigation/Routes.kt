@@ -5,6 +5,9 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.nekobot.app.R
 
 object Routes {
     const val LOGIN = "login"
@@ -79,10 +82,17 @@ data class BottomItem(
     val icon: androidx.compose.ui.graphics.vector.ImageVector
 )
 
-val bottomItems = listOf(
-    BottomItem(Routes.SESSIONS, "会话", androidx.compose.material.icons.Icons.Filled.Chat),
-    BottomItem(Routes.CHARACTERS, "角色", androidx.compose.material.icons.Icons.Filled.Person),
-    BottomItem(Routes.WORLD_BOOKS, "世界书", androidx.compose.material.icons.Icons.Filled.MenuBook),
-    BottomItem(Routes.TOKENS, "用量", androidx.compose.material.icons.Icons.Filled.BarChart),
-    BottomItem(Routes.MORE, "更多", androidx.compose.material.icons.Icons.Filled.Apps),
+/** 底栏路由顺序（非 Composable 场景使用，不含本地化标签）。 */
+val bottomRoutes = listOf(
+    Routes.SESSIONS, Routes.CHARACTERS, Routes.WORLD_BOOKS, Routes.TOKENS, Routes.MORE
+)
+
+/** 底栏项目（Composable 场景使用，标签随语言切换）。 */
+@Composable
+fun bottomItems(): List<BottomItem> = listOf(
+    BottomItem(Routes.SESSIONS, stringResource(R.string.nav_sessions), androidx.compose.material.icons.Icons.Filled.Chat),
+    BottomItem(Routes.CHARACTERS, stringResource(R.string.nav_characters), androidx.compose.material.icons.Icons.Filled.Person),
+    BottomItem(Routes.WORLD_BOOKS, stringResource(R.string.nav_world_books), androidx.compose.material.icons.Icons.Filled.MenuBook),
+    BottomItem(Routes.TOKENS, stringResource(R.string.nav_tokens), androidx.compose.material.icons.Icons.Filled.BarChart),
+    BottomItem(Routes.MORE, stringResource(R.string.nav_more), androidx.compose.material.icons.Icons.Filled.Apps),
 )

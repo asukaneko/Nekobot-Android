@@ -1,4 +1,130 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Nekobot</string>
+
+    <!-- ==================== 通用操作 ==================== -->
+    <string name="common_confirm">确认</string>
+    <string name="common_cancel">取消</string>
+    <string name="common_save">保存</string>
+    <string name="common_delete">删除</string>
+    <string name="common_back">返回</string>
+    <string name="common_close">关闭</string>
+    <string name="common_retry">重试</string>
+    <string name="common_edit">编辑</string>
+    <string name="common_add">添加</string>
+    <string name="common_remove">移除</string>
+    <string name="common_search">搜索</string>
+    <string name="common_loading">加载中…</string>
+    <string name="common_done">完成</string>
+    <string name="common_copy">复制</string>
+    <string name="common_copy_success">已复制</string>
+    <string name="common_copy_fail">复制失败</string>
+    <string name="common_share">分享</string>
+    <string name="common_import">导入</string>
+    <string name="common_export">导出</string>
+    <string name="common_rename">重命名</string>
+    <string name="common_create">创建</string>
+    <string name="common_update">更新</string>
+    <string name="common_apply">应用</string>
+    <string name="common_reset">重置</string>
+    <string name="common_clear">清空</string>
+    <string name="common_select">选择</string>
+    <string name="common_select_all">全选</string>
+    <string name="common_deselect_all">取消全选</string>
+    <string name="common_yes">是</string>
+    <string name="common_no">否</string>
+    <string name="common_ok">好的</string>
+    <string name="common_warning">警告</string>
+    <string name="common_tip">提示</string>
+    <string name="common_none">无</string>
+    <string name="common_unknown">未知</string>
+    <string name="common_not_logged_in">未登录</string>
+    <string name="common_cannot_open_link">无法打开链接</string>
+    <string name="common_unknown_error">未知错误</string>
+    <string name="common_network_error">网络错误</string>
+    <string name="common_empty_data">暂无数据</string>
+    <string name="common_required_field">此项为必填</string>
+    <string name="common_invalid_format">格式无效</string>
+
+    <!-- ==================== 语言设置 ==================== -->
+    <string name="language_system">跟随系统</string>
+    <string name="language_chinese">简体中文</string>
+    <string name="language_english">English</string>
+    <string name="language_changed">语言已切换</string>
+
+    <!-- ==================== 底部导航 ==================== -->
+    <string name="nav_sessions">会话</string>
+    <string name="nav_characters">角色</string>
+    <string name="nav_world_books">世界书</string>
+    <string name="nav_tokens">用量</string>
+    <string name="nav_more">更多</string>
+
+    <!-- ==================== 更多页 ==================== -->
+    <string name="more_title">更多</string>
+    <string name="more_role_memory">角色记忆</string>
+    <string name="more_role_memory_desc">查看并管理角色对用户/事件的记忆</string>
+    <string name="more_style_settings">样式设置</string>
+    <string name="more_style_settings_desc">字体、颜色、大小</string>
+    <string name="more_state_history">状态历程</string>
+    <string name="more_state_history_desc">查看角色状态随对话推进的变化</string>
+    <string name="more_ai_config_center">AI 配置中心</string>
+    <string name="more_ai_config_desc_local">管理本地直连 AI 模型</string>
+    <string name="more_ai_config_desc_server">管理 AI 配置、模型与故障转移队列</string>
+    <string name="more_db_management">数据库管理</string>
+    <string name="more_db_management_desc">从远程地址导入 nbotcfg，切换或删除本地 db</string>
+    <string name="more_extensions">扩展功能</string>
+    <string name="more_extensions_desc_server">Hook、任务、工作流、知识库、MCP、频道等高级配置</string>
+    <string name="more_extensions_desc_local">Hook、任务、工作流、Skills、Tools、MCP、API Keys 等本地配置</string>
+    <string name="more_settings">设置</string>
+    <string name="more_settings_desc">服务器、系统配置、日志、账号</string>
+    <string name="more_logout">退出登录</string>
+    <string name="more_current_user">当前：%1$s</string>
+
+    <!-- ==================== 设置页 ==================== -->
+    <string name="settings_title">设置</string>
+    <string name="settings_run_mode">运行模式</string>
+    <string name="settings_local_mode">本地模式</string>
+    <string name="settings_server_mode">服务器模式</string>
+    <string name="settings_local_mode_desc">直连 AI API，数据存储在本地</string>
+    <string name="settings_server_mode_desc">通过后端服务器进行 AI 对话</string>
+    <string name="settings_switched_to_local">已切换到本地模式</string>
+    <string name="settings_switched_to_server">已切换到服务器模式</string>
+    <string name="settings_local_ai_config">本地 AI 模型配置</string>
+    <string name="settings_server_config">服务器配置</string>
+    <string name="settings_server_address">服务器地址</string>
+    <string name="settings_save_address">保存地址</string>
+    <string name="settings_server_url_updated">服务器地址已更新</string>
+    <string name="settings_current_user">当前用户: %1$s</string>
+    <string name="settings_system_settings">系统设置</string>
+    <string name="settings_system_settings_desc">以 JSON 格式编辑系统配置</string>
+    <string name="settings_system_actions">系统操作</string>
+    <string name="settings_reload_config">重载配置</string>
+    <string name="settings_config_reloaded">配置已重载</string>
+    <string name="settings_advanced">高级功能</string>
+    <string name="settings_feature_switches">功能开关</string>
+    <string name="settings_feature_switches_desc">开启或关闭各项功能模块</string>
+    <string name="settings_data_maintenance">数据维护</string>
+    <string name="settings_data_maintenance_desc">清理缓存、重建索引、压缩数据</string>
+    <string name="settings_config_transfer">配置迁移</string>
+    <string name="settings_config_transfer_desc">导入或导出配置包</string>
+    <string name="settings_webdav_backup">WebDAV 备份</string>
+    <string name="settings_webdav_backup_desc">配置远程备份并定时同步</string>
+    <string name="settings_local_logs">本地日志</string>
+    <string name="settings_logs_view">日志查看</string>
+    <string name="settings_view_local_logs">查看本地运行日志</string>
+    <string name="settings_view_recent_logs">查看最近日志</string>
+    <string name="settings_clear_local_logs">清空本地日志</string>
+    <string name="settings_local_logs_cleared">已清空本地日志</string>
+    <string name="settings_account">账号</string>
+    <string name="settings_logout">退出登录</string>
+    <string name="settings_about">关于</string>
+    <string name="settings_language">语言</string>
+    <string name="settings_settings_saved">设置已保存</string>
+    <string name="settings_json_format_error">JSON 格式错误: %1$s</string>
+    <string name="settings_system_logs">系统日志 (%1$d)</string>
+    <string name="settings_no_logs">暂无日志</string>
+    <string name="settings_about_producer">制作人</string>
+    <string name="settings_about_android_repo">Android 仓库</string>
+    <string name="settings_about_server_repo">服务端仓库</string>
+    <string name="settings_about_version">Nekobot for Android · v%1$s</string>
 </resources>

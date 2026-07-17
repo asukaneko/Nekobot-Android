@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== Style settings ==================== -->
+    <string name="style_title">Style settings</string>
+    <string name="style_realtime_preview">Live preview</string>
+    <string name="style_preview_title">Sample title text</string>
+    <string name="style_preview_body">This is sample body text to show the effect of the current font type, size and color settings.</string>
+    <string name="style_preview_bubble">Theme color / bubble preview</string>
+    <string name="style_theme_color">Theme color</string>
+    <string name="style_font_type">Font type</string>
+    <string name="style_font_size">Font size</string>
+    <string name="style_font_color">Font color</string>
+    <string name="style_custom">Custom</string>
+    <string name="style_custom_color">Custom color</string>
+    <string name="style_custom_theme_color">Custom theme color</string>
+    <string name="style_color_hex_hint">Enter a hex color value, e.g. #FF6B6B</string>
+    <string name="style_color_hex_hint_theme">Enter a hex color value, e.g. #4D96FF</string>
+    <string name="style_color_hex_label">Color hex</string>
+    <string name="style_change_font">Change</string>
+    <string name="style_delete_custom_font">Delete custom font</string>
+    <string name="style_custom_font_name">Custom font</string>
+    <!-- Font type options -->
+    <string name="style_font_system">System default</string>
+    <string name="style_font_serif">Serif</string>
+    <string name="style_font_monospace">Monospace</string>
+    <string name="style_font_rounded">Rounded</string>
+    <!-- Font size options -->
+    <string name="style_size_small">Small</string>
+    <string name="style_size_standard">Standard</string>
+    <string name="style_size_large">Large</string>
+    <string name="style_size_xlarge">Extra large</string>
+    <!-- Theme color options -->
+    <string name="style_color_purple">Purple</string>
+    <string name="style_color_blue">Blue</string>
+    <string name="style_color_cyan">Cyan</string>
+    <string name="style_color_green">Green</string>
+    <string name="style_color_orange">Orange</string>
+    <string name="style_color_pink">Pink</string>
+    <string name="style_color_red">Red</string>
+    <string name="style_color_follow_theme">Follow theme</string>
+
+    <!-- ==================== System settings ==================== -->
+    <string name="system_title">System settings</string>
+    <string name="system_edit_hint">Edit system config in JSON format. Takes effect immediately after saving.</string>
+    <string name="system_settings_json">Settings JSON</string>
+    <string name="system_save_settings">Save settings</string>
+
+    <!-- ==================== Feature switches ==================== -->
+    <string name="feature_title">Feature switches</string>
+    <string name="feature_subtitle">Control the enabled state of each feature</string>
+    <string name="feature_server_only">This feature is only available in server mode</string>
+    <string name="feature_empty_title">No switches</string>
+    <string name="feature_empty_hint">Tap refresh in the top right to retry</string>
+    <string name="feature_refresh">Refresh</string>
+    <string name="feature_switch_on">Enabled %1$s</string>
+    <string name="feature_switch_off">Disabled %1$s</string>
+    <!-- Feature descriptions -->
+    <string name="feature_desc_skills_prompt_injection">Skills prompt injection</string>
+    <string name="feature_desc_live2d">Live2D expressions</string>
+    <string name="feature_desc_sticker">Stickers</string>
+    <string name="feature_desc_image_generation">Image generation</string>
+    <string name="feature_desc_tts">TTS voice</string>
+    <string name="feature_desc_auto_reply">Auto reply</string>
+    <string name="feature_desc_active_chat">Active chat</string>
+
+    <!-- ==================== Data maintenance ==================== -->
+    <string name="maintenance_title">Data maintenance</string>
+    <string name="maintenance_refresh">Refresh</string>
+    <string name="maintenance_cache_files">Cache files</string>
+    <string name="maintenance_cache_files_subtitle">View files in the app cache directory</string>
+    <string name="maintenance_cache_desc_local">The app cache directory contains exported database files, downloaded temporary files, etc.</string>
+    <string name="maintenance_open_cache_folder">Open cache folder</string>
+    <string name="maintenance_storage_usage">Storage usage</string>
+    <string name="maintenance_storage_subtitle">Local cache and database usage</string>
+    <string name="maintenance_cache_size">Cache size</string>
+    <string name="maintenance_db_size">Database size</string>
+    <string name="maintenance_total_size">Total usage</string>
+    <string name="maintenance_clear_cache_title">Clear cache</string>
+    <string name="maintenance_clear_cache_subtitle">Delete temporary cache files</string>
+    <string name="maintenance_clear_cache_desc">Clears temporary files in the app cache directory, including image cache and downloaded temporary files. Does not affect the local database.</string>
+    <string name="maintenance_clear_all_title">Clear all local data</string>
+    <string name="maintenance_clear_all_subtitle">Delete local database</string>
+    <string name="maintenance_clear_all_warning">Warning: This will delete all local databases (including chats, messages, characters, etc.) and cannot be undone. Proceed with caution.</string>
+    <string name="maintenance_export_title">Export local data</string>
+    <string name="maintenance_export_subtitle">Back up local database to a file</string>
+    <string name="maintenance_export_desc">Export the local database file to the app cache directory for backup or migration.</string>
+    <string name="maintenance_export_button">Export local database</string>
+    <string name="maintenance_cache_files_detail">View files in the app cache directory, including exported database backups and downloaded temporary files. Tap a file to share or open.</string>
+    <string name="maintenance_confirm_clear_title">Confirm clearing all local data</string>
+    <string name="maintenance_confirm_clear_msg">This will permanently delete all local databases (chats, messages, characters, etc.) and cannot be undone. Are you sure?</string>
+    <string name="maintenance_confirm_clear">Confirm clear</string>
+    <string name="maintenance_folder">Folder</string>
+    <string name="maintenance_cache_files_count">Cache files (%1$d)</string>
+    <string name="maintenance_cache_empty">Cache directory is empty</string>
+    <string name="maintenance_cannot_open_file">Cannot open file: %1$s</string>
+    <!-- ViewModel toasts -->
+    <string name="maintenance_cache_cleared">Cache cleared</string>
+    <string name="maintenance_clear_cache_failed">Failed to clear cache</string>
+    <string name="maintenance_all_data_cleared">All local data cleared</string>
+    <string name="maintenance_clear_data_failed">Failed to clear data</string>
+    <string name="maintenance_exported_to_cache">Exported to cache: %1$s</string>
+    <string name="maintenance_no_db_file">Local database file not found</string>
+    <string name="maintenance_export_failed">Export failed</string>
+
+    <!-- ==================== Config transfer ==================== -->
+    <string name="transfer_title">Config transfer</string>
+    <string name="transfer_server_only">This feature is only available in server mode</string>
+    <string name="transfer_export_title">Export config</string>
+    <string name="transfer_export_subtitle">Pack config as an encrypted ZIP file</string>
+    <string name="transfer_password_optional">Encryption password (optional)</string>
+    <string name="transfer_export_button">Export config</string>
+    <string name="transfer_import_title">Import config</string>
+    <string name="transfer_import_subtitle">Restore config from a ZIP or .nbotcfg file</string>
+    <string name="transfer_select_file">Select config file</string>
+    <string name="transfer_overwrite">Overwrite existing config</string>
+    <string name="transfer_overwrite_desc">Turn off to keep existing config items</string>
+    <string name="transfer_select_file_first">Please select a config file first</string>
+    <string name="transfer_import_button">Import config</string>
+    <string name="transfer_file_selected">File selected</string>
+    <!-- ViewModel toasts -->
+    <string name="transfer_export_failed_http">Export failed (HTTP %1$d)</string>
+    <string name="transfer_export_failed">Export failed</string>
+    <string name="transfer_read_file_failed">Failed to read file</string>
+    <string name="transfer_import_success">Import succeeded</string>
+    <string name="transfer_import_configs_suffix">, %1$d config items</string>
+    <string name="transfer_import_portraits_suffix">, %1$d portraits</string>
+    <string name="transfer_import_failed">Import failed</string>
+    <string name="transfer_exported_to_cache">Exported to cache: %1$s</string>
+
+    <!-- ==================== WebDAV backup ==================== -->
+    <string name="webdav_title">WebDAV backup</string>
+    <string name="webdav_server_only">This feature is only available in server mode</string>
+    <string name="webdav_config_title">WebDAV config</string>
+    <string name="webdav_config_subtitle">Configure server address and credentials</string>
+    <string name="webdav_url">WebDAV address</string>
+    <string name="webdav_username">Username</string>
+    <string name="webdav_password">Password</string>
+    <string name="webdav_password_set">Password (already set, leave blank to keep)</string>
+    <string name="webdav_encryption_password">Encryption password</string>
+    <string name="webdav_encryption_password_set">Encryption password (already set, leave blank to keep)</string>
+    <string name="webdav_test_connection">Test connection</string>
+    <string name="webdav_remote_info_title">Remote file info</string>
+    <string name="webdav_remote_info_subtitle">Backup file metadata</string>
+    <string name="webdav_file_size">File size</string>
+    <string name="webdav_last_modified">Last modified</string>
+    <string name="webdav_last_backup">Last backup</string>
+    <string name="webdav_never_backup">Never backed up</string>
+    <string name="webdav_last_sync">Last sync</string>
+    <string name="webdav_never_sync">Never synced</string>
+    <string name="webdav_file_url">File URL</string>
+    <string name="webdav_recent_error">Recent error: %1$s</string>
+    <string name="webdav_refresh_info">Refresh info</string>
+    <string name="webdav_backup_upload_title">Backup upload</string>
+    <string name="webdav_backup_upload_subtitle">Pack local config and upload to WebDAV</string>
+    <string name="webdav_encryption_password_optional_override">Encryption password (optional, overrides config)</string>
+    <string name="webdav_include_portraits">Include character portraits</string>
+    <string name="webdav_upload_portraits">Also upload portrait image files</string>
+    <string name="webdav_upload_backup">Upload backup</string>
+    <string name="webdav_sync_pull_title">Sync pull</string>
+    <string name="webdav_sync_pull_subtitle">Restore config from WebDAV to local</string>
+    <string name="webdav_pull_portraits">Also pull portrait image files</string>
+    <string name="webdav_sync_pull_button">Sync pull</string>
+    <!-- ViewModel toasts -->
+    <string name="webdav_config_saved">Config saved</string>
+    <string name="webdav_connection_success">Connection successful</string>
+    <string name="webdav_connection_failed">Connection failed</string>
+    <string name="webdav_backup_success">Backup uploaded successfully</string>
+    <string name="webdav_backup_failed">Backup failed</string>
+    <string name="webdav_sync_success">Sync pull successful</string>
+    <string name="webdav_sync_failed">Sync failed</string>
+
+    <!-- ==================== Database management ==================== -->
+    <string name="dbprofile_title">Database management</string>
+    <string name="dbprofile_refresh">Refresh</string>
+    <string name="dbprofile_import_remote">Import from remote</string>
+    <string name="dbprofile_current_db">Current database</string>
+    <string name="dbprofile_internal_id">Internal ID: %1$s</string>
+    <string name="dbprofile_saved_list">Saved database list</string>
+    <string name="dbprofile_empty">No db profile</string>
+    <string name="dbprofile_import_button">Import nbotcfg from remote URL</string>
+    <string name="dbprofile_tip">Tip: Import downloads an encrypted config package from a saved remote server, decrypts it and writes it into a new local database. You can freely switch between dbs without affecting each other. The default database cannot be deleted.</string>
+    <string name="dbprofile_delete_title">Delete database</string>
+    <string name="dbprofile_delete_msg">Are you sure you want to delete \"%1$s\"? All chats/character cards/lorebooks under this db will be permanently lost.</string>
+    <string name="dbprofile_source_imported">Remote import</string>
+    <string name="dbprofile_source_local">Local</string>
+    <string name="dbprofile_more">More</string>
+    <string name="dbprofile_current_active">Current database</string>
+    <string name="dbprofile_switch_to">Switch to this database</string>
+    <string name="dbprofile_import_dialog_title">Import nbotcfg from remote</string>
+    <string name="dbprofile_importing">Importing…</string>
+    <string name="dbprofile_start_import">Start import</string>
+    <string name="dbprofile_no_records">No saved remote server records. Please log in to a remote server on the login page and check \"Save login info\".</string>
+    <string name="dbprofile_select_server">Select remote server</string>
+    <string name="dbprofile_please_select">Please select</string>
+    <string name="dbprofile_new_display_name">New database display name</string>
+    <string name="dbprofile_display_name_placeholder">e.g. Server A config</string>
+    <string name="dbprofile_downloading">Downloading and decrypting config package…</string>
+    <string name="dbprofile_dialog_tip">The config package is automatically encrypted during transfer; no manual password is needed. After a successful import, the app will switch to the new database automatically.</string>
+    <!-- ViewModel toasts -->
+    <string name="dbprofile_switched_to">Switched to \"%1$s\"</string>
+    <string name="dbprofile_default_no_delete">The default database cannot be deleted</string>
+    <string name="dbprofile_deleted">Deleted db \"%1$s\"</string>
+    <string name="dbprofile_input_display_name">Please enter a display name</string>
+</resources>

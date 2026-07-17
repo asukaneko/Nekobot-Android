@@ -52,11 +52,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.ApiKey
 import com.nekobot.app.data.model.ApiKeyRequest
@@ -100,7 +102,7 @@ class ApiKeysViewModel : BaseViewModel() {
         launchResult(
             block = { unified.createApiKey(ApiKeyRequest(name = name, key = key)) },
             onSuccess = {
-                showToast("已创建密钥")
+                showToast(string(R.string.apikeys_created))
                 load()
             }
         )
@@ -111,7 +113,7 @@ class ApiKeysViewModel : BaseViewModel() {
         launchResult(
             block = { unified.updateApiKey(id, ApiKeyRequest(name = name, key = key)) },
             onSuccess = {
-                showToast("已更新密钥")
+                showToast(string(R.string.apikeys_updated))
                 load()
             }
         )
@@ -122,7 +124,7 @@ class ApiKeysViewModel : BaseViewModel() {
         launchResult(
             block = { unified.deleteApiKey(id) },
             onSuccess = {
-                showToast("已删除密钥")
+                showToast(string(R.string.apikeys_deleted))
                 load()
             }
         )
@@ -176,25 +178,25 @@ fun ApiKeysScreen(onBack: () -> Unit) {
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("API Keys", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.apikeys_title), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     IconButton(onClick = { vm.load() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.apikeys_refresh), tint = MaterialTheme.colorScheme.onSurface)
                     }
                     IconButton(onClick = {
                         editingKey = null
                         showForm = true
                     }) {
-                        Icon(Icons.Filled.Add, contentDescription = "新建密钥", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.apikeys_new_key), tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             )
@@ -207,8 +209,8 @@ fun ApiKeysScreen(onBack: () -> Unit) {
         ) {
             if (keys.isEmpty() && !loading) {
                 EmptyState(
-                    title = "暂无 API Key",
-                    hint = "点击右上角新建一个密钥"
+                    title = stringResource(R.string.apikeys_empty_title),
+                    hint = stringResource(R.string.apikeys_empty_hint)
                 )
             } else {
                 LazyColumn(
@@ -266,9 +268,9 @@ fun ApiKeysScreen(onBack: () -> Unit) {
     deleteTarget?.let { key ->
         NekoDialog(
             onDismiss = { deleteTarget = null },
-            title = "确认删除",
-            message = "确定删除密钥「${key.displayName}」吗？",
-            confirmText = "删除",
+            title = stringResource(R.string.apikeys_confirm_delete_title),
+            message = stringResource(R.string.apikeys_delete_confirm_msg, key.displayName),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 key.id?.let { vm.delete(it) }
                 deleteTarget = null
@@ -280,8 +282,8 @@ fun ApiKeysScreen(onBack: () -> Unit) {
     viewedKey?.let { fullKey ->
         NekoDialog(
             onDismiss = { vm.clearViewedKey() },
-            title = "完整 Key",
-            confirmText = "关闭",
+            title = stringResource(R.string.apikeys_full_key_title),
+            confirmText = stringResource(R.string.common_close),
             cancelText = null,
             onCancel = null,
             onConfirm = { vm.clearViewedKey() },
@@ -306,13 +308,13 @@ fun ApiKeysScreen(onBack: () -> Unit) {
                     Button(
                         onClick = {
                             clipboard.setText(AnnotatedString(fullKey))
-                            Toast.makeText(context, "已复制 Key", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, context.getString(R.string.apikeys_key_copied), Toast.LENGTH_SHORT).show()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
                         Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("复制 Key", color = MaterialTheme.colorScheme.onPrimary)
+                        Text(stringResource(R.string.apikeys_copy_key), color = MaterialTheme.colorScheme.onPrimary)
                     }
                 }
             }
@@ -344,22 +346,22 @@ private fun ApiKeyItem(
                 )
                 if (!apiKey.createdAt.isNullOrBlank()) {
                     Spacer(Modifier.height(4.dp))
-                    Text("创建: ${apiKey.createdAt}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.apikeys_created_label, apiKey.createdAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             // 操作菜单
             var menuExpanded by remember { mutableStateOf(false) }
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "操作", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.apikeys_actions), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false }
                 ) {
-                    DropdownMenuItem(text = { Text("编辑") }, onClick = { menuExpanded = false; onEdit() })
-                    DropdownMenuItem(text = { Text("查看 Key") }, onClick = { menuExpanded = false; onViewKey() })
-                    DropdownMenuItem(text = { Text("删除", color = ErrorRed) }, onClick = { menuExpanded = false; onDelete() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.common_edit)) }, onClick = { menuExpanded = false; onEdit() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.apikeys_view_key)) }, onClick = { menuExpanded = false; onViewKey() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.common_delete), color = ErrorRed) }, onClick = { menuExpanded = false; onDelete() })
                 }
             }
         }
@@ -379,8 +381,8 @@ private fun ApiKeyFormDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = if (initial == null) "新建 API Key" else "编辑 API Key",
-        confirmText = "保存",
+        title = if (initial == null) stringResource(R.string.apikeys_new_key_title) else stringResource(R.string.apikeys_edit_key_title),
+        confirmText = stringResource(R.string.common_save),
         onConfirm = {
             if (name.isBlank()) return@NekoDialog
             if (key.isBlank()) return@NekoDialog
@@ -396,7 +398,7 @@ private fun ApiKeyFormDialog(
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("名称（必填）") },
+                label = { Text(stringResource(R.string.apikeys_name_required)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
@@ -404,7 +406,7 @@ private fun ApiKeyFormDialog(
             OutlinedTextField(
                 value = key,
                 onValueChange = { key = it },
-                label = { Text("Key（必填，多行）") },
+                label = { Text(stringResource(R.string.apikeys_key_required)) },
                 minLines = 3,
                 maxLines = 6,
                 modifier = Modifier.fillMaxWidth(),
@@ -420,7 +422,7 @@ private fun ApiKeyFormDialog(
                     TextButton(onClick = onViewCurrentKey) {
                         Icon(Icons.Filled.Visibility, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(4.dp))
-                        Text("查看完整 Key", color = MaterialTheme.colorScheme.primary)
+                        Text(stringResource(R.string.apikeys_view_full_key), color = MaterialTheme.colorScheme.primary)
                     }
                 }
             }

@@ -66,6 +66,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -73,6 +74,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.R
 import com.nekobot.app.data.model.PlotChoiceData
 import com.nekobot.app.data.model.PlotBranchRequest
 import com.nekobot.app.data.model.PlotGraphData
@@ -130,7 +132,7 @@ class StoryGraphViewModel : BaseViewModel() {
         launchResult(
             block = { unified.plotBranch(sessionId, PlotBranchRequest(nodeId, choiceId)) },
             onSuccess = {
-                showToast("已创建分支，正在生成新剧情")
+                showToast(string(R.string.story_branch_created))
                 onCreated()
             }
         )
@@ -140,7 +142,7 @@ class StoryGraphViewModel : BaseViewModel() {
         launchResult(
             block = { unified.plotRollback(sessionId, PlotRollbackRequest(nodeId)) },
             onSuccess = {
-                showToast("已回滚到此节点")
+                showToast(string(R.string.story_rolled_back))
                 loadGraph(sessionId)
             }
         )
@@ -150,7 +152,7 @@ class StoryGraphViewModel : BaseViewModel() {
         launchResult(
             block = { unified.plotSwitch(sessionId, PlotSwitchRequest(nodeId)) },
             onSuccess = {
-                showToast("已切换到此分支")
+                showToast(string(R.string.story_switched_branch))
                 loadGraph(sessionId)
             }
         )
@@ -162,7 +164,7 @@ class StoryGraphViewModel : BaseViewModel() {
             onSuccess = { response ->
                 val count = response?.takeIf { it.isJsonObject }?.asJsonObject
                     ?.get("archived_count")?.takeIf { !it.isJsonNull }?.asInt
-                showToast(if (count != null) "已归档该分支（$count 条消息）" else "已归档该分支")
+                showToast(if (count != null) string(R.string.story_archived_with_count, count) else string(R.string.story_archived))
             }
         )
     }
@@ -171,7 +173,7 @@ class StoryGraphViewModel : BaseViewModel() {
         launchResult(
             block = { unified.plotRegenerateChoices(sessionId) },
             onSuccess = {
-                showToast("已重新生成选项")
+                showToast(string(R.string.story_choices_regenerated))
                 loadGraph(sessionId)
             }
         )
@@ -270,19 +272,19 @@ fun StoryGraphScreen(
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text("故事地图", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
+                    title = { Text(stringResource(R.string.story_title), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surface,
                         titleContentColor = MaterialTheme.colorScheme.onSurface
                     ),
                     navigationIcon = {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
                         }
                     },
                     actions = {
                         IconButton(onClick = { vm.loadGraph(sessionId) }) {
-                            Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.story_refresh), tint = MaterialTheme.colorScheme.primary)
                         }
                     }
                 )
@@ -290,13 +292,13 @@ fun StoryGraphScreen(
                     Tab(
                         selected = graphView == StoryGraphView.Graph,
                         onClick = { graphView = StoryGraphView.Graph },
-                        text = { Text("图谱") },
+                        text = { Text(stringResource(R.string.story_tab_graph)) },
                         icon = { Icon(Icons.Filled.AccountTree, contentDescription = null) }
                     )
                     Tab(
                         selected = graphView == StoryGraphView.Timeline,
                         onClick = { graphView = StoryGraphView.Timeline },
-                        text = { Text("时间线") },
+                        text = { Text(stringResource(R.string.story_tab_timeline)) },
                         icon = { Icon(Icons.Filled.Timeline, contentDescription = null) }
                     )
                 }
@@ -377,7 +379,7 @@ fun StoryGraphScreen(
                         cornerRadius = 12
                     ) {
                         Text(
-                            "节点：${graphData.nodes.size}  选项：${graphData.choices.size}",
+                            stringResource(R.string.story_node_stats, graphData.nodes.size, graphData.choices.size),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -392,10 +394,10 @@ fun StoryGraphScreen(
                     cornerRadius = 12
                 ) {
                     Column {
-                        LegendItem("普通", OnSurfaceVariant)
-                        LegendItem("重要", WarningAmber)
-                        LegendItem("转折", Primary)
-                        LegendItem("结局", Secondary)
+                        LegendItem(stringResource(R.string.story_legend_normal), OnSurfaceVariant)
+                        LegendItem(stringResource(R.string.story_legend_important), WarningAmber)
+                        LegendItem(stringResource(R.string.story_legend_turning), Primary)
+                        LegendItem(stringResource(R.string.story_legend_ending), Secondary)
                     }
                 }
 
@@ -443,7 +445,7 @@ fun StoryGraphScreen(
     // Mermaid 图弹窗
     if (showMermaid) {
         TextContentDialog(
-            title = "Mermaid 图代码",
+            title = stringResource(R.string.story_mermaid_code_title),
             content = mermaidText,
             onDismiss = { showMermaid = false }
         )
@@ -452,22 +454,24 @@ fun StoryGraphScreen(
     pendingAction?.let { (action, node) ->
         val isRollback = action == "rollback"
         val isArchive = action == "archive"
+        val defaultNodeName = stringResource(R.string.story_action_default_node)
+        val defaultBranchName = stringResource(R.string.story_action_default_branch)
         NekoDialog(
             onDismiss = { pendingAction = null },
             title = when {
-                isRollback -> "回溯到此节点"
-                isArchive -> "归档此分支"
-                else -> "切换分支"
+                isRollback -> stringResource(R.string.story_action_rollback_title)
+                isArchive -> stringResource(R.string.story_action_archive_title)
+                else -> stringResource(R.string.story_action_switch_title)
             },
             message = when {
-                isRollback -> "将移除此节点之后的剧情分支与对话，且不可恢复。"
-                isArchive -> "将把根节点到“${node.title ?: "该节点"}”的对话复制到归档会话。"
-                else -> "将把当前对话切换到“${node.title ?: "该分支"}”所在位置。"
+                isRollback -> stringResource(R.string.story_action_rollback_msg)
+                isArchive -> stringResource(R.string.story_action_archive_msg, node.title ?: defaultNodeName)
+                else -> stringResource(R.string.story_action_switch_msg, node.title ?: defaultBranchName)
             },
             confirmText = when {
-                isRollback -> "确认回溯"
-                isArchive -> "确认归档"
-                else -> "确认切换"
+                isRollback -> stringResource(R.string.story_confirm_rollback)
+                isArchive -> stringResource(R.string.story_confirm_archive)
+                else -> stringResource(R.string.story_confirm_switch)
             },
             onConfirm = {
                 when {
@@ -478,7 +482,7 @@ fun StoryGraphScreen(
                 pendingAction = null
                 if (!isArchive) selectedNode = null
             },
-            cancelText = "取消",
+            cancelText = stringResource(R.string.common_cancel),
             onCancel = { pendingAction = null }
         )
     }
@@ -692,16 +696,16 @@ private fun nodeLevelColor(level: String?): Color {
 }
 
 private fun levelLabel(level: String?): String = when (level) {
-    "important" -> "推进"
-    "turning_point" -> "转折"
-    "ending" -> "结局"
-    else -> "顺势"
+    "important" -> com.nekobot.app.ServiceContainer.getString(R.string.story_level_advance)
+    "turning_point" -> com.nekobot.app.ServiceContainer.getString(R.string.story_level_turning)
+    "ending" -> com.nekobot.app.ServiceContainer.getString(R.string.story_level_ending)
+    else -> com.nekobot.app.ServiceContainer.getString(R.string.story_level_normal)
 }
 
 private fun userTurnLabel(kind: String): String = when (kind) {
-    "selected" -> "选择项"
-    "edited" -> "选后编辑"
-    else -> "手动回复"
+    "selected" -> com.nekobot.app.ServiceContainer.getString(R.string.story_turn_selected)
+    "edited" -> com.nekobot.app.ServiceContainer.getString(R.string.story_turn_edited)
+    else -> com.nekobot.app.ServiceContainer.getString(R.string.story_turn_manual)
 }
 
 /**
@@ -728,9 +732,9 @@ private fun StoryGraphCanvas(
                     modifier = Modifier.size(48.dp)
                 )
                 Spacer(Modifier.height(12.dp))
-                Text("暂无剧情节点", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.story_empty_nodes), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(4.dp))
-                Text("开启剧情模式后对话将生成故事节点", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.story_empty_nodes_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         return
@@ -873,7 +877,7 @@ private fun NodeCard(
                     Spacer(Modifier.width(4.dp))
                 }
                 Text(
-                    text = node.title ?: "未命名",
+                    text = node.title ?: stringResource(R.string.story_unnamed_node),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold,
@@ -920,7 +924,7 @@ private fun StoryTimeline(
 ) {
     if (nodes.isEmpty()) {
         Box(modifier = modifier.padding(32.dp), contentAlignment = Alignment.Center) {
-            Text("暂无当前分支时间线", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.story_empty_timeline), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         return
     }
@@ -931,9 +935,9 @@ private fun StoryTimeline(
     ) {
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TimelineStat("节点", graphData.nodes.size, Modifier.weight(1f))
-                TimelineStat("分支", graphData.choices.size, Modifier.weight(1f))
-                TimelineStat("当前线", nodes.size, Modifier.weight(1f))
+                TimelineStat(stringResource(R.string.story_stat_nodes), graphData.nodes.size, Modifier.weight(1f))
+                TimelineStat(stringResource(R.string.story_stat_branches), graphData.choices.size, Modifier.weight(1f))
+                TimelineStat(stringResource(R.string.story_stat_current_line), nodes.size, Modifier.weight(1f))
             }
         }
         items(nodes, key = { it.id.orEmpty() }) { node ->
@@ -956,7 +960,7 @@ private fun StoryTimeline(
                             .background(nodeLevelColor(node.level))
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(node.title ?: "剧情节点", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                    Text(node.title ?: stringResource(R.string.story_default_node_title), modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                     Text(levelLabel(node.level), style = MaterialTheme.typography.labelSmall, color = nodeLevelColor(node.level))
                 }
                 if (!node.summary.isNullOrBlank()) {
@@ -978,7 +982,7 @@ private fun StoryTimeline(
                 }
                 Spacer(Modifier.height(6.dp))
                 OutlinedButton(onClick = { onRollback(node) }, modifier = Modifier.align(Alignment.End)) {
-                    Text("回溯到此", fontSize = 11.sp)
+                    Text(stringResource(R.string.story_rollback_to_here), fontSize = 11.sp)
                 }
             }
         }
@@ -1017,8 +1021,8 @@ private fun NodeDetailDialog(
     val levelColor = nodeLevelColor(displayedLevel)
     NekoDialog(
         onDismiss = onDismiss,
-        title = node.title ?: "节点详情",
-        confirmText = "关闭",
+        title = node.title ?: stringResource(R.string.story_node_detail_title),
+        confirmText = stringResource(R.string.common_close),
         onConfirm = onDismiss,
         cancelText = null,
         onCancel = null
@@ -1040,7 +1044,7 @@ private fun NodeDetailDialog(
                 }
                 if (isActive) {
                     Spacer(Modifier.width(8.dp))
-                    Text("当前位置", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    Text(stringResource(R.string.story_current_position), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 }
                 Spacer(Modifier.weight(1f))
                 node.createdAt?.let {
@@ -1051,13 +1055,13 @@ private fun NodeDetailDialog(
             userTurn?.let { turn ->
                 Spacer(Modifier.height(10.dp))
                 DetailMessageCard(
-                    label = "我 · ${userTurnLabel(turn.kind)}",
+                    label = stringResource(R.string.story_user_turn_label, userTurnLabel(turn.kind)),
                     text = turn.content,
                     containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
                 )
                 if (turn.kind == "edited" && !turn.choiceText.isNullOrBlank()) {
                     Text(
-                        "原选项：${turn.choiceText}",
+                        stringResource(R.string.story_original_choice, turn.choiceText),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp, start = 8.dp)
@@ -1068,7 +1072,7 @@ private fun NodeDetailDialog(
             if (!node.summary.isNullOrBlank()) {
                 Spacer(Modifier.height(8.dp))
                 DetailMessageCard(
-                    label = "AI",
+                    label = stringResource(R.string.story_role_ai),
                     text = node.summary,
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
                 )
@@ -1080,9 +1084,9 @@ private fun NodeDetailDialog(
                 Spacer(Modifier.height(8.dp))
                 Text(
                     listOfNotNull(
-                        node.location?.takeIf(String::isNotBlank)?.let { "地点：$it" },
-                        node.mood?.takeIf(String::isNotBlank)?.let { "氛围：$it" },
-                        node.activityType?.takeIf(String::isNotBlank)?.let { "活动：$it" }
+                        node.location?.takeIf(String::isNotBlank)?.let { stringResource(R.string.story_location_label, it) },
+                        node.mood?.takeIf(String::isNotBlank)?.let { stringResource(R.string.story_mood_label, it) },
+                        node.activityType?.takeIf(String::isNotBlank)?.let { stringResource(R.string.story_activity_label, it) }
                     ).joinToString("  ·  "),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1091,7 +1095,7 @@ private fun NodeDetailDialog(
 
             if (choices.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
-                Text("分支选项", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.story_branch_options), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(6.dp))
                 choices.forEach { choice ->
                     ChoiceItem(choice = choice, onCreateBranch = { choice.id?.let(onCreateBranch) })
@@ -1108,31 +1112,31 @@ private fun NodeDetailDialog(
                 ) {
                     Text(
                         when {
-                            isActive -> "当前位置"
-                            isOnActivePath -> "同一分支"
-                            else -> "切换分支"
+                            isActive -> stringResource(R.string.story_current_position)
+                            isOnActivePath -> stringResource(R.string.story_same_branch)
+                            else -> stringResource(R.string.story_switch_branch)
                         },
                         fontSize = 11.sp,
                         maxLines = 1
                     )
                 }
                 OutlinedButton(onClick = onRollback, modifier = Modifier.weight(1f)) {
-                    Text("回溯到此", fontSize = 11.sp, maxLines = 1)
+                    Text(stringResource(R.string.story_rollback_to_here), fontSize = 11.sp, maxLines = 1)
                 }
             }
             OutlinedButton(onClick = onArchive, modifier = Modifier.fillMaxWidth()) {
-                Text("归档此分支", fontSize = 11.sp)
+                Text(stringResource(R.string.story_archive_branch), fontSize = 11.sp)
             }
 
             Spacer(Modifier.height(12.dp))
-            Text("分支预览", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.story_branch_preview), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(6.dp))
             when {
                 previewLoading -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                preview.isEmpty() -> Text("该分支暂无可预览的对话", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                preview.isEmpty() -> Text(stringResource(R.string.story_no_preview), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else -> preview.forEach { message ->
                     DetailMessageCard(
-                        label = if (message.role == "user") "我" else message.sender ?: "AI",
+                        label = if (message.role == "user") stringResource(R.string.story_role_me) else message.sender ?: stringResource(R.string.story_role_ai),
                         text = message.content.take(500),
                         containerColor = if (message.role == "user") MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
                             else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
@@ -1188,7 +1192,7 @@ private fun ChoiceItem(
                 choice.risk?.takeIf { it.isNotBlank() }?.let { risk ->
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        "风险：$risk",
+                        stringResource(R.string.story_risk_label, risk),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 10.sp
@@ -1197,7 +1201,7 @@ private fun ChoiceItem(
                 choice.intent?.takeIf { it.isNotBlank() }?.let { intent ->
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        "意图：$intent",
+                        stringResource(R.string.story_intent_label, intent),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 10.sp,
@@ -1211,7 +1215,7 @@ private fun ChoiceItem(
             Spacer(Modifier.width(4.dp))
             Icon(
                 Icons.Filled.Check,
-                contentDescription = "已选",
+                contentDescription = stringResource(R.string.story_selected),
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(16.dp)
             )
@@ -1223,7 +1227,7 @@ private fun ChoiceItem(
             ) {
                 Icon(Icons.AutoMirrored.Filled.CallSplit, contentDescription = null, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("创建分支", fontSize = 10.sp, maxLines = 1)
+                Text(stringResource(R.string.story_create_branch), fontSize = 10.sp, maxLines = 1)
             }
         }
     }
@@ -1257,7 +1261,7 @@ private fun RelationshipSnapshot(snapshot: JsonElement?) {
     }
     if (entries.isEmpty()) return
     Spacer(Modifier.height(10.dp))
-    Text("当时关系", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(stringResource(R.string.story_relationship), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Spacer(Modifier.height(4.dp))
     Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         entries.forEach { (key, value) ->
@@ -1294,9 +1298,9 @@ private fun TextContentDialog(
                     }.getOrNull()
                 }
                 if (saved != null) {
-                    android.widget.Toast.makeText(context, "已保存到 ${saved.absolutePath}", android.widget.Toast.LENGTH_LONG).show()
+                    android.widget.Toast.makeText(context, context.getString(R.string.story_saved_to, saved.absolutePath), android.widget.Toast.LENGTH_LONG).show()
                 } else {
-                    android.widget.Toast.makeText(context, "保存失败", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(context, context.getString(R.string.story_save_failed), android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -1332,10 +1336,10 @@ private fun TextContentDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     androidx.compose.material3.IconButton(onClick = { webViewRef?.evaluateJavascript("downloadPng();", null) }) {
-                        androidx.compose.material3.Icon(Icons.Filled.Download, contentDescription = "下载 PNG", tint = Color.White, modifier = Modifier.size(18.dp))
+                        androidx.compose.material3.Icon(Icons.Filled.Download, contentDescription = stringResource(R.string.story_download_png), tint = Color.White, modifier = Modifier.size(18.dp))
                     }
                     androidx.compose.material3.IconButton(onClick = { fullscreen = false }) {
-                        androidx.compose.material3.Icon(Icons.Filled.FullscreenExit, contentDescription = "退出全屏", tint = Color.White, modifier = Modifier.size(18.dp))
+                        androidx.compose.material3.Icon(Icons.Filled.FullscreenExit, contentDescription = stringResource(R.string.story_exit_fullscreen), tint = Color.White, modifier = Modifier.size(18.dp))
                     }
                 }
             }
@@ -1346,13 +1350,13 @@ private fun TextContentDialog(
     NekoDialog(
         onDismiss = onDismiss,
         title = title,
-        confirmText = "关闭",
+        confirmText = stringResource(R.string.common_close),
         onConfirm = onDismiss,
         cancelText = null,
         onCancel = null
     ) {
         if (content.isBlank()) {
-            Text("（无内容）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.story_no_content), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             // 操作栏：下载 PNG + 全屏
             Row(
@@ -1363,12 +1367,12 @@ private fun TextContentDialog(
                 androidx.compose.material3.TextButton(onClick = { webViewRef?.evaluateJavascript("downloadPng();", null) }) {
                     androidx.compose.material3.Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("下载 PNG")
+                    Text(stringResource(R.string.story_download_png))
                 }
                 androidx.compose.material3.TextButton(onClick = { fullscreen = true }) {
                     androidx.compose.material3.Icon(Icons.Filled.Fullscreen, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("全屏")
+                    Text(stringResource(R.string.story_fullscreen))
                 }
             }
             Spacer(Modifier.height(4.dp))
@@ -1466,6 +1470,17 @@ private class MermaidDownloadBridge(private val onSave: (String) -> Unit) {
 private fun buildMermaidHtml(mermaidCode: String): String {
     // 用 Gson 把 mermaid 代码序列化为合法 JSON 字符串，避免手工转义出错
     val codeJson = com.google.gson.Gson().toJson(mermaidCode)
+    // 把需要本地化的 JS 端提示文本注入 HTML（JS 内部无法直接读取 Android 资源）
+    val loadingText = com.nekobot.app.ServiceContainer.getString(R.string.story_mermaid_loading)
+    val loadFailedText = com.nekobot.app.ServiceContainer.getString(R.string.story_mermaid_load_failed)
+    val svgNotReadyText = com.nekobot.app.ServiceContainer.getString(R.string.story_mermaid_svg_not_ready)
+    val pngImageErrorText = com.nekobot.app.ServiceContainer.getString(R.string.story_mermaid_png_image_error)
+    val pngExportPrefix = com.nekobot.app.ServiceContainer.getString(R.string.story_mermaid_png_export_prefix)
+    val loadingJson = com.google.gson.Gson().toJson(loadingText)
+    val loadFailedJson = com.google.gson.Gson().toJson(loadFailedText)
+    val svgNotReadyJson = com.google.gson.Gson().toJson(svgNotReadyText)
+    val pngImageErrorJson = com.google.gson.Gson().toJson(pngImageErrorText)
+    val pngExportPrefixJson = com.google.gson.Gson().toJson(pngExportPrefix)
     return """
 <!DOCTYPE html>
 <html>
@@ -1482,11 +1497,16 @@ private fun buildMermaidHtml(mermaidCode: String): String {
 </style>
 </head>
 <body>
-<div id="target"><div id="loading">渲染中…</div></div>
+<div id="target"><div id="loading">$loadingText</div></div>
 <pre id="fallback"></pre>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <script>
   var code = $codeJson;
+  var loadingText = $loadingJson;
+  var loadFailedText = $loadFailedJson;
+  var svgNotReadyText = $svgNotReadyJson;
+  var pngImageErrorText = $pngImageErrorJson;
+  var pngExportPrefix = $pngExportPrefixJson;
   var target = document.getElementById('target');
   var fallback = document.getElementById('fallback');
   fallback.textContent = code;
@@ -1496,7 +1516,7 @@ private fun buildMermaidHtml(mermaidCode: String): String {
     if (err) console.error(err);
   }
   try {
-    if (typeof mermaid === 'undefined') { showFallback(new Error('mermaid.js 加载失败')); }
+    if (typeof mermaid === 'undefined') { showFallback(new Error(loadFailedText)); }
     else {
       target.textContent = code;
       target.setAttribute('class', 'mermaid');
@@ -1512,7 +1532,7 @@ private fun buildMermaidHtml(mermaidCode: String): String {
   function downloadPng() {
     try {
       var svg = document.querySelector('#target svg');
-      if (!svg) { alert('SVG 尚未渲染完成'); return; }
+      if (!svg) { alert(svgNotReadyText); return; }
       // 克隆 SVG 并显式设置尺寸（避免 getBBox 在某些情况下返回 0）
       var clone = svg.cloneNode(true);
       var bbox = svg.getBoundingClientRect();
@@ -1539,12 +1559,12 @@ private fun buildMermaidHtml(mermaidCode: String): String {
         URL.revokeObjectURL(url);
       };
       img.onerror = function() {
-        alert('PNG 导出失败：图片加载错误');
+        alert(pngImageErrorText);
         URL.revokeObjectURL(url);
       };
       img.src = url;
     } catch(e) {
-      alert('PNG 导出失败：' + e.message);
+      alert(pngExportPrefix + e.message);
     }
   }
 </script>
@@ -1577,7 +1597,7 @@ private fun BottomActionBar(
             ) {
                 Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("重新生成选项")
+                Text(stringResource(R.string.story_regenerate_options))
             }
             Button(
                 onClick = onMermaid,
@@ -1586,7 +1606,7 @@ private fun BottomActionBar(
             ) {
                 Icon(Icons.Filled.AccountTree, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("Mermaid 图", color = MaterialTheme.colorScheme.onPrimary)
+                Text(stringResource(R.string.story_mermaid_graph), color = MaterialTheme.colorScheme.onPrimary)
             }
         }
     }

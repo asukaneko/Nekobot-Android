@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== AI 配置中心 ==================== -->
+    <string name="aiconfig_center_title">AI 配置中心</string>
+    <string name="aiconfig_section_local_ai">本地 AI</string>
+    <string name="aiconfig_section_models_config">模型与配置</string>
+    <string name="aiconfig_title">AI 配置</string>
+    <string name="aiconfig_local_ai_models">本地 AI 模型</string>
+    <string name="aiconfig_local_ai_models_subtitle">管理本地推理模型与参数</string>
+    <string name="aiconfig_sync_active_params_subtitle">查看并同步当前激活模型的生成参数</string>
+    <string name="aiconfig_configure_params_subtitle">配置模型用途与生成参数</string>
+    <string name="aiconfig_api_key_management">API Key 管理</string>
+    <string name="aiconfig_manage_local_keys_subtitle">管理本地保存的 API 密钥</string>
+    <string name="aiconfig_manage_keys_subtitle">管理各模型的 API 密钥</string>
+
+    <!-- ==================== AI 配置页 ==================== -->
+    <string name="aiconfig_saved">保存成功</string>
+    <string name="aiconfig_test">测试</string>
+    <string name="aiconfig_test_success">成功</string>
+    <string name="aiconfig_test_fail">失败</string>
+    <string name="aiconfig_test_result">状态: %1$s\n消息: %2$s</string>
+    <string name="aiconfig_test_result_title">测试结果</string>
+    <string name="aiconfig_model_params">模型参数</string>
+    <string name="aiconfig_model_name">模型名称</string>
+    <string name="aiconfig_temperature">温度 (temperature)</string>
+    <string name="aiconfig_max_tokens">最大 Token (max_tokens)</string>
+    <string name="aiconfig_frequency_penalty">频率惩罚 (frequency_penalty)</string>
+    <string name="aiconfig_presence_penalty">Presence 惩罚 (presence_penalty)</string>
+    <string name="aiconfig_system_prompt">系统提示词</string>
+    <string name="aiconfig_save_config">保存配置</string>
+
+    <!-- ==================== AI 模型管理 ==================== -->
+    <string name="aimodels_management_title">AI 模型管理</string>
+    <string name="aimodels_title">AI 模型</string>
+    <string name="aimodels_manage_list_subtitle">管理可用的 AI 模型列表</string>
+    <string name="aimodels_new_model">新建模型</string>
+    <string name="aimodels_edit_model">编辑模型</string>
+    <string name="aimodels_empty_title">暂无模型</string>
+    <string name="aimodels_empty_hint">点击右上角创建第一个模型</string>
+    <string name="aimodels_confirm_delete">确认删除</string>
+    <string name="aimodels_delete_message">确定删除模型「%1$s」吗？</string>
+    <string name="aimodels_active_badge">已激活</string>
+    <string name="aimodels_action">操作</string>
+    <string name="aimodels_clone">克隆</string>
+    <string name="aimodels_applied">已应用</string>
+    <string name="aimodels_cloned">已克隆</string>
+    <string name="aimodels_fetch_failed">获取模型列表失败</string>
+    <string name="aimodels_protocol">协议: %1$s</string>
+    <string name="aimodels_base_url">地址: %1$s</string>
+    <string name="aimodels_purpose">用途: %1$s</string>
+    <string name="aimodels_model">模型: %1$s</string>
+    <string name="aimodels_enabled">启用</string>
+    <string name="aimodels_unnamed">未命名模型</string>
+    <string name="aimodels_name">名称</string>
+    <string name="aimodels_protocol_label">协议 (protocol)</string>
+    <string name="aimodels_provider">提供商 (provider)</string>
+    <string name="aimodels_model_label">模型 (model)</string>
+    <string name="aimodels_purpose_label">用途 (purpose)</string>
+    <string name="aimodels_fetch_available">拉取可用模型</string>
+    <string name="aimodels_no_options">暂无选项</string>
+
+    <!-- ==================== 故障转移队列 ==================== -->
+    <string name="failover_queue_title">故障转移队列</string>
+    <string name="failover_local_priority_subtitle">按用途查看本地模型优先级顺序</string>
+    <string name="failover_health_subtitle">查看模型健康状态并调整回退顺序</string>
+    <string name="failover_refresh">刷新</string>
+    <string name="failover_reset_all_health">重置全部健康状态</string>
+    <string name="failover_empty_title">该用途暂无可用模型</string>
+    <string name="failover_empty_hint">请先在 AI 模型中启用并设置对应用途</string>
+    <string name="failover_loading_queue">正在加载队列…</string>
+    <string name="failover_primary">首选</string>
+    <string name="failover_current">当前</string>
+    <string name="failover_available">可用</string>
+    <string name="failover_cooling">冷却中</string>
+    <string name="failover_today_failures">今日失败 %1$d 次</string>
+    <string name="failover_consecutive_failures">连续 %1$d 次</string>
+    <string name="failover_remaining_seconds">剩余 %1$d 秒</string>
+    <string name="failover_daily_usage">日用量 %1$d/%2$d (%3$d%%)</string>
+    <string name="failover_weekly_usage">周用量 %1$d/%2$d (%3$d%%)</string>
+    <string name="failover_daily_limit">日限额 %1$d</string>
+    <string name="failover_weekly_limit">周限额 %1$d</string>
+    <string name="failover_timeout">超时 %1$ds</string>
+    <string name="failover_move_up">上移</string>
+    <string name="failover_move_down">下移</string>
+    <string name="failover_reset_status">重置状态</string>
+    <string name="failover_status_label">状态：%1$s</string>
+    <string name="failover_remaining_seconds_short">剩余 %1$ds</string>
+    <string name="failover_consecutive_failures_detail">连续失败 %1$d</string>
+    <string name="failover_daily_token_limit">日 token 限额（0=不限）</string>
+    <string name="failover_weekly_token_limit">周 token 限额（0=不限）</string>
+    <string name="failover_timeout_seconds">超时秒数（0=默认）</string>
+    <string name="failover_saving">保存中…</string>
+    <string name="failover_reset_health">重置健康</string>
+    <string name="failover_order_saved">队列顺序已保存</string>
+    <string name="failover_reset_all">已重置全部健康状态</string>
+    <string name="failover_reset_model">已重置模型健康状态</string>
+    <string name="failover_load_detail_failed">加载详情失败</string>
+    <string name="failover_invalid_limit">限额与超时必须为非负数</string>
+    <string name="failover_policy_saved">策略已保存</string>
+    <string name="failover_save_policy_failed">保存策略失败</string>
+    <string name="failover_purpose_chat">对话</string>
+    <string name="failover_purpose_vision">图片理解</string>
+    <string name="failover_purpose_video">视频理解</string>
+    <string name="failover_purpose_tts">语音合成</string>
+    <string name="failover_purpose_stt">语音识别</string>
+    <string name="failover_purpose_embedding">向量嵌入</string>
+    <string name="failover_purpose_image_generation">图片生成</string>
+
+    <!-- ==================== 本地 AI 模型 ==================== -->
+    <string name="localai_saved">已保存</string>
+    <string name="localai_deleted">已删除</string>
+    <string name="localai_set_active">已设为当前模型</string>
+    <string name="localai_test_failed">失败: %1$s</string>
+    <string name="localai_test_success">成功: %1$s</string>
+    <string name="localai_test_exception">异常: %1$s</string>
+    <string name="localai_local_logs">本地日志</string>
+    <string name="localai_empty_hint">暂无 AI 模型，点击右上角 + 添加</string>
+    <string name="localai_delete_title">删除模型</string>
+    <string name="localai_delete_message">确定删除「%1$s」吗？</string>
+    <string name="localai_test_title">测试 %1$s</string>
+    <string name="localai_testing">正在测试…</string>
+    <string name="localai_logs_title">本地日志 (%1$d)</string>
+    <string name="localai_no_logs">暂无日志</string>
+    <string name="localai_more">更多</string>
+    <string name="localai_current_model">当前模型</string>
+    <string name="localai_set_current">设为当前</string>
+    <string name="localai_new_model">新建 AI 模型</string>
+    <string name="localai_edit_model">编辑 AI 模型</string>
+    <string name="localai_protocol">协议</string>
+    <string name="localai_model_name">模型名</string>
+    <string name="localai_append_path">自动拼接路径</string>
+    <string name="localai_priority">优先级</string>
+    <string name="localai_temperature">温度</string>
+    <string name="localai_max_tokens">最大 token</string>
+    <string name="localai_purpose_chat">💬 对话</string>
+    <string name="localai_purpose_vision">🖼️ 图片理解</string>
+    <string name="localai_purpose_video">🎬 视频理解</string>
+    <string name="localai_purpose_tts">🔊 语音合成</string>
+    <string name="localai_purpose_stt">🎤 语音识别</string>
+    <string name="localai_purpose_embedding">📊 向量嵌入</string>
+    <string name="localai_purpose_image_generation">🎨 图片生成</string>
+    <string name="localai_purpose_chat_model">💬 对话模型</string>
+    <string name="localai_purpose_hint_vision">用于图片消息理解，将作为图片描述的回退模型</string>
+    <string name="localai_purpose_hint_video">用于视频消息理解（暂未在本地模式自动调用）</string>
+    <string name="localai_purpose_hint_tts">用于文本转语音，可在聊天界面手动触发</string>
+    <string name="localai_purpose_hint_stt">用于语音转文字，可在录音后自动调用</string>
+    <string name="localai_purpose_hint_embedding">用于向量嵌入（本地模式暂未接入知识库）</string>
+    <string name="localai_purpose_hint_image_generation">用于 AI 生图（本地模式暂未接入）</string>
+</resources>

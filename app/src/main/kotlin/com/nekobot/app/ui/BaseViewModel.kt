@@ -2,6 +2,7 @@ package com.nekobot.app.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.repository.Resource
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,6 +30,15 @@ abstract class BaseViewModel : ViewModel() {
     /** 当前是否为本地模式。 */
     protected val isLocalMode get() = ServiceContainer.prefs.isLocalMode
 
+    /** ViewModel 中获取本地化字符串的便捷方法。 */
+    protected fun string(resId: Int): String = ServiceContainer.getString(resId)
+
+    /** ViewModel 中带参数的本地化字符串。 */
+    protected fun string(resId: Int, vararg args: Any): String =
+        ServiceContainer.localizedContext?.let { ctx ->
+            ctx.getString(resId, *args)
+        } ?: ""
+
     fun setLoading(v: Boolean) { _loading.value = v }
     fun showError(msg: String?) { _error.value = msg }
     fun clearError() { _error.value = null }
@@ -49,7 +59,7 @@ abstract class BaseViewModel : ViewModel() {
                     is Resource.Loading -> {}
                 }
             } catch (e: Exception) {
-                onError(e.message ?: "未知错误")
+                onError(e.message ?: string(R.string.common_unknown_error))
             } finally {
                 setLoading(false)
             }
@@ -71,7 +81,7 @@ abstract class BaseViewModel : ViewModel() {
                     is Resource.Loading -> {}
                 }
             } catch (e: Exception) {
-                onError(e.message ?: "未知错误")
+                onError(e.message ?: string(R.string.common_unknown_error))
             } finally {
                 setLoading(false)
             }

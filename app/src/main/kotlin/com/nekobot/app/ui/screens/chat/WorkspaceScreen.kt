@@ -21,12 +21,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonObject
+import com.nekobot.app.R
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.EmptyState
@@ -88,7 +90,7 @@ class WorkspaceViewModel : BaseViewModel() {
             _uploading.value = true
             try {
                 val (name, bytes) = withContext(Dispatchers.IO) { readUri(context, uri) } ?: run {
-                    showError("读取文件失败")
+                    showError(string(R.string.workspace_read_failed))
                     return@launch
                 }
                 val mediaType = guessMime(name).toMediaTypeOrNull()
@@ -96,7 +98,7 @@ class WorkspaceViewModel : BaseViewModel() {
                 val part = MultipartBody.Part.createFormData("file", name, body)
                 when (val res = unified.uploadWorkspaceFile(sessionId, part)) {
                     is Resource.Success -> {
-                        showToast("已上传: $name")
+                        showToast(string(R.string.workspace_uploaded, name))
                         load()
                         onDone()
                     }
@@ -104,7 +106,7 @@ class WorkspaceViewModel : BaseViewModel() {
                     is Resource.Loading -> {}
                 }
             } catch (e: Exception) {
-                showError(e.message ?: "上传失败")
+                showError(e.message ?: string(R.string.workspace_upload_failed))
             } finally {
                 _uploading.value = false
             }
@@ -249,15 +251,15 @@ fun WorkspaceScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("工作区", color = MaterialTheme.colorScheme.onSurface) },
+                title = { Text(stringResource(R.string.workspace_title), color = MaterialTheme.colorScheme.onSurface) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     IconButton(onClick = { pickFile.launch("*/*") }, enabled = !uploading) {
-                        Icon(Icons.Filled.UploadFile, contentDescription = "上传文件", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Filled.UploadFile, contentDescription = stringResource(R.string.workspace_upload_file), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -278,8 +280,8 @@ fun WorkspaceScreen(
                 }
                 files.isEmpty() -> {
                     EmptyState(
-                        title = "工作区为空",
-                        hint = "点击右上角上传文件到工作区",
+                        title = stringResource(R.string.workspace_empty_title),
+                        hint = stringResource(R.string.workspace_empty_hint),
                         icon = { Icon(Icons.Filled.InsertDriveFile, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                     )
                 }
@@ -302,9 +304,9 @@ fun WorkspaceScreen(
                                             val saved = viewModel.download(context, f.name)
                                             downloading = null
                                             if (saved != null) {
-                                                snackbarHost.showSnackbar("已下载到: ${saved.name}")
+                                                snackbarHost.showSnackbar(context.getString(R.string.workspace_downloaded_to, saved.name))
                                             } else {
-                                                snackbarHost.showSnackbar("下载失败")
+                                                snackbarHost.showSnackbar(context.getString(R.string.workspace_download_failed))
                                             }
                                         }
                                     }
@@ -319,7 +321,7 @@ fun WorkspaceScreen(
                                             if (saved != null) {
                                                 previewFile = saved
                                             } else {
-                                                snackbarHost.showSnackbar("加载文件失败，无法预览")
+                                                snackbarHost.showSnackbar(context.getString(R.string.workspace_preview_load_failed))
                                             }
                                         }
                                     }
@@ -336,9 +338,9 @@ fun WorkspaceScreen(
     if (deletingFile != null) {
         NekoDialog(
             onDismiss = { deletingFile = null },
-            title = "删除文件",
-            message = "确认删除 \"${deletingFile!!.name}\" 吗？",
-            confirmText = "删除",
+            title = stringResource(R.string.workspace_delete_file_title),
+            message = stringResource(R.string.workspace_delete_confirm, deletingFile!!.name),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 val f = deletingFile!!
                 deletingFile = null
@@ -400,7 +402,7 @@ private fun WorkspaceFileItem(
                     }
                 }
                 Text(
-                    if (file.isDirectory) "文件夹" else formatSize(file.size),
+                    if (file.isDirectory) stringResource(R.string.workspace_folder) else formatSize(file.size),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -410,12 +412,12 @@ private fun WorkspaceFileItem(
                     if (downloading) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
-                        Icon(Icons.Filled.Download, contentDescription = "下载", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(Icons.Filled.Download, contentDescription = stringResource(R.string.workspace_download), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
             IconButton(onClick = onDelete) {
-                Icon(Icons.Filled.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.error)
+                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.common_delete), tint = MaterialTheme.colorScheme.error)
             }
         }
     }

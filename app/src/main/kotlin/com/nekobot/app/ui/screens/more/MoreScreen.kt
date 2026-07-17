@@ -39,8 +39,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.ui.components.GlassCard
@@ -60,7 +62,7 @@ fun MoreScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("更多", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.more_title), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
@@ -81,29 +83,29 @@ fun MoreScreen(
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 MoreRow(
                     icon = Icons.Filled.Psychology,
-                    title = "角色记忆",
-                    desc = "查看并管理角色对用户/事件的记忆",
+                    title = stringResource(R.string.more_role_memory),
+                    desc = stringResource(R.string.more_role_memory_desc),
                     onClick = { onNavigate("memory") }
                 )
                 Spacer(Modifier.height(8.dp))
                 MoreRow(
                     icon = Icons.Filled.Palette,
-                    title = "样式设置",
-                    desc = "字体、颜色、大小",
+                    title = stringResource(R.string.more_style_settings),
+                    desc = stringResource(R.string.more_style_settings_desc),
                     onClick = { onNavigate("style_settings") }
                 )
                 Spacer(Modifier.height(8.dp))
                 MoreRow(
                     icon = Icons.AutoMirrored.Filled.ShowChart,
-                    title = "状态历程",
-                    desc = "查看角色状态随对话推进的变化",
+                    title = stringResource(R.string.more_state_history),
+                    desc = stringResource(R.string.more_state_history_desc),
                     onClick = { onNavigate("state_history") }
                 )
                 Spacer(Modifier.height(8.dp))
                 MoreRow(
                     icon = Icons.Filled.AutoAwesome,
-                    title = "AI 配置中心",
-                    desc = if (appMode == AppMode.LOCAL) "管理本地直连 AI 模型" else "管理 AI 配置、模型与故障转移队列",
+                    title = stringResource(R.string.more_ai_config_center),
+                    desc = if (appMode == AppMode.LOCAL) stringResource(R.string.more_ai_config_desc_local) else stringResource(R.string.more_ai_config_desc_server),
                     onClick = { onNavigate("ai_config_center") }
                 )
                 if (appMode == AppMode.LOCAL) {
@@ -111,8 +113,8 @@ fun MoreScreen(
                     Spacer(Modifier.height(8.dp))
                     MoreRow(
                         icon = Icons.Filled.Storage,
-                        title = "数据库管理",
-                        desc = "从远程地址导入 nbotcfg，切换或删除本地 db",
+                        title = stringResource(R.string.more_db_management),
+                        desc = stringResource(R.string.more_db_management_desc),
                         onClick = { onNavigate("db_profile") }
                     )
                 }
@@ -121,8 +123,8 @@ fun MoreScreen(
                     Spacer(Modifier.height(8.dp))
                     MoreRow(
                         icon = Icons.Filled.Extension,
-                        title = "扩展功能",
-                        desc = "Hook、任务、工作流、知识库、MCP、频道等高级配置",
+                        title = stringResource(R.string.more_extensions),
+                        desc = stringResource(R.string.more_extensions_desc_server),
                         onClick = { onNavigate("extensions") }
                     )
                 } else {
@@ -130,8 +132,8 @@ fun MoreScreen(
                     Spacer(Modifier.height(8.dp))
                     MoreRow(
                         icon = Icons.Filled.Extension,
-                        title = "扩展功能",
-                        desc = "Hook、任务、工作流、Skills、Tools、MCP、API Keys 等本地配置",
+                        title = stringResource(R.string.more_extensions),
+                        desc = stringResource(R.string.more_extensions_desc_local),
                         onClick = { onNavigate("extensions") }
                     )
                 }
@@ -143,8 +145,8 @@ fun MoreScreen(
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 MoreRow(
                     icon = Icons.Filled.Settings,
-                    title = "设置",
-                    desc = "服务器、系统配置、日志、账号",
+                    title = stringResource(R.string.more_settings),
+                    desc = stringResource(R.string.more_settings_desc),
                     onClick = { onNavigate("settings") }
                 )
             }
@@ -179,13 +181,13 @@ fun MoreScreen(
                         Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "退出登录",
+                                stringResource(R.string.more_logout),
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.error,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                "当前：${ServiceContainer.prefs.username.ifBlank { "未登录" }}",
+                                stringResource(R.string.more_current_user, ServiceContainer.prefs.username.ifBlank { stringResource(R.string.common_not_logged_in) }),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

@@ -69,6 +69,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -79,6 +80,7 @@ import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
+import com.nekobot.app.R
 import com.nekobot.app.data.model.PublicShareRequest
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.UpdateSessionRequest
@@ -209,7 +211,7 @@ class SessionDetailViewModel : BaseViewModel() {
                 ))
             },
             onSuccess = {
-                showToast("已绑定角色：${character.displayName}")
+                showToast(string(R.string.sessions_detail_bound_character, character.displayName))
                 load(s.id.orEmpty()) // 重新加载会话
                 onSuccess()
             }
@@ -341,7 +343,7 @@ class SessionDetailViewModel : BaseViewModel() {
     fun makeSessionPublic() {
         val s = _session.value ?: return
         if (isLocalMode) {
-            showToast("本地模式不支持公开分享")
+            showToast(string(R.string.sessions_detail_local_no_share))
             return
         }
         val request = PublicShareRequest(
@@ -363,7 +365,7 @@ class SessionDetailViewModel : BaseViewModel() {
                         publicSharePasswordRequired.value = status.passwordRequired
                         publicShareExpiresAt.value = status.expiresAt
                         sharePassword.value = ""
-                        showToast("会话已公开")
+                        showToast(string(R.string.sessions_detail_published_toast))
                     }
                     is Resource.Error -> showError(result.message)
                     is Resource.Loading -> Unit
@@ -383,7 +385,7 @@ class SessionDetailViewModel : BaseViewModel() {
                 when (val result = repo.removeSessionPublic(s.id.orEmpty())) {
                     is Resource.Success -> {
                         resetPublicShareState(includeCharacter = s.sessionMode != "agent")
-                        showToast("已取消公开")
+                        showToast(string(R.string.sessions_detail_unpublished_toast))
                     }
                     is Resource.Error -> showError(result.message)
                     is Resource.Loading -> Unit
@@ -398,7 +400,7 @@ class SessionDetailViewModel : BaseViewModel() {
         val s = _session.value ?: return
         val nameVal = name.value.trim()
         if (nameVal.isBlank()) {
-            showToast("会话名不能为空")
+            showToast(string(R.string.sessions_detail_name_empty_toast))
             return
         }
         android.util.Log.d("SessionDetail", "save: isPublic=${isPublic.value}, ttsEnabled=${ttsEnabled.value}, sessionId=${s.id}")
@@ -435,7 +437,7 @@ class SessionDetailViewModel : BaseViewModel() {
             },
             onSuccess = {
                 android.util.Log.d("SessionDetail", "save onSuccess: starting reload")
-                showToast("已保存")
+                showToast(string(R.string.sessions_detail_saved_toast))
                 load(s.id.orEmpty())
                 onSuccess()
             }
@@ -459,7 +461,7 @@ class SessionDetailViewModel : BaseViewModel() {
                 )
             },
             onSuccess = {
-                showToast(if (disabled) "已关闭 $key 注入" else "已启用 $key 注入")
+                showToast(if (disabled) string(R.string.sessions_detail_injection_disabled, key) else string(R.string.sessions_detail_injection_enabled, key))
             },
             onError = { message ->
                 _disabledPromptKeys.value = previous
@@ -508,7 +510,7 @@ class SessionDetailViewModel : BaseViewModel() {
         launchResult(
             block = { unified.updateCustomPrompts(s.id.orEmpty(), payload) },
             onSuccess = {
-                showToast("自定义提示词已保存")
+                showToast(string(R.string.sessions_detail_custom_prompts_saved))
                 load(s.id.orEmpty())
             }
         )
@@ -519,7 +521,7 @@ class SessionDetailViewModel : BaseViewModel() {
         launchResult(
             block = { unified.deleteSession(s.id.orEmpty()) },
             onSuccess = {
-                showToast("已删除")
+                showToast(string(R.string.sessions_detail_deleted_toast))
                 onSuccess()
             }
         )
@@ -639,31 +641,141 @@ fun SessionDetailScreen(
     val clipboard = LocalClipboardManager.current
     val uriHandler = LocalUriHandler.current
 
+    // 提取本地化字符串
+    val detailTitle = stringResource(R.string.sessions_detail_title)
+    val backDesc = stringResource(R.string.common_back)
+    val enterChatDesc = stringResource(R.string.sessions_detail_enter_chat)
+    val saveDesc = stringResource(R.string.common_save)
+    val deleteDesc = stringResource(R.string.common_delete)
+    val portraitDesc = stringResource(R.string.sessions_detail_portrait)
+    val characterColonFmt = stringResource(R.string.sessions_detail_character_colon)
+    val pinnedBadge = stringResource(R.string.sessions_detail_pinned_badge)
+    val favoriteBadge = stringResource(R.string.sessions_detail_favorite_badge)
+    val archivedBadgeText = stringResource(R.string.sessions_detail_archived_badge)
+    val readonlyBadge = stringResource(R.string.sessions_detail_readonly_badge)
+    val messageCountFmt = stringResource(R.string.sessions_detail_message_count)
+    val updatedFmt = stringResource(R.string.sessions_detail_updated)
+    val basicInfoTitle = stringResource(R.string.sessions_detail_basic_info)
+    val sessionNameLabel = stringResource(R.string.sessions_detail_name)
+    val tagsLabel = stringResource(R.string.sessions_detail_tags)
+    val pinnedLabel = stringResource(R.string.sessions_detail_pinned)
+    val pinLabel = stringResource(R.string.sessions_detail_pin)
+    val favoritedLabel = stringResource(R.string.sessions_detail_favorited)
+    val favoriteLabel = stringResource(R.string.sessions_detail_favorite)
+    val systemPromptTitle = stringResource(R.string.sessions_detail_system_prompt)
+    val runtimeSystemPromptTitle = stringResource(R.string.sessions_detail_runtime_system_prompt)
+    val runtimePromptDesc = stringResource(R.string.sessions_detail_runtime_prompt_desc)
+    val customPromptsTitle = stringResource(R.string.sessions_detail_custom_prompts)
+    val savePromptsDesc = stringResource(R.string.sessions_detail_save_prompts)
+    val noCustomPromptsHint = stringResource(R.string.sessions_detail_no_custom_prompts)
+    val promptStackTitle = stringResource(R.string.sessions_detail_prompt_stack)
+    val promptStackDesc = stringResource(R.string.sessions_detail_prompt_stack_desc)
+    val disabledPromptsCountFmt = stringResource(R.string.sessions_detail_disabled_prompts_count)
+    val characterBindingTitle = stringResource(R.string.sessions_detail_character_binding)
+    val characterIdLabel = stringResource(R.string.sessions_detail_character_id)
+    val characterNameLabelText = stringResource(R.string.sessions_detail_character_name_label)
+    val senderNameLabel = stringResource(R.string.sessions_detail_sender_name)
+    val scenarioLabel = stringResource(R.string.sessions_detail_scenario)
+    val groupCharactersLabel = stringResource(R.string.sessions_detail_group_characters)
+    val changeCharacterLabel = stringResource(R.string.sessions_detail_change_character)
+    val runtimeStateTitle = stringResource(R.string.sessions_detail_runtime_state)
+    val moodLabel = stringResource(R.string.sessions_detail_mood)
+    val intensityLabel = stringResource(R.string.sessions_detail_intensity)
+    val energyLabel = stringResource(R.string.sessions_detail_energy)
+    val affectionLabel = stringResource(R.string.sessions_detail_affection)
+    val trustLabel = stringResource(R.string.sessions_detail_trust)
+    val familiarityLabel = stringResource(R.string.sessions_detail_familiarity)
+    val dependencyLabel = stringResource(R.string.sessions_detail_dependency)
+    val securityLabel = stringResource(R.string.sessions_detail_security)
+    val jealousyLabel = stringResource(R.string.sessions_detail_jealousy)
+    val surfaceEmotionLabel = stringResource(R.string.sessions_detail_surface_emotion)
+    val innerEmotionLabel = stringResource(R.string.sessions_detail_inner_emotion)
+    val advancedTitle = stringResource(R.string.sessions_detail_advanced)
+    val plotModeOnLabel = stringResource(R.string.sessions_detail_plot_mode_on)
+    val plotModeOffLabel = stringResource(R.string.sessions_detail_plot_mode_off)
+    val realtimeSyncOnLabel = stringResource(R.string.sessions_detail_realtime_sync_on)
+    val realtimeSyncOffLabel = stringResource(R.string.sessions_detail_realtime_sync_off)
+    val replyStyleLabel = stringResource(R.string.sessions_detail_reply_style)
+    val autoStateIntervalLabel = stringResource(R.string.sessions_detail_auto_state_interval)
+    val ttsProactiveTitle = stringResource(R.string.sessions_detail_tts_proactive)
+    val ttsOnLabel = stringResource(R.string.sessions_detail_tts_on)
+    val ttsOffLabel = stringResource(R.string.sessions_detail_tts_off)
+    val ttsModelLabel = stringResource(R.string.sessions_detail_tts_model)
+    val voiceLabel = stringResource(R.string.sessions_detail_voice)
+    val proactiveOnLabel = stringResource(R.string.sessions_detail_proactive_on)
+    val proactiveOffLabel = stringResource(R.string.sessions_detail_proactive_off)
+    val proactiveIntervalLabel = stringResource(R.string.sessions_detail_proactive_interval)
+    val publicShareTitle = stringResource(R.string.sessions_detail_public_share)
+    val publicLocalUnsupported = stringResource(R.string.sessions_detail_public_local_unsupported)
+    val publicDesc = stringResource(R.string.sessions_detail_public_desc)
+    val expiryLabel = stringResource(R.string.sessions_detail_expiry)
+    val passwordLabel = stringResource(R.string.sessions_detail_password)
+    val startMsgLabel = stringResource(R.string.sessions_detail_start_msg)
+    val endMsgLabel = stringResource(R.string.sessions_detail_end_msg)
+    val agentNoCharacterLabel = stringResource(R.string.sessions_detail_agent_no_character)
+    val characterShowLabel = stringResource(R.string.sessions_detail_character_show)
+    val characterHideLabel = stringResource(R.string.sessions_detail_character_hide)
+    val userMsgShowLabel = stringResource(R.string.sessions_detail_user_msg_show)
+    val userMsgHideLabel = stringResource(R.string.sessions_detail_user_msg_hide)
+    val processingText = stringResource(R.string.sessions_detail_processing)
+    val publishText = stringResource(R.string.sessions_detail_publish)
+    val publishedText = stringResource(R.string.sessions_detail_published)
+    val copyLinkText = stringResource(R.string.sessions_detail_copy_link)
+    val openLinkText = stringResource(R.string.sessions_detail_open_link)
+    val unpublishText = stringResource(R.string.sessions_detail_unpublish)
+    val linkCopiedToast = stringResource(R.string.sessions_detail_link_copied)
+    val readonlyViewText = stringResource(R.string.sessions_detail_readonly_view)
+    val passwordRequiredText = stringResource(R.string.sessions_detail_password_required)
+    val expiresAtFmt = stringResource(R.string.sessions_detail_expires_at)
+    val notificationTitle = stringResource(R.string.sessions_detail_notification)
+    val notificationSubtitle = stringResource(R.string.sessions_detail_notification_subtitle)
+    val notificationOnLabel = stringResource(R.string.sessions_detail_notification_on)
+    val notificationOffLabel = stringResource(R.string.sessions_detail_notification_off)
+    val notificationDesc = stringResource(R.string.sessions_detail_notification_desc)
+    val metaTitle = stringResource(R.string.sessions_detail_meta)
+    val sessionIdLabel = stringResource(R.string.sessions_detail_session_id)
+    val userIdLabel = stringResource(R.string.sessions_detail_user_id)
+    val createdAtLabel = stringResource(R.string.sessions_detail_created_at)
+    val updatedAtLabel = stringResource(R.string.sessions_detail_updated_at)
+    val publicLabel = stringResource(R.string.sessions_detail_public_label)
+    val archivedLabel = stringResource(R.string.sessions_detail_archived_label)
+    val readonlyLabel = stringResource(R.string.sessions_detail_readonly_label)
+    val lastMessageLabel = stringResource(R.string.sessions_detail_last_message)
+    val deleteDialogTitle = stringResource(R.string.sessions_detail_delete_title)
+    val deleteConfirmFmt = stringResource(R.string.sessions_detail_delete_confirm)
+    val copyDesc = stringResource(R.string.common_copy)
+    val addDesc = stringResource(R.string.common_add)
+    val yesText = stringResource(R.string.common_yes)
+    val noText = stringResource(R.string.common_no)
+    val doneText = stringResource(R.string.common_done)
+    val cancelText = stringResource(R.string.common_cancel)
+    val okText = stringResource(R.string.common_ok)
+
     LaunchedEffect(sessionId) { vm.init(sessionId) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("会话详情", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text(detailTitle, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = backDesc, tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     IconButton(onClick = { session?.id?.let(onOpenChat) }) {
-                        Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = "进入对话", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = enterChatDesc, tint = MaterialTheme.colorScheme.primary)
                     }
                     IconButton(onClick = { vm.save(onBack) }) {
-                        Icon(Icons.Filled.Save, contentDescription = "保存", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.Save, contentDescription = saveDesc, tint = MaterialTheme.colorScheme.primary)
                     }
                     IconButton(onClick = { showDeleteDialog = true }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.error)
+                        Icon(Icons.Filled.Delete, contentDescription = deleteDesc, tint = MaterialTheme.colorScheme.error)
                     }
                 }
             )
@@ -704,7 +816,7 @@ fun SessionDetailScreen(
                                     if (!portraitUrl.isNullOrBlank()) {
                                         AsyncImage(
                                             model = portraitUrl,
-                                            contentDescription = s.characterName ?: "立绘",
+                                            contentDescription = s.characterName ?: portraitDesc,
                                             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                                             modifier = Modifier.fillMaxSize()
                                         )
@@ -717,24 +829,24 @@ fun SessionDetailScreen(
                                     Text(s.displayName, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     if (!s.characterName.isNullOrBlank()) {
                                         Spacer(Modifier.height(4.dp))
-                                        Text("角色：${s.characterName}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                                        Text(characterColonFmt.format(s.characterName), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
                                     }
                                     Spacer(Modifier.height(4.dp))
                                     // 类型 / 模式 badge
                                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         s.type?.let { BadgeChip(it) }
                                         s.sessionMode?.let { BadgeChip(it) }
-                                        if (s.pinned == true) BadgeChip("置顶", MaterialTheme.colorScheme.primary)
-                                        if (s.favorite == true) BadgeChip("收藏", WarningAmber)
-                                        if (s.archived == true) BadgeChip("已归档", MaterialTheme.colorScheme.onSurfaceVariant)
-                                        if (s.readOnly == true) BadgeChip("只读", MaterialTheme.colorScheme.error)
+                                        if (s.pinned == true) BadgeChip(pinnedBadge, MaterialTheme.colorScheme.primary)
+                                        if (s.favorite == true) BadgeChip(favoriteBadge, WarningAmber)
+                                        if (s.archived == true) BadgeChip(archivedBadgeText, MaterialTheme.colorScheme.onSurfaceVariant)
+                                        if (s.readOnly == true) BadgeChip(readonlyBadge, MaterialTheme.colorScheme.error)
                                     }
                                     s.messageCount?.let { count ->
                                         Spacer(Modifier.height(4.dp))
-                                        Text("消息数：$count", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(messageCountFmt.format(count), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                     s.updatedAt?.let { time ->
-                                        Text("更新：${time.take(19)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(updatedFmt.format(time.take(19)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
                                 }
                             }
@@ -742,12 +854,12 @@ fun SessionDetailScreen(
 
                         // === 2. 编辑基本信息 ===
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            SectionHeader(title = "基本信息")
+                            SectionHeader(title = basicInfoTitle)
                             Spacer(Modifier.height(8.dp))
                             OutlinedTextField(
                                 value = name,
                                 onValueChange = { vm.name.value = it },
-                                label = { Text("会话名称") },
+                                label = { Text(sessionNameLabel) },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -755,20 +867,20 @@ fun SessionDetailScreen(
                             OutlinedTextField(
                                 value = tagsText,
                                 onValueChange = { vm.tagsText.value = it },
-                                label = { Text("标签（逗号分隔）") },
+                                label = { Text(tagsLabel) },
                                 singleLine = false,
                                 modifier = Modifier.fillMaxWidth()
                             )
                             Spacer(Modifier.height(12.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 ToggleChipRow(
-                                    label = if (pinned) "已置顶" else "置顶",
+                                    label = if (pinned) pinnedLabel else pinLabel,
                                     selected = pinned,
                                     onClick = { vm.pinned.value = !pinned },
                                     modifier = Modifier.weight(1f)
                                 )
                                 ToggleChipRow(
-                                    label = if (favorite) "已收藏" else "收藏",
+                                    label = if (favorite) favoritedLabel else favoriteLabel,
                                     selected = favorite,
                                     onClick = { vm.favorite.value = !favorite },
                                     modifier = Modifier.weight(1f)
@@ -779,10 +891,10 @@ fun SessionDetailScreen(
                         // === 3. 系统提示词 ===
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
                             SectionHeader(
-                                title = "系统提示词",
+                                title = systemPromptTitle,
                                 trailing = {
                                     IconButton(onClick = { clipboard.setText(AnnotatedString(systemPrompt)) }) {
-                                        Icon(Icons.Filled.ContentCopy, contentDescription = "复制", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                        Icon(Icons.Filled.ContentCopy, contentDescription = copyDesc, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                                     }
                                 }
                             )
@@ -801,16 +913,16 @@ fun SessionDetailScreen(
                         if (composedSystemPrompt.isNotBlank()) {
                             GlassCard(modifier = Modifier.fillMaxWidth()) {
                                 SectionHeader(
-                                    title = "运行时系统提示词",
+                                    title = runtimeSystemPromptTitle,
                                     trailing = {
                                         IconButton(onClick = { clipboard.setText(AnnotatedString(composedSystemPrompt)) }) {
-                                            Icon(Icons.Filled.ContentCopy, contentDescription = "复制", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                            Icon(Icons.Filled.ContentCopy, contentDescription = copyDesc, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                                         }
                                     }
                                 )
                                 Spacer(Modifier.height(4.dp))
                                 Text(
-                                    "实际发送给 AI 的完整系统提示词（含角色卡、状态、记忆、世界书等动态注入），每次对话后更新",
+                                    runtimePromptDesc,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -831,14 +943,14 @@ fun SessionDetailScreen(
                         // === 3.5 自定义提示词（custom_prompts，可编辑） ===
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
                             SectionHeader(
-                                title = "自定义提示词",
+                                title = customPromptsTitle,
                                 trailing = {
                                     Row {
                                         IconButton(onClick = { vm.addCustomPrompt() }) {
-                                            Icon(Icons.Filled.Add, contentDescription = "添加", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                            Icon(Icons.Filled.Add, contentDescription = addDesc, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                                         }
                                         IconButton(onClick = { vm.saveCustomPrompts() }) {
-                                            Icon(Icons.Filled.Save, contentDescription = "保存提示词", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                            Icon(Icons.Filled.Save, contentDescription = savePromptsDesc, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                                         }
                                     }
                                 }
@@ -846,7 +958,7 @@ fun SessionDetailScreen(
                             Spacer(Modifier.height(8.dp))
                             if (customPrompts.isEmpty()) {
                                 Text(
-                                    "暂无自定义提示词，点击 + 添加",
+                                    noCustomPromptsHint,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -866,10 +978,10 @@ fun SessionDetailScreen(
                         // === 3.6 提示词注入栈（prompt_stack_debug，只读 + 可禁用） ===
                         if (promptStackDebug.isNotEmpty()) {
                             GlassCard(modifier = Modifier.fillMaxWidth()) {
-                                SectionHeader(title = "提示词注入栈")
+                                SectionHeader(title = promptStackTitle)
                                 Spacer(Modifier.height(8.dp))
                                 Text(
-                                    "运行时动态注入的提示词（每次对话后更新），点击查看完整内容和开关",
+                                    promptStackDesc,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -885,7 +997,7 @@ fun SessionDetailScreen(
                                 if (disabledPromptKeys.isNotEmpty()) {
                                     Spacer(Modifier.height(4.dp))
                                     Text(
-                                        "已关闭 ${disabledPromptKeys.size} 项提示词注入",
+                                        disabledPromptsCountFmt.format(disabledPromptKeys.size),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = WarningAmber
                                     )
@@ -895,15 +1007,15 @@ fun SessionDetailScreen(
 
                         // === 4. 角色绑定信息 ===
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            SectionHeader(title = "角色绑定")
+                            SectionHeader(title = characterBindingTitle)
                             Spacer(Modifier.height(8.dp))
-                            DetailLine(label = "角色 ID", value = s.characterId ?: "—")
+                            DetailLine(label = characterIdLabel, value = s.characterId ?: "—")
                             // 优先用后端返回的 characterName，否则用二次查询的角色详情
-                            DetailLine(label = "角色名", value = s.characterName ?: characterDetail?.name ?: "—")
-                            DetailLine(label = "发送者名", value = s.senderName ?: "—")
-                            DetailLine(label = "场景", value = s.scenario?.take(60) ?: "—")
+                            DetailLine(label = characterNameLabelText, value = s.characterName ?: characterDetail?.name ?: "—")
+                            DetailLine(label = senderNameLabel, value = s.senderName ?: "—")
+                            DetailLine(label = scenarioLabel, value = s.scenario?.take(60) ?: "—")
                             s.characterIds?.takeIf { it.isNotEmpty() }?.let {
-                                DetailLine(label = "群聊角色", value = it.joinToString(", "))
+                                DetailLine(label = groupCharactersLabel, value = it.joinToString(", "))
                             }
                             Spacer(Modifier.height(12.dp))
                             // 更改绑定角色按钮
@@ -918,7 +1030,7 @@ fun SessionDetailScreen(
                                 )
                                 Spacer(Modifier.width(8.dp))
                                 Text(
-                                    "更改绑定角色",
+                                    changeCharacterLabel,
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             }
@@ -927,44 +1039,44 @@ fun SessionDetailScreen(
                         // === 5. 角色运行时状态 ===
                         s.characterRuntimeSnapshot?.takeIf { it.isJsonObject }?.asJsonObject?.let { snap ->
                             GlassCard(modifier = Modifier.fillMaxWidth()) {
-                                SectionHeader(title = "角色运行时状态")
+                                SectionHeader(title = runtimeStateTitle)
                                 Spacer(Modifier.height(8.dp))
                                 // 心情 / 能量
                                 val mood = snap.get("mood")?.asString
                                 val intensity = snap.get("mood_intensity")?.let { if (it.isJsonPrimitive) it.asFloat else null }
                                 val energy = snap.get("energy")?.let { if (it.isJsonPrimitive) it.asInt else null }
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    StateMiniCard("心情", mood, MaterialTheme.colorScheme.primary, Modifier.weight(1f))
-                                    StateMiniCard("强度", intensity?.let { "${(it * 100).toInt()}%" }, MaterialTheme.colorScheme.secondary, Modifier.weight(1f))
-                                    StateMiniCard("能量", energy?.toString(), MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
+                                    StateMiniCard(moodLabel, mood, MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+                                    StateMiniCard(intensityLabel, intensity?.let { "${(it * 100).toInt()}%" }, MaterialTheme.colorScheme.secondary, Modifier.weight(1f))
+                                    StateMiniCard(energyLabel, energy?.toString(), MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
                                 }
                                 Spacer(Modifier.height(8.dp))
                                 // 关系数值
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    RelBar("好感", snap.get("affection")?.asInt, MaterialTheme.colorScheme.primary, Modifier.weight(1f))
-                                    RelBar("信任", snap.get("trust")?.asInt, MaterialTheme.colorScheme.secondary, Modifier.weight(1f))
-                                    RelBar("熟悉", snap.get("familiarity")?.asInt, MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
-                                    RelBar("依赖", snap.get("dependency")?.asInt, WarningAmber, Modifier.weight(1f))
-                                    RelBar("安全", snap.get("security")?.asInt, SuccessGreen, Modifier.weight(1f))
-                                    RelBar("嫉妒", snap.get("jealousy")?.asInt, MaterialTheme.colorScheme.error, Modifier.weight(1f))
+                                    RelBar(affectionLabel, snap.get("affection")?.asInt, MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+                                    RelBar(trustLabel, snap.get("trust")?.asInt, MaterialTheme.colorScheme.secondary, Modifier.weight(1f))
+                                    RelBar(familiarityLabel, snap.get("familiarity")?.asInt, MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
+                                    RelBar(dependencyLabel, snap.get("dependency")?.asInt, WarningAmber, Modifier.weight(1f))
+                                    RelBar(securityLabel, snap.get("security")?.asInt, SuccessGreen, Modifier.weight(1f))
+                                    RelBar(jealousyLabel, snap.get("jealousy")?.asInt, MaterialTheme.colorScheme.error, Modifier.weight(1f))
                                 }
                                 // 表情
                                 snap.get("visible_emotion")?.asString?.let {
                                     Spacer(Modifier.height(8.dp))
-                                    DetailLine(label = "表象情绪", value = it)
+                                    DetailLine(label = surfaceEmotionLabel, value = it)
                                 }
                                 snap.get("hidden_emotion")?.asString?.let {
-                                    DetailLine(label = "内在情绪", value = it)
+                                    DetailLine(label = innerEmotionLabel, value = it)
                                 }
                             }
                         }
 
                         // === 6. 剧情模式 / 自动状态 ===
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            SectionHeader(title = "高级设置")
+                            SectionHeader(title = advancedTitle)
                             Spacer(Modifier.height(8.dp))
                             ToggleChipRow(
-                                label = if (plotMode) "剧情模式：开" else "剧情模式：关",
+                                label = if (plotMode) plotModeOnLabel else plotModeOffLabel,
                                 selected = plotMode,
                                 onClick = { vm.plotMode.value = !plotMode },
                                 modifier = Modifier.fillMaxWidth()
@@ -972,7 +1084,7 @@ fun SessionDetailScreen(
                             if (plotMode) {
                                 Spacer(Modifier.height(8.dp))
                                 ToggleChipRow(
-                                    label = if (plotRealTimeSync) "现实时间同步：开" else "现实时间同步：关",
+                                    label = if (plotRealTimeSync) realtimeSyncOnLabel else realtimeSyncOffLabel,
                                     selected = plotRealTimeSync,
                                     onClick = { vm.plotRealTimeSync.value = !plotRealTimeSync },
                                     modifier = Modifier.fillMaxWidth()
@@ -985,14 +1097,14 @@ fun SessionDetailScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        "回复风格",
+                                        replyStyleLabel,
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurface,
                                         modifier = Modifier.weight(1f)
                                     )
                                     OutlinedButton(onClick = { showStyleDialog = true }) {
                                         Text(
-                                            text = plotStyleLabel(plotChoiceStyle),
+                                            text = stringResource(plotStyleLabelResId(plotChoiceStyle)),
                                             style = MaterialTheme.typography.labelMedium
                                         )
                                     }
@@ -1010,7 +1122,7 @@ fun SessionDetailScreen(
                             }
                             Spacer(Modifier.height(12.dp))
                             // 自动状态间隔下拉
-                            Text("自动状态评估间隔", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                            Text(autoStateIntervalLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                             Spacer(Modifier.height(4.dp))
                             AutoStateIntervalSelector(
                                 value = autoStateInterval,
@@ -1020,12 +1132,12 @@ fun SessionDetailScreen(
 
                         // === 6.5 TTS / 主动聊天 ===
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            SectionHeader(title = "TTS / 主动聊天")
+                            SectionHeader(title = ttsProactiveTitle)
                             Spacer(Modifier.height(8.dp))
 
                             // TTS 开关
                             ToggleChipRow(
-                                label = if (ttsEnabled) "TTS：开" else "TTS：关",
+                                label = if (ttsEnabled) ttsOnLabel else ttsOffLabel,
                                 selected = ttsEnabled,
                                 onClick = { vm.ttsEnabled.value = !ttsEnabled },
                                 modifier = Modifier.fillMaxWidth()
@@ -1033,7 +1145,7 @@ fun SessionDetailScreen(
                             if (ttsEnabled) {
                                 Spacer(Modifier.height(8.dp))
                                 // TTS 模型选择下拉
-                                Text("TTS 模型", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                                Text(ttsModelLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                                 Spacer(Modifier.height(4.dp))
                                 TtsModelSelector(
                                     modelId = ttsModelId,
@@ -1042,7 +1154,7 @@ fun SessionDetailScreen(
                                 )
                                 Spacer(Modifier.height(8.dp))
                                 // 音色选择
-                                Text("语音音色（voice）", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                                Text(voiceLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                                 Spacer(Modifier.height(4.dp))
                                 TtsVoiceSelector(
                                     voice = ttsVoice,
@@ -1054,14 +1166,14 @@ fun SessionDetailScreen(
 
                             // 主动聊天开关
                             ToggleChipRow(
-                                label = if (proactiveChatEnabled) "主动聊天：开" else "主动聊天：关",
+                                label = if (proactiveChatEnabled) proactiveOnLabel else proactiveOffLabel,
                                 selected = proactiveChatEnabled,
                                 onClick = { vm.proactiveChatEnabled.value = !proactiveChatEnabled },
                                 modifier = Modifier.fillMaxWidth()
                             )
                             if (proactiveChatEnabled) {
                                 Spacer(Modifier.height(8.dp))
-                                Text("触发间隔（分钟）", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                                Text(proactiveIntervalLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                                 Spacer(Modifier.height(4.dp))
                                 ProactiveIntervalSelector(
                                     value = proactiveChatInterval,
@@ -1073,22 +1185,22 @@ fun SessionDetailScreen(
 
                         // === 6.6 公开分享：与原仓库一致，独立于会话详情保存 ===
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            SectionHeader(title = "公开分享")
+                            SectionHeader(title = publicShareTitle)
                             Spacer(Modifier.height(8.dp))
                             if (com.nekobot.app.ServiceContainer.prefs.isLocalMode) {
                                 Text(
-                                    "本地模式不支持公开分享。请切换到服务器模式后使用。",
+                                    publicLocalUnsupported,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             } else if (!isPublic) {
                                 Text(
-                                    "公开后会生成只读链接，其他人可以查看对话内容但无法交互。",
+                                    publicDesc,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Spacer(Modifier.height(12.dp))
-                                Text("有效期", style = MaterialTheme.typography.bodyMedium)
+                                Text(expiryLabel, style = MaterialTheme.typography.bodyMedium)
                                 Spacer(Modifier.height(4.dp))
                                 ShareExpirySelector(
                                     value = shareExpiresDays,
@@ -1098,7 +1210,7 @@ fun SessionDetailScreen(
                                 OutlinedTextField(
                                     value = sharePassword,
                                     onValueChange = { vm.sharePassword.value = it },
-                                    label = { Text("访问密码（可留空）", style = MaterialTheme.typography.labelSmall) },
+                                    label = { Text(passwordLabel, style = MaterialTheme.typography.labelSmall) },
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth()
                                 )
@@ -1107,14 +1219,14 @@ fun SessionDetailScreen(
                                     OutlinedTextField(
                                         value = shareMessageStart,
                                         onValueChange = { vm.shareMessageStart.value = it.filter(Char::isDigit) },
-                                        label = { Text("起始消息序号", style = MaterialTheme.typography.labelSmall) },
+                                        label = { Text(startMsgLabel, style = MaterialTheme.typography.labelSmall) },
                                         singleLine = true,
                                         modifier = Modifier.weight(1f)
                                     )
                                     OutlinedTextField(
                                         value = shareMessageEnd,
                                         onValueChange = { vm.shareMessageEnd.value = it.filter(Char::isDigit) },
-                                        label = { Text("结束消息序号", style = MaterialTheme.typography.labelSmall) },
+                                        label = { Text(endMsgLabel, style = MaterialTheme.typography.labelSmall) },
                                         singleLine = true,
                                         modifier = Modifier.weight(1f)
                                     )
@@ -1122,13 +1234,13 @@ fun SessionDetailScreen(
                                 Spacer(Modifier.height(8.dp))
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     ToggleChipRow(
-                                        label = if (s.sessionMode == "agent") "Agent 会话不包含角色信息" else if (shareIncludeCharacter) "角色信息：显示" else "角色信息：隐藏",
+                                        label = if (s.sessionMode == "agent") agentNoCharacterLabel else if (shareIncludeCharacter) characterShowLabel else characterHideLabel,
                                         selected = shareIncludeCharacter && s.sessionMode != "agent",
                                         onClick = { if (s.sessionMode != "agent") vm.shareIncludeCharacter.value = !shareIncludeCharacter },
                                         modifier = Modifier.weight(1f)
                                     )
                                     ToggleChipRow(
-                                        label = if (shareIncludeUserMessages) "用户消息：显示" else "用户消息：隐藏",
+                                        label = if (shareIncludeUserMessages) userMsgShowLabel else userMsgHideLabel,
                                         selected = shareIncludeUserMessages,
                                         onClick = { vm.shareIncludeUserMessages.value = !shareIncludeUserMessages },
                                         modifier = Modifier.weight(1f)
@@ -1144,10 +1256,10 @@ fun SessionDetailScreen(
                                         CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                                         Spacer(Modifier.width(8.dp))
                                     }
-                                    Text(if (isLoadingPublic) "处理中…" else "公开会话")
+                                    Text(if (isLoadingPublic) processingText else publishText)
                                 }
                             } else {
-                                Text("会话已公开", style = MaterialTheme.typography.titleSmall, color = SuccessGreen)
+                                Text(publishedText, style = MaterialTheme.typography.titleSmall, color = SuccessGreen)
                                 Spacer(Modifier.height(8.dp))
                                 SelectionContainer {
                                     Text(
@@ -1161,16 +1273,16 @@ fun SessionDetailScreen(
                                     OutlinedButton(
                                         onClick = {
                                             clipboard.setText(AnnotatedString(publicShareUrl))
-                                            vm.showToast("链接已复制到剪贴板")
+                                            vm.showToast(linkCopiedToast)
                                         },
                                         enabled = publicShareUrl.isNotBlank(),
                                         modifier = Modifier.weight(1f)
-                                    ) { Text("复制链接") }
+                                    ) { Text(copyLinkText) }
                                     OutlinedButton(
                                         onClick = { uriHandler.openUri(publicShareUrl) },
                                         enabled = publicShareUrl.isNotBlank(),
                                         modifier = Modifier.weight(1f)
-                                    ) { Text("打开链接") }
+                                    ) { Text(openLinkText) }
                                 }
                                 Spacer(Modifier.height(8.dp))
                                 OutlinedButton(
@@ -1178,14 +1290,14 @@ fun SessionDetailScreen(
                                     enabled = !isLoadingPublic,
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Text(if (isLoadingPublic) "处理中…" else "取消公开", color = MaterialTheme.colorScheme.error)
+                                    Text(if (isLoadingPublic) processingText else unpublishText, color = MaterialTheme.colorScheme.error)
                                 }
                                 Spacer(Modifier.height(8.dp))
                                 Text(
                                     buildString {
-                                        append("访问链接可查看只读对话")
-                                        if (publicSharePasswordRequired) append(" · 需要密码")
-                                        publicShareExpiresAt?.let { append(" · ${formatPublicExpiresAt(it)} 失效") }
+                                        append(readonlyViewText)
+                                        if (publicSharePasswordRequired) append(" · $passwordRequiredText")
+                                        publicShareExpiresAt?.let { append(" · " + expiresAtFmt.format(formatPublicExpiresAt(it))) }
                                     },
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1195,10 +1307,10 @@ fun SessionDetailScreen(
 
                         // === 6.7 通知提醒 ===
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            SectionHeader(title = "通知提醒", subtitle = "AI 回复时若不在聊天界面则弹出通知")
+                            SectionHeader(title = notificationTitle, subtitle = notificationSubtitle)
                             Spacer(Modifier.height(8.dp))
                             ToggleChipRow(
-                                label = if (notificationEnabled) "通知提醒：开" else "通知提醒：关",
+                                label = if (notificationEnabled) notificationOnLabel else notificationOffLabel,
                                 selected = notificationEnabled,
                                 onClick = {
                                     val newVal = !notificationEnabled
@@ -1217,7 +1329,7 @@ fun SessionDetailScreen(
                             if (notificationEnabled) {
                                 Spacer(Modifier.height(4.dp))
                                 Text(
-                                    "开启后，当 AI 回复且您不在当前聊天界面时，将收到系统通知提醒",
+                                    notificationDesc,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -1226,17 +1338,17 @@ fun SessionDetailScreen(
 
                         // === 7. 只读元信息 ===
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            SectionHeader(title = "元信息")
+                            SectionHeader(title = metaTitle)
                             Spacer(Modifier.height(8.dp))
-                            DetailLine(label = "会话 ID", value = s.id.orEmpty())
-                            DetailLine(label = "用户 ID", value = s.userId ?: "—")
-                            DetailLine(label = "创建时间", value = s.createdAt?.take(19) ?: "—")
-                            DetailLine(label = "更新时间", value = s.updatedAt?.take(19) ?: "—")
-                            DetailLine(label = "公开", value = if (isPublic) "是" else "否")
-                            DetailLine(label = "归档", value = if (s.archived == true) "是" else "否")
-                            DetailLine(label = "只读", value = if (s.readOnly == true) "是" else "否")
+                            DetailLine(label = sessionIdLabel, value = s.id.orEmpty())
+                            DetailLine(label = userIdLabel, value = s.userId ?: "—")
+                            DetailLine(label = createdAtLabel, value = s.createdAt?.take(19) ?: "—")
+                            DetailLine(label = updatedAtLabel, value = s.updatedAt?.take(19) ?: "—")
+                            DetailLine(label = publicLabel, value = if (isPublic) yesText else noText)
+                            DetailLine(label = archivedLabel, value = if (s.archived == true) yesText else noText)
+                            DetailLine(label = readonlyLabel, value = if (s.readOnly == true) yesText else noText)
                             s.lastMessage?.let {
-                                DetailLine(label = "最后消息", value = it.take(50))
+                                DetailLine(label = lastMessageLabel, value = it.take(50))
                             }
                         }
 
@@ -1255,9 +1367,9 @@ fun SessionDetailScreen(
     if (showDeleteDialog) {
         NekoDialog(
             onDismiss = { showDeleteDialog = false },
-            title = "删除会话",
-            message = "确定删除「${session?.displayName ?: ""}」吗？此操作不可撤销。",
-            confirmText = "删除",
+            title = deleteDialogTitle,
+            message = deleteConfirmFmt.format(session?.displayName ?: ""),
+            confirmText = deleteDesc,
             onConfirm = {
                 showDeleteDialog = false
                 vm.delete(onBack)
@@ -1295,25 +1407,35 @@ private fun PromptStackDetailDialog(
     onDisabledChange: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val injectionDetailTitle = stringResource(R.string.sessions_detail_injection_detail_title)
+    val doneText = stringResource(R.string.common_done)
+    val priorityFmt = stringResource(R.string.sessions_detail_priority)
+    val scopeFmt = stringResource(R.string.sessions_detail_scope)
+    val roleBadgeFmt = stringResource(R.string.sessions_detail_role_badge)
+    val injectionContentLabel = stringResource(R.string.sessions_detail_injection_content)
+    val injectionEmptyText = stringResource(R.string.sessions_detail_injection_empty)
+    val disableInjectionLabel = stringResource(R.string.sessions_detail_disable_injection)
+    val disableInjectionDesc = stringResource(R.string.sessions_detail_disable_injection_desc)
+
     NekoDialog(
         onDismiss = onDismiss,
-        title = "提示词注入详情",
-        confirmText = "完成",
+        title = injectionDetailTitle,
+        confirmText = doneText,
         onConfirm = onDismiss
     ) {
         Text(item.key, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            BadgeChip("优先级 ${item.priority}")
-            BadgeChip("作用域 ${item.scope}")
-            BadgeChip("角色 ${item.role}")
+            BadgeChip(priorityFmt.format(item.priority))
+            BadgeChip(scopeFmt.format(item.scope))
+            BadgeChip(roleBadgeFmt.format(item.role))
         }
         Spacer(Modifier.height(12.dp))
-        Text("注入内容", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(injectionContentLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         SelectionContainer {
             Text(
-                text = item.content.ifBlank { "（该注入项没有文本内容）" },
+                text = item.content.ifBlank { injectionEmptyText },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier
@@ -1335,8 +1457,8 @@ private fun PromptStackDetailDialog(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("关闭此提示词注入", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
-                Text("切换后立即保存，下轮对话生效", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(disableInjectionLabel, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+                Text(disableInjectionDesc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Switch(checked = disabled, onCheckedChange = onDisabledChange)
         }
@@ -1378,18 +1500,24 @@ private fun BindCharacterPickerDialog(
     var selectedCharacter by remember(characters) {
         mutableStateOf<com.nekobot.app.data.model.CharacterPreset?>(null)
     }
+    val selectCharacterTitle = stringResource(R.string.sessions_detail_select_character)
+    val bindText = stringResource(R.string.sessions_detail_bind)
+    val cancelText = stringResource(R.string.common_cancel)
+    val noCharactersText = stringResource(R.string.sessions_detail_no_characters)
+    val portraitDesc = stringResource(R.string.sessions_detail_portrait)
+    val selectedDesc = stringResource(R.string.sessions_detail_selected)
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = "选择角色",
-        confirmText = "绑定",
+        title = selectCharacterTitle,
+        confirmText = bindText,
         confirmEnabled = selectedCharacter != null,
         onConfirm = { selectedCharacter?.let(onSelect) },
-        cancelText = "取消",
+        cancelText = cancelText,
         onCancel = onDismiss
     ) {
         if (characters.isEmpty()) {
-            Text("暂无可用角色", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(noCharactersText, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             LazyColumn(
                 modifier = Modifier.heightIn(max = 400.dp),
@@ -1413,7 +1541,7 @@ private fun BindCharacterPickerDialog(
                             if (avatarUrl != null) {
                                 AsyncImage(
                                     model = avatarUrl,
-                                    contentDescription = "${char.displayName}立绘",
+                                    contentDescription = "${char.displayName} $portraitDesc",
                                     modifier = Modifier.size(40.dp).clip(RoundedCornerShape(20.dp))
                                 )
                             } else {
@@ -1446,7 +1574,7 @@ private fun BindCharacterPickerDialog(
                                 }
                             }
                             if (selected) {
-                                Icon(Icons.Filled.Check, contentDescription = "已选择", tint = MaterialTheme.colorScheme.primary)
+                                Icon(Icons.Filled.Check, contentDescription = selectedDesc, tint = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }
@@ -1534,17 +1662,17 @@ private fun RelBar(
 
 /** 剧情选项风格预设列表（对应原仓库 _STYLE_PRESETS） */
 private val PLOT_STYLE_PRESETS = listOf(
-    "" to "默认推进",
-    "sweet" to "甜蜜暧昧",
-    "suspense" to "悬疑紧张",
-    "daily" to "日常轻松",
-    "dramatic" to "戏剧转折"
+    "" to R.string.sessions_detail_style_default,
+    "sweet" to R.string.sessions_detail_style_sweet,
+    "suspense" to R.string.sessions_detail_style_suspense,
+    "daily" to R.string.sessions_detail_style_daily,
+    "dramatic" to R.string.sessions_detail_style_dramatic
 )
 
-/** 根据风格文本返回显示标签 */
-private fun plotStyleLabel(style: String): String {
+/** 根据风格文本返回显示标签的资源 ID */
+private fun plotStyleLabelResId(style: String): Int {
     return PLOT_STYLE_PRESETS.firstOrNull { it.first == style }?.second
-        ?: if (style.isNotBlank()) "自定义" else "未设置"
+        ?: if (style.isNotBlank()) R.string.sessions_detail_style_custom else R.string.sessions_detail_style_unset
 }
 
 /** 回复风格选择弹窗 */
@@ -1560,16 +1688,16 @@ private fun PlotStylePickerDialog(
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("编辑回复风格", fontWeight = FontWeight.SemiBold) },
+        title = { Text(stringResource(R.string.sessions_detail_edit_reply_style), fontWeight = FontWeight.SemiBold) },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    "选择剧情选项的生成风格（影响 AI 生成的 3 个分支选项的语气与取向）",
+                    stringResource(R.string.sessions_detail_reply_style_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(12.dp))
-                PLOT_STYLE_PRESETS.forEach { (key, label) ->
+                PLOT_STYLE_PRESETS.forEach { (key, labelRes) ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1583,7 +1711,7 @@ private fun PlotStylePickerDialog(
                             onClick = { selectedPreset = key }
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                        Text(stringResource(labelRes), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                     }
                 }
                 // 自定义选项
@@ -1600,14 +1728,14 @@ private fun PlotStylePickerDialog(
                         onClick = { selectedPreset = "custom" }
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text("自定义", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    Text(stringResource(R.string.sessions_detail_style_custom), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                 }
                 if (selectedPreset == "custom") {
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = customText,
                         onValueChange = { customText = it },
-                        label = { Text("自定义风格描述") },
+                        label = { Text(stringResource(R.string.sessions_detail_custom_style_desc)) },
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 2,
                         maxLines = 4
@@ -1622,10 +1750,10 @@ private fun PlotStylePickerDialog(
                     else -> selectedPreset
                 }
                 onConfirm(result)
-            }) { Text("确定") }
+            }) { Text(stringResource(R.string.common_confirm)) }
         },
         dismissButton = {
-            androidx.compose.material3.TextButton(onClick = onDismiss) { Text("取消") }
+            androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         }
     )
 }
@@ -1637,21 +1765,21 @@ private fun AutoStateIntervalSelector(
     onChange: (Int?) -> Unit
 ) {
     val options = listOf(
-        null to "全局默认",
-        0 to "关闭",
-        1 to "每 1 轮",
-        2 to "每 2 轮",
-        3 to "每 3 轮",
-        5 to "每 5 轮",
-        8 to "每 8 轮",
-        10 to "每 10 轮"
+        null to R.string.sessions_detail_interval_global,
+        0 to R.string.sessions_detail_interval_off,
+        1 to R.string.sessions_detail_interval_every_1,
+        2 to R.string.sessions_detail_interval_every_2,
+        3 to R.string.sessions_detail_interval_every_3,
+        5 to R.string.sessions_detail_interval_every_5,
+        8 to R.string.sessions_detail_interval_every_8,
+        10 to R.string.sessions_detail_interval_every_10
     )
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        options.forEach { (interval, label) ->
+        options.forEach { (interval, labelRes) ->
             FilterChip(
                 selected = value == interval,
                 onClick = { onChange(interval) },
-                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                label = { Text(stringResource(labelRes), style = MaterialTheme.typography.labelSmall) },
                 colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
                     selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
                     selectedLabelColor = MaterialTheme.colorScheme.primary
@@ -1668,21 +1796,21 @@ private fun ProactiveIntervalSelector(
     onChange: (Int) -> Unit
 ) {
     val options = listOf(
-        5 to "5 分钟",
-        10 to "10 分钟",
-        15 to "15 分钟",
-        30 to "30 分钟",
-        60 to "1 小时",
-        120 to "2 小时",
-        240 to "4 小时",
-        480 to "8 小时"
+        5 to R.string.sessions_detail_duration_5m,
+        10 to R.string.sessions_detail_duration_10m,
+        15 to R.string.sessions_detail_duration_15m,
+        30 to R.string.sessions_detail_duration_30m,
+        60 to R.string.sessions_detail_duration_1h,
+        120 to R.string.sessions_detail_duration_2h,
+        240 to R.string.sessions_detail_duration_4h,
+        480 to R.string.sessions_detail_duration_8h
     )
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        options.forEach { (minutes, label) ->
+        options.forEach { (minutes, labelRes) ->
             FilterChip(
                 selected = value == minutes,
                 onClick = { onChange(minutes) },
-                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                label = { Text(stringResource(labelRes), style = MaterialTheme.typography.labelSmall) },
                 colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
                     selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
                     selectedLabelColor = MaterialTheme.colorScheme.primary
@@ -1700,8 +1828,9 @@ private fun TtsModelSelector(
     onChange: (String) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val notSelectedLabel = stringResource(R.string.sessions_detail_not_selected)
     val selectedName = models.firstOrNull { it.first == modelId }?.second
-        ?: if (modelId.isBlank()) "未选择" else modelId
+        ?: if (modelId.isBlank()) notSelectedLabel else modelId
     Box {
         GlassCard(
             modifier = Modifier
@@ -1731,7 +1860,7 @@ private fun TtsModelSelector(
             onDismissRequest = { expanded = false }
         ) {
             DropdownMenuItem(
-                text = { Text("未选择", color = if (modelId.isBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) },
+                text = { Text(notSelectedLabel, color = if (modelId.isBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) },
                 onClick = { onChange(""); expanded = false }
             )
             models.forEach { (id, name) ->
@@ -1749,7 +1878,7 @@ private fun TtsModelSelector(
                 )
             }
             if (models.isEmpty()) {
-                Text("  暂无可用模型，请先在 AI 配置中添加", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
+                Text(stringResource(R.string.sessions_detail_no_models), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
             }
         }
     }
@@ -1780,7 +1909,7 @@ private fun TtsVoiceSelector(
     OutlinedTextField(
         value = voice,
         onValueChange = { onChange(it) },
-        label = { Text("自定义音色（可直接输入）", style = MaterialTheme.typography.labelSmall) },
+        label = { Text(stringResource(R.string.sessions_detail_custom_voice), style = MaterialTheme.typography.labelSmall) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth()
     )
@@ -1794,18 +1923,18 @@ private fun ShareExpirySelector(
     onChange: (Int) -> Unit
 ) {
     val options = listOf(
-        1 to "1 天",
-        7 to "7 天",
-        30 to "30 天",
-        90 to "90 天",
-        365 to "365 天"
+        1 to R.string.sessions_detail_expiry_1d,
+        7 to R.string.sessions_detail_expiry_7d,
+        30 to R.string.sessions_detail_expiry_30d,
+        90 to R.string.sessions_detail_expiry_90d,
+        365 to R.string.sessions_detail_expiry_365d
     )
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        options.forEach { (days, label) ->
+        options.forEach { (days, labelRes) ->
             FilterChip(
                 selected = value == days,
                 onClick = { onChange(days) },
-                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                label = { Text(stringResource(labelRes), style = MaterialTheme.typography.labelSmall) },
                 colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
                     selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
                     selectedLabelColor = MaterialTheme.colorScheme.primary
@@ -1841,19 +1970,19 @@ private fun CustomPromptEditor(
             OutlinedTextField(
                 value = item.title,
                 onValueChange = onTitleChange,
-                label = { Text("标题", style = MaterialTheme.typography.labelSmall) },
+                label = { Text(stringResource(R.string.sessions_detail_title_field), style = MaterialTheme.typography.labelSmall) },
                 singleLine = true,
                 modifier = Modifier.weight(1f)
             )
             IconButton(onClick = onRemove, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Filled.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.common_delete), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
             }
         }
         Spacer(Modifier.height(6.dp))
         OutlinedTextField(
             value = item.content,
             onValueChange = onContentChange,
-            label = { Text("内容", style = MaterialTheme.typography.labelSmall) },
+            label = { Text(stringResource(R.string.sessions_detail_content_field), style = MaterialTheme.typography.labelSmall) },
             minLines = 2,
             maxLines = 6,
             modifier = Modifier.fillMaxWidth()
@@ -1922,7 +2051,7 @@ private fun PromptStackChip(
         // 启用/禁用指示
         Icon(
             imageVector = if (disabled) Icons.Filled.Close else Icons.Filled.Check,
-            contentDescription = if (disabled) "已禁用" else "已启用",
+            contentDescription = if (disabled) stringResource(R.string.sessions_detail_disabled) else stringResource(R.string.sessions_detail_enabled),
             tint = if (disabled) MaterialTheme.colorScheme.onSurfaceVariant else SuccessGreen,
             modifier = Modifier.size(14.dp)
         )

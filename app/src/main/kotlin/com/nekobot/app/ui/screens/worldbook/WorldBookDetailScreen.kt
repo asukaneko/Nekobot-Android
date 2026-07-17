@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -31,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.nekobot.app.R
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.model.WorldBook
 import com.nekobot.app.data.model.WorldBookEntry
@@ -138,7 +140,7 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
             },
             onSuccess = { updated ->
                 _book.value = updated
-                showToast("已更新世界书")
+                showToast(string(R.string.worldbook_updated))
             }
         )
     }
@@ -211,7 +213,7 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
                 onSuccess = {
                     _entries.value = _entries.value + it
                     _showEntryDialog.value = false
-                    showToast("已创建条目")
+                    showToast(string(R.string.worldbook_entry_created))
                 }
             )
         } else {
@@ -222,7 +224,7 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
                     _entries.value = _entries.value.map { if (it.id == entryId) updated else it }
                     _showEntryDialog.value = false
                     _editingEntry.value = null
-                    showToast("已更新条目")
+                    showToast(string(R.string.worldbook_entry_updated))
                 }
             )
         }
@@ -234,7 +236,7 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
             block = { unified.deleteEntry(currentBookId, id) },
             onSuccess = {
                 _entries.value = _entries.value.filterNot { it.id == id }
-                showToast("已删除条目")
+                showToast(string(R.string.worldbook_entry_deleted))
             }
         )
     }
@@ -248,7 +250,7 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
             block = { unified.aiGenerateWorldBookEntries(currentBookId, topic) },
             onSuccess = { newEntries ->
                 _entries.value = _entries.value + (newEntries ?: emptyList())
-                showToast("AI 已生成 ${newEntries?.size ?: 0} 条条目")
+                showToast(string(R.string.worldbook_entry_ai_generated, newEntries?.size ?: 0))
             }
         )
     }
@@ -286,7 +288,7 @@ fun WorldBookDetailScreen(
             TopAppBar(
                 title = {
                     Text(
-                        book?.displayName ?: "世界书详情",
+                        book?.displayName ?: stringResource(R.string.worldbook_detail_title),
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -299,17 +301,17 @@ fun WorldBookDetailScreen(
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.common_back),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
                 actions = {
                     IconButton(onClick = { showEditBookDialog = true }) {
-                        Icon(Icons.Filled.Edit, contentDescription = "编辑书信息", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.worldbook_edit_book), tint = MaterialTheme.colorScheme.primary)
                     }
                     IconButton(onClick = { showDeleteBookDialog = true }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "删除书", tint = MaterialTheme.colorScheme.error)
+                        Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.worldbook_delete_book), tint = MaterialTheme.colorScheme.error)
                     }
                 }
             )
@@ -347,18 +349,18 @@ fun WorldBookDetailScreen(
                 // 条目列表标题 + 新建按钮 + AI 生成按钮
                 item {
                     SectionHeader(
-                        title = "条目列表",
-                        subtitle = "共 ${entries.size} 条"
+                        title = stringResource(R.string.worldbook_entries_title),
+                        subtitle = stringResource(R.string.worldbook_entries_subtitle, entries.size)
                     ) {
                         TextButton(onClick = { vm.startNewEntry() }) {
                             Icon(Icons.Filled.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(4.dp))
-                            Text("新建条目", color = MaterialTheme.colorScheme.primary)
+                            Text(stringResource(R.string.worldbook_new_entry), color = MaterialTheme.colorScheme.primary)
                         }
                         TextButton(onClick = { showAiEntriesDialog = true }) {
                             Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(4.dp))
-                            Text("AI 生成条目", color = MaterialTheme.colorScheme.primary)
+                            Text(stringResource(R.string.worldbook_ai_generate_entry), color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
@@ -373,7 +375,7 @@ fun WorldBookDetailScreen(
                 if (entries.isEmpty()) {
                     item {
                         Text(
-                            "暂无条目，点击右上角新建",
+                            stringResource(R.string.worldbook_entries_empty),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(vertical = 24.dp)
@@ -404,10 +406,10 @@ fun WorldBookDetailScreen(
     if (showDeleteBookDialog) {
         NekoDialog(
             onDismiss = { showDeleteBookDialog = false },
-            title = "删除世界书",
-            message = "确定要删除该世界书及其所有条目吗？此操作不可撤销。",
-            confirmText = "删除",
-            cancelText = "取消",
+            title = stringResource(R.string.worldbook_delete_book_title),
+            message = stringResource(R.string.worldbook_delete_book_message),
+            confirmText = stringResource(R.string.common_delete),
+            cancelText = stringResource(R.string.common_cancel),
             onConfirm = {
                 showDeleteBookDialog = false
                 vm.deleteBook(onBack)
@@ -420,10 +422,10 @@ fun WorldBookDetailScreen(
     if (deleteEntryId != null) {
         NekoDialog(
             onDismiss = { deleteEntryId = null },
-            title = "删除条目",
-            message = "确定要删除该条目吗？",
-            confirmText = "删除",
-            cancelText = "取消",
+            title = stringResource(R.string.worldbook_delete_entry_title),
+            message = stringResource(R.string.worldbook_delete_entry_message),
+            confirmText = stringResource(R.string.common_delete),
+            cancelText = stringResource(R.string.common_cancel),
             onConfirm = {
                 deleteEntryId?.let { vm.deleteEntry(it) }
                 deleteEntryId = null
@@ -479,7 +481,7 @@ private fun BookInfoCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = book?.displayName ?: "未命名世界书",
+                    text = book?.displayName ?: stringResource(R.string.worldbook_unnamed),
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Bold
@@ -494,6 +496,10 @@ private fun BookInfoCard(
                 }
                 Spacer(Modifier.height(8.dp))
                 // 绑定角色：点击可直接修改，显示所有已绑定角色名
+                val boundNamesText = if (boundCharacterNames.isEmpty())
+                    stringResource(R.string.worldbook_bound_characters_none)
+                else
+                    boundCharacterNames.joinToString(", ")
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
@@ -502,14 +508,14 @@ private fun BookInfoCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "绑定角色：${if (boundCharacterNames.isEmpty()) "无（公共世界书）" else boundCharacterNames.joinToString(", ")}",
+                        text = stringResource(R.string.worldbook_bound_characters, boundNamesText),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
                     Spacer(Modifier.width(4.dp))
                     Icon(
                         Icons.Filled.ArrowDropDown,
-                        contentDescription = "选择角色",
+                        contentDescription = stringResource(R.string.worldbook_select_character),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -541,7 +547,7 @@ private fun EntryItem(
             Column(modifier = Modifier.weight(1f)) {
                 // 内容预览（关键词上方）
                 Text(
-                    text = entry.content.orEmpty().ifBlank { "（无内容）" },
+                    text = entry.content.orEmpty().ifBlank { stringResource(R.string.worldbook_no_content) },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 3,
@@ -550,7 +556,7 @@ private fun EntryItem(
                 if (!entry.comment.isNullOrBlank()) {
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = "备注：${entry.comment}",
+                        text = stringResource(R.string.worldbook_comment, entry.comment),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -589,18 +595,18 @@ private fun EntryItem(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    SwitchLabel("常驻", entry.constant == true)
-                    SwitchLabel("选择", entry.selective == true)
-                    SwitchLabel("启用", entry.enabled == true)
+                    SwitchLabel(stringResource(R.string.worldbook_constant), entry.constant == true)
+                    SwitchLabel(stringResource(R.string.worldbook_selective), entry.selective == true)
+                    SwitchLabel(stringResource(R.string.worldbook_enabled), entry.enabled == true)
                 }
             }
             Spacer(Modifier.width(8.dp))
             Column {
                 IconButton(onClick = onEdit) {
-                    Icon(Icons.Filled.Edit, contentDescription = "编辑", tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.common_edit), tint = MaterialTheme.colorScheme.primary)
                 }
                 IconButton(onClick = onDelete) {
-                    Icon(Icons.Filled.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.error)
+                    Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.common_delete), tint = MaterialTheme.colorScheme.error)
                 }
             }
         }
@@ -645,9 +651,9 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
 
     NekoDialog(
         onDismiss = { vm.dismissEntryDialog() },
-        title = if (isEdit) "编辑条目" else "新建条目",
-        confirmText = "保存",
-        cancelText = "取消",
+        title = if (isEdit) stringResource(R.string.worldbook_edit_entry) else stringResource(R.string.worldbook_new_entry),
+        confirmText = stringResource(R.string.common_save),
+        cancelText = stringResource(R.string.common_cancel),
         onConfirm = { vm.saveEntry() },
         onCancel = { vm.dismissEntryDialog() }
     ) {
@@ -659,7 +665,7 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
                 .verticalScroll(rememberScrollState())
         ) {
             // 关键词（逗号分隔）
-            Text("关键词（逗号分隔）", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.worldbook_field_keys), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
             NekoTextField(
                 value = keys,
@@ -668,7 +674,7 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
             )
             Spacer(Modifier.height(10.dp))
             // 内容（多行）
-            Text("内容", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.worldbook_field_content), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
             NekoTextField(
                 value = content,
@@ -679,7 +685,7 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
             )
             Spacer(Modifier.height(10.dp))
             // 备注
-            Text("备注", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.worldbook_field_comment), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
             NekoTextField(
                 value = comment,
@@ -688,7 +694,7 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
             )
             Spacer(Modifier.height(10.dp))
             // 位置下拉
-            Text("位置", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.worldbook_field_position), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
             ExposedDropdownMenuBox(
                 expanded = positionExpanded,
@@ -730,7 +736,7 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
             }
             Spacer(Modifier.height(10.dp))
             // 优先级（数字）
-            Text("优先级", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.worldbook_field_priority), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
             NekoTextField(
                 value = priority.toString(),
@@ -740,10 +746,10 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
             )
             Spacer(Modifier.height(12.dp))
             // 开关组
-            SwitchRow("启用", enabled) { vm.entryEnabled.value = it }
-            SwitchRow("常驻", constant) { vm.entryConstant.value = it }
-            SwitchRow("选择", selective) { vm.entrySelective.value = it }
-            SwitchRow("大小写敏感", caseSensitive) { vm.entryCaseSensitive.value = it }
+            SwitchRow(stringResource(R.string.worldbook_enabled), enabled) { vm.entryEnabled.value = it }
+            SwitchRow(stringResource(R.string.worldbook_constant), constant) { vm.entryConstant.value = it }
+            SwitchRow(stringResource(R.string.worldbook_selective), selective) { vm.entrySelective.value = it }
+            SwitchRow(stringResource(R.string.worldbook_case_sensitive), caseSensitive) { vm.entryCaseSensitive.value = it }
         }
     }
 }
@@ -791,9 +797,9 @@ private fun EditBookDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = "编辑世界书",
-        confirmText = "保存",
-        cancelText = "取消",
+        title = stringResource(R.string.worldbook_edit_book_title),
+        confirmText = stringResource(R.string.common_save),
+        cancelText = stringResource(R.string.common_cancel),
         onConfirm = {
             if (name.isBlank()) return@NekoDialog
             onConfirm(name.trim(), desc.trim().takeIf { it.isNotBlank() }, selectedIds.toList())
@@ -807,7 +813,7 @@ private fun EditBookDialog(
                 .heightIn(max = 460.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            Text("名称", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.worldbook_field_name), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
             NekoTextField(
                 value = name,
@@ -815,7 +821,7 @@ private fun EditBookDialog(
                 singleLine = true
             )
             Spacer(Modifier.height(10.dp))
-            Text("描述", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.worldbook_field_description), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
             NekoTextField(
                 value = desc,
@@ -825,17 +831,17 @@ private fun EditBookDialog(
                 maxLines = 5
             )
             Spacer(Modifier.height(10.dp))
-            Text("绑定角色（可多选）", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.worldbook_bind_characters_multi), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
             if (charList.isEmpty()) {
                 Text(
-                    "暂无角色，请先在角色卡页面创建",
+                    stringResource(R.string.worldbook_no_characters),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
                 )
             } else {
                 Text(
-                    "已选 ${selectedIds.size} / ${charList.size} 个角色",
+                    stringResource(R.string.worldbook_selected_count, selectedIds.size, charList.size),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -879,7 +885,7 @@ private fun EditBookDialog(
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            text = c.name ?: "未命名角色",
+                            text = c.name ?: stringResource(R.string.worldbook_unnamed_character),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.weight(1f)
@@ -912,14 +918,14 @@ private fun BindCharacterDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = "绑定角色（可多选）",
-        confirmText = "保存",
-        cancelText = "取消",
+        title = stringResource(R.string.worldbook_bind_characters_multi),
+        confirmText = stringResource(R.string.common_save),
+        cancelText = stringResource(R.string.common_cancel),
         onConfirm = { onConfirm(selectedIds.toList()) },
         onCancel = onDismiss
     ) {
         Text(
-            "绑定后条目优先在所绑定角色的会话中生效；不选则作为公共世界书。",
+            stringResource(R.string.worldbook_bind_characters_hint),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -927,14 +933,14 @@ private fun BindCharacterDialog(
         if (charList.isEmpty()) {
             // 角色列表为空时明确提示
             Text(
-                "暂无角色，请先在角色卡页面创建",
+                stringResource(R.string.worldbook_no_characters),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(vertical = 16.dp)
             )
         } else {
             Text(
-                "已选 ${selectedIds.size} / ${charList.size} 个角色",
+                stringResource(R.string.worldbook_selected_count, selectedIds.size, charList.size),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
             )
@@ -984,7 +990,7 @@ private fun BindCharacterDialog(
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            text = c.name ?: "未命名角色",
+                            text = c.name ?: stringResource(R.string.worldbook_unnamed_character),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.weight(1f)
@@ -1041,15 +1047,15 @@ private fun AiGenerateEntriesDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = "AI 生成条目",
-        confirmText = "生成",
-        cancelText = "取消",
+        title = stringResource(R.string.worldbook_ai_generate_entry),
+        confirmText = stringResource(R.string.worldbook_generate),
+        cancelText = stringResource(R.string.common_cancel),
         onConfirm = {
             onConfirm(topic.trim().takeIf { it.isNotBlank() })
         },
         onCancel = onDismiss
     ) {
-        Text("生成主题（可选）", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.worldbook_field_topic_optional), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         OutlinedTextField(
             value = topic,
@@ -1060,7 +1066,7 @@ private fun AiGenerateEntriesDialog(
             modifier = Modifier.fillMaxWidth(),
             placeholder = {
                 Text(
-                    "例如：补充这个角色的家乡风貌、童年回忆、重要 NPC 关系、特殊物品等",
+                    stringResource(R.string.worldbook_entry_topic_placeholder),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1078,7 +1084,7 @@ private fun AiGenerateEntriesDialog(
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "提示：留空将由 AI 根据世界书已有内容自动构思新条目；填写后 AI 会围绕主题生成 5-10 条新条目并追加到列表。",
+            stringResource(R.string.worldbook_entry_topic_hint),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

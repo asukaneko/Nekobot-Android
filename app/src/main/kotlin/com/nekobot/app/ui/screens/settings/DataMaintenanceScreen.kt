@@ -51,10 +51,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.data.local.db.NekobotDatabase
@@ -130,10 +132,10 @@ class DataMaintenanceViewModel : BaseViewModel() {
                 withContext(Dispatchers.IO) {
                     context.cacheDir?.let { dir -> dir.deleteRecursively(); dir.mkdirs() }
                 }
-                showToast("缓存已清除")
+                showToast(string(R.string.maintenance_cache_cleared))
                 refreshStorageInfo(context)
             } catch (e: Exception) {
-                showError(e.message ?: "清除缓存失败")
+                showError(e.message ?: string(R.string.maintenance_clear_cache_failed))
             } finally {
                 setLoading(false)
             }
@@ -153,10 +155,10 @@ class DataMaintenanceViewModel : BaseViewModel() {
                         context.deleteDatabase(name)
                     }
                 }
-                showToast("所有本地数据已清除")
+                showToast(string(R.string.maintenance_all_data_cleared))
                 refreshStorageInfo(context)
             } catch (e: Exception) {
-                showError(e.message ?: "清除数据失败")
+                showError(e.message ?: string(R.string.maintenance_clear_data_failed))
             } finally {
                 setLoading(false)
             }
@@ -196,13 +198,13 @@ class DataMaintenanceViewModel : BaseViewModel() {
                     target
                 }
                 if (result != null) {
-                    _exportResult.value = "已导出到缓存: ${result.name}"
-                    showToast("已导出到缓存: ${result.name}")
+                    _exportResult.value = string(R.string.maintenance_exported_to_cache, result.name)
+                    showToast(string(R.string.maintenance_exported_to_cache, result.name))
                 } else {
-                    showError("未找到本地数据库文件")
+                    showError(string(R.string.maintenance_no_db_file))
                 }
             } catch (e: Exception) {
-                showError(e.message ?: "导出失败")
+                showError(e.message ?: string(R.string.maintenance_export_failed))
             } finally {
                 setLoading(false)
             }
@@ -272,12 +274,12 @@ fun DataMaintenanceScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("数据维护", color = MaterialTheme.colorScheme.onSurface) },
+                title = { Text(stringResource(R.string.maintenance_title), color = MaterialTheme.colorScheme.onSurface) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.common_back),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -287,7 +289,7 @@ fun DataMaintenanceScreen(onBack: () -> Unit) {
                         IconButton(onClick = { vm.refreshStorageInfo(context) }) {
                             Icon(
                                 Icons.Filled.Refresh,
-                                contentDescription = "刷新",
+                                contentDescription = stringResource(R.string.maintenance_refresh),
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
@@ -315,10 +317,10 @@ fun DataMaintenanceScreen(onBack: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "缓存文件", subtitle = "查看应用缓存目录中的文件")
+                        SectionHeader(title = stringResource(R.string.maintenance_cache_files), subtitle = stringResource(R.string.maintenance_cache_files_subtitle))
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            text = "应用缓存目录包含导出的数据库文件、下载的临时文件等。",
+                            text = stringResource(R.string.maintenance_cache_desc_local),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -329,7 +331,7 @@ fun DataMaintenanceScreen(onBack: () -> Unit) {
                         ) {
                             Icon(Icons.Filled.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(8.dp))
-                            Text("打开缓存文件夹")
+                            Text(stringResource(R.string.maintenance_open_cache_folder))
                         }
                     }
                 }
@@ -347,24 +349,24 @@ fun DataMaintenanceScreen(onBack: () -> Unit) {
 
                     // 1. 存储使用情况
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "存储使用情况", subtitle = "本地缓存与数据库占用")
+                        SectionHeader(title = stringResource(R.string.maintenance_storage_usage), subtitle = stringResource(R.string.maintenance_storage_subtitle))
                         Spacer(Modifier.height(12.dp))
 
                         StorageRow(
                             icon = Icons.Filled.Storage,
-                            label = "缓存大小",
+                            label = stringResource(R.string.maintenance_cache_size),
                             value = storageInfo.cacheSizeText
                         )
                         Spacer(Modifier.height(8.dp))
                         StorageRow(
                             icon = Icons.Filled.Storage,
-                            label = "数据库大小",
+                            label = stringResource(R.string.maintenance_db_size),
                             value = storageInfo.dbSizeText
                         )
                         Spacer(Modifier.height(8.dp))
                         StorageRow(
                             icon = Icons.Filled.Storage,
-                            label = "总占用",
+                            label = stringResource(R.string.maintenance_total_size),
                             value = storageInfo.totalSizeText,
                             highlighted = true
                         )
@@ -372,10 +374,10 @@ fun DataMaintenanceScreen(onBack: () -> Unit) {
 
                     // 2. 清除缓存
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "清除缓存", subtitle = "删除临时缓存文件")
+                        SectionHeader(title = stringResource(R.string.maintenance_clear_cache_title), subtitle = stringResource(R.string.maintenance_clear_cache_subtitle))
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            text = "清除应用缓存目录中的临时文件，包括图片缓存、下载临时文件等。不会影响本地数据库。",
+                            text = stringResource(R.string.maintenance_clear_cache_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -387,16 +389,16 @@ fun DataMaintenanceScreen(onBack: () -> Unit) {
                         ) {
                             Icon(Icons.Filled.DeleteSweep, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
                             Spacer(Modifier.width(8.dp))
-                            Text("清除缓存", color = MaterialTheme.colorScheme.onPrimary)
+                            Text(stringResource(R.string.maintenance_clear_cache_title), color = MaterialTheme.colorScheme.onPrimary)
                         }
                     }
 
                     // 3. 清除所有本地数据
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "清除所有本地数据", subtitle = "删除本地数据库")
+                        SectionHeader(title = stringResource(R.string.maintenance_clear_all_title), subtitle = stringResource(R.string.maintenance_clear_all_subtitle))
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            text = "警告：此操作将删除所有本地数据库（包括会话、消息、角色等数据），且不可恢复。请谨慎操作。",
+                            text = stringResource(R.string.maintenance_clear_all_warning),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error
                         )
@@ -408,16 +410,16 @@ fun DataMaintenanceScreen(onBack: () -> Unit) {
                         ) {
                             Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
                             Spacer(Modifier.width(8.dp))
-                            Text("清除所有本地数据", color = MaterialTheme.colorScheme.onPrimary)
+                            Text(stringResource(R.string.maintenance_clear_all_title), color = MaterialTheme.colorScheme.onPrimary)
                         }
                     }
 
                     // 4. 导出本地数据
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "导出本地数据", subtitle = "备份本地数据库到文件")
+                        SectionHeader(title = stringResource(R.string.maintenance_export_title), subtitle = stringResource(R.string.maintenance_export_subtitle))
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            text = "将本地数据库文件导出到应用缓存目录，可用于备份或迁移。",
+                            text = stringResource(R.string.maintenance_export_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -428,7 +430,7 @@ fun DataMaintenanceScreen(onBack: () -> Unit) {
                         ) {
                             Icon(Icons.Filled.Download, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(8.dp))
-                            Text("导出本地数据库")
+                            Text(stringResource(R.string.maintenance_export_button))
                         }
 
                         exportResult?.let { result ->
@@ -444,10 +446,10 @@ fun DataMaintenanceScreen(onBack: () -> Unit) {
 
                     // 5. 缓存文件
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "缓存文件", subtitle = "查看应用缓存目录中的文件")
+                        SectionHeader(title = stringResource(R.string.maintenance_cache_files), subtitle = stringResource(R.string.maintenance_cache_files_subtitle))
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            text = "查看应用缓存目录中的文件，包括导出的数据库备份、下载的临时文件等。点击文件可分享或打开。",
+                            text = stringResource(R.string.maintenance_cache_files_detail),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -458,7 +460,7 @@ fun DataMaintenanceScreen(onBack: () -> Unit) {
                         ) {
                             Icon(Icons.Filled.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(8.dp))
-                            Text("打开缓存文件夹")
+                            Text(stringResource(R.string.maintenance_open_cache_folder))
                         }
                     }
                 }
@@ -472,14 +474,14 @@ fun DataMaintenanceScreen(onBack: () -> Unit) {
     if (showClearDataDialog) {
         NekoDialog(
             onDismiss = { showClearDataDialog = false },
-            title = "确认清除所有本地数据",
-            message = "此操作将永久删除所有本地数据库（会话、消息、角色等），且不可恢复。确定继续吗？",
-            confirmText = "确认清除",
+            title = stringResource(R.string.maintenance_confirm_clear_title),
+            message = stringResource(R.string.maintenance_confirm_clear_msg),
+            confirmText = stringResource(R.string.maintenance_confirm_clear),
             onConfirm = {
                 showClearDataDialog = false
                 vm.clearAllData(context)
             },
-            cancelText = "取消",
+            cancelText = stringResource(R.string.common_cancel),
             onCancel = { showClearDataDialog = false }
         )
     }
@@ -499,7 +501,7 @@ private fun CacheFilesDialog(context: android.content.Context, onDismiss: () -> 
         // 列出 cacheDir 下的文件和子目录
         dir.listFiles()?.forEach { f ->
             if (f.isDirectory) {
-                files.add(f to "文件夹")
+                files.add(f to context.getString(R.string.maintenance_folder))
                 f.listFiles()?.forEach { sub ->
                     if (sub.isFile) {
                         files.add(sub to "${f.name}/")
@@ -523,7 +525,7 @@ private fun CacheFilesDialog(context: android.content.Context, onDismiss: () -> 
                     Icon(Icons.Filled.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = "缓存文件 (${cacheFiles.size})",
+                        text = stringResource(R.string.maintenance_cache_files_count, cacheFiles.size),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Bold
@@ -539,7 +541,7 @@ private fun CacheFilesDialog(context: android.content.Context, onDismiss: () -> 
                 Spacer(Modifier.height(12.dp))
                 if (cacheFiles.isEmpty()) {
                     Text(
-                        text = "缓存目录为空",
+                        text = stringResource(R.string.maintenance_cache_empty),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(16.dp)
@@ -568,7 +570,7 @@ private fun CacheFilesDialog(context: android.content.Context, onDismiss: () -> 
                                                 }
                                                 context.startActivity(intent)
                                             } catch (e: Exception) {
-                                                Toast.makeText(context, "无法打开文件: ${e.message}", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(context, context.getString(R.string.maintenance_cannot_open_file, e.message), Toast.LENGTH_SHORT).show()
                                             }
                                         }
                                     }
@@ -602,7 +604,7 @@ private fun CacheFilesDialog(context: android.content.Context, onDismiss: () -> 
                 }
                 Spacer(Modifier.height(12.dp))
                 OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-                    Text("关闭")
+                    Text(stringResource(R.string.common_close))
                 }
             }
         }

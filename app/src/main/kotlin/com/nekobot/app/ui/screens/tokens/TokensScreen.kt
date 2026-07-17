@@ -46,12 +46,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.JsonElement
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.TokenRankings
 import com.nekobot.app.data.model.TokenStats
@@ -155,7 +157,7 @@ class TokensViewModel : BaseViewModel() {
                     is Resource.Loading -> Unit
                 }
             } catch (e: Exception) {
-                showError(e.message ?: "加载 Token 用量失败")
+                showError(e.message ?: string(R.string.tokens_load_failed))
             } finally {
                 setLoading(false)
             }
@@ -237,7 +239,7 @@ fun TokensScreen() {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Token 用量") },
+                title = { Text(stringResource(R.string.tokens_title)) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
@@ -263,16 +265,16 @@ fun TokensScreen() {
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        FilterChip(selected = dateRange == "today", onClick = { vm.setDateRange("today") }, label = { Text("今日") })
-                        FilterChip(selected = dateRange == "month", onClick = { vm.setDateRange("month") }, label = { Text("本月") })
-                        FilterChip(selected = dateRange == "total", onClick = { vm.setDateRange("total") }, label = { Text("全部") })
+                        FilterChip(selected = dateRange == "today", onClick = { vm.setDateRange("today") }, label = { Text(stringResource(R.string.tokens_range_today)) })
+                        FilterChip(selected = dateRange == "month", onClick = { vm.setDateRange("month") }, label = { Text(stringResource(R.string.tokens_range_month)) })
+                        FilterChip(selected = dateRange == "total", onClick = { vm.setDateRange("total") }, label = { Text(stringResource(R.string.tokens_range_total)) })
                         FilterChip(
                             selected = dateRange == "custom",
                             onClick = {
                                 if (startDate == null) showStartPicker = true
                                 else vm.setDateRange("custom")
                             },
-                            label = { Text("自定义") }
+                            label = { Text(stringResource(R.string.tokens_range_custom)) }
                         )
                     }
                 }
@@ -283,12 +285,18 @@ fun TokensScreen() {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             AssistChip(
                                 onClick = { showStartPicker = true },
-                                label = { Text("起: ${startDate ?: "选择"}") },
+                                label = {
+                                    val start = startDate ?: stringResource(R.string.tokens_select_date)
+                                    Text(stringResource(R.string.tokens_range_start, start))
+                                },
                                 leadingIcon = { Icon(Icons.Filled.CalendarMonth, contentDescription = null) }
                             )
                             AssistChip(
                                 onClick = { showEndPicker = true },
-                                label = { Text("止: ${endDate ?: "选择"}") },
+                                label = {
+                                    val end = endDate ?: stringResource(R.string.tokens_select_date)
+                                    Text(stringResource(R.string.tokens_range_end, end))
+                                },
                                 leadingIcon = { Icon(Icons.Filled.CalendarMonth, contentDescription = null) }
                             )
                         }
@@ -312,25 +320,25 @@ fun TokensScreen() {
                             StatChipGrid(stats = s, dateRange = dateRange, startDate = startDate, endDate = endDate)
                             // 拆分卡片标题随选择日期变化
                             val breakdownTitle = when (dateRange) {
-                                "today" -> "今日 Token 拆分"
-                                "month" -> "本月 Token 拆分"
-                                "total" -> "累计 Token 拆分"
+                                "today" -> stringResource(R.string.tokens_breakdown_today)
+                                "month" -> stringResource(R.string.tokens_breakdown_month)
+                                "total" -> stringResource(R.string.tokens_breakdown_total)
                                 "custom" -> {
                                     val seg = listOfNotNull(startDate, endDate).joinToString(" ~ ")
-                                    if (seg.isBlank()) "自定义范围 Token 拆分" else "自定义范围 Token 拆分（$seg）"
+                                    if (seg.isBlank()) stringResource(R.string.tokens_breakdown_custom) else stringResource(R.string.tokens_breakdown_custom_range, seg)
                                 }
-                                else -> "Token 拆分"
+                                else -> stringResource(R.string.tokens_breakdown)
                             }
                             GlassCard(modifier = Modifier.fillMaxWidth()) {
                                 SectionHeader(title = breakdownTitle)
                                 Spacer(Modifier.height(8.dp))
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Column {
-                                        Text("输入", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(stringResource(R.string.tokens_input), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         Text("${s.todayInput ?: 0L}", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                                     }
                                     Column(horizontalAlignment = Alignment.End) {
-                                        Text("输出", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(stringResource(R.string.tokens_output), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         Text("${s.todayOutput ?: 0L}", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
                                     }
                                 }
@@ -341,16 +349,20 @@ fun TokensScreen() {
 
                 item(key = "rankings", contentType = "rankings") {
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "Token 排行榜")
+                        SectionHeader(title = stringResource(R.string.tokens_rankings_title))
                         Spacer(Modifier.height(8.dp))
                         RankingSegmentedBar(
-                            tabs = listOf("会话", "模型", "用途"),
+                            tabs = listOf(
+                                stringResource(R.string.tokens_ranking_sessions),
+                                stringResource(R.string.tokens_ranking_models),
+                                stringResource(R.string.tokens_ranking_purposes)
+                            ),
                             selectedIndex = rankingTab,
                             onSelect = { rankingTab = it }
                         )
                         Spacer(Modifier.height(12.dp))
                         if (parsedRanking.isEmpty()) {
-                            Text("暂无数据", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.common_empty_data), color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
                             val maxTokens = parsedRanking.maxOf { it.second }.coerceAtLeast(1L)
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -365,7 +377,10 @@ fun TokensScreen() {
                 if (records.isNotEmpty()) {
                     item(key = "records_header", contentType = "section_header") {
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            SectionHeader(title = "Token 记录", subtitle = "共 ${records.size} 条，第 ${recordPage + 1}/$totalPages 页 · 每页 $pageSize 条")
+                            SectionHeader(
+                                title = stringResource(R.string.tokens_records_title),
+                                subtitle = stringResource(R.string.tokens_records_subtitle, records.size, recordPage + 1, totalPages, pageSize)
+                            )
                         }
                     }
                     groupedRecords.forEach { (date, dateRecords) ->
@@ -381,9 +396,9 @@ fun TokensScreen() {
                     if (totalPages > 1) {
                         item(key = "records_pagination", contentType = "controls") {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                TextButton(onClick = { if (recordPage > 0) recordPage-- }, enabled = recordPage > 0) { Text("上一页") }
+                                TextButton(onClick = { if (recordPage > 0) recordPage-- }, enabled = recordPage > 0) { Text(stringResource(R.string.tokens_prev_page)) }
                                 Text("${recordPage + 1} / $totalPages", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                TextButton(onClick = { if (recordPage < totalPages - 1) recordPage++ }, enabled = recordPage < totalPages - 1) { Text("下一页") }
+                                TextButton(onClick = { if (recordPage < totalPages - 1) recordPage++ }, enabled = recordPage < totalPages - 1) { Text(stringResource(R.string.tokens_next_page)) }
                             }
                         }
                     }
@@ -438,21 +453,21 @@ private fun StatChipGrid(
 ) {
     // 根据选择的日期范围决定展示哪个时间维度的 token 数
     val (rangeLabel, rangeValue) = when (dateRange) {
-        "today" -> "今日 Token" to "${stats.today ?: stats.todayTotal}"
-        "month" -> "本月 Token" to "${stats.month ?: 0L}"
-        "total" -> "累计 Token" to "${stats.totalDisplay}"
+        "today" -> stringResource(R.string.tokens_stat_today) to "${stats.today ?: stats.todayTotal}"
+        "month" -> stringResource(R.string.tokens_stat_month) to "${stats.month ?: 0L}"
+        "total" -> stringResource(R.string.tokens_stat_total) to "${stats.totalDisplay}"
         "custom" -> {
-            "自定义范围 Token" to "${(stats.todayInput ?: 0L) + (stats.todayOutput ?: 0L)}"
+            stringResource(R.string.tokens_stat_custom) to "${(stats.todayInput ?: 0L) + (stats.todayOutput ?: 0L)}"
         }
-        else -> "Token" to "${stats.totalDisplay}"
+        else -> stringResource(R.string.tokens_stat_token) to "${stats.totalDisplay}"
     }
     val items = listOf(
         rangeLabel to rangeValue,
-        "消息数" to "${stats.messageCount ?: 0L}",
-        "平均/条" to String.format(Locale.US, "%.0f", stats.avgTokensPerMsg ?: 0.0),
-        "估算费用" to (stats.estimatedCost ?: "—"),
-        "活跃会话" to "${stats.activeSessions ?: 0}",
-        "平均响应" to (stats.avgResponseTime ?: "—")
+        stringResource(R.string.tokens_stat_messages) to "${stats.messageCount ?: 0L}",
+        stringResource(R.string.tokens_stat_avg_per_msg) to String.format(Locale.US, "%.0f", stats.avgTokensPerMsg ?: 0.0),
+        stringResource(R.string.tokens_stat_estimated_cost) to (stats.estimatedCost ?: "—"),
+        stringResource(R.string.tokens_stat_active_sessions) to "${stats.activeSessions ?: 0}",
+        stringResource(R.string.tokens_stat_avg_response) to (stats.avgResponseTime ?: "—")
     )
     items.chunked(2).forEach { row ->
         Row(
@@ -610,12 +625,13 @@ private fun TokenRecordCard(record: TokenRecordUi) {
 
     // 查询会话名，会话不存在时回退到截断的会话 ID
     val sessionId = record.sessionId
+    val sessionPrefix = stringResource(R.string.tokens_session_prefix)
     val sessionDisplay by if (sessionId.isNotBlank()) {
-        androidx.compose.runtime.produceState(initialValue = "会话 ${sessionId.take(8)}", sessionId) {
+        androidx.compose.runtime.produceState(initialValue = sessionPrefix.format(sessionId.take(8)), sessionId) {
             value = withContext(Dispatchers.IO) {
                 when (val res = ServiceContainer.unified.getSession(sessionId)) {
-                    is Resource.Success -> "会话 ${res.data?.displayName?.takeIf { it.isNotBlank() } ?: sessionId.take(8)}"
-                    else -> "会话 ${sessionId.take(8)}"
+                    is Resource.Success -> sessionPrefix.format(res.data?.displayName?.takeIf { it.isNotBlank() } ?: sessionId.take(8))
+                    else -> sessionPrefix.format(sessionId.take(8))
                 }
             }
         }
@@ -638,7 +654,7 @@ private fun TokenRecordCard(record: TokenRecordUi) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    record.model.ifBlank { "未知模型" },
+                    record.model.ifBlank { stringResource(R.string.tokens_unknown_model) },
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold,
@@ -648,7 +664,7 @@ private fun TokenRecordCard(record: TokenRecordUi) {
                 if (record.source.isNotBlank() || record.sessionId.isNotBlank()) {
                     Text(
                         listOfNotNull(
-                            record.source.takeIf { it.isNotBlank() }?.let { "来源 ${sourceLabel(it)}" },
+                            record.source.takeIf { it.isNotBlank() }?.let { stringResource(R.string.tokens_source_prefix, sourceLabel(it)) },
                             sessionDisplay.takeIf { it.isNotBlank() }
                         ).joinToString(" · "),
                         style = MaterialTheme.typography.labelSmall,
@@ -677,9 +693,9 @@ private fun TokenRecordCard(record: TokenRecordUi) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
         Spacer(Modifier.height(10.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TokenMetric(label = "输入", value = record.input, modifier = Modifier.weight(1f))
-            TokenMetric(label = "输出", value = record.output, modifier = Modifier.weight(1f))
-            TokenMetric(label = "合计", value = record.total, emphasized = true, modifier = Modifier.weight(1f))
+            TokenMetric(label = stringResource(R.string.tokens_input), value = record.input, modifier = Modifier.weight(1f))
+            TokenMetric(label = stringResource(R.string.tokens_output), value = record.output, modifier = Modifier.weight(1f))
+            TokenMetric(label = stringResource(R.string.tokens_total), value = record.total, emphasized = true, modifier = Modifier.weight(1f))
         }
         if (!record.cost.isNullOrBlank() || record.durationMs != null || record.ttftMs != null) {
             Spacer(Modifier.height(10.dp))
@@ -687,13 +703,13 @@ private fun TokenRecordCard(record: TokenRecordUi) {
             Spacer(Modifier.height(8.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (!record.cost.isNullOrBlank()) {
-                    Text("费用 ¥${record.cost}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                    Text(stringResource(R.string.tokens_cost, record.cost), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
                 }
                 record.durationMs?.let {
-                    Text("耗时 ${formatDuration(it)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.tokens_duration, formatDuration(it)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 record.ttftMs?.let {
-                    Text("首字 ${formatDuration(it)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.tokens_ttft, formatDuration(it)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -752,7 +768,7 @@ private fun parseTokenRecord(elem: JsonElement): TokenRecordUi? {
         when {
             timestamp.contains('T') -> timestamp.substringBefore('T')
             timestamp.contains(' ') -> timestamp.substringBefore(' ')
-            else -> "日期未知"
+            else -> ServiceContainer.getString(R.string.tokens_date_unknown)
         }
     }
     val input = long("input", "input_tokens") ?: 0L
@@ -775,20 +791,20 @@ private fun parseTokenRecord(elem: JsonElement): TokenRecordUi? {
 }
 
 private fun purposeLabel(purpose: String): String = when (purpose.lowercase()) {
-    "chat" -> "对话"
-    "vision" -> "图片理解"
-    "video" -> "视频理解"
-    "tts" -> "语音合成"
-    "stt" -> "语音识别"
-    "embedding" -> "向量嵌入"
-    "memory" -> "记忆"
-    "plot" -> "剧情"
-    "utility" -> "工具调用"
-    "decision" -> "决策"
-    "heartbeat" -> "心跳"
+    "chat" -> ServiceContainer.getString(R.string.tokens_purpose_chat)
+    "vision" -> ServiceContainer.getString(R.string.tokens_purpose_vision)
+    "video" -> ServiceContainer.getString(R.string.tokens_purpose_video)
+    "tts" -> ServiceContainer.getString(R.string.tokens_purpose_tts)
+    "stt" -> ServiceContainer.getString(R.string.tokens_purpose_stt)
+    "embedding" -> ServiceContainer.getString(R.string.tokens_purpose_embedding)
+    "memory" -> ServiceContainer.getString(R.string.tokens_purpose_memory)
+    "plot" -> ServiceContainer.getString(R.string.tokens_purpose_plot)
+    "utility" -> ServiceContainer.getString(R.string.tokens_purpose_utility)
+    "decision" -> ServiceContainer.getString(R.string.tokens_purpose_decision)
+    "heartbeat" -> ServiceContainer.getString(R.string.tokens_purpose_heartbeat)
     "react" -> "ReAct"
-    "image_gen" -> "图片生成"
-    else -> purpose.ifBlank { "未分类" }
+    "image_gen" -> ServiceContainer.getString(R.string.tokens_purpose_image_gen)
+    else -> purpose.ifBlank { ServiceContainer.getString(R.string.tokens_purpose_uncategorized) }
 }
 
 /**
@@ -806,14 +822,14 @@ private fun purposeColor(purpose: String): Color = when (purpose.lowercase()) {
 
 /** source 字段中文映射 */
 private fun sourceLabel(source: String): String = when (source.lowercase()) {
-    "plot" -> "剧情"
-    "state" -> "状态评估"
-    "memory" -> "记忆抽取"
-    "web" -> "联网搜索"
-    "vision" -> "视觉识别"
-    "stt" -> "语音识别"
-    "rule" -> "规则审查"
-    "heartbeat" -> "心跳"
+    "plot" -> ServiceContainer.getString(R.string.tokens_source_plot)
+    "state" -> ServiceContainer.getString(R.string.tokens_source_state)
+    "memory" -> ServiceContainer.getString(R.string.tokens_source_memory)
+    "web" -> ServiceContainer.getString(R.string.tokens_source_web)
+    "vision" -> ServiceContainer.getString(R.string.tokens_source_vision)
+    "stt" -> ServiceContainer.getString(R.string.tokens_source_stt)
+    "rule" -> ServiceContainer.getString(R.string.tokens_source_rule)
+    "heartbeat" -> ServiceContainer.getString(R.string.tokens_source_heartbeat)
     else -> source
 }
 
@@ -854,6 +870,7 @@ private fun compactTimestamp(raw: String?): String? {
  * 失败返回 ("未知", 0L)。
  */
 private fun extractRankEntry(elem: JsonElement): Pair<String, Long> {
+    val unknownName = ServiceContainer.getString(R.string.common_unknown)
     return try {
         if (elem.isJsonObject) {
             val obj = elem.asJsonObject
@@ -871,7 +888,7 @@ private fun extractRankEntry(elem: JsonElement): Pair<String, Long> {
                 ?: obj.get("id")?.asString
                 ?: obj.get("_id")?.asString
                 ?: obj.get("key")?.asString
-                ?: "未知"
+                ?: unknownName
             val tokens = obj.get("tokens")?.asLong
                 ?: obj.get("token_count")?.asLong
                 ?: obj.get("total_tokens")?.asLong
@@ -884,10 +901,10 @@ private fun extractRankEntry(elem: JsonElement): Pair<String, Long> {
                 ?: 0L
             Pair(name, tokens)
         } else {
-            Pair("未知", 0L)
+            Pair(unknownName, 0L)
         }
     } catch (e: Exception) {
-        Pair("未知", 0L)
+        Pair(unknownName, 0L)
     }
 }
 
@@ -905,12 +922,12 @@ private fun NekoDatePickerDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(onClick = { onConfirm(state.selectedDateMillis) }) {
-                Text("确定")
+                Text(stringResource(R.string.common_confirm))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
         }
     ) {

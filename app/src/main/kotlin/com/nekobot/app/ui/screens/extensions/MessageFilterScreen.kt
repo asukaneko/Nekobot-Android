@@ -51,10 +51,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.R
 import com.nekobot.app.data.model.MessageFilterConfig
 import com.nekobot.app.data.model.MessageFilterRule
 import com.nekobot.app.data.model.MessageFilterRuleRequest
@@ -146,25 +148,25 @@ fun MessageFilterScreen(onBack: () -> Unit, viewModel: MessageFilterViewModel = 
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("消息过滤", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.msgfilter_title), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     IconButton(onClick = { viewModel.load() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.msgfilter_refresh), tint = MaterialTheme.colorScheme.onSurface)
                     }
                     IconButton(onClick = {
                         editing = null
                         showForm = true
                     }) {
-                        Icon(Icons.Filled.Add, contentDescription = "新建规则", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.msgfilter_new), tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             )
@@ -184,7 +186,7 @@ fun MessageFilterScreen(onBack: () -> Unit, viewModel: MessageFilterViewModel = 
                 // 顶部全局开关
                 item {
                     ToggleChipRow(
-                        label = if (globalEnabled) "全局过滤：已开启" else "全局过滤：已关闭",
+                        label = if (globalEnabled) stringResource(R.string.msgfilter_global_on) else stringResource(R.string.msgfilter_global_off),
                         selected = globalEnabled,
                         onClick = { viewModel.toggleGlobal(!globalEnabled) }
                     )
@@ -215,9 +217,9 @@ fun MessageFilterScreen(onBack: () -> Unit, viewModel: MessageFilterViewModel = 
                                     modifier = Modifier.padding(0.dp)
                                 )
                                 Spacer(Modifier.height(16.dp))
-                                Text("暂无过滤规则", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                                Text(stringResource(R.string.msgfilter_empty_title), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                                 Spacer(Modifier.height(8.dp))
-                                Text("点击右上角新建一条规则", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(stringResource(R.string.msgfilter_empty_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -258,9 +260,9 @@ fun MessageFilterScreen(onBack: () -> Unit, viewModel: MessageFilterViewModel = 
     deleteTarget?.let { rule ->
         NekoDialog(
             onDismiss = { deleteTarget = null },
-            title = "确认删除",
-            message = "确定删除规则「${rule.displayName}」吗？",
-            confirmText = "删除",
+            title = stringResource(R.string.msgfilter_confirm_delete),
+            message = stringResource(R.string.msgfilter_delete_message, rule.displayName),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 rule.id?.let { viewModel.delete(it) }
                 deleteTarget = null
@@ -283,7 +285,7 @@ private fun FilterRuleCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = rule.pattern.ifBlank { "（空规则）" },
+                text = rule.pattern.ifBlank { stringResource(R.string.msgfilter_empty_rule) },
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.SemiBold,
@@ -302,7 +304,7 @@ private fun FilterRuleCard(
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text = if (rule.enabled) "已启用" else "已禁用",
+                    text = if (rule.enabled) stringResource(R.string.msgfilter_status_enabled) else stringResource(R.string.msgfilter_status_disabled),
                     style = MaterialTheme.typography.labelSmall,
                     color = if (rule.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -312,15 +314,15 @@ private fun FilterRuleCard(
             var menuExpanded by remember { mutableStateOf(false) }
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "操作", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.msgfilter_action), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false }
                 ) {
-                    DropdownMenuItem(text = { Text("编辑") }, onClick = { menuExpanded = false; onEdit() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.common_edit)) }, onClick = { menuExpanded = false; onEdit() })
                     DropdownMenuItem(text = {
-                        Text("删除", color = ErrorRed)
+                        Text(stringResource(R.string.common_delete), color = ErrorRed)
                     }, onClick = { menuExpanded = false; onDelete() })
                 }
             }
@@ -333,14 +335,14 @@ private fun FilterRuleCard(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            BadgeChip(text = "类型: ${rule.type}")
-            BadgeChip(text = "动作: ${rule.action}")
-            BadgeChip(text = "目标: ${rule.filterTarget}")
-            BadgeChip(text = "范围: ${rule.sessionScope}")
+            BadgeChip(text = stringResource(R.string.msgfilter_type_prop, rule.type))
+            BadgeChip(text = stringResource(R.string.msgfilter_action_prop, rule.action))
+            BadgeChip(text = stringResource(R.string.msgfilter_target_prop, rule.filterTarget))
+            BadgeChip(text = stringResource(R.string.msgfilter_scope_prop, rule.sessionScope))
         }
         if (rule.sessionScope == "specific" && !rule.sessionId.isNullOrBlank()) {
             Spacer(Modifier.height(4.dp))
-            Text("指定会话: ${rule.sessionId}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(stringResource(R.string.msgfilter_session_id, rule.sessionId), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -365,8 +367,8 @@ private fun FilterRuleFormDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = if (initial == null) "新建过滤规则" else "编辑过滤规则",
-        confirmText = "保存",
+        title = if (initial == null) stringResource(R.string.msgfilter_new_rule) else stringResource(R.string.msgfilter_edit),
+        confirmText = stringResource(R.string.common_save),
         onConfirm = {
             if (pattern.isBlank()) return@NekoDialog
             val req = MessageFilterRuleRequest(
@@ -387,7 +389,7 @@ private fun FilterRuleFormDialog(
                 .verticalScroll(rememberScrollState())
         ) {
             // 模式（必填）
-            LabeledField("匹配模式 *")
+            LabeledField(stringResource(R.string.msgfilter_pattern_label))
             OutlinedTextField(
                 value = pattern,
                 onValueChange = { pattern = it },
@@ -395,12 +397,12 @@ private fun FilterRuleFormDialog(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
                 colors = fieldColors(),
-                placeholder = { Text(if (type == "regex") "正则表达式" else "关键词") }
+                placeholder = { Text(if (type == "regex") stringResource(R.string.msgfilter_regex_placeholder) else stringResource(R.string.msgfilter_keyword_placeholder)) }
             )
             Spacer(Modifier.height(8.dp))
 
             // 类型下拉
-            LabeledField("类型 (type)")
+            LabeledField(stringResource(R.string.msgfilter_type_label))
             DropdownField(
                 value = type,
                 options = listOf("keyword", "regex"),
@@ -409,7 +411,7 @@ private fun FilterRuleFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 动作下拉
-            LabeledField("动作 (action)")
+            LabeledField(stringResource(R.string.msgfilter_action_label))
             DropdownField(
                 value = action,
                 options = listOf("strip", "recall"),
@@ -418,7 +420,7 @@ private fun FilterRuleFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 过滤目标下拉
-            LabeledField("过滤目标 (filterTarget)")
+            LabeledField(stringResource(R.string.msgfilter_target_label))
             DropdownField(
                 value = filterTarget,
                 options = listOf("user", "ai", "both"),
@@ -427,7 +429,7 @@ private fun FilterRuleFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 会话范围下拉
-            LabeledField("会话范围 (sessionScope)")
+            LabeledField(stringResource(R.string.msgfilter_scope_label))
             DropdownField(
                 value = sessionScope,
                 options = listOf("all", "specific"),
@@ -437,7 +439,7 @@ private fun FilterRuleFormDialog(
 
             // 当 sessionScope=specific 时显示 sessionId 输入框
             if (sessionScope == "specific") {
-                LabeledField("指定会话 ID (sessionId)")
+                LabeledField(stringResource(R.string.msgfilter_session_id_label))
                 OutlinedTextField(
                     value = sessionId,
                     onValueChange = { sessionId = it },
@@ -445,13 +447,13 @@ private fun FilterRuleFormDialog(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = fieldColors(),
-                    placeholder = { Text("输入会话 ID") }
+                    placeholder = { Text(stringResource(R.string.msgfilter_session_id_hint)) }
                 )
                 Spacer(Modifier.height(8.dp))
             }
 
             // 启用开关
-            ToggleRow(label = "启用", checked = enabled, onCheckedChange = { enabled = it })
+            ToggleRow(label = stringResource(R.string.msgfilter_enabled_label), checked = enabled, onCheckedChange = { enabled = it })
         }
     }
 }

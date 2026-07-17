@@ -44,9 +44,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.R
 import com.nekobot.app.data.model.Tool
 import com.nekobot.app.data.model.ToolRequest
 import com.nekobot.app.ui.BaseViewModel
@@ -103,10 +105,10 @@ fun ToolsScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Tools 配置") },
+                title = { Text(stringResource(R.string.tools_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
@@ -114,7 +116,7 @@ fun ToolsScreen(onBack: () -> Unit) {
                         editingItem = null
                         showForm = true
                     }) {
-                        Icon(Icons.Filled.Add, contentDescription = "新建工具")
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.tools_new))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -131,7 +133,7 @@ fun ToolsScreen(onBack: () -> Unit) {
                 .padding(padding)
         ) {
             if (list.isEmpty() && !loading) {
-                EmptyState(title = "暂无工具", hint = "点击右上角 + 添加")
+                EmptyState(title = stringResource(R.string.tools_empty_title), hint = stringResource(R.string.tools_empty_hint))
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -182,9 +184,9 @@ fun ToolsScreen(onBack: () -> Unit) {
     deleteTarget?.let { target ->
         NekoDialog(
             onDismiss = { deleteTarget = null },
-            title = "确认删除",
-            message = "确定删除工具「${target.displayName}」吗？",
-            confirmText = "删除",
+            title = stringResource(R.string.tools_confirm_delete),
+            message = stringResource(R.string.tools_delete_message, target.displayName),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 target.id?.let { vm.delete(it) }
                 deleteTarget = null
@@ -196,22 +198,22 @@ fun ToolsScreen(onBack: () -> Unit) {
     viewTarget?.let { target ->
         NekoDialog(
             onDismiss = { viewTarget = null },
-            title = "工具详情",
-            confirmText = "关闭",
+            title = stringResource(R.string.tools_detail_title),
+            confirmText = stringResource(R.string.common_close),
             onConfirm = { viewTarget = null },
             cancelText = null,
             onCancel = null,
             content = {
                 Column {
-                    Text("名称: ${target.displayName}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    Text(stringResource(R.string.tools_name, target.displayName), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                     Spacer(Modifier.height(4.dp))
-                    Text("描述: ${target.description ?: "—"}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.tools_description, target.description ?: "—"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(4.dp))
-                    Text("状态: ${if (target.enabled) "已启用" else "已禁用"}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.tools_status, if (target.enabled) stringResource(R.string.tools_status_enabled) else stringResource(R.string.tools_status_disabled)), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(4.dp))
-                    Text("内置: ${if (target.builtin) "是" else "否"}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.tools_builtin, if (target.builtin) stringResource(R.string.common_yes) else stringResource(R.string.common_no)), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(4.dp))
-                    Text("创建时间: ${target.createdAt ?: "—"}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.tools_created_at, target.createdAt ?: "—"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         )
@@ -244,7 +246,7 @@ private fun ToolCard(
                 modifier = Modifier.weight(1f)
             )
             // 启停状态标记（颜色区分）
-            val (statusText, statusColor) = if (tool.enabled) "已启用" to SuccessGreen else "已禁用" to WarningAmber
+            val (statusText, statusColor) = if (tool.enabled) stringResource(R.string.tools_status_enabled) to SuccessGreen else stringResource(R.string.tools_status_disabled) to WarningAmber
             Box(
                 modifier = Modifier
                     .background(statusColor.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
@@ -260,14 +262,14 @@ private fun ToolCard(
                         .background(Primary.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Text("内置", style = MaterialTheme.typography.labelSmall, color = Primary)
+                    Text(stringResource(R.string.tools_builtin_badge), style = MaterialTheme.typography.labelSmall, color = Primary)
                 }
             }
             Spacer(Modifier.width(8.dp))
             var menuExpanded by remember { mutableStateOf(false) }
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "操作", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.tools_action), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(
                     expanded = menuExpanded,
@@ -275,19 +277,19 @@ private fun ToolCard(
                 ) {
                     if (tool.builtin) {
                         // 内置工具仅可查看
-                        DropdownMenuItem(text = { Text("查看") }, onClick = { menuExpanded = false; onView() })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.tools_view)) }, onClick = { menuExpanded = false; onView() })
                     } else {
-                        DropdownMenuItem(text = { Text("编辑") }, onClick = { menuExpanded = false; onEdit() })
-                        DropdownMenuItem(text = { Text("切换启停") }, onClick = { menuExpanded = false; onToggle() })
-                        DropdownMenuItem(text = { Text("删除", color = ErrorRed) }, onClick = { menuExpanded = false; onDelete() })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.common_edit)) }, onClick = { menuExpanded = false; onEdit() })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.tools_toggle)) }, onClick = { menuExpanded = false; onToggle() })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.common_delete), color = ErrorRed) }, onClick = { menuExpanded = false; onDelete() })
                     }
                 }
             }
         }
 
         Spacer(Modifier.height(8.dp))
-        Text("描述: ${tool.description ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("创建时间: ${tool.createdAt ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.tools_description, tool.description ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.tools_created_at, tool.createdAt ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -308,11 +310,11 @@ private fun ToolFormDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = if (initial == null) "新建工具" else "编辑工具",
-        confirmText = "保存",
+        title = if (initial == null) stringResource(R.string.tools_new) else stringResource(R.string.tools_edit),
+        confirmText = stringResource(R.string.common_save),
         onConfirm = {
             if (name.isBlank()) {
-                Toast.makeText(context, "请填写名称", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.tools_name_required), Toast.LENGTH_SHORT).show()
             } else {
                 val req = ToolRequest(
                     name = name,
@@ -331,7 +333,7 @@ private fun ToolFormDialog(
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("名称（必填）") },
+                label = { Text(stringResource(R.string.tools_name_label)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -339,7 +341,7 @@ private fun ToolFormDialog(
             OutlinedTextField(
                 value = description,
                 onValueChange = { description = it },
-                label = { Text("描述") },
+                label = { Text(stringResource(R.string.tools_description_label)) },
                 minLines = 2,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -348,7 +350,7 @@ private fun ToolFormDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("启用", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.tools_enabled_label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
                 Switch(checked = enabled, onCheckedChange = { enabled = it })
             }
         }

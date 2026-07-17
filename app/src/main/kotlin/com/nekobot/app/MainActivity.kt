@@ -11,10 +11,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.nekobot.app.data.local.LocaleHelper
 import com.nekobot.app.ui.navigation.NekobotNavGraph
 import com.nekobot.app.ui.theme.NekobotTheme
 
 class MainActivity : ComponentActivity() {
+
+    override fun attachBaseContext(newBase: android.content.Context) {
+        // 在 Activity 创建前应用选定语言，确保所有 Composable 资源读取使用正确 locale
+        super.attachBaseContext(LocaleHelper.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handleNotificationIntent(intent)

@@ -22,10 +22,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.ui.theme.*
 
@@ -199,7 +201,7 @@ fun SectionHeader(
 }
 
 @Composable
-fun LoadingOverlay(visible: Boolean, message: String = "加载中...") {
+fun LoadingOverlay(visible: Boolean, message: String = stringResource(R.string.common_loading)) {
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut()) {
         Box(
             Modifier
@@ -228,10 +230,10 @@ fun NekoDialog(
     onDismiss: () -> Unit,
     title: String,
     message: String? = null,
-    confirmText: String = "确定",
+    confirmText: String = stringResource(R.string.common_confirm),
     confirmEnabled: Boolean = true,
     onConfirm: (() -> Unit)? = null,
-    cancelText: String? = "取消",
+    cancelText: String? = stringResource(R.string.common_cancel),
     onCancel: (() -> Unit)? = null,
     content: @Composable (ColumnScope.() -> Unit)? = null
 ) {
@@ -254,7 +256,7 @@ fun NekoDialog(
                     modifier = Modifier.weight(1f)
                 )
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Filled.Close, contentDescription = "关闭", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.common_close), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             if (!message.isNullOrBlank()) {
@@ -324,7 +326,7 @@ fun ErrorBanner(message: String, onRetry: (() -> Unit)? = null) {
                 modifier = Modifier.weight(1f)
             )
             if (onRetry != null) {
-                TextButton(onClick = onRetry) { Text("重试", color = MaterialTheme.colorScheme.primary) }
+                TextButton(onClick = onRetry) { Text(stringResource(R.string.common_retry), color = MaterialTheme.colorScheme.primary) }
             }
         }
     }

@@ -27,8 +27,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.R
 import com.nekobot.app.data.model.LegacyMemory
 import com.nekobot.app.data.model.LegacyMemoryRequest
 import com.nekobot.app.data.model.MemoryFile
@@ -44,16 +46,20 @@ import kotlinx.coroutines.flow.asStateFlow
 
 // 记忆分类显示标签（按 categoryOrder 排序）
 private val CATEGORY_LABELS = linkedMapOf(
-    "user_persona" to "用户画像",
-    "character_persona" to "角色画像",
-    "important_event" to "重要事件",
-    "timeline" to "时间线",
-    "life_sim" to "生活模拟",
-    "recent_digest" to "近期摘要",
-    "legacy" to "旧版/其他"
+    "user_persona" to R.string.memory_category_user_persona,
+    "character_persona" to R.string.memory_category_character_persona,
+    "important_event" to R.string.memory_category_important_event,
+    "timeline" to R.string.memory_category_timeline,
+    "life_sim" to R.string.memory_category_life_sim,
+    "recent_digest" to R.string.memory_category_recent_digest,
+    "legacy" to R.string.memory_category_legacy
 )
 
-private val PRIORITY_OPTIONS = listOf("high" to "高", "normal" to "普通", "low" to "低")
+private val PRIORITY_OPTIONS = listOf(
+    "high" to R.string.memory_priority_high,
+    "normal" to R.string.memory_priority_normal,
+    "low" to R.string.memory_priority_low
+)
 
 /**
  * 角色记忆页 ViewModel：管理 MemoryFS 文件与旧版记忆的加载、删除、增改。
@@ -146,7 +152,7 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
                 path = "memory/${meta.key}.md",
                 title = meta.label,
                 content = content,
-                summary = "${entries.size} 条记忆"
+                summary = string(R.string.memory_count_summary, entries.size)
             )
         }
     }
@@ -180,7 +186,7 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
                 },
                 onSuccess = {
                     _files.value = _files.value.filterNot { it.path == path }
-                    showToast("已删除记忆文件")
+                    showToast(string(R.string.memory_deleted_file))
                 }
             )
         } else {
@@ -188,7 +194,7 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
                 block = { repo.deleteMemoryFs(path, _selectedCharacterId.value) },
                 onSuccess = {
                     _files.value = _files.value.filterNot { it.path == path }
-                    showToast("已删除记忆文件")
+                    showToast(string(R.string.memory_deleted_file))
                 }
             )
         }
@@ -204,7 +210,7 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
                 },
                 onSuccess = {
                     _legacy.value = _legacy.value.filterNot { it.id == id }
-                    showToast("已删除记忆")
+                    showToast(string(R.string.memory_deleted))
                 }
             )
         } else {
@@ -212,7 +218,7 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
                 block = { repo.deleteLegacyMemory(id) },
                 onSuccess = {
                     _legacy.value = _legacy.value.filterNot { it.id == id }
-                    showToast("已删除记忆")
+                    showToast(string(R.string.memory_deleted))
                 }
             )
         }
@@ -257,7 +263,7 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
                     load()
                     _showAddDialog.value = false
                     _editingLegacy.value = null
-                    showToast(if (editing != null) "已更新记忆" else "已新增记忆")
+                    showToast(if (editing != null) string(R.string.memory_updated) else string(R.string.memory_added))
                 }
             )
         } else {
@@ -273,7 +279,7 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
                         load()
                         _showAddDialog.value = false
                         _editingLegacy.value = null
-                        showToast("已更新记忆")
+                        showToast(string(R.string.memory_updated))
                     }
                 )
             } else {
@@ -282,7 +288,7 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
                     onSuccess = {
                         load()
                         _showAddDialog.value = false
-                        showToast("已新增记忆")
+                        showToast(string(R.string.memory_added))
                     }
                 )
             }
@@ -294,14 +300,14 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
         if (isLocalMode) {
             // 本地模式：重新从本地加载
             load()
-            showToast("已刷新旧版记忆")
+            showToast(string(R.string.memory_refreshed))
         } else {
             launchResult(
                 block = { repo.exportLegacyMemory() },
                 onSuccess = {
                     _legacy.value = it?.memories
                         ?: (it?.longTerm.orEmpty() + it?.shortTerm.orEmpty())
-                    showToast("已刷新旧版记忆")
+                    showToast(string(R.string.memory_refreshed))
                 }
             )
         }
@@ -377,33 +383,33 @@ fun MemoryScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("角色记忆", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.memory_title), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     IconButton(onClick = { viewModel.load() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.memory_refresh), tint = MaterialTheme.colorScheme.onSurface)
                     }
                     IconButton(onClick = { viewModel.startAddLegacy() }) {
-                        Icon(Icons.Filled.Add, contentDescription = "新增旧版记忆", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.memory_add_legacy), tint = MaterialTheme.colorScheme.primary)
                     }
                     Box {
                         IconButton(onClick = { showExportMenu = true }) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = "更多", tint = MaterialTheme.colorScheme.onSurface)
+                            Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.memory_more), tint = MaterialTheme.colorScheme.onSurface)
                         }
                         DropdownMenu(
                             expanded = showExportMenu,
                             onDismissRequest = { showExportMenu = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text("导出/刷新旧版记忆") },
+                                text = { Text(stringResource(R.string.memory_export_legacy)) },
                                 onClick = {
                                     showExportMenu = false
                                     viewModel.exportLegacy()
@@ -423,8 +429,8 @@ fun MemoryScreen(
         ) {
             if (files.isEmpty() && legacy.isEmpty() && !loading) {
                 EmptyState(
-                    title = "暂无记忆",
-                    hint = "记忆将在对话过程中自动生成",
+                    title = stringResource(R.string.memory_empty_title),
+                    hint = stringResource(R.string.memory_empty_hint),
                     icon = {
                         Icon(
                             Icons.Filled.Psychology,
@@ -454,7 +460,7 @@ fun MemoryScreen(
                         OutlinedTextField(
                             value = searchQuery,
                             onValueChange = { viewModel.setSearchQuery(it) },
-                            placeholder = { Text("搜索记忆标题/内容/路径") },
+                            placeholder = { Text(stringResource(R.string.memory_search_hint)) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
@@ -462,7 +468,7 @@ fun MemoryScreen(
                             trailingIcon = {
                                 if (searchQuery.isNotEmpty()) {
                                     IconButton(onClick = { viewModel.setSearchQuery("") }) {
-                                        Icon(Icons.Filled.Close, contentDescription = "清空", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.common_clear), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
                             },
@@ -489,7 +495,7 @@ fun MemoryScreen(
                             FilterChip(
                                 selected = selectedChar == null,
                                 onClick = { viewModel.selectCharacter(null) },
-                                label = { Text("全部") }
+                                label = { Text(stringResource(R.string.memory_filter_all)) }
                             )
                             characterOptions.forEach { (id, label) ->
                                 FilterChip(
@@ -503,11 +509,12 @@ fun MemoryScreen(
 
                     // MemoryFS 分组
                     groupedFiles.forEach { (category, list) ->
-                        val label = CATEGORY_LABELS[category] ?: category
                         item {
+                            val labelRes = CATEGORY_LABELS[category]
+                            val label = if (labelRes != null) stringResource(labelRes) else category
                             SectionHeader(
                                 title = label,
-                                subtitle = "${list.size} 条"
+                                subtitle = stringResource(R.string.memory_count_format, list.size)
                             )
                         }
                         items(list, key = { "fs_${it.path}" }) { file ->
@@ -523,7 +530,7 @@ fun MemoryScreen(
                     // 旧版记忆 - 长期
                     if (longTermLegacy.isNotEmpty()) {
                         item {
-                            SectionHeader(title = "长期记忆（旧版）", subtitle = "${longTermLegacy.size} 条")
+                            SectionHeader(title = stringResource(R.string.memory_long_term_legacy), subtitle = stringResource(R.string.memory_count_format, longTermLegacy.size))
                         }
                         items(longTermLegacy, key = { "lt_${it.id ?: it.hashCode()}" }) { mem ->
                             LegacyMemoryItem(
@@ -537,7 +544,7 @@ fun MemoryScreen(
                     // 旧版记忆 - 短期
                     if (shortTermLegacy.isNotEmpty()) {
                         item {
-                            SectionHeader(title = "短期记忆（旧版）", subtitle = "${shortTermLegacy.size} 条")
+                            SectionHeader(title = stringResource(R.string.memory_short_term_legacy), subtitle = stringResource(R.string.memory_count_format, shortTermLegacy.size))
                         }
                         items(shortTermLegacy, key = { "st_${it.id ?: it.hashCode()}" }) { mem ->
                             LegacyMemoryItem(
@@ -551,7 +558,7 @@ fun MemoryScreen(
                     if (groupedFiles.isEmpty() && longTermLegacy.isEmpty() && shortTermLegacy.isEmpty()) {
                         item {
                             Text(
-                                "未匹配到记忆",
+                                stringResource(R.string.memory_no_match),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(vertical = 24.dp)
@@ -566,12 +573,13 @@ fun MemoryScreen(
 
     // 删除 MemoryFS 文件确认
     if (deleteFile != null) {
+        val unnamed = stringResource(R.string.memory_delete_file_unnamed)
         NekoDialog(
             onDismiss = { deleteFile = null },
-            title = "删除记忆文件",
-            message = "确定要删除「${deleteFile?.title?.ifBlank { deleteFile?.path } ?: "未命名"}」吗？此操作不可撤销。",
-            confirmText = "删除",
-            cancelText = "取消",
+            title = stringResource(R.string.memory_delete_file_title),
+            message = stringResource(R.string.memory_delete_file_msg, deleteFile?.title?.ifBlank { deleteFile?.path } ?: unnamed),
+            confirmText = stringResource(R.string.common_delete),
+            cancelText = stringResource(R.string.common_cancel),
             onConfirm = {
                 deleteFile?.path?.let { viewModel.deleteMemoryFile(it) }
                 deleteFile = null
@@ -584,10 +592,10 @@ fun MemoryScreen(
     if (deleteLegacyItem != null) {
         NekoDialog(
             onDismiss = { deleteLegacyItem = null },
-            title = "删除记忆",
-            message = "确定要删除「${deleteLegacyItem?.title}」吗？",
-            confirmText = "删除",
-            cancelText = "取消",
+            title = stringResource(R.string.memory_delete_memory_title),
+            message = stringResource(R.string.memory_delete_memory_msg, deleteLegacyItem?.title ?: ""),
+            confirmText = stringResource(R.string.common_delete),
+            cancelText = stringResource(R.string.common_cancel),
             onConfirm = {
                 deleteLegacyItem?.id?.let { viewModel.deleteLegacy(it) }
                 deleteLegacyItem = null
@@ -642,7 +650,7 @@ private fun MemoryFileItem(
                         Spacer(Modifier.width(6.dp))
                         AssistChip(
                             onClick = {},
-                            label = { Text("注入", style = MaterialTheme.typography.labelSmall) },
+                            label = { Text(stringResource(R.string.memory_inject), style = MaterialTheme.typography.labelSmall) },
                             shape = RoundedCornerShape(8.dp),
                             colors = AssistChipDefaults.assistChipColors(
                                 containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
@@ -690,7 +698,7 @@ private fun MemoryFileItem(
                 if (file.updatedAt.isNotBlank()) {
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = "更新：${file.updatedAt}",
+                        text = stringResource(R.string.memory_updated_at, file.updatedAt),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -701,12 +709,12 @@ private fun MemoryFileItem(
                 IconButton(onClick = onToggle) {
                     Icon(
                         if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                        contentDescription = if (expanded) "收起" else "展开",
+                        contentDescription = if (expanded) stringResource(R.string.markdown_collapse) else stringResource(R.string.markdown_expand),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 IconButton(onClick = onDelete) {
-                    Icon(Icons.Filled.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.error)
+                    Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.common_delete), tint = MaterialTheme.colorScheme.error)
                 }
             }
         }
@@ -732,7 +740,7 @@ private fun LegacyMemoryItem(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text = memory.title.ifBlank { "未命名记忆" },
+                        text = memory.title.ifBlank { stringResource(R.string.memory_unnamed) },
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold,
@@ -775,14 +783,15 @@ private fun LegacyMemoryItem(
                     if (memory.targetId.isNotBlank()) {
                         AssistChip(
                             onClick = {},
-                            label = { Text("目标：${memory.targetId}", style = MaterialTheme.typography.labelSmall) },
+                            label = { Text(stringResource(R.string.memory_target_label, memory.targetId), style = MaterialTheme.typography.labelSmall) },
                             shape = RoundedCornerShape(8.dp)
                         )
                     }
-                    val priorityLabel = PRIORITY_OPTIONS.firstOrNull { it.first == memory.priority }?.second ?: memory.priority
+                    val priorityRes = PRIORITY_OPTIONS.firstOrNull { it.first == memory.priority }?.second
+                    val priorityLabel = if (priorityRes != null) stringResource(priorityRes) else memory.priority
                     AssistChip(
                         onClick = {},
-                        label = { Text("优先级：$priorityLabel", style = MaterialTheme.typography.labelSmall) },
+                        label = { Text(stringResource(R.string.memory_priority_label, priorityLabel), style = MaterialTheme.typography.labelSmall) },
                         shape = RoundedCornerShape(8.dp),
                         colors = AssistChipDefaults.assistChipColors(
                             containerColor = if (memory.priority == "high")
@@ -798,10 +807,10 @@ private fun LegacyMemoryItem(
             Spacer(Modifier.width(8.dp))
             Column {
                 IconButton(onClick = onEdit) {
-                    Icon(Icons.Filled.Edit, contentDescription = "编辑", tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.common_edit), tint = MaterialTheme.colorScheme.primary)
                 }
                 IconButton(onClick = onDelete) {
-                    Icon(Icons.Filled.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.error)
+                    Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.common_delete), tint = MaterialTheme.colorScheme.error)
                 }
             }
         }
@@ -830,9 +839,9 @@ private fun LegacyMemoryDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = if (editing == null) "新增记忆" else "编辑记忆",
-        confirmText = "保存",
-        cancelText = "取消",
+        title = if (editing == null) stringResource(R.string.memory_add_title) else stringResource(R.string.memory_edit_title),
+        confirmText = stringResource(R.string.common_save),
+        cancelText = stringResource(R.string.common_cancel),
         onConfirm = {
             if (title.isBlank() || content.isBlank()) return@NekoDialog
             onSave(
@@ -851,14 +860,14 @@ private fun LegacyMemoryDialog(
         onCancel = onDismiss
     ) {
         // 类型选择
-        Text("类型", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.memory_field_type), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         ExposedDropdownMenuBox(
             expanded = typeExpanded,
             onExpandedChange = { typeExpanded = it }
         ) {
             OutlinedTextField(
-                value = if (type == "long") "长期" else "短期",
+                value = if (type == "long") stringResource(R.string.memory_type_long) else stringResource(R.string.memory_type_short),
                 onValueChange = {},
                 readOnly = true,
                 singleLine = true,
@@ -871,51 +880,52 @@ private fun LegacyMemoryDialog(
                 expanded = typeExpanded,
                 onDismissRequest = { typeExpanded = false }
             ) {
-                DropdownMenuItem(text = { Text("长期") }, onClick = { type = "long"; typeExpanded = false })
-                DropdownMenuItem(text = { Text("短期") }, onClick = { type = "short"; typeExpanded = false })
+                DropdownMenuItem(text = { Text(stringResource(R.string.memory_type_long)) }, onClick = { type = "long"; typeExpanded = false })
+                DropdownMenuItem(text = { Text(stringResource(R.string.memory_type_short)) }, onClick = { type = "short"; typeExpanded = false })
             }
         }
         Spacer(Modifier.height(10.dp))
 
         // 角色名
-        Text("角色名", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.memory_field_character_name), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         NekoTextField(value = characterName, onValueChange = { characterName = it }, singleLine = true)
         Spacer(Modifier.height(10.dp))
 
         // 关联对象
-        Text("关联对象 ID（可选）", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.memory_field_target_id), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         NekoTextField(value = targetId, onValueChange = { targetId = it }, singleLine = true)
         Spacer(Modifier.height(10.dp))
 
         // 标题
-        Text("标题", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.memory_field_title), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         NekoTextField(value = title, onValueChange = { title = it }, singleLine = true)
         Spacer(Modifier.height(10.dp))
 
         // 摘要
-        Text("摘要（可选）", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.memory_field_summary), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         NekoTextField(value = summary, onValueChange = { summary = it }, singleLine = false, minLines = 2, maxLines = 4)
         Spacer(Modifier.height(10.dp))
 
         // 内容
-        Text("内容", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.memory_field_content), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         NekoTextField(value = content, onValueChange = { content = it }, singleLine = false, minLines = 3, maxLines = 8)
         Spacer(Modifier.height(10.dp))
 
         // 优先级
-        Text("优先级", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.memory_field_priority), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         ExposedDropdownMenuBox(
             expanded = priorityExpanded,
             onExpandedChange = { priorityExpanded = it }
         ) {
+            val priorityRes = PRIORITY_OPTIONS.firstOrNull { it.first == priority }?.second
             OutlinedTextField(
-                value = PRIORITY_OPTIONS.firstOrNull { it.first == priority }?.second ?: priority,
+                value = if (priorityRes != null) stringResource(priorityRes) else priority,
                 onValueChange = {},
                 readOnly = true,
                 singleLine = true,
@@ -928,15 +938,15 @@ private fun LegacyMemoryDialog(
                 expanded = priorityExpanded,
                 onDismissRequest = { priorityExpanded = false }
             ) {
-                PRIORITY_OPTIONS.forEach { (v, label) ->
-                    DropdownMenuItem(text = { Text(label) }, onClick = { priority = v; priorityExpanded = false })
+                PRIORITY_OPTIONS.forEach { (v, res) ->
+                    DropdownMenuItem(text = { Text(stringResource(res)) }, onClick = { priority = v; priorityExpanded = false })
                 }
             }
         }
         Spacer(Modifier.height(10.dp))
 
         // 有效期天数
-        Text("有效期（天）", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.memory_field_expire_days), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         NekoTextField(
             value = expireDays,

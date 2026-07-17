@@ -51,12 +51,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LoginRecord
 import com.nekobot.app.data.local.PrefsManager
@@ -116,13 +118,13 @@ class DbProfileViewModel : ViewModel() {
         prefs.activeDbName = profileName
         ServiceContainer.switchLocalDb(profileName)
         _activeName.value = profileName
-        _toast.value = "已切换到「${displayName(profileName)}」"
+        _toast.value = ServiceContainer.localizedContext?.getString(R.string.dbprofile_switched_to, displayName(profileName)) ?: ""
     }
 
     /** 删除指定 profile（默认 db 不可删除）。 */
     fun delete(profileName: String) {
         if (profileName == PrefsManager.DEFAULT_DB_NAME) {
-            _toast.value = "默认数据库不可删除"
+            _toast.value = ServiceContainer.getString(R.string.dbprofile_default_no_delete)
             return
         }
         viewModelScope.launch(Dispatchers.IO) {
@@ -141,7 +143,7 @@ class DbProfileViewModel : ViewModel() {
                     ServiceContainer.switchLocalDb(PrefsManager.DEFAULT_DB_NAME)
                 }
                 reload()
-                _toast.value = "已删除 db「$profileName」"
+                _toast.value = ServiceContainer.localizedContext?.getString(R.string.dbprofile_deleted, profileName) ?: ""
             }
         }
     }
@@ -157,7 +159,7 @@ class DbProfileViewModel : ViewModel() {
         displayName: String
     ) {
         if (displayName.isBlank()) {
-            _toast.value = "请输入显示名"
+            _toast.value = ServiceContainer.getString(R.string.dbprofile_input_display_name)
             return
         }
         val profileName = sanitizeProfileName(displayName)
@@ -244,22 +246,22 @@ fun DbProfileScreen(onBack: () -> Unit) {
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("数据库管理", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.dbprofile_title), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     IconButton(onClick = { vm.reload() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.dbprofile_refresh), tint = MaterialTheme.colorScheme.onSurface)
                     }
                     IconButton(onClick = { showImportDialog = true }) {
-                        Icon(Icons.Filled.CloudDownload, contentDescription = "从远程导入", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.CloudDownload, contentDescription = stringResource(R.string.dbprofile_import_remote), tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             )
@@ -276,7 +278,7 @@ fun DbProfileScreen(onBack: () -> Unit) {
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        "当前数据库",
+                        stringResource(R.string.dbprofile_current_db),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -288,7 +290,7 @@ fun DbProfileScreen(onBack: () -> Unit) {
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        "内部标识：$activeName",
+                        stringResource(R.string.dbprofile_internal_id, activeName),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -296,7 +298,7 @@ fun DbProfileScreen(onBack: () -> Unit) {
             }
 
             Text(
-                "已保存的数据库列表",
+                stringResource(R.string.dbprofile_saved_list),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.SemiBold,
@@ -306,7 +308,7 @@ fun DbProfileScreen(onBack: () -> Unit) {
             if (profiles.isEmpty()) {
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        "暂无 db profile",
+                        stringResource(R.string.dbprofile_empty),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(16.dp)
@@ -340,12 +342,11 @@ fun DbProfileScreen(onBack: () -> Unit) {
             ) {
                 Icon(Icons.Filled.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("从远程地址导入 nbotcfg")
+                Text(stringResource(R.string.dbprofile_import_button))
             }
 
             Text(
-                "提示：导入会从已保存的远程服务器下载加密配置包，解密后写入新的本地数据库。" +
-                    "可在多个 db 间自由切换，互不影响。默认数据库不可删除。",
+                stringResource(R.string.dbprofile_tip),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 4.dp)
@@ -375,9 +376,9 @@ fun DbProfileScreen(onBack: () -> Unit) {
     deleteTarget?.let { profile ->
         NekoDialog(
             onDismiss = { deleteTarget = null },
-            title = "删除数据库",
-            message = "确定删除「${profile.displayName}」吗？该 db 下的所有会话/角色卡/世界书等数据将永久丢失。",
-            confirmText = "删除",
+            title = stringResource(R.string.dbprofile_delete_title),
+            message = stringResource(R.string.dbprofile_delete_msg, profile.displayName),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 vm.delete(profile.name)
                 deleteTarget = null
@@ -433,8 +434,8 @@ private fun DbProfileCard(
                     }
                 }
                 val sourceLabel = when (profile.source) {
-                    "imported" -> "远程导入"
-                    "local" -> "本地"
+                    "imported" -> stringResource(R.string.dbprofile_source_imported)
+                    "local" -> stringResource(R.string.dbprofile_source_local)
                     else -> profile.source
                 }
                 val dateLabel = if (profile.createdAt > 0) {
@@ -451,14 +452,14 @@ private fun DbProfileCard(
             }
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "更多", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.dbprofile_more), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text(if (isActive) "当前数据库" else "切换到此数据库") },
+                        text = { Text(if (isActive) stringResource(R.string.dbprofile_current_active) else stringResource(R.string.dbprofile_switch_to)) },
                         onClick = {
                             menuExpanded = false
                             if (!isActive) onSwitch()
@@ -466,7 +467,7 @@ private fun DbProfileCard(
                         enabled = !isActive
                     )
                     DropdownMenuItem(
-                        text = { Text("删除", color = MaterialTheme.colorScheme.error) },
+                        text = { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) },
                         onClick = {
                             menuExpanded = false
                             if (!isDefault) onDelete()
@@ -492,8 +493,8 @@ private fun ImportFromRemoteDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = "从远程导入 nbotcfg",
-        confirmText = if (importing) "导入中…" else "开始导入",
+        title = stringResource(R.string.dbprofile_import_dialog_title),
+        confirmText = if (importing) stringResource(R.string.dbprofile_importing) else stringResource(R.string.dbprofile_start_import),
         confirmEnabled = !importing && selectedRecord != null,
         onConfirm = {
             val rec = selectedRecord
@@ -510,19 +511,19 @@ private fun ImportFromRemoteDialog(
         ) {
             if (loginRecords.isEmpty()) {
                 Text(
-                    "暂无已保存的远程服务器记录。请先在登录页登录远程服务器并勾选「保存登录信息」。",
+                    stringResource(R.string.dbprofile_no_records),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
                 )
             } else {
                 Text(
-                    "选择远程服务器",
+                    stringResource(R.string.dbprofile_select_server),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Box {
                     OutlinedTextField(
-                        value = selectedRecord?.let { "${it.username} @ ${it.serverUrl}" } ?: "请选择",
+                        value = selectedRecord?.let { "${it.username} @ ${it.serverUrl}" } ?: stringResource(R.string.dbprofile_please_select),
                         onValueChange = {},
                         readOnly = true,
                         enabled = !importing,
@@ -555,8 +556,8 @@ private fun ImportFromRemoteDialog(
             OutlinedTextField(
                 value = displayName,
                 onValueChange = { displayName = it },
-                label = { Text("新数据库显示名") },
-                placeholder = { Text("如：服务器A 配置") },
+                label = { Text(stringResource(R.string.dbprofile_new_display_name)) },
+                placeholder = { Text(stringResource(R.string.dbprofile_display_name_placeholder)) },
                 singleLine = true,
                 enabled = !importing,
                 modifier = Modifier.fillMaxWidth()
@@ -572,14 +573,14 @@ private fun ImportFromRemoteDialog(
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        "正在下载并解密配置包…",
+                        stringResource(R.string.dbprofile_downloading),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             } else {
                 Text(
-                    "配置包在传输过程中会自动加密，无需手动输入密码。导入成功后将自动切换到新数据库。",
+                    stringResource(R.string.dbprofile_dialog_tip),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

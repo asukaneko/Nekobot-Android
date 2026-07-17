@@ -45,9 +45,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.R
 import com.nekobot.app.data.model.KnowledgeDocument
 import com.nekobot.app.data.model.KnowledgeDocumentRequest
 import com.nekobot.app.data.model.KnowledgeSearchRequest
@@ -97,10 +99,10 @@ class KnowledgeViewModel : BaseViewModel() {
         launchResult(block = { unified.deleteKnowledge(id) }, onSuccess = { load() })
 
     fun indexDoc(id: String) =
-        launchResult(block = { unified.indexKnowledge(id) }, onSuccess = { showToast("索引已重建"); load() })
+        launchResult(block = { unified.indexKnowledge(id) }, onSuccess = { showToast(string(R.string.knowledge_index_rebuilt)); load() })
 
     fun rebuildAll() =
-        launchResult(block = { unified.rebuildKnowledge() }, onSuccess = { showToast("全部索引已重建"); load() })
+        launchResult(block = { unified.rebuildKnowledge() }, onSuccess = { showToast(string(R.string.knowledge_all_index_rebuilt)); load() })
 
     fun search(query: String) =
         launchResult(
@@ -127,21 +129,21 @@ fun KnowledgeScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("知识库") },
+                title = { Text(stringResource(R.string.knowledge_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
                     TextButton(onClick = { vm.rebuildAll() }) {
-                        Text("重建全部索引", color = MaterialTheme.colorScheme.primary)
+                        Text(stringResource(R.string.knowledge_rebuild_all), color = MaterialTheme.colorScheme.primary)
                     }
                     IconButton(onClick = {
                         editingItem = null
                         showForm = true
                     }) {
-                        Icon(Icons.Filled.Add, contentDescription = "新建文档")
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.knowledge_new_doc))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -158,7 +160,7 @@ fun KnowledgeScreen(onBack: () -> Unit) {
                 .padding(padding)
         ) {
             if (list.isEmpty() && !loading) {
-                EmptyState(title = "暂无文档", hint = "点击右上角 + 添加")
+                EmptyState(title = stringResource(R.string.knowledge_empty_title), hint = stringResource(R.string.knowledge_empty_hint))
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -179,9 +181,9 @@ fun KnowledgeScreen(onBack: () -> Unit) {
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            StatChip(label = "总数", value = "${stats?.total ?: 0}", modifier = Modifier.weight(1f))
-                            StatChip(label = "已索引", value = "${stats?.indexed ?: 0}", modifier = Modifier.weight(1f))
-                            StatChip(label = "待索引", value = "${stats?.pending ?: 0}", modifier = Modifier.weight(1f))
+                            StatChip(label = stringResource(R.string.knowledge_stat_total), value = "${stats?.total ?: 0}", modifier = Modifier.weight(1f))
+                            StatChip(label = stringResource(R.string.knowledge_stat_indexed), value = "${stats?.indexed ?: 0}", modifier = Modifier.weight(1f))
+                            StatChip(label = stringResource(R.string.knowledge_stat_pending), value = "${stats?.pending ?: 0}", modifier = Modifier.weight(1f))
                         }
                     }
                     // 搜索栏
@@ -193,26 +195,26 @@ fun KnowledgeScreen(onBack: () -> Unit) {
                             OutlinedTextField(
                                 value = query,
                                 onValueChange = { query = it },
-                                label = { Text("搜索文档") },
+                                label = { Text(stringResource(R.string.knowledge_search_docs)) },
                                 singleLine = true,
                                 modifier = Modifier.weight(1f)
                             )
                             Spacer(Modifier.width(8.dp))
                             IconButton(onClick = { if (query.isNotBlank()) vm.search(query) }) {
-                                Icon(Icons.Filled.Search, contentDescription = "搜索", tint = MaterialTheme.colorScheme.primary)
+                                Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.common_search), tint = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }
                     // 搜索结果
                     if (searchResults.isNotEmpty()) {
                         item {
-                            SectionHeader(title = "搜索结果", subtitle = "共 ${searchResults.size} 条")
+                            SectionHeader(title = stringResource(R.string.knowledge_search_results), subtitle = stringResource(R.string.knowledge_search_count, searchResults.size))
                         }
                         items(searchResults, key = { it.id ?: it.title ?: it.hashCode().toString() }) { result ->
                             SearchResultCard(result = result)
                         }
                         item {
-                            SectionHeader(title = "文档列表")
+                            SectionHeader(title = stringResource(R.string.knowledge_doc_list))
                         }
                     }
                     // 文档列表
@@ -251,9 +253,9 @@ fun KnowledgeScreen(onBack: () -> Unit) {
     deleteTarget?.let { target ->
         NekoDialog(
             onDismiss = { deleteTarget = null },
-            title = "确认删除",
-            message = "确定删除文档「${target.displayName}」吗？",
-            confirmText = "删除",
+            title = stringResource(R.string.knowledge_confirm_delete),
+            message = stringResource(R.string.knowledge_confirm_delete_msg, target.displayName),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 target.id?.let { vm.delete(it) }
                 deleteTarget = null
@@ -288,25 +290,25 @@ private fun KnowledgeCard(
             var menuExpanded by remember { mutableStateOf(false) }
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "操作", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.knowledge_action), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false }
                 ) {
-                    DropdownMenuItem(text = { Text("编辑") }, onClick = { menuExpanded = false; onEdit() })
-                    DropdownMenuItem(text = { Text("重建索引") }, onClick = { menuExpanded = false; onReindex() })
-                    DropdownMenuItem(text = { Text("删除", color = ErrorRed) }, onClick = { menuExpanded = false; onDelete() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.common_edit)) }, onClick = { menuExpanded = false; onEdit() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.knowledge_reindex)) }, onClick = { menuExpanded = false; onReindex() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.common_delete), color = ErrorRed) }, onClick = { menuExpanded = false; onDelete() })
                 }
             }
         }
 
         Spacer(Modifier.height(8.dp))
-        Text("来源: ${doc.source ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.knowledge_source, doc.source ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (doc.tags.isNotEmpty()) {
-            Text("标签: ${doc.tags.joinToString(", ")}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.knowledge_tags, doc.tags.joinToString(", ")), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text("创建时间: ${doc.createdAt ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.knowledge_created_at, doc.createdAt ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -324,7 +326,7 @@ private fun SearchResultCard(result: KnowledgeSearchResult) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = result.title ?: "未命名",
+                text = result.title ?: stringResource(R.string.knowledge_unnamed),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.SemiBold,
@@ -336,7 +338,7 @@ private fun SearchResultCard(result: KnowledgeSearchResult) {
                         .background(SuccessGreen.copy(alpha = 0.2f), RoundedCornerShape(10.dp))
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Text("相似度 ${"%.2f".format(it)}", style = MaterialTheme.typography.labelSmall, color = SuccessGreen)
+                    Text(stringResource(R.string.knowledge_similarity, "%.2f".format(it)), style = MaterialTheme.typography.labelSmall, color = SuccessGreen)
                 }
             }
         }
@@ -346,7 +348,7 @@ private fun SearchResultCard(result: KnowledgeSearchResult) {
         }
         result.source?.let {
             Spacer(Modifier.height(2.dp))
-            Text("来源: $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.knowledge_source, it), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -369,11 +371,11 @@ private fun KnowledgeFormDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = if (initial == null) "新建文档" else "编辑文档",
-        confirmText = "保存",
+        title = if (initial == null) stringResource(R.string.knowledge_new_doc) else stringResource(R.string.knowledge_edit_doc),
+        confirmText = stringResource(R.string.common_save),
         onConfirm = {
             if (title.isBlank() || content.isBlank()) {
-                Toast.makeText(context, "请填写标题和内容", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.knowledge_title_content_required), Toast.LENGTH_SHORT).show()
             } else {
                 val req = KnowledgeDocumentRequest(
                     title = title,
@@ -393,7 +395,7 @@ private fun KnowledgeFormDialog(
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
-                label = { Text("标题（必填）") },
+                label = { Text(stringResource(R.string.knowledge_title_required)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -401,7 +403,7 @@ private fun KnowledgeFormDialog(
             OutlinedTextField(
                 value = content,
                 onValueChange = { content = it },
-                label = { Text("内容（必填）") },
+                label = { Text(stringResource(R.string.knowledge_content_required)) },
                 minLines = 3,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -409,7 +411,7 @@ private fun KnowledgeFormDialog(
             OutlinedTextField(
                 value = source,
                 onValueChange = { source = it },
-                label = { Text("来源") },
+                label = { Text(stringResource(R.string.knowledge_source_label)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -417,7 +419,7 @@ private fun KnowledgeFormDialog(
             OutlinedTextField(
                 value = tags,
                 onValueChange = { tags = it },
-                label = { Text("标签（逗号分隔）") },
+                label = { Text(stringResource(R.string.knowledge_tags_label)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )

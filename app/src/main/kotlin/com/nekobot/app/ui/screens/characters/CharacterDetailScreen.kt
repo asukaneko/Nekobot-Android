@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -38,6 +39,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.data.model.CharacterPreset
@@ -90,7 +92,7 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
     val dependency = MutableStateFlow(30)
     val security = MutableStateFlow(50)
     val jealousy = MutableStateFlow(0)
-    val mood = MutableStateFlow("平静")
+    val mood = MutableStateFlow(string(R.string.character_default_mood))
 
     init {
         if (!isNew) load(characterId)
@@ -125,7 +127,7 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
                     dependency.value = obj.get("dependency")?.takeIf { !it.isJsonNull }?.asInt ?: 30
                     security.value = obj.get("security")?.takeIf { !it.isJsonNull }?.asInt ?: 50
                     jealousy.value = obj.get("jealousy")?.takeIf { !it.isJsonNull }?.asInt ?: 0
-                    mood.value = obj.get("mood")?.takeIf { !it.isJsonNull }?.asString ?: "平静"
+                    mood.value = obj.get("mood")?.takeIf { !it.isJsonNull }?.asString ?: string(R.string.character_default_mood)
                 }
             }
         )
@@ -140,7 +142,7 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
     fun save(onSuccess: () -> Unit) {
         val nameVal = name.value.trim()
         if (nameVal.isBlank()) {
-            showToast("角色名不能为空")
+            showToast(string(R.string.character_name_required))
             return
         }
         val rulesList = rulesText.value.lines().map { it.trim() }.filter { it.isNotEmpty() }
@@ -167,7 +169,7 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
                 addProperty("dependency", dependency.value)
                 addProperty("security", security.value)
                 addProperty("jealousy", jealousy.value)
-                addProperty("mood", mood.value.trim().ifBlank { "平静" })
+                addProperty("mood", mood.value.trim().ifBlank { string(R.string.character_default_mood) })
             }
             put("state", stateObj)
             // 显式不传：id / systemPrompt / greeting / created_at / updated_at
@@ -203,7 +205,7 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
     fun generatePortraitAI() {
         val characterName = name.value.trim()
         if (characterName.isBlank()) {
-            showToast("请先输入角色名")
+            showToast(string(R.string.character_name_empty))
             return
         }
         launchResult(
@@ -221,15 +223,15 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
                 if (!success) {
                     val needConfig = obj?.get("need_config")?.takeIf { !it.isJsonNull }?.asBoolean ?: false
                     val error = obj?.get("error")?.takeIf { !it.isJsonNull }?.asString
-                    showToast(if (needConfig) "未配置图片生成模型，请先在AI配置中添加" else (error ?: "立绘生成失败"))
+                    showToast(if (needConfig) string(R.string.character_portrait_no_model) else (error ?: string(R.string.character_portrait_generate_failed)))
                     return@launchResult
                 }
                 val taskId = obj?.get("task_id")?.takeIf { !it.isJsonNull }?.asString
                 if (taskId.isNullOrBlank()) {
-                    showToast("立绘生成任务提交失败")
+                    showToast(string(R.string.character_portrait_submit_failed))
                     return@launchResult
                 }
-                showToast("立绘生成中…")
+                showToast(string(R.string.character_portrait_generating))
                 pollPortraitTask(taskId)
             }
         )
@@ -254,7 +256,7 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
                                     if (!resultUrl.isNullOrBlank()) break
                                 }
                                 "failed" -> {
-                                    val error = obj?.get("error")?.takeIf { !it.isJsonNull }?.asString ?: "立绘生成失败"
+                                    val error = obj?.get("error")?.takeIf { !it.isJsonNull }?.asString ?: string(R.string.character_portrait_generate_failed)
                                     throw Exception(error)
                                 }
                             }
@@ -273,18 +275,18 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
                             val payload = mapOf("portrait" to resultUrl)
                             val json = com.nekobot.app.ServiceContainer.gson.toJsonTree(payload)
                             unified.updateCharacter(id, json)
-                            showToast("立绘生成成功，已自动保存")
+                            showToast(string(R.string.character_portrait_success_saved))
                         } catch (_: Exception) {
-                            showToast("立绘生成成功，请点击保存按钮")
+                            showToast(string(R.string.character_portrait_save_manually))
                         }
                     } else {
-                        showToast("立绘生成成功，请点击保存按钮")
+                        showToast(string(R.string.character_portrait_save_manually))
                     }
                 } else {
-                    showToast("立绘生成超时")
+                    showToast(string(R.string.character_portrait_timeout))
                 }
             } catch (e: Exception) {
-                showToast(e.message ?: "立绘生成失败")
+                showToast(e.message ?: string(R.string.character_portrait_generate_failed))
             } finally {
                 setLoading(false)
             }
@@ -357,7 +359,7 @@ fun CharacterDetailScreen(
                 try {
                     val path = withContext(Dispatchers.IO) { saveImageAndGetPath(context, uri, isLocalMode, "portrait") }
                     if (path != null) vm.portrait.value = path
-                    else vm.showToast(if (isLocalMode) "图片加载失败" else "立绘上传失败")
+                    else vm.showToast(if (isLocalMode) context.getString(R.string.character_image_load_failed) else context.getString(R.string.character_portrait_upload_failed))
                 } finally {
                     vm.setLoading(false)
                 }
@@ -374,7 +376,7 @@ fun CharacterDetailScreen(
                 try {
                     val path = withContext(Dispatchers.IO) { saveImageAndGetPath(context, uri, isLocalMode, "avatar") }
                     if (path != null) vm.avatar.value = path
-                    else vm.showToast(if (isLocalMode) "图片加载失败" else "头像上传失败")
+                    else vm.showToast(if (isLocalMode) context.getString(R.string.character_image_load_failed) else context.getString(R.string.character_avatar_upload_failed))
                 } finally {
                     vm.setLoading(false)
                 }
@@ -388,7 +390,7 @@ fun CharacterDetailScreen(
             TopAppBar(
                 title = {
                     Text(
-                        if (isNew) "新建角色" else "编辑角色",
+                        if (isNew) stringResource(R.string.characters_new) else stringResource(R.string.character_edit_title),
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -401,18 +403,18 @@ fun CharacterDetailScreen(
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.common_back),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
                 actions = {
                     IconButton(onClick = { vm.save(onBack) }) {
-                        Icon(Icons.Filled.Save, contentDescription = "保存", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.Save, contentDescription = stringResource(R.string.common_save), tint = MaterialTheme.colorScheme.primary)
                     }
                     if (!isNew) {
                         IconButton(onClick = { showDeleteDialog = true }) {
-                            Icon(Icons.Filled.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.error)
+                            Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.common_delete), tint = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
@@ -433,15 +435,15 @@ fun CharacterDetailScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 // 角色名（必填）
-                LabeledField(label = "角色名 *", value = name, onValueChange = { vm.name.value = it }, singleLine = true)
+                LabeledField(label = stringResource(R.string.character_name_label), value = name, onValueChange = { vm.name.value = it }, singleLine = true)
                 // 描述
                 LabeledField(
-                    label = "描述", value = description, onValueChange = { vm.description.value = it },
+                    label = stringResource(R.string.character_description_field), value = description, onValueChange = { vm.description.value = it },
                     singleLine = false
                 )
                 // 头像图标（font-awesome 类名，如 fas fa-cat）或上传图片
                 LabeledFieldWithUpload(
-                    label = "头像图标（fas fa-cat 等）或图片",
+                    label = stringResource(R.string.character_avatar_icon_label),
                     value = avatar,
                     onValueChange = { vm.avatar.value = it },
                     onUploadClick = {
@@ -450,7 +452,7 @@ fun CharacterDetailScreen(
                 )
                 // 立绘路径/URL 或上传图片
                 LabeledFieldWithUpload(
-                    label = "立绘路径（portrait）或图片",
+                    label = stringResource(R.string.character_portrait_path_label),
                     value = portrait,
                     onValueChange = { vm.portrait.value = it },
                     onUploadClick = {
@@ -462,48 +464,48 @@ fun CharacterDetailScreen(
                 PortraitPreview(portrait = portrait, onClick = { fullscreenPortrait = it })
                 // 基础信息（多行）
                 LabeledField(
-                    label = "基础信息（basicInfo，身高/年龄/职业等）",
+                    label = stringResource(R.string.character_basic_info_label),
                     value = basicInfo,
                     onValueChange = { vm.basicInfo.value = it },
                     singleLine = false
                 )
                 // 人格设定
                 LabeledField(
-                    label = "人格设定", value = personality, onValueChange = { vm.personality.value = it },
+                    label = stringResource(R.string.character_personality), value = personality, onValueChange = { vm.personality.value = it },
                     singleLine = false
                 )
                 // 首条消息
                 LabeledField(
-                    label = "首条消息（firstMessage）",
+                    label = stringResource(R.string.character_first_message_label),
                     value = firstMessage, onValueChange = { vm.firstMessage.value = it },
                     singleLine = false
                 )
                 // 场景
                 LabeledField(
-                    label = "场景", value = scenario, onValueChange = { vm.scenario.value = it },
+                    label = stringResource(R.string.character_scenario), value = scenario, onValueChange = { vm.scenario.value = it },
                     singleLine = false
                 )
                 // 对话示例
                 LabeledField(
-                    label = "对话示例（exampleDialogues）",
+                    label = stringResource(R.string.character_dialog_examples_label),
                     value = dialogExamples, onValueChange = { vm.dialogExamples.value = it },
                     singleLine = false
                 )
                 // 回复格式
                 LabeledField(
-                    label = "回复格式（responseFormat）",
+                    label = stringResource(R.string.character_response_format_label),
                     value = responseFormat, onValueChange = { vm.responseFormat.value = it },
                     singleLine = false
                 )
                 // 规则（每行一条）
                 LabeledField(
-                    label = "规则（rules，每行一条）", value = rulesText, onValueChange = { vm.rulesText.value = it },
+                    label = stringResource(R.string.character_rules_label), value = rulesText, onValueChange = { vm.rulesText.value = it },
                     singleLine = false
                 )
                 // 系统提示词（只读展示，后端自动生成）
                 if (systemPrompt.isNotBlank()) {
                     LabeledField(
-                        label = "系统提示词（后端自动生成，只读）",
+                        label = stringResource(R.string.character_system_prompt_label),
                         value = systemPrompt,
                         onValueChange = { vm.systemPrompt.value = it },
                         singleLine = false
@@ -511,26 +513,26 @@ fun CharacterDetailScreen(
                 }
                 // 标签（逗号分隔）
                 LabeledField(
-                    label = "标签（逗号分隔）", value = tagsText, onValueChange = { vm.tagsText.value = it },
+                    label = stringResource(R.string.character_tags_label), value = tagsText, onValueChange = { vm.tagsText.value = it },
                     singleLine = true
                 )
                 // 六维初始关系状态
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "初始关系状态",
+                    text = stringResource(R.string.character_initial_state),
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold
                 )
-                DimSlider(label = "好感", value = affection, onValueChange = { vm.affection.value = it })
-                DimSlider(label = "信任", value = trust, onValueChange = { vm.trust.value = it })
-                DimSlider(label = "熟悉", value = familiarity, onValueChange = { vm.familiarity.value = it })
-                DimSlider(label = "依赖", value = dependency, onValueChange = { vm.dependency.value = it })
-                DimSlider(label = "安全感", value = security, onValueChange = { vm.security.value = it })
-                DimSlider(label = "嫉妒", value = jealousy, onValueChange = { vm.jealousy.value = it })
+                DimSlider(label = stringResource(R.string.character_dim_affection), value = affection, onValueChange = { vm.affection.value = it })
+                DimSlider(label = stringResource(R.string.character_dim_trust), value = trust, onValueChange = { vm.trust.value = it })
+                DimSlider(label = stringResource(R.string.character_dim_familiarity), value = familiarity, onValueChange = { vm.familiarity.value = it })
+                DimSlider(label = stringResource(R.string.character_dim_dependency), value = dependency, onValueChange = { vm.dependency.value = it })
+                DimSlider(label = stringResource(R.string.character_dim_security), value = security, onValueChange = { vm.security.value = it })
+                DimSlider(label = stringResource(R.string.character_dim_jealousy), value = jealousy, onValueChange = { vm.jealousy.value = it })
                 // 初始心情
                 LabeledField(
-                    label = "初始心情（如 平静/开心/害羞/愤怒）",
+                    label = stringResource(R.string.character_initial_mood_label),
                     value = mood,
                     onValueChange = { vm.mood.value = it },
                     singleLine = true
@@ -545,10 +547,10 @@ fun CharacterDetailScreen(
     if (showDeleteDialog) {
         NekoDialog(
             onDismiss = { showDeleteDialog = false },
-            title = "删除角色",
-            message = "确定要删除该角色吗？此操作不可撤销。",
-            confirmText = "删除",
-            cancelText = "取消",
+            title = stringResource(R.string.character_delete_title),
+            message = stringResource(R.string.character_delete_confirm),
+            confirmText = stringResource(R.string.common_delete),
+            cancelText = stringResource(R.string.common_cancel),
             onConfirm = {
                 showDeleteDialog = false
                 vm.delete(onBack)
@@ -679,7 +681,7 @@ private fun LabeledFieldWithUpload(
             IconButton(onClick = onUploadClick) {
                 Icon(
                     Icons.Filled.Upload,
-                    contentDescription = "上传图片",
+                    contentDescription = stringResource(R.string.character_upload_image),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
@@ -688,7 +690,7 @@ private fun LabeledFieldWithUpload(
                 IconButton(onClick = onAiGenerateClick) {
                     Icon(
                         Icons.Filled.AutoAwesome,
-                        contentDescription = "AI 生成立绘",
+                        contentDescription = stringResource(R.string.character_ai_generate_portrait),
                         tint = MaterialTheme.colorScheme.tertiary
                     )
                 }
@@ -770,7 +772,7 @@ private fun PortraitPreview(portrait: String, onClick: (String) -> Unit) {
     val url = remember(portrait) { resolveImageUrl(portrait) }
     Column {
         Text(
-            text = "立绘预览（点击查看大图）",
+            text = stringResource(R.string.character_portrait_preview),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -786,7 +788,7 @@ private fun PortraitPreview(portrait: String, onClick: (String) -> Unit) {
         ) {
             AsyncImage(
                 model = url,
-                contentDescription = "立绘预览",
+                contentDescription = stringResource(R.string.character_portrait_preview_cd),
                 contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize()
             )
@@ -810,7 +812,7 @@ private fun FullscreenPortraitDialog(url: String, onDismiss: () -> Unit) {
             var offsetY by remember { mutableStateOf(0f) }
             AsyncImage(
                 model = url,
-                contentDescription = "立绘大图",
+                contentDescription = stringResource(R.string.character_portrait_large),
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxSize()
@@ -840,7 +842,7 @@ private fun FullscreenPortraitDialog(url: String, onDismiss: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "关闭",
+                    text = stringResource(R.string.common_close),
                     color = Color.White,
                     style = MaterialTheme.typography.labelMedium
                 )

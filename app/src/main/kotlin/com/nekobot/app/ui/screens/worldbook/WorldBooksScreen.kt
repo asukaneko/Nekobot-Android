@@ -17,10 +17,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.WorldBook
 import com.nekobot.app.data.model.WorldBookRequest
@@ -60,7 +62,7 @@ class WorldBooksViewModel : com.nekobot.app.ui.BaseViewModel() {
             block = { unified.createWorldBook(req) },
             onSuccess = { created ->
                 _books.value = _books.value + created
-                showToast("已创建世界书")
+                showToast(string(R.string.worldbook_created))
             }
         )
     }
@@ -71,7 +73,7 @@ class WorldBooksViewModel : com.nekobot.app.ui.BaseViewModel() {
             block = { unified.deleteWorldBook(id) },
             onSuccess = {
                 _books.value = _books.value.filterNot { it.id == id }
-                showToast("已删除世界书")
+                showToast(string(R.string.worldbook_deleted))
             }
         )
     }
@@ -94,7 +96,7 @@ class WorldBooksViewModel : com.nekobot.app.ui.BaseViewModel() {
                 )
                 val bookId = (created as? com.nekobot.app.data.repository.Resource.Success)
                     ?.data?.id
-                    ?: throw IllegalStateException("创建世界书失败")
+                    ?: throw IllegalStateException(string(R.string.worldbook_create_failed))
                 // 2. 调用 AI 生成条目（本地模式会立即落库，远程模式返回条目列表已落库）
                 unified.aiGenerateWorldBookEntries(bookId, topic)
                 com.nekobot.app.data.repository.Resource.Success(bookId)
@@ -102,7 +104,7 @@ class WorldBooksViewModel : com.nekobot.app.ui.BaseViewModel() {
             onSuccess = { bookId ->
                 // 重新加载列表以显示新书
                 load()
-                showToast("AI 已生成世界书")
+                showToast(string(R.string.worldbook_ai_generated))
                 onSuccess(bookId)
             }
         )
@@ -137,7 +139,7 @@ fun WorldBooksScreen(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("世界书", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.worldbook_title), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.size(8.dp))
                         CountBadge(books.size)
                     }
@@ -148,19 +150,19 @@ fun WorldBooksScreen(
                 ),
                 actions = {
                     IconButton(onClick = { viewModel.load() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.worldbook_refresh), tint = MaterialTheme.colorScheme.onSurface)
                     }
                     // 新建按钮 + 下拉菜单：新建 / AI 生成
                     Box {
                         IconButton(onClick = { showAddMenu = true }) {
-                            Icon(Icons.Filled.Add, contentDescription = "新建世界书", tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.worldbook_new), tint = MaterialTheme.colorScheme.primary)
                         }
                         DropdownMenu(
                             expanded = showAddMenu,
                             onDismissRequest = { showAddMenu = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text("新建世界书") },
+                                text = { Text(stringResource(R.string.worldbook_new)) },
                                 leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                                 onClick = {
                                     showAddMenu = false
@@ -168,7 +170,7 @@ fun WorldBooksScreen(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("AI 生成世界书") },
+                                text = { Text(stringResource(R.string.worldbook_ai_generate)) },
                                 leadingIcon = { Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                                 onClick = {
                                     showAddMenu = false
@@ -189,8 +191,8 @@ fun WorldBooksScreen(
         ) {
             if (books.isEmpty() && !loading) {
                 EmptyState(
-                    title = "暂无世界书",
-                    hint = "点击右上角新建一本世界书",
+                    title = stringResource(R.string.worldbook_empty_title),
+                    hint = stringResource(R.string.worldbook_empty_hint),
                     icon = {
                         Icon(
                             Icons.Filled.Book,
@@ -258,9 +260,9 @@ fun WorldBooksScreen(
     if (showAiGeneratingHint) {
         NekoDialog(
             onDismiss = { showAiGeneratingHint = false },
-            title = "后台生成中",
-            message = "AI 正在生成世界书及条目，请稍候片刻。生成完成后将自动跳转到详情页。",
-            confirmText = "知道了",
+            title = stringResource(R.string.worldbook_ai_generating_title),
+            message = stringResource(R.string.worldbook_ai_generating_message),
+            confirmText = stringResource(R.string.worldbook_got_it),
             confirmEnabled = true,
             onConfirm = { showAiGeneratingHint = false },
             cancelText = null,
@@ -306,7 +308,7 @@ private fun WorldBookItem(book: WorldBook, onClick: () -> Unit) {
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "条目数：${book.entries?.size ?: 0}",
+                    text = stringResource(R.string.worldbook_entry_count, book.entries?.size ?: 0),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -338,16 +340,16 @@ private fun CreateWorldBookDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = "新建世界书",
-        confirmText = "创建",
-        cancelText = "取消",
+        title = stringResource(R.string.worldbook_new),
+        confirmText = stringResource(R.string.common_create),
+        cancelText = stringResource(R.string.common_cancel),
         onConfirm = {
             if (name.isBlank()) return@NekoDialog
             onConfirm(name.trim(), desc.trim().takeIf { it.isNotBlank() })
         },
         onCancel = onDismiss
     ) {
-        Text("名称", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.worldbook_field_name), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         OutlinedTextField(
             value = name,
@@ -366,7 +368,7 @@ private fun CreateWorldBookDialog(
             )
         )
         Spacer(Modifier.height(12.dp))
-        Text("描述", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.worldbook_field_description), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         OutlinedTextField(
             value = desc,
@@ -416,9 +418,9 @@ private fun AiGenerateWorldBookDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = "AI 生成世界书",
-        confirmText = "生成",
-        cancelText = "取消",
+        title = stringResource(R.string.worldbook_ai_generate),
+        confirmText = stringResource(R.string.worldbook_generate),
+        cancelText = stringResource(R.string.common_cancel),
         confirmEnabled = name.isNotBlank(),
         onConfirm = {
             if (name.isBlank()) return@NekoDialog
@@ -430,7 +432,7 @@ private fun AiGenerateWorldBookDialog(
         },
         onCancel = onDismiss
     ) {
-        Text("书名", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.worldbook_field_book_name), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         OutlinedTextField(
             value = name,
@@ -441,7 +443,7 @@ private fun AiGenerateWorldBookDialog(
             colors = fieldColors
         )
         Spacer(Modifier.height(10.dp))
-        Text("描述（可选）", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.worldbook_field_description_optional), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         OutlinedTextField(
             value = desc,
@@ -454,7 +456,7 @@ private fun AiGenerateWorldBookDialog(
             colors = fieldColors
         )
         Spacer(Modifier.height(10.dp))
-        Text("生成主题（可选）", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.worldbook_field_topic_optional), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         OutlinedTextField(
             value = topic,
@@ -465,7 +467,7 @@ private fun AiGenerateWorldBookDialog(
             modifier = Modifier.fillMaxWidth(),
             placeholder = {
                 Text(
-                    "例如：这个角色所在的学院背景、重要地点、关键 NPC、世界规则等",
+                    stringResource(R.string.worldbook_topic_placeholder),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -475,7 +477,7 @@ private fun AiGenerateWorldBookDialog(
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "提示：留空将由 AI 根据书名自动构思主题；填写后 AI 会围绕主题生成 5-10 条目。",
+            stringResource(R.string.worldbook_topic_hint),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

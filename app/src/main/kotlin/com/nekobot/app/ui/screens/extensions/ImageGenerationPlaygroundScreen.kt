@@ -7,7 +7,6 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -63,6 +63,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalImageResult
 import com.nekobot.app.data.repository.Resource
@@ -81,10 +82,10 @@ import java.io.File
 
 private data class ImageSizeOption(val label: String, val value: String, val ratio: Float)
 
-private val imageSizeOptions = listOf(
-    ImageSizeOption("1024 × 1024（方形）", "1024x1024", 1f),
-    ImageSizeOption("1792 × 1024（横向）", "1792x1024", 1024f / 1792f),
-    ImageSizeOption("1024 × 1792（纵向）", "1024x1792", 1792f / 1024f)
+private fun imageSizeOptions() = listOf(
+    ImageSizeOption(ServiceContainer.getString(R.string.imggen_size_square), "1024x1024", 1f),
+    ImageSizeOption(ServiceContainer.getString(R.string.imggen_size_landscape), "1792x1024", 1024f / 1792f),
+    ImageSizeOption(ServiceContainer.getString(R.string.imggen_size_portrait), "1024x1792", 1792f / 1024f)
 )
 
 class ImageGenerationPlaygroundViewModel : BaseViewModel() {
@@ -95,7 +96,7 @@ class ImageGenerationPlaygroundViewModel : BaseViewModel() {
     /** 生成图片：调用统一仓库的本地图片生成队列 */
     fun generate(prompt: String, size: String, n: Int) {
         if (prompt.isBlank()) {
-            showToast("请输入图片描述")
+            showToast(string(R.string.imggen_prompt_required))
             return
         }
         _results.value = emptyList()
@@ -108,7 +109,7 @@ class ImageGenerationPlaygroundViewModel : BaseViewModel() {
                     is Resource.Loading -> {}
                 }
             } catch (e: Exception) {
-                showError(e.message ?: "图片生成失败")
+                showError(e.message ?: string(R.string.imggen_generate_failed))
             } finally {
                 setLoading(false)
             }
@@ -127,7 +128,7 @@ fun ImageGenerationPlaygroundScreen(onBack: () -> Unit) {
     val context = LocalContext.current
 
     var prompt by remember { mutableStateOf("") }
-    var selectedSize by remember { mutableStateOf(imageSizeOptions.first()) }
+    var selectedSize by remember { mutableStateOf(imageSizeOptions().first()) }
     var n by remember { mutableStateOf(1) }
     var sizeExpanded by remember { mutableStateOf(false) }
 
@@ -142,14 +143,14 @@ fun ImageGenerationPlaygroundScreen(onBack: () -> Unit) {
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("图片生成实验室", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.imggen_title), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             )
@@ -173,13 +174,13 @@ fun ImageGenerationPlaygroundScreen(onBack: () -> Unit) {
 
                 // 生成区
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    SectionHeader(title = "生成参数", subtitle = "输入描述并选择尺寸")
+                    SectionHeader(title = stringResource(R.string.imggen_params), subtitle = stringResource(R.string.imggen_params_subtitle))
                     Spacer(Modifier.height(12.dp))
 
                     OutlinedTextField(
                         value = prompt,
                         onValueChange = { prompt = it },
-                        label = { Text("图片描述（Prompt）") },
+                        label = { Text(stringResource(R.string.imggen_prompt_label)) },
                         minLines = 3,
                         maxLines = 6,
                         modifier = Modifier.fillMaxWidth(),
@@ -198,7 +199,7 @@ fun ImageGenerationPlaygroundScreen(onBack: () -> Unit) {
                             value = selectedSize.label,
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("尺寸") },
+                            label = { Text(stringResource(R.string.imggen_size_label)) },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sizeExpanded) },
                             modifier = Modifier.menuAnchor().fillMaxWidth()
                         )
@@ -206,7 +207,7 @@ fun ImageGenerationPlaygroundScreen(onBack: () -> Unit) {
                             expanded = sizeExpanded,
                             onDismissRequest = { sizeExpanded = false }
                         ) {
-                            imageSizeOptions.forEach { opt ->
+                            imageSizeOptions().forEach { opt ->
                                 DropdownMenuItem(
                                     text = { Text(opt.label) },
                                     onClick = { selectedSize = opt; sizeExpanded = false }
@@ -217,13 +218,13 @@ fun ImageGenerationPlaygroundScreen(onBack: () -> Unit) {
                     Spacer(Modifier.height(12.dp))
 
                     // 生成数量
-                    Text("生成数量", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    Text(stringResource(R.string.imggen_count), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         (1..4).forEach { count ->
                             FilterChip(
                                 selected = n == count,
                                 onClick = { n = count },
-                                label = { Text("$count 张") }
+                                label = { Text(stringResource(R.string.imggen_count_unit, count)) }
                             )
                         }
                     }
@@ -237,20 +238,20 @@ fun ImageGenerationPlaygroundScreen(onBack: () -> Unit) {
                     ) {
                         Icon(Icons.Filled.Image, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.size(8.dp))
-                        Text("生成图片", color = MaterialTheme.colorScheme.onPrimary)
+                        Text(stringResource(R.string.imggen_generate_button), color = MaterialTheme.colorScheme.onPrimary)
                     }
                 }
 
                 // 结果区
                 if (results.isNotEmpty()) {
-                    SectionHeader(title = "生成结果", subtitle = "共 ${results.size} 张")
+                    SectionHeader(title = stringResource(R.string.imggen_results), subtitle = stringResource(R.string.imggen_results_count, results.size))
                     results.forEach { img ->
                         GeneratedImageCard(image = img)
                     }
                 }
             }
 
-            LoadingOverlay(visible = loading, message = "正在生成图片...")
+            LoadingOverlay(visible = loading, message = stringResource(R.string.imggen_generating))
         }
     }
 }
@@ -260,7 +261,7 @@ private fun GeneratedImageCard(image: LocalImageResult) {
     val context = LocalContext.current
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         Text(
-            text = "模型: ${image.usedModelName}",
+            text = stringResource(R.string.imggen_model_label, image.usedModelName),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -270,7 +271,7 @@ private fun GeneratedImageCard(image: LocalImageResult) {
                 .data(image.cacheUri)
                 .crossfade(true)
                 .build(),
-            contentDescription = "生成的图片",
+            contentDescription = stringResource(R.string.imggen_generated_image),
             contentScale = ContentScale.FillWidth,
             modifier = Modifier
                 .fillMaxWidth()
@@ -287,13 +288,13 @@ private fun GeneratedImageCard(image: LocalImageResult) {
                     Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                 }
             }) {
-                Icon(Icons.Filled.Download, contentDescription = "保存到相册", tint = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Filled.Download, contentDescription = stringResource(R.string.imggen_save_to_gallery), tint = MaterialTheme.colorScheme.primary)
             }
             // 分享
             IconButton(onClick = {
                 shareImage(context, image.cacheUri)
             }) {
-                Icon(Icons.Filled.Share, contentDescription = "分享", tint = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Filled.Share, contentDescription = stringResource(R.string.common_share), tint = MaterialTheme.colorScheme.primary)
             }
         }
     }
@@ -307,7 +308,7 @@ private fun saveToMediaStore(
 ) {
     val sourceFile = Uri.parse(cacheUri).path?.let { File(it) }
     if (sourceFile == null || !sourceFile.exists()) {
-        onResult("文件不存在")
+        onResult(ServiceContainer.getString(R.string.imggen_file_not_found))
         return
     }
     val resolver = context.contentResolver
@@ -327,7 +328,7 @@ private fun saveToMediaStore(
     }
     val uri = resolver.insert(collection, values)
     if (uri == null) {
-        onResult("保存失败")
+        onResult(ServiceContainer.getString(R.string.imggen_save_failed))
         return
     }
     try {
@@ -339,9 +340,9 @@ private fun saveToMediaStore(
             values.put(MediaStore.Images.Media.IS_PENDING, 0)
             resolver.update(uri, values, null, null)
         }
-        onResult("已保存到相册")
+        onResult(ServiceContainer.getString(R.string.imggen_saved_to_gallery))
     } catch (e: Exception) {
-        onResult("保存失败: ${e.message}")
+        onResult(ServiceContainer.localizedContext?.getString(R.string.imggen_save_failed_with_msg, e.message) ?: ServiceContainer.getString(R.string.imggen_save_failed))
     }
 }
 
@@ -349,7 +350,7 @@ private fun saveToMediaStore(
 private fun shareImage(context: android.content.Context, cacheUri: String) {
     val sourceFile = Uri.parse(cacheUri).path?.let { File(it) }
     if (sourceFile == null || !sourceFile.exists()) {
-        Toast.makeText(context, "文件不存在", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, ServiceContainer.getString(R.string.imggen_file_not_found), Toast.LENGTH_SHORT).show()
         return
     }
     val authority = "${context.packageName}.fileprovider"
@@ -359,5 +360,5 @@ private fun shareImage(context: android.content.Context, cacheUri: String) {
         putExtra(Intent.EXTRA_STREAM, contentUri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    context.startActivity(Intent.createChooser(intent, "分享图片"))
+    context.startActivity(Intent.createChooser(intent, ServiceContainer.getString(R.string.imggen_share_image)))
 }

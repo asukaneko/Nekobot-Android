@@ -32,8 +32,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.ui.components.GlassCard
@@ -56,12 +58,12 @@ fun AiConfigCenterScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("AI 配置中心") },
+                title = { Text(stringResource(R.string.aiconfig_center_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.common_back),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -88,64 +90,64 @@ fun AiConfigCenterScreen(
             ) {
                 if (isLocalMode) {
                     // 本地模式：本地 AI 模型 + AI 配置 + 故障转移队列 + API Key 管理（均基于本地数据）
-                    SectionHeader(title = "本地 AI")
+                    SectionHeader(title = stringResource(R.string.aiconfig_section_local_ai))
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         ConfigCenterEntry(
                             icon = Icons.Filled.Memory,
-                            title = "本地 AI 模型",
-                            subtitle = "管理本地推理模型与参数"
+                            title = stringResource(R.string.aiconfig_local_ai_models),
+                            subtitle = stringResource(R.string.aiconfig_local_ai_models_subtitle)
                         ) { onNavigate("local_ai_models") }
                     }
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         ConfigCenterEntry(
                             icon = Icons.Filled.AutoAwesome,
-                            title = "AI 配置",
-                            subtitle = "查看并同步当前激活模型的生成参数"
+                            title = stringResource(R.string.aiconfig_title),
+                            subtitle = stringResource(R.string.aiconfig_sync_active_params_subtitle)
                         ) { onNavigate("ai_config") }
                     }
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         ConfigCenterEntry(
                             icon = Icons.Filled.SwapVert,
-                            title = "故障转移队列",
-                            subtitle = "按用途查看本地模型优先级顺序"
+                            title = stringResource(R.string.failover_queue_title),
+                            subtitle = stringResource(R.string.failover_local_priority_subtitle)
                         ) { onNavigate("ai_failover") }
                     }
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         ConfigCenterEntry(
                             icon = Icons.Filled.Key,
-                            title = "API Key 管理",
-                            subtitle = "管理本地保存的 API 密钥"
+                            title = stringResource(R.string.aiconfig_api_key_management),
+                            subtitle = stringResource(R.string.aiconfig_manage_local_keys_subtitle)
                         ) { onNavigate("api_keys") }
                     }
                 } else {
                     // 服务器模式：AI 配置 / AI 模型 / API Key 管理
-                    SectionHeader(title = "模型与配置")
+                    SectionHeader(title = stringResource(R.string.aiconfig_section_models_config))
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         ConfigCenterEntry(
                             icon = Icons.Filled.AutoAwesome,
-                            title = "AI 配置",
-                            subtitle = "配置模型用途与生成参数"
+                            title = stringResource(R.string.aiconfig_title),
+                            subtitle = stringResource(R.string.aiconfig_configure_params_subtitle)
                         ) { onNavigate("ai_config") }
                     }
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         ConfigCenterEntry(
                             icon = Icons.Filled.Memory,
-                            title = "AI 模型",
-                            subtitle = "管理可用的 AI 模型列表"
+                            title = stringResource(R.string.aimodels_title),
+                            subtitle = stringResource(R.string.aimodels_manage_list_subtitle)
                         ) { onNavigate("ai_models") }
                     }
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         ConfigCenterEntry(
                             icon = Icons.Filled.SwapVert,
-                            title = "故障转移队列",
-                            subtitle = "查看模型健康状态并调整回退顺序"
+                            title = stringResource(R.string.failover_queue_title),
+                            subtitle = stringResource(R.string.failover_health_subtitle)
                         ) { onNavigate("ai_failover") }
                     }
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         ConfigCenterEntry(
                             icon = Icons.Filled.Key,
-                            title = "API Key 管理",
-                            subtitle = "管理各模型的 API 密钥"
+                            title = stringResource(R.string.aiconfig_api_key_management),
+                            subtitle = stringResource(R.string.aiconfig_manage_keys_subtitle)
                         ) { onNavigate("api_keys") }
                     }
                 }

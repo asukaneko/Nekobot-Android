@@ -1,10 +1,12 @@
 package com.nekobot.app
 
 import android.app.Application
+import android.content.Context
 import android.os.Build
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.nekobot.app.data.local.AppMode
+import com.nekobot.app.data.local.LocaleHelper
 import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.local.ai.LocalAiClient
 import com.nekobot.app.data.local.db.NekobotDatabase
@@ -25,6 +27,9 @@ object ServiceContainer {
         private set
     /** 应用上下文（用于发送通知等需要 Context 的操作） */
     var appContext: android.content.Context? = null
+        private set
+    /** 带选定语言配置的上下文，供 ViewModel 等非 Composable 代码获取本地化字符串。 */
+    var localizedContext: Context? = null
         private set
     lateinit var network: NetworkClient
         private set
@@ -63,10 +68,20 @@ object ServiceContainer {
         socket = SocketManager(prefs)
         // 初始化本地日志记录器
         com.nekobot.app.data.local.LocalLogger.init(app)
+        // 初始化带语言配置的上下文（ViewModel 通过此上下文获取本地化字符串）
+        localizedContext = LocaleHelper.wrap(appContext!!)
         // 初始化全局状态
         _appModeFlow.value = prefs.appMode
         _loginStateFlow.value = prefs.isLoggedIn
     }
+
+    /** 刷新本地化上下文（语言切换后调用）。 */
+    fun refreshLocale() {
+        appContext?.let { localizedContext = LocaleHelper.wrap(it) }
+    }
+
+    /** 获取本地化字符串（ViewModel 等非 Composable 场景使用）。 */
+    fun getString(resId: Int): String = localizedContext?.getString(resId) ?: ""
 
     fun rebuildNetwork() {
         network.rebuild()

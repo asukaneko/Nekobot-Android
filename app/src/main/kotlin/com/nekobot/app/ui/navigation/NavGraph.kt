@@ -69,7 +69,7 @@ private val mainRoutes = setOf(
 )
 
 // 底栏 Tab 的显示顺序，用于判断横向滑动方向。
-private val tabOrder = bottomItems.map { it.route }
+private val tabOrder = bottomRoutes
 
 private const val TAB_ANIM_MS = 200
 private const val DETAIL_ANIM_MS = 220
@@ -120,7 +120,7 @@ fun NekobotNavGraph() {
         bottomBar = {
             if (showBottomBar) {
                 LiquidGlassBottomBar(
-                    items = bottomItems,
+                    items = bottomItems(),
                     selectedRoute = currentRoute,
                     onItemSelected = { item ->
                         navController.navigate(item.route) {

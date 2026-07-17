@@ -49,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -56,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
+import com.nekobot.app.R
 import com.nekobot.app.data.model.Hook
 import com.nekobot.app.data.model.HookExecutionLog
 import com.nekobot.app.data.model.HookRequest
@@ -121,7 +123,7 @@ class HooksViewModel : BaseViewModel() {
     /** 测试 Hook */
     fun testHook(body: JsonElement) = launchResult(
         block = { unified.testHook(body) },
-        onSuccess = { _testResult.value = it?.toString() ?: "无返回结果" }
+        onSuccess = { _testResult.value = it?.toString() ?: string(R.string.hooks_no_result) }
     )
 
     /** 加载 Hook 执行日志 */
@@ -162,25 +164,25 @@ fun HooksScreen(onBack: () -> Unit, viewModel: HooksViewModel = viewModel()) {
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Hook 管理", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.hooks_title), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     IconButton(onClick = { viewModel.load() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.hooks_refresh), tint = MaterialTheme.colorScheme.onSurface)
                     }
                     IconButton(onClick = {
                         editing = null
                         showForm = true
                     }) {
-                        Icon(Icons.Filled.Add, contentDescription = "新建 Hook", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.hooks_new), tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             )
@@ -194,8 +196,8 @@ fun HooksScreen(onBack: () -> Unit, viewModel: HooksViewModel = viewModel()) {
         ) {
             if (list.isEmpty() && !loading) {
                 EmptyState(
-                    title = "暂无 Hook",
-                    hint = "点击右上角 + 添加",
+                    title = stringResource(R.string.hooks_empty_title),
+                    hint = stringResource(R.string.hooks_empty_hint),
                     icon = {
                         Icon(
                             Icons.Filled.Extension,
@@ -267,9 +269,9 @@ fun HooksScreen(onBack: () -> Unit, viewModel: HooksViewModel = viewModel()) {
     deleteTarget?.let { target ->
         NekoDialog(
             onDismiss = { deleteTarget = null },
-            title = "确认删除",
-            message = "确定删除 Hook「${target.displayName}」吗？",
-            confirmText = "删除",
+            title = stringResource(R.string.hooks_confirm_delete),
+            message = stringResource(R.string.hooks_confirm_delete_msg, target.displayName),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 target.id?.let { viewModel.delete(it) }
                 deleteTarget = null
@@ -284,8 +286,8 @@ fun HooksScreen(onBack: () -> Unit, viewModel: HooksViewModel = viewModel()) {
                 logsTarget = null
                 viewModel.clearLogs()
             },
-            title = "执行日志 - ${target.displayName}",
-            confirmText = "关闭",
+            title = stringResource(R.string.hooks_execution_logs, target.displayName),
+            confirmText = stringResource(R.string.common_close),
             onConfirm = {
                 logsTarget = null
                 viewModel.clearLogs()
@@ -295,7 +297,7 @@ fun HooksScreen(onBack: () -> Unit, viewModel: HooksViewModel = viewModel()) {
         ) {
             if (logs.isEmpty()) {
                 Text(
-                    "暂无日志",
+                    stringResource(R.string.hooks_no_logs),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -317,9 +319,9 @@ fun HooksScreen(onBack: () -> Unit, viewModel: HooksViewModel = viewModel()) {
     testResult?.let { result ->
         NekoDialog(
             onDismiss = { viewModel.clearTestResult() },
-            title = "测试结果",
+            title = stringResource(R.string.hooks_test_result),
             message = result,
-            confirmText = "确定",
+            confirmText = stringResource(R.string.common_confirm),
             onConfirm = { viewModel.clearTestResult() },
             cancelText = null,
             onCancel = null
@@ -354,7 +356,7 @@ private fun HookCard(
             )
             // 启停状态标记
             val statusColor = if (hook.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
-            val statusText = if (hook.enabled) "启用" else "停用"
+            val statusText = if (hook.enabled) stringResource(R.string.hooks_enabled) else stringResource(R.string.hooks_disabled)
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
@@ -372,18 +374,18 @@ private fun HookCard(
             var menuExpanded by remember { mutableStateOf(false) }
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "操作", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.hooks_action), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false }
                 ) {
-                    DropdownMenuItem(text = { Text("编辑") }, onClick = { menuExpanded = false; onEdit() })
-                    DropdownMenuItem(text = { Text(if (hook.enabled) "停用" else "启用") }, onClick = { menuExpanded = false; onToggle() })
-                    DropdownMenuItem(text = { Text("查看日志") }, onClick = { menuExpanded = false; onLogs() })
-                    DropdownMenuItem(text = { Text("测试") }, onClick = { menuExpanded = false; onTest() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.common_edit)) }, onClick = { menuExpanded = false; onEdit() })
+                    DropdownMenuItem(text = { Text(if (hook.enabled) stringResource(R.string.hooks_disabled) else stringResource(R.string.hooks_enabled)) }, onClick = { menuExpanded = false; onToggle() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.hooks_view_logs)) }, onClick = { menuExpanded = false; onLogs() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.hooks_test)) }, onClick = { menuExpanded = false; onTest() })
                     DropdownMenuItem(text = {
-                        Text("删除", color = ErrorRed)
+                        Text(stringResource(R.string.common_delete), color = ErrorRed)
                     }, onClick = { menuExpanded = false; onDelete() })
                 }
             }
@@ -392,9 +394,9 @@ private fun HookCard(
         Spacer(Modifier.height(8.dp))
 
         // 信息行
-        Text("事件: ${hook.event}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Text("作用域: ${hook.scope}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("优先级: ${hook.priority}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.hooks_event, hook.event), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(stringResource(R.string.hooks_scope, hook.scope), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.hooks_priority, hook.priority), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (!hook.description.isNullOrBlank()) {
             Spacer(Modifier.height(4.dp))
             Text(hook.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -422,7 +424,7 @@ private fun HookLogItem(log: HookExecutionLog) {
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text = log.status.ifBlank { "未知" },
+                    text = log.status.ifBlank { stringResource(R.string.common_unknown) },
                     style = MaterialTheme.typography.labelSmall,
                     color = statusColor
                 )
@@ -430,20 +432,20 @@ private fun HookLogItem(log: HookExecutionLog) {
             Spacer(Modifier.width(8.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "耗时: ${log.durationMs}ms",
+                    stringResource(R.string.hooks_duration, log.durationMs),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (!log.createdAt.isNullOrBlank()) {
                     Text(
-                        "时间: ${log.createdAt}",
+                        stringResource(R.string.hooks_time, log.createdAt),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 if (!log.error.isNullOrBlank()) {
                     Text(
-                        "错误: ${log.error}",
+                        stringResource(R.string.hooks_error, log.error),
                         style = MaterialTheme.typography.labelSmall,
                         color = ErrorRed,
                         maxLines = 3,
@@ -477,8 +479,8 @@ private fun HookFormDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = if (initial == null) "新建 Hook" else "编辑 Hook",
-        confirmText = "保存",
+        title = if (initial == null) stringResource(R.string.hooks_new) else stringResource(R.string.hooks_edit),
+        confirmText = stringResource(R.string.common_save),
         onConfirm = {
             if (name.isBlank() || event.isBlank()) return@NekoDialog
             val req = HookRequest(
@@ -502,7 +504,7 @@ private fun HookFormDialog(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // 名称（必填）
-            LabeledField("名称 *")
+            LabeledField(stringResource(R.string.hooks_name_required))
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
@@ -514,7 +516,7 @@ private fun HookFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 事件（必填）
-            LabeledField("事件 *")
+            LabeledField(stringResource(R.string.hooks_event_required))
             OutlinedTextField(
                 value = event,
                 onValueChange = { event = it },
@@ -522,12 +524,12 @@ private fun HookFormDialog(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
                 colors = fieldColors(),
-                placeholder = { Text("如 character.message") }
+                placeholder = { Text(stringResource(R.string.hooks_event_placeholder)) }
             )
             Spacer(Modifier.height(8.dp))
 
             // 作用域下拉
-            LabeledField("作用域")
+            LabeledField(stringResource(R.string.hooks_scope_label))
             DropdownField(
                 value = scope,
                 options = listOf("global", "character", "conversation", "user"),
@@ -536,7 +538,7 @@ private fun HookFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 优先级
-            LabeledField("优先级")
+            LabeledField(stringResource(R.string.hooks_priority_label))
             OutlinedTextField(
                 value = priority,
                 onValueChange = { priority = it.filter { c -> c.isDigit() } },
@@ -549,7 +551,7 @@ private fun HookFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 描述
-            LabeledField("描述")
+            LabeledField(stringResource(R.string.hooks_description))
             OutlinedTextField(
                 value = description,
                 onValueChange = { description = it },
@@ -563,7 +565,7 @@ private fun HookFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 触发模式下拉
-            LabeledField("触发模式")
+            LabeledField(stringResource(R.string.hooks_trigger_mode))
             DropdownField(
                 value = triggerMode,
                 options = listOf("always", "once_per_conversation"),
@@ -572,7 +574,7 @@ private fun HookFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 条件逻辑下拉
-            LabeledField("条件逻辑")
+            LabeledField(stringResource(R.string.hooks_condition_logic))
             DropdownField(
                 value = conditionLogic,
                 options = listOf("and", "or"),
@@ -581,7 +583,7 @@ private fun HookFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 超时（毫秒）
-            LabeledField("超时 (ms)")
+            LabeledField(stringResource(R.string.hooks_timeout_ms))
             OutlinedTextField(
                 value = timeoutMs,
                 onValueChange = { timeoutMs = it.filter { c -> c.isDigit() } },
@@ -594,7 +596,7 @@ private fun HookFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 最大重试次数
-            LabeledField("最大重试次数")
+            LabeledField(stringResource(R.string.hooks_max_retries))
             OutlinedTextField(
                 value = maxRetries,
                 onValueChange = { maxRetries = it.filter { c -> c.isDigit() } },

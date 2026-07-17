@@ -33,8 +33,10 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nekobot.app.R
 
 /**
  * 自定义 Markdown 渲染器，参考原仓库 nbot-methods.js 的 renderMarkdown。
@@ -366,7 +368,7 @@ private fun CodeBlockRenderer(block: MdBlock.CodeBlock) {
                     modifier = Modifier.weight(1f)
                 )
                 IconButton(onClick = { clipboard.setText(AnnotatedString(block.code)) }, modifier = Modifier.size(20.dp)) {
-                    Icon(Icons.Filled.ContentCopy, contentDescription = "复制", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Filled.ContentCopy, contentDescription = stringResource(R.string.common_copy), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
                 }
             }
         }
@@ -460,14 +462,14 @@ private fun InnerMonologueRenderer(block: MdBlock.InnerMonologue, color: android
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "内心独白",
+                text = stringResource(R.string.markdown_inner_monologue),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f)
             )
             Icon(
                 if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                contentDescription = if (expanded) "收起" else "展开",
+                contentDescription = if (expanded) stringResource(R.string.markdown_collapse) else stringResource(R.string.markdown_expand),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(16.dp)
             )

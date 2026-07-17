@@ -49,12 +49,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
+import com.nekobot.app.R
 import com.nekobot.app.data.model.Workflow
 import com.nekobot.app.data.model.WorkflowRequest
 import com.nekobot.app.ui.BaseViewModel
@@ -113,7 +115,7 @@ class WorkflowsViewModel : BaseViewModel() {
     /** 手动执行工作流 */
     fun execute(id: String) = launchResult(
         block = { unified.executeWorkflow(id) },
-        onSuccess = { showToast("工作流已执行"); load() }
+        onSuccess = { showToast(string(R.string.workflows_executed)); load() }
     )
 }
 
@@ -135,25 +137,25 @@ fun WorkflowsScreen(onBack: () -> Unit, viewModel: WorkflowsViewModel = viewMode
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("工作流", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.workflows_title), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     IconButton(onClick = { viewModel.load() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.workflows_refresh), tint = MaterialTheme.colorScheme.onSurface)
                     }
                     IconButton(onClick = {
                         editing = null
                         showForm = true
                     }) {
-                        Icon(Icons.Filled.Add, contentDescription = "新建工作流", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.workflows_new), tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             )
@@ -167,8 +169,8 @@ fun WorkflowsScreen(onBack: () -> Unit, viewModel: WorkflowsViewModel = viewMode
         ) {
             if (list.isEmpty() && !loading) {
                 EmptyState(
-                    title = "暂无工作流",
-                    hint = "点击右上角 + 添加",
+                    title = stringResource(R.string.workflows_empty_title),
+                    hint = stringResource(R.string.workflows_empty_hint),
                     icon = {
                         Icon(
                             Icons.Filled.AppRegistration,
@@ -230,9 +232,9 @@ fun WorkflowsScreen(onBack: () -> Unit, viewModel: WorkflowsViewModel = viewMode
     deleteTarget?.let { target ->
         NekoDialog(
             onDismiss = { deleteTarget = null },
-            title = "确认删除",
-            message = "确定删除工作流「${target.displayName}」吗？",
-            confirmText = "删除",
+            title = stringResource(R.string.workflows_confirm_delete),
+            message = stringResource(R.string.workflows_confirm_delete_msg, target.displayName),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 target.id?.let { viewModel.delete(it) }
                 deleteTarget = null
@@ -267,7 +269,7 @@ private fun WorkflowCard(
             )
             // 启停状态标记
             val statusColor = if (workflow.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
-            val statusText = if (workflow.enabled) "启用" else "停用"
+            val statusText = if (workflow.enabled) stringResource(R.string.workflows_enabled) else stringResource(R.string.workflows_disabled)
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
@@ -281,17 +283,17 @@ private fun WorkflowCard(
             var menuExpanded by remember { mutableStateOf(false) }
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "操作", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.workflows_action), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false }
                 ) {
-                    DropdownMenuItem(text = { Text("编辑") }, onClick = { menuExpanded = false; onEdit() })
-                    DropdownMenuItem(text = { Text(if (workflow.enabled) "停用" else "启用") }, onClick = { menuExpanded = false; onToggle() })
-                    DropdownMenuItem(text = { Text("手动执行") }, onClick = { menuExpanded = false; onExecute() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.common_edit)) }, onClick = { menuExpanded = false; onEdit() })
+                    DropdownMenuItem(text = { Text(if (workflow.enabled) stringResource(R.string.workflows_disabled) else stringResource(R.string.workflows_enabled)) }, onClick = { menuExpanded = false; onToggle() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.workflows_manual_run)) }, onClick = { menuExpanded = false; onExecute() })
                     DropdownMenuItem(text = {
-                        Text("删除", color = ErrorRed)
+                        Text(stringResource(R.string.common_delete), color = ErrorRed)
                     }, onClick = { menuExpanded = false; onDelete() })
                 }
             }
@@ -301,11 +303,11 @@ private fun WorkflowCard(
 
         // 信息行
         val triggerLabel = when (workflow.trigger) {
-            "manual" -> "手动"
-            "cron" -> "Cron"
+            "manual" -> stringResource(R.string.workflows_trigger_manual)
+            "cron" -> stringResource(R.string.workflows_trigger_cron)
             else -> workflow.trigger
         }
-        Text("触发方式: $triggerLabel", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.workflows_trigger_method, triggerLabel), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (!workflow.description.isNullOrBlank()) {
             Text(workflow.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
@@ -335,8 +337,8 @@ private fun WorkflowFormDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = if (initial == null) "新建工作流" else "编辑工作流",
-        confirmText = "保存",
+        title = if (initial == null) stringResource(R.string.workflows_new) else stringResource(R.string.workflows_edit),
+        confirmText = stringResource(R.string.common_save),
         onConfirm = {
             if (name.isBlank()) return@NekoDialog
             val config: JsonElement? = when (trigger) {
@@ -360,7 +362,7 @@ private fun WorkflowFormDialog(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // 名称（必填）
-            LabeledField("名称 *")
+            LabeledField(stringResource(R.string.workflows_name_required))
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
@@ -372,7 +374,7 @@ private fun WorkflowFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 描述
-            LabeledField("描述")
+            LabeledField(stringResource(R.string.workflows_description))
             OutlinedTextField(
                 value = description,
                 onValueChange = { description = it },
@@ -386,7 +388,7 @@ private fun WorkflowFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 触发方式下拉
-            LabeledField("触发方式")
+            LabeledField(stringResource(R.string.workflows_trigger_method_label))
             DropdownField(
                 value = trigger,
                 options = listOf("manual", "cron"),
@@ -396,7 +398,7 @@ private fun WorkflowFormDialog(
 
             // cron 模式下显示 cron 配置输入框
             if (trigger == "cron") {
-                LabeledField("Cron 表达式")
+                LabeledField(stringResource(R.string.workflows_cron_expr))
                 OutlinedTextField(
                     value = cronConfig,
                     onValueChange = { cronConfig = it },
@@ -404,13 +406,13 @@ private fun WorkflowFormDialog(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = fieldColors(),
-                    placeholder = { Text("如 0 8 * * *") }
+                    placeholder = { Text(stringResource(R.string.workflows_cron_placeholder)) }
                 )
                 Spacer(Modifier.height(8.dp))
             }
 
             // 启用开关
-            ToggleRow(label = "启用", checked = enabled, onCheckedChange = { enabled = it })
+            ToggleRow(label = stringResource(R.string.workflows_enabled), checked = enabled, onCheckedChange = { enabled = it })
         }
     }
 }

@@ -49,12 +49,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonObject
+import com.nekobot.app.R
 import com.nekobot.app.data.model.TaskItem
 import com.nekobot.app.data.model.TaskRequest
 import com.nekobot.app.ui.BaseViewModel
@@ -113,7 +115,7 @@ class TaskCenterViewModel : BaseViewModel() {
     /** 手动执行任务 */
     fun run(id: String) = launchResult(
         block = { unified.runTask(id) },
-        onSuccess = { showToast("任务已执行"); load() }
+        onSuccess = { showToast(string(R.string.tasks_executed)); load() }
     )
 }
 
@@ -135,25 +137,25 @@ fun TaskCenterScreen(onBack: () -> Unit, viewModel: TaskCenterViewModel = viewMo
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("任务中心", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.tasks_title), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     IconButton(onClick = { viewModel.load() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.tasks_refresh), tint = MaterialTheme.colorScheme.onSurface)
                     }
                     IconButton(onClick = {
                         editing = null
                         showForm = true
                     }) {
-                        Icon(Icons.Filled.Add, contentDescription = "新建任务", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.tasks_new), tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             )
@@ -167,8 +169,8 @@ fun TaskCenterScreen(onBack: () -> Unit, viewModel: TaskCenterViewModel = viewMo
         ) {
             if (list.isEmpty() && !loading) {
                 EmptyState(
-                    title = "暂无任务",
-                    hint = "点击右上角 + 添加",
+                    title = stringResource(R.string.tasks_empty_title),
+                    hint = stringResource(R.string.tasks_empty_hint),
                     icon = {
                         Icon(
                             Icons.Filled.Schedule,
@@ -230,9 +232,9 @@ fun TaskCenterScreen(onBack: () -> Unit, viewModel: TaskCenterViewModel = viewMo
     deleteTarget?.let { target ->
         NekoDialog(
             onDismiss = { deleteTarget = null },
-            title = "确认删除",
-            message = "确定删除任务「${target.displayName}」吗？",
-            confirmText = "删除",
+            title = stringResource(R.string.tasks_confirm_delete),
+            message = stringResource(R.string.tasks_confirm_delete_msg, target.displayName),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 viewModel.delete(target.id)
                 deleteTarget = null
@@ -245,9 +247,9 @@ fun TaskCenterScreen(onBack: () -> Unit, viewModel: TaskCenterViewModel = viewMo
 @Composable
 private fun KindBadge(kind: String) {
     val (badgeColor, badgeLabel) = when (kind) {
-        "heartbeat" -> MaterialTheme.colorScheme.tertiary to "心跳"
-        "workflow" -> MaterialTheme.colorScheme.secondary to "工作流"
-        else -> MaterialTheme.colorScheme.primary to "自定义"
+        "heartbeat" -> MaterialTheme.colorScheme.tertiary to stringResource(R.string.tasks_kind_heartbeat)
+        "workflow" -> MaterialTheme.colorScheme.secondary to stringResource(R.string.tasks_kind_workflow)
+        else -> MaterialTheme.colorScheme.primary to stringResource(R.string.tasks_kind_custom)
     }
     Box(
         modifier = Modifier
@@ -287,7 +289,7 @@ private fun TaskCard(
             Spacer(Modifier.width(8.dp))
             // 启停状态标记
             val statusColor = if (task.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
-            val statusText = if (task.enabled) "启用" else "停用"
+            val statusText = if (task.enabled) stringResource(R.string.tasks_enabled) else stringResource(R.string.tasks_disabled)
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
@@ -301,19 +303,19 @@ private fun TaskCard(
             var menuExpanded by remember { mutableStateOf(false) }
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "操作", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.tasks_action), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false }
                 ) {
-                    DropdownMenuItem(text = { Text("编辑") }, onClick = { menuExpanded = false; onEdit() })
-                    DropdownMenuItem(text = { Text(if (task.enabled) "停用" else "启用") }, onClick = { menuExpanded = false; onToggle() })
-                    DropdownMenuItem(text = { Text("手动执行") }, onClick = { menuExpanded = false; onRun() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.common_edit)) }, onClick = { menuExpanded = false; onEdit() })
+                    DropdownMenuItem(text = { Text(if (task.enabled) stringResource(R.string.tasks_disabled) else stringResource(R.string.tasks_enabled)) }, onClick = { menuExpanded = false; onToggle() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.tasks_manual_run)) }, onClick = { menuExpanded = false; onRun() })
                     // 仅 custom 类型可删除
                     if (task.kind == "custom") {
                         DropdownMenuItem(text = {
-                            Text("删除", color = ErrorRed)
+                            Text(stringResource(R.string.common_delete), color = ErrorRed)
                         }, onClick = { menuExpanded = false; onDelete() })
                     }
                 }
@@ -324,20 +326,20 @@ private fun TaskCard(
 
         // 信息行
         val triggerLabel = when (task.trigger) {
-            "interval" -> "间隔"
-            "cron" -> "Cron"
-            "run_at" -> "定时"
+            "interval" -> stringResource(R.string.tasks_trigger_interval)
+            "cron" -> stringResource(R.string.tasks_trigger_cron)
+            "run_at" -> stringResource(R.string.tasks_trigger_run_at)
             else -> task.trigger
         }
-        Text("触发方式: $triggerLabel", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.tasks_trigger_method, triggerLabel), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (!task.description.isNullOrBlank()) {
             Text(task.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         if (!task.lastRun.isNullOrBlank()) {
-            Text("上次执行: ${task.lastRun}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.tasks_last_run, task.lastRun), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (!task.nextRun.isNullOrBlank()) {
-            Text("下次执行: ${task.nextRun}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.tasks_next_run, task.nextRun), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -376,8 +378,8 @@ private fun TaskFormDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = if (initial == null) "新建任务" else "编辑任务",
-        confirmText = "保存",
+        title = if (initial == null) stringResource(R.string.tasks_new) else stringResource(R.string.tasks_edit),
+        confirmText = stringResource(R.string.common_save),
         onConfirm = {
             if (name.isBlank()) return@NekoDialog
             val config = when (trigger) {
@@ -407,7 +409,7 @@ private fun TaskFormDialog(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // 名称（必填）
-            LabeledField("名称 *")
+            LabeledField(stringResource(R.string.tasks_name_required))
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
@@ -419,7 +421,7 @@ private fun TaskFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 描述
-            LabeledField("描述")
+            LabeledField(stringResource(R.string.tasks_description))
             OutlinedTextField(
                 value = description,
                 onValueChange = { description = it },
@@ -433,7 +435,7 @@ private fun TaskFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 触发方式下拉
-            LabeledField("触发方式")
+            LabeledField(stringResource(R.string.tasks_trigger_method_label))
             DropdownField(
                 value = trigger,
                 options = listOf("interval", "cron", "run_at"),
@@ -444,7 +446,7 @@ private fun TaskFormDialog(
             // 根据触发方式显示不同配置字段
             when (trigger) {
                 "interval" -> {
-                    LabeledField("间隔分钟数")
+                    LabeledField(stringResource(R.string.tasks_interval_minutes))
                     OutlinedTextField(
                         value = intervalMinutes,
                         onValueChange = { intervalMinutes = it.filter { c -> c.isDigit() } },
@@ -453,12 +455,12 @@ private fun TaskFormDialog(
                         shape = RoundedCornerShape(12.dp),
                         colors = fieldColors(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        placeholder = { Text("如 30") }
+                        placeholder = { Text(stringResource(R.string.tasks_interval_placeholder)) }
                     )
                     Spacer(Modifier.height(8.dp))
                 }
                 "cron" -> {
-                    LabeledField("Cron 表达式")
+                    LabeledField(stringResource(R.string.tasks_cron_expr))
                     OutlinedTextField(
                         value = cronExpr,
                         onValueChange = { cronExpr = it },
@@ -466,12 +468,12 @@ private fun TaskFormDialog(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                         colors = fieldColors(),
-                        placeholder = { Text("如 0 8 * * *") }
+                        placeholder = { Text(stringResource(R.string.tasks_cron_placeholder)) }
                     )
                     Spacer(Modifier.height(8.dp))
                 }
                 "run_at" -> {
-                    LabeledField("执行时间")
+                    LabeledField(stringResource(R.string.tasks_run_at_time))
                     OutlinedTextField(
                         value = runAt,
                         onValueChange = { runAt = it },
@@ -479,14 +481,14 @@ private fun TaskFormDialog(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                         colors = fieldColors(),
-                        placeholder = { Text("如 2025-01-01 08:00") }
+                        placeholder = { Text(stringResource(R.string.tasks_run_at_placeholder)) }
                     )
                     Spacer(Modifier.height(8.dp))
                 }
             }
 
             // 目标会话 ID
-            LabeledField("目标会话 ID")
+            LabeledField(stringResource(R.string.tasks_target_session))
             OutlinedTextField(
                 value = targetSessionId,
                 onValueChange = { targetSessionId = it },
@@ -498,7 +500,7 @@ private fun TaskFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 提示词（多行）
-            LabeledField("提示词")
+            LabeledField(stringResource(R.string.tasks_prompt))
             OutlinedTextField(
                 value = prompt,
                 onValueChange = { prompt = it },

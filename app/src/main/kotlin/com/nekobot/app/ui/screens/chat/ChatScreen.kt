@@ -106,6 +106,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -122,6 +123,7 @@ import coil.request.ImageRequest
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import com.nekobot.app.R
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.local.ChatInputLayoutMode
 import com.nekobot.app.data.local.VISION_FAILURE_MARKER
@@ -233,7 +235,7 @@ fun ChatScreen(
             recordingDuration = 0
             isRecording = true
         } catch (e: Exception) {
-            scope.launch { snackbarHostState.showSnackbar("录音启动失败: ${e.message ?: "未知错误"}") }
+            scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.chat_recording_start_failed, e.message ?: context.getString(R.string.common_unknown_error))) }
         }
     }
 
@@ -244,7 +246,7 @@ fun ChatScreen(
             recorder.stop()
             recorder.release()
         } catch (e: Exception) {
-            scope.launch { snackbarHostState.showSnackbar("录音结束异常: ${e.message ?: ""}") }
+            scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.chat_recording_end_error, e.message ?: "")) }
         }
         recorderRef = null
         isRecording = false
@@ -259,15 +261,15 @@ fun ChatScreen(
                         if (!text.isNullOrBlank()) {
                             input = if (input.isBlank()) text else "$input $text"
                         } else {
-                            snackbarHostState.showSnackbar("语音识别未返回文字")
+                            snackbarHostState.showSnackbar(context.getString(R.string.chat_voice_no_text))
                         }
                     }
                     is com.nekobot.app.data.repository.Resource.Error ->
-                        snackbarHostState.showSnackbar("识别失败: ${res.message}")
+                        snackbarHostState.showSnackbar(context.getString(R.string.chat_voice_recognize_failed, res.message ?: ""))
                     is com.nekobot.app.data.repository.Resource.Loading -> {}
                 }
             } catch (e: Exception) {
-                snackbarHostState.showSnackbar("识别失败: ${e.message ?: "未知错误"}")
+                snackbarHostState.showSnackbar(context.getString(R.string.chat_voice_recognize_failed, e.message ?: context.getString(R.string.common_unknown_error)))
             } finally {
                 voiceTranscribing = false
                 file.delete()
@@ -294,7 +296,7 @@ fun ChatScreen(
         if (granted) {
             startVoiceRecording()
         } else {
-            scope.launch { snackbarHostState.showSnackbar("需要录音权限才能使用语音输入") }
+            scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.chat_voice_permission_required)) }
         }
     }
 
@@ -356,7 +358,7 @@ fun ChatScreen(
             try {
                 // 读取文件名和字节
                 val (name, bytes) = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    readUriFile(context, uri) ?: throw IllegalStateException("读取文件失败")
+                    readUriFile(context, uri) ?: throw IllegalStateException(context.getString(R.string.chat_read_file_failed))
                 }
                 val mediaType = guessMime(name).toMediaTypeOrNull()
                 val body = bytes.toRequestBody(mediaType)
@@ -367,20 +369,20 @@ fun ChatScreen(
                             // 发送文件：上传后在输入框插入文件引用，提示用户可编辑后发送
                             input = buildString {
                                 if (input.isNotBlank()) { append(input); append("\n") }
-                                append("[已上传文件: $name]")
+                                append(context.getString(R.string.chat_file_uploaded_ref_inline, name))
                             }
-                            snackbarHostState.showSnackbar("文件已上传，引用已插入输入框，编辑后发送")
+                            snackbarHostState.showSnackbar(context.getString(R.string.chat_file_uploaded_ref))
                         } else {
-                            snackbarHostState.showSnackbar("已上传到工作区: $name")
+                            snackbarHostState.showSnackbar(context.getString(R.string.chat_uploaded_to_workspace, name))
                         }
                     }
                     is com.nekobot.app.data.repository.Resource.Error -> {
-                        snackbarHostState.showSnackbar("上传失败: ${res.message}")
+                        snackbarHostState.showSnackbar(context.getString(R.string.chat_upload_failed, res.message ?: ""))
                     }
                     is com.nekobot.app.data.repository.Resource.Loading -> {}
                 }
             } catch (e: Exception) {
-                snackbarHostState.showSnackbar("操作失败: ${e.message ?: "未知错误"}")
+                snackbarHostState.showSnackbar(context.getString(R.string.chat_operation_failed, e.message ?: context.getString(R.string.common_unknown_error)))
             } finally {
                 fileBusy = false
             }
@@ -412,7 +414,7 @@ fun ChatScreen(
                     TopAppBar(
                         title = {
                             Text(
-                                text = "已选 ${selectedIds.size} 条",
+                                text = stringResource(R.string.chat_selected_count, selectedIds.size),
                                 color = MaterialTheme.colorScheme.onSurface,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
@@ -421,18 +423,18 @@ fun ChatScreen(
                         },
                         navigationIcon = {
                             IconButton(onClick = { viewModel.exitSelectionMode() }) {
-                                Icon(Icons.Filled.Close, contentDescription = "退出选择", tint = MaterialTheme.colorScheme.onSurface)
+                                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.chat_exit_select), tint = MaterialTheme.colorScheme.onSurface)
                             }
                         },
                         actions = {
                             IconButton(onClick = { viewModel.deleteSelectedMessages() }) {
-                                Icon(Icons.Filled.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.onSurface)
+                                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.common_delete), tint = MaterialTheme.colorScheme.onSurface)
                             }
                             IconButton(onClick = {
                                 favTitleInput = ""
                                 showAddFavoritesDialog = true
                             }) {
-                                Icon(Icons.Filled.Star, contentDescription = "添加到收藏夹", tint = MaterialTheme.colorScheme.onSurface)
+                                Icon(Icons.Filled.Star, contentDescription = stringResource(R.string.chat_add_to_favorites), tint = MaterialTheme.colorScheme.onSurface)
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(
@@ -440,6 +442,8 @@ fun ChatScreen(
                         )
                     )
                 } else {
+                    val conversationLabel = stringResource(R.string.chat_conversation)
+                    val typingLabel = stringResource(R.string.chat_typing)
                     TopAppBar(
                         title = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -447,7 +451,7 @@ fun ChatScreen(
                                 Spacer(Modifier.width(10.dp))
                                 Column {
                                     Text(
-                                        text = session?.displayName ?: "对话",
+                                        text = session?.displayName ?: conversationLabel,
                                         color = MaterialTheme.colorScheme.onSurface,
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.SemiBold,
@@ -456,8 +460,8 @@ fun ChatScreen(
                                     )
                                     // 副标题：生成中显示“正在输入…”，否则显示消息总数
                                     Text(
-                                        text = if (sending) "正在输入…"
-                                        else "${messages.count { !it.isThinkingCard }} 条消息",
+                                        text = if (sending) typingLabel
+                                        else stringResource(R.string.chat_message_count, messages.count { !it.isThinkingCard }),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = if (sending) MaterialTheme.colorScheme.primary
                                         else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -468,27 +472,27 @@ fun ChatScreen(
                         },
                         navigationIcon = {
                             IconButton(onClick = onBack) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
                             }
                         },
                         actions = {
                             Box {
                                 IconButton(onClick = { menuExpanded = true }) {
-                                    Icon(Icons.Filled.MoreVert, contentDescription = "更多", tint = MaterialTheme.colorScheme.onSurface)
+                                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.chat_more), tint = MaterialTheme.colorScheme.onSurface)
                                 }
                                 DropdownMenu(
                                     expanded = menuExpanded,
                                     onDismissRequest = { menuExpanded = false }
                                 ) {
                                     DropdownMenuItem(
-                                        text = { Text("会话详情") },
+                                        text = { Text(stringResource(R.string.chat_session_detail)) },
                                         onClick = {
                                             menuExpanded = false
                                             session?.id?.let { onOpenSessionDetail(it) }
                                         }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("故事图") },
+                                        text = { Text(stringResource(R.string.chat_story_graph)) },
                                         onClick = {
                                             menuExpanded = false
                                             session?.id?.let { onOpenStoryGraph(it) }
@@ -497,14 +501,14 @@ fun ChatScreen(
                                     // 仅当当前会话绑定了归档会话时显示
                                     if (!session?.archiveSessionId.isNullOrBlank()) {
                                         DropdownMenuItem(
-                                            text = { Text("提取归档") },
+                                            text = { Text(stringResource(R.string.chat_extract_archive)) },
                                             onClick = {
                                                 menuExpanded = false
                                                 showRestoreArchiveDialog = true
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("查看归档") },
+                                            text = { Text(stringResource(R.string.chat_view_archive)) },
                                             onClick = {
                                                 menuExpanded = false
                                                 showArchiveViewer = true
@@ -512,7 +516,7 @@ fun ChatScreen(
                                         )
                                     }
                                     DropdownMenuItem(
-                                        text = { Text("清空消息", color = Color(0xFFFF6B6B)) },
+                                        text = { Text(stringResource(R.string.chat_clear_messages), color = Color(0xFFFF6B6B)) },
                                         onClick = {
                                             menuExpanded = false
                                             showClearConfirm = true
@@ -648,14 +652,14 @@ fun ChatScreen(
                     }
                     Spacer(Modifier.height(18.dp))
                     Text(
-                        "开始新的对话",
+                        stringResource(R.string.chat_start_new_conversation),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "发送消息，与${session?.displayName ?: "AI"}开启一段故事",
+                        stringResource(R.string.chat_send_prompt, session?.displayName ?: stringResource(R.string.chat_ai_label)),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -731,9 +735,9 @@ fun ChatScreen(
     deletingMessage?.let { msg ->
         NekoDialog(
             onDismiss = { deletingMessage = null },
-            title = "删除消息",
-            message = "确定删除这条消息吗？",
-            confirmText = "删除",
+            title = stringResource(R.string.chat_delete_message_title),
+            message = stringResource(R.string.chat_delete_message_confirm),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 viewModel.deleteMessage(sessionId, msg.id.orEmpty()) { deletingMessage = null }
             }
@@ -744,9 +748,9 @@ fun ChatScreen(
     if (showClearConfirm) {
         NekoDialog(
             onDismiss = { showClearConfirm = false },
-            title = "清空消息",
-            message = "将删除本会话所有消息，此操作不可撤销。",
-            confirmText = "清空",
+            title = stringResource(R.string.chat_clear_messages_title),
+            message = stringResource(R.string.chat_clear_messages_confirm),
+            confirmText = stringResource(R.string.common_clear),
             onConfirm = {
                 viewModel.clearMessages(sessionId) { showClearConfirm = false }
             }
@@ -758,9 +762,9 @@ fun ChatScreen(
         var turnsText by remember { mutableStateOf("5") }
         NekoDialog(
             onDismiss = { showRestoreArchiveDialog = false },
-            title = "提取归档",
-            message = "从归档会话末尾提取 N 轮对话回到当前会话（1-100）。",
-            confirmText = "提取",
+            title = stringResource(R.string.chat_extract_archive_title),
+            message = stringResource(R.string.chat_extract_archive_desc),
+            confirmText = stringResource(R.string.chat_extract_button),
             onConfirm = {
                 val turns = turnsText.trim().toIntOrNull()?.coerceIn(1, 100) ?: 5
                 viewModel.restoreFromArchive(turns)
@@ -774,7 +778,7 @@ fun ChatScreen(
                 keyboardOptions = KeyboardOptions(
                     keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
                 ),
-                label = { Text("轮数") }
+                label = { Text(stringResource(R.string.chat_turns)) }
             )
         }
     }
@@ -797,9 +801,9 @@ fun ChatScreen(
                 archiveSession.value = null
                 archiveMessages.value = emptyList()
             },
-            title = "归档会话：${archiveSession.value?.displayName ?: "加载中..."}",
-            message = if (archiveMessages.value.isEmpty()) "暂无归档消息" else null,
-            confirmText = "关闭",
+            title = stringResource(R.string.chat_archive_session, archiveSession.value?.displayName ?: stringResource(R.string.common_loading)),
+            message = if (archiveMessages.value.isEmpty()) stringResource(R.string.chat_no_archive_messages) else null,
+            confirmText = stringResource(R.string.common_close),
             onConfirm = null
         ) {
             LazyColumn(
@@ -815,7 +819,7 @@ fun ChatScreen(
                     ) {
                         Column(modifier = Modifier.padding(8.dp)) {
                             Text(
-                                text = if (msg.isUser) "我" else "AI",
+                                text = if (msg.isUser) stringResource(R.string.chat_me) else stringResource(R.string.chat_ai_label),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -837,9 +841,9 @@ fun ChatScreen(
         val myMessages = messages.mapIndexedNotNull { idx, m -> if (m.isUser) idx to m else null }
         NekoDialog(
             onDismiss = { showMyMessages = false },
-            title = "我的消息 (${myMessages.size})",
-            message = if (myMessages.isEmpty()) "暂无用户消息" else null,
-            confirmText = "关闭",
+            title = stringResource(R.string.chat_my_messages_title, myMessages.size),
+            message = if (myMessages.isEmpty()) stringResource(R.string.chat_no_user_messages) else null,
+            confirmText = stringResource(R.string.common_close),
             onConfirm = null
         ) {
             LazyColumn(
@@ -885,9 +889,9 @@ fun ChatScreen(
     if (voiceTranscribing) {
         NekoDialog(
             onDismiss = {},
-            title = "语音识别中",
-            message = "正在上传录音并识别文字，请稍候...",
-            confirmText = "请稍候",
+            title = stringResource(R.string.chat_voice_recognizing),
+            message = stringResource(R.string.chat_voice_recognizing_msg),
+            confirmText = stringResource(R.string.chat_please_wait),
             onConfirm = null,
             cancelText = null,
             onCancel = null
@@ -929,9 +933,9 @@ fun ChatScreen(
     if (showAddFavoritesDialog) {
         NekoDialog(
             onDismiss = { showAddFavoritesDialog = false },
-            title = "添加到收藏夹",
-            message = "已选 ${selectedIds.size} 条消息",
-            confirmText = "确认",
+            title = stringResource(R.string.chat_add_to_favorites_title),
+            message = stringResource(R.string.chat_selected_messages_count, selectedIds.size),
+            confirmText = stringResource(R.string.common_confirm),
             onConfirm = {
                 val visibleMessageIds = messages.asSequence()
                     .mapNotNull { it.id }
@@ -940,7 +944,7 @@ fun ChatScreen(
                 val ids = selectedIds.filter { it in visibleMessageIds }
                 if (ids.isEmpty()) {
                     showAddFavoritesDialog = false
-                    scope.launch { snackbarHostState.showSnackbar("所选消息尚未同步到服务器，请重新选择") }
+                    scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.chat_messages_not_synced)) }
                     return@NekoDialog
                 }
                 scope.launch {
@@ -950,34 +954,34 @@ fun ChatScreen(
                             MessageFavoriteRequest(messageIds = ids, title = favTitleInput.ifBlank { null })
                         )
                     } catch (e: Exception) {
-                        com.nekobot.app.data.repository.Resource.Error(e.message ?: "收藏失败")
+                        com.nekobot.app.data.repository.Resource.Error(e.message ?: context.getString(R.string.chat_favorite_failed))
                     }
                     when (res) {
                         is com.nekobot.app.data.repository.Resource.Success -> {
                             val response = res.data?.takeIf { it.isJsonObject }?.asJsonObject
                             if (response?.get("success")?.takeIf { !it.isJsonNull }?.asBoolean == false) {
-                                val message = response.get("error")?.asString ?: "服务器未保存收藏"
-                                snackbarHostState.showSnackbar("收藏失败: $message")
+                                val message = response.get("error")?.asString ?: context.getString(R.string.chat_server_no_favorite)
+                                snackbarHostState.showSnackbar(context.getString(R.string.chat_favorite_failed_msg, message))
                                 return@launch
                             }
                             viewModel.exitSelectionMode()
                             showAddFavoritesDialog = false
-                            snackbarHostState.showSnackbar("已添加到收藏夹")
+                            snackbarHostState.showSnackbar(context.getString(R.string.chat_added_to_favorites))
                         }
                         is com.nekobot.app.data.repository.Resource.Error -> {
-                            snackbarHostState.showSnackbar("收藏失败: ${res.message}")
+                            snackbarHostState.showSnackbar(context.getString(R.string.chat_favorite_failed_msg, res.message ?: ""))
                         }
                         is com.nekobot.app.data.repository.Resource.Loading -> {}
                     }
                 }
             },
-            cancelText = "取消",
+            cancelText = stringResource(R.string.common_cancel),
             onCancel = { showAddFavoritesDialog = false }
         ) {
             OutlinedTextField(
                 value = favTitleInput,
                 onValueChange = { favTitleInput = it },
-                label = { Text("收藏名（可选）") },
+                label = { Text(stringResource(R.string.chat_favorite_name_optional)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -1005,11 +1009,11 @@ private fun VoiceRecordingDialog(
     )
     NekoDialog(
         onDismiss = onCancel,
-        title = "录音中",
+        title = stringResource(R.string.chat_recording_title),
         message = null,
-        confirmText = "停止并识别",
+        confirmText = stringResource(R.string.chat_stop_and_recognize),
         onConfirm = onStop,
-        cancelText = "取消",
+        cancelText = stringResource(R.string.common_cancel),
         onCancel = onCancel
     ) {
         Column(
@@ -1018,7 +1022,7 @@ private fun VoiceRecordingDialog(
         ) {
             Icon(
                 Icons.Filled.Mic,
-                contentDescription = "录音中",
+                contentDescription = stringResource(R.string.chat_recording_title),
                 tint = Color(0xFFFF6B6B).copy(alpha = pulseAlpha),
                 modifier = Modifier.size(56.dp)
             )
@@ -1045,8 +1049,8 @@ private fun MessageFavoritesDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = selectedTitle ?: "收藏夹",
-        confirmText = "关闭",
+        title = selectedTitle ?: stringResource(R.string.chat_favorites),
+        confirmText = stringResource(R.string.common_close),
         onConfirm = onDismiss
     ) {
         if (loading) {
@@ -1061,10 +1065,10 @@ private fun MessageFavoritesDialog(
             TextButton(onClick = { selectedCollection = null }) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("返回收藏列表")
+                Text(stringResource(R.string.chat_back_to_favorites))
             }
             if (messages.isEmpty()) {
-                Text("该收藏暂无消息", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
+                Text(stringResource(R.string.chat_favorite_no_messages), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp),
@@ -1076,14 +1080,14 @@ private fun MessageFavoritesDialog(
                 }
             }
         } else if (favorites.isEmpty()) {
-            Text("暂无收藏", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
+            Text(stringResource(R.string.chat_no_favorites), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
         } else {
             LazyColumn(
                 modifier = Modifier.heightIn(max = 400.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(favorites, key = { it.get("id")?.asString ?: "" }) { collection ->
-                    val title = collection.get("title")?.asString ?: "未命名收藏"
+                    val title = collection.get("title")?.asString ?: stringResource(R.string.chat_unnamed_favorite)
                     val createdAt = collection.get("created_at")?.asString?.take(10) ?: ""
                     val messages = collection.getAsJsonArray("messages")
                         ?.mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject } ?: emptyList()
@@ -1099,7 +1103,7 @@ private fun MessageFavoritesDialog(
                                 Text(createdAt, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Spacer(Modifier.height(4.dp))
-                            Text("${messages.size} 条消息 · 点击查看详情", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                            Text(stringResource(R.string.chat_favorite_messages_count, messages.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                             messages.take(2).forEach { msg ->
                                 val role = msg.get("role")?.asString ?: ""
                                 val content = msg.get("content")?.asString?.take(60) ?: ""
@@ -1116,11 +1120,15 @@ private fun MessageFavoritesDialog(
 @Composable
 private fun FavoriteMessageCard(message: JsonObject) {
     val role = message.get("role")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+    val userLabel = stringResource(R.string.chat_role_user)
+    val aiLabel = stringResource(R.string.chat_ai_label)
+    val systemLabel = stringResource(R.string.chat_role_system)
+    val msgLabel = stringResource(R.string.chat_role_message)
     val roleLabel = when (role.lowercase()) {
-        "user", "human" -> "用户"
-        "assistant", "ai" -> "AI"
-        "system" -> "系统"
-        else -> message.get("sender")?.takeIf { !it.isJsonNull }?.asString ?: role.ifBlank { "消息" }
+        "user", "human" -> userLabel
+        "assistant", "ai" -> aiLabel
+        "system" -> systemLabel
+        else -> message.get("sender")?.takeIf { !it.isJsonNull }?.asString ?: role.ifBlank { msgLabel }
     }
     val content = message.get("content")?.takeIf { !it.isJsonNull }?.let {
         runCatching { it.asString }.getOrElse { it.toString() }
@@ -1148,7 +1156,7 @@ private fun FavoriteMessageCard(message: JsonObject) {
         Spacer(Modifier.height(6.dp))
         SelectionContainer {
             Text(
-                content.ifBlank { "（空消息）" },
+                content.ifBlank { stringResource(R.string.chat_empty_message) },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -1172,20 +1180,20 @@ private fun MessageSearchDialog(
     }
     NekoDialog(
         onDismiss = onDismiss,
-        title = "搜索对话",
-        confirmText = "关闭",
+        title = stringResource(R.string.chat_search_conversation),
+        confirmText = stringResource(R.string.common_close),
         onConfirm = onDismiss
     ) {
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
-            label = { Text("搜索当前会话...") },
+            label = { Text(stringResource(R.string.chat_search_placeholder)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(12.dp))
         if (query.isNotBlank() && results.isEmpty()) {
-            Text("无匹配结果", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
+            Text(stringResource(R.string.chat_no_match), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
         } else if (results.isNotEmpty()) {
             LazyColumn(
                 modifier = Modifier.heightIn(max = 400.dp),
@@ -1213,7 +1221,7 @@ private fun MessageSearchDialog(
                             )
                             Spacer(Modifier.width(8.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(if (role == "assistant") "AI" else "我", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(if (role == "assistant") stringResource(R.string.chat_ai_label) else stringResource(R.string.chat_me), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(preview, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             }
                         }
@@ -1257,12 +1265,13 @@ private fun MessageBubble(
 
     // 按 <||> 拆分内容为多段（保留非空段）
     val isStreamingPlaceholder = message.id == ChatViewModel.STREAMING_ID
+    val emptyMessageParen = stringResource(R.string.chat_empty_message_paren)
     val segments = remember(message.content) {
         message.displayContent
             .split("<||>")
             .map { it.trim() }
             .filter { it.isNotEmpty() }
-            .let { if (it.isEmpty() && !isStreamingPlaceholder) listOf("(空消息)") else it }
+            .let { if (it.isEmpty() && !isStreamingPlaceholder) listOf(emptyMessageParen) else it }
     }
     // 解析每段的多媒体内容段
     val parsedSegments = remember(segments) {
@@ -1315,7 +1324,7 @@ private fun MessageBubble(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        "部分图片识别失败，AI 不会猜测图片内容",
+                        stringResource(R.string.chat_vision_failure),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -1417,7 +1426,7 @@ private fun MessageBubble(
                     if (isUser) {
                         IconActionButton(
                             icon = Icons.Filled.ContentCopy,
-                            description = "复制",
+                            description = stringResource(R.string.common_copy),
                             onClick = {
                                 val text = onCopy()
                                 clipboard.setText(AnnotatedString(text))
@@ -1463,14 +1472,14 @@ private fun BubbleActions(
     ) {
         if (!isUser) {
             // 重新生成
-            IconActionButton(icon = Icons.Filled.Refresh, description = "重新生成", onClick = onRegenerate)
+            IconActionButton(icon = Icons.Filled.Refresh, description = stringResource(R.string.chat_regenerate), onClick = onRegenerate)
             Spacer(Modifier.width(4.dp))
             // 分支
-            IconActionButton(icon = Icons.Outlined.AccountTree, description = "分支", onClick = onFork)
+            IconActionButton(icon = Icons.Outlined.AccountTree, description = stringResource(R.string.chat_fork), onClick = onFork)
             Spacer(Modifier.width(4.dp))
         }
         // 复制
-        IconActionButton(icon = Icons.Filled.ContentCopy, description = "复制", onClick = onCopy)
+        IconActionButton(icon = Icons.Filled.ContentCopy, description = stringResource(R.string.common_copy), onClick = onCopy)
     }
 }
 
@@ -1538,7 +1547,7 @@ private fun BackgroundSettingCard(content: String?) {
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "背景设定",
+                        text = stringResource(R.string.chat_background_setting),
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold
@@ -1555,7 +1564,7 @@ private fun BackgroundSettingCard(content: String?) {
                 }
                 Icon(
                     if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                    contentDescription = if (expanded) "收起" else "展开",
+                    contentDescription = if (expanded) stringResource(R.string.chat_collapse) else stringResource(R.string.chat_expand),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp)
                 )
@@ -1681,7 +1690,7 @@ private fun ChatAvatar(
                     .data(resolved)
                     .crossfade(true)
                     .build(),
-                contentDescription = "角色立绘",
+                contentDescription = stringResource(R.string.chat_character_portrait),
                 contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
                 loading = { fallback() },
@@ -1765,23 +1774,23 @@ private fun dayKey(raw: String?): String? {
     }
 }
 
-/** 把日期键（yyyy-MM-dd）转为中文分隔标签：今天 / 昨天 / M月d日 / yyyy年M月d日。 */
+/** 把日期键（yyyy-MM-dd）转为本地化分隔标签：今天 / 昨天 / M月d日 / yyyy年M月d日。 */
 private fun dayLabel(day: String): String {
     return try {
         val fmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
         val date = fmt.parse(day) ?: return day
         val now = java.util.Calendar.getInstance()
-        if (day == fmt.format(now.time)) return "今天"
+        if (day == fmt.format(now.time)) return ServiceContainer.getString(R.string.chat_today)
         now.add(java.util.Calendar.DAY_OF_YEAR, -1)
-        if (day == fmt.format(now.time)) return "昨天"
+        if (day == fmt.format(now.time)) return ServiceContainer.getString(R.string.chat_yesterday)
         val cal = java.util.Calendar.getInstance().apply { time = date }
         val year = cal.get(java.util.Calendar.YEAR)
         val month = cal.get(java.util.Calendar.MONTH) + 1
         val dom = cal.get(java.util.Calendar.DAY_OF_MONTH)
         if (year == java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)) {
-            "${month}月${dom}日"
+            ServiceContainer.localizedContext?.getString(R.string.chat_month_day, month, dom) ?: day
         } else {
-            "${year}年${month}月${dom}日"
+            ServiceContainer.localizedContext?.getString(R.string.chat_year_month_day, year, month, dom) ?: day
         }
     } catch (e: Exception) {
         day
@@ -1847,7 +1856,7 @@ private fun PlotChoicesBar(
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         PlotChoicesHeader(
-            title = "剧情选项",
+            title = stringResource(R.string.chat_plot_choices),
             layoutMode = layoutMode,
             inputVisible = inputVisible,
             panelExpanded = panelExpanded,
@@ -1894,9 +1903,9 @@ private fun PlotChoicesBar(
                         Spacer(Modifier.width(4.dp))
                         Text(
                             text = when (choice.level) {
-                                "turning_point" -> "转折"
-                                "important" -> "重要"
-                                else -> "普通"
+                                "turning_point" -> stringResource(R.string.chat_plot_turning)
+                                "important" -> stringResource(R.string.chat_plot_important)
+                                else -> stringResource(R.string.chat_plot_normal)
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = levelColor,
@@ -1905,7 +1914,7 @@ private fun PlotChoicesBar(
                     }
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        text = choice.title.ifBlank { "选项" },
+                        text = choice.title.ifBlank { stringResource(R.string.chat_plot_choice) },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold,
@@ -1944,7 +1953,7 @@ private fun PlotChoicesHeader(
             IconButton(onClick = onTogglePanel, modifier = Modifier.size(36.dp)) {
                 Icon(
                     if (panelExpanded) Icons.Filled.MoreVert else Icons.Filled.Add,
-                    contentDescription = if (panelExpanded) "收起更多操作" else "更多操作",
+                    contentDescription = if (panelExpanded) stringResource(R.string.chat_collapse_actions) else stringResource(R.string.chat_expand_actions),
                     tint = if (panelExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp)
                 )
@@ -1952,7 +1961,7 @@ private fun PlotChoicesHeader(
             IconButton(onClick = onToggleInput, modifier = Modifier.size(36.dp)) {
                 Icon(
                     if (inputVisible) Icons.Filled.KeyboardHide else Icons.Filled.Keyboard,
-                    contentDescription = if (inputVisible) "隐藏输入框" else "展开输入框",
+                    contentDescription = if (inputVisible) stringResource(R.string.chat_hide_input) else stringResource(R.string.chat_show_input),
                     tint = if (inputVisible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp)
                 )
@@ -1961,7 +1970,7 @@ private fun PlotChoicesHeader(
         IconButton(onClick = onToggleLayout, modifier = Modifier.size(36.dp)) {
             Icon(
                 if (layoutMode == ChatInputLayoutMode.MERGED) Icons.Filled.VerticalSplit else Icons.Filled.ViewAgenda,
-                contentDescription = if (layoutMode == ChatInputLayoutMode.MERGED) "切换为分离布局" else "切换为合并布局",
+                contentDescription = if (layoutMode == ChatInputLayoutMode.MERGED) stringResource(R.string.chat_switch_separated) else stringResource(R.string.chat_switch_merged),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(20.dp)
             )
@@ -1970,14 +1979,14 @@ private fun PlotChoicesHeader(
             IconButton(onClick = onStop, modifier = Modifier.size(36.dp)) {
                 Icon(
                     Icons.Filled.Stop,
-                    contentDescription = "停止",
+                    contentDescription = stringResource(R.string.chat_stop),
                     tint = Color(0xFFFF6B6B),
                     modifier = Modifier.size(20.dp)
                 )
             }
         } else {
             IconButton(onClick = onRegenerate, enabled = refreshEnabled, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Filled.Refresh, contentDescription = "换一组", modifier = Modifier.size(20.dp))
+                Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.chat_regenerate_group), modifier = Modifier.size(20.dp))
             }
         }
     }
@@ -2095,7 +2104,7 @@ private fun ChatInputBar(
         if (plotChoicesLoading) {
             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
                 PlotChoicesHeader(
-                    title = "剧情选项生成中...",
+                    title = stringResource(R.string.chat_plot_choices_loading),
                     layoutMode = layoutMode,
                     inputVisible = inputVisible,
                     panelExpanded = panelExpanded,
@@ -2142,23 +2151,23 @@ private fun ChatInputBar(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("上下文", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.chat_context), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.weight(1f))
-                        Text("$messageCount 条", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.chat_context_count, messageCount), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Spacer(Modifier.height(10.dp))
                     // 操作按钮网格（每行 2 个，按钮更大）
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ActionChip(
                             icon = Icons.Filled.KeyboardDoubleArrowDown,
-                            label = "滚到底部",
+                            label = stringResource(R.string.chat_scroll_to_bottom),
                             enabled = messageCount > 0,
                             onClick = onScrollToBottom,
                             modifier = Modifier.weight(1f)
                         )
                         ActionChip(
                             icon = Icons.Outlined.AccountTree,
-                            label = "我的消息",
+                            label = stringResource(R.string.chat_my_messages),
                             enabled = messageCount > 0,
                             onClick = onShowMyMessages,
                             modifier = Modifier.weight(1f)
@@ -2168,14 +2177,14 @@ private fun ChatInputBar(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ActionChip(
                             icon = Icons.Filled.Compress,
-                            label = "压缩上下文",
+                            label = stringResource(R.string.chat_compress_context),
                             enabled = !sending,
                             onClick = onCompress,
                             modifier = Modifier.weight(1f)
                         )
                         ActionChip(
                             icon = Icons.Filled.CleaningServices,
-                            label = "清空消息",
+                            label = stringResource(R.string.chat_clear_messages),
                             enabled = !sending,
                             onClick = onClear,
                             modifier = Modifier.weight(1f)
@@ -2186,14 +2195,14 @@ private fun ChatInputBar(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ActionChip(
                             icon = Icons.Filled.AttachFile,
-                            label = "发送文件",
+                            label = stringResource(R.string.chat_send_file),
                             enabled = !fileBusy,
                             onClick = onSendFile,
                             modifier = Modifier.weight(1f)
                         )
                         ActionChip(
                             icon = Icons.Filled.CloudUpload,
-                            label = "上传工作区",
+                            label = stringResource(R.string.chat_upload_workspace),
                             enabled = !fileBusy,
                             onClick = onUploadToWorkspace,
                             modifier = Modifier.weight(1f)
@@ -2204,7 +2213,7 @@ private fun ChatInputBar(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ActionChip(
                             icon = Icons.Filled.Folder,
-                            label = "查看工作区",
+                            label = stringResource(R.string.chat_view_workspace),
                             enabled = true,
                             onClick = onOpenWorkspace,
                             modifier = Modifier.weight(1f)
@@ -2215,14 +2224,14 @@ private fun ChatInputBar(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ActionChip(
                             icon = Icons.Filled.Star,
-                            label = "收藏夹",
+                            label = stringResource(R.string.chat_favorites),
                             enabled = true,
                             onClick = onShowFavorites,
                             modifier = Modifier.weight(1f)
                         )
                         ActionChip(
                             icon = Icons.Filled.Search,
-                            label = "搜索对话",
+                            label = stringResource(R.string.chat_search_dialog),
                             enabled = messageCount > 0,
                             onClick = onShowSearch,
                             modifier = Modifier.weight(1f)
@@ -2240,7 +2249,7 @@ private fun ChatInputBar(
                         horizontalArrangement = Arrangement.End
                     ) {
                         Text(
-                            "$charCount 字 / ~$tokenEstimate tok",
+                            stringResource(R.string.chat_draft_stats, charCount, tokenEstimate),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -2260,7 +2269,7 @@ private fun ChatInputBar(
                     ) {
                         Icon(
                             if (panelExpanded) Icons.Filled.MoreVert else Icons.Filled.Add,
-                            contentDescription = "更多操作",
+                            contentDescription = stringResource(R.string.chat_more_actions),
                             tint = if (panelExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(24.dp)
                         )
@@ -2272,7 +2281,7 @@ private fun ChatInputBar(
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(min = 48.dp, max = 140.dp),
-                        placeholder = { Text(if (sending) "AI 思考中..." else "输入消息...") },
+                        placeholder = { Text(if (sending) stringResource(R.string.chat_ai_thinking) else stringResource(R.string.chat_input_placeholder)) },
                         enabled = !sending,
                         maxLines = 5,
                         shape = RoundedCornerShape(24.dp)
@@ -2296,11 +2305,11 @@ private fun ChatInputBar(
                             )
                     ) {
                         if (sending) {
-                            Icon(Icons.Filled.Stop, contentDescription = "停止", tint = Color.White, modifier = Modifier.size(22.dp))
+                            Icon(Icons.Filled.Stop, contentDescription = stringResource(R.string.chat_stop), tint = Color.White, modifier = Modifier.size(22.dp))
                         } else if (input.isNotBlank()) {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送", tint = Color.White, modifier = Modifier.size(22.dp))
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = stringResource(R.string.chat_send), tint = Color.White, modifier = Modifier.size(22.dp))
                         } else {
-                            Icon(Icons.Filled.Mic, contentDescription = "语音输入", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                            Icon(Icons.Filled.Mic, contentDescription = stringResource(R.string.chat_voice_input), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
                         }
                     }
                 }
@@ -2568,7 +2577,7 @@ class ChatViewModel : BaseViewModel() {
             }
             is RealtimeEvent.Filtered -> {
                 _sending.value = false
-                showToast(event.message ?: "消息被过滤")
+                showToast(event.message ?: string(R.string.chat_message_filtered))
             }
             is RealtimeEvent.Error -> {
                 _sending.value = false
@@ -2672,12 +2681,12 @@ class ChatViewModel : BaseViewModel() {
                 } catch (e: Exception) {
                     _sending.value = false
                     _messages.value = _messages.value.filter { it.id != streamingId }
-                    showError(e.message ?: "发送失败")
+                    showError(e.message ?: string(R.string.chat_send_failed))
                     return@launch
                 }
                 if (flow == null) {
                     _sending.value = false
-                    showError("未配置 AI 模型，请在设置中添加")
+                    showError(string(R.string.chat_no_ai_model))
                     return@launch
                 }
                 try {
@@ -2685,7 +2694,7 @@ class ChatViewModel : BaseViewModel() {
                 } catch (e: Exception) {
                     _sending.value = false
                     _messages.value = _messages.value.filter { it.id != streamingId }
-                    showError(e.message ?: "发送失败")
+                    showError(e.message ?: string(R.string.chat_send_failed))
                 }
             }
         } else if (socket.state.value == SocketState.Connected) {
@@ -2757,9 +2766,9 @@ class ChatViewModel : BaseViewModel() {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                     val channel = android.app.NotificationChannel(
                         channelId,
-                        "AI 回复提醒",
+                        string(R.string.chat_notification_channel),
                         android.app.NotificationManager.IMPORTANCE_DEFAULT
-                    ).apply { description = "AI 回复时若不在聊天界面则弹出通知" }
+                    ).apply { description = string(R.string.chat_notification_desc) }
                     androidx.core.app.NotificationManagerCompat.from(ctx).createNotificationChannel(channel)
                 }
                 // 点击通知跳转到对应会话聊天界面
@@ -2792,7 +2801,7 @@ class ChatViewModel : BaseViewModel() {
         val lastAssistant = _messages.value.lastOrNull { !it.isUser }
         val messageId = lastAssistant?.id
         if (messageId.isNullOrBlank()) {
-            showError("未找到可重新生成的 AI 消息")
+            showError(string(R.string.chat_no_ai_to_regenerate))
             return
         }
         // 先从列表中移除旧的 AI 回复（含其后的所有消息）
@@ -2814,12 +2823,12 @@ class ChatViewModel : BaseViewModel() {
                     unified.regenerateStream(currentSessionId, messageId)
                 } catch (e: Exception) {
                     _sending.value = false
-                    showError(e.message ?: "重新生成失败")
+                    showError(e.message ?: string(R.string.chat_regenerate_failed))
                     return@launch
                 }
                 if (flow == null) {
                     _sending.value = false
-                    showError("未配置 AI 模型，请在设置中添加")
+                    showError(string(R.string.chat_no_ai_model))
                     return@launch
                 }
                 try {
@@ -2827,7 +2836,7 @@ class ChatViewModel : BaseViewModel() {
                 } catch (e: Exception) {
                     _sending.value = false
                     _messages.value = _messages.value.filter { it.id != streamingId }
-                    showError(e.message ?: "重新生成失败")
+                    showError(e.message ?: string(R.string.chat_regenerate_failed))
                 }
             }
         } else {
@@ -2856,14 +2865,14 @@ class ChatViewModel : BaseViewModel() {
             localChatJob?.cancel()
             localChatJob = null
             _sending.value = false
-            showToast("已停止")
+            showToast(string(R.string.chat_stopped_toast))
             loadMessages()
         } else {
             launchResult(
                 block = { unified.stopGeneration(currentSessionId) },
                 onSuccess = {
                     _sending.value = false
-                    showToast("已请求停止")
+                    showToast(string(R.string.chat_stop_requested))
                     loadMessages()
                 }
             )
@@ -2882,7 +2891,7 @@ class ChatViewModel : BaseViewModel() {
                 if (archiveId != null) {
                     _session.value = _session.value?.copy(archiveSessionId = archiveId)
                 }
-                showToast("上下文已压缩")
+                showToast(string(R.string.chat_context_compressed))
                 loadMessages()
             }
         )
@@ -2894,7 +2903,7 @@ class ChatViewModel : BaseViewModel() {
         launchResult(
             block = { unified.restoreFromArchive(currentSessionId, turns) },
             onSuccess = {
-                showToast("已从归档提取 $turns 轮对话")
+                showToast(string(R.string.chat_extracted_from_archive, turns))
                 loadMessages()
             }
         )
@@ -2928,10 +2937,10 @@ class ChatViewModel : BaseViewModel() {
                     else -> null
                 }
                 if (newId != null) {
-                    showToast("已从该消息处分叉")
+                    showToast(string(R.string.chat_forked_toast))
                     onSuccess(newId)
                 } else {
-                    showToast("分叉成功，但未返回新会话 ID")
+                    showToast(string(R.string.chat_fork_no_id))
                 }
             }
         )
@@ -2942,7 +2951,7 @@ class ChatViewModel : BaseViewModel() {
         launchResult(
             block = { unified.deleteMessage(sessionId, messageId) },
             onSuccess = {
-                showToast("已删除")
+                showToast(string(R.string.chat_deleted_toast))
                 loadMessages()
                 onSuccess()
             }
@@ -2988,7 +2997,7 @@ class ChatViewModel : BaseViewModel() {
         launchResult(
             block = { unified.clearMessages(sessionId) },
             onSuccess = {
-                showToast("已清空消息")
+                showToast(string(R.string.chat_messages_cleared))
                 _messages.value = emptyList()
                 onSuccess()
             }

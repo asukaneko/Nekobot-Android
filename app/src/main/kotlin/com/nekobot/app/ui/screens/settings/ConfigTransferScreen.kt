@@ -47,11 +47,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.data.model.ConfigExportRequest
@@ -91,7 +93,7 @@ class ConfigTransferViewModel : BaseViewModel() {
             val resp = unified.exportConfig(req)
             if (!resp.isSuccessful) {
                 val errBody = resp.errorBody()?.string()
-                showError(parseErr(errBody) ?: "导出失败 (HTTP ${resp.code()})")
+                showError(parseErr(errBody) ?: string(R.string.transfer_export_failed_http, resp.code()))
                 return@withContext null
             }
             val body = resp.body() ?: return@withContext null
@@ -100,7 +102,7 @@ class ConfigTransferViewModel : BaseViewModel() {
             FileOutputStream(file).use { body.byteStream().copyTo(it) }
             file
         } catch (e: Exception) {
-            showError(e.message ?: "导出失败")
+            showError(e.message ?: string(R.string.transfer_export_failed))
             null
         }
     }
@@ -111,7 +113,7 @@ class ConfigTransferViewModel : BaseViewModel() {
             setLoading(true)
             try {
                 val (name, bytes) = withContext(Dispatchers.IO) { readUri(context, uri) } ?: run {
-                    showError("读取文件失败")
+                    showError(string(R.string.transfer_read_file_failed))
                     return@launch
                 }
                 val mediaType = guessMime(name).toMediaTypeOrNull()
@@ -128,21 +130,21 @@ class ConfigTransferViewModel : BaseViewModel() {
                             val imported = obj?.get("imported")?.asJsonArray?.size() ?: 0
                             val portraits = obj?.get("portraits_restored")?.asInt ?: 0
                             val msg = buildString {
-                                append("导入成功")
-                                if (imported > 0) append("，配置项 $imported 个")
-                                if (portraits > 0) append("，立绘 $portraits 张")
+                                append(string(R.string.transfer_import_success))
+                                if (imported > 0) append(string(R.string.transfer_import_configs_suffix, imported))
+                                if (portraits > 0) append(string(R.string.transfer_import_portraits_suffix, portraits))
                             }
                             _importResult.value = msg
                             showToast(msg)
                         } else {
-                            showError(obj?.get("error")?.asString ?: "导入失败")
+                            showError(obj?.get("error")?.asString ?: string(R.string.transfer_import_failed))
                         }
                     }
                     is Resource.Error -> showError(res.message)
                     is Resource.Loading -> {}
                 }
             } catch (e: Exception) {
-                showError(e.message ?: "导入失败")
+                showError(e.message ?: string(R.string.transfer_import_failed))
             } finally {
                 setLoading(false)
             }
@@ -226,19 +228,19 @@ fun ConfigTransferScreen(onBack: () -> Unit) {
     ) { uri ->
         if (uri != null) {
             pickedUri = uri
-            pickedFileName = uri.lastPathSegment ?: "已选择文件"
+            pickedFileName = uri.lastPathSegment ?: context.getString(R.string.transfer_file_selected)
         }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("配置迁移", color = MaterialTheme.colorScheme.onSurface) },
+                title = { Text(stringResource(R.string.transfer_title), color = MaterialTheme.colorScheme.onSurface) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.common_back),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -262,7 +264,7 @@ fun ConfigTransferScreen(onBack: () -> Unit) {
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "此功能仅服务器模式可用",
+                        text = stringResource(R.string.transfer_server_only),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -281,13 +283,13 @@ fun ConfigTransferScreen(onBack: () -> Unit) {
 
                     // 1. 导出卡片
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "导出配置", subtitle = "打包配置为加密 ZIP 文件")
+                        SectionHeader(title = stringResource(R.string.transfer_export_title), subtitle = stringResource(R.string.transfer_export_subtitle))
                         Spacer(Modifier.height(12.dp))
 
                         OutlinedTextField(
                             value = exportPassword,
                             onValueChange = { exportPassword = it },
-                            label = { Text("加密密码（可选）") },
+                            label = { Text(stringResource(R.string.transfer_password_optional)) },
                             singleLine = true,
                             visualTransformation = PasswordVisualTransformation(),
                             modifier = Modifier.fillMaxWidth()
@@ -299,7 +301,7 @@ fun ConfigTransferScreen(onBack: () -> Unit) {
                                 scope.launch {
                                     val file = vm.exportConfig(context, exportPassword)
                                     if (file != null) {
-                                        vm.showToast("已导出到缓存: ${file.name}")
+                                        vm.showToast(context.getString(R.string.transfer_exported_to_cache, file.name))
                                     }
                                 }
                             },
@@ -308,13 +310,13 @@ fun ConfigTransferScreen(onBack: () -> Unit) {
                         ) {
                             Icon(Icons.Filled.Download, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
                             Spacer(Modifier.width(8.dp))
-                            Text("导出配置", color = MaterialTheme.colorScheme.onPrimary)
+                            Text(stringResource(R.string.transfer_export_button), color = MaterialTheme.colorScheme.onPrimary)
                         }
                     }
 
                     // 2. 导入卡片
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "导入配置", subtitle = "从 ZIP 或 .nbotcfg 文件恢复配置")
+                        SectionHeader(title = stringResource(R.string.transfer_import_title), subtitle = stringResource(R.string.transfer_import_subtitle))
                         Spacer(Modifier.height(12.dp))
 
                         OutlinedButton(
@@ -323,14 +325,14 @@ fun ConfigTransferScreen(onBack: () -> Unit) {
                         ) {
                             Icon(Icons.Filled.UploadFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(8.dp))
-                            Text(pickedFileName ?: "选择配置文件")
+                            Text(pickedFileName ?: stringResource(R.string.transfer_select_file))
                         }
                         Spacer(Modifier.height(8.dp))
 
                         OutlinedTextField(
                             value = importPassword,
                             onValueChange = { importPassword = it },
-                            label = { Text("加密密码（可选）") },
+                            label = { Text(stringResource(R.string.transfer_password_optional)) },
                             singleLine = true,
                             visualTransformation = PasswordVisualTransformation(),
                             modifier = Modifier.fillMaxWidth()
@@ -343,12 +345,12 @@ fun ConfigTransferScreen(onBack: () -> Unit) {
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    "覆盖现有配置",
+                                    stringResource(R.string.transfer_overwrite),
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    "关闭则保留已存在的配置项",
+                                    stringResource(R.string.transfer_overwrite_desc),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -364,7 +366,7 @@ fun ConfigTransferScreen(onBack: () -> Unit) {
                             onClick = {
                                 val uri = pickedUri
                                 if (uri == null) {
-                                    vm.showError("请先选择配置文件")
+                                    vm.showError(context.getString(R.string.transfer_select_file_first))
                                 } else {
                                     vm.importConfig(context, uri, importPassword, overwrite)
                                 }
@@ -375,7 +377,7 @@ fun ConfigTransferScreen(onBack: () -> Unit) {
                         ) {
                             Icon(Icons.Filled.FileUpload, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
                             Spacer(Modifier.width(8.dp))
-                            Text("导入配置", color = MaterialTheme.colorScheme.onPrimary)
+                            Text(stringResource(R.string.transfer_import_button), color = MaterialTheme.colorScheme.onPrimary)
                         }
 
                         importResult?.let { result ->

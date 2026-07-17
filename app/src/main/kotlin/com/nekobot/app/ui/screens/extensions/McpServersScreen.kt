@@ -49,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -56,6 +57,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
+import com.nekobot.app.R
 import com.nekobot.app.data.model.McpServer
 import com.nekobot.app.data.model.McpServerRequest
 import com.nekobot.app.ui.BaseViewModel
@@ -118,7 +120,7 @@ class McpServersViewModel : BaseViewModel() {
     fun connect(id: String) = launchResult(
         block = { unified.connectMcpServer(id) },
         onSuccess = {
-            showToast("已发起连接")
+            showToast(string(R.string.mcp_connect_started))
             load()
         }
     )
@@ -127,7 +129,7 @@ class McpServersViewModel : BaseViewModel() {
     fun disconnect(id: String) = launchResult(
         block = { unified.disconnectMcpServer(id) },
         onSuccess = {
-            showToast("已断开连接")
+            showToast(string(R.string.mcp_disconnect_done))
             load()
         }
     )
@@ -135,7 +137,7 @@ class McpServersViewModel : BaseViewModel() {
     /** 测试 MCP 服务 */
     fun test(id: String) = launchResult(
         block = { unified.testMcpServer(id) },
-        onSuccess = { _testResult.value = it?.toString() ?: "无返回结果" }
+        onSuccess = { _testResult.value = it?.toString() ?: string(R.string.mcp_no_result) }
     )
 
     /** 加载 MCP 服务工具列表 */
@@ -175,25 +177,25 @@ fun McpServersScreen(onBack: () -> Unit, viewModel: McpServersViewModel = viewMo
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("MCP 服务", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.mcp_title), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     IconButton(onClick = { viewModel.load() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.mcp_refresh), tint = MaterialTheme.colorScheme.onSurface)
                     }
                     IconButton(onClick = {
                         editing = null
                         showForm = true
                     }) {
-                        Icon(Icons.Filled.Add, contentDescription = "新建 MCP 服务", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.mcp_new), tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             )
@@ -207,8 +209,8 @@ fun McpServersScreen(onBack: () -> Unit, viewModel: McpServersViewModel = viewMo
         ) {
             if (list.isEmpty() && !loading) {
                 EmptyState(
-                    title = "暂无 MCP 服务",
-                    hint = "点击右上角新建一个 MCP 服务",
+                    title = stringResource(R.string.mcp_empty_title),
+                    hint = stringResource(R.string.mcp_empty_hint),
                     icon = {
                         Icon(
                             Icons.Filled.Hub,
@@ -272,9 +274,9 @@ fun McpServersScreen(onBack: () -> Unit, viewModel: McpServersViewModel = viewMo
     deleteTarget?.let { server ->
         NekoDialog(
             onDismiss = { deleteTarget = null },
-            title = "确认删除",
-            message = "确定删除 MCP 服务「${server.displayName}」吗？",
-            confirmText = "删除",
+            title = stringResource(R.string.mcp_confirm_delete),
+            message = stringResource(R.string.mcp_delete_message, server.displayName),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 server.id?.let { viewModel.delete(it) }
                 deleteTarget = null
@@ -286,9 +288,9 @@ fun McpServersScreen(onBack: () -> Unit, viewModel: McpServersViewModel = viewMo
     testResult?.let { result ->
         NekoDialog(
             onDismiss = { viewModel.clearTestResult() },
-            title = "测试结果",
+            title = stringResource(R.string.mcp_test_result_title),
             message = result,
-            confirmText = "确定",
+            confirmText = stringResource(R.string.common_ok),
             onConfirm = { viewModel.clearTestResult() },
             cancelText = null,
             onCancel = null
@@ -299,8 +301,8 @@ fun McpServersScreen(onBack: () -> Unit, viewModel: McpServersViewModel = viewMo
     tools?.let { toolsJson ->
         NekoDialog(
             onDismiss = { viewModel.clearTools() },
-            title = "MCP 工具列表",
-            confirmText = "关闭",
+            title = stringResource(R.string.mcp_tools_title),
+            confirmText = stringResource(R.string.common_close),
             onConfirm = { viewModel.clearTools() },
             cancelText = null,
             onCancel = null
@@ -355,7 +357,7 @@ private fun McpServerCard(
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text = if (server.connected) "已连接" else "未连接",
+                    text = if (server.connected) stringResource(R.string.mcp_connected) else stringResource(R.string.mcp_disconnected),
                     style = MaterialTheme.typography.labelSmall,
                     color = if (server.connected) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -365,24 +367,24 @@ private fun McpServerCard(
             var menuExpanded by remember { mutableStateOf(false) }
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "操作", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.mcp_action), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false }
                 ) {
-                    DropdownMenuItem(text = { Text("编辑") }, onClick = { menuExpanded = false; onEdit() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.common_edit)) }, onClick = { menuExpanded = false; onEdit() })
                     if (server.connected) {
-                        DropdownMenuItem(text = { Text("断开") }, onClick = { menuExpanded = false; onDisconnect() })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.mcp_disconnect)) }, onClick = { menuExpanded = false; onDisconnect() })
                     } else {
-                        DropdownMenuItem(text = { Text("连接") }, onClick = { menuExpanded = false; onConnect() })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.mcp_connect)) }, onClick = { menuExpanded = false; onConnect() })
                     }
-                    DropdownMenuItem(text = { Text("测试") }, onClick = { menuExpanded = false; onTest() })
-                    DropdownMenuItem(text = { Text("查看工具") }, onClick = { menuExpanded = false; onTools() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.mcp_test)) }, onClick = { menuExpanded = false; onTest() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.mcp_view_tools)) }, onClick = { menuExpanded = false; onTools() })
                     // 内置 MCP 不可删除
                     if (!server.builtin) {
                         DropdownMenuItem(text = {
-                            Text("删除", color = ErrorRed)
+                            Text(stringResource(R.string.common_delete), color = ErrorRed)
                         }, onClick = { menuExpanded = false; onDelete() })
                     }
                 }
@@ -392,13 +394,13 @@ private fun McpServerCard(
         Spacer(Modifier.height(8.dp))
 
         // 信息行
-        Text("传输方式: ${server.transport}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("工具数量: ${server.toolCount}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.mcp_transport, server.transport), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.mcp_tool_count, server.toolCount), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         // HTTP 模式显示 url，stdio 模式显示 command
         if (server.transport == "streamable-http") {
-            Text("URL: ${server.url ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(stringResource(R.string.mcp_url, server.url ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
         } else {
-            Text("命令: ${server.command ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(stringResource(R.string.mcp_command, server.command ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         if (!server.description.isNullOrBlank()) {
             Spacer(Modifier.height(4.dp))
@@ -413,13 +415,13 @@ private fun McpServerCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = if (server.enabled) "已启用" else "已禁用",
+                text = if (server.enabled) stringResource(R.string.mcp_status_enabled) else stringResource(R.string.mcp_status_disabled),
                 style = MaterialTheme.typography.labelSmall,
                 color = if (server.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f)
             )
             if (server.autoConnect) {
-                Text("自动连接", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.mcp_auto_connect), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -449,8 +451,8 @@ private fun McpServerFormDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = if (initial == null) "新建 MCP 服务" else "编辑 MCP 服务",
-        confirmText = "保存",
+        title = if (initial == null) stringResource(R.string.mcp_new) else stringResource(R.string.mcp_edit),
+        confirmText = stringResource(R.string.common_save),
         onConfirm = {
             if (name.isBlank()) return@NekoDialog
             val req = McpServerRequest(
@@ -473,7 +475,7 @@ private fun McpServerFormDialog(
                 .verticalScroll(rememberScrollState())
         ) {
             // 名称（必填）
-            LabeledField("名称 *")
+            LabeledField(stringResource(R.string.mcp_name_label))
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
@@ -485,7 +487,7 @@ private fun McpServerFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 传输方式下拉
-            LabeledField("传输方式")
+            LabeledField(stringResource(R.string.mcp_transport_label))
             DropdownField(
                 value = transport,
                 options = listOf("streamable-http", "stdio"),
@@ -494,7 +496,7 @@ private fun McpServerFormDialog(
             Spacer(Modifier.height(8.dp))
 
             // 描述
-            LabeledField("描述")
+            LabeledField(stringResource(R.string.mcp_description_label))
             OutlinedTextField(
                 value = description,
                 onValueChange = { description = it },
@@ -509,7 +511,7 @@ private fun McpServerFormDialog(
 
             // 根据传输方式显示不同字段
             if (transport == "streamable-http") {
-                LabeledField("URL")
+                LabeledField(stringResource(R.string.mcp_url_label))
                 OutlinedTextField(
                     value = url,
                     onValueChange = { url = it },
@@ -521,7 +523,7 @@ private fun McpServerFormDialog(
                 )
                 Spacer(Modifier.height(8.dp))
             } else {
-                LabeledField("命令 (command)")
+                LabeledField(stringResource(R.string.mcp_command_label))
                 OutlinedTextField(
                     value = command,
                     onValueChange = { command = it },
@@ -532,7 +534,7 @@ private fun McpServerFormDialog(
                     placeholder = { Text("npx") }
                 )
                 Spacer(Modifier.height(8.dp))
-                LabeledField("参数 (args，空格分隔)")
+                LabeledField(stringResource(R.string.mcp_args_label))
                 OutlinedTextField(
                     value = argsText,
                     onValueChange = { argsText = it },
@@ -543,7 +545,7 @@ private fun McpServerFormDialog(
                     placeholder = { Text("-y @modelcontextprotocol/server-filesystem") }
                 )
                 Spacer(Modifier.height(8.dp))
-                LabeledField("环境变量 (env，每行 KEY=VALUE)")
+                LabeledField(stringResource(R.string.mcp_env_label))
                 OutlinedTextField(
                     value = envText,
                     onValueChange = { envText = it },
@@ -559,10 +561,10 @@ private fun McpServerFormDialog(
             }
 
             // 启用开关
-            ToggleRow(label = "启用", checked = enabled, onCheckedChange = { enabled = it })
+            ToggleRow(label = stringResource(R.string.mcp_enabled_label), checked = enabled, onCheckedChange = { enabled = it })
             Spacer(Modifier.height(8.dp))
             // 自动连接开关
-            ToggleRow(label = "自动连接", checked = autoConnect, onCheckedChange = { autoConnect = it })
+            ToggleRow(label = stringResource(R.string.mcp_auto_connect_label), checked = autoConnect, onCheckedChange = { autoConnect = it })
         }
     }
 }

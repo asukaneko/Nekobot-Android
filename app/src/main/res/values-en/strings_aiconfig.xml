@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== AI Config Center ==================== -->
+    <string name="aiconfig_center_title">AI Config Center</string>
+    <string name="aiconfig_section_local_ai">Local AI</string>
+    <string name="aiconfig_section_models_config">Models &amp; Config</string>
+    <string name="aiconfig_title">AI Config</string>
+    <string name="aiconfig_local_ai_models">Local AI Models</string>
+    <string name="aiconfig_local_ai_models_subtitle">Manage local inference models and parameters</string>
+    <string name="aiconfig_sync_active_params_subtitle">View and sync generation params of the active model</string>
+    <string name="aiconfig_configure_params_subtitle">Configure model purpose and generation params</string>
+    <string name="aiconfig_api_key_management">API Key Management</string>
+    <string name="aiconfig_manage_local_keys_subtitle">Manage locally saved API keys</string>
+    <string name="aiconfig_manage_keys_subtitle">Manage API keys for each model</string>
+
+    <!-- ==================== AI Config Screen ==================== -->
+    <string name="aiconfig_saved">Saved successfully</string>
+    <string name="aiconfig_test">Test</string>
+    <string name="aiconfig_test_success">Success</string>
+    <string name="aiconfig_test_fail">Failed</string>
+    <string name="aiconfig_test_result">Status: %1$s\nMessage: %2$s</string>
+    <string name="aiconfig_test_result_title">Test Result</string>
+    <string name="aiconfig_model_params">Model Parameters</string>
+    <string name="aiconfig_model_name">Model Name</string>
+    <string name="aiconfig_temperature">Temperature (temperature)</string>
+    <string name="aiconfig_max_tokens">Max Token (max_tokens)</string>
+    <string name="aiconfig_frequency_penalty">Frequency Penalty (frequency_penalty)</string>
+    <string name="aiconfig_presence_penalty">Presence Penalty (presence_penalty)</string>
+    <string name="aiconfig_system_prompt">System Prompt</string>
+    <string name="aiconfig_save_config">Save Config</string>
+
+    <!-- ==================== AI Models ==================== -->
+    <string name="aimodels_management_title">AI Model Management</string>
+    <string name="aimodels_title">AI Models</string>
+    <string name="aimodels_manage_list_subtitle">Manage available AI model list</string>
+    <string name="aimodels_new_model">New Model</string>
+    <string name="aimodels_edit_model">Edit Model</string>
+    <string name="aimodels_empty_title">No models</string>
+    <string name="aimodels_empty_hint">Tap the top-right button to create your first model</string>
+    <string name="aimodels_confirm_delete">Confirm Delete</string>
+    <string name="aimodels_delete_message">Delete model \"%1$s\"?</string>
+    <string name="aimodels_active_badge">Active</string>
+    <string name="aimodels_action">Actions</string>
+    <string name="aimodels_clone">Clone</string>
+    <string name="aimodels_applied">Applied</string>
+    <string name="aimodels_cloned">Cloned</string>
+    <string name="aimodels_fetch_failed">Failed to fetch model list</string>
+    <string name="aimodels_protocol">Protocol: %1$s</string>
+    <string name="aimodels_base_url">URL: %1$s</string>
+    <string name="aimodels_purpose">Purpose: %1$s</string>
+    <string name="aimodels_model">Model: %1$s</string>
+    <string name="aimodels_enabled">Enabled</string>
+    <string name="aimodels_unnamed">Unnamed Model</string>
+    <string name="aimodels_name">Name</string>
+    <string name="aimodels_protocol_label">Protocol (protocol)</string>
+    <string name="aimodels_provider">Provider (provider)</string>
+    <string name="aimodels_model_label">Model (model)</string>
+    <string name="aimodels_purpose_label">Purpose (purpose)</string>
+    <string name="aimodels_fetch_available">Fetch available models</string>
+    <string name="aimodels_no_options">No options</string>
+
+    <!-- ==================== Failover Queue ==================== -->
+    <string name="failover_queue_title">Failover Queue</string>
+    <string name="failover_local_priority_subtitle">View local model priority order by purpose</string>
+    <string name="failover_health_subtitle">View model health and adjust fallback order</string>
+    <string name="failover_refresh">Refresh</string>
+    <string name="failover_reset_all_health">Reset all health status</string>
+    <string name="failover_empty_title">No available models for this purpose</string>
+    <string name="failover_empty_hint">Please enable and set the purpose in AI Models first</string>
+    <string name="failover_loading_queue">Loading queue…</string>
+    <string name="failover_primary">Primary</string>
+    <string name="failover_current">Current</string>
+    <string name="failover_available">Available</string>
+    <string name="failover_cooling">Cooling down</string>
+    <string name="failover_today_failures">Today failures: %1$d</string>
+    <string name="failover_consecutive_failures">Consecutive: %1$d</string>
+    <string name="failover_remaining_seconds">Remaining: %1$d s</string>
+    <string name="failover_daily_usage">Daily: %1$d/%2$d (%3$d%%)</string>
+    <string name="failover_weekly_usage">Weekly: %1$d/%2$d (%3$d%%)</string>
+    <string name="failover_daily_limit">Daily limit: %1$d</string>
+    <string name="failover_weekly_limit">Weekly limit: %1$d</string>
+    <string name="failover_timeout">Timeout: %1$ds</string>
+    <string name="failover_move_up">Move up</string>
+    <string name="failover_move_down">Move down</string>
+    <string name="failover_reset_status">Reset Status</string>
+    <string name="failover_status_label">Status: %1$s</string>
+    <string name="failover_remaining_seconds_short">Remaining: %1$ds</string>
+    <string name="failover_consecutive_failures_detail">Consecutive failures: %1$d</string>
+    <string name="failover_daily_token_limit">Daily token limit (0=unlimited)</string>
+    <string name="failover_weekly_token_limit">Weekly token limit (0=unlimited)</string>
+    <string name="failover_timeout_seconds">Timeout seconds (0=default)</string>
+    <string name="failover_saving">Saving…</string>
+    <string name="failover_reset_health">Reset Health</string>
+    <string name="failover_order_saved">Queue order saved</string>
+    <string name="failover_reset_all">All health status reset</string>
+    <string name="failover_reset_model">Model health status reset</string>
+    <string name="failover_load_detail_failed">Failed to load details</string>
+    <string name="failover_invalid_limit">Limits and timeout must be non-negative</string>
+    <string name="failover_policy_saved">Policy saved</string>
+    <string name="failover_save_policy_failed">Failed to save policy</string>
+    <string name="failover_purpose_chat">Chat</string>
+    <string name="failover_purpose_vision">Vision</string>
+    <string name="failover_purpose_video">Video</string>
+    <string name="failover_purpose_tts">TTS</string>
+    <string name="failover_purpose_stt">STT</string>
+    <string name="failover_purpose_embedding">Embedding</string>
+    <string name="failover_purpose_image_generation">Image Generation</string>
+
+    <!-- ==================== Local AI Models ==================== -->
+    <string name="localai_saved">Saved</string>
+    <string name="localai_deleted">Deleted</string>
+    <string name="localai_set_active">Set as current model</string>
+    <string name="localai_test_failed">Failed: %1$s</string>
+    <string name="localai_test_success">Success: %1$s</string>
+    <string name="localai_test_exception">Error: %1$s</string>
+    <string name="localai_local_logs">Local Logs</string>
+    <string name="localai_empty_hint">No AI models. Tap + at the top right to add one.</string>
+    <string name="localai_delete_title">Delete Model</string>
+    <string name="localai_delete_message">Delete \"%1$s\"?</string>
+    <string name="localai_test_title">Test %1$s</string>
+    <string name="localai_testing">Testing…</string>
+    <string name="localai_logs_title">Local Logs (%1$d)</string>
+    <string name="localai_no_logs">No logs</string>
+    <string name="localai_more">More</string>
+    <string name="localai_current_model">Current Model</string>
+    <string name="localai_set_current">Set as Current</string>
+    <string name="localai_new_model">New AI Model</string>
+    <string name="localai_edit_model">Edit AI Model</string>
+    <string name="localai_protocol">Protocol</string>
+    <string name="localai_model_name">Model Name</string>
+    <string name="localai_append_path">Auto append path</string>
+    <string name="localai_priority">Priority</string>
+    <string name="localai_temperature">Temperature</string>
+    <string name="localai_max_tokens">Max token</string>
+    <string name="localai_purpose_chat">💬 Chat</string>
+    <string name="localai_purpose_vision">🖼️ Vision</string>
+    <string name="localai_purpose_video">🎬 Video</string>
+    <string name="localai_purpose_tts">🔊 TTS</string>
+    <string name="localai_purpose_stt">🎤 STT</string>
+    <string name="localai_purpose_embedding">📊 Embedding</string>
+    <string name="localai_purpose_image_generation">🎨 Image Generation</string>
+    <string name="localai_purpose_chat_model">💬 Chat Model</string>
+    <string name="localai_purpose_hint_vision">For image message understanding, used as fallback for image description</string>
+    <string name="localai_purpose_hint_video">For video message understanding (not auto-invoked in local mode yet)</string>
+    <string name="localai_purpose_hint_tts">For text-to-speech, can be triggered manually in chat</string>
+    <string name="localai_purpose_hint_stt">For speech-to-text, auto-invoked after recording</string>
+    <string name="localai_purpose_hint_embedding">For embedding (knowledge base not integrated in local mode yet)</string>
+    <string name="localai_purpose_hint_image_generation">For AI image generation (not integrated in local mode yet)</string>
+</resources>

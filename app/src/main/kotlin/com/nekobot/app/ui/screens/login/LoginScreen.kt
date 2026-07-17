@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import com.nekobot.app.R
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -112,7 +113,7 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "登录以继续",
+                text = stringResource(R.string.login_continue),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -123,7 +124,7 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
                 OutlinedTextField(
                     value = serverUrl,
                     onValueChange = viewModel::onServerUrlChange,
-                    label = { Text("服务器地址") },
+                    label = { Text(stringResource(R.string.login_server_address)) },
                     placeholder = { Text("http://192.168.1.x:5000") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
@@ -141,7 +142,7 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
                 OutlinedTextField(
                     value = username,
                     onValueChange = viewModel::onUsernameChange,
-                    label = { Text("用户名") },
+                    label = { Text(stringResource(R.string.login_username)) },
                     singleLine = true,
                     leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null) },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
@@ -156,7 +157,7 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
                 OutlinedTextField(
                     value = password,
                     onValueChange = viewModel::onPasswordChange,
-                    label = { Text("密码") },
+                    label = { Text(stringResource(R.string.login_password)) },
                     singleLine = true,
                     leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = null) },
                     trailingIcon = {
@@ -164,7 +165,7 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
                             Icon(
                                 imageVector = if (passwordVisible) Icons.Filled.VisibilityOff
                                 else Icons.Filled.Visibility,
-                                contentDescription = if (passwordVisible) "隐藏密码" else "显示密码"
+                                contentDescription = if (passwordVisible) stringResource(R.string.login_hide_password) else stringResource(R.string.login_show_password)
                             )
                         }
                     },
@@ -204,14 +205,14 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
                             modifier = Modifier.size(22.dp)
                         )
                     } else {
-                        Text("登录", color = androidx.compose.ui.graphics.Color.White)
+                        Text(stringResource(R.string.login_button), color = androidx.compose.ui.graphics.Color.White)
                     }
                 }
 
                 Spacer(Modifier.height(12.dp))
                 // 本地模式入口：跳过登录直连 AI API
                 Text(
-                    text = "使用本地模式",
+                    text = stringResource(R.string.login_use_local_mode),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier
@@ -228,7 +229,7 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
                 if (loginRecords.isNotEmpty()) {
                     Spacer(Modifier.height(16.dp))
                     Text(
-                        text = "历史账号",
+                        text = stringResource(R.string.login_history_accounts),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.SemiBold
@@ -292,7 +293,7 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.Close,
-                                        contentDescription = "删除记录",
+                                        contentDescription = stringResource(R.string.login_delete_record),
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -371,7 +372,7 @@ class LoginViewModel : BaseViewModel() {
             onError = {
                 // token 已失效，清除并提示
                 prefs.clearAuth()
-                showError("登录已过期，请重新输入密码")
+                showError(string(R.string.login_expired))
             }
         )
     }
@@ -388,7 +389,7 @@ class LoginViewModel : BaseViewModel() {
         val user = _username.value.trim()
         val pwd = _password.value
         if (server.isBlank() || user.isBlank() || pwd.isBlank()) {
-            showError("请填写完整信息")
+            showError(string(R.string.login_required_fields))
             return
         }
         // 先写入地址并重建网络

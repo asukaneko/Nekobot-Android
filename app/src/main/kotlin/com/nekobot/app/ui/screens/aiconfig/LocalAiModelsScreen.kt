@@ -58,11 +58,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalLogger
 import com.nekobot.app.data.local.ai.LocalProtocols
@@ -112,21 +114,21 @@ class LocalAiModelsViewModel : BaseViewModel() {
     fun saveModel(model: LocalAiModelEntity) {
         viewModelScope.launch {
             ServiceContainer.unified.upsertLocalAiModel(model)
-            showToast("已保存")
+            showToast(string(R.string.localai_saved))
         }
     }
 
     fun deleteModel(id: String) {
         viewModelScope.launch {
             ServiceContainer.unified.deleteLocalAiModel(id)
-            showToast("已删除")
+            showToast(string(R.string.localai_deleted))
         }
     }
 
     fun setActive(id: String) {
         viewModelScope.launch {
             ServiceContainer.unified.setActiveLocalModel(id)
-            showToast("已设为当前模型")
+            showToast(string(R.string.localai_set_active))
         }
     }
 
@@ -136,12 +138,12 @@ class LocalAiModelsViewModel : BaseViewModel() {
             try {
                 val result = ServiceContainer.unified.testLocalModel(model)
                 if (result?.error != null) {
-                    onResult("失败: ${result.error}")
+                    onResult(string(R.string.localai_test_failed, result.error))
                 } else {
-                    onResult("成功: ${result?.content?.take(50)}")
+                    onResult(string(R.string.localai_test_success, result?.content?.take(50) ?: ""))
                 }
             } catch (e: Exception) {
-                onResult("异常: ${e.message}")
+                onResult(string(R.string.localai_test_exception, e.message ?: ""))
             } finally {
                 setLoading(false)
             }
@@ -177,10 +179,10 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("本地 AI 模型", color = MaterialTheme.colorScheme.onSurface) },
+                title = { Text(stringResource(R.string.aiconfig_local_ai_models), color = MaterialTheme.colorScheme.onSurface) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
@@ -188,13 +190,13 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
                         logRecords = LocalLogger.listLogs()
                         showLogs = true
                     }) {
-                        Icon(Icons.Filled.Description, contentDescription = "本地日志", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Filled.Description, contentDescription = stringResource(R.string.localai_local_logs), tint = MaterialTheme.colorScheme.onSurface)
                     }
                     IconButton(onClick = {
                         editingModel = null
                         showEditDialog = true
                     }) {
-                        Icon(Icons.Filled.Add, contentDescription = "添加", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.common_add), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -219,7 +221,7 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
                 ) {
                     Icon(Icons.Filled.Memory, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(56.dp))
                     Spacer(Modifier.height(12.dp))
-                    Text("暂无 AI 模型，点击右上角 + 添加", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.localai_empty_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
                 LazyColumn(
@@ -270,9 +272,9 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
     deletingModel?.let { model ->
         NekoDialog(
             onDismiss = { deletingModel = null },
-            title = "删除模型",
-            message = "确定删除「${model.name}」吗？",
-            confirmText = "删除",
+            title = stringResource(R.string.localai_delete_title),
+            message = stringResource(R.string.localai_delete_message, model.name),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 vm.deleteModel(model.id)
                 deletingModel = null
@@ -287,8 +289,8 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
                 testingModel = null
                 testResult = null
             },
-            title = "测试 ${model.name}",
-            confirmText = "关闭",
+            title = stringResource(R.string.localai_test_title, model.name),
+            confirmText = stringResource(R.string.common_close),
             onConfirm = {
                 testingModel = null
                 testResult = null
@@ -303,7 +305,7 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
                 ) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(12.dp))
-                    Text("正在测试…", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.localai_testing), style = MaterialTheme.typography.bodyMedium)
                 }
             } else {
                 Text(
@@ -320,10 +322,10 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
     if (showLogs) {
         NekoDialog(
             onDismiss = { showLogs = false },
-            title = "本地日志 (${logRecords.size})",
-            confirmText = "关闭",
+            title = stringResource(R.string.localai_logs_title, logRecords.size),
+            confirmText = stringResource(R.string.common_close),
             onConfirm = { showLogs = false },
-            cancelText = "清空",
+            cancelText = stringResource(R.string.common_clear),
             onCancel = {
                 LocalLogger.clear()
                 logRecords = emptyList()
@@ -331,7 +333,7 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
         ) {
             if (logRecords.isEmpty()) {
                 Text(
-                    text = "暂无日志",
+                    text = stringResource(R.string.localai_no_logs),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(16.dp)
@@ -469,17 +471,15 @@ private fun ModelCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                val purposeLabel = remember(model.purpose) {
-                    when (model.purpose) {
-                        "chat" -> "💬 对话"
-                        "vision" -> "🖼️ 图片理解"
-                        "video" -> "🎬 视频理解"
-                        "tts" -> "🔊 语音合成"
-                        "stt" -> "🎤 语音识别"
-                        "embedding" -> "📊 向量嵌入"
-                        "image_generation" -> "🎨 图片生成"
-                        else -> model.purpose
-                    }
+                val purposeLabel = when (model.purpose) {
+                    "chat" -> stringResource(R.string.localai_purpose_chat)
+                    "vision" -> stringResource(R.string.localai_purpose_vision)
+                    "video" -> stringResource(R.string.localai_purpose_video)
+                    "tts" -> stringResource(R.string.localai_purpose_tts)
+                    "stt" -> stringResource(R.string.localai_purpose_stt)
+                    "embedding" -> stringResource(R.string.localai_purpose_embedding)
+                    "image_generation" -> stringResource(R.string.localai_purpose_image_generation)
+                    else -> model.purpose
                 }
                 Text(
                     purposeLabel,
@@ -491,14 +491,14 @@ private fun ModelCard(
             }
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "更多", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.localai_more), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text(if (isActive) "当前模型" else "设为当前") },
+                        text = { Text(if (isActive) stringResource(R.string.localai_current_model) else stringResource(R.string.localai_set_current)) },
                         onClick = {
                             menuExpanded = false
                             if (!isActive) onSetActive()
@@ -506,21 +506,21 @@ private fun ModelCard(
                         enabled = !isActive
                     )
                     DropdownMenuItem(
-                        text = { Text("测试") },
+                        text = { Text(stringResource(R.string.aiconfig_test)) },
                         onClick = {
                             menuExpanded = false
                             onTest()
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("编辑") },
+                        text = { Text(stringResource(R.string.common_edit)) },
                         onClick = {
                             menuExpanded = false
                             onEdit()
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("删除", color = MaterialTheme.colorScheme.error) },
+                        text = { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) },
                         onClick = {
                             menuExpanded = false
                             onDelete()
@@ -541,13 +541,13 @@ private fun LocalAiModelEditDialog(
     val protocols = remember { LocalProtocols.names() }
     val purposes = remember {
         listOf(
-            "chat" to "💬 对话模型",
-            "vision" to "🖼️ 图片理解",
-            "video" to "🎬 视频理解",
-            "tts" to "🔊 语音合成",
-            "stt" to "🎤 语音识别",
-            "embedding" to "📊 向量嵌入",
-            "image_generation" to "🎨 图片生成"
+            "chat" to R.string.localai_purpose_chat_model,
+            "vision" to R.string.localai_purpose_vision,
+            "video" to R.string.localai_purpose_video,
+            "tts" to R.string.localai_purpose_tts,
+            "stt" to R.string.localai_purpose_stt,
+            "embedding" to R.string.localai_purpose_embedding,
+            "image_generation" to R.string.localai_purpose_image_generation
         )
     }
     val now = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()) }
@@ -566,14 +566,15 @@ private fun LocalAiModelEditDialog(
     var protocolMenuExpanded by remember { mutableStateOf(false) }
     var purposeMenuExpanded by remember { mutableStateOf(false) }
 
-    val purposeLabel = remember(purpose) {
-        purposes.firstOrNull { it.first == purpose }?.second ?: "💬 对话模型"
+    val purposeLabelResId = remember(purpose) {
+        purposes.firstOrNull { it.first == purpose }?.second ?: R.string.localai_purpose_chat_model
     }
+    val purposeLabel = stringResource(purposeLabelResId)
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = if (model == null) "新建 AI 模型" else "编辑 AI 模型",
-        confirmText = "保存",
+        title = if (model == null) stringResource(R.string.localai_new_model) else stringResource(R.string.localai_edit_model),
+        confirmText = stringResource(R.string.common_save),
         onConfirm = {
             if (name.isNotBlank() && apiKey.isNotBlank() && baseUrl.isNotBlank() && modelName.isNotBlank()) {
                 val entity = LocalAiModelEntity(
@@ -605,7 +606,7 @@ private fun LocalAiModelEditDialog(
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("名称") },
+                label = { Text(stringResource(R.string.aimodels_name)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -614,7 +615,7 @@ private fun LocalAiModelEditDialog(
                 OutlinedTextField(
                     value = purposeLabel,
                     onValueChange = {},
-                    label = { Text("用途 (purpose)") },
+                    label = { Text(stringResource(R.string.aimodels_purpose_label)) },
                     readOnly = true,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -629,9 +630,9 @@ private fun LocalAiModelEditDialog(
                     expanded = purposeMenuExpanded,
                     onDismissRequest = { purposeMenuExpanded = false }
                 ) {
-                    purposes.forEach { (key, label) ->
+                    purposes.forEach { (key, labelResId) ->
                         DropdownMenuItem(
-                            text = { Text(label) },
+                            text = { Text(stringResource(labelResId)) },
                             onClick = {
                                 purpose = key
                                 purposeMenuExpanded = false
@@ -645,7 +646,7 @@ private fun LocalAiModelEditDialog(
                 OutlinedTextField(
                     value = protocol,
                     onValueChange = {},
-                    label = { Text("协议") },
+                    label = { Text(stringResource(R.string.localai_protocol)) },
                     readOnly = true,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -689,7 +690,7 @@ private fun LocalAiModelEditDialog(
             OutlinedTextField(
                 value = modelName,
                 onValueChange = { modelName = it },
-                label = { Text("模型名") },
+                label = { Text(stringResource(R.string.localai_model_name)) },
                 placeholder = { Text("gpt-4o / claude-sonnet-4-20250514") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
@@ -699,7 +700,7 @@ private fun LocalAiModelEditDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "自动拼接路径",
+                    stringResource(R.string.localai_append_path),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f)
@@ -716,21 +717,21 @@ private fun LocalAiModelEditDialog(
                 OutlinedTextField(
                     value = priority,
                     onValueChange = { priority = it.filter { c -> c.isDigit() } },
-                    label = { Text("优先级") },
+                    label = { Text(stringResource(R.string.localai_priority)) },
                     singleLine = true,
                     modifier = Modifier.weight(1f)
                 )
                 OutlinedTextField(
                     value = temperature,
                     onValueChange = { temperature = it },
-                    label = { Text("温度") },
+                    label = { Text(stringResource(R.string.localai_temperature)) },
                     singleLine = true,
                     modifier = Modifier.weight(1f)
                 )
                 OutlinedTextField(
                     value = maxTokens,
                     onValueChange = { maxTokens = it },
-                    label = { Text("最大 token") },
+                    label = { Text(stringResource(R.string.localai_max_tokens)) },
                     singleLine = true,
                     modifier = Modifier.weight(1f)
                 )
@@ -745,12 +746,12 @@ private fun LocalAiModelEditDialog(
             if (purpose != "chat") {
                 Text(
                     when (purpose) {
-                        "vision" -> "用于图片消息理解，将作为图片描述的回退模型"
-                        "video" -> "用于视频消息理解（暂未在本地模式自动调用）"
-                        "tts" -> "用于文本转语音，可在聊天界面手动触发"
-                        "stt" -> "用于语音转文字，可在录音后自动调用"
-                        "embedding" -> "用于向量嵌入（本地模式暂未接入知识库）"
-                        "image_generation" -> "用于 AI 生图（本地模式暂未接入）"
+                        "vision" -> stringResource(R.string.localai_purpose_hint_vision)
+                        "video" -> stringResource(R.string.localai_purpose_hint_video)
+                        "tts" -> stringResource(R.string.localai_purpose_hint_tts)
+                        "stt" -> stringResource(R.string.localai_purpose_hint_stt)
+                        "embedding" -> stringResource(R.string.localai_purpose_hint_embedding)
+                        "image_generation" -> stringResource(R.string.localai_purpose_hint_image_generation)
                         else -> ""
                     },
                     style = MaterialTheme.typography.bodySmall,

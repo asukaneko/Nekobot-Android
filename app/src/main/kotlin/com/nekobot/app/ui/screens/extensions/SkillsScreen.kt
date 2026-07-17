@@ -44,9 +44,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.R
 import com.nekobot.app.data.model.Skill
 import com.nekobot.app.data.model.SkillRequest
 import com.nekobot.app.ui.BaseViewModel
@@ -101,10 +103,10 @@ fun SkillsScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Skills 配置") },
+                title = { Text(stringResource(R.string.skills_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
@@ -112,7 +114,7 @@ fun SkillsScreen(onBack: () -> Unit) {
                         editingItem = null
                         showForm = true
                     }) {
-                        Icon(Icons.Filled.Add, contentDescription = "新建 Skill")
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.skills_new))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -129,7 +131,7 @@ fun SkillsScreen(onBack: () -> Unit) {
                 .padding(padding)
         ) {
             if (list.isEmpty() && !loading) {
-                EmptyState(title = "暂无 Skill", hint = "点击右上角 + 添加")
+                EmptyState(title = stringResource(R.string.skills_empty_title), hint = stringResource(R.string.skills_empty_hint))
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -179,9 +181,9 @@ fun SkillsScreen(onBack: () -> Unit) {
     deleteTarget?.let { target ->
         NekoDialog(
             onDismiss = { deleteTarget = null },
-            title = "确认删除",
-            message = "确定删除 Skill「${target.displayName}」吗？",
-            confirmText = "删除",
+            title = stringResource(R.string.skills_confirm_delete),
+            message = stringResource(R.string.skills_delete_message, target.displayName),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 target.id?.let { vm.delete(it) }
                 deleteTarget = null
@@ -214,7 +216,7 @@ private fun SkillCard(
                 modifier = Modifier.weight(1f)
             )
             // 启停状态标记（颜色区分）
-            val (statusText, statusColor) = if (skill.enabled) "已启用" to SuccessGreen else "已禁用" to WarningAmber
+            val (statusText, statusColor) = if (skill.enabled) stringResource(R.string.skills_status_enabled) to SuccessGreen else stringResource(R.string.skills_status_disabled) to WarningAmber
             Box(
                 modifier = Modifier
                     .background(statusColor.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
@@ -226,25 +228,25 @@ private fun SkillCard(
             var menuExpanded by remember { mutableStateOf(false) }
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "操作", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.skills_action), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false }
                 ) {
-                    DropdownMenuItem(text = { Text("编辑") }, onClick = { menuExpanded = false; onEdit() })
-                    DropdownMenuItem(text = { Text("切换启停") }, onClick = { menuExpanded = false; onToggle() })
-                    DropdownMenuItem(text = { Text("删除", color = ErrorRed) }, onClick = { menuExpanded = false; onDelete() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.common_edit)) }, onClick = { menuExpanded = false; onEdit() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.skills_toggle)) }, onClick = { menuExpanded = false; onToggle() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.common_delete), color = ErrorRed) }, onClick = { menuExpanded = false; onDelete() })
                 }
             }
         }
 
         Spacer(Modifier.height(8.dp))
-        Text("描述: ${skill.description ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.skills_description, skill.description ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (skill.aliases.isNotEmpty()) {
-            Text("别名: ${skill.aliases.joinToString(", ")}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.skills_aliases, skill.aliases.joinToString(", ")), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text("创建时间: ${skill.createdAt ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.skills_created_at, skill.createdAt ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -266,11 +268,11 @@ private fun SkillFormDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = if (initial == null) "新建 Skill" else "编辑 Skill",
-        confirmText = "保存",
+        title = if (initial == null) stringResource(R.string.skills_new) else stringResource(R.string.skills_edit),
+        confirmText = stringResource(R.string.common_save),
         onConfirm = {
             if (name.isBlank()) {
-                Toast.makeText(context, "请填写名称", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.skills_name_required), Toast.LENGTH_SHORT).show()
             } else {
                 val req = SkillRequest(
                     name = name,
@@ -290,7 +292,7 @@ private fun SkillFormDialog(
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("名称（必填）") },
+                label = { Text(stringResource(R.string.skills_name_label)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -298,7 +300,7 @@ private fun SkillFormDialog(
             OutlinedTextField(
                 value = description,
                 onValueChange = { description = it },
-                label = { Text("描述") },
+                label = { Text(stringResource(R.string.skills_description_label)) },
                 minLines = 2,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -306,7 +308,7 @@ private fun SkillFormDialog(
             OutlinedTextField(
                 value = aliases,
                 onValueChange = { aliases = it },
-                label = { Text("别名（逗号分隔）") },
+                label = { Text(stringResource(R.string.skills_aliases_label)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -315,7 +317,7 @@ private fun SkillFormDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("启用", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.skills_enabled_label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
                 Switch(checked = enabled, onCheckedChange = { enabled = it })
             }
         }

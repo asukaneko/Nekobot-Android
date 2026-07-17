@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== Skills 配置 ==================== -->
+    <string name="skills_title">Skills 配置</string>
+    <string name="skills_new">新建 Skill</string>
+    <string name="skills_edit">编辑 Skill</string>
+    <string name="skills_empty_title">暂无 Skill</string>
+    <string name="skills_empty_hint">点击右上角 + 添加</string>
+    <string name="skills_confirm_delete">确认删除</string>
+    <string name="skills_delete_message">确定删除 Skill「%1$s」吗？</string>
+    <string name="skills_status_enabled">已启用</string>
+    <string name="skills_status_disabled">已禁用</string>
+    <string name="skills_action">操作</string>
+    <string name="skills_toggle">切换启停</string>
+    <string name="skills_description">描述: %1$s</string>
+    <string name="skills_aliases">别名: %1$s</string>
+    <string name="skills_created_at">创建时间: %1$s</string>
+    <string name="skills_name_required">请填写名称</string>
+    <string name="skills_name_label">名称（必填）</string>
+    <string name="skills_description_label">描述</string>
+    <string name="skills_aliases_label">别名（逗号分隔）</string>
+    <string name="skills_enabled_label">启用</string>
+
+    <!-- ==================== Tools 配置 ==================== -->
+    <string name="tools_title">Tools 配置</string>
+    <string name="tools_new">新建工具</string>
+    <string name="tools_edit">编辑工具</string>
+    <string name="tools_empty_title">暂无工具</string>
+    <string name="tools_empty_hint">点击右上角 + 添加</string>
+    <string name="tools_confirm_delete">确认删除</string>
+    <string name="tools_delete_message">确定删除工具「%1$s」吗？</string>
+    <string name="tools_detail_title">工具详情</string>
+    <string name="tools_name">名称: %1$s</string>
+    <string name="tools_description">描述: %1$s</string>
+    <string name="tools_status">状态: %1$s</string>
+    <string name="tools_builtin">内置: %1$s</string>
+    <string name="tools_created_at">创建时间: %1$s</string>
+    <string name="tools_status_enabled">已启用</string>
+    <string name="tools_status_disabled">已禁用</string>
+    <string name="tools_builtin_badge">内置</string>
+    <string name="tools_action">操作</string>
+    <string name="tools_view">查看</string>
+    <string name="tools_toggle">切换启停</string>
+    <string name="tools_name_required">请填写名称</string>
+    <string name="tools_name_label">名称（必填）</string>
+    <string name="tools_description_label">描述</string>
+    <string name="tools_enabled_label">启用</string>
+
+    <!-- ==================== MCP 服务 ==================== -->
+    <string name="mcp_title">MCP 服务</string>
+    <string name="mcp_new">新建 MCP 服务</string>
+    <string name="mcp_edit">编辑 MCP 服务</string>
+    <string name="mcp_refresh">刷新</string>
+    <string name="mcp_empty_title">暂无 MCP 服务</string>
+    <string name="mcp_empty_hint">点击右上角新建一个 MCP 服务</string>
+    <string name="mcp_confirm_delete">确认删除</string>
+    <string name="mcp_delete_message">确定删除 MCP 服务「%1$s」吗？</string>
+    <string name="mcp_test_result_title">测试结果</string>
+    <string name="mcp_tools_title">MCP 工具列表</string>
+    <string name="mcp_connect_started">已发起连接</string>
+    <string name="mcp_disconnect_done">已断开连接</string>
+    <string name="mcp_no_result">无返回结果</string>
+    <string name="mcp_connected">已连接</string>
+    <string name="mcp_disconnected">未连接</string>
+    <string name="mcp_status_enabled">已启用</string>
+    <string name="mcp_status_disabled">已禁用</string>
+    <string name="mcp_auto_connect">自动连接</string>
+    <string name="mcp_action">操作</string>
+    <string name="mcp_disconnect">断开</string>
+    <string name="mcp_connect">连接</string>
+    <string name="mcp_test">测试</string>
+    <string name="mcp_view_tools">查看工具</string>
+    <string name="mcp_transport">传输方式: %1$s</string>
+    <string name="mcp_tool_count">工具数量: %1$d</string>
+    <string name="mcp_url">URL: %1$s</string>
+    <string name="mcp_command">命令: %1$s</string>
+    <string name="mcp_name_label">名称 *</string>
+    <string name="mcp_transport_label">传输方式</string>
+    <string name="mcp_description_label">描述</string>
+    <string name="mcp_url_label">URL</string>
+    <string name="mcp_command_label">命令 (command)</string>
+    <string name="mcp_args_label">参数 (args，空格分隔)</string>
+    <string name="mcp_env_label">环境变量 (env，每行 KEY=VALUE)</string>
+    <string name="mcp_enabled_label">启用</string>
+    <string name="mcp_auto_connect_label">自动连接</string>
+
+    <!-- ==================== 频道管理 ==================== -->
+    <string name="channels_title">频道管理</string>
+    <string name="channels_new">新建频道</string>
+    <string name="channels_edit">编辑频道</string>
+    <string name="channels_refresh">刷新</string>
+    <string name="channels_new_custom">新建自定义频道</string>
+    <string name="channels_new_from_preset">从预设创建</string>
+    <string name="channels_empty_title">暂无频道</string>
+    <string name="channels_empty_hint">点击右上角新建或从预设创建频道</string>
+    <string name="channels_confirm_delete">确认删除</string>
+    <string name="channels_delete_message">确定删除频道「%1$s」吗？</string>
+    <string name="channels_builtin_badge">内置</string>
+    <string name="channels_status_enabled">已启用</string>
+    <string name="channels_status_disabled">已禁用</string>
+    <string name="channels_action">操作</string>
+    <string name="channels_enable">启用</string>
+    <string name="channels_disable">停用</string>
+    <string name="channels_type">类型: %1$s</string>
+    <string name="channels_transport">传输: %1$s</string>
+    <string name="channels_name_label">名称 *</string>
+    <string name="channels_type_label">类型 (type)</string>
+    <string name="channels_transport_label">传输方式 (transport)</string>
+    <string name="channels_description_label">描述</string>
+    <string name="channels_enabled_label">启用</string>
+    <string name="channels_preset_title">从预设创建频道</string>
+    <string name="channels_no_presets">暂无可用预设</string>
+    <string name="channels_preset_info">类型: %1$s · 传输: %2$s</string>
+    <string name="channels_created_from_preset">已从预设创建频道</string>
+
+    <!-- ==================== 消息过滤 ==================== -->
+    <string name="msgfilter_title">消息过滤</string>
+    <string name="msgfilter_new">新建规则</string>
+    <string name="msgfilter_new_rule">新建过滤规则</string>
+    <string name="msgfilter_edit">编辑过滤规则</string>
+    <string name="msgfilter_refresh">刷新</string>
+    <string name="msgfilter_global_on">全局过滤：已开启</string>
+    <string name="msgfilter_global_off">全局过滤：已关闭</string>
+    <string name="msgfilter_empty_title">暂无过滤规则</string>
+    <string name="msgfilter_empty_hint">点击右上角新建一条规则</string>
+    <string name="msgfilter_confirm_delete">确认删除</string>
+    <string name="msgfilter_delete_message">确定删除规则「%1$s」吗？</string>
+    <string name="msgfilter_empty_rule">（空规则）</string>
+    <string name="msgfilter_status_enabled">已启用</string>
+    <string name="msgfilter_status_disabled">已禁用</string>
+    <string name="msgfilter_action">操作</string>
+    <string name="msgfilter_type_prop">类型: %1$s</string>
+    <string name="msgfilter_action_prop">动作: %1$s</string>
+    <string name="msgfilter_target_prop">目标: %1$s</string>
+    <string name="msgfilter_scope_prop">范围: %1$s</string>
+    <string name="msgfilter_session_id">指定会话: %1$s</string>
+    <string name="msgfilter_pattern_label">匹配模式 *</string>
+    <string name="msgfilter_regex_placeholder">正则表达式</string>
+    <string name="msgfilter_keyword_placeholder">关键词</string>
+    <string name="msgfilter_type_label">类型 (type)</string>
+    <string name="msgfilter_action_label">动作 (action)</string>
+    <string name="msgfilter_target_label">过滤目标 (filterTarget)</string>
+    <string name="msgfilter_scope_label">会话范围 (sessionScope)</string>
+    <string name="msgfilter_session_id_label">指定会话 ID (sessionId)</string>
+    <string name="msgfilter_session_id_hint">输入会话 ID</string>
+    <string name="msgfilter_enabled_label">启用</string>
+</resources>

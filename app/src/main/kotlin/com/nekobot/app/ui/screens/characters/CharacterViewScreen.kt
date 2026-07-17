@@ -31,6 +31,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -39,6 +40,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import coil.compose.AsyncImage
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.model.CreateSessionRequest
@@ -88,7 +90,7 @@ class CharacterViewModelView(characterId: String) : com.nekobot.app.ui.BaseViewM
     fun createSessionWithCharacter(onSuccess: (String) -> Unit, onError: () -> Unit = {}) {
         val c = _character.value ?: return
         val req = CreateSessionRequest(
-            name = "新会话",
+            name = string(R.string.character_new_session),
             sessionMode = "character",
             characterId = c.id,
             systemPrompt = c.systemPrompt?.takeIf { it.isNotBlank() },
@@ -189,7 +191,7 @@ fun CharacterViewScreen(
             TopAppBar(
                 title = {
                     Text(
-                        character?.displayName ?: "角色详情",
+                        character?.displayName ?: stringResource(R.string.character_detail_title),
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
@@ -204,7 +206,7 @@ fun CharacterViewScreen(
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.common_back),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -231,14 +233,14 @@ fun CharacterViewScreen(
                                 color = MaterialTheme.colorScheme.primary
                             )
                         } else {
-                            Icon(Icons.Filled.IosShare, contentDescription = "导出 JSON", tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Filled.IosShare, contentDescription = stringResource(R.string.character_export_json), tint = MaterialTheme.colorScheme.primary)
                         }
                     }
                     IconButton(onClick = { character?.id?.let(onEdit) }) {
-                        Icon(Icons.Filled.Edit, contentDescription = "编辑", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.common_edit), tint = MaterialTheme.colorScheme.primary)
                     }
                     IconButton(onClick = { showDeleteDialog = true }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.error)
+                        Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.common_delete), tint = MaterialTheme.colorScheme.error)
                     }
                 }
             )
@@ -288,20 +290,20 @@ fun CharacterViewScreen(
                             Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
                         }
-                        Text("新建会话")
+                        Text(stringResource(R.string.character_new_session_button))
                     }
                     // 各字段分区
-                    FieldSection("基础信息", c.basicInfo)
-                    FieldSection("人格设定", c.personality)
-                    FieldSection("场景", c.scenario)
-                    FieldSection("首条消息", c.firstMessage)
-                    FieldSection("对话示例", c.exampleDialogues)
-                    FieldSection("回复格式", c.responseFormat)
+                    FieldSection(stringResource(R.string.character_field_basic_info), c.basicInfo)
+                    FieldSection(stringResource(R.string.character_personality), c.personality)
+                    FieldSection(stringResource(R.string.character_scenario), c.scenario)
+                    FieldSection(stringResource(R.string.character_field_first_message), c.firstMessage)
+                    FieldSection(stringResource(R.string.character_field_dialog_examples), c.exampleDialogues)
+                    FieldSection(stringResource(R.string.character_field_response_format), c.responseFormat)
                     if (!c.rules.isNullOrEmpty()) {
-                        FieldSection("规则", c.rules.joinToString("\n") { "• $it" })
+                        FieldSection(stringResource(R.string.character_field_rules), c.rules.joinToString("\n") { "• $it" })
                     }
                     if (!c.systemPrompt.isNullOrBlank()) {
-                        FieldSection("系统提示词（后端自动生成）", c.systemPrompt)
+                        FieldSection(stringResource(R.string.character_field_system_prompt), c.systemPrompt)
                     }
                     // 六维关系状态
                     val st = c.state
@@ -319,10 +321,10 @@ fun CharacterViewScreen(
     if (showDeleteDialog) {
         NekoDialog(
             onDismiss = { showDeleteDialog = false },
-            title = "删除角色",
-            message = "确定要删除该角色吗？此操作不可撤销。",
-            confirmText = "删除",
-            cancelText = "取消",
+            title = stringResource(R.string.character_delete_title),
+            message = stringResource(R.string.character_delete_confirm),
+            confirmText = stringResource(R.string.common_delete),
+            cancelText = stringResource(R.string.common_cancel),
             onConfirm = {
                 showDeleteDialog = false
                 vm.delete(onBack)
@@ -335,12 +337,12 @@ fun CharacterViewScreen(
     exportResult?.let { name ->
         NekoDialog(
             onDismiss = { exportResult = null },
-            title = if (name.isNotEmpty()) "导出成功" else "导出失败",
+            title = if (name.isNotEmpty()) stringResource(R.string.character_export_success) else stringResource(R.string.character_export_failed),
             message = if (name.isNotEmpty())
-                "已导出到下载目录：\n$name"
+                stringResource(R.string.character_export_success_msg, name)
             else
-                "导出失败，请检查存储权限后重试。",
-            confirmText = "知道了",
+                stringResource(R.string.character_export_failed_msg),
+            confirmText = stringResource(R.string.character_got_it),
             cancelText = null,
             onConfirm = { exportResult = null },
             onCancel = null
@@ -357,7 +359,7 @@ private fun HeaderCard(c: CharacterPreset) {
             val avatarUrl = c.avatarUrl?.let { resolveImageUrl(it) }
             AsyncImage(
                 model = avatarUrl,
-                contentDescription = "头像",
+                contentDescription = stringResource(R.string.character_avatar),
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(72.dp)
@@ -433,7 +435,7 @@ private fun HeaderCard(c: CharacterPreset) {
                 var offsetY by remember { mutableStateOf(0f) }
                 AsyncImage(
                     model = url,
-                    contentDescription = "立绘",
+                    contentDescription = stringResource(R.string.character_portrait),
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
                         .fillMaxSize()
@@ -464,7 +466,7 @@ private fun HeaderCard(c: CharacterPreset) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "关闭",
+                        text = stringResource(R.string.common_close),
                         color = Color.White,
                         style = MaterialTheme.typography.labelMedium
                     )
@@ -499,18 +501,18 @@ private fun FieldSection(title: String, content: String?) {
 private fun StateCard(state: com.google.gson.JsonObject) {
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         Text(
-            text = "初始关系状态",
+            text = stringResource(R.string.character_initial_state),
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.SemiBold
         )
         Spacer(Modifier.height(10.dp))
         val rows = listOf(
-            "好感" to "affection",
-            "信任" to "trust",
-            "熟悉" to "familiarity",
-            "依赖" to "dependency",
-            "安全感" to "security"
+            stringResource(R.string.character_dim_affection) to "affection",
+            stringResource(R.string.character_dim_trust) to "trust",
+            stringResource(R.string.character_dim_familiarity) to "familiarity",
+            stringResource(R.string.character_dim_dependency) to "dependency",
+            stringResource(R.string.character_dim_security) to "security"
         )
         rows.forEach { (label, key) ->
             val v = state.get(key)?.takeIf { !it.isJsonNull }?.asInt ?: 0
@@ -549,7 +551,7 @@ private fun StateCard(state: com.google.gson.JsonObject) {
         if (!mood.isNullOrBlank()) {
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "心情：$mood",
+                text = stringResource(R.string.character_mood_label, mood),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )

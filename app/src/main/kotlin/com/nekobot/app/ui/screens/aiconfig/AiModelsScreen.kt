@@ -51,11 +51,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonElement
+import com.nekobot.app.R
 import com.nekobot.app.data.model.AiModel
 import com.nekobot.app.data.model.AiModelRequest
 import com.nekobot.app.data.model.FetchModelsRequest
@@ -154,7 +156,7 @@ class AiModelsViewModel : BaseViewModel() {
         launchResult(
             block = { repo.applyAiModel(id) },
             onSuccess = {
-                showToast("已应用")
+                showToast(string(R.string.aimodels_applied))
                 load()
             }
         )
@@ -171,7 +173,7 @@ class AiModelsViewModel : BaseViewModel() {
         launchResult(
             block = { repo.cloneAiModel(id) },
             onSuccess = {
-                showToast("已克隆")
+                showToast(string(R.string.aimodels_cloned))
                 load()
             }
         )
@@ -181,10 +183,11 @@ class AiModelsViewModel : BaseViewModel() {
         launchResult(
             block = { repo.testAiModel(id) },
             onSuccess = { res ->
-                _testResult.value = buildString {
-                    append("状态: ${if (res.success == true) "成功" else "失败"}\n")
-                    append("消息: ${res.message ?: "无"}")
-                }
+                _testResult.value = string(
+                    R.string.aiconfig_test_result,
+                    if (res.success == true) string(R.string.aiconfig_test_success) else string(R.string.aiconfig_test_fail),
+                    res.message ?: string(R.string.common_none)
+                )
             }
         )
     }
@@ -198,7 +201,7 @@ class AiModelsViewModel : BaseViewModel() {
                 val ids = res.models?.mapNotNull { it.id } ?: emptyList()
                 _availableModels.value = ids
                 if (res.success == false) {
-                    showError(res.message ?: "获取模型列表失败")
+                    showError(res.message ?: string(R.string.aimodels_fetch_failed))
                 }
             }
         )
@@ -297,10 +300,10 @@ fun AiModelsScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("AI 模型管理") },
+                title = { Text(stringResource(R.string.aimodels_management_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
@@ -308,7 +311,7 @@ fun AiModelsScreen(onBack: () -> Unit) {
                         editingModel = null
                         showForm = true
                     }) {
-                        Icon(Icons.Filled.Add, contentDescription = "新建模型")
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.aimodels_new_model))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -325,7 +328,7 @@ fun AiModelsScreen(onBack: () -> Unit) {
                 .padding(padding)
         ) {
             if (models.isEmpty() && !loading) {
-                EmptyState(title = "暂无模型", hint = "点击右上角创建第一个模型")
+                EmptyState(title = stringResource(R.string.aimodels_empty_title), hint = stringResource(R.string.aimodels_empty_hint))
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -389,9 +392,9 @@ fun AiModelsScreen(onBack: () -> Unit) {
     deleteTarget?.let { model ->
         NekoDialog(
             onDismiss = { deleteTarget = null },
-            title = "确认删除",
-            message = "确定删除模型「${model.displayName}」吗？",
-            confirmText = "删除",
+            title = stringResource(R.string.aimodels_confirm_delete),
+            message = stringResource(R.string.aimodels_delete_message, model.displayName),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 model.id?.let { vm.delete(it) }
                 deleteTarget = null
@@ -403,9 +406,9 @@ fun AiModelsScreen(onBack: () -> Unit) {
     testResult?.let { result ->
         NekoDialog(
             onDismiss = { vm.clearTestResult() },
-            title = "测试结果",
+            title = stringResource(R.string.aiconfig_test_result_title),
             message = result,
-            confirmText = "确定",
+            confirmText = stringResource(R.string.common_ok),
             onConfirm = { vm.clearTestResult() },
             cancelText = null,
             onCancel = null
@@ -445,7 +448,7 @@ private fun ModelCard(
                         .background(SuccessGreen.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Text("已激活", style = MaterialTheme.typography.labelSmall, color = SuccessGreen)
+                    Text(stringResource(R.string.aimodels_active_badge), style = MaterialTheme.typography.labelSmall, color = SuccessGreen)
                 }
                 Spacer(Modifier.width(8.dp))
             }
@@ -453,17 +456,17 @@ private fun ModelCard(
             var menuExpanded by remember { mutableStateOf(false) }
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "操作", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.aimodels_action), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false }
                 ) {
-                    DropdownMenuItem(text = { Text("应用") }, onClick = { menuExpanded = false; onApply() })
-                    DropdownMenuItem(text = { Text("测试") }, onClick = { menuExpanded = false; onTest() })
-                    DropdownMenuItem(text = { Text("克隆") }, onClick = { menuExpanded = false; onClone() })
-                    DropdownMenuItem(text = { Text("编辑") }, onClick = { menuExpanded = false; onEdit() })
-                    DropdownMenuItem(text = { Text("删除") }, onClick = { menuExpanded = false; onDelete() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.common_apply)) }, onClick = { menuExpanded = false; onApply() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.aiconfig_test)) }, onClick = { menuExpanded = false; onTest() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.aimodels_clone)) }, onClick = { menuExpanded = false; onClone() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.common_edit)) }, onClick = { menuExpanded = false; onEdit() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.common_delete)) }, onClick = { menuExpanded = false; onDelete() })
                 }
             }
         }
@@ -471,10 +474,10 @@ private fun ModelCard(
         Spacer(Modifier.height(8.dp))
 
         // 信息行
-        Text("协议: ${model.protocol ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("地址: ${model.baseUrl ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("用途: ${model.purpose ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("模型: ${model.model ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.aimodels_protocol, model.protocol ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.aimodels_base_url, model.baseUrl ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.aimodels_purpose, model.purpose ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.aimodels_model, model.model ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
         Spacer(Modifier.height(8.dp))
 
@@ -483,7 +486,7 @@ private fun ModelCard(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("启用", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.aimodels_enabled), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
             Switch(
                 checked = model.enabled ?: false,
                 onCheckedChange = { onToggle() }
@@ -515,13 +518,14 @@ private fun AiModelFormDialog(
     var purpose by remember { mutableStateOf(initial?.purpose ?: "") }
     var enabled by remember { mutableStateOf(initial?.enabled ?: true) }
 
+    val unnamedFallback = stringResource(R.string.aimodels_unnamed)
     NekoDialog(
         onDismiss = onDismiss,
-        title = if (initial == null) "新建模型" else "编辑模型",
-        confirmText = "保存",
+        title = if (initial == null) stringResource(R.string.aimodels_new_model) else stringResource(R.string.aimodels_edit_model),
+        confirmText = stringResource(R.string.common_save),
         onConfirm = {
             val req = AiModelRequest(
-                name = name.ifBlank { "未命名模型" },
+                name = name.ifBlank { unnamedFallback },
                 protocol = protocol.ifBlank { null },
                 provider = provider.ifBlank { null },
                 apiKey = apiKey.ifBlank { null },
@@ -542,14 +546,14 @@ private fun AiModelFormDialog(
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("名称") },
+                label = { Text(stringResource(R.string.aimodels_name)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
 
             val protocolOptions = if (protocols.isEmpty()) listOf(ProtocolOption("openai", "openai")) else protocols
             DropdownField(
-                label = "协议 (protocol)",
+                label = stringResource(R.string.aimodels_protocol_label),
                 value = protocol,
                 options = protocolOptions.map { it.key },
                 onSelect = { protocol = it },
@@ -559,7 +563,7 @@ private fun AiModelFormDialog(
             OutlinedTextField(
                 value = provider,
                 onValueChange = { provider = it },
-                label = { Text("提供商 (provider)") },
+                label = { Text(stringResource(R.string.aimodels_provider)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -587,7 +591,7 @@ private fun AiModelFormDialog(
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 DropdownField(
-                    label = "模型 (model)",
+                    label = stringResource(R.string.aimodels_model_label),
                     value = model,
                     options = availableModels,
                     onSelect = { model = it },
@@ -596,13 +600,13 @@ private fun AiModelFormDialog(
                 IconButton(onClick = {
                     onFetchModels(baseUrl, apiKey.ifBlank { null }, protocol.ifBlank { null })
                 }) {
-                    Icon(Icons.Filled.CloudDownload, contentDescription = "拉取可用模型", tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Filled.CloudDownload, contentDescription = stringResource(R.string.aimodels_fetch_available), tint = MaterialTheme.colorScheme.primary)
                 }
             }
 
             val purposeOptions = if (purposes.isEmpty()) listOf("chat") else purposes
             DropdownField(
-                label = "用途 (purpose)",
+                label = stringResource(R.string.aimodels_purpose_label),
                 value = purpose,
                 options = purposeOptions,
                 onSelect = { purpose = it }
@@ -612,7 +616,7 @@ private fun AiModelFormDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("启用", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.aimodels_enabled), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
                 Switch(
                     checked = enabled,
                     onCheckedChange = { enabled = it }
@@ -661,7 +665,7 @@ private fun DropdownField(
         ) {
             if (options.isEmpty()) {
                 DropdownMenuItem(
-                    text = { Text("暂无选项") },
+                    text = { Text(stringResource(R.string.aimodels_no_options)) },
                     onClick = { expanded = false }
                 )
             } else {

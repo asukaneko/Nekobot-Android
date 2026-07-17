@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== TTS 试验场 ==================== -->
+    <string name="tts_title">TTS 试验场</string>
+    <string name="tts_refresh">刷新</string>
+    <string name="tts_no_audio_url">未返回音频地址</string>
+    <string name="tts_voice_preview">语音预览</string>
+    <string name="tts_voice_preview_subtitle">输入文本并选择音色生成预览</string>
+    <string name="tts_text_content">文本内容</string>
+    <string name="tts_voice">音色</string>
+    <string name="tts_speed">语速 Speed</string>
+    <string name="tts_pitch">音调 Pitch</string>
+    <string name="tts_volume">音量 Volume</string>
+    <string name="tts_prompt_input_text">请输入文本内容</string>
+    <string name="tts_prompt_select_voice">请选择音色</string>
+    <string name="tts_generate_preview">生成预览</string>
+    <string name="tts_preview_result">预览结果</string>
+    <string name="tts_model_label">模型: %1$s</string>
+    <string name="tts_audio_url_copied">已复制音频地址</string>
+    <string name="tts_copy_url">复制地址</string>
+    <string name="tts_voice_list">音色列表</string>
+    <string name="tts_voice_count">共 %1$d 个音色</string>
+    <string name="tts_no_voices">暂无音色</string>
+    <string name="tts_default_test_text">你好，这是一个语音合成测试。</string>
+    <string name="tts_custom">自定义</string>
+    <string name="tts_provider_label">提供商: %1$s</string>
+
+    <!-- ==================== 图片生成实验室 ==================== -->
+    <string name="imggen_title">图片生成实验室</string>
+    <string name="imggen_size_square">1024 × 1024（方形）</string>
+    <string name="imggen_size_landscape">1792 × 1024（横向）</string>
+    <string name="imggen_size_portrait">1024 × 1792（纵向）</string>
+    <string name="imggen_prompt_required">请输入图片描述</string>
+    <string name="imggen_generate_failed">图片生成失败</string>
+    <string name="imggen_params">生成参数</string>
+    <string name="imggen_params_subtitle">输入描述并选择尺寸</string>
+    <string name="imggen_prompt_label">图片描述（Prompt）</string>
+    <string name="imggen_size_label">尺寸</string>
+    <string name="imggen_count">生成数量</string>
+    <string name="imggen_count_unit">%1$d 张</string>
+    <string name="imggen_generate_button">生成图片</string>
+    <string name="imggen_results">生成结果</string>
+    <string name="imggen_results_count">共 %1$d 张</string>
+    <string name="imggen_generating">正在生成图片…</string>
+    <string name="imggen_model_label">模型: %1$s</string>
+    <string name="imggen_generated_image">生成的图片</string>
+    <string name="imggen_save_to_gallery">保存到相册</string>
+    <string name="imggen_file_not_found">文件不存在</string>
+    <string name="imggen_save_failed">保存失败</string>
+    <string name="imggen_saved_to_gallery">已保存到相册</string>
+    <string name="imggen_save_failed_with_msg">保存失败: %1$s</string>
+    <string name="imggen_share_image">分享图片</string>
+
+    <!-- ==================== 登录令牌 ==================== -->
+    <string name="logintokens_title">登录令牌</string>
+    <string name="logintokens_refresh">刷新</string>
+    <string name="logintokens_revoked_all">已撤销全部令牌</string>
+    <string name="logintokens_revoke_all">撤销全部</string>
+    <string name="logintokens_revoke_all_title">撤销全部令牌</string>
+    <string name="logintokens_revoke_all_confirm_msg">确定撤销所有登录令牌吗？此操作不可恢复。</string>
+    <string name="logintokens_new_token">新建令牌</string>
+    <string name="logintokens_empty_title">暂无登录令牌</string>
+    <string name="logintokens_empty_hint">点击右上角新建一个访问令牌</string>
+    <string name="logintokens_confirm_delete_title">确认删除</string>
+    <string name="logintokens_delete_confirm_msg">确定删除令牌「%1$s」吗？</string>
+    <string name="logintokens_token_created_title">令牌已创建</string>
+    <string name="logintokens_saved">我已保存</string>
+    <string name="logintokens_warning_msg">⚠️ 此令牌仅显示一次，请立即复制保存，关闭后无法再次获取。</string>
+    <string name="logintokens_token_copied">已复制令牌</string>
+    <string name="logintokens_copy_token">复制令牌</string>
+    <string name="logintokens_prefix_label">前缀: %1$s…</string>
+    <string name="logintokens_created_label">创建: %1$s</string>
+    <string name="logintokens_expires_label">过期: %1$s</string>
+    <string name="logintokens_ip_label">IP: %1$s</string>
+    <string name="logintokens_new_token_title">新建登录令牌</string>
+    <string name="logintokens_username">用户名</string>
+    <string name="logintokens_username_placeholder">访问令牌绑定的用户名</string>
+    <string name="logintokens_validity">有效期</string>
+    <string name="logintokens_days_count">%1$d 天</string>
+
+    <!-- ==================== API Keys ==================== -->
+    <string name="apikeys_title">API Keys</string>
+    <string name="apikeys_refresh">刷新</string>
+    <string name="apikeys_created">已创建密钥</string>
+    <string name="apikeys_updated">已更新密钥</string>
+    <string name="apikeys_deleted">已删除密钥</string>
+    <string name="apikeys_new_key">新建密钥</string>
+    <string name="apikeys_empty_title">暂无 API Key</string>
+    <string name="apikeys_empty_hint">点击右上角新建一个密钥</string>
+    <string name="apikeys_confirm_delete_title">确认删除</string>
+    <string name="apikeys_delete_confirm_msg">确定删除密钥「%1$s」吗？</string>
+    <string name="apikeys_full_key_title">完整 Key</string>
+    <string name="apikeys_key_copied">已复制 Key</string>
+    <string name="apikeys_copy_key">复制 Key</string>
+    <string name="apikeys_created_label">创建: %1$s</string>
+    <string name="apikeys_actions">操作</string>
+    <string name="apikeys_view_key">查看 Key</string>
+    <string name="apikeys_new_key_title">新建 API Key</string>
+    <string name="apikeys_edit_key_title">编辑 API Key</string>
+    <string name="apikeys_name_required">名称（必填）</string>
+    <string name="apikeys_key_required">Key（必填，多行）</string>
+    <string name="apikeys_view_full_key">查看完整 Key</string>
+</resources>

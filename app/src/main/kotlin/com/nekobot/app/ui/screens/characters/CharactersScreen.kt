@@ -31,11 +31,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.ui.components.EmptyState
@@ -74,7 +76,7 @@ class CharactersViewModel : com.nekobot.app.ui.BaseViewModel() {
             block = { unified.deleteCharacter(id) },
             onSuccess = {
                 _characters.value = _characters.value.filterNot { it.id == id }
-                showToast("已删除角色")
+                showToast(string(R.string.character_deleted))
             }
         )
     }
@@ -85,7 +87,7 @@ class CharactersViewModel : com.nekobot.app.ui.BaseViewModel() {
             block = { unified.importCharacter(bytes, fileName) },
             onSuccess = { preset ->
                 _characters.value = _characters.value + preset
-                showToast("已导入角色：${preset.displayName}")
+                showToast(string(R.string.character_imported, preset.displayName))
             }
         )
     }
@@ -106,7 +108,7 @@ class CharactersViewModel : com.nekobot.app.ui.BaseViewModel() {
                     },
                     onSuccess = { saved ->
                         _characters.value = _characters.value + saved
-                        showToast("AI 已生成角色：${saved.displayName}")
+                        showToast(string(R.string.character_ai_generated, saved.displayName))
                         onSuccess(saved)
                     }
                 )
@@ -167,7 +169,7 @@ fun CharactersScreen(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("角色", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.characters_title), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.size(8.dp))
                         CountBadge(characters.size)
                     }
@@ -185,30 +187,30 @@ fun CharactersScreen(
                     }) {
                         Icon(
                             if (viewMode == CharacterViewMode.LIST) Icons.Filled.Apps else Icons.Filled.ViewList,
-                            contentDescription = if (viewMode == CharacterViewMode.LIST) "卡片视图" else "列表视图",
+                            contentDescription = if (viewMode == CharacterViewMode.LIST) stringResource(R.string.characters_view_grid) else stringResource(R.string.characters_view_list),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                     IconButton(onClick = { viewModel.load() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.characters_refresh), tint = MaterialTheme.colorScheme.onSurface)
                     }
                     // 导入角色卡按钮
                     IconButton(onClick = {
                         importLauncher.launch(arrayOf("application/json", "application/zip", "application/x-zip-compressed", "*/*"))
                     }) {
-                        Icon(Icons.Filled.Upload, contentDescription = "导入角色卡", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Filled.Upload, contentDescription = stringResource(R.string.characters_import_card), tint = MaterialTheme.colorScheme.onSurface)
                     }
                     // 新建按钮 + 下拉菜单：新建 / AI 生成
                     Box {
                         IconButton(onClick = { showAddMenu = true }) {
-                            Icon(Icons.Filled.Add, contentDescription = "新建角色", tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.characters_new), tint = MaterialTheme.colorScheme.primary)
                         }
                         DropdownMenu(
                             expanded = showAddMenu,
                             onDismissRequest = { showAddMenu = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text("新建角色") },
+                                text = { Text(stringResource(R.string.characters_new)) },
                                 leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                                 onClick = {
                                     showAddMenu = false
@@ -216,7 +218,7 @@ fun CharactersScreen(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("AI 生成角色") },
+                                text = { Text(stringResource(R.string.characters_ai_generate)) },
                                 leadingIcon = { Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                                 onClick = {
                                     showAddMenu = false
@@ -237,8 +239,8 @@ fun CharactersScreen(
         ) {
             if (characters.isEmpty() && !loading) {
                 EmptyState(
-                    title = "暂无角色",
-                    hint = "点击右上角新建一个角色",
+                    title = stringResource(R.string.characters_empty_title),
+                    hint = stringResource(R.string.characters_empty_hint),
                     icon = {
                         Icon(
                             Icons.Filled.Person,
@@ -317,9 +319,9 @@ fun CharactersScreen(
     if (showAiGeneratingHint) {
         NekoDialog(
             onDismiss = { showAiGeneratingHint = false },
-            title = "后台生成中",
-            message = "AI 正在生成角色卡，请稍候片刻。生成完成后将自动跳转到编辑页。",
-            confirmText = "知道了",
+            title = stringResource(R.string.characters_generating_title),
+            message = stringResource(R.string.characters_generating_msg),
+            confirmText = stringResource(R.string.character_got_it),
             confirmEnabled = true,
             onConfirm = { showAiGeneratingHint = false },
             cancelText = null,
@@ -341,7 +343,7 @@ private fun CharacterListItem(character: CharacterPreset, onClick: () -> Unit) {
             val avatarUrl = character.avatarUrl?.let { resolveImageUrl(it) }
             AsyncImage(
                 model = avatarUrl,
-                contentDescription = "头像",
+                contentDescription = stringResource(R.string.character_avatar),
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(56.dp)
@@ -428,7 +430,7 @@ private fun CharacterGridItem(character: CharacterPreset, onClick: () -> Unit) {
                 if (!portraitUrl.isNullOrBlank()) {
                     AsyncImage(
                         model = portraitUrl,
-                        contentDescription = "角色立绘",
+                        contentDescription = stringResource(R.string.character_portrait),
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
@@ -500,7 +502,7 @@ private fun CountBadge(count: Int) {
  */
 private fun readUriToBytes(context: android.content.Context, uri: android.net.Uri): Pair<ByteArray, String> {
     val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-        ?: throw IllegalStateException("无法读取文件")
+        ?: throw IllegalStateException(ServiceContainer.getString(R.string.character_read_file_failed))
     // 尝试从 Uri 解析文件名
     var name: String? = null
     context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
@@ -528,9 +530,9 @@ private fun AiGenerateCharacterDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = "AI 生成角色",
-        confirmText = "生成角色卡",
-        cancelText = "取消",
+        title = stringResource(R.string.characters_ai_generate),
+        confirmText = stringResource(R.string.character_ai_generate_card),
+        cancelText = stringResource(R.string.common_cancel),
         confirmEnabled = description.isNotBlank(),
         onConfirm = {
             if (description.isBlank()) return@NekoDialog
@@ -539,7 +541,7 @@ private fun AiGenerateCharacterDialog(
         onCancel = onDismiss
     ) {
         Text(
-            "角色描述",
+            stringResource(R.string.character_description_label),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -553,7 +555,7 @@ private fun AiGenerateCharacterDialog(
             modifier = Modifier.fillMaxWidth(),
             placeholder = {
                 Text(
-                    "例如：一个来自异世界的精灵弓箭手，外表高冷但内心温柔，擅长吐槽，喜欢在月光下喝蜂蜜茶……",
+                    stringResource(R.string.character_ai_placeholder),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -571,7 +573,7 @@ private fun AiGenerateCharacterDialog(
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "提示：描述越具体（性格、外貌、背景、说话风格），生成质量越高。",
+            stringResource(R.string.character_ai_hint),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

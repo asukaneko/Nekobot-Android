@@ -65,6 +65,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -75,6 +76,7 @@ import coil.request.ImageRequest
 import coil.request.repeatCount
 import androidx.lifecycle.viewModelScope
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.R
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.model.CreateSessionRequest
 import com.nekobot.app.data.model.Session
@@ -101,14 +103,14 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
 /** 会话列表筛选类型。 */
-enum class SessionFilter(val label: String) {
-    ALL("全部会话"),
-    UNARCHIVED("未归档"),
-    ARCHIVED("已归档"),
-    FAVORITE("收藏"),
-    PINNED("置顶"),
-    PUBLIC("已公开"),
-    BY_CHARACTER("按角色")
+enum class SessionFilter(val labelResId: Int) {
+    ALL(R.string.sessions_filter_all),
+    UNARCHIVED(R.string.sessions_filter_unarchived),
+    ARCHIVED(R.string.sessions_filter_archived),
+    FAVORITE(R.string.sessions_filter_favorite),
+    PINNED(R.string.sessions_filter_pinned),
+    PUBLIC(R.string.sessions_filter_public),
+    BY_CHARACTER(R.string.sessions_filter_by_character)
 }
 
 /** 频道筛选项：value 为 null 表示全部频道。 */
@@ -139,6 +141,23 @@ fun SessionsScreen(
     val characterFilterId by viewModel.characterFilterId.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
 
+    // 提取本地化字符串
+    val titleText = stringResource(R.string.sessions_title)
+    val refreshDesc = stringResource(R.string.sessions_refresh)
+    val newSessionDesc = stringResource(R.string.sessions_new)
+    val noMatchTitle = stringResource(R.string.sessions_no_match)
+    val filterEmptyTitle = stringResource(R.string.sessions_filter_empty)
+    val emptyTitleText = stringResource(R.string.sessions_empty)
+    val noMatchHint = stringResource(R.string.sessions_no_match_hint)
+    val filterEmptyHint = stringResource(R.string.sessions_filter_empty_hint)
+    val emptyHintText = stringResource(R.string.sessions_empty_hint)
+    val renameTitle = stringResource(R.string.sessions_rename_title)
+    val saveText = stringResource(R.string.common_save)
+    val sessionNameLabel = stringResource(R.string.sessions_name_label)
+    val deleteTitle = stringResource(R.string.sessions_delete_title)
+    val deleteConfirmFmt = stringResource(R.string.sessions_delete_confirm)
+    val deleteText = stringResource(R.string.common_delete)
+
     // 模式切换时自动刷新会话列表
     val appMode by ServiceContainer.appModeFlow.collectAsState()
     LaunchedEffect(appMode) { viewModel.loadAll() }
@@ -155,17 +174,17 @@ fun SessionsScreen(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("会话", color = MaterialTheme.colorScheme.onSurface)
+                        Text(titleText, color = MaterialTheme.colorScheme.onSurface)
                         Spacer(Modifier.size(8.dp))
                         SessionCountBadge(sessionRows.size)
                     }
                 },
                 actions = {
                     IconButton(onClick = { viewModel.loadAll() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Filled.Refresh, contentDescription = refreshDesc, tint = MaterialTheme.colorScheme.onSurface)
                     }
                     IconButton(onClick = { showCreate = true }) {
-                        Icon(Icons.Filled.Add, contentDescription = "新建会话", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.Add, contentDescription = newSessionDesc, tint = MaterialTheme.colorScheme.primary)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -208,14 +227,14 @@ fun SessionsScreen(
                     }
                     sessionRows.isEmpty() -> {
                         val emptyTitle = when {
-                            searchQuery.isNotBlank() -> "未找到匹配会话"
-                            filter != SessionFilter.ALL -> "当前筛选下无会话"
-                            else -> "暂无会话"
+                            searchQuery.isNotBlank() -> noMatchTitle
+                            filter != SessionFilter.ALL -> filterEmptyTitle
+                            else -> emptyTitleText
                         }
                         val emptyHint = when {
-                            searchQuery.isNotBlank() -> "尝试更换关键词或切换筛选"
-                            filter != SessionFilter.ALL -> "切换其他筛选或点击右上角 + 创建"
-                            else -> "点击右上角 + 创建新会话"
+                            searchQuery.isNotBlank() -> noMatchHint
+                            filter != SessionFilter.ALL -> filterEmptyHint
+                            else -> emptyHintText
                         }
                         EmptyState(
                             title = emptyTitle,
@@ -304,8 +323,8 @@ fun SessionsScreen(
         var name by remember(row.key) { mutableStateOf(row.name) }
         NekoDialog(
             onDismiss = { renaming = null },
-            title = "重命名会话",
-            confirmText = "保存",
+            title = renameTitle,
+            confirmText = saveText,
             onConfirm = {
                 viewModel.renameSession(row.id.orEmpty(), name) { renaming = null }
             },
@@ -313,7 +332,7 @@ fun SessionsScreen(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("会话名称") },
+                    label = { Text(sessionNameLabel) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -325,9 +344,9 @@ fun SessionsScreen(
     deleting?.let { row ->
         NekoDialog(
             onDismiss = { deleting = null },
-            title = "删除会话",
-            message = "确定删除「${row.displayName}」吗？此操作不可撤销。",
-            confirmText = "删除",
+            title = deleteTitle,
+            message = deleteConfirmFmt.format(row.displayName),
+            confirmText = deleteText,
             onConfirm = {
                 viewModel.deleteSession(row.id.orEmpty()) { deleting = null }
             }
@@ -392,6 +411,10 @@ private fun SessionStatFilters(
     selected: SessionFilter,
     onSelect: (SessionFilter) -> Unit
 ) {
+    val allLabel = stringResource(R.string.sessions_all)
+    val pinLabel = stringResource(R.string.sessions_pin)
+    val favoriteLabel = stringResource(R.string.sessions_favorite)
+    val archiveLabel = stringResource(R.string.sessions_archive)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -399,28 +422,28 @@ private fun SessionStatFilters(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         StatFilterCard(
-            label = "全部",
+            label = allLabel,
             value = overview.total,
             icon = Icons.AutoMirrored.Outlined.Chat,
             selected = selected == SessionFilter.ALL,
             onClick = { onSelect(SessionFilter.ALL) }
         )
         StatFilterCard(
-            label = "置顶",
+            label = pinLabel,
             value = overview.pinned,
             icon = Icons.Filled.PushPin,
             selected = selected == SessionFilter.PINNED,
             onClick = { onSelect(SessionFilter.PINNED) }
         )
         StatFilterCard(
-            label = "收藏",
+            label = favoriteLabel,
             value = overview.favorite,
             icon = Icons.Filled.Favorite,
             selected = selected == SessionFilter.FAVORITE,
             onClick = { onSelect(SessionFilter.FAVORITE) }
         )
         StatFilterCard(
-            label = "归档",
+            label = archiveLabel,
             value = overview.archived,
             icon = Icons.Filled.Archive,
             selected = selected == SessionFilter.ARCHIVED,
@@ -483,6 +506,8 @@ private fun RowScope.StatFilterCard(
 
 @Composable
 private fun SessionSectionHeader(resultCount: Int) {
+    val recentText = stringResource(R.string.sessions_recent)
+    val resultsCountFmt = stringResource(R.string.sessions_results_count)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -490,14 +515,14 @@ private fun SessionSectionHeader(resultCount: Int) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = "最近会话",
+            text = recentText,
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.SemiBold
         )
         Spacer(Modifier.weight(1f))
         Text(
-            text = "$resultCount 个结果",
+            text = resultsCountFmt.format(resultCount),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -514,6 +539,7 @@ private fun SearchEntryBar(
     availableChannels: List<ChannelOption>,
     onClick: () -> Unit
 ) {
+    val searchHint = stringResource(R.string.sessions_search_hint)
     val channelLabel = availableChannels.firstOrNull { it.value == channelFilterValue }?.label
     val hasActiveFilter = filter != SessionFilter.ALL || channelFilterValue != null || searchQuery.isNotBlank()
 
@@ -552,7 +578,7 @@ private fun SearchEntryBar(
             )
         } else {
             Text(
-                "搜索会话、角色…",
+                searchHint,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.weight(1f)
@@ -563,7 +589,7 @@ private fun SearchEntryBar(
             FilterChip(label = channelLabel, active = true)
         }
         if (filter != SessionFilter.ALL) {
-            FilterChip(label = filter.label, active = true)
+            FilterChip(label = stringResource(filter.labelResId), active = true)
         }
     }
 }
@@ -609,17 +635,22 @@ private fun SearchPanelContent(
             .padding(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        val searchPlaceholder = stringResource(R.string.sessions_search_placeholder)
+        val clearDesc = stringResource(R.string.sessions_clear_input)
+        val channelText = stringResource(R.string.sessions_channel)
+        val filterLabelText = stringResource(R.string.sessions_filter_label)
+        val characterLabelText = stringResource(R.string.sessions_character_label)
         // 搜索框
         OutlinedTextField(
             value = searchQuery,
             onValueChange = onSearchChange,
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("搜索会话、角色名...", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+            placeholder = { Text(searchPlaceholder, color = MaterialTheme.colorScheme.onSurfaceVariant) },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
                     IconButton(onClick = { onSearchChange("") }) {
-                        Icon(Icons.Filled.Close, contentDescription = "清空", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(Icons.Filled.Close, contentDescription = clearDesc, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             },
@@ -628,7 +659,7 @@ private fun SearchPanelContent(
         )
 
         // 频道筛选
-        Text("频道", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(channelText, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         ChannelChips(
             availableChannels = availableChannels,
             selectedValue = channelFilterValue,
@@ -636,7 +667,7 @@ private fun SearchPanelContent(
         )
 
         // 会话筛选
-        Text("筛选", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(filterLabelText, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SessionFilterChips(
             selected = filter,
             onSelect = { newFilter ->
@@ -649,7 +680,7 @@ private fun SearchPanelContent(
 
         // 角色筛选（仅按角色时显示）
         if (filter == SessionFilter.BY_CHARACTER && characters.isNotEmpty()) {
-            Text("角色", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(characterLabelText, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             CharacterChips(
                 characters = characters,
                 selectedId = characterFilterId,
@@ -666,6 +697,7 @@ private fun ChannelChips(
     selectedValue: String?,
     onSelect: (String?) -> Unit
 ) {
+    val allLabel = stringResource(R.string.sessions_all)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -673,7 +705,7 @@ private fun ChannelChips(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         SelectableChip(
-            label = "全部",
+            label = allLabel,
             selected = selectedValue == null,
             onClick = { onSelect(null) }
         )
@@ -701,7 +733,7 @@ private fun SessionFilterChips(
     ) {
         SessionFilter.values().forEach { f ->
             SelectableChip(
-                label = f.label,
+                label = stringResource(f.labelResId),
                 selected = f == selected,
                 onClick = { onSelect(f) }
             )
@@ -716,6 +748,7 @@ private fun CharacterChips(
     selectedId: String?,
     onSelect: (String?) -> Unit
 ) {
+    val allCharactersLabel = stringResource(R.string.sessions_all_characters)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -723,7 +756,7 @@ private fun CharacterChips(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         SelectableChip(
-            label = "全部角色",
+            label = allCharactersLabel,
             selected = selectedId == null,
             onClick = { onSelect(null) }
         )
@@ -771,8 +804,34 @@ private fun CreateSessionDialog(
     onCreate: (CreateSessionRequest) -> Unit,
     onLoadCharacters: () -> Unit
 ) {
+    // 提取本地化字符串
+    val newSessionDefault = stringResource(R.string.sessions_new_default)
+    val newSessionTitle = stringResource(R.string.sessions_new)
+    val createText = stringResource(R.string.common_create)
+    val agentChatName = stringResource(R.string.sessions_agent_chat)
+    val groupChatName = stringResource(R.string.sessions_group_chat)
+    val modeRole = stringResource(R.string.sessions_mode_role)
+    val modeAgent = stringResource(R.string.sessions_mode_agent)
+    val modeGroup = stringResource(R.string.sessions_mode_group)
+    val nameOptional = stringResource(R.string.sessions_name_optional)
+    val agentNoInherit = stringResource(R.string.sessions_agent_no_inherit)
+    val strategyLabel = stringResource(R.string.sessions_strategy)
+    val strategyRoundRobin = stringResource(R.string.sessions_strategy_round_robin)
+    val strategyMention = stringResource(R.string.sessions_strategy_mention)
+    val strategyRelevance = stringResource(R.string.sessions_strategy_relevance)
+    val strategyRandom = stringResource(R.string.sessions_strategy_random)
+    val strategyWorldEngine = stringResource(R.string.sessions_strategy_world_engine)
+    val selectCharactersLabel = stringResource(R.string.sessions_select_characters)
+    val noCharactersText = stringResource(R.string.sessions_no_characters)
+    val selectedCharacterFmt = stringResource(R.string.sessions_selected_character)
+    val characterNameLabel = stringResource(R.string.sessions_character_name)
+    val characterInputHint = stringResource(R.string.sessions_character_input_hint)
+    val selectButtonText = stringResource(R.string.sessions_select_button)
+    val noneSelectText = stringResource(R.string.sessions_none_select)
+    val firstMessageOptional = stringResource(R.string.sessions_first_message_optional)
+
     var sessionMode by remember { mutableStateOf("character") }
-    var name by remember { mutableStateOf("新会话") }
+    var name by remember { mutableStateOf(newSessionDefault) }
     var characterName by remember { mutableStateOf("") }
     var firstMessage by remember { mutableStateOf("") }
     var dropdownExpanded by remember { mutableStateOf(false) }
@@ -818,13 +877,13 @@ private fun CreateSessionDialog(
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = "新建会话",
-        confirmText = "创建",
+        title = newSessionTitle,
+        confirmText = createText,
         onConfirm = {
             val char = selectedCharacter
             val req = when (sessionMode) {
                 "agent" -> CreateSessionRequest(
-                    name = name.ifBlank { "Agent 对话" },
+                    name = name.ifBlank { agentChatName },
                     sessionMode = "agent",
                     systemPrompt = "",
                     firstMessage = "",
@@ -833,17 +892,17 @@ private fun CreateSessionDialog(
                     userId = ServiceContainer.prefs.username.takeIf { it.isNotBlank() }
                 )
                 "group" -> CreateSessionRequest(
-                    name = name.ifBlank { "群聊" },
+                    name = name.ifBlank { groupChatName },
                     sessionMode = "group",
                     characterIds = selectedGroupCharacterIds,
-                    senderName = "群聊",
+                    senderName = groupChatName,
                     userId = ServiceContainer.prefs.username.takeIf { it.isNotBlank() },
                     groupConfig = com.google.gson.JsonObject().apply {
                         addProperty("speaker_strategy", speechStrategy)
                     }
                 )
                 else -> CreateSessionRequest(
-                    name = name.ifBlank { "新会话" },
+                    name = name.ifBlank { newSessionDefault },
                     sessionMode = "character",
                     characterId = char?.id,
                     systemPrompt = char?.systemPrompt?.takeIf { it.isNotBlank() },
@@ -866,17 +925,17 @@ private fun CreateSessionDialog(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 SelectableChip(
-                    label = "角色模式",
+                    label = modeRole,
                     selected = sessionMode == "character",
                     onClick = { sessionMode = "character" }
                 )
                 SelectableChip(
-                    label = "Agent 模式",
+                    label = modeAgent,
                     selected = sessionMode == "agent",
                     onClick = { sessionMode = "agent" }
                 )
                 SelectableChip(
-                    label = "群聊模式",
+                    label = modeGroup,
                     selected = sessionMode == "group",
                     onClick = { sessionMode = "group" }
                 )
@@ -891,14 +950,14 @@ private fun CreateSessionDialog(
                             name = it
                             nameEditedByUser = it.isNotBlank()
                         },
-                        label = { Text("会话名称（可选）") },
-                        placeholder = { Text("Agent 对话", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        label = { Text(nameOptional) },
+                        placeholder = { Text(agentChatName, color = MaterialTheme.colorScheme.onSurfaceVariant) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Agent 模式不继承角色卡配置，适合纯工具对话",
+                        agentNoInherit,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -910,8 +969,8 @@ private fun CreateSessionDialog(
                             name = it
                             nameEditedByUser = it.isNotBlank()
                         },
-                        label = { Text("会话名称（可选）") },
-                        placeholder = { Text("群聊", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        label = { Text(nameOptional) },
+                        placeholder = { Text(groupChatName, color = MaterialTheme.colorScheme.onSurfaceVariant) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -919,11 +978,11 @@ private fun CreateSessionDialog(
 
                     // 发言策略下拉选择
                     val strategies = listOf(
-                        "round_robin" to "轮流发言",
-                        "mention" to "@提及",
-                        "relevance" to "智能推荐",
-                        "random" to "随机",
-                        "world_engine" to "世界引擎"
+                        "round_robin" to strategyRoundRobin,
+                        "mention" to strategyMention,
+                        "relevance" to strategyRelevance,
+                        "random" to strategyRandom,
+                        "world_engine" to strategyWorldEngine
                     )
                     val currentStrategyLabel = strategies.firstOrNull { it.first == speechStrategy }?.second ?: speechStrategy
                     androidx.compose.material3.ExposedDropdownMenuBox(
@@ -934,7 +993,7 @@ private fun CreateSessionDialog(
                             value = currentStrategyLabel,
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("发言策略") },
+                            label = { Text(strategyLabel) },
                             singleLine = true,
                             modifier = Modifier
                                 .menuAnchor(androidx.compose.material3.MenuAnchorType.PrimaryNotEditable)
@@ -962,10 +1021,10 @@ private fun CreateSessionDialog(
                     Spacer(Modifier.height(12.dp))
 
                     // 角色多选列表
-                    Text("选择角色（可多选）", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(selectCharactersLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(4.dp))
                     if (characters.isEmpty()) {
-                        Text("暂无可用角色", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(noCharactersText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
                         Column(
                             modifier = Modifier
@@ -1028,7 +1087,7 @@ private fun CreateSessionDialog(
                                 .padding(bottom = 4.dp)
                         ) {
                             Text(
-                                "已选角色：${previewChar.displayName}",
+                                selectedCharacterFmt.format(previewChar.displayName),
                                 color = MaterialTheme.colorScheme.primary,
                                 style = MaterialTheme.typography.bodySmall
                             )
@@ -1041,7 +1100,7 @@ private fun CreateSessionDialog(
                             name = it
                             nameEditedByUser = it.isNotBlank()
                         },
-                        label = { Text("会话名称（可选）") },
+                        label = { Text(nameOptional) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -1052,10 +1111,10 @@ private fun CreateSessionDialog(
                         OutlinedTextField(
                             value = characterName,
                             onValueChange = { characterName = it },
-                            label = { Text("角色名") },
+                            label = { Text(characterNameLabel) },
                             singleLine = true,
                             modifier = Modifier.weight(1f),
-                            placeholder = { Text("手动输入或点击右侧选择", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            placeholder = { Text(characterInputHint, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         )
                         Spacer(Modifier.size(8.dp))
                         Box(
@@ -1073,7 +1132,7 @@ private fun CreateSessionDialog(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.padding(horizontal = 12.dp)
                                 ) {
-                                    Text("选择", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
+                                    Text(selectButtonText, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
                                     Spacer(Modifier.size(2.dp))
                                     Icon(
                                         if (dropdownExpanded) Icons.Filled.ArrowDropUp else Icons.Filled.ArrowDropDown,
@@ -1090,7 +1149,7 @@ private fun CreateSessionDialog(
                         Spacer(Modifier.height(8.dp))
                         if (characters.isEmpty()) {
                             Text(
-                                "暂无可用角色",
+                                noCharactersText,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -1115,7 +1174,7 @@ private fun CreateSessionDialog(
                                         .padding(horizontal = 12.dp, vertical = 10.dp)
                                 ) {
                                     Text(
-                                        "（不选）",
+                                        noneSelectText,
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -1155,7 +1214,7 @@ private fun CreateSessionDialog(
                             firstMessage = it
                             firstMessageEditedByUser = it.isNotBlank()
                         },
-                        label = { Text("首条消息（可选）") },
+                        label = { Text(firstMessageOptional) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 96.dp, max = 160.dp)
@@ -1216,6 +1275,22 @@ private fun SessionItem(
     onOpenStoryGraph: () -> Unit = {}
 ) {
     var menuExpanded by remember(row.key) { mutableStateOf(false) }
+    // 提取本地化字符串
+    val msgCountFmt = stringResource(R.string.sessions_msg_count)
+    val pinnedBadge = stringResource(R.string.sessions_pinned_badge)
+    val favoritedBadge = stringResource(R.string.sessions_favorited_badge)
+    val archivedBadge = stringResource(R.string.sessions_archived_badge)
+    val moreDesc = stringResource(R.string.sessions_more)
+    val detailMenuText = stringResource(R.string.sessions_detail_menu)
+    val renameMenuText = stringResource(R.string.sessions_rename_menu)
+    val unpinText = stringResource(R.string.sessions_unpin)
+    val pinText = stringResource(R.string.sessions_pin)
+    val unfavoriteText = stringResource(R.string.sessions_unfavorite)
+    val favoriteText = stringResource(R.string.sessions_favorite)
+    val unarchiveText = stringResource(R.string.sessions_unarchive)
+    val archiveText = stringResource(R.string.sessions_archive)
+    val storyGraphText = stringResource(R.string.sessions_story_graph)
+    val deleteText = stringResource(R.string.common_delete)
     val context = LocalContext.current
     val portraitRequest = remember(context, row.portraitUrl) {
         row.portraitUrl?.let { portraitUrl ->
@@ -1315,10 +1390,10 @@ private fun SessionItem(
                     row.characterLabel?.let {
                         SessionMetaLabel(text = it, emphasized = true)
                     }
-                    row.messageCount?.let { SessionMetaLabel(text = "$it 条") }
-                    if (row.pinned) SessionStatusIcon(Icons.Filled.PushPin, "已置顶")
-                    if (row.favorite) SessionStatusIcon(Icons.Filled.Favorite, "已收藏")
-                    if (row.archived) SessionStatusIcon(Icons.Filled.Archive, "已归档")
+                    row.messageCount?.let { SessionMetaLabel(text = msgCountFmt.format(it)) }
+                    if (row.pinned) SessionStatusIcon(Icons.Filled.PushPin, pinnedBadge)
+                    if (row.favorite) SessionStatusIcon(Icons.Filled.Favorite, favoritedBadge)
+                    if (row.archived) SessionStatusIcon(Icons.Filled.Archive, archivedBadge)
                 }
             }
 
@@ -1326,7 +1401,7 @@ private fun SessionItem(
                 IconButton(onClick = { menuExpanded = true }) {
                     Icon(
                         Icons.Filled.MoreVert,
-                        contentDescription = "更多",
+                        contentDescription = moreDesc,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -1335,49 +1410,49 @@ private fun SessionItem(
                     onDismissRequest = { menuExpanded = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text("会话详情") },
+                        text = { Text(detailMenuText) },
                         onClick = {
                             menuExpanded = false
                             onOpenDetail()
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("重命名") },
+                        text = { Text(renameMenuText) },
                         onClick = {
                             menuExpanded = false
                             onRename()
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text(if (row.pinned) "取消置顶" else "置顶") },
+                        text = { Text(if (row.pinned) unpinText else pinText) },
                         onClick = {
                             menuExpanded = false
                             onTogglePinned()
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text(if (row.favorite) "取消收藏" else "收藏") },
+                        text = { Text(if (row.favorite) unfavoriteText else favoriteText) },
                         onClick = {
                             menuExpanded = false
                             onToggleFavorite()
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text(if (row.archived) "取消归档" else "归档") },
+                        text = { Text(if (row.archived) unarchiveText else archiveText) },
                         onClick = {
                             menuExpanded = false
                             onToggleArchived()
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("故事图") },
+                        text = { Text(storyGraphText) },
                         onClick = {
                             menuExpanded = false
                             onOpenStoryGraph()
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("删除", color = Color(0xFFFF6B6B)) },
+                        text = { Text(deleteText, color = Color(0xFFFF6B6B)) },
                         onClick = {
                             menuExpanded = false
                             onDelete()
@@ -1538,7 +1613,7 @@ class SessionsViewModel : BaseViewModel() {
         launchResult(
             block = { unified.createSession(req) },
             onSuccess = {
-                showToast("会话已创建")
+                showToast(string(R.string.sessions_created_toast))
                 loadSessions()
                 onSuccess()
             }
@@ -1550,7 +1625,7 @@ class SessionsViewModel : BaseViewModel() {
         launchResult(
             block = { unified.deleteSession(id) },
             onSuccess = {
-                showToast("会话已删除")
+                showToast(string(R.string.sessions_deleted_toast))
                 loadSessions()
                 onSuccess()
             }
@@ -1560,13 +1635,13 @@ class SessionsViewModel : BaseViewModel() {
     /** 重命名会话，成功后刷新并回调 [onSuccess]。 */
     fun renameSession(id: String, name: String, onSuccess: () -> Unit = {}) {
         if (name.isBlank()) {
-            showError("名称不能为空")
+            showError(string(R.string.sessions_name_empty_error))
             return
         }
         launchResult(
             block = { unified.updateSession(id, UpdateSessionRequest(name = name)) },
             onSuccess = {
-                showToast("已重命名")
+                showToast(string(R.string.sessions_renamed_toast))
                 loadSessions()
                 onSuccess()
             }
@@ -1590,7 +1665,7 @@ class SessionsViewModel : BaseViewModel() {
         launchResult(
             block = { unified.updateSession(sessionId, UpdateSessionRequest(pinned = newPinned)) },
             onSuccess = {
-                showToast(if (newPinned) "已置顶" else "已取消置顶")
+                showToast(if (newPinned) string(R.string.sessions_pinned_toast) else string(R.string.sessions_unpinned_toast))
                 loadSessions()
             }
         )
@@ -1605,7 +1680,7 @@ class SessionsViewModel : BaseViewModel() {
                 else unified.restoreSession(sessionId)
             },
             onSuccess = {
-                showToast(if (newArchived) "已归档" else "已取消归档")
+                showToast(if (newArchived) string(R.string.sessions_archived_toast) else string(R.string.sessions_unarchived_toast))
                 loadSessions()
             }
         )

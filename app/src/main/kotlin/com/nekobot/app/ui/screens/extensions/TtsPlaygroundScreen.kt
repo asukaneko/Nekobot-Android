@@ -45,11 +45,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalAudioResult
 import com.nekobot.app.data.model.TtsPreviewRequest
@@ -119,7 +121,7 @@ class TtsPlaygroundViewModel : BaseViewModel() {
                 onSuccess = { res ->
                     _previewUrl.value = res.audioUrl
                     if (res.audioUrl.isNullOrBlank()) {
-                        showToast(res.message ?: "未返回音频地址")
+                        showToast(res.message ?: string(R.string.tts_no_audio_url))
                     }
                 }
             )
@@ -144,7 +146,8 @@ fun TtsPlaygroundScreen(onBack: () -> Unit) {
     val clipboard = LocalClipboardManager.current
 
     // 试验区表单状态
-    var text by remember { mutableStateOf("你好，这是一个语音合成测试。") }
+    val defaultText = stringResource(R.string.tts_default_test_text)
+    var text by remember { mutableStateOf(defaultText) }
     var selectedVoice by remember { mutableStateOf("") }
     var speed by remember { mutableStateOf(1.0f) }
     var pitch by remember { mutableStateOf(1.0f) }
@@ -172,19 +175,19 @@ fun TtsPlaygroundScreen(onBack: () -> Unit) {
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("TTS 试验场", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.tts_title), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     IconButton(onClick = { vm.load() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.tts_refresh), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             )
@@ -212,13 +215,13 @@ fun TtsPlaygroundScreen(onBack: () -> Unit) {
 
                 // 试验区
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    SectionHeader(title = "语音预览", subtitle = "输入文本并选择音色生成预览")
+                    SectionHeader(title = stringResource(R.string.tts_voice_preview), subtitle = stringResource(R.string.tts_voice_preview_subtitle))
                     Spacer(Modifier.height(12.dp))
 
                     OutlinedTextField(
                         value = text,
                         onValueChange = { text = it },
-                        label = { Text("文本内容") },
+                        label = { Text(stringResource(R.string.tts_text_content)) },
                         minLines = 3,
                         maxLines = 6,
                         modifier = Modifier.fillMaxWidth(),
@@ -235,36 +238,36 @@ fun TtsPlaygroundScreen(onBack: () -> Unit) {
                     Spacer(Modifier.height(8.dp))
 
                     // 语速 / 音调 / 音量滑块
-                    SliderField(label = "语速 Speed", value = speed, onValueChange = { speed = it })
+                    SliderField(label = stringResource(R.string.tts_speed), value = speed, onValueChange = { speed = it })
                     Spacer(Modifier.height(8.dp))
-                    SliderField(label = "音调 Pitch", value = pitch, onValueChange = { pitch = it })
+                    SliderField(label = stringResource(R.string.tts_pitch), value = pitch, onValueChange = { pitch = it })
                     Spacer(Modifier.height(8.dp))
-                    SliderField(label = "音量 Volume", value = volume, onValueChange = { volume = it })
+                    SliderField(label = stringResource(R.string.tts_volume), value = volume, onValueChange = { volume = it })
 
                     Spacer(Modifier.height(12.dp))
                     Button(
                         onClick = {
                             val voice = selectedVoice.ifBlank { voices.firstOrNull()?.id ?: "" }
                             when {
-                                text.isBlank() -> vm.showToast("请输入文本内容")
-                                voice.isBlank() -> vm.showToast("请选择音色")
+                                text.isBlank() -> vm.showToast(context.getString(R.string.tts_prompt_input_text))
+                                voice.isBlank() -> vm.showToast(context.getString(R.string.tts_prompt_select_voice))
                                 else -> vm.preview(text, voice, speed, pitch, volume)
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
-                        Text("生成预览", color = MaterialTheme.colorScheme.onPrimary)
+                        Text(stringResource(R.string.tts_generate_preview), color = MaterialTheme.colorScheme.onPrimary)
                     }
                 }
 
                 // 预览结果：本地模式播放缓存音频，远程模式显示 URL
                 localAudio?.let { audio ->
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "预览结果")
+                        SectionHeader(title = stringResource(R.string.tts_preview_result))
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "模型: ${audio.usedModelName}",
+                            text = stringResource(R.string.tts_model_label, audio.usedModelName),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -274,7 +277,7 @@ fun TtsPlaygroundScreen(onBack: () -> Unit) {
                 } ?: previewUrl?.let { url ->
                     if (url.isNotBlank()) {
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            SectionHeader(title = "预览结果")
+                            SectionHeader(title = stringResource(R.string.tts_preview_result))
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 text = url,
@@ -290,9 +293,9 @@ fun TtsPlaygroundScreen(onBack: () -> Unit) {
                             ) {
                                 IconButton(onClick = {
                                     clipboard.setText(AnnotatedString(url))
-                                    Toast.makeText(context, "已复制音频地址", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, context.getString(R.string.tts_audio_url_copied), Toast.LENGTH_SHORT).show()
                                 }) {
-                                    Icon(Icons.Filled.ContentCopy, contentDescription = "复制地址", tint = MaterialTheme.colorScheme.primary)
+                                    Icon(Icons.Filled.ContentCopy, contentDescription = stringResource(R.string.tts_copy_url), tint = MaterialTheme.colorScheme.primary)
                                 }
                             }
                         }
@@ -300,9 +303,9 @@ fun TtsPlaygroundScreen(onBack: () -> Unit) {
                 }
 
                 // 音色列表
-                SectionHeader(title = "音色列表", subtitle = "共 ${voices.size} 个音色")
+                SectionHeader(title = stringResource(R.string.tts_voice_list), subtitle = stringResource(R.string.tts_voice_count, voices.size))
                 if (voices.isEmpty() && !loading) {
-                    EmptyState(title = "暂无音色")
+                    EmptyState(title = stringResource(R.string.tts_no_voices))
                 } else {
                     voices.forEach { voice ->
                         TtsVoiceItem(voice = voice)
@@ -344,7 +347,7 @@ private fun TtsVoiceItem(voice: TtsVoice) {
                 }
                 Spacer(Modifier.height(6.dp))
                 if (!voice.provider.isNullOrBlank()) {
-                    Text("提供商: ${voice.provider}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.tts_provider_label, voice.provider), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             // 自定义音色标记
@@ -354,7 +357,7 @@ private fun TtsVoiceItem(voice: TtsVoice) {
                         .background(SuccessGreen.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Text("自定义", style = MaterialTheme.typography.labelSmall, color = SuccessGreen)
+                    Text(stringResource(R.string.tts_custom), style = MaterialTheme.typography.labelSmall, color = SuccessGreen)
                 }
             }
         }
@@ -383,7 +386,7 @@ private fun TtsVoiceDropdown(
             value = displayValue,
             onValueChange = {},
             readOnly = true,
-            label = { Text("音色") },
+            label = { Text(stringResource(R.string.tts_voice)) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier
                 .menuAnchor()
@@ -394,7 +397,7 @@ private fun TtsVoiceDropdown(
             onDismissRequest = { expanded = false }
         ) {
             if (voices.isEmpty()) {
-                DropdownMenuItem(text = { Text("暂无音色") }, onClick = { expanded = false })
+                DropdownMenuItem(text = { Text(stringResource(R.string.tts_no_voices)) }, onClick = { expanded = false })
             } else {
                 voices.forEach { voice ->
                     DropdownMenuItem(

@@ -37,9 +37,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.R
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.LoadingOverlay
 import com.nekobot.app.ui.theme.BgDark
@@ -72,15 +74,15 @@ fun SystemSettingsScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("系统设置", color = MaterialTheme.colorScheme.onSurface) },
+                title = { Text(stringResource(R.string.system_title), color = MaterialTheme.colorScheme.onSurface) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     IconButton(onClick = { vm.saveSettings(settingsInput) }) {
-                        Icon(Icons.Filled.Save, contentDescription = "保存", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.Save, contentDescription = stringResource(R.string.common_save), tint = MaterialTheme.colorScheme.primary)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -108,7 +110,7 @@ fun SystemSettingsScreen(onBack: () -> Unit) {
                 }
 
                 Text(
-                    text = "以 JSON 格式编辑系统配置，保存后立即生效。",
+                    text = stringResource(R.string.system_edit_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -116,7 +118,7 @@ fun SystemSettingsScreen(onBack: () -> Unit) {
                 OutlinedTextField(
                     value = settingsInput,
                     onValueChange = { settingsInput = it },
-                    label = { Text("设置 JSON") },
+                    label = { Text(stringResource(R.string.system_settings_json)) },
                     minLines = 10,
                     maxLines = 25,
                     textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
@@ -132,7 +134,7 @@ fun SystemSettingsScreen(onBack: () -> Unit) {
                 ) {
                     Icon(Icons.Filled.Save, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
                     Spacer(Modifier.width(8.dp))
-                    Text("保存设置", color = MaterialTheme.colorScheme.onPrimary)
+                    Text(stringResource(R.string.system_save_settings), color = MaterialTheme.colorScheme.onPrimary)
                 }
             }
 
