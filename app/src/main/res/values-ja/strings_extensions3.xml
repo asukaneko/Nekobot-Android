@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== TTS プレイグラウンド ==================== -->
+    <string name="tts_title">TTS プレイグラウンド</string>
+    <string name="tts_refresh">更新</string>
+    <string name="tts_no_audio_url">音声 URL が返されませんでした</string>
+    <string name="tts_voice_preview">音声プレビュー</string>
+    <string name="tts_voice_preview_subtitle">テキストを入力し音声を選択してプレビューを生成</string>
+    <string name="tts_text_content">テキスト内容</string>
+    <string name="tts_voice">音声</string>
+    <string name="tts_speed">速度</string>
+    <string name="tts_pitch">ピッチ</string>
+    <string name="tts_volume">音量</string>
+    <string name="tts_prompt_input_text">テキスト内容を入力してください</string>
+    <string name="tts_prompt_select_voice">音声を選択してください</string>
+    <string name="tts_generate_preview">プレビューを生成</string>
+    <string name="tts_preview_result">プレビュー結果</string>
+    <string name="tts_model_label">モデル: %1$s</string>
+    <string name="tts_audio_url_copied">音声 URL をコピーしました</string>
+    <string name="tts_copy_url">URL をコピー</string>
+    <string name="tts_voice_list">音声一覧</string>
+    <string name="tts_voice_count">%1$d 種類の音声</string>
+    <string name="tts_no_voices">音声がありません</string>
+    <string name="tts_default_test_text">こんにちは、これは音声合成テストです。</string>
+    <string name="tts_custom">カスタム</string>
+    <string name="tts_provider_label">プロバイダ: %1$s</string>
+
+    <!-- ==================== 画像生成ラボ ==================== -->
+    <string name="imggen_title">画像生成ラボ</string>
+    <string name="imggen_size_square">1024 × 1024 (正方形)</string>
+    <string name="imggen_size_landscape">1792 × 1024 (横長)</string>
+    <string name="imggen_size_portrait">1024 × 1792 (縦長)</string>
+    <string name="imggen_prompt_required">画像の説明を入力してください</string>
+    <string name="imggen_generate_failed">画像生成に失敗しました</string>
+    <string name="imggen_params">生成パラメータ</string>
+    <string name="imggen_params_subtitle">説明を入力しサイズを選択</string>
+    <string name="imggen_prompt_label">画像説明 (Prompt)</string>
+    <string name="imggen_size_label">サイズ</string>
+    <string name="imggen_count">枚数</string>
+    <string name="imggen_count_unit">%1$d 枚</string>
+    <string name="imggen_generate_button">画像を生成</string>
+    <string name="imggen_results">結果</string>
+    <string name="imggen_results_count">合計 %1$d 枚</string>
+    <string name="imggen_generating">画像を生成中…</string>
+    <string name="imggen_model_label">モデル: %1$s</string>
+    <string name="imggen_generated_image">生成された画像</string>
+    <string name="imggen_save_to_gallery">ギャラリーに保存</string>
+    <string name="imggen_file_not_found">ファイルが存在しません</string>
+    <string name="imggen_save_failed">保存に失敗しました</string>
+    <string name="imggen_saved_to_gallery">ギャラリーに保存しました</string>
+    <string name="imggen_save_failed_with_msg">保存に失敗しました: %1$s</string>
+    <string name="imggen_share_image">画像を共有</string>
+
+    <!-- ==================== ログイントークン ==================== -->
+    <string name="logintokens_title">ログイントークン</string>
+    <string name="logintokens_refresh">更新</string>
+    <string name="logintokens_revoked_all">すべてのトークンを取り消しました</string>
+    <string name="logintokens_revoke_all">すべて取り消し</string>
+    <string name="logintokens_revoke_all_title">すべてのトークンを取り消し</string>
+    <string name="logintokens_revoke_all_confirm_msg">すべてのログイントークンを取り消してもよろしいですか？この操作は元に戻せません。</string>
+    <string name="logintokens_new_token">新規トークン</string>
+    <string name="logintokens_empty_title">ログイントークンがありません</string>
+    <string name="logintokens_empty_hint">右上をタップして新しいアクセストークンを作成</string>
+    <string name="logintokens_confirm_delete_title">削除の確認</string>
+    <string name="logintokens_delete_confirm_msg">トークン \"%1$s\" を削除しますか？</string>
+    <string name="logintokens_token_created_title">トークンを作成しました</string>
+    <string name="logintokens_saved">保存しました</string>
+    <string name="logintokens_warning_msg">⚠️ このトークンは一度だけ表示されます。すぐにコピーして保存してください、閉じた後は再取得できません。</string>
+    <string name="logintokens_token_copied">トークンをコピーしました</string>
+    <string name="logintokens_copy_token">トークンをコピー</string>
+    <string name="logintokens_prefix_label">プレフィックス: %1$s…</string>
+    <string name="logintokens_created_label">作成: %1$s</string>
+    <string name="logintokens_expires_label">有効期限: %1$s</string>
+    <string name="logintokens_ip_label">IP: %1$s</string>
+    <string name="logintokens_new_token_title">新規ログイントークン</string>
+    <string name="logintokens_username">ユーザー名</string>
+    <string name="logintokens_username_placeholder">アクセストークンに紐付けるユーザー名</string>
+    <string name="logintokens_validity">有効期間</string>
+    <string name="logintokens_days_count">%1$d 日</string>
+
+    <!-- ==================== API Keys ==================== -->
+    <string name="apikeys_title">API Keys</string>
+    <string name="apikeys_refresh">更新</string>
+    <string name="apikeys_created">Key を作成しました</string>
+    <string name="apikeys_updated">Key を更新しました</string>
+    <string name="apikeys_deleted">Key を削除しました</string>
+    <string name="apikeys_new_key">新規 Key</string>
+    <string name="apikeys_empty_title">API Key がありません</string>
+    <string name="apikeys_empty_hint">右上をタップして新しい Key を作成</string>
+    <string name="apikeys_confirm_delete_title">削除の確認</string>
+    <string name="apikeys_delete_confirm_msg">Key \"%1$s\" を削除しますか？</string>
+    <string name="apikeys_full_key_title">完全な Key</string>
+    <string name="apikeys_key_copied">Key をコピーしました</string>
+    <string name="apikeys_copy_key">Key をコピー</string>
+    <string name="apikeys_created_label">作成: %1$s</string>
+    <string name="apikeys_actions">アクション</string>
+    <string name="apikeys_view_key">Key を表示</string>
+    <string name="apikeys_new_key_title">新規 API Key</string>
+    <string name="apikeys_edit_key_title">API Key を編集</string>
+    <string name="apikeys_name_required">名称 (必須)</string>
+    <string name="apikeys_key_required">Key (必須、複数行可)</string>
+    <string name="apikeys_view_full_key">完全な Key を表示</string>
+</resources>

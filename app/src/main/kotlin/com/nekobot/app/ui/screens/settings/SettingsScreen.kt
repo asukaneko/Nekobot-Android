@@ -512,6 +512,8 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                                 when (ServiceContainer.prefs.language) {
                                     PrefsManager.LANGUAGE_ZH -> stringResource(R.string.language_chinese)
                                     PrefsManager.LANGUAGE_EN -> stringResource(R.string.language_english)
+                                    PrefsManager.LANGUAGE_JA -> stringResource(R.string.language_japanese)
+                                    PrefsManager.LANGUAGE_KO -> stringResource(R.string.language_korean)
                                     else -> stringResource(R.string.language_system)
                                 },
                                 style = MaterialTheme.typography.bodySmall,
@@ -608,7 +610,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
     }
 }
 
-/** 语言选择弹窗：跟随系统 / 简体中文 / English。 */
+/** 语言选择弹窗：跟随系统 / 简体中文 / English / 日本語 / 한국어。 */
 @Composable
 private fun LanguagePickerDialog(
     currentLanguage: String,
@@ -618,7 +620,9 @@ private fun LanguagePickerDialog(
     val options = listOf(
         PrefsManager.LANGUAGE_SYSTEM to stringResource(R.string.language_system),
         PrefsManager.LANGUAGE_ZH to stringResource(R.string.language_chinese),
-        PrefsManager.LANGUAGE_EN to stringResource(R.string.language_english)
+        PrefsManager.LANGUAGE_EN to stringResource(R.string.language_english),
+        PrefsManager.LANGUAGE_JA to stringResource(R.string.language_japanese),
+        PrefsManager.LANGUAGE_KO to stringResource(R.string.language_korean)
     )
     NekoDialog(
         onDismiss = onDismiss,

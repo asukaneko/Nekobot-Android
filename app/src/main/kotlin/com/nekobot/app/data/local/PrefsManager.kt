@@ -316,14 +316,16 @@ class PrefsManager(context: Context) {
         // nbotcfg 导入密码记忆
         const val KEY_LAST_NBOTCFG_PWD = "last_nbotcfg_password"
 
-        // 语言偏好：system（跟随系统）/ zh / en
+        // 语言偏好：system（跟随系统）/ zh / en / ja / ko
         const val KEY_LANGUAGE = "language"
         const val LANGUAGE_SYSTEM = "system"
         const val LANGUAGE_ZH = "zh"
         const val LANGUAGE_EN = "en"
+        const val LANGUAGE_JA = "ja"
+        const val LANGUAGE_KO = "ko"
     }
 
-    /** 当前语言偏好：system / zh / en */
+    /** 当前语言偏好：system / zh / en / ja / ko */
     var language: String
         get() = prefs.getString(KEY_LANGUAGE, LANGUAGE_SYSTEM) ?: LANGUAGE_SYSTEM
         set(value) {

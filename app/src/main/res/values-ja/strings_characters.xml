@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== キャラクター一覧画面 (CharactersScreen) ==================== -->
+    <string name="characters_title">キャラクター</string>
+    <string name="characters_view_grid">グリッド表示</string>
+    <string name="characters_view_list">リスト表示</string>
+    <string name="characters_refresh">更新</string>
+    <string name="characters_import_card">キャラクターカードをインポート</string>
+    <string name="characters_new">新規キャラクター</string>
+    <string name="characters_ai_generate">AI キャラクター生成</string>
+    <string name="characters_empty_title">キャラクターがいません</string>
+    <string name="characters_empty_hint">右上をタップしてキャラクターを作成してください</string>
+    <string name="characters_generating_title">バックグラウンドで生成中</string>
+    <string name="characters_generating_msg">AI がキャラクターカードを生成しています。お待ちください。完了すると自動的に編集ページに遷移します。</string>
+
+    <!-- ==================== キャラクター共通 ==================== -->
+    <string name="character_got_it">了解</string>
+    <string name="character_avatar">アバター</string>
+    <string name="character_portrait">キャラクター立絵</string>
+    <string name="character_deleted">キャラクターを削除しました</string>
+    <string name="character_imported">キャラクターをインポートしました: %1$s</string>
+    <string name="character_ai_generated">AI 生成キャラクター: %1$s</string>
+    <string name="character_ai_generate_card">キャラクターカードを生成</string>
+    <string name="character_description_label">キャラクター説明</string>
+    <string name="character_ai_placeholder">例：異世界から来たエルフの弓使い、外見は冷淡ですが内面は優しく、口は悪いけれど月光の下でハチミツ茶を飲むのが好き…</string>
+    <string name="character_ai_hint">ヒント：説明（性格、外見、背景、話し方）を具体的にするほど品質が向上します。</string>
+    <string name="character_read_file_failed">ファイルを読み込めません</string>
+
+    <!-- ==================== キャラクター詳細・編集画面 (CharacterDetailScreen) ==================== -->
+    <string name="character_edit_title">キャラクターを編集</string>
+    <string name="character_name_required">キャラクター名は必須です</string>
+    <string name="character_name_label">キャラクター名 *</string>
+    <string name="character_description_field">説明</string>
+    <string name="character_avatar_icon_label">アバターアイコン (fas fa-cat 等) または画像</string>
+    <string name="character_portrait_path_label">立絵パスまたは画像</string>
+    <string name="character_basic_info_label">基本情報 (身長/年齢/職業など)</string>
+    <string name="character_personality">性格</string>
+    <string name="character_first_message_label">最初のメッセージ</string>
+    <string name="character_scenario">シナリオ</string>
+    <string name="character_dialog_examples_label">対話例</string>
+    <string name="character_response_format_label">応答形式</string>
+    <string name="character_rules_label">ルール (1行1件)</string>
+    <string name="character_system_prompt_label">システムプロンプト (自動生成、読み取り専用)</string>
+    <string name="character_tags_label">タグ (カンマ区切り)</string>
+    <string name="character_initial_state">初期関係状態</string>
+    <string name="character_dim_affection">好感度</string>
+    <string name="character_dim_trust">信頼度</string>
+    <string name="character_dim_familiarity">親密度</string>
+    <string name="character_dim_dependency">依存度</string>
+    <string name="character_dim_security">安心度</string>
+    <string name="character_dim_jealousy">嫉妬度</string>
+    <string name="character_initial_mood_label">初期気分 (例：穏やか/嬉しい/恥ずかしい/怒り)</string>
+    <string name="character_default_mood">穏やか</string>
+    <string name="character_delete_title">キャラクターを削除</string>
+    <string name="character_delete_confirm">このキャラクターを削除してもよろしいですか？この操作は元に戻せません。</string>
+    <string name="character_upload_image">画像をアップロード</string>
+    <string name="character_ai_generate_portrait">AI 立絵生成</string>
+    <string name="character_portrait_preview">立絵プレビュー (タップで拡大)</string>
+    <string name="character_portrait_preview_cd">立絵プレビュー</string>
+    <string name="character_portrait_large">立絵大画像</string>
+    <string name="character_name_empty">先にキャラクター名を入力してください</string>
+    <string name="character_portrait_no_model">画像生成モデルが設定されていません。AI 設定で先に追加してください。</string>
+    <string name="character_portrait_generate_failed">立絵の生成に失敗しました</string>
+    <string name="character_portrait_submit_failed">立絵生成タスクの送信に失敗しました</string>
+    <string name="character_portrait_generating">立絵を生成中…</string>
+    <string name="character_portrait_success_saved">立絵を生成し自動保存しました</string>
+    <string name="character_portrait_save_manually">立絵が生成されました。保存をタップしてください。</string>
+    <string name="character_portrait_timeout">立絵生成がタイムアウトしました</string>
+    <string name="character_image_load_failed">画像の読み込みに失敗しました</string>
+    <string name="character_portrait_upload_failed">立絵のアップロードに失敗しました</string>
+    <string name="character_avatar_upload_failed">アバターのアップロードに失敗しました</string>
+
+    <!-- ==================== キャラクター読み取り専用画面 (CharacterViewScreen) ==================== -->
+    <string name="character_detail_title">キャラクター詳細</string>
+    <string name="character_new_session">新規チャット</string>
+    <string name="character_new_session_button">新規チャット</string>
+    <string name="character_export_json">JSON をエクスポート</string>
+    <string name="character_field_basic_info">基本情報</string>
+    <string name="character_field_first_message">最初のメッセージ</string>
+    <string name="character_field_dialog_examples">対話例</string>
+    <string name="character_field_response_format">応答形式</string>
+    <string name="character_field_rules">ルール</string>
+    <string name="character_field_system_prompt">システムプロンプト (自動生成)</string>
+    <string name="character_mood_label">気分: %1$s</string>
+    <string name="character_export_success">エクスポート成功</string>
+    <string name="character_export_failed">エクスポート失敗</string>
+    <string name="character_export_success_msg">ダウンロードにエクスポートしました:\n%1$s</string>
+    <string name="character_export_failed_msg">エクスポートに失敗しました。ストレージ権限を確認のうえ再試行してください。</string>
+</resources>

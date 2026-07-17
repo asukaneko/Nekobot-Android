@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== AI 설정 센터 ==================== -->
+    <string name="aiconfig_center_title">AI 설정 센터</string>
+    <string name="aiconfig_section_local_ai">로컬 AI</string>
+    <string name="aiconfig_section_models_config">모델 및 설정</string>
+    <string name="aiconfig_title">AI 설정</string>
+    <string name="aiconfig_local_ai_models">로컬 AI 모델</string>
+    <string name="aiconfig_local_ai_models_subtitle">로컬 추론 모델과 매개변수를 관리해요</string>
+    <string name="aiconfig_sync_active_params_subtitle">활성 모델의 생성 매개변수를 조회하고 동기화해요</string>
+    <string name="aiconfig_configure_params_subtitle">모델 용도와 생성 매개변수를 설정해요</string>
+    <string name="aiconfig_api_key_management">API Key 관리</string>
+    <string name="aiconfig_manage_local_keys_subtitle">로컬에 저장된 API Key를 관리해요</string>
+    <string name="aiconfig_manage_keys_subtitle">각 모델의 API Key를 관리해요</string>
+
+    <!-- ==================== AI 설정 화면 ==================== -->
+    <string name="aiconfig_saved">저장했어요</string>
+    <string name="aiconfig_test">테스트</string>
+    <string name="aiconfig_test_success">성공</string>
+    <string name="aiconfig_test_fail">실패</string>
+    <string name="aiconfig_test_result">상태: %1$s\n메시지: %2$s</string>
+    <string name="aiconfig_test_result_title">테스트 결과</string>
+    <string name="aiconfig_model_params">모델 매개변수</string>
+    <string name="aiconfig_model_name">모델 이름</string>
+    <string name="aiconfig_temperature">온도 (temperature)</string>
+    <string name="aiconfig_max_tokens">최대 토큰 (max_tokens)</string>
+    <string name="aiconfig_frequency_penalty">빈도 페널티 (frequency_penalty)</string>
+    <string name="aiconfig_presence_penalty">출현 페널티 (presence_penalty)</string>
+    <string name="aiconfig_system_prompt">시스템 프롬프트</string>
+    <string name="aiconfig_save_config">설정 저장</string>
+
+    <!-- ==================== AI 모델 ==================== -->
+    <string name="aimodels_management_title">AI 모델 관리</string>
+    <string name="aimodels_title">AI 모델</string>
+    <string name="aimodels_manage_list_subtitle">사용 가능한 AI 모델 목록을 관리해요</string>
+    <string name="aimodels_new_model">새 모델</string>
+    <string name="aimodels_edit_model">모델 편집</string>
+    <string name="aimodels_empty_title">모델 없음</string>
+    <string name="aimodels_empty_hint">오른쪽 위 버튼을 눌러 첫 모델을 생성해 보세요</string>
+    <string name="aimodels_confirm_delete">삭제 확인</string>
+    <string name="aimodels_delete_message">모델 \"%1$s\"을(를) 삭제할까요?</string>
+    <string name="aimodels_active_badge">활성</string>
+    <string name="aimodels_action">동작</string>
+    <string name="aimodels_clone">복제</string>
+    <string name="aimodels_applied">적용했어요</string>
+    <string name="aimodels_cloned">복제했어요</string>
+    <string name="aimodels_fetch_failed">모델 목록을 불러오지 못했어요</string>
+    <string name="aimodels_protocol">프로토콜: %1$s</string>
+    <string name="aimodels_base_url">URL: %1$s</string>
+    <string name="aimodels_purpose">용도: %1$s</string>
+    <string name="aimodels_model">모델: %1$s</string>
+    <string name="aimodels_enabled">활성화됨</string>
+    <string name="aimodels_unnamed">이름 없는 모델</string>
+    <string name="aimodels_name">이름</string>
+    <string name="aimodels_protocol_label">프로토콜 (protocol)</string>
+    <string name="aimodels_provider">제공자 (provider)</string>
+    <string name="aimodels_model_label">모델 (model)</string>
+    <string name="aimodels_purpose_label">용도 (purpose)</string>
+    <string name="aimodels_fetch_available">사용 가능한 모델 불러오기</string>
+    <string name="aimodels_no_options">옵션 없음</string>
+
+    <!-- ==================== 장애 조치 큐 ==================== -->
+    <string name="failover_queue_title">장애 조치 큐</string>
+    <string name="failover_local_priority_subtitle">용도별 로컬 모델 우선순위를 조회해요</string>
+    <string name="failover_health_subtitle">모델 상태를 조회하고 폴백 순서를 조정해요</string>
+    <string name="failover_refresh">새로고침</string>
+    <string name="failover_reset_all_health">모든 상태 초기화</string>
+    <string name="failover_empty_title">이 용도로 사용 가능한 모델이 없어요</string>
+    <string name="failover_empty_hint">먼저 AI 모델에서 활성화하고 용도를 설정해 주세요</string>
+    <string name="failover_loading_queue">큐를 불러오는 중…</string>
+    <string name="failover_primary">주 모델</string>
+    <string name="failover_current">현재</string>
+    <string name="failover_available">사용 가능</string>
+    <string name="failover_cooling">냉각 중</string>
+    <string name="failover_today_failures">오늘 실패: %1$d</string>
+    <string name="failover_consecutive_failures">연속: %1$d</string>
+    <string name="failover_remaining_seconds">남은 시간: %1$d초</string>
+    <string name="failover_daily_usage">일일: %1$d/%2$d (%3$d%%)</string>
+    <string name="failover_weekly_usage">주간: %1$d/%2$d (%3$d%%)</string>
+    <string name="failover_daily_limit">일일 한도: %1$d</string>
+    <string name="failover_weekly_limit">주간 한도: %1$d</string>
+    <string name="failover_timeout">시간 초과: %1$d초</string>
+    <string name="failover_move_up">위로 이동</string>
+    <string name="failover_move_down">아래로 이동</string>
+    <string name="failover_reset_status">상태 초기화</string>
+    <string name="failover_status_label">상태: %1$s</string>
+    <string name="failover_remaining_seconds_short">남은 시간: %1$d초</string>
+    <string name="failover_consecutive_failures_detail">연속 실패: %1$d</string>
+    <string name="failover_daily_token_limit">일일 토큰 한도 (0=무제한)</string>
+    <string name="failover_weekly_token_limit">주간 토큰 한도 (0=무제한)</string>
+    <string name="failover_timeout_seconds">시간 초과 초 (0=기본값)</string>
+    <string name="failover_saving">저장 중…</string>
+    <string name="failover_reset_health">상태 초기화</string>
+    <string name="failover_order_saved">큐 순서가 저장되었어요</string>
+    <string name="failover_reset_all">모든 상태가 초기화되었어요</string>
+    <string name="failover_reset_model">모델 상태가 초기화되었어요</string>
+    <string name="failover_load_detail_failed">상세 정보를 불러오지 못했어요</string>
+    <string name="failover_invalid_limit">한도와 시간 초과는 음수일 수 없어요</string>
+    <string name="failover_policy_saved">정책이 저장되었어요</string>
+    <string name="failover_save_policy_failed">정책 저장에 실패했어요</string>
+    <string name="failover_purpose_chat">채팅</string>
+    <string name="failover_purpose_vision">비전</string>
+    <string name="failover_purpose_video">비디오</string>
+    <string name="failover_purpose_tts">TTS</string>
+    <string name="failover_purpose_stt">STT</string>
+    <string name="failover_purpose_embedding">임베딩</string>
+    <string name="failover_purpose_image_generation">이미지 생성</string>
+
+    <!-- ==================== 로컬 AI 모델 ==================== -->
+    <string name="localai_saved">저장했어요</string>
+    <string name="localai_deleted">삭제했어요</string>
+    <string name="localai_set_active">현재 모델로 설정</string>
+    <string name="localai_test_failed">실패: %1$s</string>
+    <string name="localai_test_success">성공: %1$s</string>
+    <string name="localai_test_exception">오류: %1$s</string>
+    <string name="localai_local_logs">로컬 로그</string>
+    <string name="localai_empty_hint">AI 모델이 없어요. 오른쪽 위 +를 눌러 추가해 주세요.</string>
+    <string name="localai_delete_title">모델 삭제</string>
+    <string name="localai_delete_message">\"%1$s\"을(를) 삭제할까요?</string>
+    <string name="localai_test_title">%1$s 테스트</string>
+    <string name="localai_testing">테스트 중…</string>
+    <string name="localai_logs_title">로컬 로그 (%1$d)</string>
+    <string name="localai_no_logs">로그 없음</string>
+    <string name="localai_more">더보기</string>
+    <string name="localai_current_model">현재 모델</string>
+    <string name="localai_set_current">현재로 설정</string>
+    <string name="localai_new_model">새 AI 모델</string>
+    <string name="localai_edit_model">AI 모델 편집</string>
+    <string name="localai_protocol">프로토콜</string>
+    <string name="localai_model_name">모델 이름</string>
+    <string name="localai_append_path">경로 자동 추가</string>
+    <string name="localai_priority">우선순위</string>
+    <string name="localai_temperature">온도</string>
+    <string name="localai_max_tokens">최대 토큰</string>
+    <string name="localai_purpose_chat">💬 채팅</string>
+    <string name="localai_purpose_vision">🖼️ 비전</string>
+    <string name="localai_purpose_video">🎬 비디오</string>
+    <string name="localai_purpose_tts">🔊 TTS</string>
+    <string name="localai_purpose_stt">🎤 STT</string>
+    <string name="localai_purpose_embedding">📊 임베딩</string>
+    <string name="localai_purpose_image_generation">🎨 이미지 생성</string>
+    <string name="localai_purpose_chat_model">💬 채팅 모델</string>
+    <string name="localai_purpose_hint_vision">이미지 메시지 이해용, 이미지 설명의 폴백으로 사용돼요</string>
+    <string name="localai_purpose_hint_video">비디오 메시지 이해용 (로컬 모드에서는 아직 자동 호출되지 않아요)</string>
+    <string name="localai_purpose_hint_tts">텍스트 음성 변환용, 대화에서 수동으로 호출할 수 있어요</string>
+    <string name="localai_purpose_hint_stt">음성 텍스트 변환용, 녹음 후 자동 호출돼요</string>
+    <string name="localai_purpose_hint_embedding">임베딩용 (로컬 모드에서는 지식 베이스가 아직 연동되지 않았어요)</string>
+    <string name="localai_purpose_hint_image_generation">AI 이미지 생성용 (로컬 모드에서는 아직 연동되지 않았어요)</string>
+</resources>

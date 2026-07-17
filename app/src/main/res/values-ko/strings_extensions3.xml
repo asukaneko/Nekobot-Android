@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== TTS 플레이그라운드 ==================== -->
+    <string name="tts_title">TTS 플레이그라운드</string>
+    <string name="tts_refresh">새로고침</string>
+    <string name="tts_no_audio_url">오디오 URL이 반환되지 않았어요</string>
+    <string name="tts_voice_preview">음성 미리보기</string>
+    <string name="tts_voice_preview_subtitle">텍스트를 입력하고 음성을 선택해 미리보기를 생성해요</string>
+    <string name="tts_text_content">텍스트 내용</string>
+    <string name="tts_voice">음성</string>
+    <string name="tts_speed">속도</string>
+    <string name="tts_pitch">피치</string>
+    <string name="tts_volume">볼륨</string>
+    <string name="tts_prompt_input_text">텍스트 내용을 입력해 주세요</string>
+    <string name="tts_prompt_select_voice">음성을 선택해 주세요</string>
+    <string name="tts_generate_preview">미리보기 생성</string>
+    <string name="tts_preview_result">미리보기 결과</string>
+    <string name="tts_model_label">모델: %1$s</string>
+    <string name="tts_audio_url_copied">오디오 URL이 복사되었어요</string>
+    <string name="tts_copy_url">URL 복사</string>
+    <string name="tts_voice_list">음성 목록</string>
+    <string name="tts_voice_count">음성 %1$d개</string>
+    <string name="tts_no_voices">음성 없음</string>
+    <string name="tts_default_test_text">안녕하세요, 텍스트 음성 변환 테스트입니다.</string>
+    <string name="tts_custom">사용자 정의</string>
+    <string name="tts_provider_label">제공자: %1$s</string>
+
+    <!-- ==================== 이미지 생성 랩 ==================== -->
+    <string name="imggen_title">이미지 생성 랩</string>
+    <string name="imggen_size_square">1024 × 1024 (정사각형)</string>
+    <string name="imggen_size_landscape">1792 × 1024 (가로)</string>
+    <string name="imggen_size_portrait">1024 × 1792 (세로)</string>
+    <string name="imggen_prompt_required">이미지 설명을 입력해 주세요</string>
+    <string name="imggen_generate_failed">이미지 생성 실패</string>
+    <string name="imggen_params">생성 매개변수</string>
+    <string name="imggen_params_subtitle">설명을 입력하고 크기를 선택해요</string>
+    <string name="imggen_prompt_label">이미지 설명(Prompt)</string>
+    <string name="imggen_size_label">크기</string>
+    <string name="imggen_count">수량</string>
+    <string name="imggen_count_unit">이미지 %1$d장</string>
+    <string name="imggen_generate_button">이미지 생성</string>
+    <string name="imggen_results">결과</string>
+    <string name="imggen_results_count">총 %1$d장</string>
+    <string name="imggen_generating">이미지 생성 중…</string>
+    <string name="imggen_model_label">모델: %1$s</string>
+    <string name="imggen_generated_image">생성된 이미지</string>
+    <string name="imggen_save_to_gallery">갤러리에 저장</string>
+    <string name="imggen_file_not_found">파일이 존재하지 않아요</string>
+    <string name="imggen_save_failed">저장 실패</string>
+    <string name="imggen_saved_to_gallery">갤러리에 저장되었어요</string>
+    <string name="imggen_save_failed_with_msg">저장 실패: %1$s</string>
+    <string name="imggen_share_image">이미지 공유</string>
+
+    <!-- ==================== 로그인 토큰 ==================== -->
+    <string name="logintokens_title">로그인 토큰</string>
+    <string name="logintokens_refresh">새로고침</string>
+    <string name="logintokens_revoked_all">모든 토큰이 폐기되었어요</string>
+    <string name="logintokens_revoke_all">모두 폐기</string>
+    <string name="logintokens_revoke_all_title">모든 토큰 폐기</string>
+    <string name="logintokens_revoke_all_confirm_msg">모든 로그인 토큰을 폐기할까요? 이 동작은 되돌릴 수 없어요.</string>
+    <string name="logintokens_new_token">새 토큰</string>
+    <string name="logintokens_empty_title">로그인 토큰 없음</string>
+    <string name="logintokens_empty_hint">오른쪽 위를 눌러 새 접속 토큰을 생성해 보세요</string>
+    <string name="logintokens_confirm_delete_title">삭제 확인</string>
+    <string name="logintokens_delete_confirm_msg">토큰 \"%1$s\"을(를) 삭제할까요?</string>
+    <string name="logintokens_token_created_title">토큰 생성됨</string>
+    <string name="logintokens_saved">저장했어요</string>
+    <string name="logintokens_warning_msg">⚠️ 이 토큰은 한 번만 표시돼요. 즉시 복사하여 저장해 주세요. 닫은 후에는 다시 확인할 수 없어요.</string>
+    <string name="logintokens_token_copied">토큰이 복사되었어요</string>
+    <string name="logintokens_copy_token">토큰 복사</string>
+    <string name="logintokens_prefix_label">접두사: %1$s…</string>
+    <string name="logintokens_created_label">생성: %1$s</string>
+    <string name="logintokens_expires_label">만료: %1$s</string>
+    <string name="logintokens_ip_label">IP: %1$s</string>
+    <string name="logintokens_new_token_title">새 로그인 토큰</string>
+    <string name="logintokens_username">사용자 이름</string>
+    <string name="logintokens_username_placeholder">접속 토큰에 바인딩할 사용자 이름</string>
+    <string name="logintokens_validity">유효 기간</string>
+    <string name="logintokens_days_count">%1$d일</string>
+
+    <!-- ==================== API Keys ==================== -->
+    <string name="apikeys_title">API Keys</string>
+    <string name="apikeys_refresh">새로고침</string>
+    <string name="apikeys_created">Key가 생성되었어요</string>
+    <string name="apikeys_updated">Key가 업데이트되었어요</string>
+    <string name="apikeys_deleted">Key가 삭제되었어요</string>
+    <string name="apikeys_new_key">새 Key</string>
+    <string name="apikeys_empty_title">API Key 없음</string>
+    <string name="apikeys_empty_hint">오른쪽 위를 눌러 새 Key를 생성해 보세요</string>
+    <string name="apikeys_confirm_delete_title">삭제 확인</string>
+    <string name="apikeys_delete_confirm_msg">Key \"%1$s\"을(를) 삭제할까요?</string>
+    <string name="apikeys_full_key_title">전체 Key</string>
+    <string name="apikeys_key_copied">Key가 복사되었어요</string>
+    <string name="apikeys_copy_key">Key 복사</string>
+    <string name="apikeys_created_label">생성: %1$s</string>
+    <string name="apikeys_actions">동작</string>
+    <string name="apikeys_view_key">Key 보기</string>
+    <string name="apikeys_new_key_title">새 API Key</string>
+    <string name="apikeys_edit_key_title">API Key 편집</string>
+    <string name="apikeys_name_required">이름(필수)</string>
+    <string name="apikeys_key_required">Key(필수, 여러 줄 가능)</string>
+    <string name="apikeys_view_full_key">전체 Key 보기</string>
+</resources>

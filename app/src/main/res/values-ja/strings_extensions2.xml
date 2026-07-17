@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== Skills ==================== -->
+    <string name="skills_title">Skills</string>
+    <string name="skills_new">新規 Skill</string>
+    <string name="skills_edit">Skill を編集</string>
+    <string name="skills_empty_title">Skill がありません</string>
+    <string name="skills_empty_hint">右上の + をタップして追加</string>
+    <string name="skills_confirm_delete">削除の確認</string>
+    <string name="skills_delete_message">Skill \"%1$s\" を削除しますか？</string>
+    <string name="skills_status_enabled">有効</string>
+    <string name="skills_status_disabled">無効</string>
+    <string name="skills_action">アクション</string>
+    <string name="skills_toggle">切替</string>
+    <string name="skills_description">説明: %1$s</string>
+    <string name="skills_aliases">エイリアス: %1$s</string>
+    <string name="skills_created_at">作成: %1$s</string>
+    <string name="skills_name_required">名称を入力してください</string>
+    <string name="skills_name_label">名称 (必須)</string>
+    <string name="skills_description_label">説明</string>
+    <string name="skills_aliases_label">エイリアス (カンマ区切り)</string>
+    <string name="skills_enabled_label">有効</string>
+
+    <!-- ==================== Tools ==================== -->
+    <string name="tools_title">Tools</string>
+    <string name="tools_new">新規 Tool</string>
+    <string name="tools_edit">Tool を編集</string>
+    <string name="tools_empty_title">Tool がありません</string>
+    <string name="tools_empty_hint">右上の + をタップして追加</string>
+    <string name="tools_confirm_delete">削除の確認</string>
+    <string name="tools_delete_message">Tool \"%1$s\" を削除しますか？</string>
+    <string name="tools_detail_title">Tool 詳細</string>
+    <string name="tools_name">名称: %1$s</string>
+    <string name="tools_description">説明: %1$s</string>
+    <string name="tools_status">ステータス: %1$s</string>
+    <string name="tools_builtin">組み込み: %1$s</string>
+    <string name="tools_created_at">作成: %1$s</string>
+    <string name="tools_status_enabled">有効</string>
+    <string name="tools_status_disabled">無効</string>
+    <string name="tools_builtin_badge">組み込み</string>
+    <string name="tools_action">アクション</string>
+    <string name="tools_view">表示</string>
+    <string name="tools_toggle">切替</string>
+    <string name="tools_name_required">名称を入力してください</string>
+    <string name="tools_name_label">名称 (必須)</string>
+    <string name="tools_description_label">説明</string>
+    <string name="tools_enabled_label">有効</string>
+
+    <!-- ==================== MCP サーバー ==================== -->
+    <string name="mcp_title">MCP サーバー</string>
+    <string name="mcp_new">新規 MCP サーバー</string>
+    <string name="mcp_edit">MCP サーバーを編集</string>
+    <string name="mcp_refresh">更新</string>
+    <string name="mcp_empty_title">MCP サーバーがありません</string>
+    <string name="mcp_empty_hint">右上をタップして新しい MCP サーバーを作成</string>
+    <string name="mcp_confirm_delete">削除の確認</string>
+    <string name="mcp_delete_message">MCP サーバー \"%1$s\" を削除しますか？</string>
+    <string name="mcp_test_result_title">テスト結果</string>
+    <string name="mcp_tools_title">MCP ツール</string>
+    <string name="mcp_connect_started">接続を開始しました</string>
+    <string name="mcp_disconnect_done">切断しました</string>
+    <string name="mcp_no_result">結果が返されませんでした</string>
+    <string name="mcp_connected">接続済み</string>
+    <string name="mcp_disconnected">未接続</string>
+    <string name="mcp_status_enabled">有効</string>
+    <string name="mcp_status_disabled">無効</string>
+    <string name="mcp_auto_connect">自動接続</string>
+    <string name="mcp_action">アクション</string>
+    <string name="mcp_disconnect">切断</string>
+    <string name="mcp_connect">接続</string>
+    <string name="mcp_test">テスト</string>
+    <string name="mcp_view_tools">ツールを表示</string>
+    <string name="mcp_transport">トランスポート: %1$s</string>
+    <string name="mcp_tool_count">ツール数: %1$d</string>
+    <string name="mcp_url">URL: %1$s</string>
+    <string name="mcp_command">コマンド: %1$s</string>
+    <string name="mcp_name_label">名称 *</string>
+    <string name="mcp_transport_label">トランスポート</string>
+    <string name="mcp_description_label">説明</string>
+    <string name="mcp_url_label">URL</string>
+    <string name="mcp_command_label">コマンド (command)</string>
+    <string name="mcp_args_label">引数 (args、スペース区切り)</string>
+    <string name="mcp_env_label">環境変数 (env、KEY=VALUE を1行に1つ)</string>
+    <string name="mcp_enabled_label">有効</string>
+    <string name="mcp_auto_connect_label">自動接続</string>
+
+    <!-- ==================== チャネル ==================== -->
+    <string name="channels_title">チャネル</string>
+    <string name="channels_new">新規チャネル</string>
+    <string name="channels_edit">チャネルを編集</string>
+    <string name="channels_refresh">更新</string>
+    <string name="channels_new_custom">新規カスタムチャネル</string>
+    <string name="channels_new_from_preset">プリセットから作成</string>
+    <string name="channels_empty_title">チャネルがありません</string>
+    <string name="channels_empty_hint">右上をタップして作成、またはプリセットから作成</string>
+    <string name="channels_confirm_delete">削除の確認</string>
+    <string name="channels_delete_message">チャネル \"%1$s\" を削除しますか？</string>
+    <string name="channels_builtin_badge">組み込み</string>
+    <string name="channels_status_enabled">有効</string>
+    <string name="channels_status_disabled">無効</string>
+    <string name="channels_action">アクション</string>
+    <string name="channels_enable">有効化</string>
+    <string name="channels_disable">無効化</string>
+    <string name="channels_type">タイプ: %1$s</string>
+    <string name="channels_transport">トランスポート: %1$s</string>
+    <string name="channels_name_label">名称 *</string>
+    <string name="channels_type_label">タイプ (type)</string>
+    <string name="channels_transport_label">トランスポート (transport)</string>
+    <string name="channels_description_label">説明</string>
+    <string name="channels_enabled_label">有効</string>
+    <string name="channels_preset_title">プリセットからチャネルを作成</string>
+    <string name="channels_no_presets">利用可能なプリセットがありません</string>
+    <string name="channels_preset_info">タイプ: %1$s · トランスポート: %2$s</string>
+    <string name="channels_created_from_preset">プリセットからチャネルを作成しました</string>
+
+    <!-- ==================== メッセージフィルター ==================== -->
+    <string name="msgfilter_title">メッセージフィルター</string>
+    <string name="msgfilter_new">新規ルール</string>
+    <string name="msgfilter_new_rule">新規フィルタールール</string>
+    <string name="msgfilter_edit">フィルタールールを編集</string>
+    <string name="msgfilter_refresh">更新</string>
+    <string name="msgfilter_global_on">グローバルフィルター: オン</string>
+    <string name="msgfilter_global_off">グローバルフィルター: オフ</string>
+    <string name="msgfilter_empty_title">フィルタールールがありません</string>
+    <string name="msgfilter_empty_hint">右上をタップしてルールを作成</string>
+    <string name="msgfilter_confirm_delete">削除の確認</string>
+    <string name="msgfilter_delete_message">ルール \"%1$s\" を削除しますか？</string>
+    <string name="msgfilter_empty_rule">(空のルール)</string>
+    <string name="msgfilter_status_enabled">有効</string>
+    <string name="msgfilter_status_disabled">無効</string>
+    <string name="msgfilter_action">アクション</string>
+    <string name="msgfilter_type_prop">タイプ: %1$s</string>
+    <string name="msgfilter_action_prop">アクション: %1$s</string>
+    <string name="msgfilter_target_prop">対象: %1$s</string>
+    <string name="msgfilter_scope_prop">スコープ: %1$s</string>
+    <string name="msgfilter_session_id">セッション: %1$s</string>
+    <string name="msgfilter_pattern_label">パターン *</string>
+    <string name="msgfilter_regex_placeholder">正規表現</string>
+    <string name="msgfilter_keyword_placeholder">キーワード</string>
+    <string name="msgfilter_type_label">タイプ (type)</string>
+    <string name="msgfilter_action_label">アクション (action)</string>
+    <string name="msgfilter_target_label">フィルター対象 (filterTarget)</string>
+    <string name="msgfilter_scope_label">セッションスコープ (sessionScope)</string>
+    <string name="msgfilter_session_id_label">セッション ID (sessionId)</string>
+    <string name="msgfilter_session_id_hint">セッション ID を入力</string>
+    <string name="msgfilter_enabled_label">有効</string>
+</resources>

@@ -9,9 +9,9 @@ import java.util.Locale
 /**
  * 语言切换辅助工具。
  *
- * 支持三种模式：跟随系统（system）、简体中文（zh）、英语（en）。
+ * 支持五种模式：跟随系统（system）、简体中文（zh）、英语（en）、日语（ja）、韩语（ko）。
  * - API 26+：通过 [Context.createConfigurationContext] 包装上下文，使资源按选定语言加载。
- * - 跟随系统时，若系统语言非中文则回落到英语。
+ * - 跟随系统时，若系统语言在已支持列表内则使用对应语言，否则回落到英语。
  */
 object LocaleHelper {
 
@@ -20,15 +20,22 @@ object LocaleHelper {
         return when (languageTag) {
             PrefsManager.LANGUAGE_ZH -> Locale.SIMPLIFIED_CHINESE
             PrefsManager.LANGUAGE_EN -> Locale.ENGLISH
+            PrefsManager.LANGUAGE_JA -> Locale.JAPANESE
+            PrefsManager.LANGUAGE_KO -> Locale.KOREAN
             else -> {
-                // 跟随系统：系统语言以 zh 开头用中文，否则用英文
+                // 跟随系统：系统语言若在已支持列表内则使用对应语言，否则回落到英语
                 val sys = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     context.resources.configuration.locales[0]
                 } else {
                     @Suppress("DEPRECATION")
                     context.resources.configuration.locale
                 }
-                if (sys.language.equals("zh", ignoreCase = true)) Locale.SIMPLIFIED_CHINESE else Locale.ENGLISH
+                when (sys.language.lowercase()) {
+                    "zh" -> Locale.SIMPLIFIED_CHINESE
+                    "ja" -> Locale.JAPANESE
+                    "ko" -> Locale.KOREAN
+                    else -> Locale.ENGLISH
+                }
             }
         }
     }

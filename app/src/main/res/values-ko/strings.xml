@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Nekobot</string>
+
+    <!-- ==================== 공통 동작 ==================== -->
+    <string name="common_confirm">확인</string>
+    <string name="common_cancel">취소</string>
+    <string name="common_save">저장</string>
+    <string name="common_delete">삭제</string>
+    <string name="common_back">뒤로</string>
+    <string name="common_close">닫기</string>
+    <string name="common_retry">재시도</string>
+    <string name="common_edit">편집</string>
+    <string name="common_add">추가</string>
+    <string name="common_remove">제거</string>
+    <string name="common_search">검색</string>
+    <string name="common_loading">불러오는 중…</string>
+    <string name="common_done">완료</string>
+    <string name="common_copy">복사</string>
+    <string name="common_copy_success">복사했어요</string>
+    <string name="common_copy_fail">복사 실패</string>
+    <string name="common_share">공유</string>
+    <string name="common_import">가져오기</string>
+    <string name="common_export">내보내기</string>
+    <string name="common_rename">이름 변경</string>
+    <string name="common_create">생성</string>
+    <string name="common_update">업데이트</string>
+    <string name="common_apply">적용</string>
+    <string name="common_reset">초기화</string>
+    <string name="common_clear">지우기</string>
+    <string name="common_select">선택</string>
+    <string name="common_select_all">전체 선택</string>
+    <string name="common_deselect_all">선택 해제</string>
+    <string name="common_yes">예</string>
+    <string name="common_no">아니오</string>
+    <string name="common_ok">확인</string>
+    <string name="common_warning">경고</string>
+    <string name="common_tip">팁</string>
+    <string name="common_none">없음</string>
+    <string name="common_unknown">알 수 없음</string>
+    <string name="common_not_logged_in">로그인되지 않았어요</string>
+    <string name="common_cannot_open_link">링크를 열 수 없어요</string>
+    <string name="common_unknown_error">알 수 없는 오류</string>
+    <string name="common_network_error">네트워크 오류</string>
+    <string name="common_empty_data">데이터 없음</string>
+    <string name="common_required_field">필수 입력 항목이에요</string>
+    <string name="common_invalid_format">형식이 올바르지 않아요</string>
+
+    <!-- ==================== 언어 설정 ==================== -->
+    <string name="language_system">시스템 따르기</string>
+    <string name="language_chinese">简体中文</string>
+    <string name="language_english">English</string>
+    <string name="language_japanese">日本語</string>
+    <string name="language_korean">한국어</string>
+    <string name="language_changed">언어가 변경되었어요</string>
+
+    <!-- ==================== 하단 내비게이션 ==================== -->
+    <string name="nav_sessions">대화</string>
+    <string name="nav_characters">캐릭터</string>
+    <string name="nav_world_books">세계관 설정</string>
+    <string name="nav_tokens">사용량</string>
+    <string name="nav_more">더보기</string>
+
+    <!-- ==================== 더보기 화면 ==================== -->
+    <string name="more_title">더보기</string>
+    <string name="more_role_memory">캐릭터 메모리</string>
+    <string name="more_role_memory_desc">사용자/이벤트에 대한 캐릭터 메모리를 조회하고 관리해요</string>
+    <string name="more_style_settings">스타일 설정</string>
+    <string name="more_style_settings_desc">글꼴, 색상, 크기</string>
+    <string name="more_state_history">상태 히스토리</string>
+    <string name="more_state_history_desc">대화가 진행됨에 따른 캐릭터 상태 변화를 조회해요</string>
+    <string name="more_ai_config_center">AI 설정 센터</string>
+    <string name="more_ai_config_desc_local">로컬 직접 AI 모델을 관리해요</string>
+    <string name="more_ai_config_desc_server">AI 설정, 모델 및 장애 조치 큐를 관리해요</string>
+    <string name="more_db_management">데이터베이스 관리</string>
+    <string name="more_db_management_desc">원격에서 nbotcfg 가져오기, 로컬 DB 전환 또는 삭제</string>
+    <string name="more_extensions">확장 기능</string>
+    <string name="more_extensions_desc_server">훅, 작업, 워크플로, 지식 베이스, MCP, 채널 등 고급 설정</string>
+    <string name="more_extensions_desc_local">훅, 작업, 워크플로, Skills, Tools, MCP, API Keys 등 로컬 설정</string>
+    <string name="more_settings">설정</string>
+    <string name="more_settings_desc">서버, 시스템 설정, 로그, 계정</string>
+    <string name="more_logout">로그아웃</string>
+    <string name="more_current_user">현재: %1$s</string>
+
+    <!-- ==================== 설정 화면 ==================== -->
+    <string name="settings_title">설정</string>
+    <string name="settings_run_mode">실행 모드</string>
+    <string name="settings_local_mode">로컬 모드</string>
+    <string name="settings_server_mode">서버 모드</string>
+    <string name="settings_local_mode_desc">AI API 직접 연결, 데이터는 로컬에 저장돼요</string>
+    <string name="settings_server_mode_desc">백엔드 서버를 통해 AI 대화</string>
+    <string name="settings_switched_to_local">로컬 모드로 전환했어요</string>
+    <string name="settings_switched_to_server">서버 모드로 전환했어요</string>
+    <string name="settings_local_ai_config">로컬 AI 모델 설정</string>
+    <string name="settings_server_config">서버 설정</string>
+    <string name="settings_server_address">서버 주소</string>
+    <string name="settings_save_address">주소 저장</string>
+    <string name="settings_server_url_updated">서버 주소가 업데이트되었어요</string>
+    <string name="settings_current_user">현재 사용자: %1$s</string>
+    <string name="settings_system_settings">시스템 설정</string>
+    <string name="settings_system_settings_desc">JSON 형식으로 시스템 설정 편집</string>
+    <string name="settings_system_actions">시스템 동작</string>
+    <string name="settings_reload_config">설정 다시 불러오기</string>
+    <string name="settings_config_reloaded">설정을 다시 불러왔어요</string>
+    <string name="settings_advanced">고급</string>
+    <string name="settings_feature_switches">기능 스위치</string>
+    <string name="settings_feature_switches_desc">기능 모듈을 켜거나 꺼요</string>
+    <string name="settings_data_maintenance">데이터 유지보수</string>
+    <string name="settings_data_maintenance_desc">캐시 정리, 인덱스 재구축, 데이터 압축</string>
+    <string name="settings_config_transfer">설정 전송</string>
+    <string name="settings_config_transfer_desc">설정 패키지 가져오기 또는 내보내기</string>
+    <string name="settings_webdav_backup">WebDAV 백업</string>
+    <string name="settings_webdav_backup_desc">원격 백업 및 예약 동기화 설정</string>
+    <string name="settings_local_logs">로컬 로그</string>
+    <string name="settings_logs_view">로그</string>
+    <string name="settings_view_local_logs">로컬 런타임 로그 조회</string>
+    <string name="settings_view_recent_logs">최근 로그 조회</string>
+    <string name="settings_clear_local_logs">로컬 로그 지우기</string>
+    <string name="settings_local_logs_cleared">로컬 로그를 지웠어요</string>
+    <string name="settings_account">계정</string>
+    <string name="settings_logout">로그아웃</string>
+    <string name="settings_about">정보</string>
+    <string name="settings_language">언어</string>
+    <string name="settings_settings_saved">설정이 저장되었어요</string>
+    <string name="settings_json_format_error">JSON 형식 오류: %1$s</string>
+    <string name="settings_system_logs">시스템 로그 (%1$d)</string>
+    <string name="settings_no_logs">로그 없음</string>
+    <string name="settings_about_producer">작성자</string>
+    <string name="settings_about_android_repo">Android 저장소</string>
+    <string name="settings_about_server_repo">서버 저장소</string>
+    <string name="settings_about_version">Nekobot for Android · v%1$s</string>
+</resources>

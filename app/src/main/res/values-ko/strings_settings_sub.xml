@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== 스타일 설정 ==================== -->
+    <string name="style_title">스타일 설정</string>
+    <string name="style_realtime_preview">실시간 미리보기</string>
+    <string name="style_preview_title">샘플 제목 텍스트</string>
+    <string name="style_preview_body">현재 글꼴 유형, 크기, 색상 설정의 효과를 보여주는 샘플 본문 텍스트예요.</string>
+    <string name="style_preview_bubble">테마 색상 / 버블 미리보기</string>
+    <string name="style_theme_color">테마 색상</string>
+    <string name="style_font_type">글꼴 유형</string>
+    <string name="style_font_size">글꼴 크기</string>
+    <string name="style_font_color">글꼴 색상</string>
+    <string name="style_custom">사용자 정의</string>
+    <string name="style_custom_color">사용자 정의 색상</string>
+    <string name="style_custom_theme_color">사용자 정의 테마 색상</string>
+    <string name="style_color_hex_hint">16진수 색상 값 입력, 예: #FF6B6B</string>
+    <string name="style_color_hex_hint_theme">16진수 색상 값 입력, 예: #4D96FF</string>
+    <string name="style_color_hex_label">색상 16진수</string>
+    <string name="style_change_font">변경</string>
+    <string name="style_delete_custom_font">사용자 정의 글꼴 삭제</string>
+    <string name="style_custom_font_name">사용자 정의 글꼴</string>
+    <!-- 글꼴 유형 옵션 -->
+    <string name="style_font_system">시스템 기본</string>
+    <string name="style_font_serif">세리프</string>
+    <string name="style_font_monospace">모노스페이스</string>
+    <string name="style_font_rounded">둥근 글꼴</string>
+    <!-- 글꼴 크기 옵션 -->
+    <string name="style_size_small">작게</string>
+    <string name="style_size_standard">표준</string>
+    <string name="style_size_large">크게</string>
+    <string name="style_size_xlarge">아주 크게</string>
+    <!-- 테마 색상 옵션 -->
+    <string name="style_color_purple">보라</string>
+    <string name="style_color_blue">파랑</string>
+    <string name="style_color_cyan">청록</string>
+    <string name="style_color_green">초록</string>
+    <string name="style_color_orange">주황</string>
+    <string name="style_color_pink">분홍</string>
+    <string name="style_color_red">빨강</string>
+    <string name="style_color_follow_theme">테마 따르기</string>
+
+    <!-- ==================== 시스템 설정 ==================== -->
+    <string name="system_title">시스템 설정</string>
+    <string name="system_edit_hint">JSON 형식으로 시스템 설정을 편집해요. 저장 즉시 적용돼요.</string>
+    <string name="system_settings_json">설정 JSON</string>
+    <string name="system_save_settings">설정 저장</string>
+
+    <!-- ==================== 기능 스위치 ==================== -->
+    <string name="feature_title">기능 스위치</string>
+    <string name="feature_subtitle">각 기능의 활성화 상태를 제어해요</string>
+    <string name="feature_server_only">이 기능은 서버 모드에서만 사용할 수 있어요</string>
+    <string name="feature_empty_title">스위치 없음</string>
+    <string name="feature_empty_hint">오른쪽 위 새로고침을 눌러 다시 시도해 보세요</string>
+    <string name="feature_refresh">새로고침</string>
+    <string name="feature_switch_on">%1$s 활성화됨</string>
+    <string name="feature_switch_off">%1$s 비활성화됨</string>
+    <!-- 기능 설명 -->
+    <string name="feature_desc_skills_prompt_injection">Skills 프롬프트 주입</string>
+    <string name="feature_desc_live2d">Live2D 표정</string>
+    <string name="feature_desc_sticker">스티커</string>
+    <string name="feature_desc_image_generation">이미지 생성</string>
+    <string name="feature_desc_tts">TTS 음성</string>
+    <string name="feature_desc_auto_reply">자동 응답</string>
+    <string name="feature_desc_active_chat">먼저 말하기</string>
+
+    <!-- ==================== 데이터 유지보수 ==================== -->
+    <string name="maintenance_title">데이터 유지보수</string>
+    <string name="maintenance_refresh">새로고침</string>
+    <string name="maintenance_cache_files">캐시 파일</string>
+    <string name="maintenance_cache_files_subtitle">앱 캐시 디렉터리의 파일 보기</string>
+    <string name="maintenance_cache_desc_local">앱 캐시 디렉터리에는 내보낸 데이터베이스 파일, 다운로드된 임시 파일 등이 있어요.</string>
+    <string name="maintenance_open_cache_folder">캐시 폴더 열기</string>
+    <string name="maintenance_storage_usage">저장공간 사용량</string>
+    <string name="maintenance_storage_subtitle">로컬 캐시와 데이터베이스 사용량</string>
+    <string name="maintenance_cache_size">캐시 크기</string>
+    <string name="maintenance_db_size">데이터베이스 크기</string>
+    <string name="maintenance_total_size">전체 사용량</string>
+    <string name="maintenance_clear_cache_title">캐시 정리</string>
+    <string name="maintenance_clear_cache_subtitle">임시 캐시 파일 삭제</string>
+    <string name="maintenance_clear_cache_desc">앱 캐시 디렉터리의 임시 파일(이미지 캐시, 다운로드된 임시 파일 포함)을 정리해요. 로컬 데이터베이스에는 영향을 주지 않아요.</string>
+    <string name="maintenance_clear_all_title">모든 로컬 데이터 지우기</string>
+    <string name="maintenance_clear_all_subtitle">로컬 데이터베이스 삭제</string>
+    <string name="maintenance_clear_all_warning">경고: 모든 로컬 데이터베이스(대화, 메시지, 캐릭터 등 포함)가 삭제되며 되돌릴 수 없어요. 신중하게 진행해 주세요.</string>
+    <string name="maintenance_export_title">로컬 데이터 내보내기</string>
+    <string name="maintenance_export_subtitle">로컬 데이터베이스를 파일로 백업</string>
+    <string name="maintenance_export_desc">로컬 데이터베이스 파일을 앱 캐시 디렉터리로 내보내 백업 또는 마이그레이션할 수 있어요.</string>
+    <string name="maintenance_export_button">로컬 데이터베이스 내보내기</string>
+    <string name="maintenance_cache_files_detail">앱 캐시 디렉터리의 파일(내보낸 데이터베이스 백업, 다운로드된 임시 파일 포함) 보기. 파일을 누르면 공유하거나 열 수 있어요.</string>
+    <string name="maintenance_confirm_clear_title">모든 로컬 데이터 삭제 확인</string>
+    <string name="maintenance_confirm_clear_msg">모든 로컬 데이터베이스(대화, 메시지, 캐릭터 등)가 영구 삭제되며 되돌릴 수 없어요. 정말 진행할까요?</string>
+    <string name="maintenance_confirm_clear">삭제 확인</string>
+    <string name="maintenance_folder">폴더</string>
+    <string name="maintenance_cache_files_count">캐시 파일(%1$d)</string>
+    <string name="maintenance_cache_empty">캐시 디렉터리가 비어 있어요</string>
+    <string name="maintenance_cannot_open_file">파일을 열 수 없어요: %1$s</string>
+    <!-- ViewModel 토스트 -->
+    <string name="maintenance_cache_cleared">캐시가 정리되었어요</string>
+    <string name="maintenance_clear_cache_failed">캐시 정리 실패</string>
+    <string name="maintenance_all_data_cleared">모든 로컬 데이터가 삭제되었어요</string>
+    <string name="maintenance_clear_data_failed">데이터 삭제 실패</string>
+    <string name="maintenance_exported_to_cache">캐시로 내보냄: %1$s</string>
+    <string name="maintenance_no_db_file">로컬 데이터베이스 파일을 찾을 수 없어요</string>
+    <string name="maintenance_export_failed">내보내기 실패</string>
+
+    <!-- ==================== 설정 전송 ==================== -->
+    <string name="transfer_title">설정 전송</string>
+    <string name="transfer_server_only">이 기능은 서버 모드에서만 사용할 수 있어요</string>
+    <string name="transfer_export_title">설정 내보내기</string>
+    <string name="transfer_export_subtitle">설정을 암호화된 ZIP 파일로 패키징</string>
+    <string name="transfer_password_optional">암호화 비밀번호(선택)</string>
+    <string name="transfer_export_button">설정 내보내기</string>
+    <string name="transfer_import_title">설정 가져오기</string>
+    <string name="transfer_import_subtitle">ZIP 또는 .nbotcfg 파일에서 설정 복원</string>
+    <string name="transfer_select_file">설정 파일 선택</string>
+    <string name="transfer_overwrite">기존 설정 덮어쓰기</string>
+    <string name="transfer_overwrite_desc">끄면 기존 설정 항목을 유지해요</string>
+    <string name="transfer_select_file_first">먼저 설정 파일을 선택해 주세요</string>
+    <string name="transfer_import_button">설정 가져오기</string>
+    <string name="transfer_file_selected">파일이 선택되었어요</string>
+    <!-- ViewModel 토스트 -->
+    <string name="transfer_export_failed_http">내보내기 실패(HTTP %1$d)</string>
+    <string name="transfer_export_failed">내보내기 실패</string>
+    <string name="transfer_read_file_failed">파일 읽기 실패</string>
+    <string name="transfer_import_success">가져오기 성공</string>
+    <string name="transfer_import_configs_suffix">, 설정 항목 %1$d개</string>
+    <string name="transfer_import_portraits_suffix">, 초상화 %1$d개</string>
+    <string name="transfer_import_failed">가져오기 실패</string>
+    <string name="transfer_exported_to_cache">캐시로 내보냄: %1$s</string>
+
+    <!-- ==================== WebDAV 백업 ==================== -->
+    <string name="webdav_title">WebDAV 백업</string>
+    <string name="webdav_server_only">이 기능은 서버 모드에서만 사용할 수 있어요</string>
+    <string name="webdav_config_title">WebDAV 설정</string>
+    <string name="webdav_config_subtitle">서버 주소와 자격 증명 설정</string>
+    <string name="webdav_url">WebDAV 주소</string>
+    <string name="webdav_username">사용자 이름</string>
+    <string name="webdav_password">비밀번호</string>
+    <string name="webdav_password_set">비밀번호(이미 설정됨, 유지하려면 비워두세요)</string>
+    <string name="webdav_encryption_password">암호화 비밀번호</string>
+    <string name="webdav_encryption_password_set">암호화 비밀번호(이미 설정됨, 유지하려면 비워두세요)</string>
+    <string name="webdav_test_connection">연결 테스트</string>
+    <string name="webdav_remote_info_title">원격 파일 정보</string>
+    <string name="webdav_remote_info_subtitle">백업 파일 메타데이터</string>
+    <string name="webdav_file_size">파일 크기</string>
+    <string name="webdav_last_modified">마지막 수정</string>
+    <string name="webdav_last_backup">마지막 백업</string>
+    <string name="webdav_never_backup">백업한 적 없음</string>
+    <string name="webdav_last_sync">마지막 동기화</string>
+    <string name="webdav_never_sync">동기화한 적 없음</string>
+    <string name="webdav_file_url">파일 URL</string>
+    <string name="webdav_recent_error">최근 오류: %1$s</string>
+    <string name="webdav_refresh_info">정보 새로고침</string>
+    <string name="webdav_backup_upload_title">백업 업로드</string>
+    <string name="webdav_backup_upload_subtitle">로컬 설정을 패키징하여 WebDAV에 업로드</string>
+    <string name="webdav_encryption_password_optional_override">암호화 비밀번호(선택, 설정 덮어쓰기)</string>
+    <string name="webdav_include_portraits">캐릭터 초상화 포함</string>
+    <string name="webdav_upload_portraits">초상화 이미지 파일도 함께 업로드</string>
+    <string name="webdav_upload_backup">백업 업로드</string>
+    <string name="webdav_sync_pull_title">동기화 풀</string>
+    <string name="webdav_sync_pull_subtitle">WebDAV에서 로컬로 설정 복원</string>
+    <string name="webdav_pull_portraits">초상화 이미지 파일도 함께 풀</string>
+    <string name="webdav_sync_pull_button">동기화 풀</string>
+    <!-- ViewModel 토스트 -->
+    <string name="webdav_config_saved">설정이 저장되었어요</string>
+    <string name="webdav_connection_success">연결 성공</string>
+    <string name="webdav_connection_failed">연결 실패</string>
+    <string name="webdav_backup_success">백업 업로드 성공</string>
+    <string name="webdav_backup_failed">백업 실패</string>
+    <string name="webdav_sync_success">동기화 풀 성공</string>
+    <string name="webdav_sync_failed">동기화 실패</string>
+
+    <!-- ==================== 데이터베이스 관리 ==================== -->
+    <string name="dbprofile_title">데이터베이스 관리</string>
+    <string name="dbprofile_refresh">새로고침</string>
+    <string name="dbprofile_import_remote">원격에서 가져오기</string>
+    <string name="dbprofile_current_db">현재 데이터베이스</string>
+    <string name="dbprofile_internal_id">내부 ID: %1$s</string>
+    <string name="dbprofile_saved_list">저장된 데이터베이스 목록</string>
+    <string name="dbprofile_empty">DB 프로필 없음</string>
+    <string name="dbprofile_import_button">원격 URL에서 nbotcfg 가져오기</string>
+    <string name="dbprofile_tip">팁: 가져오기는 저장된 원격 서버에서 암호화된 설정 패키지를 다운로드하고 복호화하여 새 로컬 데이터베이스에 기록해요. DB 간에 자유롭게 전환할 수 있으며 서로 영향을 주지 않아요. 기본 데이터베이스는 삭제할 수 없어요.</string>
+    <string name="dbprofile_delete_title">데이터베이스 삭제</string>
+    <string name="dbprofile_delete_msg">\"%1$s\"을(를) 삭제할까요? 이 DB의 모든 대화/캐릭터 카드/세계관 설정이 영구적으로 손실돼요.</string>
+    <string name="dbprofile_source_imported">원격 가져오기</string>
+    <string name="dbprofile_source_local">로컬</string>
+    <string name="dbprofile_more">더보기</string>
+    <string name="dbprofile_current_active">현재 데이터베이스</string>
+    <string name="dbprofile_switch_to">이 데이터베이스로 전환</string>
+    <string name="dbprofile_import_dialog_title">원격에서 nbotcfg 가져오기</string>
+    <string name="dbprofile_importing">가져오는 중…</string>
+    <string name="dbprofile_start_import">가져오기 시작</string>
+    <string name="dbprofile_no_records">저장된 원격 서버 기록이 없어요. 로그인 페이지에서 원격 서버에 로그인하고 \"로그인 정보 저장\"을 체크해 주세요.</string>
+    <string name="dbprofile_select_server">원격 서버 선택</string>
+    <string name="dbprofile_please_select">선택해 주세요</string>
+    <string name="dbprofile_new_display_name">새 데이터베이스 표시 이름</string>
+    <string name="dbprofile_display_name_placeholder">예: 서버 A 설정</string>
+    <string name="dbprofile_downloading">설정 패키지 다운로드 및 복호화 중…</string>
+    <string name="dbprofile_dialog_tip">설정 패키지는 전송 중에 자동으로 암호화돼요. 수동 비밀번호는 필요 없어요. 가져오기 성공 후 앱이 자동으로 새 데이터베이스로 전환돼요.</string>
+    <!-- ViewModel 토스트 -->
+    <string name="dbprofile_switched_to">\"%1$s\"로 전환했어요</string>
+    <string name="dbprofile_default_no_delete">기본 데이터베이스는 삭제할 수 없어요</string>
+    <string name="dbprofile_deleted">DB \"%1$s\" 삭제됨</string>
+    <string name="dbprofile_input_display_name">표시 이름을 입력해 주세요</string>
+</resources>

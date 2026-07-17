@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== スタイル設定 ==================== -->
+    <string name="style_title">スタイル設定</string>
+    <string name="style_realtime_preview">リアルタイムプレビュー</string>
+    <string name="style_preview_title">サンプルタイトルテキスト</string>
+    <string name="style_preview_body">これはサンプル本文で、現在のフォントの種類、サイズ、色の設定効果を示しています。</string>
+    <string name="style_preview_bubble">テーマ色 / 吹き出しプレビュー</string>
+    <string name="style_theme_color">テーマ色</string>
+    <string name="style_font_type">フォントの種類</string>
+    <string name="style_font_size">フォントサイズ</string>
+    <string name="style_font_color">フォント色</string>
+    <string name="style_custom">カスタム</string>
+    <string name="style_custom_color">カスタム色</string>
+    <string name="style_custom_theme_color">カスタムテーマ色</string>
+    <string name="style_color_hex_hint">16 進数カラーコードを入力、例: #FF6B6B</string>
+    <string name="style_color_hex_hint_theme">16 進数カラーコードを入力、例: #4D96FF</string>
+    <string name="style_color_hex_label">カラーコード</string>
+    <string name="style_change_font">変更</string>
+    <string name="style_delete_custom_font">カスタムフォントを削除</string>
+    <string name="style_custom_font_name">カスタムフォント</string>
+    <!-- フォントの種類オプション -->
+    <string name="style_font_system">システムデフォルト</string>
+    <string name="style_font_serif">セリフ</string>
+    <string name="style_font_monospace">等幅</string>
+    <string name="style_font_rounded">丸ゴシック</string>
+    <!-- フォントサイズオプション -->
+    <string name="style_size_small">小</string>
+    <string name="style_size_standard">標準</string>
+    <string name="style_size_large">大</string>
+    <string name="style_size_xlarge">特大</string>
+    <!-- テーマ色オプション -->
+    <string name="style_color_purple">紫</string>
+    <string name="style_color_blue">青</string>
+    <string name="style_color_cyan">シアン</string>
+    <string name="style_color_green">緑</string>
+    <string name="style_color_orange">オレンジ</string>
+    <string name="style_color_pink">ピンク</string>
+    <string name="style_color_red">赤</string>
+    <string name="style_color_follow_theme">テーマに従う</string>
+
+    <!-- ==================== システム設定 ==================== -->
+    <string name="system_title">システム設定</string>
+    <string name="system_edit_hint">JSON 形式でシステム設定を編集。保存後即座に反映されます。</string>
+    <string name="system_settings_json">設定 JSON</string>
+    <string name="system_save_settings">設定を保存</string>
+
+    <!-- ==================== 機能スイッチ ==================== -->
+    <string name="feature_title">機能スイッチ</string>
+    <string name="feature_subtitle">各機能の有効状態を制御</string>
+    <string name="feature_server_only">この機能はサーバーモードでのみ使用できます</string>
+    <string name="feature_empty_title">スイッチがありません</string>
+    <string name="feature_empty_hint">右上の更新をタップして再試行</string>
+    <string name="feature_refresh">更新</string>
+    <string name="feature_switch_on">%1$s を有効化</string>
+    <string name="feature_switch_off">%1$s を無効化</string>
+    <!-- 機能の説明 -->
+    <string name="feature_desc_skills_prompt_injection">Skills プロンプト注入</string>
+    <string name="feature_desc_live2d">Live2D 表情</string>
+    <string name="feature_desc_sticker">スタンプ</string>
+    <string name="feature_desc_image_generation">画像生成</string>
+    <string name="feature_desc_tts">TTS 音声</string>
+    <string name="feature_desc_auto_reply">自動応答</string>
+    <string name="feature_desc_active_chat">能動的チャット</string>
+
+    <!-- ==================== データメンテナンス ==================== -->
+    <string name="maintenance_title">データメンテナンス</string>
+    <string name="maintenance_refresh">更新</string>
+    <string name="maintenance_cache_files">キャッシュファイル</string>
+    <string name="maintenance_cache_files_subtitle">アプリキャッシュディレクトリ内のファイルを表示</string>
+    <string name="maintenance_cache_desc_local">アプリキャッシュディレクトリにはエクスポートしたデータベースファイル、ダウンロードした一時ファイルなどが含まれます。</string>
+    <string name="maintenance_open_cache_folder">キャッシュフォルダを開く</string>
+    <string name="maintenance_storage_usage">ストレージ使用量</string>
+    <string name="maintenance_storage_subtitle">ローカルキャッシュとデータベースの使用量</string>
+    <string name="maintenance_cache_size">キャッシュサイズ</string>
+    <string name="maintenance_db_size">データベースサイズ</string>
+    <string name="maintenance_total_size">合計使用量</string>
+    <string name="maintenance_clear_cache_title">キャッシュをクリア</string>
+    <string name="maintenance_clear_cache_subtitle">一時キャッシュファイルを削除</string>
+    <string name="maintenance_clear_cache_desc">アプリキャッシュディレクトリ内の一時ファイル (画像キャッシュやダウンロード一時ファイルを含む) を削除します。ローカルデータベースには影響しません。</string>
+    <string name="maintenance_clear_all_title">ローカルデータをすべてクリア</string>
+    <string name="maintenance_clear_all_subtitle">ローカルデータベースを削除</string>
+    <string name="maintenance_clear_all_warning">警告: すべてのローカルデータベース (チャット、メッセージ、キャラクターなど) が削除され、元に戻せません。慎重に実行してください。</string>
+    <string name="maintenance_export_title">ローカルデータをエクスポート</string>
+    <string name="maintenance_export_subtitle">ローカルデータベースをファイルにバックアップ</string>
+    <string name="maintenance_export_desc">ローカルデータベースファイルをアプリキャッシュディレクトリにエクスポートし、バックアップや移行に使用します。</string>
+    <string name="maintenance_export_button">ローカルデータベースをエクスポート</string>
+    <string name="maintenance_cache_files_detail">アプリキャッシュディレクトリ内のファイル (エクスポートしたデータベースバックアップやダウンロードした一時ファイルを含む) を表示。ファイルをタップして共有または開く。</string>
+    <string name="maintenance_confirm_clear_title">ローカルデータ全クリアの確認</string>
+    <string name="maintenance_confirm_clear_msg">すべてのローカルデータベース (チャット、メッセージ、キャラクターなど) が永久に削除され、元に戻せません。本当によろしいですか？</string>
+    <string name="maintenance_confirm_clear">クリアを確認</string>
+    <string name="maintenance_folder">フォルダ</string>
+    <string name="maintenance_cache_files_count">キャッシュファイル (%1$d)</string>
+    <string name="maintenance_cache_empty">キャッシュディレクトリは空です</string>
+    <string name="maintenance_cannot_open_file">ファイルを開けません: %1$s</string>
+    <!-- ViewModel トースト -->
+    <string name="maintenance_cache_cleared">キャッシュをクリアしました</string>
+    <string name="maintenance_clear_cache_failed">キャッシュのクリアに失敗しました</string>
+    <string name="maintenance_all_data_cleared">ローカルデータをすべてクリアしました</string>
+    <string name="maintenance_clear_data_failed">データのクリアに失敗しました</string>
+    <string name="maintenance_exported_to_cache">キャッシュにエクスポート: %1$s</string>
+    <string name="maintenance_no_db_file">ローカルデータベースファイルが見つかりません</string>
+    <string name="maintenance_export_failed">エクスポートに失敗しました</string>
+
+    <!-- ==================== 設定転送 ==================== -->
+    <string name="transfer_title">設定転送</string>
+    <string name="transfer_server_only">この機能はサーバーモードでのみ使用できます</string>
+    <string name="transfer_export_title">設定をエクスポート</string>
+    <string name="transfer_export_subtitle">設定を暗号化 ZIP ファイルとしてパッケージ</string>
+    <string name="transfer_password_optional">暗号化パスワード (任意)</string>
+    <string name="transfer_export_button">設定をエクスポート</string>
+    <string name="transfer_import_title">設定をインポート</string>
+    <string name="transfer_import_subtitle">ZIP または .nbotcfg ファイルから設定を復元</string>
+    <string name="transfer_select_file">設定ファイルを選択</string>
+    <string name="transfer_overwrite">既存の設定を上書き</string>
+    <string name="transfer_overwrite_desc">オフにすると既存の設定項目を保持します</string>
+    <string name="transfer_select_file_first">先に設定ファイルを選択してください</string>
+    <string name="transfer_import_button">設定をインポート</string>
+    <string name="transfer_file_selected">ファイルを選択しました</string>
+    <!-- ViewModel トースト -->
+    <string name="transfer_export_failed_http">エクスポート失敗 (HTTP %1$d)</string>
+    <string name="transfer_export_failed">エクスポートに失敗しました</string>
+    <string name="transfer_read_file_failed">ファイルの読み込みに失敗しました</string>
+    <string name="transfer_import_success">インポート成功</string>
+    <string name="transfer_import_configs_suffix">、 %1$d 件の設定項目</string>
+    <string name="transfer_import_portraits_suffix">、 %1$d 件の立絵</string>
+    <string name="transfer_import_failed">インポートに失敗しました</string>
+    <string name="transfer_exported_to_cache">キャッシュにエクスポート: %1$s</string>
+
+    <!-- ==================== WebDAV バックアップ ==================== -->
+    <string name="webdav_title">WebDAV バックアップ</string>
+    <string name="webdav_server_only">この機能はサーバーモードでのみ使用できます</string>
+    <string name="webdav_config_title">WebDAV 設定</string>
+    <string name="webdav_config_subtitle">サーバーアドレスと認証情報を設定</string>
+    <string name="webdav_url">WebDAV アドレス</string>
+    <string name="webdav_username">ユーザー名</string>
+    <string name="webdav_password">パスワード</string>
+    <string name="webdav_password_set">パスワード (既に設定済み、空欄で保持)</string>
+    <string name="webdav_encryption_password">暗号化パスワード</string>
+    <string name="webdav_encryption_password_set">暗号化パスワード (既に設定済み、空欄で保持)</string>
+    <string name="webdav_test_connection">接続テスト</string>
+    <string name="webdav_remote_info_title">リモートファイル情報</string>
+    <string name="webdav_remote_info_subtitle">バックアップファイルのメタデータ</string>
+    <string name="webdav_file_size">ファイルサイズ</string>
+    <string name="webdav_last_modified">最終更新</string>
+    <string name="webdav_last_backup">前回のバックアップ</string>
+    <string name="webdav_never_backup">未バックアップ</string>
+    <string name="webdav_last_sync">前回の同期</string>
+    <string name="webdav_never_sync">未同期</string>
+    <string name="webdav_file_url">ファイル URL</string>
+    <string name="webdav_recent_error">直近のエラー: %1$s</string>
+    <string name="webdav_refresh_info">情報を更新</string>
+    <string name="webdav_backup_upload_title">バックアップアップロード</string>
+    <string name="webdav_backup_upload_subtitle">ローカル設定をパッケージ化して WebDAV にアップロード</string>
+    <string name="webdav_encryption_password_optional_override">暗号化パスワード (任意、設定を上書き)</string>
+    <string name="webdav_include_portraits">キャラクター立絵を含める</string>
+    <string name="webdav_upload_portraits">立絵画像ファイルもアップロード</string>
+    <string name="webdav_upload_backup">バックアップをアップロード</string>
+    <string name="webdav_sync_pull_title">同期プル</string>
+    <string name="webdav_sync_pull_subtitle">WebDAV からローカルへ設定を復元</string>
+    <string name="webdav_pull_portraits">立絵画像ファイルもプル</string>
+    <string name="webdav_sync_pull_button">同期プル</string>
+    <!-- ViewModel トースト -->
+    <string name="webdav_config_saved">設定を保存しました</string>
+    <string name="webdav_connection_success">接続成功</string>
+    <string name="webdav_connection_failed">接続失敗</string>
+    <string name="webdav_backup_success">バックアップのアップロードに成功しました</string>
+    <string name="webdav_backup_failed">バックアップ失敗</string>
+    <string name="webdav_sync_success">同期プル成功</string>
+    <string name="webdav_sync_failed">同期失敗</string>
+
+    <!-- ==================== データベース管理 ==================== -->
+    <string name="dbprofile_title">データベース管理</string>
+    <string name="dbprofile_refresh">更新</string>
+    <string name="dbprofile_import_remote">リモートからインポート</string>
+    <string name="dbprofile_current_db">現在のデータベース</string>
+    <string name="dbprofile_internal_id">内部 ID: %1$s</string>
+    <string name="dbprofile_saved_list">保存済みデータベース一覧</string>
+    <string name="dbprofile_empty">DB プロファイルがありません</string>
+    <string name="dbprofile_import_button">リモート URL から nbotcfg をインポート</string>
+    <string name="dbprofile_tip">ヒント: インポートは保存済みリモートサーバーから暗号化設定パッケージをダウンロードし、復号して新しいローカルデータベースに書き込みます。DB 間は相互に影響を与えず自由に切替可能です。デフォルトデータベースは削除できません。</string>
+    <string name="dbprofile_delete_title">データベースを削除</string>
+    <string name="dbprofile_delete_msg">\"%1$s\" を削除してもよろしいですか？この DB 配下のすべてのチャット/キャラクターカード/世界観帳が永久に失われます。</string>
+    <string name="dbprofile_source_imported">リモートインポート</string>
+    <string name="dbprofile_source_local">ローカル</string>
+    <string name="dbprofile_more">その他</string>
+    <string name="dbprofile_current_active">現在のデータベース</string>
+    <string name="dbprofile_switch_to">このデータベースに切替</string>
+    <string name="dbprofile_import_dialog_title">リモートから nbotcfg をインポート</string>
+    <string name="dbprofile_importing">インポート中…</string>
+    <string name="dbprofile_start_import">インポート開始</string>
+    <string name="dbprofile_no_records">保存済みリモートサーバー記録がありません。ログインページでリモートサーバーにログインし「ログイン情報を保存」にチェックを入れてください。</string>
+    <string name="dbprofile_select_server">リモートサーバーを選択</string>
+    <string name="dbprofile_please_select">選択してください</string>
+    <string name="dbprofile_new_display_name">新しいデータベースの表示名</string>
+    <string name="dbprofile_display_name_placeholder">例: サーバー A 設定</string>
+    <string name="dbprofile_downloading">設定パッケージをダウンロードして復号中…</string>
+    <string name="dbprofile_dialog_tip">設定パッケージは転送中に自動的に暗号化されます、手動パスワードは不要です。インポート成功後、アプリは自動的に新しいデータベースに切り替わります。</string>
+    <!-- ViewModel トースト -->
+    <string name="dbprofile_switched_to">\"%1$s\" に切り替えました</string>
+    <string name="dbprofile_default_no_delete">デフォルトデータベースは削除できません</string>
+    <string name="dbprofile_deleted">DB \"%1$s\" を削除しました</string>
+    <string name="dbprofile_input_display_name">表示名を入力してください</string>
+</resources>

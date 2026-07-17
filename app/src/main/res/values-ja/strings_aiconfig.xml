@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== AI 設定センター ==================== -->
+    <string name="aiconfig_center_title">AI 設定センター</string>
+    <string name="aiconfig_section_local_ai">ローカル AI</string>
+    <string name="aiconfig_section_models_config">モデル &amp; 設定</string>
+    <string name="aiconfig_title">AI 設定</string>
+    <string name="aiconfig_local_ai_models">ローカル AI モデル</string>
+    <string name="aiconfig_local_ai_models_subtitle">ローカル推論モデルとパラメータを管理</string>
+    <string name="aiconfig_sync_active_params_subtitle">アクティブモデルの生成パラメータを表示・同期</string>
+    <string name="aiconfig_configure_params_subtitle">モデルの用途と生成パラメータを設定</string>
+    <string name="aiconfig_api_key_management">API Key 管理</string>
+    <string name="aiconfig_manage_local_keys_subtitle">ローカル保存された API Key を管理</string>
+    <string name="aiconfig_manage_keys_subtitle">各モデルの API Key を管理</string>
+
+    <!-- ==================== AI 設定画面 ==================== -->
+    <string name="aiconfig_saved">保存しました</string>
+    <string name="aiconfig_test">テスト</string>
+    <string name="aiconfig_test_success">成功</string>
+    <string name="aiconfig_test_fail">失敗</string>
+    <string name="aiconfig_test_result">ステータス: %1$s\nメッセージ: %2$s</string>
+    <string name="aiconfig_test_result_title">テスト結果</string>
+    <string name="aiconfig_model_params">モデルパラメータ</string>
+    <string name="aiconfig_model_name">モデル名</string>
+    <string name="aiconfig_temperature">温度 (temperature)</string>
+    <string name="aiconfig_max_tokens">最大トークン (max_tokens)</string>
+    <string name="aiconfig_frequency_penalty">頻度ペナルティ (frequency_penalty)</string>
+    <string name="aiconfig_presence_penalty">存在ペナルティ (presence_penalty)</string>
+    <string name="aiconfig_system_prompt">システムプロンプト</string>
+    <string name="aiconfig_save_config">設定を保存</string>
+
+    <!-- ==================== AI モデル ==================== -->
+    <string name="aimodels_management_title">AI モデル管理</string>
+    <string name="aimodels_title">AI モデル</string>
+    <string name="aimodels_manage_list_subtitle">利用可能な AI モデル一覧を管理</string>
+    <string name="aimodels_new_model">新規モデル</string>
+    <string name="aimodels_edit_model">モデルを編集</string>
+    <string name="aimodels_empty_title">モデルがありません</string>
+    <string name="aimodels_empty_hint">右上のボタンをタップして最初のモデルを作成してください</string>
+    <string name="aimodels_confirm_delete">削除の確認</string>
+    <string name="aimodels_delete_message">モデル \"%1$s\" を削除しますか？</string>
+    <string name="aimodels_active_badge">使用中</string>
+    <string name="aimodels_action">アクション</string>
+    <string name="aimodels_clone">複製</string>
+    <string name="aimodels_applied">適用しました</string>
+    <string name="aimodels_cloned">複製しました</string>
+    <string name="aimodels_fetch_failed">モデル一覧の取得に失敗しました</string>
+    <string name="aimodels_protocol">プロトコル: %1$s</string>
+    <string name="aimodels_base_url">URL: %1$s</string>
+    <string name="aimodels_purpose">用途: %1$s</string>
+    <string name="aimodels_model">モデル: %1$s</string>
+    <string name="aimodels_enabled">有効</string>
+    <string name="aimodels_unnamed">名称未設定モデル</string>
+    <string name="aimodels_name">名称</string>
+    <string name="aimodels_protocol_label">プロトコル (protocol)</string>
+    <string name="aimodels_provider">プロバイダ (provider)</string>
+    <string name="aimodels_model_label">モデル (model)</string>
+    <string name="aimodels_purpose_label">用途 (purpose)</string>
+    <string name="aimodels_fetch_available">利用可能なモデルを取得</string>
+    <string name="aimodels_no_options">選択肢がありません</string>
+
+    <!-- ==================== フェイルオーバーキュー ==================== -->
+    <string name="failover_queue_title">フェイルオーバーキュー</string>
+    <string name="failover_local_priority_subtitle">用途ごとのローカルモデル優先順位を表示</string>
+    <string name="failover_health_subtitle">モデルの健全性を表示しフォールバック順序を調整</string>
+    <string name="failover_refresh">更新</string>
+    <string name="failover_reset_all_health">すべての健全性状態をリセット</string>
+    <string name="failover_empty_title">この用途に利用可能なモデルがありません</string>
+    <string name="failover_empty_hint">まず AI モデルで有効化し用途を設定してください</string>
+    <string name="failover_loading_queue">キューを読み込み中…</string>
+    <string name="failover_primary">プライマリ</string>
+    <string name="failover_current">現在</string>
+    <string name="failover_available">利用可能</string>
+    <string name="failover_cooling">クールダウン中</string>
+    <string name="failover_today_failures">本日の失敗: %1$d</string>
+    <string name="failover_consecutive_failures">連続失敗: %1$d</string>
+    <string name="failover_remaining_seconds">残り: %1$d 秒</string>
+    <string name="failover_daily_usage">日次: %1$d/%2$d (%3$d%%)</string>
+    <string name="failover_weekly_usage">週次: %1$d/%2$d (%3$d%%)</string>
+    <string name="failover_daily_limit">日次上限: %1$d</string>
+    <string name="failover_weekly_limit">週次上限: %1$d</string>
+    <string name="failover_timeout">タイムアウト: %1$d 秒</string>
+    <string name="failover_move_up">上に移動</string>
+    <string name="failover_move_down">下に移動</string>
+    <string name="failover_reset_status">状態をリセット</string>
+    <string name="failover_status_label">ステータス: %1$s</string>
+    <string name="failover_remaining_seconds_short">残り: %1$d 秒</string>
+    <string name="failover_consecutive_failures_detail">連続失敗回数: %1$d</string>
+    <string name="failover_daily_token_limit">日次トークン上限 (0=無制限)</string>
+    <string name="failover_weekly_token_limit">週次トークン上限 (0=無制限)</string>
+    <string name="failover_timeout_seconds">タイムアウト秒数 (0=デフォルト)</string>
+    <string name="failover_saving">保存中…</string>
+    <string name="failover_reset_health">健全性をリセット</string>
+    <string name="failover_order_saved">キュー順序を保存しました</string>
+    <string name="failover_reset_all">すべての健全性状態をリセットしました</string>
+    <string name="failover_reset_model">モデルの健全性状態をリセットしました</string>
+    <string name="failover_load_detail_failed">詳細の読み込みに失敗しました</string>
+    <string name="failover_invalid_limit">上限とタイムアウトは 0 以上である必要があります</string>
+    <string name="failover_policy_saved">ポリシーを保存しました</string>
+    <string name="failover_save_policy_failed">ポリシーの保存に失敗しました</string>
+    <string name="failover_purpose_chat">チャット</string>
+    <string name="failover_purpose_vision">画像認識</string>
+    <string name="failover_purpose_video">動画認識</string>
+    <string name="failover_purpose_tts">TTS</string>
+    <string name="failover_purpose_stt">STT</string>
+    <string name="failover_purpose_embedding">Embedding</string>
+    <string name="failover_purpose_image_generation">画像生成</string>
+
+    <!-- ==================== ローカル AI モデル ==================== -->
+    <string name="localai_saved">保存しました</string>
+    <string name="localai_deleted">削除しました</string>
+    <string name="localai_set_active">現在のモデルに設定</string>
+    <string name="localai_test_failed">失敗: %1$s</string>
+    <string name="localai_test_success">成功: %1$s</string>
+    <string name="localai_test_exception">エラー: %1$s</string>
+    <string name="localai_local_logs">ローカルログ</string>
+    <string name="localai_empty_hint">AI モデルがありません。右上の + をタップして追加してください。</string>
+    <string name="localai_delete_title">モデルを削除</string>
+    <string name="localai_delete_message">\"%1$s\" を削除しますか？</string>
+    <string name="localai_test_title">テスト %1$s</string>
+    <string name="localai_testing">テスト中…</string>
+    <string name="localai_logs_title">ローカルログ (%1$d)</string>
+    <string name="localai_no_logs">ログがありません</string>
+    <string name="localai_more">その他</string>
+    <string name="localai_current_model">現在のモデル</string>
+    <string name="localai_set_current">現在のモデルに設定</string>
+    <string name="localai_new_model">新規 AI モデル</string>
+    <string name="localai_edit_model">AI モデルを編集</string>
+    <string name="localai_protocol">プロトコル</string>
+    <string name="localai_model_name">モデル名</string>
+    <string name="localai_append_path">パスを自動付与</string>
+    <string name="localai_priority">優先度</string>
+    <string name="localai_temperature">温度</string>
+    <string name="localai_max_tokens">最大トークン</string>
+    <string name="localai_purpose_chat">💬 チャット</string>
+    <string name="localai_purpose_vision">🖼️ 画像認識</string>
+    <string name="localai_purpose_video">🎬 動画認識</string>
+    <string name="localai_purpose_tts">🔊 TTS</string>
+    <string name="localai_purpose_stt">🎤 STT</string>
+    <string name="localai_purpose_embedding">📊 Embedding</string>
+    <string name="localai_purpose_image_generation">🎨 画像生成</string>
+    <string name="localai_purpose_chat_model">💬 チャットモデル</string>
+    <string name="localai_purpose_hint_vision">画像メッセージの理解用、画像説明のフォールバックとして使用</string>
+    <string name="localai_purpose_hint_video">動画メッセージの理解用（ローカルモードでは自動呼び出し未対応）</string>
+    <string name="localai_purpose_hint_tts">音声合成用、チャットで手動トリガー可能</string>
+    <string name="localai_purpose_hint_stt">音声認識用、録音後に自動呼び出し</string>
+    <string name="localai_purpose_hint_embedding">Embedding 用（ローカルモードではナレッジベース未統合）</string>
+    <string name="localai_purpose_hint_image_generation">AI 画像生成用（ローカルモードでは未統合）</string>
+</resources>

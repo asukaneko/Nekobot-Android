@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== 캐릭터 목록 화면 (CharactersScreen) ==================== -->
+    <string name="characters_title">캐릭터</string>
+    <string name="characters_view_grid">그리드 보기</string>
+    <string name="characters_view_list">목록 보기</string>
+    <string name="characters_refresh">새로고침</string>
+    <string name="characters_import_card">캐릭터 카드 가져오기</string>
+    <string name="characters_new">새 캐릭터</string>
+    <string name="characters_ai_generate">AI 캐릭터 생성</string>
+    <string name="characters_empty_title">캐릭터 없음</string>
+    <string name="characters_empty_hint">오른쪽 위를 눌러 캐릭터를 생성해 보세요</string>
+    <string name="characters_generating_title">백그라운드에서 생성 중</string>
+    <string name="characters_generating_msg">AI가 캐릭터 카드를 생성하고 있어요. 잠시만 기다려 주세요. 완료되면 편집 페이지로 자동 이동해요.</string>
+
+    <!-- ==================== 캐릭터 공통 ==================== -->
+    <string name="character_got_it">확인했어요</string>
+    <string name="character_avatar">아바타</string>
+    <string name="character_portrait">캐릭터 초상화</string>
+    <string name="character_deleted">캐릭터가 삭제되었어요</string>
+    <string name="character_imported">캐릭터를 가져왔어요: %1$s</string>
+    <string name="character_ai_generated">AI 생성 캐릭터: %1$s</string>
+    <string name="character_ai_generate_card">캐릭터 카드 생성</string>
+    <string name="character_description_label">캐릭터 설명</string>
+    <string name="character_ai_placeholder">예: 이세계에서 온 엘프 궁수, 겉으로는 차갑지만 속은 다정하고, 말은 날카로워도 달빛 아래 꿀차 마시기를 좋아해요…</string>
+    <string name="character_ai_hint">팁: 설명이 구체적일수록(성격, 외모, 배경, 말투) 품질이 올라가요.</string>
+    <string name="character_read_file_failed">파일을 읽을 수 없어요</string>
+
+    <!-- ==================== 캐릭터 상세/편집 화면 (CharacterDetailScreen) ==================== -->
+    <string name="character_edit_title">캐릭터 편집</string>
+    <string name="character_name_required">캐릭터 이름은 비워둘 수 없어요</string>
+    <string name="character_name_label">캐릭터 이름 *</string>
+    <string name="character_description_field">설명</string>
+    <string name="character_avatar_icon_label">아바타 아이콘(fas fa-cat 등) 또는 이미지</string>
+    <string name="character_portrait_path_label">초상화 경로 또는 이미지</string>
+    <string name="character_basic_info_label">기본 정보(키/나이/직업 등)</string>
+    <string name="character_personality">성격</string>
+    <string name="character_first_message_label">첫 메시지</string>
+    <string name="character_scenario">시나리오</string>
+    <string name="character_dialog_examples_label">대화 예시</string>
+    <string name="character_response_format_label">응답 형식</string>
+    <string name="character_rules_label">규칙(한 줄에 하나)</string>
+    <string name="character_system_prompt_label">시스템 프롬프트(자동 생성, 읽기 전용)</string>
+    <string name="character_tags_label">태그(쉼표로 구분)</string>
+    <string name="character_initial_state">초기 관계 상태</string>
+    <string name="character_dim_affection">호감도</string>
+    <string name="character_dim_trust">신뢰도</string>
+    <string name="character_dim_familiarity">친밀도</string>
+    <string name="character_dim_dependency">의존도</string>
+    <string name="character_dim_security">안정감</string>
+    <string name="character_dim_jealousy">질투</string>
+    <string name="character_initial_mood_label">초기 기분(예: 평온/행복/수줍음/화남)</string>
+    <string name="character_default_mood">평온</string>
+    <string name="character_delete_title">캐릭터 삭제</string>
+    <string name="character_delete_confirm">이 캐릭터를 삭제할까요? 이 동작은 되돌릴 수 없어요.</string>
+    <string name="character_upload_image">이미지 업로드</string>
+    <string name="character_ai_generate_portrait">AI 초상화 생성</string>
+    <string name="character_portrait_preview">초상화 미리보기(누르면 확대)</string>
+    <string name="character_portrait_preview_cd">초상화 미리보기</string>
+    <string name="character_portrait_large">초상화 큰 이미지</string>
+    <string name="character_name_empty">먼저 캐릭터 이름을 입력해 주세요</string>
+    <string name="character_portrait_no_model">이미지 생성 모델이 설정되지 않았어요. AI 설정에서 먼저 추가해 주세요.</string>
+    <string name="character_portrait_generate_failed">초상화 생성 실패</string>
+    <string name="character_portrait_submit_failed">초상화 생성 작업 제출 실패</string>
+    <string name="character_portrait_generating">초상화 생성 중…</string>
+    <string name="character_portrait_success_saved">초상화가 생성되어 자동 저장되었어요</string>
+    <string name="character_portrait_save_manually">초상화가 생성되었어요. 저장을 눌러 주세요.</string>
+    <string name="character_portrait_timeout">초상화 생성 시간 초과</string>
+    <string name="character_image_load_failed">이미지 불러오기 실패</string>
+    <string name="character_portrait_upload_failed">초상화 업로드 실패</string>
+    <string name="character_avatar_upload_failed">아바타 업로드 실패</string>
+
+    <!-- ==================== 캐릭터 읽기 전용 보기 화면 (CharacterViewScreen) ==================== -->
+    <string name="character_detail_title">캐릭터 상세</string>
+    <string name="character_new_session">새 대화</string>
+    <string name="character_new_session_button">새 대화</string>
+    <string name="character_export_json">JSON 내보내기</string>
+    <string name="character_field_basic_info">기본 정보</string>
+    <string name="character_field_first_message">첫 메시지</string>
+    <string name="character_field_dialog_examples">대화 예시</string>
+    <string name="character_field_response_format">응답 형식</string>
+    <string name="character_field_rules">규칙</string>
+    <string name="character_field_system_prompt">시스템 프롬프트(자동 생성)</string>
+    <string name="character_mood_label">기분: %1$s</string>
+    <string name="character_export_success">내보내기 성공</string>
+    <string name="character_export_failed">내보내기 실패</string>
+    <string name="character_export_success_msg">다운로드에 내보냈어요:\n%1$s</string>
+    <string name="character_export_failed_msg">내보내기 실패. 저장소 권한을 확인하고 다시 시도해 주세요.</string>
+</resources>
