@@ -2,6 +2,7 @@ package com.nekobot.app.ui.screens.sessions
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -178,7 +179,12 @@ fun SessionsScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            SessionOverviewCard(overview)
+            // 概览统计 + 快速筛选合并：每张卡显示数量并可点击筛选
+            SessionStatFilters(
+                overview = overview,
+                selected = filter,
+                onSelect = viewModel::setFilter
+            )
 
             // 搜索栏（点击展开半屏搜索面板）
             SearchEntryBar(
@@ -187,11 +193,6 @@ fun SessionsScreen(
                 channelFilterValue = channelFilterValue,
                 availableChannels = availableChannels,
                 onClick = { showSearchPanel = true }
-            )
-
-            QuickSessionFilters(
-                selected = filter,
-                onSelect = viewModel::setFilter
             )
 
             Box(modifier = Modifier.fillMaxSize()) {
@@ -381,101 +382,100 @@ private fun SessionCountBadge(count: Int) {
     }
 }
 
+/**
+ * 概览统计与快速筛选合并成一排可点击的统计卡：每张卡展示数量并作为筛选入口，
+ * 选中态用主题色高亮。原先「统计卡 + 筛选 pill」两段内容重复，合并后更紧凑清爽。
+ */
 @Composable
-private fun SessionOverviewCard(overview: SessionOverview) {
-    GlassCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        cornerRadius = 18,
-        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 9.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            OverviewStat("会话", overview.total, Icons.AutoMirrored.Outlined.Chat)
-            OverviewStat("置顶", overview.pinned, Icons.Filled.PushPin)
-            OverviewStat("收藏", overview.favorite, Icons.Filled.Favorite)
-            OverviewStat("归档", overview.archived, Icons.Filled.Archive)
-        }
-    }
-}
-
-@Composable
-private fun RowScope.OverviewStat(label: String, value: Int, icon: ImageVector) {
-    Row(
-        modifier = Modifier.weight(1f),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(15.dp),
-            tint = MaterialTheme.colorScheme.primary
-        )
-        Spacer(Modifier.size(5.dp))
-        Column {
-            Text(
-                text = value.toString(),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Composable
-private fun QuickSessionFilters(
+private fun SessionStatFilters(
+    overview: SessionOverview,
     selected: SessionFilter,
     onSelect: (SessionFilter) -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 12.dp, vertical = 2.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        QUICK_SESSION_FILTERS.forEach { filter ->
-            QuickFilterPill(
-                label = if (filter == SessionFilter.ALL) "全部" else filter.label,
-                selected = selected == filter,
-                onClick = { onSelect(filter) }
-            )
-        }
+        StatFilterCard(
+            label = "全部",
+            value = overview.total,
+            icon = Icons.AutoMirrored.Outlined.Chat,
+            selected = selected == SessionFilter.ALL,
+            onClick = { onSelect(SessionFilter.ALL) }
+        )
+        StatFilterCard(
+            label = "置顶",
+            value = overview.pinned,
+            icon = Icons.Filled.PushPin,
+            selected = selected == SessionFilter.PINNED,
+            onClick = { onSelect(SessionFilter.PINNED) }
+        )
+        StatFilterCard(
+            label = "收藏",
+            value = overview.favorite,
+            icon = Icons.Filled.Favorite,
+            selected = selected == SessionFilter.FAVORITE,
+            onClick = { onSelect(SessionFilter.FAVORITE) }
+        )
+        StatFilterCard(
+            label = "归档",
+            value = overview.archived,
+            icon = Icons.Filled.Archive,
+            selected = selected == SessionFilter.ARCHIVED,
+            onClick = { onSelect(SessionFilter.ARCHIVED) }
+        )
     }
 }
 
 @Composable
-private fun QuickFilterPill(
+private fun RowScope.StatFilterCard(
     label: String,
+    value: Int,
+    icon: ImageVector,
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    Box(
+    val contentColor =
+        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    val containerColor =
+        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    val borderColor =
+        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+
+    Column(
         modifier = Modifier
-            .height(40.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(
-                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
-            )
+            .weight(1f)
+            .clip(RoundedCornerShape(14.dp))
+            .background(containerColor)
+            .border(BorderStroke(1.dp, borderColor), RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp),
-        contentAlignment = Alignment.Center
+            .padding(vertical = 9.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                tint = contentColor
+            )
+            Spacer(Modifier.size(4.dp))
+            Text(
+                text = value.toString(),
+                style = MaterialTheme.typography.titleSmall,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold
+            )
+        }
         Text(
             text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+            color = contentColor,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
         )
     }
@@ -517,48 +517,53 @@ private fun SearchEntryBar(
     val channelLabel = availableChannels.firstOrNull { it.value == channelFilterValue }?.label
     val hasActiveFilter = filter != SessionFilter.ALL || channelFilterValue != null || searchQuery.isNotBlank()
 
-    GlassCard(
+    val accent = MaterialTheme.colorScheme.primary
+    val borderColor =
+        if (hasActiveFilter) accent.copy(alpha = 0.5f)
+        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
             .height(48.dp)
-            .clickable { onClick() },
-        cornerRadius = 16,
-        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        contentPadding = PaddingValues(0.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .border(BorderStroke(1.dp, borderColor), RoundedCornerShape(14.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 14.dp)
-        ) {
-            Icon(Icons.Filled.Search, contentDescription = null, tint = if (hasActiveFilter) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-            if (searchQuery.isNotBlank()) {
-                Text(
-                    searchQuery,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-            } else {
-                Text(
-                    "搜索会话、筛选...",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            // 活跃筛选标签
-            if (channelLabel != null) {
-                FilterChip(label = channelLabel, active = true)
-            }
-            if (filter != SessionFilter.ALL) {
-                FilterChip(label = filter.label, active = true)
-            }
+        Icon(
+            Icons.Filled.Search,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = if (hasActiveFilter) accent else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (searchQuery.isNotBlank()) {
+            Text(
+                searchQuery,
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        } else {
+            Text(
+                "搜索会话、角色…",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        // 活跃筛选标签
+        if (channelLabel != null) {
+            FilterChip(label = channelLabel, active = true)
+        }
+        if (filter != SessionFilter.ALL) {
+            FilterChip(label = filter.label, active = true)
         }
     }
 }
