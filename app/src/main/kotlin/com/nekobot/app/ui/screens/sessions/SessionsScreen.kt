@@ -1,5 +1,6 @@
 package com.nekobot.app.ui.screens.sessions
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -36,7 +37,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
+import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -46,6 +47,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -59,13 +61,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.collectAsState
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.request.repeatCount
 import androidx.lifecycle.viewModelScope
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.CharacterPreset
@@ -83,11 +89,13 @@ import com.nekobot.app.ui.theme.BgSurfaceVariant
 import com.nekobot.app.ui.theme.OnSurface
 import com.nekobot.app.ui.theme.OnSurfaceVariant
 import com.nekobot.app.ui.theme.Primary
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
@@ -117,7 +125,7 @@ fun SessionsScreen(
     onOpenStoryGraph: (String) -> Unit = onOpenChat
 ) {
     val viewModel: SessionsViewModel = viewModel()
-    val sessions by viewModel.displayedSessions.collectAsState()
+    val sessionRows by viewModel.displayedSessionRows.collectAsState()
     val overview by viewModel.overview.collectAsState()
     val characters by viewModel.characters.collectAsState()
     val loading by viewModel.loading.collectAsState()
@@ -136,8 +144,8 @@ fun SessionsScreen(
 
     // 弹窗状态
     var showCreate by remember { mutableStateOf(false) }
-    var renaming by remember { mutableStateOf<Session?>(null) }
-    var deleting by remember { mutableStateOf<Session?>(null) }
+    var renaming by remember { mutableStateOf<SessionListRow?>(null) }
+    var deleting by remember { mutableStateOf<SessionListRow?>(null) }
     var showSearchPanel by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -148,7 +156,7 @@ fun SessionsScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("会话", color = MaterialTheme.colorScheme.onSurface)
                         Spacer(Modifier.size(8.dp))
-                        SessionCountBadge(sessions.size)
+                        SessionCountBadge(sessionRows.size)
                     }
                 },
                 actions = {
@@ -188,7 +196,7 @@ fun SessionsScreen(
 
             Box(modifier = Modifier.fillMaxSize()) {
                 when {
-                    loading && sessions.isEmpty() -> {
+                    loading && sessionRows.isEmpty() -> {
                         Column(
                             modifier = Modifier.fillMaxSize(),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -197,7 +205,7 @@ fun SessionsScreen(
                             CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                         }
                     }
-                    sessions.isEmpty() -> {
+                    sessionRows.isEmpty() -> {
                         val emptyTitle = when {
                             searchQuery.isNotBlank() -> "未找到匹配会话"
                             filter != SessionFilter.ALL -> "当前筛选下无会话"
@@ -227,39 +235,33 @@ fun SessionsScreen(
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            item(key = "session-section-header") {
-                                SessionSectionHeader(sessions.size)
+                            item(
+                                key = "session-section-header",
+                                contentType = "session-section-header"
+                            ) {
+                                SessionSectionHeader(sessionRows.size)
                             }
-                            items(sessions, key = { it.id ?: it.name ?: it.hashCode().toString() }) { session ->
-                                // 当 session 自身没有立绘时，回退到已加载角色列表里同 characterId 的立绘
-                                val fallbackCharacter = characters
-                                    .firstOrNull { it.id == session.characterId }
-                                val relatedCharacterIds = buildList {
-                                    session.characterId?.takeIf { it.isNotBlank() }?.let(::add)
-                                    session.characterIds.orEmpty()
-                                        .filter { it.isNotBlank() }
-                                        .forEach(::add)
-                                }.distinct()
-                                val fallbackCharacterName = relatedCharacterIds
-                                    .map { characterId ->
-                                        characters.firstOrNull { it.id == characterId }
-                                            ?.displayName
-                                            ?: characterId
-                                    }
-                                    .joinToString("、")
-                                    .takeIf { it.isNotBlank() }
+                            items(
+                                items = sessionRows,
+                                key = SessionListRow::key,
+                                contentType = { "session-row" }
+                            ) { row ->
                                 SessionItem(
-                                    session = session,
-                                    fallbackPortraitUrl = fallbackCharacter?.avatarUrl,
-                                    fallbackCharacterName = fallbackCharacterName,
-                                    onClick = { session.id?.let(onOpenChat) },
-                                    onOpenDetail = { session.id?.let(onOpenDetail) },
-                                    onRename = { renaming = session },
-                                    onDelete = { deleting = session },
-                                    onToggleFavorite = { viewModel.toggleFavorite(session) },
-                                    onTogglePinned = { viewModel.togglePinned(session) },
-                                    onToggleArchived = { viewModel.toggleArchived(session) },
-                                    onOpenStoryGraph = { session.id?.let(onOpenStoryGraph) }
+                                    row = row,
+                                    onClick = { row.id?.let(onOpenChat) },
+                                    onOpenDetail = { row.id?.let(onOpenDetail) },
+                                    onRename = { if (row.id != null) renaming = row },
+                                    onDelete = { if (row.id != null) deleting = row },
+                                    onToggleFavorite = {
+                                        row.id?.let { viewModel.toggleFavorite(it, row.favorite) }
+                                    },
+                                    onTogglePinned = {
+                                        row.id?.let { viewModel.togglePinned(it, row.pinned) }
+                                    },
+                                    onToggleArchived = {
+                                        row.id?.let { viewModel.toggleArchived(it, row.archived) }
+                                    },
+                                    onOpenStoryGraph = { row.id?.let(onOpenStoryGraph) }
                                 )
                             }
                         }
@@ -297,14 +299,14 @@ fun SessionsScreen(
     }
 
     // 重命名弹窗
-    renaming?.let { session ->
-        var name by remember(session.id) { mutableStateOf(session.name.orEmpty()) }
+    renaming?.let { row ->
+        var name by remember(row.key) { mutableStateOf(row.name) }
         NekoDialog(
             onDismiss = { renaming = null },
             title = "重命名会话",
             confirmText = "保存",
             onConfirm = {
-                viewModel.renameSession(session.id.orEmpty(), name) { renaming = null }
+                viewModel.renameSession(row.id.orEmpty(), name) { renaming = null }
             },
             content = {
                 OutlinedTextField(
@@ -319,14 +321,14 @@ fun SessionsScreen(
     }
 
     // 删除确认弹窗
-    deleting?.let { session ->
+    deleting?.let { row ->
         NekoDialog(
             onDismiss = { deleting = null },
             title = "删除会话",
-            message = "确定删除「${session.displayName}」吗？此操作不可撤销。",
+            message = "确定删除「${row.displayName}」吗？此操作不可撤销。",
             confirmText = "删除",
             onConfirm = {
-                viewModel.deleteSession(session.id.orEmpty()) { deleting = null }
+                viewModel.deleteSession(row.id.orEmpty()) { deleting = null }
             }
         )
     }
@@ -1192,72 +1194,85 @@ private fun SessionStatusIcon(icon: ImageVector, description: String) {
     )
 }
 
+private val SessionItemShape = RoundedCornerShape(16.dp)
+private val SessionPortraitShape = RoundedCornerShape(12.dp)
+
 /** 单个会话项卡片。 */
 @Composable
 private fun SessionItem(
-    session: Session,
+    row: SessionListRow,
     onClick: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onToggleFavorite: () -> Unit,
     onTogglePinned: () -> Unit,
-    /** 会话自身无立绘时的回退 URL（来自已加载角色列表）。 */
-    fallbackPortraitUrl: String? = null,
-    /** 会话自身无角色名时的回退名称（来自已加载角色列表）。 */
-    fallbackCharacterName: String? = null,
     onOpenDetail: () -> Unit = {},
     onToggleArchived: () -> Unit = {},
     onOpenStoryGraph: () -> Unit = {}
 ) {
-    var menuExpanded by remember { mutableStateOf(false) }
-    val isAgentSession = session.sessionMode == "agent"
-    val isGroupSession = session.sessionMode == "group" || !session.characterIds.isNullOrEmpty()
-    val senderCharacterName = session.senderName?.takeIf {
-        it.isNotBlank() && it !in setOf("AI", "Agent", "群聊")
+    var menuExpanded by remember(row.key) { mutableStateOf(false) }
+    val context = LocalContext.current
+    val portraitRequest = remember(context, row.portraitUrl) {
+        row.portraitUrl?.let { portraitUrl ->
+            ImageRequest.Builder(context)
+                .data(portraitUrl)
+                // 列表快速滑动时避免多张新头像同时执行淡入动画。
+                .crossfade(false)
+                // GIF 头像在列表中只播放一次，避免多个可见行持续逐帧刷新。
+                .repeatCount(0)
+                .build()
+        }
     }
-    val characterLabel = when {
-        isAgentSession -> null
-        isGroupSession -> fallbackCharacterName
-        else -> session.characterName?.takeIf { it.isNotBlank() }
-            ?: senderCharacterName
-            ?: fallbackCharacterName?.takeIf { it.isNotBlank() && it != "未命名角色" }
-    }
-    GlassCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        cornerRadius = 16,
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+    // 列表背景是纯色，预合成后视觉等价于半透明 GlassCard，同时省去逐帧透明混合与渐变描边。
+    val containerColor = MaterialTheme.colorScheme.surfaceVariant
+        .copy(alpha = 0.45f)
+        .compositeOver(MaterialTheme.colorScheme.background)
+    val borderColor = MaterialTheme.colorScheme.onSurface
+        .copy(alpha = 0.08f)
+        .compositeOver(containerColor)
+
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = SessionItemShape,
+        color = containerColor,
+        border = BorderStroke(1.dp, borderColor),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            // 角色立绘图片（竖向圆角矩形）：优先 session 自带立绘，回退到角色列表
-            val rawPortrait = session.portraitUrl ?: fallbackPortraitUrl
-            val portraitUrl = resolveAvatarUrl(rawPortrait)
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Box(
                 modifier = Modifier
                     .size(width = 48.dp, height = 60.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(SessionPortraitShape)
                     .background(MaterialTheme.colorScheme.surface),
                 contentAlignment = Alignment.Center
             ) {
-                if (!portraitUrl.isNullOrBlank()) {
+                if (portraitRequest != null) {
                     AsyncImage(
-                        model = portraitUrl,
-                        contentDescription = characterLabel ?: "角色立绘",
+                        model = portraitRequest,
+                        contentDescription = null,
                         contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
-                    Icon(Icons.AutoMirrored.Outlined.Chat, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(28.dp))
+                    Icon(
+                        Icons.AutoMirrored.Outlined.Chat,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(28.dp)
+                    )
                 }
             }
             Spacer(Modifier.size(10.dp))
 
-            // 主体信息
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = session.displayName,
+                        text = row.displayName,
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold,
@@ -1265,7 +1280,7 @@ private fun SessionItem(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
-                    session.updatedAt?.takeIf { it.isNotBlank() }?.let { time ->
+                    row.updatedAt?.let { time ->
                         Spacer(Modifier.size(8.dp))
                         Text(
                             text = time,
@@ -1277,7 +1292,7 @@ private fun SessionItem(
                         )
                     }
                 }
-                session.lastMessage?.takeIf { it.isNotBlank() }?.let { preview ->
+                row.lastMessage?.let { preview ->
                     Spacer(Modifier.height(3.dp))
                     Text(
                         text = preview,
@@ -1292,20 +1307,23 @@ private fun SessionItem(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    characterLabel?.let {
+                    row.characterLabel?.let {
                         SessionMetaLabel(text = it, emphasized = true)
                     }
-                    session.messageCount?.let { SessionMetaLabel(text = "$it 条") }
-                    if (session.pinned == true) SessionStatusIcon(Icons.Filled.PushPin, "已置顶")
-                    if (session.favorite == true) SessionStatusIcon(Icons.Filled.Favorite, "已收藏")
-                    if (session.archived == true) SessionStatusIcon(Icons.Filled.Archive, "已归档")
+                    row.messageCount?.let { SessionMetaLabel(text = "$it 条") }
+                    if (row.pinned) SessionStatusIcon(Icons.Filled.PushPin, "已置顶")
+                    if (row.favorite) SessionStatusIcon(Icons.Filled.Favorite, "已收藏")
+                    if (row.archived) SessionStatusIcon(Icons.Filled.Archive, "已归档")
                 }
             }
 
-            // 右侧菜单
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "更多", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(
+                        Icons.Filled.MoreVert,
+                        contentDescription = "更多",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
                 DropdownMenu(
                     expanded = menuExpanded,
@@ -1326,23 +1344,21 @@ private fun SessionItem(
                         }
                     )
                     DropdownMenuItem(
-                        text = {
-                            Text(if (session.pinned == true) "取消置顶" else "置顶")
-                        },
+                        text = { Text(if (row.pinned) "取消置顶" else "置顶") },
                         onClick = {
                             menuExpanded = false
                             onTogglePinned()
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text(if (session.favorite == true) "取消收藏" else "收藏") },
+                        text = { Text(if (row.favorite) "取消收藏" else "收藏") },
                         onClick = {
                             menuExpanded = false
                             onToggleFavorite()
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text(if (session.archived == true) "取消归档" else "归档") },
+                        text = { Text(if (row.archived) "取消归档" else "归档") },
                         onClick = {
                             menuExpanded = false
                             onToggleArchived()
@@ -1372,13 +1388,14 @@ private fun SessionItem(
  * 会话列表 ViewModel。
  *
  * 内部维护原始会话列表 + 筛选/搜索状态，
- * 对外暴露 [displayedSessions]（已筛选 + 已搜索 + 已排序：置顶永远在前）。
+ * 对外暴露 [displayedSessionRows]（已筛选 + 已搜索 + 已排序 + 已解析角色回退）。
  */
 class SessionsViewModel : BaseViewModel() {
 
     private val _sessions = MutableStateFlow<List<Session>>(emptyList())
     val overview: StateFlow<SessionOverview> = _sessions
         .map(::buildSessionOverview)
+        .flowOn(Dispatchers.Default)
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.Eagerly,
@@ -1396,25 +1413,29 @@ class SessionsViewModel : BaseViewModel() {
     val channelFilterValue: StateFlow<String?> = _channelFilterValue.asStateFlow()
 
     /** 动态频道列表：从已加载会话的 type 字段派生。 */
-    val availableChannels: StateFlow<List<ChannelOption>> = _sessions.map { sessions ->
-        val types = sessions.mapNotNull { it.type?.lowercase()?.trim()?.takeIf { t -> t.isNotBlank() } }
-            .distinct()
-            .sorted()
-        // 标签映射：web->Web, qq->QQ, 其他首字母大写
-        types.map { t ->
-            val label = when (t) {
-                "web" -> "Web"
-                "qq" -> "QQ"
-                "cli" -> "CLI"
-                else -> t.replaceFirstChar { c -> c.uppercase() }
+    val availableChannels: StateFlow<List<ChannelOption>> = _sessions
+        .map { sessions ->
+            val types = sessions
+                .mapNotNull { it.type?.lowercase()?.trim()?.takeIf { t -> t.isNotBlank() } }
+                .distinct()
+                .sorted()
+            // 标签映射：web->Web, qq->QQ, 其他首字母大写
+            types.map { t ->
+                val label = when (t) {
+                    "web" -> "Web"
+                    "qq" -> "QQ"
+                    "cli" -> "CLI"
+                    else -> t.replaceFirstChar { c -> c.uppercase() }
+                }
+                ChannelOption(label, t)
             }
-            ChannelOption(label, t)
         }
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
-        initialValue = emptyList()
-    )
+        .flowOn(Dispatchers.Default)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList()
+        )
 
     private val _characterFilterId = MutableStateFlow<String?>(null)
     val characterFilterId: StateFlow<String?> = _characterFilterId.asStateFlow()
@@ -1423,7 +1444,7 @@ class SessionsViewModel : BaseViewModel() {
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
     /** 对外展示的会话列表：频道筛选 + 置顶优先 + 应用筛选 + 应用搜索 + 非置顶按时间倒序。 */
-    val displayedSessions: StateFlow<List<Session>> = combine(
+    private val displayedSessions: StateFlow<List<Session>> = combine(
         _sessions, _filter, _channelFilterValue, _characterFilterId, _searchQuery
     ) { all, f, chVal, charId, query ->
         // 先排除压缩上下文自动创建的归档会话（is_archive == true）；
@@ -1438,11 +1459,34 @@ class SessionsViewModel : BaseViewModel() {
             compareByDescending<Session> { it.pinned == true }
                 .thenByDescending { it.updatedAt ?: it.createdAt ?: "" }
         )
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
-        initialValue = emptyList()
-    )
+    }
+        .flowOn(Dispatchers.Default)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList()
+        )
+
+    /**
+     * 列表行在数据变化时于后台线程一次性生成；滚动过程中不再扫描角色列表、
+     * 拼接群聊角色名或计算完整 Session 的 hashCode。
+     */
+    val displayedSessionRows: StateFlow<List<SessionListRow>> = combine(
+        displayedSessions,
+        _characters
+    ) { sessions, characters ->
+        buildSessionListRows(
+            sessions = sessions,
+            characters = characters,
+            portraitUrlResolver = { resolveAvatarUrl(it) }
+        )
+    }
+        .flowOn(Dispatchers.Default)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList()
+        )
 
     fun setFilter(f: SessionFilter) {
         _filter.value = f
@@ -1525,10 +1569,10 @@ class SessionsViewModel : BaseViewModel() {
     }
 
     /** 切换收藏状态。 */
-    fun toggleFavorite(session: Session) {
-        val newFav = !(session.favorite ?: false)
+    fun toggleFavorite(sessionId: String, currentlyFavorite: Boolean) {
+        val newFav = !currentlyFavorite
         launchResult(
-            block = { unified.updateSession(session.id.orEmpty(), UpdateSessionRequest(favorite = newFav)) },
+            block = { unified.updateSession(sessionId, UpdateSessionRequest(favorite = newFav)) },
             onSuccess = {
                 loadSessions()
             }
@@ -1536,10 +1580,10 @@ class SessionsViewModel : BaseViewModel() {
     }
 
     /** 切换置顶状态。 */
-    fun togglePinned(session: Session) {
-        val newPinned = !(session.pinned ?: false)
+    fun togglePinned(sessionId: String, currentlyPinned: Boolean) {
+        val newPinned = !currentlyPinned
         launchResult(
-            block = { unified.updateSession(session.id.orEmpty(), UpdateSessionRequest(pinned = newPinned)) },
+            block = { unified.updateSession(sessionId, UpdateSessionRequest(pinned = newPinned)) },
             onSuccess = {
                 showToast(if (newPinned) "已置顶" else "已取消置顶")
                 loadSessions()
@@ -1548,12 +1592,12 @@ class SessionsViewModel : BaseViewModel() {
     }
 
     /** 切换归档状态。 */
-    fun toggleArchived(session: Session) {
-        val newArchived = !(session.archived ?: false)
+    fun toggleArchived(sessionId: String, currentlyArchived: Boolean) {
+        val newArchived = !currentlyArchived
         launchResult(
             block = {
-                if (newArchived) unified.archiveSession(session.id.orEmpty())
-                else unified.restoreSession(session.id.orEmpty())
+                if (newArchived) unified.archiveSession(sessionId)
+                else unified.restoreSession(sessionId)
             },
             onSuccess = {
                 showToast(if (newArchived) "已归档" else "已取消归档")

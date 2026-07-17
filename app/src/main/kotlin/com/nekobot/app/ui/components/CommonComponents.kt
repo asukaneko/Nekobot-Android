@@ -3,8 +3,10 @@ package com.nekobot.app.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,6 +28,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.ui.theme.*
+
+private val FONT_AWESOME_ICON_PATTERN = Regex("fas[a-z]+-[a-z-]+")
 
 /**
  * 玻璃拟态卡片：半透明 + 渐变描边 + 柔和光晕。
@@ -62,6 +66,106 @@ fun GlassCard(
             content = content
         )
     }
+}
+
+/**
+ * 统一的磨砂玻璃选项菜单。
+ *
+ * Popup 无法直接采样宿主窗口做实时背景模糊，因此使用半透明表面、玻璃高光描边和柔和阴影，
+ * 在保证菜单文字对比度的同时与应用内的玻璃卡片保持一致。
+ */
+@Composable
+fun GlassDropdownMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val dark = isSystemInDarkTheme()
+    val shape = RoundedCornerShape(24.dp)
+    val containerColor = if (dark) {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.94f)
+    } else {
+        Color.White.copy(alpha = 0.93f)
+    }
+    val borderBrush = if (dark) {
+        Brush.verticalGradient(
+            listOf(
+                Color.White.copy(alpha = 0.22f),
+                Color.White.copy(alpha = 0.06f)
+            )
+        )
+    } else {
+        Brush.verticalGradient(
+            listOf(
+                Color.White.copy(alpha = 0.96f),
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)
+            )
+        )
+    }
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismissRequest,
+        modifier = modifier,
+        shape = shape,
+        containerColor = containerColor,
+        tonalElevation = 0.dp,
+        shadowElevation = 10.dp,
+        border = BorderStroke(
+            width = 1.dp,
+            brush = borderBrush
+        ),
+        content = content
+    )
+}
+
+/**
+ * 表单下拉选择器使用与三点选项菜单相同的磨砂玻璃样式。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ExposedDropdownMenuBoxScope.GlassExposedDropdownMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val dark = isSystemInDarkTheme()
+    val shape = RoundedCornerShape(24.dp)
+    val containerColor = if (dark) {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.94f)
+    } else {
+        Color.White.copy(alpha = 0.93f)
+    }
+    val borderBrush = if (dark) {
+        Brush.verticalGradient(
+            listOf(
+                Color.White.copy(alpha = 0.22f),
+                Color.White.copy(alpha = 0.06f)
+            )
+        )
+    } else {
+        Brush.verticalGradient(
+            listOf(
+                Color.White.copy(alpha = 0.96f),
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)
+            )
+        )
+    }
+    ExposedDropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismissRequest,
+        modifier = modifier,
+        shape = shape,
+        containerColor = containerColor,
+        tonalElevation = 0.dp,
+        shadowElevation = 10.dp,
+        border = BorderStroke(
+            width = 1.dp,
+            brush = borderBrush
+        ),
+        content = content
+    )
 }
 
 @Composable
@@ -249,7 +353,7 @@ fun resolveAvatarUrl(path: String?): String? {
     // http(s) 绝对 URL：直接返回
     if (path.startsWith("http://") || path.startsWith("https://")) return path
     // 图标类名（如 fas fa-cat、fasfa-cat）：非图片路径，返回 null 由调用方显示图标
-    if (path.startsWith("fas ") || path.startsWith("fa-") || path.matches(Regex("fas[a-z]+-[a-z-]+"))) return null
+    if (path.startsWith("fas ") || path.startsWith("fa-") || path.matches(FONT_AWESOME_ICON_PATTERN)) return null
     // 服务器相对路径：拼接 baseUrl
     val base = ServiceContainer.network.baseUrl().trimEnd('/')
     val relative = path.trimStart('/')

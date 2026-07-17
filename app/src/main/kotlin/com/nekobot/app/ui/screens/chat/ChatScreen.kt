@@ -2,6 +2,7 @@ package com.nekobot.app.ui.screens.chat
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.StartOffset
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
@@ -34,6 +35,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -72,9 +74,10 @@ import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
+import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -94,7 +97,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -133,15 +139,8 @@ import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.MarkdownText
 import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.components.resolveAvatarUrl
-import com.nekobot.app.ui.theme.BgSurface
-import com.nekobot.app.ui.theme.BgSurfaceVariant
-import com.nekobot.app.ui.theme.BubbleAssistant
-import com.nekobot.app.ui.theme.BubbleAssistantLight
 import com.nekobot.app.ui.theme.BubbleUser
 import com.nekobot.app.ui.theme.BubbleUserLight
-import com.nekobot.app.ui.theme.OnSurface
-import com.nekobot.app.ui.theme.OnSurfaceVariant
-import com.nekobot.app.ui.theme.Primary
 import com.nekobot.app.ui.theme.parseHexColor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -407,104 +406,129 @@ fun ChatScreen(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            if (selectionMode) {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = "已选 ${selectedIds.size} 条",
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = { viewModel.exitSelectionMode() }) {
-                            Icon(Icons.Filled.Close, contentDescription = "退出选择", tint = MaterialTheme.colorScheme.onSurface)
-                        }
-                    },
-                    actions = {
-                        IconButton(onClick = { viewModel.deleteSelectedMessages() }) {
-                            Icon(Icons.Filled.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.onSurface)
-                        }
-                        IconButton(onClick = {
-                            favTitleInput = ""
-                            showAddFavoritesDialog = true
-                        }) {
-                            Icon(Icons.Filled.Star, contentDescription = "添加到收藏夹", tint = MaterialTheme.colorScheme.onSurface)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    )
-                )
-            } else {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = session?.displayName ?: "对话",
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
-                        }
-                    },
-                    actions = {
-                        Box {
-                            IconButton(onClick = { menuExpanded = true }) {
-                                Icon(Icons.Filled.MoreVert, contentDescription = "更多", tint = MaterialTheme.colorScheme.onSurface)
+            // 顶栏融入聊天背景，底部以发丝分割线区分内容区
+            Column {
+                if (selectionMode) {
+                    TopAppBar(
+                        title = {
+                            Text(
+                                text = "已选 ${selectedIds.size} 条",
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = { viewModel.exitSelectionMode() }) {
+                                Icon(Icons.Filled.Close, contentDescription = "退出选择", tint = MaterialTheme.colorScheme.onSurface)
                             }
-                            DropdownMenu(
-                                expanded = menuExpanded,
-                                onDismissRequest = { menuExpanded = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("会话详情") },
-                                    onClick = {
-                                        menuExpanded = false
-                                        session?.id?.let { onOpenSessionDetail(it) }
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("故事图") },
-                                    onClick = {
-                                        menuExpanded = false
-                                        session?.id?.let { onOpenStoryGraph(it) }
-                                    }
-                                )
-                                // 仅当当前会话绑定了归档会话时显示
-                                if (!session?.archiveSessionId.isNullOrBlank()) {
+                        },
+                        actions = {
+                            IconButton(onClick = { viewModel.deleteSelectedMessages() }) {
+                                Icon(Icons.Filled.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.onSurface)
+                            }
+                            IconButton(onClick = {
+                                favTitleInput = ""
+                                showAddFavoritesDialog = true
+                            }) {
+                                Icon(Icons.Filled.Star, contentDescription = "添加到收藏夹", tint = MaterialTheme.colorScheme.onSurface)
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.background
+                        )
+                    )
+                } else {
+                    TopAppBar(
+                        title = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                ChatAvatar(portraitUrl = session?.portraitUrl, size = 34.dp, ring = true)
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = session?.displayName ?: "对话",
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    // 副标题：生成中显示“正在输入…”，否则显示消息总数
+                                    Text(
+                                        text = if (sending) "正在输入…"
+                                        else "${messages.count { !it.isThinkingCard }} 条消息",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (sending) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
+                            }
+                        },
+                        actions = {
+                            Box {
+                                IconButton(onClick = { menuExpanded = true }) {
+                                    Icon(Icons.Filled.MoreVert, contentDescription = "更多", tint = MaterialTheme.colorScheme.onSurface)
+                                }
+                                DropdownMenu(
+                                    expanded = menuExpanded,
+                                    onDismissRequest = { menuExpanded = false }
+                                ) {
                                     DropdownMenuItem(
-                                        text = { Text("提取归档") },
+                                        text = { Text("会话详情") },
                                         onClick = {
                                             menuExpanded = false
-                                            showRestoreArchiveDialog = true
+                                            session?.id?.let { onOpenSessionDetail(it) }
                                         }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("查看归档") },
+                                        text = { Text("故事图") },
                                         onClick = {
                                             menuExpanded = false
-                                            showArchiveViewer = true
+                                            session?.id?.let { onOpenStoryGraph(it) }
+                                        }
+                                    )
+                                    // 仅当当前会话绑定了归档会话时显示
+                                    if (!session?.archiveSessionId.isNullOrBlank()) {
+                                        DropdownMenuItem(
+                                            text = { Text("提取归档") },
+                                            onClick = {
+                                                menuExpanded = false
+                                                showRestoreArchiveDialog = true
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("查看归档") },
+                                            onClick = {
+                                                menuExpanded = false
+                                                showArchiveViewer = true
+                                            }
+                                        )
+                                    }
+                                    DropdownMenuItem(
+                                        text = { Text("清空消息", color = Color(0xFFFF6B6B)) },
+                                        onClick = {
+                                            menuExpanded = false
+                                            showClearConfirm = true
                                         }
                                     )
                                 }
-                                DropdownMenuItem(
-                                    text = { Text("清空消息", color = Color(0xFFFF6B6B)) },
-                                    onClick = {
-                                        menuExpanded = false
-                                        showClearConfirm = true
-                                    }
-                                )
                             }
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.background
+                        )
                     )
+                }
+                HorizontalDivider(
+                    thickness = 0.5.dp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
                 )
             }
         },
@@ -578,6 +602,21 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            // 氛围背景：顶部一抹主题色微光，向下渐隐，增加层次感
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+                                Color.Transparent
+                            ),
+                            startY = 0f,
+                            endY = 520f
+                        )
+                    )
+            )
             if (messages.isEmpty() && loading) {
                 Column(
                     modifier = Modifier.fillMaxSize(),
@@ -587,14 +626,39 @@ fun ChatScreen(
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
             } else if (messages.isEmpty()) {
+                // 空会话引导：主题色圆形图标 + 标题 + 提示语
                 Column(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().padding(32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(56.dp))
-                    Spacer(Modifier.height(12.dp))
-                    Text("开始与 AI 对话吧", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Box(
+                        modifier = Modifier
+                            .size(88.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Outlined.SmartToy,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(40.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(18.dp))
+                    Text(
+                        "开始新的对话",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "发送消息，与${session?.displayName ?: "AI"}开启一段故事",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             } else {
                 LazyColumn(
@@ -606,27 +670,41 @@ fun ChatScreen(
                     item(key = "background_setting", contentType = "background_setting") {
                         BackgroundSettingCard(content = session?.scenario)
                     }
-                    items(messages, key = { it.id ?: (it.content + it.timestamp + it.hashCode()) }) { msg ->
-                        // 流式占位消息且内容为空：显示骨架动画（等待第一个 chunk）
-                        if (msg.id == ChatViewModel.STREAMING_ID && msg.displayContent.isBlank()) {
-                            ThinkingIndicator(portraitUrl = session?.portraitUrl)
-                        } else {
-                            MessageBubble(
-                                message = msg,
-                                portraitUrl = session?.portraitUrl,
-                                onLongClick = {
-                                    if (!selectionMode && msg.id != null) {
-                                        viewModel.enterSelectionMode(msg.id)
-                                    }
-                                },
-                                onRegenerate = { viewModel.regenerate() },
-                                onFork = { msg.id?.let { mid -> viewModel.forkFromMessage(mid) { onOpenChat(it) } } },
-                                onCopy = { msg.displayContent },
-                                sessionId = sessionId,
-                                selectionMode = selectionMode,
-                                isSelected = msg.id != null && msg.id in selectedIds,
-                                onToggleSelection = { msg.id?.let { viewModel.toggleSelection(it) } }
-                            )
+                    itemsIndexed(
+                        messages,
+                        key = { _, it -> it.id ?: (it.content + it.timestamp + it.hashCode()) }
+                    ) { index, msg ->
+                        // 注意：LazyColumn 单个 item 内的多个平级节点会像 Box 一样叠放，
+                        // 因此日期分隔条与气泡必须包在 Column 里纵向排布
+                        Column {
+                            // 跨天消息之间插入日期分隔条
+                            val day = dayKey(msg.timestamp)
+                            val prevDay = messages.getOrNull(index - 1)?.let { dayKey(it.timestamp) }
+                            if (day != null && day != prevDay) {
+                                DateSeparatorChip(label = dayLabel(day))
+                                Spacer(Modifier.height(2.dp))
+                            }
+                            // 流式占位消息且内容为空：显示骨架动画（等待第一个 chunk）
+                            if (msg.id == ChatViewModel.STREAMING_ID && msg.displayContent.isBlank()) {
+                                ThinkingIndicator(portraitUrl = session?.portraitUrl)
+                            } else {
+                                MessageBubble(
+                                    message = msg,
+                                    portraitUrl = session?.portraitUrl,
+                                    onLongClick = {
+                                        if (!selectionMode && msg.id != null) {
+                                            viewModel.enterSelectionMode(msg.id)
+                                        }
+                                    },
+                                    onRegenerate = { viewModel.regenerate() },
+                                    onFork = { msg.id?.let { mid -> viewModel.forkFromMessage(mid) { onOpenChat(it) } } },
+                                    onCopy = { msg.displayContent },
+                                    sessionId = sessionId,
+                                    selectionMode = selectionMode,
+                                    isSelected = msg.id != null && msg.id in selectedIds,
+                                    onToggleSelection = { msg.id?.let { viewModel.toggleSelection(it) } }
+                                )
+                            }
                         }
                     }
                     // AI 处理进度卡片已移除：流式占位消息由 StreamStart 事件创建
@@ -1162,13 +1240,18 @@ private fun MessageBubble(
     onToggleSelection: () -> Unit = {}
 ) {
     val isUser = message.isUser
-    val isDark = isSystemInDarkTheme()
-    // 用户气泡颜色：若设置了主题色覆盖则跟随主题，否则使用默认紫色
+    // 用户气泡基色：若设置了主题色覆盖则跟随主题，否则使用默认紫色
     val userBubble = ServiceContainer.prefs.themeColorOverride?.let { parseHexColor(it) }
-        ?: if (isDark) BubbleUser else BubbleUserLight
-    val bgColor = if (isUser) userBubble else (if (isDark) BubbleAssistant else BubbleAssistantLight)
-    // 文字颜色：用户气泡（紫色）始终白色；AI 气泡深色模式白色，浅色模式深色
-    val textColor = if (isUser) Color.White else (if (isDark) Color.White else MaterialTheme.colorScheme.onSurface)
+        ?: if (isSystemInDarkTheme()) BubbleUser else BubbleUserLight
+    // 用户气泡：基色 → 加深色的对角渐变，营造立体感
+    val userBrush = Brush.linearGradient(
+        colors = listOf(userBubble, deepenColor(userBubble))
+    )
+    // AI 气泡：半透明玻璃质感容器 + 发丝边框
+    val aiContainer = aiBubbleContainerColor()
+    val aiBorder = aiBubbleBorderColor()
+    // 文字颜色：用户气泡始终白色；AI 气泡跟随主题（尊重字体颜色覆盖）
+    val textColor = if (isUser) Color.White else MaterialTheme.colorScheme.onSurface
     val arrangement = if (isUser) Arrangement.End else Arrangement.Start
     val clipboard = LocalClipboardManager.current
 
@@ -1204,36 +1287,9 @@ private fun MessageBubble(
             )
             Spacer(Modifier.width(4.dp))
         }
-        // AI 头像（使用角色立绘，回退到图标）
+        // AI 头像（使用角色立绘，带回主题色光环，失败回退到图标）
         if (!isUser) {
-            val resolved = resolveAvatarUrl(portraitUrl)
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surface),
-                contentAlignment = Alignment.Center
-            ) {
-                if (!resolved.isNullOrBlank()) {
-                    SubcomposeAsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(resolved)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = "角色立绘",
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                        loading = {
-                            Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                        },
-                        error = {
-                            Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                        }
-                    )
-                } else {
-                    Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                }
-            }
+            ChatAvatar(portraitUrl = portraitUrl, size = 34.dp, ring = true)
             Spacer(Modifier.width(8.dp))
         }
 
@@ -1273,34 +1329,33 @@ private fun MessageBubble(
                 // 解析多媒体内容段
                 val contentSegments = parsedSegments[idx]
                 val segHasMultimedia = contentSegments.any { it.type != SegmentType.TEXT }
+                // 气泡形状：主圆角 20dp，连续多段时中间段一侧收小形成连贯“气泡链”
+                val segShape = RoundedCornerShape(
+                    topStart = 20.dp,
+                    topEnd = 20.dp,
+                    bottomStart = if (isUser) 20.dp else if (isLast) 20.dp else 6.dp,
+                    bottomEnd = if (isUser) if (isLast) 6.dp else 20.dp else 20.dp
+                )
                 Box(
                     modifier = Modifier
-                        .clip(
-                            RoundedCornerShape(
-                                topStart = 16.dp,
-                                topEnd = 16.dp,
-                                bottomStart = if (isUser) 16.dp else if (isLast) 16.dp else 4.dp,
-                                bottomEnd = if (isUser) if (isLast) 4.dp else 16.dp else 16.dp
-                            )
-                        )
-                        .background(bgColor)
+                        // 用户气泡带轻微投影，浮于背景之上
+                        .then(if (isUser) Modifier.shadow(2.dp, segShape, clip = false) else Modifier)
                         .then(
-                            if (isSelected) Modifier.border(
-                                width = 2.dp,
-                                color = MaterialTheme.colorScheme.primary,
-                                shape = RoundedCornerShape(
-                                    topStart = 16.dp,
-                                    topEnd = 16.dp,
-                                    bottomStart = if (isUser) 16.dp else if (isLast) 16.dp else 4.dp,
-                                    bottomEnd = if (isUser) if (isLast) 4.dp else 16.dp else 16.dp
-                                )
-                            ) else Modifier
+                            if (isUser) Modifier.background(brush = userBrush, shape = segShape)
+                            else Modifier.background(color = aiContainer, shape = segShape)
+                        )
+                        .then(
+                            when {
+                                isSelected -> Modifier.border(2.dp, MaterialTheme.colorScheme.primary, segShape)
+                                !isUser -> Modifier.border(1.dp, aiBorder, segShape)
+                                else -> Modifier
+                            }
                         )
                         .combinedClickable(
                             onClick = { if (selectionMode) onToggleSelection() },
                             onLongClick = onLongClick
                         )
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .padding(horizontal = 14.dp, vertical = 9.dp)
                 ) {
                     if (segHasMultimedia) {
                         // 多媒体内容：用渲染器渲染，宽度可超出普通文本宽度
@@ -1324,6 +1379,12 @@ private fun MessageBubble(
                     }
                 }
                 if (!isLast) Spacer(Modifier.height(10.dp))
+            }
+
+            // 流式生成中：气泡下方追加打字圆点，提示仍在输出
+            if (isStreamingPlaceholder) {
+                Spacer(Modifier.height(6.dp))
+                TypingDots(modifier = Modifier.padding(start = 6.dp))
             }
 
             // 如果有音频 URL，追加音频播放器
@@ -1525,76 +1586,207 @@ private fun BackgroundSettingCard(content: String?) {
     }
 }
 
-/** AI 思考中状态：骨架占位动画（shimmer），不展示进度卡片。 */
+/** AI 思考中状态：AI 气泡内的打字圆点动画（等待第一个流式 chunk）。 */
 @Composable
 private fun ThinkingIndicator(portraitUrl: String? = null) {
-    // shimmer 动画 alpha
-    val transition = rememberInfiniteTransition(label = "shimmer")
-    val alpha by transition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 0.7f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = androidx.compose.animation.core.LinearEasing),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-        ),
-        label = "shimmerAlpha"
-    )
-
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start,
         verticalAlignment = Alignment.Top
     ) {
-        // 头像骨架（若已有立绘则直接显示）
-        val resolved = resolveAvatarUrl(portraitUrl)
+        ChatAvatar(portraitUrl = portraitUrl, size = 34.dp, ring = true)
+        Spacer(Modifier.width(8.dp))
+        val shape = RoundedCornerShape(
+            topStart = 20.dp,
+            topEnd = 20.dp,
+            bottomStart = 6.dp,
+            bottomEnd = 20.dp
+        )
         Box(
             modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surface),
-            contentAlignment = Alignment.Center
+                .background(color = aiBubbleContainerColor(), shape = shape)
+                .border(1.dp, aiBubbleBorderColor(), shape)
+                .padding(horizontal = 16.dp, vertical = 13.dp)
         ) {
-            if (!resolved.isNullOrBlank()) {
-                SubcomposeAsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(resolved)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = "角色立绘",
-                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                    loading = {
-                        Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                    },
-                    error = {
-                        Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                    }
-                )
-            } else {
-                Icon(Icons.Outlined.SmartToy, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+            TypingDots()
+        }
+    }
+}
+
+/** 打字圆点：三个圆点错峰呼吸，用于思考占位与流式输出提示。 */
+@Composable
+private fun TypingDots(
+    modifier: Modifier = Modifier,
+    dotColor: Color = MaterialTheme.colorScheme.onSurfaceVariant
+) {
+    val transition = rememberInfiniteTransition(label = "typing_dots")
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        repeat(3) { index ->
+            val alpha by transition.animateFloat(
+                initialValue = 0.25f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(700),
+                    repeatMode = RepeatMode.Reverse,
+                    initialStartOffset = StartOffset(index * 180)
+                ),
+                label = "dot_alpha_$index"
+            )
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(dotColor.copy(alpha = alpha))
+            )
+        }
+    }
+}
+
+/** 角色头像：圆形立绘，可带主题色光环；加载中/失败回退到机器人图标。 */
+@Composable
+private fun ChatAvatar(
+    portraitUrl: String?,
+    size: androidx.compose.ui.unit.Dp,
+    ring: Boolean = false
+) {
+    val resolved = resolveAvatarUrl(portraitUrl)
+    Box(
+        modifier = Modifier
+            .size(size)
+            .then(
+                if (ring) Modifier.border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                    shape = CircleShape
+                ) else Modifier
+            )
+            .padding(if (ring) 2.dp else 0.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
+        contentAlignment = Alignment.Center
+    ) {
+        val fallback: @Composable () -> Unit = {
+            Icon(
+                Icons.Outlined.SmartToy,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(size * 0.55f)
+            )
+        }
+        if (!resolved.isNullOrBlank()) {
+            SubcomposeAsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(resolved)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = "角色立绘",
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+                loading = { fallback() },
+                error = { fallback() }
+            )
+        } else {
+            fallback()
+        }
+    }
+}
+
+/** AI 气泡容器色：深色为半透明玻璃质感，浅色为纯白卡片。 */
+@Composable
+private fun aiBubbleContainerColor(): Color =
+    if (isSystemInDarkTheme()) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f)
+    else MaterialTheme.colorScheme.surface
+
+/** AI 气泡发丝边框色。 */
+@Composable
+private fun aiBubbleBorderColor(): Color =
+    MaterialTheme.colorScheme.onSurface.copy(alpha = if (isSystemInDarkTheme()) 0.08f else 0.05f)
+
+/** 将颜色调深（降低明度、略提饱和度），用于用户气泡渐变末端。 */
+private fun deepenColor(color: Color, factor: Float = 0.78f): Color {
+    val argb = color.toArgb()
+    val hsv = FloatArray(3)
+    android.graphics.Color.RGBToHSV(
+        (argb shr 16) and 0xFF,
+        (argb shr 8) and 0xFF,
+        argb and 0xFF,
+        hsv
+    )
+    hsv[1] = (hsv[1] * 1.06f).coerceAtMost(1f)
+    hsv[2] = (hsv[2] * factor).coerceIn(0f, 1f)
+    return Color(android.graphics.Color.HSVToColor(hsv))
+}
+
+/** 日期分隔条：居中胶囊样式，在跨天消息之间插入。 */
+@Composable
+private fun DateSeparatorChip(label: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+                .padding(horizontal = 12.dp, vertical = 4.dp)
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+/** 提取消息时间所属的日期键（yyyy-MM-dd），无法解析返回 null。 */
+private fun dayKey(raw: String?): String? {
+    if (raw.isNullOrBlank()) return null
+    val s = raw.trim()
+    return try {
+        when {
+            // 纯数字时间戳（秒/毫秒）
+            s.matches(Regex("^\\d{10,13}$")) -> {
+                val ms = if (s.length == 10) s.toLong() * 1000 else s.toLong()
+                java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+                    .format(java.util.Date(ms))
             }
+            // ISO 或 “日期 时间” 格式：取前 10 位日期
+            s.length >= 10 && s.substring(0, 10).matches(Regex("\\d{4}-\\d{2}-\\d{2}")) ->
+                s.substring(0, 10)
+            else -> null
         }
-        Spacer(Modifier.width(8.dp))
-        // 骨架气泡：两行占位条
-        Column(modifier = Modifier.widthIn(max = 220.dp)) {
-            // 第一行气泡骨架
-            Box(
-                modifier = Modifier
-                    .width(180.dp)
-                    .height(16.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background((if (isSystemInDarkTheme()) BubbleAssistant else BubbleAssistantLight).copy(alpha = alpha))
-            )
-            Spacer(Modifier.height(8.dp))
-            // 第二行气泡骨架（较短）
-            Box(
-                modifier = Modifier
-                    .width(120.dp)
-                    .height(16.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background((if (isSystemInDarkTheme()) BubbleAssistant else BubbleAssistantLight).copy(alpha = alpha))
-            )
+    } catch (e: Exception) {
+        null
+    }
+}
+
+/** 把日期键（yyyy-MM-dd）转为中文分隔标签：今天 / 昨天 / M月d日 / yyyy年M月d日。 */
+private fun dayLabel(day: String): String {
+    return try {
+        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+        val date = fmt.parse(day) ?: return day
+        val now = java.util.Calendar.getInstance()
+        if (day == fmt.format(now.time)) return "今天"
+        now.add(java.util.Calendar.DAY_OF_YEAR, -1)
+        if (day == fmt.format(now.time)) return "昨天"
+        val cal = java.util.Calendar.getInstance().apply { time = date }
+        val year = cal.get(java.util.Calendar.YEAR)
+        val month = cal.get(java.util.Calendar.MONTH) + 1
+        val dom = cal.get(java.util.Calendar.DAY_OF_MONTH)
+        if (year == java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)) {
+            "${month}月${dom}日"
+        } else {
+            "${year}年${month}月${dom}日"
         }
+    } catch (e: Exception) {
+        day
     }
 }
 

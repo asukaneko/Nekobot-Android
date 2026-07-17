@@ -5,6 +5,13 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -43,12 +50,17 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
+import androidx.compose.material.icons.filled.KeyboardHide
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.VerticalSplit
+import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -72,6 +84,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -83,6 +97,7 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonObject
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.ChatInputLayoutMode
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.components.GlassCard
@@ -151,6 +166,12 @@ fun ModernChatScreen(
 )
 }
 
+private enum class ModernComposerAction {
+    VOICE,
+    SEND,
+    STOP
+}
+
 @Composable
 private fun ModernChatComposer(
     modifier: Modifier,
@@ -174,6 +195,10 @@ private fun ModernChatComposer(
 
     var input by remember { mutableStateOf("") }
     var panelExpanded by remember { mutableStateOf(false) }
+    var inputExpanded by remember { mutableStateOf(false) }
+    var chatInputLayout by remember {
+        mutableStateOf(ServiceContainer.prefs.chatInputLayoutMode)
+    }
     var pendingPlotChoiceId by remember { mutableStateOf<String?>(null) }
     var filePickMode by remember { mutableStateOf<String?>(null) }
     var fileBusy by remember { mutableStateOf(false) }
@@ -349,6 +374,31 @@ private fun ModernChatComposer(
     val messageCount = messages.count { !it.isThinkingCard }
     val charCount = input.length
     val tokenEstimate = estimateModernChatDraftTokens(input)
+    val hasPlotSurface = plotChoicesLoading || plotChoices.isNotEmpty()
+    val inputVisible = shouldShowChatInput(
+        layoutMode = chatInputLayout,
+        inputExpanded = inputExpanded,
+        hasPlotSurface = hasPlotSurface,
+        hasDraft = input.isNotBlank()
+    )
+    val toggleInput = {
+        if (input.isBlank()) {
+            inputExpanded = !inputVisible
+            if (inputVisible) keyboard?.hide()
+        }
+    }
+    val togglePanel = {
+        panelExpanded = !panelExpanded
+        if (panelExpanded) keyboard?.hide()
+    }
+    val toggleLayout = {
+        chatInputLayout = if (chatInputLayout == ChatInputLayoutMode.MERGED) {
+            ChatInputLayoutMode.SEPARATE
+        } else {
+            ChatInputLayoutMode.MERGED
+        }
+        ServiceContainer.prefs.chatInputLayoutMode = chatInputLayout
+    }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -367,12 +417,24 @@ private fun ModernChatComposer(
                     choices = plotChoices,
                     selectedId = pendingPlotChoiceId,
                     enabled = !sending,
+                    layoutMode = chatInputLayout,
+                    inputVisible = inputVisible,
+                    panelExpanded = panelExpanded,
+                    sending = sending,
                     onSelect = { choice ->
                         pendingPlotChoiceId = choice.id
                         input = choice.title
+                        inputExpanded = true
                         closePanel()
                     },
-                    onRegenerate = onRegeneratePlotChoices
+                    onToggleInput = toggleInput,
+                    onTogglePanel = togglePanel,
+                    onToggleLayout = toggleLayout,
+                    onRegenerate = {
+                        pendingPlotChoiceId = null
+                        onRegeneratePlotChoices()
+                    },
+                    onStop = onStop
                 )
             }
 
@@ -405,135 +467,199 @@ private fun ModernChatComposer(
                 )
             }
 
-            if (input.isNotBlank()) {
-                Text(
-                    text = "$charCount 字 / ~$tokenEstimate tok",
-                    modifier = Modifier
-                        .align(Alignment.End)
-                        .padding(end = 20.dp, top = 3.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                shape = RoundedCornerShape(30.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.78f),
-                border = BorderStroke(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.09f)
-                ),
-                shadowElevation = 4.dp
+            AnimatedVisibility(
+                visible = inputVisible,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
             ) {
-                Row(
-                    modifier = Modifier.padding(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        onClick = {
-                            panelExpanded = !panelExpanded
-                            if (panelExpanded) keyboard?.hide()
-                        },
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (panelExpanded) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-                                else MaterialTheme.colorScheme.surface.copy(alpha = 0.55f)
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    val composerContainerColor = MaterialTheme.colorScheme.surfaceVariant
+
+                    // 草稿统计：胶囊样式，右对齐悬浮于输入框上方
+                    if (input.isNotBlank()) {
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.End)
+                                .padding(end = 20.dp, top = 4.dp),
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                        ) {
+                            Text(
+                                text = "$charCount 字 / ~$tokenEstimate tok",
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                    ) {
-                        Icon(
-                            imageVector = if (panelExpanded) Icons.Filled.Close else Icons.Filled.Add,
-                            contentDescription = if (panelExpanded) "关闭操作菜单" else "更多操作",
-                            tint = if (panelExpanded) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(24.dp)
-                        )
+                        }
                     }
 
-                    BasicTextField(
-                        value = input,
-                        onValueChange = {
-                            if (panelExpanded) closePanel()
-                            input = it
-                            if (pendingPlotChoiceId != null && it != plotChoices.firstOrNull { c -> c.id == pendingPlotChoiceId }?.title) {
-                                pendingPlotChoiceId = null
-                            }
-                        },
-                        enabled = !sending,
-                        maxLines = 5,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(
-                            color = MaterialTheme.colorScheme.onSurface
-                        ),
+                    Surface(
                         modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 44.dp, max = 128.dp)
+                            .fillMaxWidth()
                             .padding(horizontal = 12.dp, vertical = 8.dp),
-                        decorationBox = { innerTextField ->
-                            Box(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentAlignment = Alignment.CenterStart
+                        shape = RoundedCornerShape(30.dp),
+                        color = composerContainerColor,
+                        border = BorderStroke(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.09f)
+                        ),
+                        shadowElevation = 4.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // 面板开关按钮：展开/收起时背景与图标颜色平滑过渡
+                            val panelBtnBg by animateColorAsState(
+                                targetValue = if (panelExpanded) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                                else MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+                                label = "panel_btn_bg"
+                            )
+                            val panelBtnTint by animateColorAsState(
+                                targetValue = if (panelExpanded) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                label = "panel_btn_tint"
+                            )
+                            IconButton(
+                                onClick = togglePanel,
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(panelBtnBg)
                             ) {
-                                if (input.isEmpty()) {
-                                    Text(
-                                        text = if (sending) "AI 思考中..." else "输入消息...",
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+                                Crossfade(targetState = panelExpanded, label = "panel_icon") { expanded ->
+                                    Icon(
+                                        imageVector = if (expanded) Icons.Filled.Close else Icons.Filled.Add,
+                                        contentDescription = if (expanded) "关闭操作菜单" else "更多操作",
+                                        tint = panelBtnTint,
+                                        modifier = Modifier.size(24.dp)
                                     )
                                 }
-                                innerTextField()
                             }
-                        }
-                    )
 
-                    val actionColor = when {
-                        sending -> Color(0xFFFF6B6B)
-                        input.isNotBlank() -> MaterialTheme.colorScheme.primary
-                        else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.55f)
-                    }
-                    IconButton(
-                        onClick = {
-                            when {
-                                sending -> onStop()
-                                input.isNotBlank() -> {
-                                    val text = input
-                                    val choiceId = pendingPlotChoiceId
-                                    input = ""
-                                    pendingPlotChoiceId = null
-                                    closePanel()
-                                    keyboard?.hide()
-                                    onSend(text, choiceId)
-                                }
-                                else -> requestMicPermission.launch(android.Manifest.permission.RECORD_AUDIO)
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 44.dp, max = 128.dp)
+                                    .clip(RoundedCornerShape(22.dp))
+                                    .background(composerContainerColor),
+                                contentAlignment = Alignment.TopStart
+                            ) {
+                                BasicTextField(
+                                    value = input,
+                                    onValueChange = {
+                                        if (panelExpanded) closePanel()
+                                        input = it
+                                        if (pendingPlotChoiceId != null && it != plotChoices.firstOrNull { c -> c.id == pendingPlotChoiceId }?.title) {
+                                            pendingPlotChoiceId = null
+                                        }
+                                    },
+                                    enabled = !sending,
+                                    maxLines = 5,
+                                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    decorationBox = { innerTextField ->
+                                        Box(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            contentAlignment = Alignment.TopStart
+                                        ) {
+                                            if (input.isEmpty()) {
+                                                Text(
+                                                    text = if (sending) "AI 思考中..." else "输入消息...",
+                                                    style = MaterialTheme.typography.bodyLarge,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+                                                )
+                                            }
+                                            innerTextField()
+                                        }
+                                    }
+                                )
                             }
-                        },
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(actionColor)
-                    ) {
-                        when {
-                            sending -> Icon(
-                                Icons.Filled.Stop,
-                                contentDescription = "停止生成",
-                                tint = Color.White,
-                                modifier = Modifier.size(21.dp)
+
+                            // 主操作按钮：背景和图标同步过渡，避免语音/发送/停止状态生硬跳变
+                            val action = when {
+                                sending -> ModernComposerAction.STOP
+                                input.isNotBlank() -> ModernComposerAction.SEND
+                                else -> ModernComposerAction.VOICE
+                            }
+                            val idleActionColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f)
+                            val actionStartColor by animateColorAsState(
+                                targetValue = when (action) {
+                                    ModernComposerAction.VOICE -> idleActionColor
+                                    ModernComposerAction.SEND -> MaterialTheme.colorScheme.primary
+                                    ModernComposerAction.STOP -> Color(0xFFFF6B6B)
+                                },
+                                animationSpec = tween(durationMillis = 180),
+                                label = "composer_action_start"
                             )
-                            input.isNotBlank() -> Icon(
-                                Icons.AutoMirrored.Filled.Send,
-                                contentDescription = "发送",
-                                tint = Color.White,
-                                modifier = Modifier.size(21.dp)
+                            val actionEndColor by animateColorAsState(
+                                targetValue = when (action) {
+                                    ModernComposerAction.VOICE -> idleActionColor
+                                    ModernComposerAction.SEND -> MaterialTheme.colorScheme.primary.copy(alpha = 0.72f)
+                                    ModernComposerAction.STOP -> Color(0xFFFF6B6B)
+                                },
+                                animationSpec = tween(durationMillis = 180),
+                                label = "composer_action_end"
                             )
-                            else -> Icon(
-                                Icons.Filled.Mic,
-                                contentDescription = "语音输入",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(21.dp)
-                            )
+                            IconButton(
+                                onClick = {
+                                    when (action) {
+                                        ModernComposerAction.STOP -> onStop()
+                                        ModernComposerAction.SEND -> {
+                                            val text = input
+                                            val choiceId = pendingPlotChoiceId
+                                            input = ""
+                                            inputExpanded = false
+                                            pendingPlotChoiceId = null
+                                            closePanel()
+                                            keyboard?.hide()
+                                            onSend(text, choiceId)
+                                        }
+                                        ModernComposerAction.VOICE -> requestMicPermission.launch(
+                                            android.Manifest.permission.RECORD_AUDIO
+                                        )
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        Brush.linearGradient(
+                                            listOf(actionStartColor, actionEndColor)
+                                        )
+                                    )
+                            ) {
+                                Crossfade(
+                                    targetState = action,
+                                    animationSpec = tween(durationMillis = 180),
+                                    label = "composer_action_icon"
+                                ) { currentAction ->
+                                    when (currentAction) {
+                                        ModernComposerAction.STOP -> Icon(
+                                            Icons.Filled.Stop,
+                                            contentDescription = "停止生成",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(21.dp)
+                                        )
+                                        ModernComposerAction.SEND -> Icon(
+                                            Icons.AutoMirrored.Filled.Send,
+                                            contentDescription = "发送",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(21.dp)
+                                        )
+                                        ModernComposerAction.VOICE -> Icon(
+                                            Icons.Filled.Mic,
+                                            contentDescription = "语音输入",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(21.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -591,19 +717,57 @@ private fun ModernChatComposer(
     }
 
     if (isRecording) {
+        // 录音脉冲动画：外圈光晕随节奏缩放、渐隐
+        val pulse = rememberInfiniteTransition(label = "mic_pulse")
+        val haloScale by pulse.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.25f,
+            animationSpec = infiniteRepeatable(tween(650), RepeatMode.Reverse),
+            label = "mic_halo_scale"
+        )
+        val haloAlpha by pulse.animateFloat(
+            initialValue = 0.30f,
+            targetValue = 0.06f,
+            animationSpec = infiniteRepeatable(tween(650), RepeatMode.Reverse),
+            label = "mic_halo_alpha"
+        )
         AlertDialog(
             onDismissRequest = {},
             title = { Text("正在录音") },
             text = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Filled.Mic,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(42.dp)
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Box(
+                            modifier = Modifier
+                                .size(72.dp)
+                                .scale(haloScale)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = haloAlpha))
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Filled.Mic,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        modernFormatDuration(recordingDuration),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
                     )
-                    Spacer(Modifier.height(10.dp))
-                    Text(modernFormatDuration(recordingDuration))
                 }
             },
             confirmButton = {
@@ -636,8 +800,16 @@ private fun ModernPlotChoices(
     choices: List<PlotChoice>,
     selectedId: String?,
     enabled: Boolean,
+    layoutMode: ChatInputLayoutMode,
+    inputVisible: Boolean,
+    panelExpanded: Boolean,
+    sending: Boolean,
     onSelect: (PlotChoice) -> Unit,
-    onRegenerate: () -> Unit
+    onToggleInput: () -> Unit,
+    onTogglePanel: () -> Unit,
+    onToggleLayout: () -> Unit,
+    onRegenerate: () -> Unit,
+    onStop: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -661,16 +833,84 @@ private fun ModernPlotChoices(
                 fontWeight = FontWeight.SemiBold
             )
             Spacer(Modifier.weight(1f))
-            IconButton(
-                onClick = onRegenerate,
-                enabled = enabled && !loading,
-                modifier = Modifier.size(34.dp)
-            ) {
-                Icon(Icons.Filled.Refresh, contentDescription = "换一组", modifier = Modifier.size(19.dp))
+            if (layoutMode == ChatInputLayoutMode.MERGED) {
+                IconButton(onClick = onTogglePanel, modifier = Modifier.size(34.dp)) {
+                    Icon(
+                        imageVector = if (panelExpanded) Icons.Filled.MoreVert else Icons.Filled.Add,
+                        contentDescription = if (panelExpanded) "收起更多操作" else "更多操作",
+                        tint = if (panelExpanded) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
+                IconButton(onClick = onToggleInput, modifier = Modifier.size(34.dp)) {
+                    Icon(
+                        imageVector = if (inputVisible) Icons.Filled.KeyboardHide else Icons.Filled.Keyboard,
+                        contentDescription = if (inputVisible) "隐藏输入框" else "展开输入框",
+                        tint = if (inputVisible) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
+            }
+            IconButton(onClick = onToggleLayout, modifier = Modifier.size(34.dp)) {
+                Icon(
+                    imageVector = if (layoutMode == ChatInputLayoutMode.MERGED) {
+                        Icons.Filled.VerticalSplit
+                    } else {
+                        Icons.Filled.ViewAgenda
+                    },
+                    contentDescription = if (layoutMode == ChatInputLayoutMode.MERGED) {
+                        "切换为分离布局"
+                    } else {
+                        "切换为合并布局"
+                    },
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(19.dp)
+                )
+            }
+            if (sending) {
+                IconButton(onClick = onStop, modifier = Modifier.size(34.dp)) {
+                    Icon(
+                        Icons.Filled.Stop,
+                        contentDescription = "停止生成",
+                        tint = Color(0xFFFF6B6B),
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
+            } else {
+                IconButton(
+                    onClick = onRegenerate,
+                    enabled = enabled && !loading,
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Refresh,
+                        contentDescription = "换一组",
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
             }
         }
 
         if (loading) {
+            // 骨架微光动画：等待剧情选项生成
+            val transition = rememberInfiniteTransition(label = "plot_skeleton")
+            val alpha by transition.animateFloat(
+                initialValue = 0.35f,
+                targetValue = 0.8f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(800),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "plot_alpha"
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(7.dp)
@@ -679,9 +919,9 @@ private fun ModernPlotChoices(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
+                            .height(52.dp)
                             .clip(RoundedCornerShape(14.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha))
                     )
                 }
             }
@@ -691,25 +931,53 @@ private fun ModernPlotChoices(
                 horizontalArrangement = Arrangement.spacedBy(7.dp)
             ) {
                 choices.take(3).forEach { choice ->
+                    // 剧情等级配色：转折点红、重要琥珀、普通主题色
+                    val levelColor = when (choice.level) {
+                        "turning_point" -> Color(0xFFFF6B6B)
+                        "important" -> Color(0xFFFFB347)
+                        else -> MaterialTheme.colorScheme.primary
+                    }
+                    val selected = choice.id == selectedId || choice.selected
                     Surface(
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(min = 52.dp)
                             .clickable(enabled = enabled) { onSelect(choice) },
                         shape = RoundedCornerShape(14.dp),
-                        color = if (choice.id == selectedId || choice.selected) {
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                        } else MaterialTheme.colorScheme.surfaceVariant
+                        color = if (selected) levelColor.copy(alpha = 0.15f)
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                        border = if (selected) BorderStroke(1.dp, levelColor.copy(alpha = 0.6f)) else null
                     ) {
-                        Text(
-                            text = choice.title.ifBlank { "选项" },
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 8.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Column(modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)) {
+                            // 等级标识：色点 + 文字
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(5.dp)
+                                        .clip(CircleShape)
+                                        .background(levelColor)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = when (choice.level) {
+                                        "turning_point" -> "转折"
+                                        "important" -> "重要"
+                                        else -> "普通"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = levelColor
+                                )
+                            }
+                            Spacer(Modifier.height(3.dp))
+                            Text(
+                                text = choice.title.ifBlank { "选项" },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
