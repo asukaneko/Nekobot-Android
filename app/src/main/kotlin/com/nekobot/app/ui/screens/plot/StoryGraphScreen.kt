@@ -169,16 +169,6 @@ class StoryGraphViewModel : BaseViewModel() {
         )
     }
 
-    fun regenerateChoices(sessionId: String) {
-        launchResult(
-            block = { unified.plotRegenerateChoices(sessionId) },
-            onSuccess = {
-                showToast(string(R.string.story_choices_regenerated))
-                loadGraph(sessionId)
-            }
-        )
-    }
-
     fun getMermaid(sessionId: String, onResult: (String) -> Unit) {
         launchResult(
             block = { unified.plotMermaid(sessionId) },
@@ -306,7 +296,6 @@ fun StoryGraphScreen(
         },
         bottomBar = {
             BottomActionBar(
-                onRegenerate = { vm.regenerateChoices(sessionId) },
                 onMermaid = {
                     vm.getMermaid(sessionId) { text ->
                         mermaidText = text
@@ -1575,10 +1564,9 @@ private fun buildMermaidHtml(mermaidCode: String): String {
 
 // ==================== 辅助组件 ====================
 
-/** 底部操作栏：重新生成选项 + Mermaid 图查看 */
+/** 底部操作栏：Mermaid 图查看 */
 @Composable
 private fun BottomActionBar(
-    onRegenerate: () -> Unit,
     onMermaid: () -> Unit
 ) {
     Surface(
@@ -1591,17 +1579,9 @@ private fun BottomActionBar(
                 .padding(12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            OutlinedButton(
-                onClick = onRegenerate,
-                modifier = Modifier.weight(1f)
-            ) {
-                Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(stringResource(R.string.story_regenerate_options))
-            }
             Button(
                 onClick = onMermaid,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
             ) {
                 Icon(Icons.Filled.AccountTree, contentDescription = null, modifier = Modifier.size(18.dp))

@@ -2454,13 +2454,6 @@ class ChatViewModel : BaseViewModel() {
         if (!isLocalMode) {
             connectSocket(sessionId)
         }
-        // 剧情选项：本地模式和服务器模式都需加载
-        viewModelScope.launch {
-            kotlinx.coroutines.delay(300)
-            if (_session.value?.plotMode == true) {
-                if (isLocalMode) loadLocalPlotChoices() else loadPlotChoices()
-            }
-        }
     }
 
     /** 连接 Socket.IO 并加入会话 room，监听实时事件。 */
@@ -2593,7 +2586,16 @@ class ChatViewModel : BaseViewModel() {
     private fun loadSession(sessionId: String) {
         launchResult(
             block = { unified.getSession(sessionId) },
-            onSuccess = { _session.value = it }
+            onSuccess = {
+                _session.value = it
+                // 剧情模式：立即标记加载中，避免输入框先出现再消失的滑动动画
+                if (it?.plotMode == true) {
+                    _plotChoicesLoading.value = true
+                    viewModelScope.launch {
+                        if (isLocalMode) loadLocalPlotChoices() else loadPlotChoices()
+                    }
+                }
+            }
         )
     }
 

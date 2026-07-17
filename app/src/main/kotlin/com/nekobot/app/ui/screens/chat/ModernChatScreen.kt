@@ -12,6 +12,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -400,6 +401,11 @@ private fun ModernChatComposer(
         hasPlotSurface = hasPlotSurface,
         hasDraft = input.isNotBlank()
     )
+    // 跳过输入框首次退出动画：进入剧情模式会话时避免选项框从上方滑下的效果
+    var skipInputExit by remember { mutableStateOf(true) }
+    LaunchedEffect(hasPlotSurface) {
+        if (hasPlotSurface) skipInputExit = false
+    }
     val toggleInput = {
         if (input.isBlank()) {
             inputExpanded = !inputVisible
@@ -491,7 +497,7 @@ private fun ModernChatComposer(
             AnimatedVisibility(
                 visible = inputVisible,
                 enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
+                exit = if (skipInputExit) ExitTransition.None else shrinkVertically() + fadeOut()
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     val composerContainerColor = MaterialTheme.colorScheme.surfaceVariant
