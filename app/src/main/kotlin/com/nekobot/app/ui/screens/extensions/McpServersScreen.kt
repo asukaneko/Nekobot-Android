@@ -54,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
@@ -299,6 +300,7 @@ fun McpServersScreen(onBack: () -> Unit, viewModel: McpServersViewModel = viewMo
 
     // 工具列表弹窗
     tools?.let { toolsJson ->
+        val toolsList = parseMcpTools(toolsJson)
         NekoDialog(
             onDismiss = { viewModel.clearTools() },
             title = stringResource(R.string.mcp_tools_title),
@@ -307,14 +309,190 @@ fun McpServersScreen(onBack: () -> Unit, viewModel: McpServersViewModel = viewMo
             cancelText = null,
             onCancel = null
         ) {
+            if (toolsList.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.mcp_tools_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Text(
+                    text = stringResource(R.string.mcp_tools_count, toolsList.size),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    toolsList.forEach { tool -> McpToolCard(tool) }
+                }
+            }
+        }
+    }
+}
+
+/** MCP 工具简要信息（解析自 tools JSON）。 */
+private data class McpToolInfo(
+    val name: String,
+    val description: String,
+    val parameters: List<McpToolParam>
+)
+
+private data class McpToolParam(
+    val name: String,
+    val type: String,
+    val description: String,
+    val required: Boolean
+)
+
+/** 解析 mcpServerTools 返回的 JSON（结构：{tools:[...], count:N} 或直接为数组）。 */
+private fun parseMcpTools(element: JsonElement): List<McpToolInfo> {
+    val array = when {
+        element.isJsonArray -> element.asJsonArray
+        element.isJsonObject -> {
+            val obj = element.asJsonObject
+            when {
+                obj.has("tools") && obj.get("tools").isJsonArray -> obj.getAsJsonArray("tools")
+                obj.has("result") && obj.get("result").isJsonObject ->
+                    obj.getAsJsonObject("result").takeIf { it.has("tools") }
+                        ?.getAsJsonArray("tools") ?: JsonArray()
+                else -> JsonArray()
+            }
+        }
+        else -> JsonArray()
+    }
+    return array.mapNotNull { item ->
+        if (!item.isJsonObject) return@mapNotNull null
+        val obj = item.asJsonObject
+        val name = obj.get("name")?.takeIf { it.isJsonPrimitive }?.asString ?: return@mapNotNull null
+        val description = obj.get("description")?.takeIf { it.isJsonPrimitive }?.asString.orEmpty()
+        val schemaEl = obj.get("input_schema") ?: obj.get("inputSchema") ?: obj.get("parameters")
+        val params = parseMcpToolParams(schemaEl)
+        McpToolInfo(name = name, description = description, parameters = params)
+    }
+}
+
+private fun parseMcpToolParams(schemaEl: JsonElement?): List<McpToolParam> {
+    if (schemaEl == null || !schemaEl.isJsonObject) return emptyList()
+    val schema = schemaEl.asJsonObject
+    val props = schema.getAsJsonObject("properties") ?: return emptyList()
+    val requiredList = schema.getAsJsonArray("required")
+        ?.mapNotNull { it.takeIf(JsonElement::isJsonPrimitive)?.asString }
+        ?.toSet().orEmpty()
+    return props.entrySet().mapNotNull { (key, value) ->
+        if (!value.isJsonObject) return@mapNotNull null
+        val propObj = value.asJsonObject
+        val type = propObj.get("type")?.takeIf { it.isJsonPrimitive }?.asString ?: "any"
+        val desc = propObj.get("description")?.takeIf { it.isJsonPrimitive }?.asString.orEmpty()
+        McpToolParam(name = key, type = type, description = desc, required = key in requiredList)
+    }.sortedWith(compareByDescending<McpToolParam> { it.required }.thenBy { it.name })
+}
+
+/** 单个 MCP 工具卡片：展示工具名、描述、参数列表。 */
+@Composable
+private fun McpToolCard(tool: McpToolInfo) {
+    GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 14) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = toolsJson.toString(),
+                text = tool.name,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (tool.parameters.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.mcp_tool_count, tool.parameters.size),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+        if (tool.description.isNotBlank()) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = tool.description,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 360.dp)
-                    .verticalScroll(rememberScrollState())
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (tool.parameters.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            tool.parameters.forEach { param -> McpToolParamRow(param) }
+        } else {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = stringResource(R.string.mcp_tool_no_params),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun McpToolParamRow(param: McpToolParam) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(
+                    if (param.required) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+                .padding(horizontal = 6.dp, vertical = 2.dp)
+        ) {
+            Text(
+                text = param.name,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (param.required) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Medium
+            )
+        }
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = param.type,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (param.required) {
+            Spacer(Modifier.width(4.dp))
+            Text(
+                text = stringResource(R.string.mcp_tool_required),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        if (param.description.isNotBlank()) {
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = param.description,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
             )
         }
     }

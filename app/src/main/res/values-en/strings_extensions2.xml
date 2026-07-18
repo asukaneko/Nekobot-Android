@@ -40,6 +40,31 @@
     <string name="skills_parameters_label">Parameter schema (JSON)</string>
     <string name="skills_parameters_invalid">The parameter schema is not valid JSON</string>
 
+    <!-- ==================== Skill folder detail ==================== -->
+    <string name="skill_detail_title">Skill Folder</string>
+    <string name="skill_open_storage">View folder</string>
+    <string name="skill_files_section">Files</string>
+    <string name="skill_file_size">%1$s</string>
+    <string name="skill_file_open">View</string>
+    <string name="skill_file_too_large">File too large to preview</string>
+    <string name="skill_file_binary">Binary file cannot be previewed</string>
+    <string name="skill_file_read_error">Failed to read file</string>
+    <string name="skill_file_group_core">Core</string>
+    <string name="skill_file_group_reference">Reference</string>
+    <string name="skill_file_group_license">License</string>
+    <string name="skill_file_group_script">Scripts</string>
+    <string name="skill_file_group_resource">Resources</string>
+    <string name="skill_file_group_other">Other</string>
+    <string name="skill_file_no_files">No files to browse for this Skill</string>
+    <string name="skill_file_preview_title">File preview</string>
+
+    <!-- ==================== MCP tool cards ==================== -->
+    <string name="mcp_tools_count">%1$d tool(s) in total</string>
+    <string name="mcp_tool_no_params">No parameters</string>
+    <string name="mcp_tool_required">Required</string>
+    <string name="mcp_tools_empty">No tools available for this MCP server</string>
+    <string name="mcp_tool_param_type">Type: %1$s</string>
+
     <!-- ==================== Tools ==================== -->
     <string name="tools_title">Tools</string>
     <string name="tools_new">New Tool</string>

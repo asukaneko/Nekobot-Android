@@ -40,6 +40,31 @@
     <string name="skills_parameters_label">参数定义（JSON）</string>
     <string name="skills_parameters_invalid">参数定义不是有效的 JSON</string>
 
+    <!-- ==================== Skill 文件夹详情 ==================== -->
+    <string name="skill_detail_title">Skill 文件夹</string>
+    <string name="skill_open_storage">查看文件夹</string>
+    <string name="skill_files_section">文件列表</string>
+    <string name="skill_file_size">%1$s</string>
+    <string name="skill_file_open">查看</string>
+    <string name="skill_file_too_large">文件过大，无法预览</string>
+    <string name="skill_file_binary">二进制文件无法预览</string>
+    <string name="skill_file_read_error">读取文件失败</string>
+    <string name="skill_file_group_core">核心</string>
+    <string name="skill_file_group_reference">参考</string>
+    <string name="skill_file_group_license">许可证</string>
+    <string name="skill_file_group_script">脚本</string>
+    <string name="skill_file_group_resource">资源</string>
+    <string name="skill_file_group_other">其他</string>
+    <string name="skill_file_no_files">该 Skill 没有可浏览的文件</string>
+    <string name="skill_file_preview_title">文件预览</string>
+
+    <!-- ==================== MCP 工具卡片 ==================== -->
+    <string name="mcp_tools_count">共 %1$d 个工具</string>
+    <string name="mcp_tool_no_params">无参数</string>
+    <string name="mcp_tool_required">必填</string>
+    <string name="mcp_tools_empty">该 MCP 服务暂无工具</string>
+    <string name="mcp_tool_param_type">类型: %1$s</string>
+
     <!-- ==================== Tools 配置 ==================== -->
     <string name="tools_title">Tools 配置</string>
     <string name="tools_new">新建工具</string>

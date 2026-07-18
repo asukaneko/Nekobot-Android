@@ -21,6 +21,31 @@
     <string name="skills_aliases_label">エイリアス (カンマ区切り)</string>
     <string name="skills_enabled_label">有効</string>
 
+    <!-- ==================== Skill フォルダー詳細 ==================== -->
+    <string name="skill_detail_title">Skill フォルダー</string>
+    <string name="skill_open_storage">フォルダーを表示</string>
+    <string name="skill_files_section">ファイル一覧</string>
+    <string name="skill_file_size">%1$s</string>
+    <string name="skill_file_open">表示</string>
+    <string name="skill_file_too_large">ファイルが大きすぎてプレビューできません</string>
+    <string name="skill_file_binary">バイナリファイルはプレビューできません</string>
+    <string name="skill_file_read_error">ファイルの読み取りに失敗しました</string>
+    <string name="skill_file_group_core">コア</string>
+    <string name="skill_file_group_reference">リファレンス</string>
+    <string name="skill_file_group_license">ライセンス</string>
+    <string name="skill_file_group_script">スクリプト</string>
+    <string name="skill_file_group_resource">リソース</string>
+    <string name="skill_file_group_other">その他</string>
+    <string name="skill_file_no_files">参照可能なファイルがありません</string>
+    <string name="skill_file_preview_title">ファイル プレビュー</string>
+
+    <!-- ==================== MCP ツールカード ==================== -->
+    <string name="mcp_tools_count">合計 %1$d 個のツール</string>
+    <string name="mcp_tool_no_params">パラメーターなし</string>
+    <string name="mcp_tool_required">必須</string>
+    <string name="mcp_tools_empty">この MCP サーバーにはツールがありません</string>
+    <string name="mcp_tool_param_type">タイプ: %1$s</string>
+
     <!-- ==================== Tools ==================== -->
     <string name="tools_title">Tools</string>
     <string name="tools_new">新規 Tool</string>

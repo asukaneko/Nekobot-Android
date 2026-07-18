@@ -707,6 +707,10 @@ class UnifiedRepository(
         else remote.toggleWorkflow(id)
     suspend fun executeWorkflow(id: String): Resource<JsonElement> =
         if (isLocal) Resource.Success(local.executeWorkflow(id)) else remote.executeWorkflow(id)
+    suspend fun aiGenerateWorkflow(description: String): Resource<WorkflowRequest> =
+        if (isLocal) runCatching { Resource.Success(local.aiGenerateWorkflow(description)) }
+            .getOrElse { Resource.Error(it.message ?: "AI 生成失败") }
+        else Resource.Error("远程模式暂不支持 AI 生成工作流，请在本地模式使用")
 
     // ---- 知识库 ----
     suspend fun listKnowledge(): Resource<List<KnowledgeDocument>> =
@@ -738,6 +742,10 @@ class UnifiedRepository(
             Resource.Success(latest)
         }.getOrElse { Resource.Error(it.message ?: "加载 Skill 文件失败") }
         else remote.getSkillStorage(skill)
+    suspend fun readSkillFile(skillName: String, relativePath: String): Resource<String> =
+        if (isLocal) runCatching { Resource.Success(local.readSkillFile(skillName, relativePath)) }
+            .getOrElse { Resource.Error(it.message ?: "读取文件失败") }
+        else Resource.Error("远程模式不支持读取 Skill 文件")
     suspend fun createSkill(req: SkillRequest): Resource<Skill> {
         val normalized = runCatching { validateSkillNameValue(req.name) }
             .getOrElse { return Resource.Error(it.message ?: "Skill 名称无效") }

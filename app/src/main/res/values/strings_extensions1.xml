@@ -152,4 +152,25 @@
     <string name="knowledge_content_required">内容（必填）</string>
     <string name="knowledge_source_label">来源</string>
     <string name="knowledge_tags_label">标签（逗号分隔）</string>
+
+    <!-- ==================== Hook 模板与高级字段 ==================== -->
+    <string name="hooks_builtin_templates">示例模板</string>
+    <string name="hooks_apply_template">应用模板</string>
+    <string name="hooks_template_applied">已套用模板内容</string>
+    <string name="hooks_conditions_label">条件 (JSON)</string>
+    <string name="hooks_conditions_hint">例如 {\"affection_gte\": 80}</string>
+    <string name="hooks_actions_label">动作 (JSON 数组)</string>
+    <string name="hooks_actions_hint">例如 [{\"type\":\"log\",\"message\":\"...\"}]</string>
+    <string name="hooks_json_invalid">JSON 格式无效</string>
+
+    <!-- ==================== 工作流 AI 生成 ==================== -->
+    <string name="workflows_ai_generate">AI 生成</string>
+    <string name="workflows_ai_generate_title">AI 生成工作流</string>
+    <string name="workflows_ai_prompt">描述你想要的工作流</string>
+    <string name="workflows_ai_prompt_hint">例如：每天早上 8 点总结上次会话内容并发送提醒</string>
+    <string name="workflows_ai_generating">正在生成…</string>
+    <string name="workflows_ai_generate_failed">生成失败，请重试</string>
+    <string name="workflows_ai_no_model">未配置激活的 AI 模型</string>
+    <string name="workflows_ai_apply">应用并创建</string>
+    <string name="workflows_ai_preview">生成预览</string>
 </resources>

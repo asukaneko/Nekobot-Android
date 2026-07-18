@@ -2728,6 +2728,84 @@ $charSection$topicSection
         }
     }
 
+    /**
+     * AI 生成工作流：使用当前激活的本地 AI 模型，根据用户描述生成 [WorkflowRequest]。
+     * 返回的请求由调用方决定是否调用 [createWorkflow] 持久化。
+     */
+    suspend fun aiGenerateWorkflow(description: String): WorkflowRequest = withContext(Dispatchers.IO) {
+        val activeModel = aiModelDao.getActive()
+            ?: throw IllegalStateException("未配置激活的 AI 模型")
+        val systemPrompt = buildWorkflowSystemPrompt()
+        val messages = listOf(
+            mapOf("role" to "system", "content" to systemPrompt),
+            mapOf("role" to "user", "content" to "请根据以下描述生成工作流配置：\n\n${description.trim()}")
+        )
+        val result = aiClient.chatOnce(activeModel, messages)
+        if (result.error != null) throw IllegalStateException(result.error)
+        // 记账
+        val usage = result.usage
+        if (usage.isNotEmpty()) {
+            val input = usage["prompt_tokens"] ?: usage["input_tokens"] ?: 0
+            val output = usage["completion_tokens"] ?: usage["output_tokens"] ?: 0
+            appendTokenUsageRecord(
+                sessionId = currentSessionId,
+                model = activeModel.model,
+                inputTokens = input,
+                outputTokens = output,
+                timestamp = nowIsoTimestamp(),
+                source = "web",
+                purpose = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_UTILITY
+            )
+        }
+        val content = stripMarkdownCodeFence(result.content)
+        val obj = JsonParser.parseString(content).asJsonObject
+        val name = obj.get("name")?.takeIf { !it.isJsonNull }?.asString
+            ?: throw IllegalStateException("AI 未返回工作流名称")
+        val workflowDesc = obj.get("description")?.takeIf { !it.isJsonNull }?.asString
+        val trigger = obj.get("trigger")?.takeIf { !it.isJsonNull }?.asString?.lowercase()
+            ?: "manual"
+        val enabled = obj.get("enabled")?.takeIf { !it.isJsonNull }?.asBoolean ?: true
+        val config: JsonElement? = when (trigger) {
+            "cron" -> {
+                val cronExpr = obj.get("cron")?.takeIf { !it.isJsonNull }?.asString
+                    ?: obj.get("config")?.takeIf { it.isJsonObject }
+                        ?.asJsonObject?.get("cron")?.takeIf { !it.isJsonNull }?.asString
+                if (cronExpr.isNullOrBlank()) null
+                else JsonObject().apply { addProperty("cron", cronExpr) }
+            }
+            else -> null
+        }
+        WorkflowRequest(
+            name = name,
+            description = workflowDesc,
+            enabled = enabled,
+            trigger = if (trigger in listOf("manual", "cron")) trigger else "manual",
+            config = config
+        )
+    }
+
+    /** 工作流 AI 生成的 system prompt，约束 AI 仅返回严格 JSON */
+    private fun buildWorkflowSystemPrompt(): String = """你是一个工作流生成助手。用户会描述想要的工作流，你需要生成一个工作流配置 JSON。
+
+你必须严格按照以下JSON格式返回（不要包含任何额外的文字说明，只返回JSON）：
+
+{
+    "name": "工作流名称（简短，10字以内）",
+    "description": "工作流的详细描述（30字以内）",
+    "trigger": "触发方式，仅限 manual 或 cron",
+    "enabled": true,
+    "cron": "仅当 trigger 为 cron 时填写 cron 表达式，例如 0 8 * * *"
+}
+
+规则：
+1. 仅返回 JSON，不要添加 markdown 代码块或说明文字。
+2. trigger 必须是 manual 或 cron 之一。
+3. 如果用户描述中提到定时（每天、每小时等），使用 cron；否则使用 manual。
+4. cron 表达式使用 5 字段标准格式（分 时 日 月 周）。
+5. name 必须简短且能体现工作流用途。
+6. description 应说明工作流的目的和预期效果。
+""".trimIndent()
+
     private fun LocalWorkflowEntity.toWorkflow(): Workflow = Workflow(
         id = id,
         name = name,
@@ -2747,6 +2825,11 @@ $charSection$topicSection
             }
             entity.toSkill()
         }
+    }
+
+    suspend fun readSkillFile(skillName: String, relativePath: String): String = withContext(Dispatchers.IO) {
+        localSkillStorage?.readText(skillName, relativePath)
+            ?: throw IllegalStateException("本地 Skill 存储不可用")
     }
 
     suspend fun createSkill(req: SkillRequest): Skill = withContext(Dispatchers.IO) {

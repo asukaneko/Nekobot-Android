@@ -152,4 +152,25 @@
     <string name="knowledge_content_required">内容 (必須)</string>
     <string name="knowledge_source_label">ソース</string>
     <string name="knowledge_tags_label">タグ (カンマ区切り)</string>
+
+    <!-- ==================== Hook テンプレートと高度な項目 ==================== -->
+    <string name="hooks_builtin_templates">テンプレート</string>
+    <string name="hooks_apply_template">テンプレートを適用</string>
+    <string name="hooks_template_applied">テンプレートを適用しました</string>
+    <string name="hooks_conditions_label">条件 (JSON)</string>
+    <string name="hooks_conditions_hint">例: {\"affection_gte\": 80}</string>
+    <string name="hooks_actions_label">アクション (JSON 配列)</string>
+    <string name="hooks_actions_hint">例: [{\"type\":\"log\",\"message\":\"...\"}]</string>
+    <string name="hooks_json_invalid">JSON 形式が無効です</string>
+
+    <!-- ==================== ワークフロー AI 生成 ==================== -->
+    <string name="workflows_ai_generate">AI 生成</string>
+    <string name="workflows_ai_generate_title">AI ワークフロー生成</string>
+    <string name="workflows_ai_prompt">作成したいワークフローを説明してください</string>
+    <string name="workflows_ai_prompt_hint">例: 毎朝 8 時に前回の会話を要約してリマインダーを送信</string>
+    <string name="workflows_ai_generating">生成中…</string>
+    <string name="workflows_ai_generate_failed">生成に失敗しました。再試行してください</string>
+    <string name="workflows_ai_no_model">アクティブな AI モデルが設定されていません</string>
+    <string name="workflows_ai_apply">適用して作成</string>
+    <string name="workflows_ai_preview">プレビュー</string>
 </resources>

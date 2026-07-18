@@ -54,6 +54,7 @@ import com.nekobot.app.ui.screens.extensions.TaskCenterScreen
 import com.nekobot.app.ui.screens.extensions.WorkflowsScreen
 import com.nekobot.app.ui.screens.extensions.KnowledgeScreen
 import com.nekobot.app.ui.screens.extensions.SkillsScreen
+import com.nekobot.app.ui.screens.extensions.SkillStorageScreen
 import com.nekobot.app.ui.screens.extensions.ToolsScreen
 import com.nekobot.app.ui.screens.extensions.McpServersScreen
 import com.nekobot.app.ui.screens.extensions.ChannelsScreen
@@ -353,7 +354,24 @@ fun NekobotNavGraph() {
                 KnowledgeScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.SKILLS) {
-                SkillsScreen(onBack = { navController.popBackStack() })
+                SkillsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenStorage = { skill ->
+                        skill.name.takeIf { it.isNotBlank() }?.let { name ->
+                            navController.navigate(Routes.skillDetail(name))
+                        }
+                    }
+                )
+            }
+            composable(
+                route = Routes.SKILL_DETAIL,
+                arguments = listOf(navArgument("skillId") { type = NavType.StringType })
+            ) { entry ->
+                val skillId = entry.arguments?.getString("skillId").orEmpty()
+                SkillStorageScreen(
+                    skillName = java.net.URLDecoder.decode(skillId, "UTF-8"),
+                    onBack = { navController.popBackStack() }
+                )
             }
             composable(Routes.TOOLS) {
                 ToolsScreen(onBack = { navController.popBackStack() })

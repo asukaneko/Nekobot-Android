@@ -1,5 +1,6 @@
 package com.nekobot.app.ui.screens.extensions
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.DropdownMenuItem
@@ -49,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
@@ -57,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import com.nekobot.app.R
 import com.nekobot.app.data.model.Hook
 import com.nekobot.app.data.model.HookExecutionLog
@@ -159,6 +163,8 @@ fun HooksScreen(onBack: () -> Unit, viewModel: HooksViewModel = viewModel()) {
     var editing by remember { mutableStateOf<Hook?>(null) }
     var deleteTarget by remember { mutableStateOf<Hook?>(null) }
     var logsTarget by remember { mutableStateOf<Hook?>(null) }
+    var showTemplates by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -177,6 +183,9 @@ fun HooksScreen(onBack: () -> Unit, viewModel: HooksViewModel = viewModel()) {
                 actions = {
                     IconButton(onClick = { viewModel.load() }) {
                         Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.hooks_refresh), tint = MaterialTheme.colorScheme.onSurface)
+                    }
+                    IconButton(onClick = { showTemplates = true }) {
+                        Icon(Icons.Filled.LibraryBooks, contentDescription = stringResource(R.string.hooks_builtin_templates), tint = MaterialTheme.colorScheme.onSurface)
                     }
                     IconButton(onClick = {
                         editing = null
@@ -325,6 +334,22 @@ fun HooksScreen(onBack: () -> Unit, viewModel: HooksViewModel = viewModel()) {
             onConfirm = { viewModel.clearTestResult() },
             cancelText = null,
             onCancel = null
+        )
+    }
+
+    // 内置模板弹窗
+    if (showTemplates) {
+        HookTemplatesDialog(
+            onPick = { req ->
+                viewModel.create(req)
+                showTemplates = false
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.hooks_template_applied),
+                    Toast.LENGTH_SHORT
+                ).show()
+            },
+            onDismiss = { showTemplates = false }
         )
     }
 }
@@ -476,6 +501,18 @@ private fun HookFormDialog(
     var conditionLogic by remember { mutableStateOf(initial?.conditionLogic ?: "and") }
     var timeoutMs by remember { mutableStateOf(initial?.timeoutMs?.toString() ?: "3000") }
     var maxRetries by remember { mutableStateOf(initial?.maxRetries?.toString() ?: "0") }
+    var conditionsText by remember {
+        mutableStateOf(initial?.conditions?.toString()?.takeUnless { it == "null" } ?: "{}")
+    }
+    var actionsText by remember {
+        mutableStateOf(
+            initial?.actions?.takeIf { it.isNotEmpty() }
+                ?.joinToString(prefix = "[", postfix = "]") { it.toString() }
+                ?: "[]"
+        )
+    }
+    var jsonError by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
 
     NekoDialog(
         onDismiss = onDismiss,
@@ -483,6 +520,26 @@ private fun HookFormDialog(
         confirmText = stringResource(R.string.common_save),
         onConfirm = {
             if (name.isBlank() || event.isBlank()) return@NekoDialog
+            // 校验 JSON
+            val conditionsEl = try {
+                if (conditionsText.isBlank()) null
+                else JsonParser.parseString(conditionsText)
+            } catch (_: Exception) {
+                jsonError = context.getString(R.string.hooks_json_invalid)
+                return@NekoDialog
+            }
+            val actionsList = try {
+                val parsed = JsonParser.parseString(actionsText)
+                if (!parsed.isJsonArray) {
+                    jsonError = context.getString(R.string.hooks_json_invalid)
+                    return@NekoDialog
+                }
+                parsed.asJsonArray.toList()
+            } catch (_: Exception) {
+                jsonError = context.getString(R.string.hooks_json_invalid)
+                return@NekoDialog
+            }
+            jsonError = null
             val req = HookRequest(
                 name = name.trim(),
                 event = event.trim(),
@@ -492,14 +549,16 @@ private fun HookFormDialog(
                 triggerMode = triggerMode,
                 conditionLogic = conditionLogic,
                 timeoutMs = timeoutMs.toIntOrNull() ?: 3000,
-                maxRetries = maxRetries.toIntOrNull() ?: 0
+                maxRetries = maxRetries.toIntOrNull() ?: 0,
+                conditions = conditionsEl,
+                actions = actionsList
             )
             onConfirm(req)
         }
     ) {
         Column(
             modifier = Modifier
-                .heightIn(max = 460.dp)
+                .heightIn(max = 620.dp)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -606,6 +665,134 @@ private fun HookFormDialog(
                 colors = fieldColors(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
             )
+            Spacer(Modifier.height(8.dp))
+
+            // 条件 JSON
+            LabeledField(stringResource(R.string.hooks_conditions_label))
+            OutlinedTextField(
+                value = conditionsText,
+                onValueChange = { conditionsText = it },
+                singleLine = false,
+                minLines = 2,
+                maxLines = 5,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = fieldColors(),
+                placeholder = { Text(stringResource(R.string.hooks_conditions_hint)) }
+            )
+            Spacer(Modifier.height(8.dp))
+
+            // 动作 JSON 数组
+            LabeledField(stringResource(R.string.hooks_actions_label))
+            OutlinedTextField(
+                value = actionsText,
+                onValueChange = { actionsText = it },
+                singleLine = false,
+                minLines = 3,
+                maxLines = 8,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = fieldColors(),
+                placeholder = { Text(stringResource(R.string.hooks_actions_hint)) }
+            )
+
+            // JSON 错误提示
+            jsonError?.let { err ->
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = err,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ErrorRed
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Hook 内置模板选择弹窗
+ */
+@Composable
+private fun HookTemplatesDialog(
+    onPick: (HookRequest) -> Unit,
+    onDismiss: () -> Unit
+) {
+    NekoDialog(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.hooks_builtin_templates),
+        confirmText = stringResource(R.string.common_close),
+        onConfirm = onDismiss,
+        cancelText = null,
+        onCancel = null
+    ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 460.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            items(BuiltInHookTemplates, key = { it.key }) { template ->
+                GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 14) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = template.title,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.hooks_apply_template),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = template.desc,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        val req = template.buildRequest()
+                        Text(
+                            text = stringResource(R.string.hooks_event, req.event),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = stringResource(R.string.hooks_scope, req.scope) +
+                                " · " + stringResource(R.string.hooks_priority, req.priority),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            IconButton(onClick = { onPick(req) }) {
+                                Icon(
+                                    Icons.Filled.Add,
+                                    contentDescription = stringResource(R.string.hooks_apply_template),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

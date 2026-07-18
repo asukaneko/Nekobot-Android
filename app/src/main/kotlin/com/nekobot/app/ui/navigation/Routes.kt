@@ -66,6 +66,11 @@ object Routes {
     const val WORKFLOWS = "workflows"
     const val KNOWLEDGE = "knowledge"
     const val SKILLS = "skills"
+    const val SKILL_DETAIL = "skill_detail/{skillId}"
+    fun skillDetail(skillName: String): String {
+        val encoded = java.net.URLEncoder.encode(skillName, "UTF-8")
+        return "skill_detail/$encoded"
+    }
     const val TOOLS = "tools"
     const val MCP_SERVERS = "mcp_servers"
     const val CHANNELS = "channels"

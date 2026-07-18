@@ -152,4 +152,25 @@
     <string name="knowledge_content_required">내용(필수)</string>
     <string name="knowledge_source_label">출처</string>
     <string name="knowledge_tags_label">태그(쉼표로 구분)</string>
+
+    <!-- ==================== Hook 템플릿 및 고급 항목 ==================== -->
+    <string name="hooks_builtin_templates">템플릿</string>
+    <string name="hooks_apply_template">템플릿 적용</string>
+    <string name="hooks_template_applied">템플릿이 적용되었어요</string>
+    <string name="hooks_conditions_label">조건 (JSON)</string>
+    <string name="hooks_conditions_hint">예: {\"affection_gte\": 80}</string>
+    <string name="hooks_actions_label">액션 (JSON 배열)</string>
+    <string name="hooks_actions_hint">예: [{\"type\":\"log\",\"message\":\"...\"}]</string>
+    <string name="hooks_json_invalid">JSON 형식이 잘못되었어요</string>
+
+    <!-- ==================== 워크플로 AI 생성 ==================== -->
+    <string name="workflows_ai_generate">AI 생성</string>
+    <string name="workflows_ai_generate_title">AI 워크플로 생성</string>
+    <string name="workflows_ai_prompt">원하는 워크플로를 설명해 주세요</string>
+    <string name="workflows_ai_prompt_hint">예: 매일 아침 8시에 이전 대화를 요약하고 알림을 보내기</string>
+    <string name="workflows_ai_generating">생성 중…</string>
+    <string name="workflows_ai_generate_failed">생성에 실패했어요. 다시 시도해 주세요</string>
+    <string name="workflows_ai_no_model">활성화된 AI 모델이 설정되지 않았어요</string>
+    <string name="workflows_ai_apply">적용하고 생성</string>
+    <string name="workflows_ai_preview">미리보기</string>
 </resources>

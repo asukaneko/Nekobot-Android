@@ -21,6 +21,31 @@
     <string name="skills_aliases_label">별칭(쉼표로 구분)</string>
     <string name="skills_enabled_label">활성화됨</string>
 
+    <!-- ==================== 스킬 폴더 상세 ==================== -->
+    <string name="skill_detail_title">스킬 폴더</string>
+    <string name="skill_open_storage">폴더 보기</string>
+    <string name="skill_files_section">파일 목록</string>
+    <string name="skill_file_size">%1$s</string>
+    <string name="skill_file_open">보기</string>
+    <string name="skill_file_too_large">파일이 너무 커서 미리보기할 수 없어요</string>
+    <string name="skill_file_binary">바이너리 파일은 미리보기할 수 없어요</string>
+    <string name="skill_file_read_error">파일 읽기에 실패했어요</string>
+    <string name="skill_file_group_core">코어</string>
+    <string name="skill_file_group_reference">참조</string>
+    <string name="skill_file_group_license">라이선스</string>
+    <string name="skill_file_group_script">스크립트</string>
+    <string name="skill_file_group_resource">리소스</string>
+    <string name="skill_file_group_other">기타</string>
+    <string name="skill_file_no_files">탐색할 파일이 없어요</string>
+    <string name="skill_file_preview_title">파일 미리보기</string>
+
+    <!-- ==================== MCP 도구 카드 ==================== -->
+    <string name="mcp_tools_count">총 %1$d개의 도구</string>
+    <string name="mcp_tool_no_params">매개변수 없음</string>
+    <string name="mcp_tool_required">필수</string>
+    <string name="mcp_tools_empty">이 MCP 서버에 사용 가능한 도구가 없어요</string>
+    <string name="mcp_tool_param_type">유형: %1$s</string>
+
     <!-- ==================== Tools ==================== -->
     <string name="tools_title">Tools</string>
     <string name="tools_new">새 도구</string>

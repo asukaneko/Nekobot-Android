@@ -152,4 +152,25 @@
     <string name="knowledge_content_required">Content (required)</string>
     <string name="knowledge_source_label">Source</string>
     <string name="knowledge_tags_label">Tags (comma separated)</string>
+
+    <!-- ==================== Hook templates & advanced fields ==================== -->
+    <string name="hooks_builtin_templates">Templates</string>
+    <string name="hooks_apply_template">Apply template</string>
+    <string name="hooks_template_applied">Template applied</string>
+    <string name="hooks_conditions_label">Conditions (JSON)</string>
+    <string name="hooks_conditions_hint">e.g. {\"affection_gte\": 80}</string>
+    <string name="hooks_actions_label">Actions (JSON array)</string>
+    <string name="hooks_actions_hint">e.g. [{\"type\":\"log\",\"message\":\"...\"}]</string>
+    <string name="hooks_json_invalid">Invalid JSON</string>
+
+    <!-- ==================== Workflow AI generation ==================== -->
+    <string name="workflows_ai_generate">AI Generate</string>
+    <string name="workflows_ai_generate_title">AI Generate Workflow</string>
+    <string name="workflows_ai_prompt">Describe the workflow you want</string>
+    <string name="workflows_ai_prompt_hint">e.g. Summarize the last session every morning at 8am and send a reminder</string>
+    <string name="workflows_ai_generating">Generating…</string>
+    <string name="workflows_ai_generate_failed">Generation failed, please retry</string>
+    <string name="workflows_ai_no_model">No active AI model configured</string>
+    <string name="workflows_ai_apply">Apply and create</string>
+    <string name="workflows_ai_preview">Preview</string>
 </resources>
