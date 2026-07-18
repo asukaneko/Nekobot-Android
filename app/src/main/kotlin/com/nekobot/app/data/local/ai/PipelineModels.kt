@@ -51,6 +51,10 @@ class PipelineContext(
     /** 停止标志（true 表示用户请求停止） */
     @Volatile
     var stopped: Boolean = false
+    /** 外部会话级停止信号；用于同步模型/工具循环主动轮询。 */
+    var stopRequested: () -> Boolean = { false }
+
+    fun shouldStop(): Boolean = stopped || stopRequested()
 
     // === 流式状态 ===
     /** 流式消息对象（流式期间累积） */

@@ -142,4 +142,36 @@ class LocalProtocolToolCallingTest {
         assertEquals(2, modelCalls)
         assertEquals("现在是 14:30", result.finalContent)
     }
+
+    @Test
+    fun toolLoopStopsBeforeRunningAnotherTool() {
+        var modelCalls = 0
+        var executedTools = 0
+        var stopRequested = false
+
+        val result = runToolCallLoop(
+            initialMessages = listOf(mapOf("role" to "user", "content" to "执行工具")),
+            modelCall = { _, _ ->
+                modelCalls += 1
+                mapOf(
+                    "content" to "",
+                    "finish_reason" to "tool_calls",
+                    "tool_calls" to listOf(
+                        mapOf("id" to "call-1", "name" to "first", "arguments" to emptyMap<String, Any>()),
+                        mapOf("id" to "call-2", "name" to "second", "arguments" to emptyMap<String, Any>())
+                    )
+                )
+            },
+            toolExecutor = { _, _, _, _ ->
+                executedTools += 1
+                stopRequested = true
+                mapOf("success" to true)
+            },
+            shouldStop = { stopRequested }
+        )
+
+        assertTrue(result.stopped)
+        assertEquals(1, modelCalls)
+        assertEquals(1, executedTools)
+    }
 }

@@ -407,6 +407,11 @@ class AIPipeline {
         maxToolIterations: Int,
         progress: ProgressReporter
     ) {
+        if (ctx.shouldStop()) {
+            markStopped(ctx)
+            progress.onDone(ctx)
+            return
+        }
         progress.onThinkingStart(ctx)
 
         // 尝试流式（无工具时）
@@ -433,9 +438,17 @@ class AIPipeline {
 
     /** 简单的单次模型调用（无工具、无流式） */
     private fun runSimple(ctx: PipelineContext, callbacks: PipelineCallbacks) {
+        if (ctx.shouldStop()) {
+            markStopped(ctx)
+            return
+        }
         val modelCall = callbacks.buildModelCall(ctx, emptyList())
         try {
-            val response = modelCall(ctx.messages, ctx.stopped)
+            val response = modelCall(ctx.messages, ctx.shouldStop())
+            if (ctx.shouldStop()) {
+                markStopped(ctx)
+                return
+            }
             // 提取模型追踪信息
             extractModelTrace(ctx, response)
             ctx.finalContent = (response["content"] as? String) ?: ""
@@ -443,6 +456,10 @@ class AIPipeline {
             ctx.usage = (response["usage"] as? Map<String, Any>) ?: emptyMap()
             com.nekobot.app.data.local.LocalLogger.i(TAG, "模型调用完成(simple) | 回复=${ctx.finalContent.length}字符")
         } catch (e: Exception) {
+            if (ctx.shouldStop()) {
+                markStopped(ctx)
+                return
+            }
             com.nekobot.app.data.local.LocalLogger.e(TAG, "Simple model call failed: ${e.message}", e)
             ctx.error = e.message ?: "AI 调用失败"
             ctx.finalContent = "AI 调用失败: ${e.message}"
@@ -514,7 +531,8 @@ class AIPipeline {
             toolExecutor = toolExecutor,
             toolCallHistory = ctx.toolCallHistory,
             maxIterations = maxToolIterations,
-            hooks = hooks
+            hooks = hooks,
+            shouldStop = ctx::shouldStop
         )
 
         try {
@@ -571,9 +589,9 @@ class AIPipeline {
         var ttftMs: Double? = null
 
         try {
-            val events = streamer(ctx.messages, ctx.stopped)
+            val events = streamer(ctx.messages, ctx.shouldStop())
             for (event in events) {
-                if (ctx.stopped) break
+                if (ctx.shouldStop()) break
 
                 // 提取模型追踪信息
                 extractModelTrace(ctx, event)
@@ -605,6 +623,9 @@ class AIPipeline {
         }
 
         ctx.finalContent = fullContent.toString()
+        if (ctx.shouldStop()) {
+            markStopped(ctx)
+        }
         val durationMs = (System.nanoTime() - streamStart) / 1_000_000.0
         ctx.metadata["duration_ms"] = durationMs
         ctx.metadata["ttft_ms"] = ttftMs ?: durationMs
@@ -726,6 +747,7 @@ class AIPipeline {
         callbacks: PipelineCallbacks,
         result: PipelineResult
     ) {
+        if (ctx.shouldStop() || ctx.stoppedPrematurely) return
         // 角色运行时 after_turn
         phaseCharacterRuntimeAfterTurn(ctx, callbacks, result)
 
@@ -734,6 +756,13 @@ class AIPipeline {
 
         // on_response_complete
         callbacks.onResponseComplete(ctx, result)
+    }
+
+    private fun markStopped(ctx: PipelineContext) {
+        ctx.stopped = true
+        ctx.stoppedPrematurely = true
+        ctx.error = null
+        ctx.finalContent = "【生成已停止 - 工具调用记录已保存，回复「继续」可继续执行】"
     }
 
     /**

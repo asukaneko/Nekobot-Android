@@ -14,6 +14,7 @@ import com.nekobot.app.data.local.ai.FailoverUsage
 import com.nekobot.app.data.local.ai.FailoverUsageReader
 import com.nekobot.app.data.local.ai.LocalAiClient
 import com.nekobot.app.data.local.ai.LocalAiResult
+import com.nekobot.app.data.local.ai.LocalGenerationController
 import com.nekobot.app.data.local.ai.LocalMcpRuntime
 import com.nekobot.app.data.local.ai.LocalPromptBuilder
 import com.nekobot.app.data.local.ai.TokenStatsManager
@@ -80,6 +81,7 @@ import java.time.Instant
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.ZipInputStream
 
 /**
@@ -157,6 +159,7 @@ class LocalRepository(
     /** 当前正在进行的聊天 Job，用于 stopGeneration */
     @Volatile
     private var currentChatJob: Job? = null
+    private val activeGenerations = ConcurrentHashMap<String, LocalGenerationController>()
 
     /**
      * 当前进行中会话 ID。二级 LLM 调用（AutoState/记忆抽取）在跨会话单例内触发，
@@ -735,8 +738,17 @@ class LocalRepository(
         chat(sessionId, userInput, activeModel).collect { emit(it) }
     }.flowOn(Dispatchers.IO)
 
-    /** 停止生成：取消当前 Job（外层 collect 会被取消）。 */
-    fun stopGeneration() {
+    /** 停止生成：同时中断模型请求、工具调用、命令进程和授权等待。 */
+    fun stopGeneration(sessionId: String? = null) {
+        val sessionIds = sessionId
+            ?.let(::listOf)
+            ?: activeGenerations.keys.toList()
+        sessionIds.forEach { id ->
+            activeGenerations[id]?.requestStop()
+            localExecAuthorizationManager.cancelSession(id)
+            aiClient.cancelRequests(id)
+        }
+        localMcpRuntime.cancelActiveToolCall()
         currentChatJob?.cancel()
         currentChatJob = null
     }
@@ -772,6 +784,8 @@ class LocalRepository(
         activeModel: LocalAiModelEntity,
         attachments: List<Map<String, Any>> = emptyList()
     ): Flow<RealtimeEvent> = flow {
+        val generationController = LocalGenerationController()
+        activeGenerations.put(sessionId, generationController)?.requestStop()
         try {
         // 标记当前会话，供二级 LLM 调用（AutoState/记忆）token 记账归属
         currentSessionId = sessionId
@@ -851,7 +865,15 @@ class LocalRepository(
             failoverQueue = failoverQueue,
             coordinator = failoverCoordinator,
             hookExecutor = hookExecutor,
-            visionDescriber = { imageUrl, question -> describeImageViaQueue(imageUrl, question) }
+            visionDescriber = { imageUrl, question ->
+                describeImageViaQueue(
+                    imageUrl = imageUrl,
+                    question = question,
+                    requestTag = sessionId,
+                    shouldStop = { generationController.isStopped }
+                )
+            },
+            generationController = generationController
         )
 
         // 5. 构建上下文（含会话级配置：剧情模式、禁用注入项、自动状态间隔等）
@@ -873,6 +895,7 @@ class LocalRepository(
             }
         )
         val ctx = com.nekobot.app.data.local.ai.PipelineContext(chatRequest)
+        ctx.stopRequested = { generationController.isStopped }
         ctx.metadata["session_mode"] = session.sessionMode
         if (session.sessionMode.equals("agent", ignoreCase = true)) {
             val skillsPrompt = buildEnabledSkillsPrompt()
@@ -943,7 +966,11 @@ class LocalRepository(
             }
 
             // 会话自动命名：异步触发，成功后通过 RealtimeEvent.SessionRenamed 通知 UI
-            if (ctx.finalContent.isNotBlank() && !ctx.metadata.containsKey("is_heartbeat")) {
+            if (
+                !generationController.isStopped &&
+                ctx.finalContent.isNotBlank() &&
+                !ctx.metadata.containsKey("is_heartbeat")
+            ) {
                 try {
                     val latestSession = sessionDao.getById(sessionId)
                     val latestMessages = messageDao.listBySession(sessionId)
@@ -971,7 +998,12 @@ class LocalRepository(
 
             // 剧情模式的每轮回复必须真正落入故事图；此前这里只生成了悬空选项，
             // 导致故事地图始终为空或无法形成边。
-            if (session.plotMode && character != null && ctx.finalContent.isNotBlank()) {
+            if (
+                !generationController.isStopped &&
+                session.plotMode &&
+                character != null &&
+                ctx.finalContent.isNotBlank()
+            ) {
                 val manager = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
                 val parent = manager.getLatestNode(sessionId)
                 val selectedChoice = parent?.selectedChoiceId?.let(manager::getChoice)
@@ -1029,7 +1061,7 @@ class LocalRepository(
             }
 
             // Phase 6: 剧情模式 → 生成选项
-            if (session.plotMode) {
+            if (!generationController.isStopped && session.plotMode) {
                 try {
                     val plotGen = com.nekobot.app.data.local.ai.PlotChoiceGenerator(
                         aiClient, { aiModelDao.getActive() },
@@ -1082,6 +1114,8 @@ class LocalRepository(
         } catch (e: Exception) {
             emit(RealtimeEvent.Error(e.message ?: "本地聊天失败"))
             emit(RealtimeEvent.StreamEnd(sessionId))
+        } finally {
+            activeGenerations.remove(sessionId, generationController)
         }
     }.flowOn(Dispatchers.IO)
 
@@ -1953,8 +1987,11 @@ $charSection$topicSection
      */
     suspend fun describeImageViaQueue(
         imageUrl: String,
-        question: String = "请详细描述这张图片的内容。"
+        question: String = "请详细描述这张图片的内容。",
+        requestTag: String? = null,
+        shouldStop: () -> Boolean = { false }
     ): String = withContext(Dispatchers.IO) {
+        if (shouldStop()) throw kotlinx.coroutines.CancellationException("生成已停止")
         var queue = queueFor("vision")
         // 回退：若未配置 vision 模型，尝试使用 chat 模型（GPT-4o 等多模态聊天模型支持图片）
         if (queue.isEmpty()) {
@@ -1968,7 +2005,17 @@ $charSection$topicSection
         com.nekobot.app.data.local.LocalLogger.i("LocalRepo", "describeImageViaQueue: 开始识别 | 队列=${queue.size}个模型 | 首选=${queue.first().name} | url=${if (imageUrl.startsWith("data:")) "data:${imageUrl.length}字符" else imageUrl.take(100)}")
         try {
             val exec = failoverCoordinator.execute(queue, "vision") { model ->
-                aiClient.describeImage(model, imageUrl, question)
+                if (shouldStop()) throw kotlinx.coroutines.CancellationException("生成已停止")
+                try {
+                    aiClient.describeImage(model, imageUrl, question, requestTag)
+                } catch (error: Exception) {
+                    if (shouldStop()) {
+                        throw kotlinx.coroutines.CancellationException("生成已停止").apply {
+                            initCause(error)
+                        }
+                    }
+                    throw error
+                }
             }
             exec.value.usage.takeIf { it.isNotEmpty() }?.let { u ->
                 val input = u["prompt_tokens"] ?: u["input_tokens"] ?: 0

@@ -133,4 +133,15 @@ class LocalExecAuthorizationManager(
         }
         return request.decision.complete(authorization)
     }
+
+    /** 停止生成时拒绝该会话全部待确认命令，立即解除同步等待。 */
+    fun cancelSession(sessionId: String) {
+        pending.entries
+            .filter { (_, request) -> request.sessionId == sessionId }
+            .forEach { (requestId, request) ->
+                if (pending.remove(requestId, request)) {
+                    request.decision.complete(ExecAuthorization.Reject)
+                }
+            }
+    }
 }

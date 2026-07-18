@@ -121,6 +121,7 @@ internal class LocalAgentToolExecutor(
     private val thinkingHistoryProvider: (Int) -> List<Map<String, Any>>,
     /** 视觉识别函数：传入 imageUrl（http URL 或 data URI）和问题，返回描述文本（非 suspend） */
     private val visionDescriber: ((String, String) -> String)? = null,
+    private val generationController: LocalGenerationController = LocalGenerationController(),
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -129,28 +130,32 @@ internal class LocalAgentToolExecutor(
     private val gson = Gson()
     private val workspace = workspaceRoot?.canonicalFile
 
-    fun execute(toolName: String, args: Map<String, Any>): Map<String, Any> = try {
-        when (toolName) {
-            "search_news" -> searchNews(args)
-            "get_weather" -> getWeather(args)
-            "search_web" -> searchWeb(args)
-            "get_date_time" -> getDateTime(args)
-            "http_get" -> httpGet(args)
-            "exec_command" -> execCommand(args)
-            "download_file" -> downloadFile(args)
-            "send_message" -> sendMessage(args)
-            "get_session_thinking_history" -> thinkingHistory(args)
-            "understand_image" -> understandImage(args)
-            "workspace_create_file", "workspace_edit_file" -> writeWorkspaceFile(args)
-            "workspace_read_file", "workspace_parse_file" -> readWorkspaceFile(args)
-            "workspace_delete_file" -> deleteWorkspaceFile(args)
-            "workspace_list_files" -> listWorkspaceFiles(args)
-            "workspace_send_file" -> sendWorkspaceFile(args)
-            "workspace_file_info" -> workspaceFileInfo(args)
-            else -> failure("本地模式不支持工具: $toolName")
+    fun execute(toolName: String, args: Map<String, Any>): Map<String, Any> {
+        if (generationController.isStopped) return stoppedFailure()
+        return try {
+            when (toolName) {
+                "search_news" -> searchNews(args)
+                "get_weather" -> getWeather(args)
+                "search_web" -> searchWeb(args)
+                "get_date_time" -> getDateTime(args)
+                "http_get" -> httpGet(args)
+                "exec_command" -> execCommand(args)
+                "download_file" -> downloadFile(args)
+                "send_message" -> sendMessage(args)
+                "get_session_thinking_history" -> thinkingHistory(args)
+                "understand_image" -> understandImage(args)
+                "workspace_create_file", "workspace_edit_file" -> writeWorkspaceFile(args)
+                "workspace_read_file", "workspace_parse_file" -> readWorkspaceFile(args)
+                "workspace_delete_file" -> deleteWorkspaceFile(args)
+                "workspace_list_files" -> listWorkspaceFiles(args)
+                "workspace_send_file" -> sendWorkspaceFile(args)
+                "workspace_file_info" -> workspaceFileInfo(args)
+                else -> failure("本地模式不支持工具: $toolName")
+            }
+        } catch (e: Exception) {
+            if (generationController.isStopped) stoppedFailure()
+            else failure(e.message ?: "工具执行失败")
         }
-    } catch (e: Exception) {
-        failure(e.message ?: "工具执行失败")
     }
 
     private fun getDateTime(args: Map<String, Any>): Map<String, Any> {
@@ -218,9 +223,9 @@ internal class LocalAgentToolExecutor(
         (args["headers"] as? Map<String, Any>)?.forEach { (name, value) ->
             requestBuilder.header(name, value.toString())
         }
-        httpClient.newCall(requestBuilder.build()).execute().use { response ->
+        return withHttpResponse(requestBuilder.build()) { response ->
             val content = response.body?.string().orEmpty().take(20000)
-            return mapOf(
+            mapOf(
                 "success" to response.isSuccessful,
                 "status" to response.code,
                 "url" to response.request.url.toString(),
@@ -250,6 +255,7 @@ internal class LocalAgentToolExecutor(
                 )
             ) {
                 ExecAuthorization.Reject -> {
+                    if (generationController.isStopped) return stoppedFailure()
                     return failure(
                         "用户拒绝执行命令",
                         "command" to command,
@@ -260,11 +266,14 @@ internal class LocalAgentToolExecutor(
                 ExecAuthorization.Always -> authorization = "always"
             }
         }
+        if (generationController.isStopped) return stoppedFailure()
 
-        val process = ProcessBuilder("sh", "-c", command)
-            .directory(workspace)
-            .redirectErrorStream(true)
-            .start()
+        val process = generationController.track(
+            ProcessBuilder("sh", "-c", command)
+                .directory(workspace)
+                .redirectErrorStream(true)
+                .start()
+        )
         val output = StringBuffer()
         val reader = Thread {
             process.inputStream.bufferedReader().useLines { lines ->
@@ -277,18 +286,37 @@ internal class LocalAgentToolExecutor(
             isDaemon = true
             start()
         }
-        val completed = process.waitFor(timeoutSeconds.toLong(), TimeUnit.SECONDS)
-        if (!completed) process.destroyForcibly()
-        reader.join(1000)
-        return mapOf(
-            "success" to (completed && process.exitValue() == 0),
-            "command" to command,
-            "main_command" to policy.mainCommand,
-            "authorization" to authorization,
-            "exit_code" to if (completed) process.exitValue() else -1,
-            "timed_out" to !completed,
-            "output" to output.toString().take(20000)
-        )
+        return try {
+            val deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds.toLong())
+            var completed = false
+            while (!generationController.isStopped && System.nanoTime() < deadlineNanos) {
+                if (process.waitFor(100, TimeUnit.MILLISECONDS)) {
+                    completed = true
+                    break
+                }
+            }
+            if (!completed) process.destroyForcibly()
+            reader.join(1000)
+            if (generationController.isStopped) {
+                stoppedFailure(
+                    "command" to command,
+                    "main_command" to policy.mainCommand,
+                    "output" to output.toString().take(20000)
+                )
+            } else {
+                mapOf(
+                    "success" to (completed && process.exitValue() == 0),
+                    "command" to command,
+                    "main_command" to policy.mainCommand,
+                    "authorization" to authorization,
+                    "exit_code" to if (completed) process.exitValue() else -1,
+                    "timed_out" to !completed,
+                    "output" to output.toString().take(20000)
+                )
+            }
+        } finally {
+            generationController.release(process)
+        }
     }
 
     private fun downloadFile(args: Map<String, Any>): Map<String, Any> {
@@ -301,7 +329,7 @@ internal class LocalAgentToolExecutor(
         val target = resolveWorkspacePath(requestedPath.ifBlank { defaultName })
             ?: return failure("保存路径超出会话工作区")
         target.parentFile?.mkdirs()
-        httpClient.newCall(Request.Builder().url(url).get().build()).execute().use { response ->
+        withHttpResponse(Request.Builder().url(url).get().build()) { response ->
             if (!response.isSuccessful) return failure("下载失败: HTTP ${response.code}")
             val body = response.body ?: return failure("下载响应为空")
             val contentLength = body.contentLength()
@@ -521,15 +549,27 @@ internal class LocalAgentToolExecutor(
     }
 
     private fun fetchText(url: String): String {
-        httpClient.newCall(
+        return withHttpResponse(
             Request.Builder()
                 .url(url)
                 .header("User-Agent", "Mozilla/5.0 NekoBot-Android")
                 .get()
                 .build()
-        ).execute().use { response ->
+        ) { response ->
             if (!response.isSuccessful) error("HTTP ${response.code}")
-            return response.body?.string().orEmpty()
+            response.body?.string().orEmpty()
+        }
+    }
+
+    private inline fun <T> withHttpResponse(
+        request: Request,
+        block: (okhttp3.Response) -> T
+    ): T {
+        val call = generationController.track(httpClient.newCall(request))
+        return try {
+            call.execute().use(block)
+        } finally {
+            generationController.release(call)
         }
     }
 
@@ -564,4 +604,7 @@ internal class LocalAgentToolExecutor(
             put("error", message)
             values.forEach { (key, value) -> put(key, value) }
         }
+
+    private fun stoppedFailure(vararg values: Pair<String, Any>): Map<String, Any> =
+        failure("生成已停止", "stopped" to true, *values)
 }

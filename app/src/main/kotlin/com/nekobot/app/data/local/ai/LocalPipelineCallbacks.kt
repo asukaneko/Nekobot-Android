@@ -32,7 +32,7 @@ import kotlinx.coroutines.launch
  * @param failoverQueue 故障转移队列：除 activeModel 外可用的备选模型（同 purpose，按 priority 升序）
  * @param hookExecutor Hook 执行引擎（可空，传入则在 before_turn/after_turn/model.after_call 事件触发 hook）
  */
-class LocalPipelineCallbacks(
+internal class LocalPipelineCallbacks(
     private val db: NekobotDatabase,
     private val aiClient: LocalAiClient,
     private val activeModel: LocalAiModelEntity,
@@ -61,7 +61,9 @@ class LocalPipelineCallbacks(
     /** Hook 执行引擎；非空时在管线关键节点触发 hook 事件 */
     private val hookExecutor: HookExecutor? = null,
     /** 视觉识别 suspend 函数：传入 imageUrl（http URL 或 data URI）和问题，返回描述文本 */
-    private val visionDescriber: (suspend (imageUrl: String, question: String) -> String)? = null
+    private val visionDescriber: (suspend (imageUrl: String, question: String) -> String)? = null,
+    /** 当前生成的会话级取消控制器。 */
+    private val generationController: LocalGenerationController = LocalGenerationController()
 ) : PipelineCallbacks() {
 
     companion object {
@@ -104,7 +106,8 @@ class LocalPipelineCallbacks(
                     visionDescriber?.invoke(url, question)
                         ?: VISION_FAILURE_MARKER + "视觉识别运行时不可用"
                 }
-            }
+            },
+            generationController = generationController
         )
     }
 
@@ -246,7 +249,7 @@ class LocalPipelineCallbacks(
                 kotlinx.coroutines.runBlocking {
                     try {
                         val exec = coordinator.execute(modelQueue, activeModel.purpose.ifBlank { "chat" }) { model ->
-                            aiClient.chatOnce(model, messages, extra)
+                            chatOnceForGeneration(model, messages, extra)
                         }
                         // 保留工具调用等结构化响应，并补充实际使用的模型。
                         exec.value.copy(
@@ -259,7 +262,13 @@ class LocalPipelineCallbacks(
                 }
             } else {
                 kotlinx.coroutines.runBlocking {
-                    aiClient.chatOnceWithFailover(modelQueue, messages, extra)
+                    aiClient.chatOnceWithFailover(
+                        modelQueue,
+                        messages,
+                        extra,
+                        requestTag = session.id,
+                        shouldStop = { generationController.isStopped }
+                    )
                 }
             }
 
@@ -304,7 +313,7 @@ class LocalPipelineCallbacks(
                 kotlinx.coroutines.runBlocking {
                     try {
                         val exec = coordinator.execute(modelQueue, activeModel.purpose.ifBlank { "chat" }) { model ->
-                            aiClient.chatOnce(model, messages, extra)
+                            chatOnceForGeneration(model, messages, extra)
                         }
                         exec.value.copy(
                             usedModelId = exec.model.id,
@@ -316,7 +325,13 @@ class LocalPipelineCallbacks(
                 }
             } else {
                 kotlinx.coroutines.runBlocking {
-                    aiClient.chatOnceWithFailover(modelQueue, messages, extra)
+                    aiClient.chatOnceWithFailover(
+                        modelQueue,
+                        messages,
+                        extra,
+                        requestTag = session.id,
+                        shouldStop = { generationController.isStopped }
+                    )
                 }
             }
 
@@ -333,6 +348,26 @@ class LocalPipelineCallbacks(
                 put("_model_id", result.usedModelId ?: activeModel.id)
                 put("_model_name", result.usedModelName ?: activeModel.name)
             })
+        }
+    }
+
+    private suspend fun chatOnceForGeneration(
+        model: LocalAiModelEntity,
+        messages: List<Map<String, Any>>,
+        extra: Map<String, Any?>
+    ): LocalAiResult {
+        if (generationController.isStopped) {
+            throw kotlinx.coroutines.CancellationException("生成已停止")
+        }
+        return try {
+            aiClient.chatOnce(model, messages, extra, requestTag = session.id)
+        } catch (error: Exception) {
+            if (generationController.isStopped) {
+                throw kotlinx.coroutines.CancellationException("生成已停止").apply {
+                    initCause(error)
+                }
+            }
+            throw error
         }
     }
 

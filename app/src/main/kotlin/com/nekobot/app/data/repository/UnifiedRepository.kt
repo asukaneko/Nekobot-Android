@@ -213,7 +213,7 @@ class UnifiedRepository(
 
     suspend fun stopGeneration(id: String): Resource<ApiResult> {
         return if (isLocal) {
-            local.stopGeneration()
+            local.stopGeneration(id)
             Resource.Success(local.apiResultOk())
         } else remote.stopGeneration(id)
     }

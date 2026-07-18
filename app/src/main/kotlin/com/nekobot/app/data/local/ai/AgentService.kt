@@ -60,7 +60,8 @@ data class ToolLoopSession(
     val toolCallHistory: List<Map<String, Any>>? = null,
     val maxIterations: Int = 50,
     val maxConsecutiveErrors: Int = 3,
-    val hooks: ToolLoopHooks? = null
+    val hooks: ToolLoopHooks? = null,
+    val shouldStop: () -> Boolean = { false }
 )
 
 /** 准备好的聊天上下文 */
@@ -310,7 +311,8 @@ fun runToolCallLoop(
     toolExecutor: (Map<String, Any>, String, Int, List<Map<String, Any>>) -> Map<String, Any>,
     maxIterations: Int = 50,
     maxConsecutiveErrors: Int = 3,
-    hooks: ToolLoopHooks? = null
+    hooks: ToolLoopHooks? = null,
+    shouldStop: () -> Boolean = { false }
 ): ToolLoopResult {
     val toolMessages = initialMessages.map { it.toMutableMap() }.toMutableList()
     var finalContent = ""
@@ -339,17 +341,24 @@ fun runToolCallLoop(
     )
 
     for (iteration in 0 until maxIterations) {
-        // 检查停止标志（通过 modelCall 的 stopped 参数传递）
-        // 实际停止由调用方在 modelCall 中处理
+        if (shouldStop()) {
+            return result(stopped = true, iterations = iteration)
+        }
 
         hooks?.onIterationStart?.invoke(iteration, toolMessages.map { it.toMap() })
 
         val response = try {
-            modelCall(toolMessages.map { it.toMap() }, false)
+            modelCall(toolMessages.map { it.toMap() }, shouldStop())
         } catch (e: ToolLoopExit) {
             return result(finalContentArg = e.finalContent, iterations = iteration + 1)
         } catch (e: Exception) {
+            if (shouldStop()) {
+                return result(stopped = true, iterations = iteration + 1)
+            }
             throw ToolLoopModelError(e, iteration)
+        }
+        if (shouldStop()) {
+            return result(stopped = true, iterations = iteration + 1)
         }
 
         // 提取模型追踪信息
@@ -386,12 +395,18 @@ fun runToolCallLoop(
 
             // 执行每个工具调用
             for (toolCall in toolCalls) {
+                if (shouldStop()) {
+                    return result(stopped = true, iterations = iteration + 1)
+                }
                 hooks?.onToolStart?.invoke(toolCall, thinkingContent, iteration, toolMessages.map { it.toMap() })
 
                 val toolResult = try {
                     toolExecutor(toolCall, thinkingContent, iteration, toolMessages.map { it.toMap() })
                 } catch (e: ToolLoopExit) {
                     return result(finalContentArg = e.finalContent, iterations = iteration + 1)
+                }
+                if (shouldStop()) {
+                    return result(stopped = true, iterations = iteration + 1)
                 }
 
                 var toolHistoryMessage: Map<String, Any>? = null
@@ -463,7 +478,8 @@ fun runToolLoopSession(session: ToolLoopSession): ToolExecutionResult {
         session.toolExecutor,
         maxIterations = session.maxIterations,
         maxConsecutiveErrors = session.maxConsecutiveErrors,
-        hooks = session.hooks
+        hooks = session.hooks,
+        shouldStop = session.shouldStop
     )
     return ToolExecutionResult(loopResult = loopResult, preparedMessages = preparedMessages)
 }

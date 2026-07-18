@@ -139,6 +139,8 @@ internal class LocalMcpRuntime(
     )
 
     private val connections = linkedMapOf<String, Connection>()
+    @Volatile
+    private var activeToolSession: McpTransportSession? = null
 
     @Synchronized
     fun connect(server: LocalMcpServerEntity): List<LocalMcpTool> {
@@ -227,6 +229,7 @@ internal class LocalMcpRuntime(
             it.serverId.replace("-", "").take(8) == serverShort
         } ?: return failure("MCP 服务未连接或已断开: $fullName")
 
+        activeToolSession = connection.session
         return try {
             val response = connection.session.request(
                 method = "tools/call",
@@ -239,11 +242,21 @@ internal class LocalMcpRuntime(
         } catch (error: Throwable) {
             LocalLogger.e(TAG, "MCP 工具调用失败: $fullName", error)
             failure(error.message ?: "MCP 工具调用失败")
+        } finally {
+            if (activeToolSession === connection.session) {
+                activeToolSession = null
+            }
         }
+    }
+
+    /** 中断当前 MCP 工具请求，但保留已建立的 MCP 会话供后续继续使用。 */
+    fun cancelActiveToolCall() {
+        activeToolSession?.cancelPendingRequests()
     }
 
     @Synchronized
     override fun close() {
+        cancelActiveToolCall()
         connections.keys.toList().forEach(::disconnect)
     }
 
@@ -375,6 +388,7 @@ private interface McpTransportSession : Closeable {
     var protocolVersion: String?
     fun request(method: String, params: JsonObject?): JsonObject
     fun notify(method: String, params: JsonObject?)
+    fun cancelPendingRequests()
 }
 
 private class HttpMcpTransportSession(
@@ -384,6 +398,8 @@ private class HttpMcpTransportSession(
 
     private val nextId = AtomicLong(1)
     private var sessionId: String? = null
+    @Volatile
+    private var activeCall: okhttp3.Call? = null
     override var protocolVersion: String? = null
 
     override fun request(method: String, params: JsonObject?): JsonObject {
@@ -412,30 +428,41 @@ private class HttpMcpTransportSession(
             }
             .build()
 
-        client.newCall(request).execute().use { response ->
-            response.header("Mcp-Session-Id")
-                ?.takeIf { it.isNotBlank() }
-                ?.let { sessionId = it }
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                val detail = parseMcpHttpMessages(body)
-                    .firstOrNull()
-                    ?.getAsJsonObject("error")
-                    ?.string("message")
+        val call = client.newCall(request)
+        activeCall = call
+        try {
+            call.execute().use { response ->
+                response.header("Mcp-Session-Id")
                     ?.takeIf { it.isNotBlank() }
-                    ?: body.take(500).ifBlank { response.message }
-                throw IllegalStateException("MCP HTTP ${response.code}: $detail")
-            }
-            if (!expectResponse || response.code == 202) return null
+                    ?.let { sessionId = it }
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    val detail = parseMcpHttpMessages(body)
+                        .firstOrNull()
+                        ?.getAsJsonObject("error")
+                        ?.string("message")
+                        ?.takeIf { it.isNotBlank() }
+                        ?: body.take(500).ifBlank { response.message }
+                    throw IllegalStateException("MCP HTTP ${response.code}: $detail")
+                }
+                if (!expectResponse || response.code == 202) return null
 
-            val messages = parseMcpHttpMessages(body)
-            return messages.firstOrNull {
-                expectedId == null || jsonRpcIdMatches(it.get("id"), expectedId)
-            } ?: throw IllegalStateException("MCP HTTP 响应中缺少请求 $expectedId 的 JSON-RPC 结果")
+                val messages = parseMcpHttpMessages(body)
+                return messages.firstOrNull {
+                    expectedId == null || jsonRpcIdMatches(it.get("id"), expectedId)
+                } ?: throw IllegalStateException("MCP HTTP 响应中缺少请求 $expectedId 的 JSON-RPC 结果")
+            }
+        } finally {
+            if (activeCall === call) activeCall = null
         }
     }
 
+    override fun cancelPendingRequests() {
+        activeCall?.cancel()
+    }
+
     override fun close() {
+        cancelPendingRequests()
         val activeSessionId = sessionId ?: return
         val request = Request.Builder()
             .url(url)
@@ -525,6 +552,10 @@ private class StdioMcpTransportSession(
         write(jsonRpcMessage(null, method, params))
     }
 
+    override fun cancelPendingRequests() {
+        completePendingExceptionally(IllegalStateException("MCP 请求已停止"))
+    }
+
     private fun write(message: JsonObject) {
         synchronized(writeLock) {
             writer.write(message.toString())
@@ -536,7 +567,7 @@ private class StdioMcpTransportSession(
     override fun close() {
         if (closed) return
         closed = true
-        completePendingExceptionally(IllegalStateException("MCP stdio 已断开"))
+        cancelPendingRequests()
         runCatching { writer.close() }
         runCatching { process.destroy() }
         if (runCatching { process.isAlive }.getOrDefault(false)) {

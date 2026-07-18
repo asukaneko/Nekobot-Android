@@ -133,7 +133,8 @@ class LocalAiClient(
     suspend fun chatOnce(
         model: LocalAiModelEntity,
         messages: List<Map<String, Any>>,
-        extra: Map<String, Any?> = emptyMap()
+        extra: Map<String, Any?> = emptyMap(),
+        requestTag: String? = null
     ): LocalAiResult {
         val protocol = LocalProtocols.get(model.protocol)
         val url = protocol.resolveUrl(model.baseUrl, model.model, model.appendBaseUrlPath)
@@ -143,6 +144,7 @@ class LocalAiClient(
 
         val reqBuilder = Request.Builder().url(url).post(body)
         headers.forEach { (k, v) -> reqBuilder.header(k, v) }
+        requestTag?.let { reqBuilder.tag(String::class.java, it) }
 
         return try {
             client.newCall(reqBuilder.build()).awaitResponse().use { resp ->
@@ -203,13 +205,17 @@ class LocalAiClient(
     suspend fun chatOnceWithFailover(
         models: List<LocalAiModelEntity>,
         messages: List<Map<String, Any>>,
-        extra: Map<String, Any?> = emptyMap()
+        extra: Map<String, Any?> = emptyMap(),
+        requestTag: String? = null,
+        shouldStop: () -> Boolean = { false }
     ): LocalAiResult {
         if (models.isEmpty()) return LocalAiResult("", error = "无可用模型")
+        if (shouldStop()) throw CancellationException("生成已停止")
         val failover = getFailoverState()
         val exclude = mutableSetOf<String>()
         var lastError: LocalAiResult? = null
         for (i in models.indices) {
+            if (shouldStop()) throw CancellationException("生成已停止")
             val modelConfigs = models.map { mapOf("model_id" to it.id) }
             val selected = failover.selectModel(modelConfigs, exclude)
             val modelId = (selected?.get("model_id") as? String)
@@ -217,7 +223,7 @@ class LocalAiClient(
             exclude.add(model.id)
 
             try {
-                val result = chatOnce(model, messages, extra)
+                val result = chatOnce(model, messages, extra, requestTag)
                 failover.recordSuccess(model.id)
                 return result.copy(usedModelId = model.id, usedModelName = model.name)
             } catch (e: FailoverHttpException) {
@@ -227,6 +233,7 @@ class LocalAiClient(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                if (shouldStop()) throw CancellationException("生成已停止").apply { initCause(e) }
                 val code = extractStatusCode(e)
                 failover.recordFailure(model.id, code)
                 Log.w("LocalAiClient", "模型 ${model.name} 调用异常，尝试下一个: ${e.message?.take(120)}")
@@ -234,6 +241,14 @@ class LocalAiClient(
             }
         }
         return lastError ?: LocalAiResult("", error = "所有模型均不可用")
+    }
+
+    /** 取消指定会话标签下正在排队或执行的非流式模型请求。 */
+    fun cancelRequests(requestTag: String) {
+        val calls = client.dispatcher.queuedCalls() + client.dispatcher.runningCalls()
+        calls
+            .filter { call -> call.request().tag(String::class.java) == requestTag }
+            .forEach { call -> runCatching { call.cancel() } }
     }
 
     /**
@@ -354,7 +369,8 @@ class LocalAiClient(
     suspend fun describeImage(
         model: LocalAiModelEntity,
         imageUrl: String,
-        question: String = "请描述这张图片的内容。"
+        question: String = "请描述这张图片的内容。",
+        requestTag: String? = null
     ): LocalAiResult {
         val protocol = LocalProtocols.get(model.protocol)
         val url = protocol.resolveUrl(model.baseUrl, model.model, model.appendBaseUrlPath)
@@ -363,6 +379,7 @@ class LocalAiClient(
         val body = gson.toJson(payload).toRequestBody(JSON_TYPE)
         val reqBuilder = Request.Builder().url(url).post(body)
         headers.forEach { (k, v) -> reqBuilder.header(k, v) }
+        requestTag?.let { reqBuilder.tag(String::class.java, it) }
 
         return try {
             client.newCall(reqBuilder.build()).awaitResponse().use { resp ->

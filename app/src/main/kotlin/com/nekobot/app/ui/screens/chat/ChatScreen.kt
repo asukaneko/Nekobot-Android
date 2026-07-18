@@ -870,20 +870,30 @@ fun ChatScreen(
             onCancel = { viewModel.respondToExecConfirmation(ExecAuthorization.Reject) }
         ) {
             androidx.compose.material3.Surface(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 220.dp),
                 shape = RoundedCornerShape(10.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
             ) {
-                SelectionContainer {
-                    Text(
-                        text = request.command.ifBlank {
-                            stringResource(R.string.chat_exec_confirm_unknown_command)
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(12.dp)
-                    )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    SelectionContainer {
+                        Text(
+                            text = request.command.ifBlank {
+                                stringResource(R.string.chat_exec_confirm_unknown_command)
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp)
+                        )
+                    }
                 }
             }
             if (request.message.isNotBlank()) {
@@ -3212,6 +3222,7 @@ class ChatViewModel : BaseViewModel() {
     private var eventsJob: kotlinx.coroutines.Job? = null
     /** 本地模式流式聊天收集 Job */
     private var localChatJob: kotlinx.coroutines.Job? = null
+    private var generationStopRequested = false
 
     /** 当前会话是否对用户可见（在聊天界面且应用在前台） */
     var isChatVisible: Boolean = false
@@ -3258,6 +3269,16 @@ class ChatViewModel : BaseViewModel() {
 
     /** 处理 Socket.IO 推送的实时事件。 */
     private fun handleRealtimeEvent(event: RealtimeEvent) {
+        if (
+            generationStopRequested && (
+                event is RealtimeEvent.StreamStart ||
+                    event is RealtimeEvent.StreamChunk ||
+                    event is RealtimeEvent.ExecConfirmationRequired ||
+                    event is RealtimeEvent.ThinkingCardUpdate
+                )
+        ) {
+            return
+        }
         when (event) {
             is RealtimeEvent.StreamStart -> {
                 _sending.value = true
@@ -3618,6 +3639,7 @@ class ChatViewModel : BaseViewModel() {
             timestamp = System.currentTimeMillis().toString()
         )
         _messages.value = _messages.value + optimistic
+        generationStopRequested = false
         _sending.value = true
         clearError()
 
@@ -3651,6 +3673,10 @@ class ChatViewModel : BaseViewModel() {
                 try {
                     flow.collect { event -> handleRealtimeEvent(event) }
                 } catch (e: Exception) {
+                    if (
+                        e is kotlinx.coroutines.CancellationException &&
+                        generationStopRequested
+                    ) return@launch
                     _sending.value = false
                     _messages.value = _messages.value.filter { it.id != streamingId }
                     showError(e.message ?: string(R.string.chat_send_failed))
@@ -3771,6 +3797,7 @@ class ChatViewModel : BaseViewModel() {
         if (removeIndex >= 0) {
             _messages.value = _messages.value.subList(0, removeIndex)
         }
+        generationStopRequested = false
         _sending.value = true
         // 如果剧情模式开启，清除旧选项并显示骨架（仅服务器模式）
         if (!isLocalMode && _session.value?.plotMode == true) {
@@ -3796,6 +3823,10 @@ class ChatViewModel : BaseViewModel() {
                 try {
                     flow.collect { event -> handleRealtimeEvent(event) }
                 } catch (e: Exception) {
+                    if (
+                        e is kotlinx.coroutines.CancellationException &&
+                        generationStopRequested
+                    ) return@launch
                     _sending.value = false
                     _messages.value = _messages.value.filter { it.id != streamingId }
                     showError(e.message ?: string(R.string.chat_regenerate_failed))
@@ -3822,23 +3853,54 @@ class ChatViewModel : BaseViewModel() {
 
     /** 停止生成。 */
     fun stop() {
-        if (currentSessionId.isBlank()) return
-        if (isLocalMode) {
-            localChatJob?.cancel()
-            localChatJob = null
-            _sending.value = false
-            showToast(string(R.string.chat_stopped_toast))
-            loadMessages()
-        } else {
-            launchResult(
-                block = { unified.stopGeneration(currentSessionId) },
-                onSuccess = {
-                    _sending.value = false
-                    showToast(string(R.string.chat_stop_requested))
-                    loadMessages()
-                }
-            )
+        val sessionId = currentSessionId.ifBlank { return }
+        generationStopRequested = true
+
+        _execConfirmation.value?.let { request ->
+            val confirmationSessionId = request.sessionId.ifBlank { sessionId }
+            if (isLocalMode) {
+                unified.respondToLocalExecConfirmation(
+                    requestId = request.requestId,
+                    sessionId = confirmationSessionId,
+                    authorization = ExecAuthorization.Reject
+                )
+            } else {
+                socket.respondToExecConfirmation(
+                    requestId = request.requestId,
+                    authorization = ExecAuthorization.Reject,
+                    sessionId = confirmationSessionId
+                )
+            }
         }
+        _execConfirmation.value = null
+        _sending.value = false
+        _plotChoicesLoading.value = false
+        streamingContent.setLength(0)
+        _messages.value = _messages.value
+            .filter { it.id != streamingId }
+            .map { message ->
+                val cards = message.thinkingCards?.map { card ->
+                    if (card.isComplete) card else card.copy(isComplete = true)
+                }
+                if (cards != null) message.copy(thinkingCards = cards) else message
+            }
+
+        val chatJob = localChatJob
+        viewModelScope.launch {
+            unified.stopGeneration(sessionId)
+            if (isLocalMode) {
+                chatJob?.cancel()
+                if (localChatJob === chatJob) localChatJob = null
+            }
+            kotlinx.coroutines.delay(150)
+            loadMessages()
+        }
+        showToast(
+            string(
+                if (isLocalMode) R.string.chat_stopped_toast
+                else R.string.chat_stop_requested
+            )
+        )
     }
 
     /** 压缩上下文：将早期消息摘要化以节省 token。 */
