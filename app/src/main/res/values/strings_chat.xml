@@ -406,7 +406,13 @@
     <string name="chat_status_generating">生成中</string>
     <string name="chat_status_ready">就绪</string>
     <string name="chat_search_keyword_hint">输入关键词开始搜索</string>
+    <string name="chat_search_results_count">找到 %1$d 条结果</string>
     <string name="chat_no_favorites_content">暂无收藏内容</string>
+    <string name="chat_delete_favorite_title">删除收藏</string>
+    <string name="chat_delete_favorite_confirm">确定删除「%1$s」吗？此操作不可撤销。</string>
+    <string name="chat_delete_favorite_success">已删除收藏</string>
+    <string name="chat_delete_favorite_failed">删除收藏失败: %1$s</string>
+    <string name="chat_favorite_created_at">创建于 %1$s</string>
     <string name="chat_uploaded_to_workspace_colon">已上传到工作区：%1$s</string>
     <string name="chat_exec_confirm_title">命令执行授权</string>
     <string name="chat_exec_confirm_description">AI 请求执行以下命令。该命令不在安全白名单中，请确认你信任此操作。</string>

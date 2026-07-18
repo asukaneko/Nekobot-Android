@@ -3706,6 +3706,19 @@ $charSection$topicSection
     }
 
     /**
+     * 删除指定收藏夹。与 updateMessageFavorites 的"空 messageIds 删除"语义解耦，
+     * 避免远程后端 PUT 端点不支持空 message_ids 的问题。
+     */
+    suspend fun deleteMessageFavorite(collectionId: String): JsonElement = withContext(Dispatchers.IO) {
+        db.messageFavoriteDao().deleteById(collectionId)
+        JsonObject().apply {
+            addProperty("success", true)
+            addProperty("deleted", true)
+            addProperty("collection_id", collectionId)
+        }
+    }
+
+    /**
      * 更新消息收藏：根据 req.collectionId 决定更新已有收藏夹还是新建。
      * 若 messageIds 为空则删除该收藏夹。
      */

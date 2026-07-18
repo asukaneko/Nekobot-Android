@@ -406,7 +406,13 @@
     <string name="chat_status_generating">생성 중</string>
     <string name="chat_status_ready">준비됨</string>
     <string name="chat_search_keyword_hint">검색할 키워드 입력</string>
+    <string name="chat_search_results_count">결과 %1$d건</string>
     <string name="chat_no_favorites_content">즐겨찾기 내용 없음</string>
+    <string name="chat_delete_favorite_title">즐겨찾기 삭제</string>
+    <string name="chat_delete_favorite_confirm">%1$s 삭제할까요? 되돌릴 수 없습니다.</string>
+    <string name="chat_delete_favorite_success">즐겨찾기가 삭제됨</string>
+    <string name="chat_delete_favorite_failed">즐겨찾기 삭제 실패: %1$s</string>
+    <string name="chat_favorite_created_at">생성일: %1$s</string>
     <string name="chat_uploaded_to_workspace_colon">워크스페이스에 업로드됨: %1$s</string>
 
     <!-- ==================== 워크스페이스 (WorkspaceScreen) ==================== -->

@@ -406,7 +406,13 @@
     <string name="chat_status_generating">生成中</string>
     <string name="chat_status_ready">準備完了</string>
     <string name="chat_search_keyword_hint">検索キーワードを入力</string>
+    <string name="chat_search_results_count">%1$d 件の結果が見つかりました</string>
     <string name="chat_no_favorites_content">お気に入り内容がありません</string>
+    <string name="chat_delete_favorite_title">お気に入りを削除</string>
+    <string name="chat_delete_favorite_confirm">「%1$s」を削除しますか？この操作は元に戻せません。</string>
+    <string name="chat_delete_favorite_success">お気に入りを削除しました</string>
+    <string name="chat_delete_favorite_failed">お気に入りの削除に失敗しました: %1$s</string>
+    <string name="chat_favorite_created_at">作成日時: %1$s</string>
     <string name="chat_uploaded_to_workspace_colon">ワークスペースにアップロード: %1$s</string>
 
     <!-- ==================== ワークスペース (WorkspaceScreen) ==================== -->

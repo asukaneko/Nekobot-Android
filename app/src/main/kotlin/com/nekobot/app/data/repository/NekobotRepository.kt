@@ -496,6 +496,9 @@ class NekobotRepository(
     suspend fun updateMessageFavorites(sessionId: String, req: MessageFavoriteRequest): Resource<JsonElement> =
         safeCall { api.updateMessageFavorites(sessionId, req) }
 
+    suspend fun deleteMessageFavorite(sessionId: String, collectionId: String): Resource<JsonElement> =
+        safeCall { api.deleteMessageFavorite(sessionId, collectionId) }
+
     // ==================== 工具 ====================
     fun toJson(obj: Any): JsonElement = gson.toJsonTree(obj)
 

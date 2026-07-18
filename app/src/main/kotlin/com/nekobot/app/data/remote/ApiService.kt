@@ -857,4 +857,10 @@ interface ApiService {
         @Path("id") id: String,
         @Body body: MessageFavoriteRequest
     ): Response<JsonElement>
+
+    @DELETE("api/sessions/{id}/message-favorites/{collectionId}")
+    suspend fun deleteMessageFavorite(
+        @Path("id") id: String,
+        @Path("collectionId") collectionId: String
+    ): Response<JsonElement>
 }

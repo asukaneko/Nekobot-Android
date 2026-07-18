@@ -42,15 +42,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Compress
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
@@ -65,6 +69,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VerticalSplit
 import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material.icons.outlined.AccountTree
+import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -105,8 +110,10 @@ import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.ChatInputLayoutMode
 import com.nekobot.app.data.model.Message
+import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.components.GlassCard
+import com.nekobot.app.ui.components.NekoDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -224,6 +231,7 @@ private fun ModernChatComposer(
     var showFavorites by remember { mutableStateOf(false) }
     var favoritesLoading by remember { mutableStateOf(false) }
     var favorites by remember { mutableStateOf<List<JsonObject>>(emptyList()) }
+    var favoritesVersion by remember { mutableStateOf(0) }
 
     var isRecording by remember { mutableStateOf(false) }
     var recordingDuration by remember { mutableStateOf(0) }
@@ -360,7 +368,7 @@ private fun ModernChatComposer(
         }
     }
 
-    LaunchedEffect(showFavorites) {
+    LaunchedEffect(showFavorites, favoritesVersion) {
         if (!showFavorites) return@LaunchedEffect
         favoritesLoading = true
         favorites = when (val result = ServiceContainer.unified.listMessageFavorites(sessionId)) {
@@ -747,7 +755,8 @@ private fun ModernChatComposer(
             messages = messages,
             query = searchQuery,
             onQueryChange = { searchQuery = it },
-            onDismiss = { showSearch = false }
+            onDismiss = { showSearch = false },
+            onResultClick = { msg -> onJumpToMessage(msg) }
         )
     }
 
@@ -755,7 +764,9 @@ private fun ModernChatComposer(
         ModernFavoritesDialog(
             favorites = favorites,
             loading = favoritesLoading,
-            onDismiss = { showFavorites = false }
+            sessionId = sessionId,
+            onDismiss = { showFavorites = false },
+            onFavoritesChanged = { favoritesVersion++ }
         )
     }
 
@@ -1597,7 +1608,8 @@ private fun ModernSearchDialog(
     messages: List<Message>,
     query: String,
     onQueryChange: (String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onResultClick: (Message) -> Unit
 ) {
     val results = remember(query, messages) {
         val normalized = query.trim().lowercase()
@@ -1606,41 +1618,79 @@ private fun ModernSearchDialog(
             it.role != "system" && it.displayContent.lowercase().contains(normalized)
         }.take(80)
     }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.chat_search_conversation)) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = onQueryChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text(stringResource(R.string.chat_search_placeholder)) },
-                    singleLine = true
+    NekoDialog(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.chat_search_conversation),
+        confirmText = stringResource(R.string.common_close),
+        onConfirm = onDismiss
+    ) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text(stringResource(R.string.chat_search_placeholder)) },
+            singleLine = true
+        )
+        Spacer(Modifier.height(12.dp))
+        when {
+            query.isBlank() -> Text(
+                stringResource(R.string.chat_search_keyword_hint),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(16.dp)
+            )
+            results.isEmpty() -> Text(
+                stringResource(R.string.chat_no_match),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(16.dp)
+            )
+            else -> {
+                Text(
+                    stringResource(R.string.chat_search_results_count, results.size),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
                 )
-                Spacer(Modifier.height(10.dp))
-                when {
-                    query.isBlank() -> Text(stringResource(R.string.chat_search_keyword_hint), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    results.isEmpty() -> Text(stringResource(R.string.chat_no_match), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    else -> LazyColumn(
-                        modifier = Modifier.heightIn(max = 360.dp),
-                        verticalArrangement = Arrangement.spacedBy(7.dp)
-                    ) {
-                        items(results, key = { it.id ?: it.hashCode().toString() }) { message ->
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-                            ) {
-                                Column(modifier = Modifier.padding(10.dp)) {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 400.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(results, key = { it.id ?: it.hashCode().toString() }) { message ->
+                        val role = message.role ?: "unknown"
+                        val content = message.displayContent
+                        val idx = content.lowercase().indexOf(query.trim().lowercase())
+                        val preview = if (idx >= 0) {
+                            val start = maxOf(0, idx - 36)
+                            val end = minOf(content.length, idx + query.length + 72)
+                            (if (start > 0) "..." else "") + content.slice(start until end).replace("\n", " ").trim() + (if (end < content.length) "..." else "")
+                        } else content.take(100)
+                        GlassCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onResultClick(message)
+                                    onDismiss()
+                                },
+                            cornerRadius = 12
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    if (role == "assistant") Icons.Outlined.SmartToy else Icons.Filled.AccountCircle,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         if (message.isUser) stringResource(R.string.chat_me) else stringResource(R.string.chat_ai_label),
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Text(
-                                        message.displayContent,
+                                        preview,
                                         style = MaterialTheme.typography.bodySmall,
-                                        maxLines = 4,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 2,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 }
@@ -1649,59 +1699,278 @@ private fun ModernSearchDialog(
                     }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } }
-    )
+        }
+    }
 }
 
 @Composable
 private fun ModernFavoritesDialog(
     favorites: List<JsonObject>,
     loading: Boolean,
-    onDismiss: () -> Unit
+    sessionId: String,
+    onDismiss: () -> Unit,
+    onFavoritesChanged: () -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.chat_favorites)) },
-        text = {
-            when {
-                loading -> Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center
-                ) { CircularProgressIndicator() }
-                favorites.isEmpty() -> Text(stringResource(R.string.chat_no_favorites_content), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                else -> LazyColumn(
-                    modifier = Modifier.heightIn(max = 420.dp),
-                    verticalArrangement = Arrangement.spacedBy(7.dp)
+    var selectedCollection by remember(favorites) { mutableStateOf<JsonObject?>(null) }
+    var deletingCollection by remember { mutableStateOf<JsonObject?>(null) }
+    var deleting by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    // 删除确认弹窗
+    if (deletingCollection != null) {
+        val coll = deletingCollection!!
+        val collTitle = coll.get("title")?.takeIf { !it.isJsonNull }?.asString
+            ?: coll.get("name")?.takeIf { !it.isJsonNull }?.asString
+            ?: stringResource(R.string.chat_unnamed_favorite)
+        NekoDialog(
+            onDismiss = { if (!deleting) deletingCollection = null },
+            title = stringResource(R.string.chat_delete_favorite_title),
+            message = stringResource(R.string.chat_delete_favorite_confirm, collTitle),
+            confirmText = stringResource(R.string.common_delete),
+            confirmEnabled = !deleting,
+            onConfirm = {
+                val id = coll.get("id")?.takeIf { !it.isJsonNull }?.asString
+                    ?: coll.get("collection_id")?.takeIf { !it.isJsonNull }?.asString ?: ""
+                if (id.isBlank()) {
+                    deletingCollection = null
+                    return@NekoDialog
+                }
+                deleting = true
+                scope.launch {
+                    val result = runCatching {
+                        ServiceContainer.unified.deleteMessageFavorite(sessionId, id)
+                    }
+                    deleting = false
+                    val ok = result.isSuccess && result.getOrNull() is Resource.Success
+                    if (ok) {
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.chat_delete_favorite_success),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        deletingCollection = null
+                        selectedCollection = null
+                        onFavoritesChanged()
+                    } else {
+                        val err = (result.getOrNull() as? Resource.Error)?.message
+                            ?: result.exceptionOrNull()?.message
+                            ?: context.getString(R.string.chat_favorite_failed)
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.chat_delete_favorite_failed, err),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            },
+            cancelText = if (deleting) null else stringResource(R.string.common_cancel),
+            onCancel = { deletingCollection = null }
+        )
+    }
+
+    // 主弹窗
+    val selectedTitle = selectedCollection?.let {
+        it.get("title")?.takeIf { !it.isJsonNull }?.asString
+            ?: it.get("name")?.takeIf { !it.isJsonNull }?.asString
+            ?: stringResource(R.string.chat_unnamed_favorite)
+    }
+    NekoDialog(
+        onDismiss = onDismiss,
+        title = selectedTitle ?: stringResource(R.string.chat_favorites),
+        confirmText = stringResource(R.string.common_close),
+        onConfirm = onDismiss
+    ) {
+        if (loading) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            }
+        } else if (selectedCollection != null) {
+            // 第二层：消息详情列表
+            val collection = selectedCollection!!
+            val messages = collection.getAsJsonArray("messages")
+                ?.mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject }
+                .orEmpty()
+            TextButton(onClick = { selectedCollection = null }) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.chat_back_to_favorites))
+            }
+            if (messages.isEmpty()) {
+                Text(
+                    stringResource(R.string.chat_favorite_no_messages),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp)
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(favorites, key = { item ->
-                        item.get("id")?.takeIf { !it.isJsonNull }?.asString ?: item.hashCode().toString()
-                    }) { item ->
-                        val title = item.get("title")?.takeIf { !it.isJsonNull }?.asString
-                            ?: item.get("name")?.takeIf { !it.isJsonNull }?.asString
-                            ?: stringResource(R.string.chat_unnamed_favorite)
-                        val count = item.getAsJsonArray("messages")?.size()
-                            ?: item.getAsJsonArray("message_ids")?.size()
-                            ?: 0
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-                        ) {
-                            Column(modifier = Modifier.padding(11.dp)) {
-                                Text(title, fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    stringResource(R.string.chat_message_count, count),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
+                    items(messages, key = { msg ->
+                        msg.get("message_id")?.takeIf { !it.isJsonNull }?.asString
+                            ?: msg.get("id")?.takeIf { !it.isJsonNull }?.asString
+                            ?: msg.hashCode().toString()
+                    }) { msg ->
+                        ModernFavoriteMessageCard(msg)
                     }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } }
-    )
+        } else if (favorites.isEmpty()) {
+            Text(
+                stringResource(R.string.chat_no_favorites_content),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(16.dp)
+            )
+        } else {
+            // 第一层：收藏夹列表
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 420.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(favorites, key = { item ->
+                    item.get("id")?.takeIf { !it.isJsonNull }?.asString
+                        ?: item.get("collection_id")?.takeIf { !it.isJsonNull }?.asString
+                        ?: item.hashCode().toString()
+                }) { collection ->
+                    ModernFavoriteCollectionCard(
+                        collection = collection,
+                        onClick = { selectedCollection = collection },
+                        onDelete = { deletingCollection = collection }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 收藏夹列表项：标题 + 创建日期 + 消息数 + 前 2 条消息预览 + 删除按钮。 */
+@Composable
+private fun ModernFavoriteCollectionCard(
+    collection: JsonObject,
+    onClick: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val title = collection.get("title")?.takeIf { !it.isJsonNull }?.asString
+        ?: collection.get("name")?.takeIf { !it.isJsonNull }?.asString
+        ?: stringResource(R.string.chat_unnamed_favorite)
+    val createdAt = collection.get("created_at")?.takeIf { !it.isJsonNull }?.asString?.take(10).orEmpty()
+    val messages = collection.getAsJsonArray("messages")
+        ?.mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject }
+        .orEmpty()
+    val count = if (messages.isNotEmpty()) messages.size
+        else collection.getAsJsonArray("message_ids")?.size() ?: 0
+
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        cornerRadius = 12
+    ) {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        Icons.Filled.Delete,
+                        contentDescription = stringResource(R.string.common_delete),
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            if (createdAt.isNotBlank()) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    stringResource(R.string.chat_favorite_created_at, createdAt),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(R.string.chat_favorite_messages_count, count),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Medium
+            )
+            // 前 2 条消息预览
+            messages.take(2).forEach { msg ->
+                val role = msg.get("role")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                val content = msg.get("content")?.takeIf { !it.isJsonNull }?.let {
+                    runCatching { it.asString }.getOrElse { it.toString() }
+                }.orEmpty()
+                Text(
+                    "[$role] ${content.take(60)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
+    }
+}
+
+/** 收藏夹消息详情卡片：显示角色标签、时间戳、可复制内容。 */
+@Composable
+private fun ModernFavoriteMessageCard(message: JsonObject) {
+    val role = message.get("role")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+    val userLabel = stringResource(R.string.chat_role_user)
+    val aiLabel = stringResource(R.string.chat_ai_label)
+    val systemLabel = stringResource(R.string.chat_role_system)
+    val msgLabel = stringResource(R.string.chat_role_message)
+    val roleLabel = when (role.lowercase()) {
+        "user", "human" -> userLabel
+        "assistant", "ai" -> aiLabel
+        "system" -> systemLabel
+        else -> message.get("sender")?.takeIf { !it.isJsonNull }?.asString ?: role.ifBlank { msgLabel }
+    }
+    val content = message.get("content")?.takeIf { !it.isJsonNull }?.let {
+        runCatching { it.asString }.getOrElse { it.toString() }
+    }.orEmpty()
+    val timestamp = message.get("timestamp")?.takeIf { !it.isJsonNull }?.asString
+        ?.replace('T', ' ')?.take(19).orEmpty()
+
+    GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 12) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                roleLabel,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (role.equals("user", true) || role.equals("human", true)) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.tertiary
+                },
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(Modifier.weight(1f))
+            if (timestamp.isNotBlank()) {
+                Text(timestamp, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        SelectionContainer {
+            Text(
+                content.ifBlank { stringResource(R.string.chat_empty_message) },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
 }
 
 internal fun estimateModernChatDraftTokens(text: String): Int {

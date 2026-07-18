@@ -1150,6 +1150,16 @@ class UnifiedRepository(
             .getOrElse { Resource.Error(it.message ?: "保存失败") }
         else remote.updateMessageFavorites(sessionId, req)
 
+    /**
+     * 删除指定收藏夹。
+     * 本地模式：直接调用 DAO 删除。
+     * 远程模式：调用后端 DELETE /api/sessions/{id}/message-favorites/{collectionId} 端点。
+     */
+    suspend fun deleteMessageFavorite(sessionId: String, collectionId: String): Resource<JsonElement> =
+        if (isLocal) runCatching { Resource.Success(local.deleteMessageFavorite(collectionId)) }
+            .getOrElse { Resource.Error(it.message ?: "删除失败") }
+        else remote.deleteMessageFavorite(sessionId, collectionId)
+
     // ==================== AI 配置中心 ====================
     suspend fun getAiConfig(): Resource<JsonElement> =
         if (isLocal) runCatching { Resource.Success(local.getAiConfig()) }

@@ -406,7 +406,13 @@
     <string name="chat_status_generating">Generating</string>
     <string name="chat_status_ready">Ready</string>
     <string name="chat_search_keyword_hint">Enter keywords to search</string>
+    <string name="chat_search_results_count">%1$d results found</string>
     <string name="chat_no_favorites_content">No favorite content</string>
+    <string name="chat_delete_favorite_title">Delete favorite</string>
+    <string name="chat_delete_favorite_confirm">Delete \"%1$s\"? This cannot be undone.</string>
+    <string name="chat_delete_favorite_success">Favorite deleted</string>
+    <string name="chat_delete_favorite_failed">Failed to delete favorite: %1$s</string>
+    <string name="chat_favorite_created_at">Created on %1$s</string>
     <string name="chat_uploaded_to_workspace_colon">Uploaded to workspace: %1$s</string>
     <string name="chat_exec_confirm_title">Command authorization</string>
     <string name="chat_exec_confirm_description">AI wants to run the following command. It is not on the safe allowlist; only approve it if you trust this operation.</string>
