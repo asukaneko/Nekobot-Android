@@ -804,8 +804,7 @@ class LocalRepository(
                 }
             },
             workspaceRoot = appContext?.filesDir
-                ?.resolve("agent_workspaces")
-                ?.resolve(sessionId),
+                ?.let { LocalWorkspaceStorage.resolve(it, sessionId) },
             execAuthorizationManager = localExecAuthorizationManager,
             mcpToolExecutor = localMcpRuntime::executeByFullName,
             failoverQueue = failoverQueue,
@@ -3452,9 +3451,7 @@ $charSection$topicSection
     /** 工作区根目录：filesDir/workspace/<sessionId>/。 */
     private fun workspaceDir(sessionId: String): java.io.File? {
         val ctx = appContext ?: return null
-        val dir = java.io.File(ctx.filesDir, "workspace/$sessionId")
-        if (!dir.exists()) dir.mkdirs()
-        return dir
+        return LocalWorkspaceStorage.resolve(ctx.filesDir, sessionId)
     }
 
     suspend fun listWorkspaceFiles(sessionId: String, path: String?): JsonElement = withContext(Dispatchers.IO) {

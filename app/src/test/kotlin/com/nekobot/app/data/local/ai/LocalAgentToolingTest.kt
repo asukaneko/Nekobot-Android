@@ -123,7 +123,7 @@ class LocalAgentToolingTest {
 
             val read = executor.execute(
                 "workspace_read_file",
-                mapOf("path" to "notes/todo.txt")
+                mapOf("filename" to "notes/todo.txt")
             )
             assertEquals(true, read["success"])
             assertEquals("完成工具测试", read["content"])

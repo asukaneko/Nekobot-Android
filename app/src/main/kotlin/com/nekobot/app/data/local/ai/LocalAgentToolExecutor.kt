@@ -273,7 +273,7 @@ internal class LocalAgentToolExecutor(
     }
 
     private fun writeWorkspaceFile(args: Map<String, Any>): Map<String, Any> {
-        val target = resolveWorkspacePath(args.string("path"))
+        val target = resolveWorkspacePath(args.workspacePath())
             ?: return failure("路径为空或超出会话工作区")
         target.parentFile?.mkdirs()
         target.writeText(args.string("content"), Charsets.UTF_8)
@@ -281,7 +281,7 @@ internal class LocalAgentToolExecutor(
     }
 
     private fun readWorkspaceFile(args: Map<String, Any>): Map<String, Any> {
-        val target = resolveWorkspacePath(args.string("path"))
+        val target = resolveWorkspacePath(args.workspacePath())
             ?: return failure("路径为空或超出会话工作区")
         if (!target.isFile) return failure("文件不存在")
         return success(
@@ -291,7 +291,7 @@ internal class LocalAgentToolExecutor(
     }
 
     private fun deleteWorkspaceFile(args: Map<String, Any>): Map<String, Any> {
-        val target = resolveWorkspacePath(args.string("path"))
+        val target = resolveWorkspacePath(args.workspacePath())
             ?: return failure("路径为空或超出会话工作区")
         if (!target.exists()) return failure("文件不存在")
         if (target.isDirectory && target.listFiles()?.isNotEmpty() == true) {
@@ -302,7 +302,7 @@ internal class LocalAgentToolExecutor(
     }
 
     private fun listWorkspaceFiles(args: Map<String, Any>): Map<String, Any> {
-        val target = resolveWorkspacePath(args.string("path"), allowRoot = true)
+        val target = resolveWorkspacePath(args.workspacePath(), allowRoot = true)
             ?: return failure("路径超出会话工作区")
         if (!target.exists()) target.mkdirs()
         if (!target.isDirectory) return failure("目标不是目录")
@@ -322,7 +322,7 @@ internal class LocalAgentToolExecutor(
     }
 
     private fun sendWorkspaceFile(args: Map<String, Any>): Map<String, Any> {
-        val target = resolveWorkspacePath(args.string("path"))
+        val target = resolveWorkspacePath(args.workspacePath())
             ?: return failure("路径为空或超出会话工作区")
         if (!target.isFile) return failure("文件不存在")
         return success(
@@ -333,7 +333,7 @@ internal class LocalAgentToolExecutor(
     }
 
     private fun workspaceFileInfo(args: Map<String, Any>): Map<String, Any> {
-        val target = resolveWorkspacePath(args.string("path"))
+        val target = resolveWorkspacePath(args.workspacePath())
             ?: return failure("路径为空或超出会话工作区")
         if (!target.exists()) return failure("文件不存在")
         return success(
@@ -385,6 +385,10 @@ internal class LocalAgentToolExecutor(
         .trim()
 
     private fun Map<String, Any>.string(key: String): String = this[key]?.toString().orEmpty()
+
+    /** 兼容原仓库与不同模型常用的 filename/file_path 参数名。 */
+    private fun Map<String, Any>.workspacePath(): String =
+        string("path").ifBlank { string("filename") }.ifBlank { string("file_path") }
 
     private fun Map<String, Any>.int(key: String, default: Int): Int =
         (this[key] as? Number)?.toInt() ?: this[key]?.toString()?.toIntOrNull() ?: default
