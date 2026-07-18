@@ -193,10 +193,17 @@ interface AiModelDao {
     @Query("SELECT * FROM local_ai_models WHERE id = :id")
     suspend fun getById(id: String): LocalAiModelEntity?
 
-    @Query("SELECT * FROM local_ai_models WHERE active = 1 LIMIT 1")
+    /**
+     * 默认激活模型按 purpose='chat' 过滤。
+     * 远程数据库导入后每个 purpose 都会有一个 active=1 的模型（chat/tts/vision/...），
+     * 若不过滤 purpose，LIMIT 1 可能返回 TTS/vision 等非 chat 模型，
+     * 导致聊天代码用错模型并触发 404。
+     * 其他 purpose 的激活模型请使用 [getActiveByPurpose]。
+     */
+    @Query("SELECT * FROM local_ai_models WHERE purpose = 'chat' AND active = 1 LIMIT 1")
     suspend fun getActive(): LocalAiModelEntity?
 
-    @Query("SELECT * FROM local_ai_models WHERE active = 1 LIMIT 1")
+    @Query("SELECT * FROM local_ai_models WHERE purpose = 'chat' AND active = 1 LIMIT 1")
     fun observeActive(): Flow<LocalAiModelEntity?>
 
     @Query("SELECT * FROM local_ai_models WHERE purpose = :purpose AND active = 1 LIMIT 1")
