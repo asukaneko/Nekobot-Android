@@ -11,6 +11,7 @@ import com.nekobot.app.data.local.db.NekobotDatabase
 import com.nekobot.app.data.model.ThinkingCard
 import com.nekobot.app.data.remote.RealtimeEvent
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
 
 /**
  * 本地模式 PipelineCallbacks 实现。
@@ -28,6 +29,7 @@ import kotlinx.coroutines.channels.Channel
  * @param characterIdentity 角色身份标识（可空）
  * @param coordinator 故障转移协调器（可空，传入则使用持久化队列；否则回退到内存版 chatOnceWithFailover）
  * @param failoverQueue 故障转移队列：除 activeModel 外可用的备选模型（同 purpose，按 priority 升序）
+ * @param hookExecutor Hook 执行引擎（可空，传入则在 before_turn/after_turn/model.after_call 事件触发 hook）
  */
 class LocalPipelineCallbacks(
     private val db: NekobotDatabase,
@@ -54,7 +56,9 @@ class LocalPipelineCallbacks(
     /** 故障转移队列：activeModel 优先 + 同 purpose 其他启用模型，按 priority 升序 */
     private val failoverQueue: List<LocalAiModelEntity> = emptyList(),
     /** 持久化故障转移协调器；非空时 [buildModelCall] 走 coordinator，否则回退到 chatOnceWithFailover */
-    private val coordinator: FailoverCoordinator? = null
+    private val coordinator: FailoverCoordinator? = null,
+    /** Hook 执行引擎；非空时在管线关键节点触发 hook 事件 */
+    private val hookExecutor: HookExecutor? = null
 ) : PipelineCallbacks() {
 
     companion object {
@@ -102,6 +106,9 @@ class LocalPipelineCallbacks(
     private fun emitEvent(event: RealtimeEvent) {
         eventChannel.trySend(event)
     }
+
+    // HookExecutor 事件由 ChatViewModel 直接收集（connectLocalHookEvents），
+    // 不再通过 eventChannel 转发——避免 coroutineScope 等待无限 collect 导致死锁。
 
     /** 流式消息 ID */
     private var streamMessageId: String = ""
@@ -215,6 +222,8 @@ class LocalPipelineCallbacks(
     private val modelQueue: List<LocalAiModelEntity> = listOf(activeModel) + failoverQueue.filter { it.id != activeModel.id }
 
     override fun buildModelCall(ctx: PipelineContext, tools: List<Map<String, Any>>): ModelCall {
+        // 在模型调用前触发 character.before_turn.finished（此时 ctx.characterTurn 已就绪）
+        triggerBeforeTurnHook(ctx)
         return { messages, stopped ->
             val extra = buildMap<String, Any?> {
                 activeModel.temperature?.let { put("temperature", it) }
@@ -249,6 +258,9 @@ class LocalPipelineCallbacks(
                 throw RuntimeException(result.error)
             }
 
+            // 模型调用完成 → 触发 model.after_call hook
+            triggerModelAfterCallHook(ctx, result.usedModelName ?: activeModel.name)
+
             buildMap<String, Any> {
                 put("content", result.content)
                 put("usage", result.usage)
@@ -267,6 +279,9 @@ class LocalPipelineCallbacks(
 
     override fun buildModelCallStreaming(ctx: PipelineContext, tools: List<Map<String, Any>>): StreamModelCall? {
         if (tools.isNotEmpty()) return null  // 工具调用不支持流式
+
+        // 在模型调用前触发 character.before_turn.finished
+        triggerBeforeTurnHook(ctx)
 
         return { messages, stopped ->
             val extra = buildMap<String, Any?> {
@@ -299,6 +314,9 @@ class LocalPipelineCallbacks(
             if (result.error != null) {
                 throw RuntimeException(result.error)
             }
+
+            // 模型调用完成 → 触发 model.after_call hook
+            triggerModelAfterCallHook(ctx, result.usedModelName ?: activeModel.name)
 
             listOf(buildMap<String, Any> {
                 put("content", result.content)
@@ -390,6 +408,68 @@ class LocalPipelineCallbacks(
 
     override fun onResponseComplete(ctx: PipelineContext, result: PipelineResult) {
         com.nekobot.app.data.local.LocalLogger.d(TAG, "Response complete: ${result.finalContent.length} chars, error=${result.error}")
+        // 触发 character.after_turn.finished hook（此时 afterTurn 已完成，状态/关系已是最新）
+        triggerAfterTurnHook(ctx)
+    }
+
+    // ============== Hook 触发辅助 ==============
+
+    /** 触发 character.before_turn.finished 事件 */
+    private fun triggerBeforeTurnHook(ctx: PipelineContext) {
+        val executor = hookExecutor ?: return
+        val turn = ctx.characterTurn ?: return
+        kotlinx.coroutines.GlobalScope.launch {
+            executor.triggerEvent(
+                eventType = "character.before_turn.finished",
+                conversationId = session.id,
+                characterId = characterIdentity?.characterId,
+                ctx = HookContext(
+                    state = turn.state,
+                    relationship = turn.relationship,
+                    promptStack = ctx.promptStack,
+                    targetId = characterIdentity?.targetId ?: "local-user",
+                    conditionLogic = "and"
+                )
+            )
+        }
+    }
+
+    /** 触发 model.after_call 事件 */
+    private fun triggerModelAfterCallHook(ctx: PipelineContext, modelName: String) {
+        val executor = hookExecutor ?: return
+        val turn = ctx.characterTurn
+        kotlinx.coroutines.GlobalScope.launch {
+            executor.triggerEvent(
+                eventType = "model.after_call",
+                conversationId = session.id,
+                characterId = characterIdentity?.characterId,
+                ctx = HookContext(
+                    state = turn?.state,
+                    relationship = turn?.relationship,
+                    targetId = characterIdentity?.targetId ?: "local-user",
+                    conditionLogic = "and"
+                )
+            )
+        }
+    }
+
+    /** 触发 character.after_turn.finished 事件 */
+    private fun triggerAfterTurnHook(ctx: PipelineContext) {
+        val executor = hookExecutor ?: return
+        val turn = ctx.characterTurn ?: return
+        kotlinx.coroutines.GlobalScope.launch {
+            executor.triggerEvent(
+                eventType = "character.after_turn.finished",
+                conversationId = session.id,
+                characterId = characterIdentity?.characterId,
+                ctx = HookContext(
+                    state = turn.state,
+                    relationship = turn.relationship,
+                    targetId = characterIdentity?.targetId ?: "local-user",
+                    conditionLogic = "and"
+                )
+            )
+        }
     }
 
     // ---- 角色运行时 ----

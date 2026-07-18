@@ -427,6 +427,11 @@
     <string name="chat_exec_confirm_always_approved">Always allowed for this session. Running command…</string>
     <string name="chat_exec_confirm_rejected">Command execution rejected</string>
 
+    <!-- ==================== Hook notification (achievement popup) ==================== -->
+    <string name="chat_hook_notif_title">Triggered</string>
+    <string name="chat_hook_notif_close">Dismiss notification</string>
+    <string name="chat_hook_notif_event_label">Event</string>
+
     <!-- ==================== Workspace (WorkspaceScreen) ==================== -->
     <string name="workspace_title">Workspace</string>
     <string name="workspace_upload_file">Upload file</string>

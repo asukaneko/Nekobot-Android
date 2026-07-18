@@ -427,6 +427,11 @@
     <string name="chat_exec_confirm_always_approved">已设为本会话始终允许，正在执行命令…</string>
     <string name="chat_exec_confirm_rejected">已拒绝执行命令</string>
 
+    <!-- ==================== Hook 触发通知（成就式弹窗） ==================== -->
+    <string name="chat_hook_notif_title">触发</string>
+    <string name="chat_hook_notif_close">关闭通知</string>
+    <string name="chat_hook_notif_event_label">事件</string>
+
     <!-- ==================== 工作区页 (WorkspaceScreen) ==================== -->
     <string name="workspace_title">工作区</string>
     <string name="workspace_upload_file">上传文件</string>

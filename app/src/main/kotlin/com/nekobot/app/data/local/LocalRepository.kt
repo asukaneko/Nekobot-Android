@@ -230,6 +230,11 @@ class LocalRepository(
         )
     }
 
+    /** 本地模式 Hook 执行引擎（跨会话保持 once_per_conversation 状态） */
+    val hookExecutor by lazy {
+        com.nekobot.app.data.local.ai.HookExecutor(db)
+    }
+
     // ==================== 会话 ====================
 
     suspend fun listSessions(): List<Session> = withContext(Dispatchers.IO) {
@@ -264,6 +269,26 @@ class LocalRepository(
             sessionMode = req.sessionMode
         )
         sessionDao.upsert(entity)
+
+        // 角色会话：若角色有 firstMessage，自动插入一条 assistant 消息到数据库
+        // （agent 模式不插入，agent 会话由用户主动发起）
+        val firstMsg = req.firstMessage ?: character?.firstMessage ?: character?.greeting
+        if (!firstMsg.isNullOrBlank() && !req.sessionMode.equals("agent", ignoreCase = true)) {
+            val msgId = UUID.randomUUID().toString()
+            messageDao.upsert(
+                LocalMessageEntity(
+                    id = msgId,
+                    sessionId = id,
+                    role = "assistant",
+                    content = firstMsg,
+                    sender = character?.name,
+                    timestamp = System.currentTimeMillis().toString(),
+                    createdAt = now
+                )
+            )
+            sessionDao.touch(id, firstMsg.take(200), 1, now)
+        }
+
         entity.toSession()
     }
 
@@ -813,7 +838,8 @@ class LocalRepository(
             mcpToolExecutor = localMcpRuntime::executeByFullName,
             skillToolExecutor = ::executeLocalSkillTool,
             failoverQueue = failoverQueue,
-            coordinator = failoverCoordinator
+            coordinator = failoverCoordinator,
+            hookExecutor = hookExecutor
         )
 
         // 5. 构建上下文（含会话级配置：剧情模式、禁用注入项、自动状态间隔等）
@@ -876,6 +902,8 @@ class LocalRepository(
         try {
             // 在单独协程中执行 Pipeline，同时从 Channel 转发事件到 Flow
             kotlinx.coroutines.coroutineScope {
+                // HookExecutor 事件由 ChatViewModel 直接收集（独立于 localChatJob），
+                // 避免阻塞 coroutineScope 导致下一次聊天被取消时报 "StandaloneCoroutine was cancelled"
                 val pipelineJob = launch {
                     try {
                         val tools = if (session.sessionMode.equals("agent", ignoreCase = true)) {
@@ -2555,12 +2583,44 @@ $charSection$topicSection
         existing.copy(enabled = newEnabled).toHook()
     }
 
-    /** 本地模式无 Hook 执行引擎，testHook 仅返回入参回显与"已记录"状态。 */
+    /**
+     * 本地模式 Hook 测试：构造一个临时 Hook 直接执行 actions，返回执行结果。
+     *
+     * 入参格式与后端 `/api/hooks/test` 一致：可传入完整 Hook 对象或仅 actions 数组。
+     * 测试执行不持久化，仅触发 actions 并通过 HookExecutor.events 推送通知。
+     */
     suspend fun testHook(body: JsonElement): JsonElement = withContext(Dispatchers.IO) {
-        JsonObject().apply {
-            addProperty("success", true)
-            addProperty("message", "本地模式仅保存配置，不实际执行 Hook")
-            add("input", body)
+        try {
+            val obj = body.takeIf { it.isJsonObject }?.asJsonObject
+            val actions = obj?.get("actions")?.takeIf { it.isJsonArray }
+                ?.let { it.asJsonArray.map { el -> el } }
+                ?: (if (body.isJsonArray) body.asJsonArray.map { it } else emptyList())
+            val tempHook = com.nekobot.app.data.model.Hook(
+                id = "test_${System.currentTimeMillis()}",
+                name = obj?.get("name")?.takeUnless { it.isJsonNull }?.asString ?: "测试 Hook",
+                event = obj?.get("event")?.takeUnless { it.isJsonNull }?.asString ?: "test",
+                actions = actions,
+                enabled = true,
+                triggerMode = "always",
+                conditionLogic = "and"
+            )
+            hookExecutor.triggerHookDirectly(
+                hook = tempHook,
+                conversationId = obj?.get("conversation_id")?.takeUnless { it.isJsonNull }?.asString ?: "test_session",
+                characterId = obj?.get("character_id")?.takeUnless { it.isJsonNull }?.asString
+            )
+            JsonObject().apply {
+                addProperty("success", true)
+                addProperty("message", "Hook 已执行（请查看日志和聊天界面通知）")
+                addProperty("actions_executed", actions.size)
+                add("input", body)
+            }
+        } catch (e: Exception) {
+            JsonObject().apply {
+                addProperty("success", false)
+                addProperty("message", "Hook 执行失败: ${e.message}")
+                add("input", body)
+            }
         }
     }
 

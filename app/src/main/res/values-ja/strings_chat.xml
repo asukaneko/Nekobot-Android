@@ -444,6 +444,11 @@
     <string name="chat_exec_confirm_always_approved">このセッションでは常に許可します。コマンドを実行しています…</string>
     <string name="chat_exec_confirm_rejected">コマンドの実行を拒否しました</string>
 
+    <!-- ==================== Hook 通知（実績ポップアップ） ==================== -->
+    <string name="chat_hook_notif_title">トリガー</string>
+    <string name="chat_hook_notif_close">通知を閉じる</string>
+    <string name="chat_hook_notif_event_label">イベント</string>
+
     <!-- ==================== マルチメディアコンテンツ (MultimediaContent) ==================== -->
     <string name="chat_media_image">画像</string>
     <string name="chat_media_pause">一時停止</string>

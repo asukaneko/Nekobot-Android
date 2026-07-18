@@ -444,6 +444,11 @@
     <string name="chat_exec_confirm_always_approved">이 세션에서 항상 허용했어요. 명령을 실행하는 중이에요…</string>
     <string name="chat_exec_confirm_rejected">명령 실행을 거부했어요</string>
 
+    <!-- ==================== Hook 알림 (업적 팝업) ==================== -->
+    <string name="chat_hook_notif_title">트리거</string>
+    <string name="chat_hook_notif_close">알림 닫기</string>
+    <string name="chat_hook_notif_event_label">이벤트</string>
+
     <!-- ==================== 멀티미디어 콘텐츠 (MultimediaContent) ==================== -->
     <string name="chat_media_image">이미지</string>
     <string name="chat_media_pause">일시정지</string>

@@ -194,6 +194,7 @@ fun ChatScreen(
     val selectionMode by viewModel.selectionMode.collectAsState()
     val selectedIds by viewModel.selectedMessageIds.collectAsState()
     val execConfirmation by viewModel.execConfirmation.collectAsState()
+    val hookNotifications by viewModel.hookNotifications.collectAsState()
 
     var input by remember { mutableStateOf("") }
     var pendingPlotChoiceId by remember { mutableStateOf<String?>(null) }
@@ -784,6 +785,25 @@ fun ChatScreen(
                         message = errorMsg,
                         onRetry = { viewModel.clearError() }
                     )
+                }
+            }
+
+            // Hook 触发通知：顶部居中叠加成就式弹窗（磨砂玻璃 + 琥珀描边）
+            if (hookNotifications.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 12.dp, start = 12.dp, end = 12.dp)
+                        .fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    hookNotifications.forEach { notif ->
+                        HookNotificationCard(
+                            notification = notif,
+                            onDismiss = { viewModel.dismissHookNotification(notif) }
+                        )
+                    }
                 }
             }
         }
@@ -1958,6 +1978,127 @@ private fun StepDetailSection(
     }
 }
 
+/**
+ * Hook 触发通知卡片：磨砂玻璃风格 + 琥珀描边，仿"成就解锁"提示。
+ *
+ * 设计参考原仓库 web 端 `.hook-notif-card`：
+ * - 36dp 渐变图标（琥珀 → 橙）+ 主消息文本 + 副事件标签 + 关闭按钮
+ * - 半透明背景 + 琥珀色描边 + 柔和阴影
+ * - 整体宽度自适应，最大 380dp
+ *
+ * @param notification 通知数据（displayMessage 为主文案，hookName/eventType 为副文案）
+ * @param onDismiss 用户点击关闭按钮回调
+ */
+@Composable
+private fun HookNotificationCard(
+    notification: com.nekobot.app.data.remote.HookNotification,
+    onDismiss: () -> Unit
+) {
+    // 状态色：success=琥珀，partial=橙，failed=红
+    val accentColor = when (notification.status.lowercase()) {
+        "failed" -> Color(0xFFEF4444)
+        "partial" -> Color(0xFFF97316)
+        else -> Color(0xFFF59E0B)
+    }
+    val accentColorLight = Color(0xFFFBBF24)
+
+    val titleText = stringResource(R.string.chat_hook_notif_title)
+    val mainText = notification.displayMessage.ifBlank { notification.hookName.ifBlank { titleText } }
+    val eventText = buildString {
+        if (notification.hookName.isNotBlank()) append(notification.hookName)
+        if (notification.eventType.isNotBlank()) {
+            if (isNotEmpty()) append(" · ")
+            append(notification.eventType)
+        }
+        if (isEmpty()) append(stringResource(R.string.chat_hook_notif_event_label))
+    }
+
+    Box(
+        modifier = Modifier
+            .widthIn(max = 380.dp)
+            .fillMaxWidth()
+            .shadow(
+                elevation = 8.dp,
+                shape = RoundedCornerShape(14.dp),
+                ambientColor = accentColor.copy(alpha = 0.18f),
+                spotColor = accentColor.copy(alpha = 0.25f)
+            )
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.88f),
+                shape = RoundedCornerShape(14.dp)
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        accentColor.copy(alpha = 0.55f),
+                        accentColor.copy(alpha = 0.12f)
+                    )
+                ),
+                shape = RoundedCornerShape(14.dp)
+            )
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // 图标徽章：渐变琥珀 → 橙
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(
+                        brush = Brush.linearGradient(
+                            colors = listOf(accentColor, accentColorLight)
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.AutoAwesome,
+                    contentDescription = titleText,
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            // 正文：主消息 + 副事件标签
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = mainText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (eventText.isNotBlank()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = eventText,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            // 关闭按钮
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(28.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.chat_hook_notif_close),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
+
 /** 格式化 JSON 字符串（任意对象转 pretty JSON）。 */
 private fun formatJson(value: Any): String {
     return try {
@@ -2941,6 +3082,17 @@ class ChatViewModel : BaseViewModel() {
     val plotChoicesLoading: StateFlow<Boolean> = _plotChoicesLoading.asStateFlow()
 
     /**
+     * Hook 触发通知列表（成就式弹窗）。
+     *
+     * - 远程模式：服务端通过 `hook_notification` Socket.IO 事件推送
+     * - 本地模式：HookExecutor 执行 hook 成功后构造发出
+     *
+     * 通知最多保留 5 条，每条 5 秒后自动移除（与原仓库前端 5s 超时一致）。
+     */
+    private val _hookNotifications = MutableStateFlow<List<com.nekobot.app.data.remote.HookNotification>>(emptyList())
+    val hookNotifications: StateFlow<List<com.nekobot.app.data.remote.HookNotification>> = _hookNotifications.asStateFlow()
+
+    /**
      * Agent 模式进度卡片（thinking_card）管理。
      *
      * 卡片挂载到父用户消息的 [Message.thinkingCards] 字段上，随消息一起持久化。
@@ -3006,6 +3158,19 @@ class ChatViewModel : BaseViewModel() {
         loadMessages()
         if (!isLocalMode) {
             connectSocket(sessionId)
+        } else {
+            // 本地模式：收集 HookExecutor 事件流（hook 触发通知）
+            // 独立于 localChatJob，避免阻塞聊天 flow 的 coroutineScope
+            connectLocalHookEvents()
+        }
+    }
+
+    /** 本地模式：收集 HookExecutor.events，将 HookNotificationEvent 路由到 handleRealtimeEvent。 */
+    private fun connectLocalHookEvents() {
+        eventsJob?.cancel()
+        eventsJob = viewModelScope.launch {
+            com.nekobot.app.ServiceContainer.localRepository.hookExecutor.events
+                .collect { event -> handleRealtimeEvent(event) }
         }
     }
 
@@ -3172,7 +3337,37 @@ class ChatViewModel : BaseViewModel() {
                 applyThinkingCardUpdate(event.card)
                 _sending.value = !event.card.isComplete
             }
+            is RealtimeEvent.HookNotificationEvent -> {
+                // Hook 触发通知：仅处理当前会话的通知（与远程模式 conversationId 路由一致）
+                val notif = event.notification
+                if (notif.conversationId.isNullOrBlank() || notif.conversationId == currentSessionId) {
+                    addHookNotification(notif)
+                }
+            }
         }
+    }
+
+    /**
+     * 添加 hook 通知到列表，5 秒后自动移除（与原仓库前端 5s 超时一致）。
+     * 最多保留 5 条，超出时移除最旧的。
+     */
+    private fun addHookNotification(notif: com.nekobot.app.data.remote.HookNotification) {
+        val current = _hookNotifications.value.toMutableList()
+        current.add(notif)
+        if (current.size > 5) {
+            current.removeAt(0)
+        }
+        _hookNotifications.value = current
+        // 5 秒后自动移除
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(5000)
+            _hookNotifications.value = _hookNotifications.value.filter { it !== notif }
+        }
+    }
+
+    /** 手动移除 hook 通知（用户点击关闭按钮） */
+    fun dismissHookNotification(notif: com.nekobot.app.data.remote.HookNotification) {
+        _hookNotifications.value = _hookNotifications.value.filter { it !== notif }
     }
 
     /** 提交命令授权结果；Socket 断开时保留弹窗，允许用户稍后重试。 */

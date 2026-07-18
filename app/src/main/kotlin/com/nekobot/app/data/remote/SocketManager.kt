@@ -54,6 +54,20 @@ data class ExecConfirmationRequest(
     val sessionId: String
 )
 
+/**
+ * Hook 触发通知：服务端在 hook 执行成功后通过 `hook_notification` 事件推送，
+ * 用于在聊天界面显示成就式弹窗（参考后端 manager._notify_frontend）。
+ */
+data class HookNotification(
+    val hookId: String? = null,
+    val hookName: String = "",
+    val eventType: String = "",
+    val conversationId: String? = null,
+    val status: String = "success",
+    /** 优先取 log action.message，其次 message action.content，最后回退 hookName */
+    val displayMessage: String = ""
+)
+
 /** 命令授权级别。始终授权仅对当前服务端会话和主命令名生效。 */
 enum class ExecAuthorization(val wireValue: String, val approved: Boolean) {
     Reject("reject", false),
@@ -134,6 +148,12 @@ sealed class RealtimeEvent {
      * - 本地模式：LocalPipelineCallbacks 的 ProgressReporter 回调直接构造发出
      */
     data class ThinkingCardUpdate(val card: com.nekobot.app.data.model.ThinkingCard) : RealtimeEvent()
+    /**
+     * Hook 触发通知（成就式弹窗）。
+     * - 远程模式：服务端通过 `hook_notification` Socket.IO 事件推送
+     * - 本地模式：HookExecutor 在 hook 执行成功后构造发出
+     */
+    data class HookNotificationEvent(val notification: HookNotification) : RealtimeEvent()
 }
 
 /**
@@ -221,6 +241,8 @@ class SocketManager(private val prefs: PrefsManager) {
         // Agent 非白名单命令授权
         s.on("exec_confirm_request") { args -> handleExecConfirmationRequest(args) }
         s.on("exec_confirm_result") { args -> handleExecConfirmationResult(args) }
+        // Hook 触发通知（聊天界面成就式弹窗）
+        s.on("hook_notification") { args -> handleHookNotification(args) }
         // 通用错误
         s.on("error") { args ->
             val msg = args.firstOrNull()?.toString() ?: "Socket 错误"
@@ -365,6 +387,29 @@ class SocketManager(private val prefs: PrefsManager) {
             _events.tryEmit(RealtimeEvent.ExecConfirmationResolved(sessionId, approved))
         } catch (_: Exception) {
             // 无效结果事件不应影响聊天状态
+        }
+    }
+
+    /** 解析服务端 `hook_notification` 事件，转换为 HookNotification 推送到 UI。 */
+    private fun handleHookNotification(args: Array<Any>) {
+        val raw = args.firstOrNull() ?: return
+        try {
+            val root = JsonParser.parseString(raw.toString())
+            if (!root.isJsonObject) return
+            val obj = root.asJsonObject
+            val notif = HookNotification(
+                hookId = obj.get("hook_id")?.takeUnless { it.isJsonNull }?.asString,
+                hookName = obj.get("hook_name")?.takeUnless { it.isJsonNull }?.asString.orEmpty(),
+                eventType = obj.get("event_type")?.takeUnless { it.isJsonNull }?.asString.orEmpty(),
+                conversationId = obj.get("conversation_id")?.takeUnless { it.isJsonNull }?.asString,
+                status = obj.get("status")?.takeUnless { it.isJsonNull }?.asString ?: "success",
+                displayMessage = obj.get("display_message")?.takeUnless { it.isJsonNull }?.asString
+                    ?: obj.get("message")?.takeUnless { it.isJsonNull }?.asString
+                    ?: obj.get("hook_name")?.takeUnless { it.isJsonNull }?.asString.orEmpty()
+            )
+            _events.tryEmit(RealtimeEvent.HookNotificationEvent(notif))
+        } catch (_: Exception) {
+            // hook 通知解析失败不应影响聊天流程
         }
     }
 
