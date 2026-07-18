@@ -710,39 +710,34 @@ private fun LocalAiModelEditDialog(
                     onCheckedChange = { appendPath = it }
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    value = priority,
-                    onValueChange = { priority = it.filter { c -> c.isDigit() } },
-                    label = { Text(stringResource(R.string.localai_priority)) },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
-                )
-                OutlinedTextField(
-                    value = temperature,
-                    onValueChange = { temperature = it },
-                    label = { Text(stringResource(R.string.localai_temperature)) },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
-                )
-                OutlinedTextField(
-                    value = maxTokens,
-                    onValueChange = { maxTokens = it },
-                    label = { Text(stringResource(R.string.localai_max_tokens)) },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
-                )
-                OutlinedTextField(
-                    value = topP,
-                    onValueChange = { topP = it },
-                    label = { Text("Top P") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
-                )
-            }
+            OutlinedTextField(
+                value = priority,
+                onValueChange = { priority = it.filter { c -> c.isDigit() } },
+                label = { Text(stringResource(R.string.localai_priority)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = temperature,
+                onValueChange = { temperature = it },
+                label = { Text(stringResource(R.string.localai_temperature)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = maxTokens,
+                onValueChange = { maxTokens = it },
+                label = { Text(stringResource(R.string.localai_max_tokens)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = topP,
+                onValueChange = { topP = it },
+                label = { Text("Top P") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
             if (purpose != "chat") {
                 Text(
                     when (purpose) {

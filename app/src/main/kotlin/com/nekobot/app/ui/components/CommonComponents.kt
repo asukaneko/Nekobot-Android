@@ -224,7 +224,8 @@ fun LoadingOverlay(visible: Boolean, message: String = stringResource(R.string.c
     }
 }
 
-/** 自定义弹窗：用于错误提示、确认操作等。 */
+/** 自定义弹窗：用于错误提示、确认操作等。
+ *  内容过长时自动限制弹窗高度（屏幕 85%），内容区域滚动，保存/取消按钮始终可见。 */
 @Composable
 fun NekoDialog(
     onDismiss: () -> Unit,
@@ -241,49 +242,64 @@ fun NekoDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        GlassCard(
-            modifier = Modifier
-                .fillMaxWidth(0.9f)
-                .padding(8.dp),
-            cornerRadius = 24,
-            containerColor = MaterialTheme.colorScheme.surface
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f)
-                )
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.common_close), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            if (!message.isNullOrBlank()) {
-                Spacer(Modifier.height(4.dp))
-                Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (content != null) {
-                Spacer(Modifier.height(8.dp))
-                Column(content = content)
-            }
-            Spacer(Modifier.height(20.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
+            // 限制弹窗最大高度为屏幕 85%，避免内容过长把按钮挤出屏幕
+            val maxDialogHeight = maxHeight * 0.85f
+            GlassCard(
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .heightIn(max = maxDialogHeight)
+                    .padding(8.dp),
+                cornerRadius = 24,
+                containerColor = MaterialTheme.colorScheme.surface
             ) {
-                if (cancelText != null && onCancel != null) {
-                    TextButton(onClick = onCancel) {
-                        Text(cancelText, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.common_close), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Spacer(Modifier.width(8.dp))
                 }
-                Button(
-                    onClick = { onConfirm?.invoke() ?: onDismiss() },
-                    enabled = confirmEnabled,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                if (!message.isNullOrBlank()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (content != null) {
+                    Spacer(Modifier.height(8.dp))
+                    // weight(1f, fill = false)：内容小时保持自然高度，内容超出时占用剩余空间并滚动
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f, fill = false)
+                    ) {
+                        content()
+                    }
+                }
+                Spacer(Modifier.height(20.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
                 ) {
-                    Text(confirmText, color = MaterialTheme.colorScheme.onPrimary)
+                    if (cancelText != null && onCancel != null) {
+                        TextButton(onClick = onCancel) {
+                            Text(cancelText, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Button(
+                        onClick = { onConfirm?.invoke() ?: onDismiss() },
+                        enabled = confirmEnabled,
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Text(confirmText, color = MaterialTheme.colorScheme.onPrimary)
+                    }
                 }
             }
         }
