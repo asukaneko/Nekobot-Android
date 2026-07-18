@@ -103,6 +103,8 @@ class LocalRepository(
     private val worldBookDao = db.worldBookDao()
     private val aiModelDao = db.aiModelDao()
     private val failoverHealthDao = db.failoverHealthDao()
+    private val localExecAuthorizationManager =
+        com.nekobot.app.data.local.ai.LocalExecAuthorizationManager()
 
     // ==================== 故障转移协调器（持久化健康状态 + token 限额）====================
 
@@ -710,7 +712,8 @@ class LocalRepository(
      * - 注入 PromptStack 动态提示词（状态/关系/记忆/世界书）
      * - 自动记忆抽取（每 6 轮）
      *
-     * 若会话未绑定角色，会回退到普通 [chat] 流程。
+     * 无角色的普通会话会回退到 [chat]；Agent 会话即使没有角色也进入 Pipeline，
+     * 以产生并持久化进度卡片。
      *
      * @param sessionId 会话 ID
      * @param userMessage 用户消息
@@ -736,10 +739,24 @@ class LocalRepository(
             return@flow
         }
 
+        if (
+            session.sessionMode.equals("agent", ignoreCase = true) &&
+            userMessage.trim().equals("/yolo", ignoreCase = true)
+        ) {
+            localExecAuthorizationManager.enableYolo(sessionId)
+            val reply = addAssistantMessage(
+                sessionId = sessionId,
+                content = "已开启 YOLO 模式：本会话内命令无需授权即可执行，高风险黑名单命令仍会被阻止。",
+                model = activeModel.model
+            )
+            emit(RealtimeEvent.AiResponse(reply))
+            return@flow
+        }
+
         val character = session.characterId?.let { characterDao.getById(it) }
 
-        // 无角色绑定 → 回退到旧流程
-        if (character == null) {
+        // 普通无角色会话沿用旧流程；Agent 无角色会话需要进入 Pipeline 产生进度卡片。
+        if (!shouldUseLocalPipeline(session.sessionMode, character != null)) {
             // 回退时需删除刚保存的用户消息（chat 会重新保存）
             messageDao.listBySession(sessionId).lastOrNull { it.role == "user" }?.let {
                 messageDao.deleteById(it.id)
@@ -752,14 +769,16 @@ class LocalRepository(
         val worldBookEntries = loadWorldBookEntries(session.characterId)
 
         // 3. 使用成员变量（跨轮次保持 turnCounters 状态）
-        val runtime = characterRuntime
+        val runtime = character?.let { characterRuntime }
 
-        val identity = com.nekobot.app.data.local.ai.CharacterIdentity(
-            characterId = character.id,
-            targetId = "local-user",
-            scopeId = sessionId,
-            channel = "local"
-        )
+        val identity = character?.let {
+            com.nekobot.app.data.local.ai.CharacterIdentity(
+                characterId = it.id,
+                targetId = "local-user",
+                scopeId = sessionId,
+                channel = "local"
+            )
+        }
 
         // 4. 构建回调（传入故障转移备选队列：同 purpose 其他启用模型 + 持久化协调器）
         val failoverQueue = aiModelDao.listByPurpose(activeModel.purpose.ifBlank { "chat" })
@@ -776,6 +795,10 @@ class LocalRepository(
                     updateMessageThinkingCards(parentMessageId, listOf(card))
                 }
             },
+            workspaceRoot = appContext?.filesDir
+                ?.resolve("agent_workspaces")
+                ?.resolve(sessionId),
+            execAuthorizationManager = localExecAuthorizationManager,
             failoverQueue = failoverQueue,
             coordinator = failoverCoordinator
         )
@@ -790,6 +813,7 @@ class LocalRepository(
             content = userMessage,
             userId = "local-user",
             metadata = buildMap {
+                put("session_mode", session.sessionMode)
                 if (session.plotMode) put("plot_mode", true)
                 if (session.plotRealTimeSync) put("plot_realtime_sync", true)
                 put("auto_state_interval", session.autoStateInterval)
@@ -797,6 +821,7 @@ class LocalRepository(
             }
         )
         val ctx = com.nekobot.app.data.local.ai.PipelineContext(chatRequest)
+        ctx.metadata["session_mode"] = session.sessionMode
         var currentPlotNode: com.nekobot.app.data.local.ai.PlotNode? = null
 
         // 标记剧情模式（管线层使用）
@@ -812,7 +837,7 @@ class LocalRepository(
 
         // 注入会话自定义提示词
         val customPromptsRaw = session.customPrompts
-        if (!customPromptsRaw.isNullOrBlank()) {
+        if (character != null && !customPromptsRaw.isNullOrBlank()) {
             try {
                 val type = object : com.google.gson.reflect.TypeToken<List<Map<String, Any>>>() {}.type
                 @Suppress("UNCHECKED_CAST")
@@ -829,7 +854,16 @@ class LocalRepository(
             kotlinx.coroutines.coroutineScope {
                 val pipelineJob = launch {
                     try {
-                        com.nekobot.app.data.local.ai.aiPipeline.process(ctx, callbacks)
+                        val tools = if (session.sessionMode.equals("agent", ignoreCase = true)) {
+                            com.nekobot.app.data.local.ai.buildLocalAgentToolDefinitions()
+                        } else {
+                            emptyList()
+                        }
+                        com.nekobot.app.data.local.ai.aiPipeline.process(
+                            ctx = ctx,
+                            callbacks = callbacks,
+                            tools = tools
+                        )
                     } finally {
                         callbacks.eventChannel.close()
                     }
@@ -843,7 +877,7 @@ class LocalRepository(
 
             // 剧情模式的每轮回复必须真正落入故事图；此前这里只生成了悬空选项，
             // 导致故事地图始终为空或无法形成边。
-            if (session.plotMode && ctx.finalContent.isNotBlank()) {
+            if (session.plotMode && character != null && ctx.finalContent.isNotBlank()) {
                 val manager = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
                 val parent = manager.getLatestNode(sessionId)
                 val selectedChoice = parent?.selectedChoiceId?.let(manager::getChoice)
@@ -956,6 +990,17 @@ class LocalRepository(
             emit(RealtimeEvent.StreamEnd(sessionId))
         }
     }.flowOn(Dispatchers.IO)
+
+    /** 提交本地 Agent 命令授权结果。 */
+    fun respondToExecConfirmation(
+        requestId: String,
+        sessionId: String,
+        authorization: com.nekobot.app.data.remote.ExecAuthorization
+    ): Boolean = localExecAuthorizationManager.resolve(
+        requestId = requestId,
+        sessionId = sessionId,
+        authorization = authorization
+    )
 
     /**
      * 本地模式：单独重新生成剧情选项（不重新跑完整 Pipeline）。

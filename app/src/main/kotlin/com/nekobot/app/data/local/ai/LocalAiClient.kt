@@ -33,7 +33,10 @@ data class LocalAiResult(
     val error: String? = null,
     val statusCode: Int = 0,
     val usedModelId: String? = null,
-    val usedModelName: String? = null
+    val usedModelName: String? = null,
+    val toolCalls: List<Map<String, Any>> = emptyList(),
+    val finishReason: String = "",
+    val thinkingContent: String = ""
 )
 
 /** 图片生成结果：url 或 bytes 二选一 */
@@ -150,8 +153,16 @@ class LocalAiClient(
                 val raw = resp.body?.string().orEmpty()
                 @Suppress("UNCHECKED_CAST")
                 val data = (gson.fromJson(raw, Map::class.java) as? Map<String, Any>) ?: emptyMap()
-                val (content, usage) = protocol.parseNonStreamResponse(data)
-                LocalAiResult(content, usage, usedModelId = model.id, usedModelName = model.name)
+                val parsed = protocol.parseNonStreamResponse(data)
+                LocalAiResult(
+                    content = parsed.content,
+                    usage = parsed.usage,
+                    usedModelId = model.id,
+                    usedModelName = model.name,
+                    toolCalls = parsed.toolCalls,
+                    finishReason = parsed.finishReason,
+                    thinkingContent = parsed.thinkingContent
+                )
             }
         } catch (e: FailoverHttpException) {
             throw e

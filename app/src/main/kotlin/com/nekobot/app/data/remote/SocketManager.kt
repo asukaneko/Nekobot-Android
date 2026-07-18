@@ -49,8 +49,27 @@ internal fun parseRealtimeMessagePayload(gson: Gson, raw: Any?): Message? {
 data class ExecConfirmationRequest(
     val requestId: String,
     val command: String,
+    val mainCommand: String,
     val message: String,
     val sessionId: String
+)
+
+/** 命令授权级别。始终授权仅对当前服务端会话和主命令名生效。 */
+enum class ExecAuthorization(val wireValue: String, val approved: Boolean) {
+    Reject("reject", false),
+    Once("once", true),
+    Always("always", true)
+}
+
+internal fun buildExecConfirmationPayload(
+    requestId: String,
+    authorization: ExecAuthorization,
+    sessionId: String
+): Map<String, Any> = mapOf(
+    "request_id" to requestId,
+    "approved" to authorization.approved,
+    "permission" to authorization.wireValue,
+    "session_id" to sessionId
 )
 
 /** 解析服务端 `exec_confirm_request` 事件。缺少 request_id 时拒绝创建请求。 */
@@ -68,6 +87,10 @@ internal fun parseExecConfirmationPayload(raw: Any?): ExecConfirmationRequest? {
         ExecConfirmationRequest(
             requestId = requestId,
             command = obj.get("command")?.takeUnless { it.isJsonNull }?.asString.orEmpty(),
+            mainCommand = obj.get("main_command")
+                ?.takeUnless { it.isJsonNull }
+                ?.asString
+                .orEmpty(),
             message = obj.get("message")?.takeUnless { it.isJsonNull }?.asString.orEmpty(),
             sessionId = obj.get("session_id")?.takeUnless { it.isJsonNull }?.asString.orEmpty()
         )
@@ -246,15 +269,13 @@ class SocketManager(private val prefs: PrefsManager) {
      */
     fun respondToExecConfirmation(
         requestId: String,
-        approved: Boolean,
+        authorization: ExecAuthorization,
         sessionId: String
     ): Boolean {
         val s = socket?.takeIf { it.connected() } ?: return false
-        val payload = JSONObject().apply {
-            put("request_id", requestId)
-            put("approved", approved)
-            put("session_id", sessionId)
-        }
+        val payload = JSONObject(
+            buildExecConfirmationPayload(requestId, authorization, sessionId)
+        )
         s.emit("confirm_exec", payload)
         return true
     }

@@ -48,6 +48,13 @@ object OpenAIChatProtocol : LocalProtocol {
         extra["temperature"]?.let { payload["temperature"] = it }
         extra["max_tokens"]?.let { payload["max_tokens"] = it }
         extra["top_p"]?.let { payload["top_p"] = it }
+        @Suppress("UNCHECKED_CAST")
+        (extra["tools"] as? List<Map<String, Any>>)
+            ?.takeIf { it.isNotEmpty() }
+            ?.let {
+                payload["tools"] = it
+                payload["tool_choice"] = "auto"
+            }
         return payload
     }
 
@@ -81,13 +88,49 @@ object OpenAIChatProtocol : LocalProtocol {
         }
     }
 
-    override fun parseNonStreamResponse(data: Map<String, Any>): Pair<String, Map<String, Int>> {
+    override fun parseNonStreamResponse(data: Map<String, Any>): LocalModelResponse {
         val choices = data["choices"] as? List<*>
-        val content = if (!choices.isNullOrEmpty()) {
-            val choice = choices[0] as? Map<*, *>
-            val message = choice?.get("message") as? Map<*, *>
-            (message?.get("content") as? String) ?: ""
-        } else ""
+        val choice = choices?.firstOrNull() as? Map<*, *>
+        val message = choice?.get("message") as? Map<*, *>
+        val content = (message?.get("content") as? String) ?: ""
+        val finishReason = (choice?.get("finish_reason") as? String).orEmpty()
+        val thinkingContent = (message?.get("reasoning_content") as? String)
+            ?: (message?.get("thinking_content") as? String)
+            ?: ""
+        val toolCalls = (message?.get("tool_calls") as? List<*>)
+            ?.mapNotNull { raw ->
+                val call = raw as? Map<*, *> ?: return@mapNotNull null
+                val function = call["function"] as? Map<*, *> ?: return@mapNotNull null
+                val name = function["name"] as? String ?: return@mapNotNull null
+                val rawArguments = function["arguments"]
+                val arguments: Any = when (rawArguments) {
+                    is String -> runCatching {
+                        @Suppress("UNCHECKED_CAST")
+                        JsonParser.parseString(rawArguments)
+                            .takeIf { it.isJsonObject }
+                            ?.asJsonObject
+                            ?.entrySet()
+                            ?.associate { (key, value) ->
+                                key to when {
+                                    value.isJsonNull -> ""
+                                    value.isJsonPrimitive && value.asJsonPrimitive.isBoolean -> value.asBoolean
+                                    value.isJsonPrimitive && value.asJsonPrimitive.isNumber -> value.asNumber
+                                    value.isJsonPrimitive -> value.asString
+                                    else -> value.toString()
+                                }
+                            }
+                            .orEmpty()
+                    }.getOrDefault(emptyMap<String, Any>())
+                    is Map<*, *> -> rawArguments.entries.associate { it.key.toString() to (it.value ?: "") }
+                    else -> emptyMap<String, Any>()
+                }
+                buildMap<String, Any> {
+                    put("id", call["id"] as? String ?: "")
+                    put("name", name)
+                    put("arguments", arguments)
+                }
+            }
+            .orEmpty()
         val usage = (data["usage"] as? Map<*, *>)?.let { u ->
             val prompt = (u["prompt_tokens"] as? Number)?.toInt() ?: 0
             val completion = (u["completion_tokens"] as? Number)?.toInt() ?: 0
@@ -98,6 +141,12 @@ object OpenAIChatProtocol : LocalProtocol {
                 "total" to total
             )
         } ?: emptyMap()
-        return content to usage
+        return LocalModelResponse(
+            content = content,
+            usage = usage,
+            toolCalls = toolCalls,
+            finishReason = finishReason,
+            thinkingContent = thinkingContent
+        )
     }
 }

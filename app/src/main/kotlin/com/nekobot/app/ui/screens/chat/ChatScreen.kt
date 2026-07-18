@@ -95,6 +95,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -146,6 +147,7 @@ import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.UpdateSessionRequest
 import com.nekobot.app.data.remote.ExecConfirmationRequest
+import com.nekobot.app.data.remote.ExecAuthorization
 import com.nekobot.app.data.remote.RealtimeEvent
 import com.nekobot.app.data.remote.SocketState
 import com.nekobot.app.data.repository.Resource
@@ -795,14 +797,17 @@ fun ChatScreen(
 
     // Agent 非白名单命令授权
     execConfirmation?.let { request ->
+        val mainCommandLabel = request.mainCommand.ifBlank {
+            stringResource(R.string.chat_exec_confirm_this_command)
+        }
         NekoDialog(
-            onDismiss = { viewModel.respondToExecConfirmation(approved = false) },
+            onDismiss = { viewModel.respondToExecConfirmation(ExecAuthorization.Reject) },
             title = stringResource(R.string.chat_exec_confirm_title),
             message = stringResource(R.string.chat_exec_confirm_description),
             confirmText = stringResource(R.string.chat_exec_confirm_allow),
-            onConfirm = { viewModel.respondToExecConfirmation(approved = true) },
+            onConfirm = { viewModel.respondToExecConfirmation(ExecAuthorization.Once) },
             cancelText = stringResource(R.string.chat_exec_confirm_reject),
-            onCancel = { viewModel.respondToExecConfirmation(approved = false) }
+            onCancel = { viewModel.respondToExecConfirmation(ExecAuthorization.Reject) }
         ) {
             androidx.compose.material3.Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -844,6 +849,20 @@ fun ChatScreen(
                         color = MaterialTheme.colorScheme.onErrorContainer
                     )
                 }
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = {
+                    viewModel.respondToExecConfirmation(ExecAuthorization.Always)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    stringResource(
+                        R.string.chat_exec_confirm_always_allow,
+                        mainCommandLabel
+                    )
+                )
             }
             Spacer(Modifier.height(8.dp))
             Text(
@@ -2469,6 +2488,31 @@ internal fun shouldShowChatInput(
     !hasPlotSurface || inputExpanded || hasDraft
 
 /**
+ * 结束流式消息时整理 UI 列表。
+ *
+ * 本地模式在 StreamEnd 前已写入 Room，不创建临时正式消息；服务器模式保留一条兜底消息，
+ * 等服务端持久化结果刷新后再用真实 ID 替换。
+ */
+internal fun finalizeStreamEndMessages(
+    current: List<Message>,
+    streamingId: String,
+    finalContent: String,
+    materializeFallback: Boolean,
+    fallbackId: String = ChatViewModel.STREAM_FALLBACK_PREFIX + java.util.UUID.randomUUID(),
+    fallbackTimestamp: String = System.currentTimeMillis().toString()
+): List<Message> {
+    val withoutPlaceholder = current.filter { it.id != streamingId }
+    if (!materializeFallback || finalContent.isBlank()) return withoutPlaceholder
+    if (withoutPlaceholder.any { !it.isUser && it.content == finalContent }) return withoutPlaceholder
+    return withoutPlaceholder + Message(
+        id = fallbackId,
+        role = "assistant",
+        content = finalContent,
+        timestamp = fallbackTimestamp
+    )
+}
+
+/**
  * 把时间戳/时间字符串精简到「分钟」级，尽量短以节省气泡下方空间。
  * 支持毫秒时间戳、ISO 字符串、已格式化字符串三种输入。
  * 例：2026-07-10T14:30:45.123 → "14:30"；2026-07-10 14:30 → "14:30"；14:30:45 → "14:30"
@@ -2861,6 +2905,8 @@ class ChatViewModel : BaseViewModel() {
     companion object {
         /** 流式消息在列表中的临时 id（供 MessageBubble 识别流式占位） */
         const val STREAMING_ID = "_streaming_"
+        /** 服务端持久化尚未刷新时使用的临时正式消息 id 前缀。 */
+        const val STREAM_FALLBACK_PREFIX = "_stream_fallback_"
     }
 
     private val socket = ServiceContainer.socket
@@ -2994,21 +3040,15 @@ class ChatViewModel : BaseViewModel() {
             }
             is RealtimeEvent.StreamEnd -> {
                 _sending.value = false
-                // 流式结束前，把占位转为正式消息（移除 streamingId），避免 loadMessages 异步竞态时丢失回复
+                // 本地流程在 StreamEnd 前已完成 Room 持久化，直接刷新数据库即可。
+                // 若再生成随机 ID 的正式消息，刷新时会因时间戳不同同时保留两条相同气泡。
                 val finalContent = streamingContent.toString()
-                if (finalContent.isNotBlank()) {
-                    val placeholder = _messages.value.firstOrNull { it.id == streamingId }
-                    val formalId = placeholder?.id?.takeIf { it != streamingId } ?: java.util.UUID.randomUUID().toString()
-                    val formalMsg = Message(
-                        id = formalId,
-                        role = "assistant",
-                        content = finalContent,
-                        timestamp = System.currentTimeMillis().toString()
-                    )
-                    _messages.value = _messages.value.filter { it.id != streamingId } + formalMsg
-                } else {
-                    _messages.value = _messages.value.filter { it.id != streamingId }
-                }
+                _messages.value = finalizeStreamEndMessages(
+                    current = _messages.value,
+                    streamingId = streamingId,
+                    finalContent = finalContent,
+                    materializeFallback = !isLocalMode
+                )
                 // 刷新列表获取服务端持久化的真实消息（含 id/token 等）
                 loadMessages()
                 // 本地模式：会话 TTS 启用时，为刚生成的助手消息合成语音（延迟等待 loadMessages 完成）
@@ -3050,11 +3090,14 @@ class ChatViewModel : BaseViewModel() {
             }
             is RealtimeEvent.AiResponse -> {
                 _sending.value = false
+                _execConfirmation.value = null
                 val msg = event.message
                 if (msg != null && !msg.content.isNullOrBlank()) {
                     // 移除流式占位，追加完整回复
                     _messages.value = (_messages.value.filter {
-                        it.id != streamingId && (msg.id == null || it.id != msg.id)
+                        it.id != streamingId &&
+                            (msg.id == null || it.id != msg.id) &&
+                            !(it.id?.startsWith(STREAM_FALLBACK_PREFIX) == true && it.content == msg.content)
                     }) + msg
                     // 通知检查
                     trySendNotification(msg.content.orEmpty())
@@ -3082,7 +3125,9 @@ class ChatViewModel : BaseViewModel() {
                     _sending.value = false
                     // 移除流式占位，追加新消息（去重）
                     _messages.value = (_messages.value.filter {
-                        it.id != streamingId && it.id != msg.id
+                        it.id != streamingId &&
+                            it.id != msg.id &&
+                            !(it.id?.startsWith(STREAM_FALLBACK_PREFIX) == true && it.content == msg.content)
                     }) + msg
                 }
             }
@@ -3122,17 +3167,26 @@ class ChatViewModel : BaseViewModel() {
     }
 
     /** 提交命令授权结果；Socket 断开时保留弹窗，允许用户稍后重试。 */
-    fun respondToExecConfirmation(approved: Boolean) {
+    fun respondToExecConfirmation(authorization: ExecAuthorization) {
         val request = _execConfirmation.value ?: return
-        val submitted = socket.respondToExecConfirmation(
-            requestId = request.requestId,
-            approved = approved,
-            sessionId = request.sessionId.ifBlank { currentSessionId }
-        )
+        val sessionId = request.sessionId.ifBlank { currentSessionId }
+        val submitted = if (isLocalMode) {
+            unified.respondToLocalExecConfirmation(
+                requestId = request.requestId,
+                authorization = authorization,
+                sessionId = sessionId
+            )
+        } else {
+            socket.respondToExecConfirmation(
+                requestId = request.requestId,
+                authorization = authorization,
+                sessionId = sessionId
+            )
+        }
         if (!submitted) {
             // 拒绝是安全默认值：即使断线无法回传，也允许关闭弹窗；
             // 未获明确授权的服务端 pending command 不会自动执行。
-            if (!approved) {
+            if (!authorization.approved) {
                 _execConfirmation.value = null
                 _sending.value = false
             }
@@ -3143,8 +3197,11 @@ class ChatViewModel : BaseViewModel() {
         _sending.value = true
         showToast(
             string(
-                if (approved) R.string.chat_exec_confirm_approved
-                else R.string.chat_exec_confirm_rejected
+                when (authorization) {
+                    ExecAuthorization.Reject -> R.string.chat_exec_confirm_rejected
+                    ExecAuthorization.Once -> R.string.chat_exec_confirm_approved
+                    ExecAuthorization.Always -> R.string.chat_exec_confirm_always_approved
+                }
             )
         )
     }
@@ -3210,8 +3267,13 @@ class ChatViewModel : BaseViewModel() {
                     .filter { !it.isUser && !it.content.isNullOrBlank() }
                     .associateBy { it.content to it.timestamp }
                     .keys
+                val freshAssistantContents = merged
+                    .filter { !it.isUser && !it.content.isNullOrBlank() }
+                    .mapTo(mutableSetOf()) { it.content }
                 val orphanAssistants = currentAssistantByContent.values.filter { msg ->
-                    (msg.content to msg.timestamp) !in freshAssistantKeys
+                    (msg.content to msg.timestamp) !in freshAssistantKeys &&
+                        !(msg.id?.startsWith(STREAM_FALLBACK_PREFIX) == true &&
+                            msg.content in freshAssistantContents)
                 }
 
                 _messages.value = if (orphanAssistants.isEmpty()) merged else merged + orphanAssistants

@@ -55,6 +55,7 @@ class SocketMessageParserTest {
             {
               "request_id": "request-12345678",
               "command": "git status --short",
+              "main_command": "git",
               "message": "该命令需要您的确认",
               "session_id": "session-1"
             }
@@ -65,6 +66,7 @@ class SocketMessageParserTest {
         assertNotNull(request)
         assertEquals("request-12345678", request?.requestId)
         assertEquals("git status --short", request?.command)
+        assertEquals("git", request?.mainCommand)
         assertEquals("该命令需要您的确认", request?.message)
         assertEquals("session-1", request?.sessionId)
     }
@@ -72,5 +74,19 @@ class SocketMessageParserTest {
     @Test
     fun parseExecConfirmationPayload_rejectsMissingRequestId() {
         assertNull(parseExecConfirmationPayload("""{"command":"git status"}"""))
+    }
+
+    @Test
+    fun buildExecConfirmationPayload_encodesAlwaysAuthorization() {
+        val payload = buildExecConfirmationPayload(
+            requestId = "request-1",
+            authorization = ExecAuthorization.Always,
+            sessionId = "session-1"
+        )
+
+        assertEquals("request-1", payload["request_id"])
+        assertEquals(true, payload["approved"])
+        assertEquals("always", payload["permission"])
+        assertEquals("session-1", payload["session_id"])
     }
 }

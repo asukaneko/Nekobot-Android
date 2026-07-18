@@ -206,6 +206,17 @@ class UnifiedRepository(
         } else remote.stopGeneration(id)
     }
 
+    /** 本地 Agent 命令授权；服务器模式由 SocketManager 处理。 */
+    fun respondToLocalExecConfirmation(
+        requestId: String,
+        sessionId: String,
+        authorization: com.nekobot.app.data.remote.ExecAuthorization
+    ): Boolean = isLocal && local.respondToExecConfirmation(
+        requestId = requestId,
+        sessionId = sessionId,
+        authorization = authorization
+    )
+
     // ==================== 会话 Fork / 压缩 ====================
 
     suspend fun forkSession(id: String, messageId: String): Resource<JsonElement> =

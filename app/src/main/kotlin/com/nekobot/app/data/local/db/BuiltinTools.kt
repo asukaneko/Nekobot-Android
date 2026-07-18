@@ -4,7 +4,7 @@ package com.nekobot.app.data.local.db
  * 内置工具预设：参考 Ncatbot-comic-QQbot 仓库的 TOOL_DEFINITIONS + WORKSPACE_TOOL_DEFINITIONS。
  *
  * 这些工具在本地模式下作为只读模板展示，不允许删除/切换启用状态。
- * 实际执行由本地 AI Pipeline 在调用 LLM 时以 function-calling 形式注入。
+ * 本地 AI Pipeline 只会把已有 Android 执行器实现的子集以 function-calling 形式注入。
  */
 data class BuiltinToolSpec(
     val id: String,

@@ -9,8 +9,16 @@ package com.nekobot.app.data.local.ai
  * 2. buildHeaders：构造鉴权 + Content-Type 头
  * 3. buildPayload：把统一的 messages 转成协议特定 payload
  * 4. parseStreamChunk：解析 SSE 单 chunk，返回文本增量
- * 5. parseNonStreamResponse：解析非流式响应，返回完整文本 + usage
+ * 5. parseNonStreamResponse：解析非流式响应，返回文本、工具调用与 usage
  */
+data class LocalModelResponse(
+    val content: String = "",
+    val usage: Map<String, Int> = emptyMap(),
+    val toolCalls: List<Map<String, Any>> = emptyList(),
+    val finishReason: String = "",
+    val thinkingContent: String = ""
+)
+
 interface LocalProtocol {
     val name: String
 
@@ -20,7 +28,7 @@ interface LocalProtocol {
 
     /**
      * @param messages 统一格式：[{role: "system"|"user"|"assistant", content: "..."}]
-     * @param extra 可选参数：temperature / max_tokens / top_p
+     * @param extra 可选参数：temperature / max_tokens / top_p / tools
      */
     fun buildPayload(
         model: String,
@@ -43,9 +51,9 @@ interface LocalProtocol {
 
     /**
      * 解析非流式响应 JSON。
-     * @return Pair(content, usage) usage = {prompt, completion, total}
+     * @return 统一模型响应，包含 content / toolCalls / finishReason / usage
      */
-    fun parseNonStreamResponse(data: Map<String, Any>): Pair<String, Map<String, Int>>
+    fun parseNonStreamResponse(data: Map<String, Any>): LocalModelResponse
 }
 
 /** 协议注册表。 */

@@ -9,7 +9,6 @@ import com.nekobot.app.data.local.db.LocalSessionEntity
 import com.nekobot.app.data.local.db.LocalWorldBookEntryEntity
 import com.nekobot.app.data.local.db.NekobotDatabase
 import com.nekobot.app.data.model.ThinkingCard
-import com.nekobot.app.data.model.ThinkingStep
 import com.nekobot.app.data.remote.RealtimeEvent
 import kotlinx.coroutines.channels.Channel
 
@@ -44,6 +43,10 @@ class LocalPipelineCallbacks(
     private val onTokenRecorded: ((sessionId: String, model: String, inputTokens: Int, outputTokens: Int, timestamp: String, purpose: String) -> Unit)? = null,
     /** 进度卡片更新回调；本地模式用于持久化到父用户消息 */
     private val onThinkingCardUpdate: ((card: ThinkingCard) -> Unit)? = null,
+    /** 当前会话的本地 Agent 工作区。 */
+    private val workspaceRoot: java.io.File? = null,
+    /** 本地命令授权状态，由 LocalRepository 在同一会话内共享。 */
+    private val execAuthorizationManager: LocalExecAuthorizationManager = LocalExecAuthorizationManager(),
     /** 故障转移队列：activeModel 优先 + 同 purpose 其他启用模型，按 priority 升序 */
     private val failoverQueue: List<LocalAiModelEntity> = emptyList(),
     /** 持久化故障转移协调器；非空时 [buildModelCall] 走 coordinator，否则回退到 chatOnceWithFailover */
@@ -57,6 +60,36 @@ class LocalPipelineCallbacks(
     private val gson = Gson()
     private val sessionDao = db.sessionDao()
     private val messageDao = db.messageDao()
+    private val localToolExecutor by lazy {
+        LocalAgentToolExecutor(
+            sessionId = session.id,
+            workspaceRoot = workspaceRoot,
+            authorizationManager = execAuthorizationManager,
+            onConfirmationRequired = { request ->
+                emitEvent(RealtimeEvent.ExecConfirmationRequired(request))
+            },
+            thinkingHistoryProvider = { limit ->
+                kotlinx.coroutines.runBlocking {
+                    messageDao.listBySession(session.id)
+                        .asReversed()
+                        .mapNotNull { message ->
+                            val cardsJson = message.thinkingCards?.takeIf { it.isNotBlank() }
+                                ?: return@mapNotNull null
+                            @Suppress("UNCHECKED_CAST")
+                            val cards = runCatching {
+                                gson.fromJson(cardsJson, List::class.java) as List<Map<String, Any>>
+                            }.getOrDefault(emptyList())
+                            mapOf(
+                                "message_id" to message.id,
+                                "timestamp" to message.timestamp,
+                                "cards" to cards
+                            )
+                        }
+                        .take(limit)
+                }
+            }
+        )
+    }
 
     /** 流式事件通道（UI 层收集），UNLIMITED 避免背压阻塞 */
     val eventChannel: Channel<RealtimeEvent> = Channel(Channel.UNLIMITED)
@@ -81,6 +114,18 @@ class LocalPipelineCallbacks(
             messageDao.listBySession(session.id)
         }.filter { it.role != "system" }
             .dropLast(1)  // 最后一条是刚保存的用户消息
+
+        // 无角色的 Agent 会话沿用旧聊天流程的提示词/世界书组装规则，
+        // 仅将执行入口切换到 Pipeline，以便获得进度卡片事件。
+        if (character == null) {
+            return LocalPromptBuilder.build(
+                session = session,
+                character = null,
+                history = history,
+                userInput = ctx.chatRequest.content,
+                worldBookEntries = worldBookEntries
+            )
+        }
 
         val messages = mutableListOf<Map<String, Any>>()
 
@@ -181,10 +226,8 @@ class LocalPipelineCallbacks(
                         val exec = coordinator.execute(modelQueue, activeModel.purpose.ifBlank { "chat" }) { model ->
                             aiClient.chatOnce(model, messages, extra)
                         }
-                        // 用实际使用的模型构造结果
-                        LocalAiResult(
-                            content = exec.value.content,
-                            usage = exec.value.usage,
+                        // 保留工具调用等结构化响应，并补充实际使用的模型。
+                        exec.value.copy(
                             usedModelId = exec.model.id,
                             usedModelName = exec.model.name
                         )
@@ -205,9 +248,15 @@ class LocalPipelineCallbacks(
             buildMap<String, Any> {
                 put("content", result.content)
                 put("usage", result.usage)
-                put("finish_reason", "stop")
+                put("finish_reason", result.finishReason.ifBlank {
+                    if (result.toolCalls.isNotEmpty()) "tool_calls" else "stop"
+                })
                 put("_model_id", result.usedModelId ?: activeModel.id)
                 put("_model_name", result.usedModelName ?: activeModel.name)
+                if (result.toolCalls.isNotEmpty()) put("tool_calls", result.toolCalls)
+                if (result.thinkingContent.isNotBlank()) {
+                    put("thinking_content", result.thinkingContent)
+                }
             }
         }
     }
@@ -229,9 +278,7 @@ class LocalPipelineCallbacks(
                         val exec = coordinator.execute(modelQueue, activeModel.purpose.ifBlank { "chat" }) { model ->
                             aiClient.chatOnce(model, messages, extra)
                         }
-                        LocalAiResult(
-                            content = exec.value.content,
-                            usage = exec.value.usage,
+                        exec.value.copy(
                             usedModelId = exec.model.id,
                             usedModelName = exec.model.name
                         )
@@ -290,103 +337,14 @@ class LocalPipelineCallbacks(
     // agent 模式启用进度卡片：上报 thinking/tool/iteration/done 等步骤到 UI
     // 非 agent 模式返回空实现，避免无意义的事件吞吐
     override fun getProgressReporter(ctx: PipelineContext): ProgressReporter {
-        if (session.sessionMode != "agent") return ProgressReporter()
-        return object : ProgressReporter() {
-            private val cardId = java.util.UUID.randomUUID().toString()
-            private val steps = mutableListOf<ThinkingStep>()
-
-            private fun emit(content: String, isComplete: Boolean = false) {
-                val card = ThinkingCard(
-                    id = cardId,
-                    content = content,
-                    steps = steps.toList(),
-                    isComplete = isComplete,
-                    isAgent = true,
-                    timestamp = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
-                    parentMessageId = parentMessageId
-                )
+        if (!session.sessionMode.equals("agent", ignoreCase = true)) return ProgressReporter()
+        return LocalAgentProgressReporter(
+            parentMessageId = parentMessageId,
+            onUpdate = { card ->
                 emitEvent(RealtimeEvent.ThinkingCardUpdate(card))
                 onThinkingCardUpdate?.invoke(card)
             }
-
-            override fun onThinkingStart(ctx: PipelineContext) {
-                steps.add(ThinkingStep(type = "thinking", name = "AI 正在思考...", status = "active"))
-                emit("AI 正在处理...")
-            }
-
-            override fun onThinkingContent(ctx: PipelineContext, content: String) {
-                // 流式思考内容暂不拆分为独立 step（避免过多噪音），仅更新最后一个 thinking step 的 detail
-                steps.lastOrNull { it.type == "thinking" }?.let { s ->
-                    val preview = content.take(120)
-                    val idx = steps.indexOf(s)
-                    steps[idx] = s.copy(detail = preview)
-                }
-                emit("AI 正在思考...")
-            }
-
-            override fun onToolStart(ctx: PipelineContext, toolName: String, arguments: Map<String, Any>, thinking: String) {
-                val argPreview = arguments.entries.joinToString(", ") { "${it.key}=${it.value}" }.take(100)
-                steps.add(ThinkingStep(
-                    type = "tool", name = toolName, status = "running", detail = argPreview,
-                    arguments = arguments, thinkingContent = thinking.takeIf { it.isNotBlank() }
-                ))
-                emit("调用工具: $toolName")
-            }
-
-            override fun onToolDone(ctx: PipelineContext, toolName: String, result: Map<String, Any>, thinking: String) {
-                val resultPreview = result.toString().take(120)
-                // 把最后一个同名 tool step 标记为 done
-                val idx = steps.indexOfLast { it.type == "tool" && it.name == toolName && it.status != "done" }
-                if (idx >= 0) {
-                    steps[idx] = steps[idx].copy(status = "done", detail = resultPreview, fullResult = result)
-                } else {
-                    steps.add(ThinkingStep(type = "tool_done", name = toolName, status = "done", detail = resultPreview, fullResult = result))
-                }
-                emit("工具完成: $toolName")
-            }
-
-            override fun onToolIteration(ctx: PipelineContext, iteration: Int) {
-                emit("AI 正在处理... ($iteration)")
-            }
-
-            override fun onAttachmentStart(ctx: PipelineContext, count: Int) {
-                steps.add(ThinkingStep(type = "upload", name = "正在处理 $count 个附件...", status = "running"))
-                emit("正在处理附件...")
-            }
-
-            override fun onAttachmentsDone(ctx: PipelineContext) {
-                steps.lastOrNull { it.type == "upload" }?.let { s ->
-                    val idx = steps.indexOf(s)
-                    steps[idx] = s.copy(status = "done")
-                }
-                emit("附件处理完成")
-            }
-
-            override fun onKnowledgeStart(ctx: PipelineContext) {
-                steps.add(ThinkingStep(type = "knowledge", name = "正在检索知识库...", status = "running"))
-                emit("正在检索知识库...")
-            }
-
-            override fun onKnowledgeDone(ctx: PipelineContext, retrieved: Boolean) {
-                steps.lastOrNull { it.type == "knowledge" }?.let { s ->
-                    val idx = steps.indexOf(s)
-                    steps[idx] = s.copy(status = "done", detail = if (retrieved) "命中相关条目" else "未命中")
-                }
-                emit("知识库检索完成")
-            }
-
-            override fun onDone(ctx: PipelineContext) {
-                // 完成前将所有运行中的步骤标记为 done（对齐原仓库 progress_card.py 行为）
-                for (i in steps.indices) {
-                    val s = steps[i]
-                    if (s.status == "running" || s.status == "active") {
-                        steps[i] = s.copy(status = "done")
-                    }
-                }
-                steps.add(ThinkingStep(type = "done", name = "处理完成", status = "done"))
-                emit("处理完成", isComplete = true)
-            }
-        }
+        )
     }
 
     // ---- 工具确认 ----
@@ -405,11 +363,17 @@ class LocalPipelineCallbacks(
 
     // ---- 工作区 ----
 
-    override fun ensureWorkspace(ctx: PipelineContext): String = ""
+    override fun ensureWorkspace(ctx: PipelineContext): String {
+        workspaceRoot?.mkdirs()
+        return workspaceRoot?.absolutePath.orEmpty()
+    }
 
-    override fun getWorkspaceContext(ctx: PipelineContext): Map<String, Any> = emptyMap()
+    override fun getWorkspaceContext(ctx: PipelineContext): Map<String, Any> = buildMap {
+        put("session_id", session.id)
+        ensureWorkspace(ctx).takeIf { it.isNotBlank() }?.let { put("workspace_path", it) }
+    }
 
-    override fun getMemoryContext(ctx: PipelineContext): Map<String, Any> = emptyMap()
+    override fun getMemoryContext(ctx: PipelineContext): Map<String, Any> = getWorkspaceContext(ctx)
 
     // ---- 附件解析 ----
 
@@ -433,7 +397,6 @@ class LocalPipelineCallbacks(
     // ---- 工具执行 ----
 
     override fun executeTool(toolName: String, args: Map<String, Any>, toolContext: Map<String, Any>): Map<String, Any> {
-        // 本地模式暂不支持工具执行
-        return mapOf("error" to "本地模式不支持工具调用: $toolName")
+        return localToolExecutor.execute(toolName, args)
     }
 }
