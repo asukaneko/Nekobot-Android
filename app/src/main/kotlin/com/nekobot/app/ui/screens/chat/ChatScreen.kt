@@ -3344,6 +3344,12 @@ class ChatViewModel : BaseViewModel() {
                     addHookNotification(notif)
                 }
             }
+            is RealtimeEvent.SessionRenamed -> {
+                // 本地模式自动命名：更新当前会话标题
+                if (event.sessionId == currentSessionId) {
+                    _session.value = _session.value?.copy(name = event.newName)
+                }
+            }
         }
     }
 

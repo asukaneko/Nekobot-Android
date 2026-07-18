@@ -154,6 +154,11 @@ sealed class RealtimeEvent {
      * - 本地模式：HookExecutor 在 hook 执行成功后构造发出
      */
     data class HookNotificationEvent(val notification: HookNotification) : RealtimeEvent()
+    /**
+     * 会话已自动重命名（本地模式 SessionNameGenerator 触发）。
+     * UI 收到后刷新当前会话显示的标题。
+     */
+    data class SessionRenamed(val sessionId: String, val newName: String) : RealtimeEvent()
 }
 
 /**

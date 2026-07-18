@@ -235,6 +235,15 @@ class LocalRepository(
         com.nekobot.app.data.local.ai.HookExecutor(db)
     }
 
+    /** 本地模式会话自动命名器（跨会话保持 autoNamed/lastRenameCount 状态） */
+    val sessionNameGenerator by lazy {
+        com.nekobot.app.data.local.ai.SessionNameGenerator(
+            aiClient,
+            { aiModelDao.getActive() },
+            onTokenUsage = ::recordSecondaryTokenUsage
+        )
+    }
+
     // ==================== 会话 ====================
 
     suspend fun listSessions(): List<Session> = withContext(Dispatchers.IO) {
@@ -927,6 +936,33 @@ class LocalRepository(
                     emit(event)
                 }
                 pipelineJob.join()
+            }
+
+            // 会话自动命名：异步触发，成功后通过 RealtimeEvent.SessionRenamed 通知 UI
+            if (ctx.finalContent.isNotBlank() && !ctx.metadata.containsKey("is_heartbeat")) {
+                try {
+                    val latestSession = sessionDao.getById(sessionId)
+                    val latestMessages = messageDao.listBySession(sessionId)
+                    if (latestSession != null && latestMessages.isNotEmpty()) {
+                        val charName = character?.name ?: latestSession.characterName ?: ""
+                        val charDesc = character?.description ?: ""
+                        val newName = sessionNameGenerator.tryAutoName(
+                            session = latestSession,
+                            messages = latestMessages,
+                            characterName = charName,
+                            characterDescription = charDesc
+                        )
+                        if (newName != null) {
+                            // 持久化新名称到 DB
+                            sessionDao.updateName(sessionId, newName, com.nekobot.app.data.local.LocalRepository.nowIsoStatic())
+                            // 通知 UI 刷新
+                            emit(RealtimeEvent.SessionRenamed(sessionId, newName))
+                            com.nekobot.app.data.local.LocalLogger.i(TAG, "会话自动命名: $sessionId -> $newName")
+                        }
+                    }
+                } catch (e: Exception) {
+                    com.nekobot.app.data.local.LocalLogger.w(TAG, "会话自动命名失败（不影响主流程）: ${e.message}", e)
+                }
             }
 
             // 剧情模式的每轮回复必须真正落入故事图；此前这里只生成了悬空选项，
