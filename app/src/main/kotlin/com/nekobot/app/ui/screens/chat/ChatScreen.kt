@@ -650,25 +650,33 @@ fun ChatScreen(
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
             } else if (messages.isEmpty()) {
-                // 空会话引导：主题色圆形图标 + 标题 + 提示语
+                // 空会话引导：角色会话显示立绘，其他模式显示默认图标
                 Column(
                     modifier = Modifier.fillMaxSize().padding(32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(88.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Outlined.SmartToy,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(40.dp)
+                    if (session?.sessionMode != "agent" && session?.sessionMode != "group") {
+                        ChatAvatar(
+                            portraitUrl = session?.portraitUrl,
+                            size = 88.dp,
+                            ring = true
                         )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(88.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Outlined.SmartToy,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(40.dp)
+                            )
+                        }
                     }
                     Spacer(Modifier.height(18.dp))
                     Text(
@@ -720,11 +728,15 @@ fun ChatScreen(
                             }
                             // 流式占位消息且内容为空：显示骨架动画（等待第一个 chunk）
                             if (msg.id == ChatViewModel.STREAMING_ID && msg.displayContent.isBlank()) {
-                                ThinkingIndicator(portraitUrl = session?.portraitUrl)
+                                ThinkingIndicator(
+                                    portraitUrl = session?.portraitUrl,
+                                    showAiAvatar = session?.sessionMode != "agent"
+                                )
                             } else {
                                 MessageBubble(
                                     message = msg,
                                     portraitUrl = session?.portraitUrl,
+                                    showAiAvatar = session?.sessionMode != "agent",
                                     onLongClick = {
                                         if (!selectionMode && msg.id != null) {
                                             viewModel.enterSelectionMode(msg.id)
@@ -1352,6 +1364,7 @@ private fun MessageSearchDialog(
 private fun MessageBubble(
     message: Message,
     portraitUrl: String? = null,
+    showAiAvatar: Boolean = true,
     onLongClick: () -> Unit,
     onRegenerate: () -> Unit = {},
     onFork: () -> Unit = {},
@@ -1411,7 +1424,7 @@ private fun MessageBubble(
             Spacer(Modifier.width(4.dp))
         }
         // AI 头像（使用角色立绘，带回主题色光环，失败回退到图标）
-        if (!isUser) {
+        if (!isUser && showAiAvatar) {
             ChatAvatar(portraitUrl = portraitUrl, size = 34.dp, ring = true)
             Spacer(Modifier.width(8.dp))
         }
@@ -2045,14 +2058,19 @@ private fun BackgroundSettingCard(content: String?) {
 
 /** AI 思考中状态：AI 气泡内的打字圆点动画（等待第一个流式 chunk）。 */
 @Composable
-private fun ThinkingIndicator(portraitUrl: String? = null) {
+private fun ThinkingIndicator(
+    portraitUrl: String? = null,
+    showAiAvatar: Boolean = true
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start,
         verticalAlignment = Alignment.Top
     ) {
-        ChatAvatar(portraitUrl = portraitUrl, size = 34.dp, ring = true)
-        Spacer(Modifier.width(8.dp))
+        if (showAiAvatar) {
+            ChatAvatar(portraitUrl = portraitUrl, size = 34.dp, ring = true)
+            Spacer(Modifier.width(8.dp))
+        }
         val shape = RoundedCornerShape(
             topStart = 20.dp,
             topEnd = 20.dp,

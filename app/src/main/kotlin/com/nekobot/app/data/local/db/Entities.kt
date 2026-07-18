@@ -56,7 +56,7 @@ data class LocalSessionEntity(
     /** 压缩上下文时产生的归档会话 ID（用于"提取归档 N 轮"功能） */
     @ColumnInfo(name = "archive_session_id") val archiveSessionId: String? = null,
     /** 会话模式：character（默认）/ agent / group；用于 agent 模式进度卡片显示等场景 */
-    @ColumnInfo(name = "session_mode") val sessionMode: String? = "character"
+    @ColumnInfo(name = "session_mode", defaultValue = "character") val sessionMode: String = "character"
 )
 
 /**
