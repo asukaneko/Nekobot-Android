@@ -47,6 +47,8 @@ class HookExecutor(
 ) {
     companion object {
         private const val TAG = "HookExecutor"
+        private const val PREF_NAME = "hook_triggered_keys"
+        private const val PREF_KEY = "triggered_keys"
     }
 
     private val gson = Gson()
@@ -60,8 +62,46 @@ class HookExecutor(
     private val _events = MutableSharedFlow<RealtimeEvent>(extraBufferCapacity = 16)
     val events: SharedFlow<RealtimeEvent> = _events.asSharedFlow()
 
-    /** 已触发过的 hook（once_per_conversation 模式用），key = hookId|conversationId */
+    /**
+     * 已触发过的 hook（once_per_conversation 模式用），key = hookId|conversationId。
+     * 同时持久化到 SharedPreferences（应用重启后仍能保持"每会话一次"语义）。
+     */
     private val triggeredKeys = ConcurrentHashMap<String, Boolean>()
+
+    /** SharedPreferences 用于持久化触发记录 */
+    private val prefs: android.content.SharedPreferences? by lazy {
+        com.nekobot.app.ServiceContainer.appContext?.getSharedPreferences(PREF_NAME, android.content.Context.MODE_PRIVATE)
+    }
+
+    init {
+        // 从 SharedPreferences 加载已触发记录
+        loadTriggeredKeys()
+    }
+
+    /** 从 SharedPreferences 加载已触发记录到内存 */
+    private fun loadTriggeredKeys() {
+        try {
+            val json = prefs?.getString(PREF_KEY, null) ?: return
+            val type = object : com.google.gson.reflect.TypeToken<Set<String>>() {}.type
+            val keys: Set<String> = gson.fromJson(json, type) ?: return
+            for (key in keys) {
+                triggeredKeys[key] = true
+            }
+            LocalLogger.d(TAG, "加载 ${keys.size} 条已触发 hook 记录")
+        } catch (e: Exception) {
+            LocalLogger.w(TAG, "加载已触发 hook 记录失败: ${e.message}")
+        }
+    }
+
+    /** 持久化当前触发记录到 SharedPreferences */
+    private fun persistTriggeredKeys() {
+        try {
+            val json = gson.toJson(triggeredKeys.keys.toSet())
+            prefs?.edit()?.putString(PREF_KEY, json)?.apply()
+        } catch (e: Exception) {
+            LocalLogger.w(TAG, "持久化已触发 hook 记录失败: ${e.message}")
+        }
+    }
 
     /**
      * 触发指定事件的所有 hook。
@@ -136,6 +176,7 @@ class HookExecutor(
             if (status == "success" || status == "partial") {
                 if (hook.triggerMode == "once_per_conversation") {
                     triggeredKeys["${hook.id}|$conversationId"] = true
+                    persistTriggeredKeys()
                 }
                 val displayMessage = extractDisplayMessage(hook)
                 val notif = HookNotification(
@@ -154,9 +195,11 @@ class HookExecutor(
 
     /** 重置会话的 once_per_conversation 记录（用于会话重置场景） */
     fun resetConversation(conversationId: String) {
-        triggeredKeys.keys.filter { it.endsWith("|$conversationId") }.forEach {
-            triggeredKeys.remove(it)
-        }
+        val removed = triggeredKeys.keys.filter { it.endsWith("|$conversationId") }
+        if (removed.isEmpty()) return
+        removed.forEach { triggeredKeys.remove(it) }
+        persistTriggeredKeys()
+        LocalLogger.i(TAG, "已重置会话 $conversationId 的 ${removed.size} 条 hook 触发记录")
     }
 
     /**
