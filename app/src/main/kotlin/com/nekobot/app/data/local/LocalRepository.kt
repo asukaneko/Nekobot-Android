@@ -6,6 +6,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.google.gson.reflect.TypeToken
 import com.nekobot.app.data.local.ai.FailoverAllFailedException
 import com.nekobot.app.data.local.ai.FailoverCoordinator
 import com.nekobot.app.data.local.ai.FailoverHealthStore
@@ -50,6 +51,7 @@ import com.nekobot.app.data.model.Skill
 import com.nekobot.app.data.model.SkillRequest
 import com.nekobot.app.data.model.TaskItem
 import com.nekobot.app.data.model.TaskRequest
+import com.nekobot.app.data.model.ThinkingCard
 import com.nekobot.app.data.model.TokenRankings
 import com.nekobot.app.data.model.TokenStats
 import com.nekobot.app.data.model.Tool
@@ -250,7 +252,8 @@ class LocalRepository(
             portrait = character?.portrait ?: req.senderPortrait,
             tags = req.tags?.joinToString(","),
             createdAt = now,
-            updatedAt = now
+            updatedAt = now,
+            sessionMode = req.sessionMode
         )
         sessionDao.upsert(entity)
         entity.toSession()
@@ -724,7 +727,8 @@ class LocalRepository(
         currentSessionId = sessionId
 
         // 1. 保存用户消息
-        addMessage(sessionId, "user", userMessage)
+        val savedUserMessage = addMessage(sessionId, "user", userMessage)
+        val parentMessageId = savedUserMessage.id ?: java.util.UUID.randomUUID().toString()
 
         val session = sessionDao.getById(sessionId) ?: run {
             emit(RealtimeEvent.Error("会话不存在"))
@@ -762,8 +766,15 @@ class LocalRepository(
             .filter { it.id != activeModel.id }
         val callbacks = com.nekobot.app.data.local.ai.LocalPipelineCallbacks(
             db, aiClient, activeModel, session, character, worldBookEntries, runtime, identity,
+            parentMessageId = parentMessageId,
             onTokenRecorded = { sid, model, input, output, ts, purpose ->
                 appendTokenUsageRecord(sid, model, input, output, ts, purpose = purpose)
+            },
+            onThinkingCardUpdate = { card ->
+                // 持久化进度卡片到父用户消息
+                kotlinx.coroutines.runBlocking {
+                    updateMessageThinkingCards(parentMessageId, listOf(card))
+                }
             },
             failoverQueue = failoverQueue,
             coordinator = failoverCoordinator
@@ -2149,7 +2160,8 @@ $charSection$topicSection
         proactiveChat = proactiveChat?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
         ttsConfig = ttsConfig?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
         shareConfig = shareConfig?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
-        archiveSessionId = archiveSessionId
+        archiveSessionId = archiveSessionId,
+        sessionMode = sessionMode
     )
 
     private fun LocalMessageEntity.toMessage(): Message = Message(
@@ -2163,8 +2175,24 @@ $charSection$topicSection
         outputTokens = outputTokens,
         // 合并 input+output 作为总 token 数，供 UI 统计使用
         tokens = listOfNotNull(inputTokens, outputTokens).takeIf { it.size == 2 }?.sum(),
-        createdAt = createdAt
+        createdAt = createdAt,
+        // 反序列化进度卡片 JSON（agent 模式持久化）
+        thinkingCards = thinkingCards?.takeIf { it.isNotBlank() }?.let {
+            runCatching {
+                val type = object : TypeToken<List<ThinkingCard>>() {}.type
+                gson.fromJson<List<ThinkingCard>>(it, type)
+            }.getOrNull()
+        }
     )
+
+    /** 持久化指定用户消息关联的进度卡片列表（agent 模式）。 */
+    suspend fun updateMessageThinkingCards(messageId: String, cards: List<ThinkingCard>?) =
+        withContext(Dispatchers.IO) {
+            val json = cards?.takeIf { it.isNotEmpty() }?.let {
+                runCatching { gson.toJson(it) }.getOrNull()
+            }
+            messageDao.updateThinkingCards(messageId, json)
+        }
 
     private fun LocalCharacterEntity.toCharacterPreset(): CharacterPreset = CharacterPreset(
         id = id,

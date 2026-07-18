@@ -8,6 +8,8 @@ import com.nekobot.app.data.local.db.LocalMessageEntity
 import com.nekobot.app.data.local.db.LocalSessionEntity
 import com.nekobot.app.data.local.db.LocalWorldBookEntryEntity
 import com.nekobot.app.data.local.db.NekobotDatabase
+import com.nekobot.app.data.model.ThinkingCard
+import com.nekobot.app.data.model.ThinkingStep
 import com.nekobot.app.data.remote.RealtimeEvent
 import kotlinx.coroutines.channels.Channel
 
@@ -37,7 +39,11 @@ class LocalPipelineCallbacks(
     private val worldBookEntries: List<LocalWorldBookEntryEntity> = emptyList(),
     private val characterRuntime: CharacterRuntime? = null,
     private val characterIdentity: CharacterIdentity? = null,
+    /** 父用户消息 id；agent 模式进度卡片关联用，UI 在用户气泡下方渲染 */
+    private val parentMessageId: String? = null,
     private val onTokenRecorded: ((sessionId: String, model: String, inputTokens: Int, outputTokens: Int, timestamp: String, purpose: String) -> Unit)? = null,
+    /** 进度卡片更新回调；本地模式用于持久化到父用户消息 */
+    private val onThinkingCardUpdate: ((card: ThinkingCard) -> Unit)? = null,
     /** 故障转移队列：activeModel 优先 + 同 purpose 其他启用模型，按 priority 升序 */
     private val failoverQueue: List<LocalAiModelEntity> = emptyList(),
     /** 持久化故障转移协调器；非空时 [buildModelCall] 走 coordinator，否则回退到 chatOnceWithFailover */
@@ -255,8 +261,16 @@ class LocalPipelineCallbacks(
     // ---- 输出 / 回复 ----
 
     override fun sendResponse(ctx: PipelineContext, message: Map<String, Any>) {
-        // 非流式：无需额外推送（消息已通过 saveAssistantMessage 保存）
-        // UI 层通过 loadMessages() 刷新
+        // 非流式（如 agent 工具循环结束）：构造完整消息推送 AiResponse，
+        // 触发 UI 移除流式占位 + 追加新消息，避免"AI 回复不显示，需重进会话"问题。
+        val msg = com.nekobot.app.data.model.Message(
+            id = (message["id"] as? String),
+            role = "assistant",
+            content = (message["content"] as? String) ?: "",
+            timestamp = (message["timestamp"] as? String) ?: System.currentTimeMillis().toString(),
+            model = (ctx.metadata["model_name"] as? String) ?: activeModel.model
+        )
+        emitEvent(RealtimeEvent.AiResponse(msg))
     }
 
     override fun onStreamStart(ctx: PipelineContext, message: Map<String, Any>) {
@@ -273,8 +287,107 @@ class LocalPipelineCallbacks(
     }
 
     // ---- 进度报告 ----
+    // agent 模式启用进度卡片：上报 thinking/tool/iteration/done 等步骤到 UI
+    // 非 agent 模式返回空实现，避免无意义的事件吞吐
+    override fun getProgressReporter(ctx: PipelineContext): ProgressReporter {
+        if (session.sessionMode != "agent") return ProgressReporter()
+        return object : ProgressReporter() {
+            private val cardId = java.util.UUID.randomUUID().toString()
+            private val steps = mutableListOf<ThinkingStep>()
 
-    override fun getProgressReporter(ctx: PipelineContext): ProgressReporter = ProgressReporter()
+            private fun emit(content: String, isComplete: Boolean = false) {
+                val card = ThinkingCard(
+                    id = cardId,
+                    content = content,
+                    steps = steps.toList(),
+                    isComplete = isComplete,
+                    isAgent = true,
+                    timestamp = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
+                    parentMessageId = parentMessageId
+                )
+                emitEvent(RealtimeEvent.ThinkingCardUpdate(card))
+                onThinkingCardUpdate?.invoke(card)
+            }
+
+            override fun onThinkingStart(ctx: PipelineContext) {
+                steps.add(ThinkingStep(type = "thinking", name = "AI 正在思考...", status = "active"))
+                emit("AI 正在处理...")
+            }
+
+            override fun onThinkingContent(ctx: PipelineContext, content: String) {
+                // 流式思考内容暂不拆分为独立 step（避免过多噪音），仅更新最后一个 thinking step 的 detail
+                steps.lastOrNull { it.type == "thinking" }?.let { s ->
+                    val preview = content.take(120)
+                    val idx = steps.indexOf(s)
+                    steps[idx] = s.copy(detail = preview)
+                }
+                emit("AI 正在思考...")
+            }
+
+            override fun onToolStart(ctx: PipelineContext, toolName: String, arguments: Map<String, Any>, thinking: String) {
+                val argPreview = arguments.entries.joinToString(", ") { "${it.key}=${it.value}" }.take(100)
+                steps.add(ThinkingStep(
+                    type = "tool", name = toolName, status = "running", detail = argPreview,
+                    arguments = arguments, thinkingContent = thinking.takeIf { it.isNotBlank() }
+                ))
+                emit("调用工具: $toolName")
+            }
+
+            override fun onToolDone(ctx: PipelineContext, toolName: String, result: Map<String, Any>, thinking: String) {
+                val resultPreview = result.toString().take(120)
+                // 把最后一个同名 tool step 标记为 done
+                val idx = steps.indexOfLast { it.type == "tool" && it.name == toolName && it.status != "done" }
+                if (idx >= 0) {
+                    steps[idx] = steps[idx].copy(status = "done", detail = resultPreview, fullResult = result)
+                } else {
+                    steps.add(ThinkingStep(type = "tool_done", name = toolName, status = "done", detail = resultPreview, fullResult = result))
+                }
+                emit("工具完成: $toolName")
+            }
+
+            override fun onToolIteration(ctx: PipelineContext, iteration: Int) {
+                emit("AI 正在处理... ($iteration)")
+            }
+
+            override fun onAttachmentStart(ctx: PipelineContext, count: Int) {
+                steps.add(ThinkingStep(type = "upload", name = "正在处理 $count 个附件...", status = "running"))
+                emit("正在处理附件...")
+            }
+
+            override fun onAttachmentsDone(ctx: PipelineContext) {
+                steps.lastOrNull { it.type == "upload" }?.let { s ->
+                    val idx = steps.indexOf(s)
+                    steps[idx] = s.copy(status = "done")
+                }
+                emit("附件处理完成")
+            }
+
+            override fun onKnowledgeStart(ctx: PipelineContext) {
+                steps.add(ThinkingStep(type = "knowledge", name = "正在检索知识库...", status = "running"))
+                emit("正在检索知识库...")
+            }
+
+            override fun onKnowledgeDone(ctx: PipelineContext, retrieved: Boolean) {
+                steps.lastOrNull { it.type == "knowledge" }?.let { s ->
+                    val idx = steps.indexOf(s)
+                    steps[idx] = s.copy(status = "done", detail = if (retrieved) "命中相关条目" else "未命中")
+                }
+                emit("知识库检索完成")
+            }
+
+            override fun onDone(ctx: PipelineContext) {
+                // 完成前将所有运行中的步骤标记为 done（对齐原仓库 progress_card.py 行为）
+                for (i in steps.indices) {
+                    val s = steps[i]
+                    if (s.status == "running" || s.status == "active") {
+                        steps[i] = s.copy(status = "done")
+                    }
+                }
+                steps.add(ThinkingStep(type = "done", name = "处理完成", status = "done"))
+                emit("处理完成", isComplete = true)
+            }
+        }
+    }
 
     // ---- 工具确认 ----
 

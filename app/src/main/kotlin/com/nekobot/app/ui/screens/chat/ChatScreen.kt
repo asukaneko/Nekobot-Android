@@ -3,6 +3,7 @@ package com.nekobot.app.ui.screens.chat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.StartOffset
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
@@ -36,6 +37,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -47,6 +50,9 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
@@ -57,13 +63,21 @@ import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardHide
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.TaskAlt
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.VerticalSplit
 import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material.icons.filled.Warning
@@ -97,6 +111,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -130,6 +145,7 @@ import com.nekobot.app.data.local.VISION_FAILURE_MARKER
 import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.UpdateSessionRequest
+import com.nekobot.app.data.remote.ExecConfirmationRequest
 import com.nekobot.app.data.remote.RealtimeEvent
 import com.nekobot.app.data.remote.SocketState
 import com.nekobot.app.data.repository.Resource
@@ -175,9 +191,12 @@ fun ChatScreen(
     val plotChoicesLoading by viewModel.plotChoicesLoading.collectAsState()
     val selectionMode by viewModel.selectionMode.collectAsState()
     val selectedIds by viewModel.selectedMessageIds.collectAsState()
+    val execConfirmation by viewModel.execConfirmation.collectAsState()
 
     var input by remember { mutableStateOf("") }
     var pendingPlotChoiceId by remember { mutableStateOf<String?>(null) }
+    // Agent 进度卡片步骤详情弹窗目标（点击 step 时填充）
+    var stepDetailTarget by remember { mutableStateOf<com.nekobot.app.data.model.ThinkingStep?>(null) }
     var chatInputLayout by remember {
         mutableStateOf(ServiceContainer.prefs.chatInputLayoutMode)
     }
@@ -679,8 +698,11 @@ fun ChatScreen(
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    item(key = "background_setting", contentType = "background_setting") {
-                        BackgroundSettingCard(content = session?.scenario)
+                    // Agent 模式不显示背景设定卡片（agent 会话不继承角色卡配置）
+                    if (session?.sessionMode != "agent") {
+                        item(key = "background_setting", contentType = "background_setting") {
+                            BackgroundSettingCard(content = session?.scenario)
+                        }
                     }
                     itemsIndexed(
                         messages,
@@ -717,6 +739,18 @@ fun ChatScreen(
                                     onToggleSelection = { msg.id?.let { viewModel.toggleSelection(it) } }
                                 )
                             }
+                            // Agent 模式：在用户气泡下方渲染持久化的进度卡片（磨砂玻璃风格）
+                            if (msg.isUser && session?.sessionMode == "agent" && !msg.thinkingCards.isNullOrEmpty()) {
+                                Spacer(Modifier.height(6.dp))
+                                msg.thinkingCards.forEach { card ->
+                                    ProgressCard(
+                                        card = card,
+                                        onStepClick = { step ->
+                                            stepDetailTarget = step
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                     // AI 处理进度卡片已移除：流式占位消息由 StreamStart 事件创建
@@ -736,6 +770,78 @@ fun ChatScreen(
                     )
                 }
             }
+        }
+
+        // Agent 进度卡片步骤详情弹窗（点击含详情的 step 时弹出）
+        stepDetailTarget?.let { step ->
+            StepDetailDialog(
+                step = step,
+                onDismiss = { stepDetailTarget = null }
+            )
+        }
+    }
+
+    // Agent 非白名单命令授权
+    execConfirmation?.let { request ->
+        NekoDialog(
+            onDismiss = { viewModel.respondToExecConfirmation(approved = false) },
+            title = stringResource(R.string.chat_exec_confirm_title),
+            message = stringResource(R.string.chat_exec_confirm_description),
+            confirmText = stringResource(R.string.chat_exec_confirm_allow),
+            onConfirm = { viewModel.respondToExecConfirmation(approved = true) },
+            cancelText = stringResource(R.string.chat_exec_confirm_reject),
+            onCancel = { viewModel.respondToExecConfirmation(approved = false) }
+        ) {
+            androidx.compose.material3.Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+            ) {
+                SelectionContainer {
+                    Text(
+                        text = request.command.ifBlank {
+                            stringResource(R.string.chat_exec_confirm_unknown_command)
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+            if (request.message.isNotBlank()) {
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f))
+                        .padding(10.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Warning,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = request.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = stringResource(
+                    R.string.chat_exec_confirm_request_id,
+                    request.requestId.take(8)
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 
@@ -1512,6 +1618,342 @@ private fun IconActionButton(
             modifier = Modifier.size(14.dp)
         )
     }
+}
+
+/**
+ * Agent 模式进度卡片：磨砂玻璃风格，展示 AI 处理过程的步骤与状态。
+ *
+ * 视觉参考原仓库 Web 端 thinking-card：
+ * - 半透明渐变背景模拟玻璃质感
+ * - 头部：旋转图标（未完成）/ 勾选图标（完成）+ 头部文本
+ * - 步骤列表：每项显示图标 + 名称 + 状态色 + 详情摘要（折叠/展开）
+ *
+ * @param card 进度卡片数据（含头部文本、步骤列表、完成状态）
+ */
+@Composable
+private fun ProgressCard(
+    card: com.nekobot.app.data.model.ThinkingCard,
+    onStepClick: (com.nekobot.app.data.model.ThinkingStep) -> Unit = {}
+) {
+    var expanded by remember(card.id) { mutableStateOf(true) }
+
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        cornerRadius = 14,
+        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        borderColor = if (card.isComplete) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.32f)
+        } else {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
+        },
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        // 头部：图标 + 内容文本 + 展开开关
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (card.isComplete) {
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            } else {
+                // CircularProgressIndicator 自带旋转动画
+                CircularProgressIndicator(
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = card.content.stripEmoji().ifBlank { "AI 正在处理..." },
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (card.steps.isNotEmpty()) {
+                Icon(
+                    imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+
+        // 步骤列表（可折叠）
+        if (expanded && card.steps.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                thickness = 0.5.dp
+            )
+            Spacer(Modifier.height(6.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                card.steps.forEach { step ->
+                    ProgressStepRow(step, onStepClick = onStepClick)
+                }
+            }
+        }
+    }
+}
+
+/** 进度卡片单步渲染：Material Icon + 名称 + 状态色 + 详情摘要，含详情时可点击。 */
+@Composable
+private fun ProgressStepRow(
+    step: com.nekobot.app.data.model.ThinkingStep,
+    onStepClick: (com.nekobot.app.data.model.ThinkingStep) -> Unit = {}
+) {
+    val statusColor = when (step.status?.lowercase()) {
+        "done" -> MaterialTheme.colorScheme.primary
+        "error" -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    // step.type 映射到 Material Icon（不使用 emoji）
+    val iconVector = when (step.type?.lowercase()) {
+        "thinking" -> Icons.Filled.Psychology
+        "tool", "tool_done" -> Icons.Filled.Build
+        "upload" -> Icons.Filled.Upload
+        "knowledge" -> Icons.Filled.MenuBook
+        "done" -> Icons.Filled.TaskAlt
+        else -> Icons.Filled.Circle
+    }
+    val iconSize = if (step.type?.lowercase() == "done") 14.dp else 16.dp
+    val name = step.name?.stripEmoji()?.takeIf { it.isNotBlank() } ?: "步骤"
+    val detail = step.detail?.stripEmoji()?.takeIf { it.isNotBlank() }
+    // 含任一详情字段时可点击查看详情（对齐原仓库 has-detail 判定）
+    val hasDetail = step.arguments != null || step.fullResult != null || !step.thinkingContent.isNullOrBlank()
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (hasDetail) Modifier.clickable { onStepClick(step) } else Modifier),
+        verticalAlignment = Alignment.Top
+    ) {
+        Box(
+            modifier = Modifier.size(20.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            if (step.status == "running" || step.status == "active") {
+                CircularProgressIndicator(
+                    strokeWidth = 1.5.dp,
+                    color = statusColor,
+                    modifier = Modifier.size(iconSize)
+                )
+            } else {
+                Icon(
+                    imageVector = iconVector,
+                    contentDescription = null,
+                    tint = statusColor,
+                    modifier = Modifier.size(iconSize)
+                )
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium,
+                    color = statusColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (hasDetail) {
+                    Spacer(Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(12.dp)
+                    )
+                }
+            }
+            if (!detail.isNullOrBlank()) {
+                Text(
+                    text = detail,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 进度卡片步骤详情弹窗：展示 AI 思考内容 / 工具参数 / 返回结果。
+ *
+ * 对齐原仓库 Web 端 stepDetailModal：按字段存在与否展示对应区块，
+ * 无详情时显示"该步骤没有详细信息"占位。
+ *
+ * @param step 步骤数据
+ * @param onDismiss 关闭回调
+ */
+@Composable
+private fun StepDetailDialog(
+    step: com.nekobot.app.data.model.ThinkingStep,
+    onDismiss: () -> Unit
+) {
+    val name = step.name?.stripEmoji()?.takeIf { it.isNotBlank() } ?: "步骤详情"
+    val detail = step.detail?.stripEmoji()?.takeIf { it.isNotBlank() }
+    val thinkingContent = step.thinkingContent?.stripEmoji()?.takeIf { it.isNotBlank() }
+    val argumentsJson = step.arguments?.let { formatJson(it) }
+    val fullResultJson = step.fullResult?.let { formatJson(it) }
+    val hasAny = detail != null || thinkingContent != null ||
+        !argumentsJson.isNullOrBlank() || !fullResultJson.isNullOrBlank()
+
+    NekoDialog(
+        onDismiss = onDismiss,
+        title = name,
+        confirmText = stringResource(R.string.common_close),
+        onConfirm = null,
+        cancelText = null,
+        onCancel = null
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 480.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            if (!hasAny) {
+                Text(
+                    text = "该步骤没有详细信息",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (!detail.isNullOrBlank()) {
+                        StepDetailSection(
+                            label = "描述",
+                            content = detail
+                        )
+                    }
+                    if (!thinkingContent.isNullOrBlank()) {
+                        StepDetailSection(
+                            label = "AI 思考过程",
+                            icon = Icons.Filled.Psychology,
+                            content = thinkingContent,
+                            accent = true
+                        )
+                    }
+                    if (!argumentsJson.isNullOrBlank()) {
+                        StepDetailSection(
+                            label = "参数 (Arguments)",
+                            icon = Icons.Filled.Key,
+                            content = argumentsJson,
+                            isCode = true
+                        )
+                    }
+                    if (!fullResultJson.isNullOrBlank()) {
+                        StepDetailSection(
+                            label = "返回结果 (Result)",
+                            icon = Icons.Filled.CheckCircle,
+                            content = fullResultJson,
+                            isCode = true
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 步骤详情区块：Icon + 标题 + 内容（普通/代码块/强调样式）。 */
+@Composable
+private fun StepDetailSection(
+    label: String,
+    content: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    isCode: Boolean = false,
+    accent: Boolean = false
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (accent) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (accent) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        androidx.compose.material3.Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ) {
+            Text(
+                text = content,
+                style = if (isCode) MaterialTheme.typography.bodySmall
+                else MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(8.dp)
+            )
+        }
+    }
+}
+
+/** 格式化 JSON 字符串（任意对象转 pretty JSON）。 */
+private fun formatJson(value: Any): String {
+    return try {
+        val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
+        val element = gson.toJsonTree(value)
+        gson.toJson(element)
+    } catch (e: Exception) {
+        value.toString()
+    }
+}
+
+/**
+ * 剥离文本中的 emoji 字符与常见 emoji 前缀（如 "🔄 AI 正在处理..." → "AI 正在处理..."）。
+ *
+ * 后端 progress_card.py 的 STEP_CONFIG 使用 emoji 图标（🤔💭🧠🔧🖼️📄📤📚✅），
+ * content 字段也含 emoji 前缀（🔄/✅）。Android 端已改用 Material Icon 渲染，
+ * 文本字段需剥离 emoji，避免与 Icon 并列显示。
+ */
+private fun String.stripEmoji(): String {
+    if (isBlank()) return this
+    // BMP 内符号区间 + 所有补充平面字符（代理对，覆盖 emoji 主平面 U+1F000-U+1FAFF 等）
+    val emojiRegex = Regex(
+        "[" +
+        "\u2600-\u27BF" +     // 杂项符号与装饰符号（✅✨ etc.）
+        "\u2B00-\u2BFF" +     // 其他符号（⬆ etc.）
+        "\uFE00-\uFE0F" +     // variation selector
+        "\u200D" +            // ZWJ
+        "\u20E3" +            // combining enclosing keycap
+        "]|" +
+        "[\uD800-\uDBFF][\uDC00-\uDFFF]"  // 所有代理对（补充平面字符，含所有 emoji）
+    )
+    var stripped = emojiRegex.replace(this, "")
+    // 折叠多余空格与首尾空白，处理 "AI 正在处理... (1/50)" 前缀被剥离后的残余空格
+    stripped = stripped.replace(Regex("\\s{2,}"), " ").trim()
+    return stripped
 }
 
 /**
@@ -2414,6 +2856,9 @@ class ChatViewModel : BaseViewModel() {
     private val _sending = MutableStateFlow(false)
     val sending: StateFlow<Boolean> = _sending.asStateFlow()
 
+    private val _execConfirmation = MutableStateFlow<ExecConfirmationRequest?>(null)
+    val execConfirmation: StateFlow<ExecConfirmationRequest?> = _execConfirmation.asStateFlow()
+
     /** 剧情选项列表（plot_mode 开启时从服务器获取） */
     private val _plotChoices = MutableStateFlow<List<PlotChoice>>(emptyList())
     val plotChoices: StateFlow<List<PlotChoice>> = _plotChoices.asStateFlow()
@@ -2421,6 +2866,33 @@ class ChatViewModel : BaseViewModel() {
     /** 剧情选项是否正在生成中（用于骨架动画） */
     private val _plotChoicesLoading = MutableStateFlow(false)
     val plotChoicesLoading: StateFlow<Boolean> = _plotChoicesLoading.asStateFlow()
+
+    /**
+     * Agent 模式进度卡片（thinking_card）管理。
+     *
+     * 卡片挂载到父用户消息的 [Message.thinkingCards] 字段上，随消息一起持久化。
+     * - 收到 ThinkingCardUpdate 事件时，按 parentMessageId 定位父用户消息
+     *   （找不到则回退到最后一条 user 消息，对齐原仓库 orphanCards 兜底逻辑）
+     * - 在该消息的 thinkingCards 列表中替换同 id 卡片或追加
+     * - StreamEnd 时 loadMessages 会用持久化数据覆盖，保证最终一致
+     */
+    private fun applyThinkingCardUpdate(card: com.nekobot.app.data.model.ThinkingCard) {
+        val current = _messages.value
+        val parentIdx = card.parentMessageId?.let { pid ->
+            current.indexOfFirst { it.id == pid && it.isUser }
+        } ?: -1
+        val targetIdx = if (parentIdx >= 0) parentIdx else current.indexOfLast { it.isUser }
+        if (targetIdx < 0) return
+        val parent = current[targetIdx]
+        val existing = parent.thinkingCards ?: emptyList()
+        val updated = if (existing.any { it.id == card.id }) {
+            existing.map { if (it.id == card.id) card else it }
+        } else {
+            existing + card
+        }
+        val newParent = parent.copy(thinkingCards = updated)
+        _messages.value = current.toMutableList().apply { set(targetIdx, newParent) }
+    }
 
     // 多选模式状态
     private val _selectionMode = MutableStateFlow(false)
@@ -2504,7 +2976,22 @@ class ChatViewModel : BaseViewModel() {
             }
             is RealtimeEvent.StreamEnd -> {
                 _sending.value = false
-                // 流式结束，刷新列表获取服务端持久化的真实消息
+                // 流式结束前，把占位转为正式消息（移除 streamingId），避免 loadMessages 异步竞态时丢失回复
+                val finalContent = streamingContent.toString()
+                if (finalContent.isNotBlank()) {
+                    val placeholder = _messages.value.firstOrNull { it.id == streamingId }
+                    val formalId = placeholder?.id?.takeIf { it != streamingId } ?: java.util.UUID.randomUUID().toString()
+                    val formalMsg = Message(
+                        id = formalId,
+                        role = "assistant",
+                        content = finalContent,
+                        timestamp = System.currentTimeMillis().toString()
+                    )
+                    _messages.value = _messages.value.filter { it.id != streamingId } + formalMsg
+                } else {
+                    _messages.value = _messages.value.filter { it.id != streamingId }
+                }
+                // 刷新列表获取服务端持久化的真实消息（含 id/token 等）
                 loadMessages()
                 // 本地模式：会话 TTS 启用时，为刚生成的助手消息合成语音（延迟等待 loadMessages 完成）
                 if (isLocalMode) {
@@ -2545,14 +3032,19 @@ class ChatViewModel : BaseViewModel() {
             }
             is RealtimeEvent.AiResponse -> {
                 _sending.value = false
-                event.message?.let { msg ->
+                val msg = event.message
+                if (msg != null && !msg.content.isNullOrBlank()) {
                     // 移除流式占位，追加完整回复
-                    _messages.value = _messages.value
-                        .filter { it.id != streamingId }
-                        .let { if (msg.content.isNullOrBlank()) it else it + msg }
+                    _messages.value = (_messages.value.filter {
+                        it.id != streamingId && (msg.id == null || it.id != msg.id)
+                    }) + msg
                     // 通知检查
                     trySendNotification(msg.content.orEmpty())
-                } ?: loadMessages()
+                } else {
+                    // 完整响应缺失或格式异常时刷新持久化消息，不能让空对象静默吞掉最终回复
+                    _messages.value = _messages.value.filter { it.id != streamingId }
+                    loadMessages()
+                }
                 // 非流式回复也需刷新剧情选项
                 if (_session.value?.plotMode == true) {
                     _plotChoices.value = emptyList()
@@ -2587,7 +3079,56 @@ class ChatViewModel : BaseViewModel() {
             is RealtimeEvent.Usage -> {
                 // 本地模式 token 用量已由 LocalRepository 保存到消息，UI 无需额外处理
             }
+            is RealtimeEvent.ExecConfirmationRequired -> {
+                val request = event.request
+                if (request.sessionId.isBlank() || request.sessionId == currentSessionId) {
+                    _sending.value = false
+                    _messages.value = _messages.value.filter { it.id != streamingId }
+                    _execConfirmation.value = request.copy(
+                        sessionId = request.sessionId.ifBlank { currentSessionId }
+                    )
+                }
+            }
+            is RealtimeEvent.ExecConfirmationResolved -> {
+                if (event.sessionId.isNullOrBlank() || event.sessionId == currentSessionId) {
+                    _sending.value = false
+                    _execConfirmation.value = null
+                }
+            }
+            is RealtimeEvent.ThinkingCardUpdate -> {
+                // agent 模式进度卡片更新：挂到父用户消息上（本地 ProgressReporter 或远程 thinking_card 消息）
+                applyThinkingCardUpdate(event.card)
+                _sending.value = !event.card.isComplete
+            }
         }
+    }
+
+    /** 提交命令授权结果；Socket 断开时保留弹窗，允许用户稍后重试。 */
+    fun respondToExecConfirmation(approved: Boolean) {
+        val request = _execConfirmation.value ?: return
+        val submitted = socket.respondToExecConfirmation(
+            requestId = request.requestId,
+            approved = approved,
+            sessionId = request.sessionId.ifBlank { currentSessionId }
+        )
+        if (!submitted) {
+            // 拒绝是安全默认值：即使断线无法回传，也允许关闭弹窗；
+            // 未获明确授权的服务端 pending command 不会自动执行。
+            if (!approved) {
+                _execConfirmation.value = null
+                _sending.value = false
+            }
+            showError(string(R.string.chat_exec_confirm_socket_disconnected))
+            return
+        }
+        _execConfirmation.value = null
+        _sending.value = true
+        showToast(
+            string(
+                if (approved) R.string.chat_exec_confirm_approved
+                else R.string.chat_exec_confirm_rejected
+            )
+        )
     }
 
     /** 加载会话信息。 */
@@ -2612,7 +3153,51 @@ class ChatViewModel : BaseViewModel() {
         if (currentSessionId.isBlank()) return
         launchResult(
             block = { unified.listMessages(currentSessionId) },
-            onSuccess = { _messages.value = (it ?: emptyList()).filterNot { msg -> msg.isThinkingCard } }
+            onSuccess = { fresh ->
+                // 合并：保留现有 thinking_cards，避免被刷新覆盖（对齐原仓库 nbot-methods.js:6221）
+                val current = _messages.value
+                val byId = current.associateBy { it.id }
+                val byUserContent = current.filter { it.isUser }
+                    .associateBy { it.content to it.timestamp }
+                // 当前 UI 中非占位的 assistant 消息（按内容+时间戳匹配，避免刚生成的回复被 fresh 覆盖丢失）
+                val currentAssistantByContent = current
+                    .filter { !it.isUser && it.id != streamingId && !it.content.isNullOrBlank() }
+                    .associateBy { it.content to it.timestamp }
+
+                val merged = (fresh ?: emptyList()).filterNot { msg -> msg.isThinkingCard }.map { newMsg ->
+                    // 历史加载的 thinking_cards 必定已完成（否则为数据不一致），
+                    // 强制最后一张卡片 isComplete=true，避免重进会话还在转圈
+                    val normalizedCards = newMsg.thinkingCards?.map { card ->
+                        if (!card.isComplete) card.copy(isComplete = true) else card
+                    }
+                    val withCards = if (normalizedCards != null && normalizedCards != newMsg.thinkingCards) {
+                        newMsg.copy(thinkingCards = normalizedCards)
+                    } else newMsg
+
+                    val existing = withCards.id?.let { byId[it] }
+                    val mergedCard = if (existing?.thinkingCards != null && withCards.thinkingCards == null) {
+                        withCards.copy(thinkingCards = existing.thinkingCards)
+                    } else withCards
+                    // 兜底：按 user 消息内容+时间戳匹配（乐观消息无 id，被服务器消息替换时保留 thinking_cards）
+                    if (mergedCard.thinkingCards == null && mergedCard.isUser) {
+                        val key = mergedCard.content to mergedCard.timestamp
+                        byUserContent[key]?.thinkingCards?.let { tc ->
+                            mergedCard.copy(thinkingCards = tc)
+                        } ?: mergedCard
+                    } else mergedCard
+                }
+
+                // 保留 current 中 fresh 没有的 assistant 消息（刚生成的回复可能因 Room 异步竞态未被 fresh 包含）
+                val freshAssistantKeys = merged
+                    .filter { !it.isUser && !it.content.isNullOrBlank() }
+                    .associateBy { it.content to it.timestamp }
+                    .keys
+                val orphanAssistants = currentAssistantByContent.values.filter { msg ->
+                    (msg.content to msg.timestamp) !in freshAssistantKeys
+                }
+
+                _messages.value = if (orphanAssistants.isEmpty()) merged else merged + orphanAssistants
+            }
         )
     }
 

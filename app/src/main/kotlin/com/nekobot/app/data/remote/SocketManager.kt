@@ -17,6 +17,65 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONObject
 
+/**
+ * 解析 Socket.IO 中携带的消息。
+ *
+ * `new_message` 直接发送消息对象，而 `ai_response` 使用
+ * `{"session_id": "...", "message": {...}}` 包装；两种格式都需要兼容。
+ */
+internal fun parseRealtimeMessagePayload(gson: Gson, raw: Any?): Message? {
+    if (raw == null) return null
+    val rawText = raw.toString()
+    return try {
+        val root = JsonParser.parseString(rawText)
+        val message = if (root.isJsonObject) {
+            root.asJsonObject.get("message")
+                ?.takeUnless { it.isJsonNull }
+                ?: root
+        } else {
+            root
+        }
+        when {
+            message.isJsonObject -> gson.fromJson(message, Message::class.java)
+            message.isJsonPrimitive -> Message(content = message.asString)
+            else -> Message(content = message.toString())
+        }
+    } catch (_: Exception) {
+        Message(content = rawText)
+    }
+}
+
+/** AI 请求执行非白名单命令时的授权信息。 */
+data class ExecConfirmationRequest(
+    val requestId: String,
+    val command: String,
+    val message: String,
+    val sessionId: String
+)
+
+/** 解析服务端 `exec_confirm_request` 事件。缺少 request_id 时拒绝创建请求。 */
+internal fun parseExecConfirmationPayload(raw: Any?): ExecConfirmationRequest? {
+    if (raw == null) return null
+    return try {
+        val root = JsonParser.parseString(raw.toString())
+        if (!root.isJsonObject) return null
+        val obj = root.asJsonObject
+        val requestId = obj.get("request_id")
+            ?.takeUnless { it.isJsonNull }
+            ?.asString
+            .orEmpty()
+        if (requestId.isBlank()) return null
+        ExecConfirmationRequest(
+            requestId = requestId,
+            command = obj.get("command")?.takeUnless { it.isJsonNull }?.asString.orEmpty(),
+            message = obj.get("message")?.takeUnless { it.isJsonNull }?.asString.orEmpty(),
+            sessionId = obj.get("session_id")?.takeUnless { it.isJsonNull }?.asString.orEmpty()
+        )
+    } catch (_: Exception) {
+        null
+    }
+}
+
 /** Socket.IO 连接状态 */
 enum class SocketState { Disconnected, Connecting, Connected, Error }
 
@@ -42,6 +101,16 @@ sealed class RealtimeEvent {
     data class Error(val message: String) : RealtimeEvent()
     /** 本地模式 AI 流式结束时的 token 用量（input/output/total） */
     data class Usage(val inputTokens: Int, val outputTokens: Int, val model: String? = null) : RealtimeEvent()
+    /** AI 请求执行非白名单命令，等待用户授权。 */
+    data class ExecConfirmationRequired(val request: ExecConfirmationRequest) : RealtimeEvent()
+    /** 命令授权结果已由服务端接收。 */
+    data class ExecConfirmationResolved(val sessionId: String?, val approved: Boolean) : RealtimeEvent()
+    /**
+     * 进度卡片更新（agent 模式专用）。
+     * - 远程模式：服务端通过 new_message 事件推送 type=thinking_card 的 Message，转换后发出
+     * - 本地模式：LocalPipelineCallbacks 的 ProgressReporter 回调直接构造发出
+     */
+    data class ThinkingCardUpdate(val card: com.nekobot.app.data.model.ThinkingCard) : RealtimeEvent()
 }
 
 /**
@@ -126,6 +195,9 @@ class SocketManager(private val prefs: PrefsManager) {
         s.on("message_filtered") { args -> handleFiltered(args) }
         // 剧情选项推送
         s.on("plot_choices") { args -> handlePlotChoices(args) }
+        // Agent 非白名单命令授权
+        s.on("exec_confirm_request") { args -> handleExecConfirmationRequest(args) }
+        s.on("exec_confirm_result") { args -> handleExecConfirmationResult(args) }
         // 通用错误
         s.on("error") { args ->
             val msg = args.firstOrNull()?.toString() ?: "Socket 错误"
@@ -167,6 +239,26 @@ class SocketManager(private val prefs: PrefsManager) {
         socket?.emit("send_message", payload)
     }
 
+    /**
+     * 回传命令授权结果。
+     *
+     * @return Socket 已连接且事件已提交时返回 true。
+     */
+    fun respondToExecConfirmation(
+        requestId: String,
+        approved: Boolean,
+        sessionId: String
+    ): Boolean {
+        val s = socket?.takeIf { it.connected() } ?: return false
+        val payload = JSONObject().apply {
+            put("request_id", requestId)
+            put("approved", approved)
+            put("session_id", sessionId)
+        }
+        s.emit("confirm_exec", payload)
+        return true
+    }
+
     /** 断开连接。 */
     fun disconnect() {
         joinedSessionId = null
@@ -178,19 +270,26 @@ class SocketManager(private val prefs: PrefsManager) {
     // ============== 事件解析 ==============
 
     private fun parseMessage(raw: Any?): Message? {
-        if (raw == null) return null
-        val jsonStr = raw.toString()
-        return try {
-            val el = JsonParser.parseString(jsonStr)
-            if (el.isJsonObject) gson.fromJson(el, Message::class.java)
-            else Message(content = jsonStr)
-        } catch (e: Exception) {
-            Message(content = jsonStr)
-        }
+        return parseRealtimeMessagePayload(gson, raw)
     }
 
     private fun handleNewMessage(args: Array<Any>) {
         val msg = parseMessage(args.firstOrNull()) ?: return
+        // 服务端推送的 thinking_card 消息单独路由到 ThinkingCardUpdate 事件，
+        // 避免被当作普通 NewMessage 渲染到聊天列表
+        if (msg.isThinkingCard) {
+            val card = com.nekobot.app.data.model.ThinkingCard(
+                id = msg.id ?: java.util.UUID.randomUUID().toString(),
+                content = msg.content.orEmpty(),
+                steps = msg.steps ?: emptyList(),
+                isComplete = msg.isComplete == true,
+                isAgent = msg.isAgent == true,
+                timestamp = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
+                parentMessageId = msg.parentMessageId
+            )
+            _events.tryEmit(RealtimeEvent.ThinkingCardUpdate(card))
+            return
+        }
         _events.tryEmit(RealtimeEvent.NewMessage(msg))
     }
 
@@ -223,6 +322,29 @@ class SocketManager(private val prefs: PrefsManager) {
         val raw = args.firstOrNull() ?: return
         val el = try { JsonParser.parseString(raw.toString()) } catch (_: Exception) { return }
         _events.tryEmit(RealtimeEvent.PlotChoices(el))
+    }
+
+    private fun handleExecConfirmationRequest(args: Array<Any>) {
+        val request = parseExecConfirmationPayload(args.firstOrNull()) ?: return
+        _events.tryEmit(RealtimeEvent.ExecConfirmationRequired(request))
+    }
+
+    private fun handleExecConfirmationResult(args: Array<Any>) {
+        val raw = args.firstOrNull() ?: return
+        try {
+            val root = JsonParser.parseString(raw.toString())
+            if (!root.isJsonObject) return
+            val obj = root.asJsonObject
+            val sessionId = obj.get("session_id")
+                ?.takeUnless { it.isJsonNull }
+                ?.asString
+            val approved = obj.get("approved")
+                ?.takeUnless { it.isJsonNull }
+                ?.asBoolean == true
+            _events.tryEmit(RealtimeEvent.ExecConfirmationResolved(sessionId, approved))
+        } catch (_: Exception) {
+            // 无效结果事件不应影响聊天状态
+        }
     }
 
     private fun extractSessionId(raw: Any?): String? {

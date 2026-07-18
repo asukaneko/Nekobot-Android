@@ -85,6 +85,10 @@ interface MessageDao {
     @Query("DELETE FROM local_messages WHERE session_id = :sessionId AND created_at >= :createdAt")
     suspend fun deleteFromMessageOnwards(sessionId: String, createdAt: String)
 
+    /** 更新指定消息的进度卡片 JSON（agent 模式持久化 thinking_cards）。 */
+    @Query("UPDATE local_messages SET thinking_cards = :json WHERE id = :id")
+    suspend fun updateThinkingCards(id: String, json: String?)
+
     @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND created_at < :createdAt ORDER BY created_at ASC")
     suspend fun listBefore(sessionId: String, createdAt: String): List<LocalMessageEntity>
 

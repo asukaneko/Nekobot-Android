@@ -54,7 +54,9 @@ data class LocalSessionEntity(
     /** 公开分享配置 JSON 字符串 {expires_days,password,include_character,include_user_messages,message_start,message_end} */
     @ColumnInfo(name = "share_config") val shareConfig: String? = null,
     /** 压缩上下文时产生的归档会话 ID（用于"提取归档 N 轮"功能） */
-    @ColumnInfo(name = "archive_session_id") val archiveSessionId: String? = null
+    @ColumnInfo(name = "archive_session_id") val archiveSessionId: String? = null,
+    /** 会话模式：character（默认）/ agent / group；用于 agent 模式进度卡片显示等场景 */
+    @ColumnInfo(name = "session_mode") val sessionMode: String? = "character"
 )
 
 /**
@@ -82,7 +84,9 @@ data class LocalMessageEntity(
     val model: String? = null,
     @ColumnInfo(name = "input_tokens") val inputTokens: Int? = null,
     @ColumnInfo(name = "output_tokens") val outputTokens: Int? = null,
-    @ColumnInfo(name = "created_at") val createdAt: String
+    @ColumnInfo(name = "created_at") val createdAt: String,
+    /** 该用户消息关联的进度卡片 JSON（ThinkingCard 列表序列化），agent 模式持久化 */
+    @ColumnInfo(name = "thinking_cards") val thinkingCards: String? = null
 )
 
 /**

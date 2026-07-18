@@ -203,7 +203,20 @@ data class Message(
     @SerializedName("output_tokens") val outputTokens: Int? = null,
     val model: String? = null,
     val filtered: Boolean? = null,
-    @SerializedName("created_at") val createdAt: String? = null
+    @SerializedName("created_at") val createdAt: String? = null,
+    // 进度卡片（thinking_card）的结构化字段：服务端推送时携带，普通消息为 null
+    val steps: List<ThinkingStep>? = null,
+    @SerializedName("is_complete") val isComplete: Boolean? = null,
+    @SerializedName("is_agent") val isAgent: Boolean? = null,
+    @SerializedName("parent_message_id") val parentMessageId: String? = null,
+    /**
+     * 该用户消息关联的进度卡片列表（持久化字段）。
+     *
+     * 对应后端 message.thinking_cards：每条 agent 模式的用户消息都会挂载一个或多个
+     * thinking_card（通常一个），记录 AI 在生成回复过程中的思考/工具调用/检索等步骤。
+     * UI 在用户气泡与 AI 气泡之间渲染。
+     */
+    @SerializedName("thinking_cards") val thinkingCards: List<ThinkingCard>? = null
 ) {
     val isUser: Boolean
         get() = role.equals("user", ignoreCase = true) || role.equals("human", ignoreCase = true)
@@ -212,6 +225,42 @@ data class Message(
     val isThinkingCard: Boolean
         get() = type.equals("thinking_card", ignoreCase = true) || role.equals("system", ignoreCase = true)
 }
+
+/**
+ * 进度卡片单步：对应原仓库 progress_card.py 的 step 结构。
+ * 字段对齐 Web 端 thinking-step 渲染所需信息。
+ */
+data class ThinkingStep(
+    val type: String? = null,           // start/thinking/ai_thinking/tool/tool_done/image/file/upload/knowledge/done
+    val icon: String? = null,           // emoji：🤔 💭 🧠 🔧 🖼️ 📄 📤 📚 ✅
+    val name: String? = null,           // 步骤名称（如"AI 正在思考..."/工具显示名）
+    val status: String? = null,         // active/running/done/error
+    val detail: String? = null,         // 摘要（工具参数/结果前 100-200 字符）
+    val arguments: Map<String, Any>? = null,
+    @SerializedName("full_result") val fullResult: Any? = null,
+    @SerializedName("thinking_content") val thinkingContent: String? = null
+)
+
+/**
+ * 进度卡片聚合视图：便于 UI 层统一处理本地/远程两种来源。
+ * 远程模式由 thinking_card Message 转换而来；本地模式由 ProgressReporter 直接构造。
+ */
+data class ThinkingCard(
+    val id: String,
+    val content: String,                // 头部文本，如"🔄 AI 正在处理... (1/50)"或"✅ 处理完成"
+    val steps: List<ThinkingStep> = emptyList(),
+    val isComplete: Boolean = false,
+    val isAgent: Boolean = false,
+    /**
+     * 最后更新时间。
+     * - 远程：后端推送的 ISO 字符串（如 "2026-07-18T00:20:15.416921"）
+     * - 本地：[com.nekobot.app.data.local.LocalRepository.nowIsoStatic] 产出的 ISO 字符串
+     * 使用 String 类型以兼容后端 ISO 字符串，避免 Gson 反序列化时 Long 解析失败。
+     */
+    val timestamp: String = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
+    /** 关联的父用户消息 id；用于在用户气泡与 AI 气泡之间渲染，并持久化到父消息 */
+    @SerializedName("parent_message_id") val parentMessageId: String? = null
+)
 
 data class ChatRequest(
     val message: String? = null,

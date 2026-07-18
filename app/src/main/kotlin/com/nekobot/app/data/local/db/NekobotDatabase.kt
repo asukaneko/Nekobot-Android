@@ -34,7 +34,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalApiKeyEntity::class,
         LocalMessageFavoriteEntity::class
     ],
-    version = 11,
+    version = 13,
     exportSchema = false
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -349,6 +349,25 @@ abstract class NekobotDatabase : RoomDatabase() {
         /** 数据库实例缓存：按 db 名（含扩展）区分，支持多 profile 切换。 */
         private val INSTANCES = mutableMapOf<String, NekobotDatabase>()
 
+        /**
+         * v11 → v12：local_sessions 新增 session_mode 列（会话模式：character/agent/group）。
+         * 用于 agent 模式进度卡片显示等场景，默认 'character' 与现有会话一致。
+         */
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_sessions ADD COLUMN session_mode TEXT NOT NULL DEFAULT 'character'")
+            }
+        }
+
+        /**
+         * v12 → v13：local_messages 新增 thinking_cards 列（agent 模式持久化进度卡片 JSON）。
+         */
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_messages ADD COLUMN thinking_cards TEXT")
+            }
+        }
+
         fun get(context: Context): NekobotDatabase =
             get(context, com.nekobot.app.data.local.PrefsManager.DEFAULT_DB_NAME)
 
@@ -361,7 +380,7 @@ abstract class NekobotDatabase : RoomDatabase() {
                 NekobotDatabase::class.java,
                 dbName
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                 // 仅当迁移脚本未覆盖的未来版本变更时才回退到破坏性迁移（保护现有数据）
                 .fallbackToDestructiveMigration()
                 .build()
