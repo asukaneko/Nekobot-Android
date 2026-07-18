@@ -732,13 +732,15 @@ fun ChatScreen(
                             if (msg.id == ChatViewModel.STREAMING_ID && msg.displayContent.isBlank()) {
                                 ThinkingIndicator(
                                     portraitUrl = session?.portraitUrl,
-                                    showAiAvatar = session?.sessionMode != "agent"
+                                    showAiAvatar = session?.sessionMode != "agent",
+                                    fillAiWidth = session?.sessionMode == "agent"
                                 )
                             } else {
                                 MessageBubble(
                                     message = msg,
                                     portraitUrl = session?.portraitUrl,
                                     showAiAvatar = session?.sessionMode != "agent",
+                                    fillAiWidth = session?.sessionMode == "agent",
                                     onLongClick = {
                                         if (!selectionMode && msg.id != null) {
                                             viewModel.enterSelectionMode(msg.id)
@@ -1384,6 +1386,7 @@ private fun MessageBubble(
     message: Message,
     portraitUrl: String? = null,
     showAiAvatar: Boolean = true,
+    fillAiWidth: Boolean = false,
     onLongClick: () -> Unit,
     onRegenerate: () -> Unit = {},
     onFork: () -> Unit = {},
@@ -1448,9 +1451,12 @@ private fun MessageBubble(
             Spacer(Modifier.width(8.dp))
         }
 
-        Column(modifier = Modifier
-            .widthIn(max = maxBubbleWidth)
-            .then(if (isUser) Modifier.width(IntrinsicSize.Max) else Modifier)
+        Column(
+            modifier = when {
+                !isUser && fillAiWidth -> Modifier.weight(1f)
+                isUser -> Modifier.widthIn(max = maxBubbleWidth).width(IntrinsicSize.Max)
+                else -> Modifier.widthIn(max = maxBubbleWidth)
+            }
         ) {
             // 视觉识别失败警告：当消息内容包含 VISION_FAILURE_MARKER 时显示非阻塞提示
             if (message.displayContent.contains(VISION_FAILURE_MARKER)) {
@@ -1493,6 +1499,7 @@ private fun MessageBubble(
                 )
                 Box(
                     modifier = Modifier
+                        .then(if (!isUser && fillAiWidth) Modifier.fillMaxWidth() else Modifier)
                         // 用户气泡带轻微投影，浮于背景之上
                         .then(if (isUser) Modifier.shadow(2.dp, segShape, clip = false) else Modifier)
                         .then(
@@ -1667,7 +1674,7 @@ private fun ProgressCard(
     card: com.nekobot.app.data.model.ThinkingCard,
     onStepClick: (com.nekobot.app.data.model.ThinkingStep) -> Unit = {}
 ) {
-    var expanded by remember(card.id) { mutableStateOf(true) }
+    var expanded by remember(card.id) { mutableStateOf(false) }
 
     GlassCard(
         modifier = Modifier.fillMaxWidth(),
@@ -2079,7 +2086,8 @@ private fun BackgroundSettingCard(content: String?) {
 @Composable
 private fun ThinkingIndicator(
     portraitUrl: String? = null,
-    showAiAvatar: Boolean = true
+    showAiAvatar: Boolean = true,
+    fillAiWidth: Boolean = false
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -2098,6 +2106,7 @@ private fun ThinkingIndicator(
         )
         Box(
             modifier = Modifier
+                .then(if (fillAiWidth) Modifier.fillMaxWidth() else Modifier)
                 .background(color = aiBubbleContainerColor(), shape = shape)
                 .border(1.dp, aiBubbleBorderColor(), shape)
                 .padding(horizontal = 16.dp, vertical = 13.dp)
