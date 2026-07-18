@@ -14,6 +14,7 @@ import com.nekobot.app.data.local.ai.FailoverUsage
 import com.nekobot.app.data.local.ai.FailoverUsageReader
 import com.nekobot.app.data.local.ai.LocalAiClient
 import com.nekobot.app.data.local.ai.LocalAiResult
+import com.nekobot.app.data.local.ai.LocalMcpRuntime
 import com.nekobot.app.data.local.ai.LocalPromptBuilder
 import com.nekobot.app.data.local.ai.TokenStatsManager
 import com.nekobot.app.data.local.db.LocalAiModelEntity
@@ -105,6 +106,7 @@ class LocalRepository(
     private val failoverHealthDao = db.failoverHealthDao()
     private val localExecAuthorizationManager =
         com.nekobot.app.data.local.ai.LocalExecAuthorizationManager()
+    private val localMcpRuntime = LocalMcpRuntime()
 
     // ==================== 故障转移协调器（持久化健康状态 + token 限额）====================
 
@@ -701,6 +703,12 @@ class LocalRepository(
         currentChatJob = null
     }
 
+    /** 释放本地仓库持有的长连接与 stdio 子进程。 */
+    fun close() {
+        stopGeneration()
+        localMcpRuntime.close()
+    }
+
     // ==================== Pipeline 驱动的聊天（角色运行时） ====================
 
     /**
@@ -799,6 +807,7 @@ class LocalRepository(
                 ?.resolve("agent_workspaces")
                 ?.resolve(sessionId),
             execAuthorizationManager = localExecAuthorizationManager,
+            mcpToolExecutor = localMcpRuntime::executeByFullName,
             failoverQueue = failoverQueue,
             coordinator = failoverCoordinator
         )
@@ -855,7 +864,8 @@ class LocalRepository(
                 val pipelineJob = launch {
                     try {
                         val tools = if (session.sessionMode.equals("agent", ignoreCase = true)) {
-                            com.nekobot.app.data.local.ai.buildLocalAgentToolDefinitions()
+                            com.nekobot.app.data.local.ai.buildLocalAgentToolDefinitions() +
+                                prepareMcpAgentTools()
                         } else {
                             emptyList()
                         }
@@ -2859,19 +2869,27 @@ $charSection$topicSection
     // ==================== 扩展功能：MCP 服务 ====================
 
     suspend fun listMcpServers(): List<McpServer> = withContext(Dispatchers.IO) {
-        db.mcpServerDao().listAll().map { it.toMcpServer() }
+        autoConnectMcpServers()
+        db.mcpServerDao().listAll().map { server ->
+            val connected = localMcpRuntime.isConnected(server.id)
+            server.toMcpServer(
+                connectedOverride = connected,
+                toolCountOverride = if (connected) localMcpRuntime.toolCount(server.id) else 0
+            )
+        }
     }
 
     suspend fun createMcpServer(req: McpServerRequest): McpServer = withContext(Dispatchers.IO) {
+        validateMcpRequest(req)
         val entity = LocalMcpServerEntity(
             id = UUID.randomUUID().toString(),
-            name = req.name,
+            name = req.name.trim(),
             transport = req.transport,
             description = req.description,
             enabled = req.enabled,
             autoConnect = req.autoConnect,
-            url = req.url,
-            command = req.command,
+            url = req.url?.trim(),
+            command = req.command?.trim(),
             argsJson = gson.toJson(req.args),
             envJson = req.env?.let { gson.toJson(it) },
             builtin = false,
@@ -2883,16 +2901,21 @@ $charSection$topicSection
 
     suspend fun updateMcpServer(id: String, req: McpServerRequest): McpServer = withContext(Dispatchers.IO) {
         val existing = db.mcpServerDao().getById(id) ?: throw IllegalStateException("MCP 服务不存在")
+        validateMcpRequest(req)
+        localMcpRuntime.disconnect(id)
         val updated = existing.copy(
-            name = req.name,
+            name = req.name.trim(),
             transport = req.transport,
             description = req.description,
             enabled = req.enabled,
             autoConnect = req.autoConnect,
-            url = req.url,
-            command = req.command,
+            connected = false,
+            toolCount = 0,
+            url = req.url?.trim(),
+            command = req.command?.trim(),
             argsJson = gson.toJson(req.args),
-            envJson = req.env?.let { gson.toJson(it) }
+            envJson = req.env?.let { gson.toJson(it) },
+            lastConnectedAt = null
         )
         db.mcpServerDao().upsert(updated)
         updated.toMcpServer()
@@ -2900,22 +2923,33 @@ $charSection$topicSection
 
     suspend fun deleteMcpServer(id: String) = withContext(Dispatchers.IO) {
         val existing = db.mcpServerDao().getById(id)
-        if (existing?.builtin == true) throw IllegalStateException("内置 MCP 服务不可删除")
+            ?: throw IllegalStateException("MCP 服务不存在")
+        if (existing.builtin) throw IllegalStateException("内置 MCP 服务不可删除")
+        localMcpRuntime.disconnect(id)
         db.mcpServerDao().deleteById(id)
     }
 
-    /** 本地模式无 MCP 客户端运行时，connect/disconnect 仅切换 connected 标志位。 */
     suspend fun connectMcpServer(id: String): JsonElement = withContext(Dispatchers.IO) {
-        db.mcpServerDao().setConnected(id, true, nowIso())
+        val server = db.mcpServerDao().getById(id)
+            ?: throw IllegalStateException("MCP 服务不存在")
+        val tools = try {
+            localMcpRuntime.connect(server)
+        } catch (error: Throwable) {
+            db.mcpServerDao().setRuntimeState(id, false, 0, null)
+            throw IllegalStateException(error.message ?: "MCP 连接失败", error)
+        }
+        db.mcpServerDao().setRuntimeState(id, true, tools.size, nowIso())
         JsonObject().apply {
             addProperty("success", true)
             addProperty("connected", true)
-            addProperty("message", "本地模式仅标记连接状态，未实际建立 MCP 连接")
+            addProperty("tool_count", tools.size)
         }
     }
 
     suspend fun disconnectMcpServer(id: String): JsonElement = withContext(Dispatchers.IO) {
-        db.mcpServerDao().setConnected(id, false, null)
+        db.mcpServerDao().getById(id) ?: throw IllegalStateException("MCP 服务不存在")
+        localMcpRuntime.disconnect(id)
+        db.mcpServerDao().setRuntimeState(id, false, 0, null)
         JsonObject().apply {
             addProperty("success", true)
             addProperty("connected", false)
@@ -2923,32 +2957,80 @@ $charSection$topicSection
     }
 
     suspend fun mcpServerTools(id: String): JsonElement = withContext(Dispatchers.IO) {
-        val server = db.mcpServerDao().getById(id)
+        db.mcpServerDao().getById(id) ?: throw IllegalStateException("MCP 服务不存在")
+        val tools = localMcpRuntime.getServerTools(id)
         JsonObject().apply {
-            addProperty("success", true)
-            add("tools", JsonArray())
-            addProperty("tool_count", server?.toolCount ?: 0)
-            addProperty("message", "本地模式未实际拉取 MCP 工具列表")
+            add("tools", JsonArray().also { array ->
+                tools.forEach { array.add(it.toJson()) }
+            })
+            addProperty("count", tools.size)
         }
     }
 
     suspend fun testMcpServer(id: String): JsonElement = withContext(Dispatchers.IO) {
+        val server = db.mcpServerDao().getById(id)
+            ?: throw IllegalStateException("MCP 服务不存在")
+        val tools = localMcpRuntime.test(server)
         JsonObject().apply {
             addProperty("success", true)
-            addProperty("message", "本地模式仅校验配置已保存")
-            addProperty("server_id", id)
+            addProperty("tool_count", tools.size)
+            add("tools", JsonArray().also { array ->
+                tools.forEach { array.add(it.name) }
+            })
         }
     }
 
-    private fun LocalMcpServerEntity.toMcpServer(): McpServer = McpServer(
+    /**
+     * 自动连接与原仓库启动行为一致；Android 在首次读取 MCP 或首次 Agent 对话时延迟执行，
+     * 避免仓库构造阶段阻塞应用启动。
+     */
+    private suspend fun autoConnectMcpServers() {
+        db.mcpServerDao().listAll()
+            .filter { it.enabled && it.autoConnect && !localMcpRuntime.isConnected(it.id) }
+            .forEach { server ->
+                runCatching {
+                    val tools = localMcpRuntime.connect(server)
+                    db.mcpServerDao().setRuntimeState(server.id, true, tools.size, nowIso())
+                }.onFailure { error ->
+                    db.mcpServerDao().setRuntimeState(server.id, false, 0, null)
+                    LocalLogger.w(TAG, "MCP 自动连接失败: ${server.name}", error)
+                }
+            }
+    }
+
+    /** 与原仓库一致：本地 Agent 的内置工具之外，注入所有真实已连接的 MCP 工具。 */
+    private suspend fun prepareMcpAgentTools(): List<Map<String, Any>> {
+        autoConnectMcpServers()
+        val connectedIds = db.mcpServerDao().listAll()
+            .asSequence()
+            .filter { localMcpRuntime.isConnected(it.id) }
+            .map { it.id }
+            .toSet()
+        return localMcpRuntime.getOpenAiToolDefinitions(connectedIds)
+    }
+
+    private fun validateMcpRequest(req: McpServerRequest) {
+        require(req.name.isNotBlank()) { "MCP 服务名称不能为空" }
+        when (req.transport.lowercase()) {
+            "stdio" -> require(!req.command.isNullOrBlank()) { "stdio 模式需要 command 参数" }
+            "streamable-http", "http" ->
+                require(!req.url.isNullOrBlank()) { "HTTP 模式需要 url 参数" }
+            else -> throw IllegalArgumentException("不支持的 MCP transport: ${req.transport}")
+        }
+    }
+
+    private fun LocalMcpServerEntity.toMcpServer(
+        connectedOverride: Boolean? = null,
+        toolCountOverride: Int? = null
+    ): McpServer = McpServer(
         id = id,
         name = name,
         transport = transport,
         description = description,
         enabled = enabled,
         autoConnect = autoConnect,
-        connected = connected,
-        toolCount = toolCount,
+        connected = connectedOverride ?: connected,
+        toolCount = toolCountOverride ?: toolCount,
         url = url,
         command = command,
         args = runCatching { JsonParser.parseString(argsJson ?: "[]").asJsonArray.map { it.asString } }.getOrDefault(emptyList()),

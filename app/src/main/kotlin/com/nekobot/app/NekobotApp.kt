@@ -90,6 +90,7 @@ object ServiceContainer {
     /** 切换本地 db profile：重建 LocalRepository/UnifiedRepository，广播全局刷新。 */
     fun switchLocalDb(profileName: String) {
         appContext?.let { ctx ->
+            localRepository.close()
             NekobotDatabase.switchProfile(ctx, profileName)
             val db = NekobotDatabase.get(ctx, profileName)
             localRepository = LocalRepository(db, LocalAiClient(), ctx)

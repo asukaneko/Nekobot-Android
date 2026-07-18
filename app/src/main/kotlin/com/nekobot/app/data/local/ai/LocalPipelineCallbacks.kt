@@ -47,6 +47,8 @@ class LocalPipelineCallbacks(
     private val workspaceRoot: java.io.File? = null,
     /** 本地命令授权状态，由 LocalRepository 在同一会话内共享。 */
     private val execAuthorizationManager: LocalExecAuthorizationManager = LocalExecAuthorizationManager(),
+    /** 已连接 MCP 服务的工具执行入口。 */
+    private val mcpToolExecutor: ((toolName: String, args: Map<String, Any>) -> Map<String, Any>)? = null,
     /** 故障转移队列：activeModel 优先 + 同 purpose 其他启用模型，按 priority 升序 */
     private val failoverQueue: List<LocalAiModelEntity> = emptyList(),
     /** 持久化故障转移协调器；非空时 [buildModelCall] 走 coordinator，否则回退到 chatOnceWithFailover */
@@ -397,6 +399,10 @@ class LocalPipelineCallbacks(
     // ---- 工具执行 ----
 
     override fun executeTool(toolName: String, args: Map<String, Any>, toolContext: Map<String, Any>): Map<String, Any> {
+        if (parseMcpToolName(toolName) != null) {
+            return mcpToolExecutor?.invoke(toolName, args)
+                ?: mapOf("success" to false, "error" to "MCP 工具运行时不可用")
+        }
         return localToolExecutor.execute(toolName, args)
     }
 }

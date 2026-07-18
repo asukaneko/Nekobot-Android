@@ -423,8 +423,21 @@ interface McpServerDao {
     @Query("DELETE FROM local_mcp_servers WHERE id = :id")
     suspend fun deleteById(id: String)
 
-    @Query("UPDATE local_mcp_servers SET connected = :connected, last_connected_at = :lastConnectedAt WHERE id = :id")
-    suspend fun setConnected(id: String, connected: Boolean, lastConnectedAt: String?)
+    @Query(
+        """
+        UPDATE local_mcp_servers
+        SET connected = :connected,
+            tool_count = :toolCount,
+            last_connected_at = :lastConnectedAt
+        WHERE id = :id
+        """
+    )
+    suspend fun setRuntimeState(
+        id: String,
+        connected: Boolean,
+        toolCount: Int,
+        lastConnectedAt: String?
+    )
 }
 
 @Dao
