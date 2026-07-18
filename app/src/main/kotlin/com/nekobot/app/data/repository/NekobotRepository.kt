@@ -107,8 +107,12 @@ class NekobotRepository(
         safeCall { api.getSessionPublicStatus(id) }
     suspend fun deleteSession(id: String): Resource<Unit> = safeCall { api.deleteSession(id) }.map { }
 
-    suspend fun chat(id: String, message: String): Resource<ApiResult> =
-        safeCall { api.chat(id, ChatRequest.of(message)) }
+    suspend fun chat(
+        id: String,
+        message: String,
+        attachments: List<Map<String, Any>> = emptyList()
+    ): Resource<ApiResult> =
+        safeCall { api.chat(id, ChatRequest.of(message, attachments)) }
 
     suspend fun regenerate(id: String, messageId: String? = null): Resource<ApiResult> =
         safeCall { api.regenerate(id, mapOf("message_id" to messageId)) }

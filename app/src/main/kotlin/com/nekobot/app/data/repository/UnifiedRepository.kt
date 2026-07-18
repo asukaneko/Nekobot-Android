@@ -171,12 +171,14 @@ class UnifiedRepository(
     /**
      * 本地模式：返回 Flow<RealtimeEvent>（流式聊天）；
      * 服务器模式：返回 null（调用方走 Socket）。
+     *
+     * @param attachments 附件列表（每项含 type/name/path 等，本地模式用于图片视觉识别）
      */
-    suspend fun chatStream(id: String, message: String): Flow<RealtimeEvent>? {
+    suspend fun chatStream(id: String, message: String, attachments: List<Map<String, Any>> = emptyList()): Flow<RealtimeEvent>? {
         if (!isLocal) return null
         val model = local.getActiveModel() ?: return null
         // 启用角色运行时的会话走 Pipeline，否则走旧流程
-        return local.chatWithPipeline(id, message, model)
+        return local.chatWithPipeline(id, message, model, attachments)
     }
 
     /**
@@ -190,8 +192,12 @@ class UnifiedRepository(
     }
 
     /** 服务器模式：走 HTTP chat 接口（同时 Socket 推送流式分片）。 */
-    suspend fun chat(id: String, message: String): Resource<ApiResult> =
-        if (isLocal) Resource.Success(local.apiResultOk()) else remote.chat(id, message)
+    suspend fun chat(
+        id: String,
+        message: String,
+        attachments: List<Map<String, Any>> = emptyList()
+    ): Resource<ApiResult> =
+        if (isLocal) Resource.Success(local.apiResultOk()) else remote.chat(id, message, attachments)
 
     /**
      * 重新生成。本地模式返回 Flow，服务器模式返回 null（走 HTTP + Socket）。

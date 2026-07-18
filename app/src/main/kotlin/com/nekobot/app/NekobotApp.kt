@@ -123,6 +123,8 @@ class NekobotApp : Application(), coil.ImageLoaderFactory {
     override fun newImageLoader(): coil.ImageLoader {
         return coil.ImageLoader.Builder(this)
             .crossfade(true)
+            // 工作区图片接口需要与 Retrofit 相同的 Bearer Token 鉴权。
+            .okHttpClient(ServiceContainer.network.client)
             .components {
                 // GIF 动图解码器：API 28+ 用系统 ImageDecoder（性能更优），低版本用纯 Kotlin 解码器
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {

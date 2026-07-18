@@ -92,7 +92,7 @@ object OpenAIChatProtocol : LocalProtocol {
         val choices = data["choices"] as? List<*>
         val choice = choices?.firstOrNull() as? Map<*, *>
         val message = choice?.get("message") as? Map<*, *>
-        val content = (message?.get("content") as? String) ?: ""
+        val content = extractResponseText(message?.get("content"))
         val finishReason = (choice?.get("finish_reason") as? String).orEmpty()
         val thinkingContent = (message?.get("reasoning_content") as? String)
             ?: (message?.get("thinking_content") as? String)
@@ -148,5 +148,25 @@ object OpenAIChatProtocol : LocalProtocol {
             finishReason = finishReason,
             thinkingContent = thinkingContent
         )
+    }
+
+    private fun extractResponseText(value: Any?): String = when (value) {
+        is String -> value
+        is List<*> -> value.mapNotNull { block ->
+            when (block) {
+                is String -> block
+                is Map<*, *> -> {
+                    val type = block["type"] as? String
+                    when {
+                        type == null || type == "text" || type == "output_text" ->
+                            extractResponseText(block["text"] ?: block["content"])
+                        else -> null
+                    }
+                }
+                else -> null
+            }
+        }.joinToString("")
+        is Map<*, *> -> extractResponseText(value["value"] ?: value["text"] ?: value["content"])
+        else -> ""
     }
 }

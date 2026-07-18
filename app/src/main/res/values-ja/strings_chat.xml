@@ -247,6 +247,7 @@
     <string name="chat_read_file_failed">ファイルの読み込みに失敗しました</string>
     <string name="chat_file_uploaded_ref">ファイルをアップロードしました、入力欄に参照を挿入しました、送信前に編集してください</string>
     <string name="chat_file_uploaded_ref_inline">[アップロード済みファイル: %1$s]</string>
+    <string name="chat_image_attached">画像を添付しました: %1$s、送信時に内容を自動認識します</string>
     <string name="chat_uploaded_to_workspace">ワークスペースにアップロード: %1$s</string>
     <string name="chat_upload_failed">アップロード失敗: %1$s</string>
     <string name="chat_operation_failed">操作に失敗しました: %1$s</string>

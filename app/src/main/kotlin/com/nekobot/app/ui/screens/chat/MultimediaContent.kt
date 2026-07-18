@@ -55,6 +55,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -64,6 +65,7 @@ import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.LocalWorkspaceStorage
 import com.nekobot.app.ui.components.GlassCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -201,16 +203,21 @@ fun parseContentSegments(content: String): List<ContentSegment> {
 /** 图片渲染器：用 Coil 异步加载，宽度填满、高度自适应，点击全屏查看。 */
 @Composable
 fun ImageRenderer(url: String, modifier: Modifier = Modifier) {
+    ImageRendererModel(model = url, modifier = modifier)
+}
+
+@Composable
+private fun ImageRendererModel(model: Any, modifier: Modifier = Modifier) {
     var fullscreen by remember { mutableStateOf(false) }
     val imageDesc = stringResource(R.string.chat_media_image)
     Box(modifier = modifier) {
         AsyncImage(
-            model = url,
+            model = model,
             contentDescription = imageDesc,
             contentScale = ContentScale.FillWidth,
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 240.dp)
+                .heightIn(max = 420.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .clickable { fullscreen = true }
         )
@@ -224,7 +231,7 @@ fun ImageRenderer(url: String, modifier: Modifier = Modifier) {
                 contentAlignment = Alignment.Center
             ) {
                 AsyncImage(
-                    model = url,
+                    model = model,
                     contentDescription = imageDesc,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize()
@@ -650,12 +657,34 @@ fun RenderContentSegments(
 /** 获取文件扩展名（小写，不含点） */
 private fun fileExt(name: String): String = name.substringAfterLast('.', "").lowercase()
 
+/** 用户图片附件需要脱离文字气泡单独渲染。 */
+internal fun ContentSegment.isImageContent(): Boolean =
+    type == SegmentType.IMAGE ||
+        (type == SegmentType.FILE && fileExt(fileName) in IMAGE_EXTS)
+
+internal fun encodeWorkspaceFileName(fileName: String): String =
+    java.net.URLEncoder.encode(fileName, "UTF-8")
+        .replace("+", "%20")
+
 /** 构建工作区文件下载 URL */
-private fun buildWorkspaceFileUrl(sessionId: String, fileName: String): String? {
+internal fun buildWorkspaceFileUrl(sessionId: String, fileName: String): String? {
     if (sessionId.isBlank() || fileName.isBlank()) return null
     val base = ServiceContainer.prefs.serverUrl.trimEnd('/')
     if (base.isBlank()) return null
-    return "$base/api/sessions/$sessionId/workspace/files/${java.net.URLEncoder.encode(fileName, "UTF-8")}"
+    val encodedName = encodeWorkspaceFileName(fileName)
+    return "$base/api/sessions/$sessionId/workspace/files/$encodedName"
+}
+
+internal fun resolveLocalWorkspaceFile(
+    context: android.content.Context,
+    sessionId: String,
+    fileName: String
+): File? {
+    if (!ServiceContainer.prefs.isLocalMode || fileName.isBlank()) return null
+    val root = LocalWorkspaceStorage.resolve(context.filesDir, sessionId)?.canonicalFile ?: return null
+    val target = runCatching { File(root, fileName).canonicalFile }.getOrNull() ?: return null
+    val isInside = target.path == root.path || target.path.startsWith(root.path + File.separator)
+    return target.takeIf { isInside && it.isFile }
 }
 
 /** 判断文件类型是否可直接预览 */
@@ -680,13 +709,18 @@ private fun classifyFilePreview(fileName: String): FilePreviewType {
  */
 @Composable
 fun FileCardRenderer(fileName: String, sessionId: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
     val fileUrl = remember(sessionId, fileName) { buildWorkspaceFileUrl(sessionId, fileName) }
+    val localFile = remember(sessionId, fileName, ServiceContainer.prefs.isLocalMode) {
+        resolveLocalWorkspaceFile(context, sessionId, fileName)
+    }
     val previewType = remember(fileName) { classifyFilePreview(fileName) }
 
     when (previewType) {
         FilePreviewType.IMAGE -> {
-            if (fileUrl != null) {
-                ImageRenderer(url = fileUrl, modifier = modifier)
+            val model: Any? = localFile ?: fileUrl
+            if (model != null) {
+                ImageRendererModel(model = model, modifier = modifier)
             } else {
                 UnsupportedFileCard(fileName, fileUrl, modifier)
             }

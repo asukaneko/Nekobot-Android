@@ -265,10 +265,18 @@ data class ThinkingCard(
 data class ChatRequest(
     val message: String? = null,
     val content: String? = null,
-    @SerializedName("session_id") val sessionId: String? = null
+    @SerializedName("session_id") val sessionId: String? = null,
+    val attachments: List<Map<String, Any>> = emptyList()
 ) {
     companion object {
-        fun of(text: String) = ChatRequest(message = text, content = text)
+        fun of(
+            text: String,
+            attachments: List<Map<String, Any>> = emptyList()
+        ) = ChatRequest(
+            message = text,
+            content = text,
+            attachments = attachments
+        )
     }
 }
 

@@ -2,6 +2,7 @@ package com.nekobot.app.data.local.ai
 
 import android.util.Log
 import com.google.gson.Gson
+import com.nekobot.app.data.local.VISION_FAILURE_MARKER
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.local.db.LocalCharacterEntity
 import com.nekobot.app.data.local.db.LocalMessageEntity
@@ -58,7 +59,9 @@ class LocalPipelineCallbacks(
     /** 持久化故障转移协调器；非空时 [buildModelCall] 走 coordinator，否则回退到 chatOnceWithFailover */
     private val coordinator: FailoverCoordinator? = null,
     /** Hook 执行引擎；非空时在管线关键节点触发 hook 事件 */
-    private val hookExecutor: HookExecutor? = null
+    private val hookExecutor: HookExecutor? = null,
+    /** 视觉识别 suspend 函数：传入 imageUrl（http URL 或 data URI）和问题，返回描述文本 */
+    private val visionDescriber: (suspend (imageUrl: String, question: String) -> String)? = null
 ) : PipelineCallbacks() {
 
     companion object {
@@ -94,6 +97,12 @@ class LocalPipelineCallbacks(
                             )
                         }
                         .take(limit)
+                }
+            },
+            visionDescriber = { url, question ->
+                kotlinx.coroutines.runBlocking {
+                    visionDescriber?.invoke(url, question)
+                        ?: VISION_FAILURE_MARKER + "视觉识别运行时不可用"
                 }
             }
         )
@@ -400,8 +409,98 @@ class LocalPipelineCallbacks(
     // ---- 附件解析 ----
 
     override fun resolveAttachmentData(ctx: PipelineContext, attachment: Map<String, Any>): Map<String, Any>? {
-        // 简化：本地模式直接返回附件元数据
+        val attType = (attachment["type"] as? String ?: "").lowercase()
+        val isImage = attType.startsWith("image/") || looksLikeImageName(attachment)
+        if (!isImage) return attachment
+
+        // 图片附件：优先将本地文件路径转为 base64 data URI，供 vision API 直接使用
+        val filePath = (attachment["path"] as? String) ?: (attachment["file_path"] as? String)
+        if (!filePath.isNullOrBlank()) {
+            val file = java.io.File(filePath)
+            if (file.isFile) {
+                val dataUri = fileToDataUri(file) ?: return attachment
+                return buildMap<String, Any> {
+                    put("type", attachment["type"] ?: "image")
+                    val attName = attachment["name"] ?: attachment["filename"]
+                    if (attName != null) put("name", attName)
+                    put("data", dataUri)
+                }
+            }
+        }
+        // 工作区相对路径：尝试在会话工作区内解析
+        val relPath = (attachment["name"] as? String) ?: (attachment["filename"] as? String)
+        if (!relPath.isNullOrBlank() && workspaceRoot != null) {
+            val wsFile = java.io.File(workspaceRoot, relPath).canonicalFile
+            if (wsFile.isFile && wsFile.path.startsWith(workspaceRoot.canonicalFile.path + java.io.File.separator)) {
+                val dataUri = fileToDataUri(wsFile) ?: return attachment
+                return buildMap<String, Any> {
+                    put("type", attachment["type"] ?: "image")
+                    put("name", relPath)
+                    put("data", dataUri)
+                }
+            }
+        }
+        // 已是 data URI 或 http URL：原样返回
         return attachment
+    }
+
+    private fun looksLikeImageName(att: Map<String, Any>): Boolean {
+        val name = ((att["name"] as? String) ?: (att["filename"] as? String) ?: "").lowercase()
+        val imageExt = setOf(".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg")
+        val ext = if ("." in name) "." + name.substringAfterLast(".") else ""
+        return ext in imageExt
+    }
+
+    /** 将图片文件转为 base64 data URI，供 vision API 使用。 */
+    private fun fileToDataUri(file: java.io.File): String? {
+        return try {
+            // 限制 20MB，避免 base64 编码后过大导致 API 拒绝
+            if (file.length() > 20L * 1024 * 1024) return null
+            val mime = guessImageMime(file.name)
+            val bytes = file.readBytes()
+            val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+            "data:$mime;base64,$base64"
+        } catch (e: Exception) {
+            com.nekobot.app.data.local.LocalLogger.w(TAG, "fileToDataUri 失败: ${e.message}")
+            null
+        }
+    }
+
+    private fun guessImageMime(name: String): String {
+        val ext = name.substringAfterLast('.', "").lowercase()
+        return when (ext) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "gif" -> "image/gif"
+            "bmp" -> "image/bmp"
+            "webp" -> "image/webp"
+            "svg" -> "image/svg+xml"
+            else -> "image/jpeg"
+        }
+    }
+
+    /** 视觉识别：对每张图片调用 vision 模型获取描述。 */
+    override suspend fun resolveImages(ctx: PipelineContext, imageUrls: List<String>): List<String> {
+        val describer = visionDescriber ?: run {
+            com.nekobot.app.data.local.LocalLogger.w(TAG, "resolveImages: visionDescriber 为 null（未注入），跳过视觉识别")
+            return emptyList()
+        }
+        com.nekobot.app.data.local.LocalLogger.i(TAG, "resolveImages: 开始识别 ${imageUrls.size} 张图片")
+        return imageUrls.mapIndexed { idx, url ->
+            val name = ctx.imageNames.getOrNull(idx)
+            val question = "请详细描述这张图片的内容，包括主要对象、场景、颜色、文字等关键信息。"
+            val desc = try {
+                describer.invoke(url, question)
+            } catch (e: Exception) {
+                com.nekobot.app.data.local.LocalLogger.w(TAG, "视觉识别失败 [${name ?: url.take(80)}]: ${e.message}")
+                VISION_FAILURE_MARKER + "视觉识别异常：${e.message}"
+            }
+            com.nekobot.app.data.local.LocalLogger.i(TAG, "resolveImages: 第${idx + 1}张识别完成 | name=$name | 长度=${desc.length} | 含失败标记=${desc.contains(VISION_FAILURE_MARKER)}")
+            buildString {
+                if (!name.isNullOrBlank()) append("【附件: $name】\n")
+                append(desc)
+            }
+        }
     }
 
     // ---- 后处理 ----

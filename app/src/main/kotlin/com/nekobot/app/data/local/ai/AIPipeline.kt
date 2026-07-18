@@ -149,14 +149,17 @@ class AIPipeline {
         when {
             !data.isNullOrEmpty() -> {
                 ctx.imageUrls.add(data)
+                ctx.imageNames.add(name)
                 progress.onAttachmentItemDone(ctx, name, true)
             }
             !path.isNullOrEmpty() -> {
                 ctx.imageUrls.add(path)
+                ctx.imageNames.add(name)
                 progress.onAttachmentItemDone(ctx, name, true)
             }
             !url.isNullOrEmpty() -> {
                 ctx.imageUrls.add(url)
+                ctx.imageNames.add(name)
                 progress.onAttachmentItemDone(ctx, name, true)
             }
             else -> progress.onAttachmentItemDone(ctx, name, false, "无法解析图片")
@@ -240,14 +243,37 @@ class AIPipeline {
             }
         }
 
-        // 图片 URL 注入提示
+        // 图片视觉识别：调用 vision 模型获取描述，注入到用户消息
         if (ctx.imageUrls.isNotEmpty()) {
-            messagesForAi = messagesForAi.mapIndexed { idx, msg ->
-                if (idx == messagesForAi.lastIndex && msg["role"] == "user") {
-                    msg.toMutableMap().apply {
-                        put("content", "[附图片 ${ctx.imageUrls.size} 张，已通过视觉模型识别]\n${msg["content"] ?: ""}")
+            val descriptions = try {
+                callbacks.resolveImages(ctx, ctx.imageUrls.toList())
+            } catch (e: Exception) {
+                com.nekobot.app.data.local.LocalLogger.w(TAG, "视觉识别异常: ${e.message}", e)
+                emptyList()
+            }
+            if (descriptions.isNotEmpty()) {
+                ctx.imageDescriptions.addAll(descriptions)
+                val imageBlock = buildString {
+                    descriptions.forEachIndexed { idx, desc ->
+                        val name = ctx.imageNames.getOrNull(idx)
+                        if (!name.isNullOrBlank()) {
+                            append("【图片 $name】\n")
+                        } else {
+                            append("【图片${idx + 1}】\n")
+                        }
+                        append(desc)
+                        if (idx < descriptions.lastIndex) append("\n\n")
                     }
-                } else msg
+                }
+                messagesForAi = messagesForAi.mapIndexed { idx, msg ->
+                    if (idx == messagesForAi.lastIndex && msg["role"] == "user") {
+                        msg.toMutableMap().apply {
+                            val existing = (this["content"] as? String).orEmpty()
+                            put("content", existing + "\n\n" + imageBlock)
+                        }
+                    } else msg
+                }
+                com.nekobot.app.data.local.LocalLogger.i(TAG, "视觉识别完成 | 图片=${ctx.imageUrls.size}张 | 描述总长=${imageBlock.length}字符")
             }
         }
 

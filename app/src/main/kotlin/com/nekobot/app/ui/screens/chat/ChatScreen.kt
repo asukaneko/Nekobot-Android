@@ -217,6 +217,8 @@ fun ChatScreen(
     // 文件选择模式：null=未选择, "send"=发送文件(上传+插入引用), "upload"=仅上传到工作区
     var filePickMode by remember { mutableStateOf<String?>(null) }
     var fileBusy by remember { mutableStateOf(false) }
+    // 待发送的图片附件：每项含 name/path/type，发送消息时一并传入聊天管线进行视觉识别
+    var pendingImageAttachments by remember { mutableStateOf<List<Map<String, Any>>>(emptyList()) }
 
     // ===== 收藏夹 & 搜索 =====
     var showFavoritesDialog by remember { mutableStateOf(false) }
@@ -389,12 +391,46 @@ fun ChatScreen(
                 when (val res = ServiceContainer.unified.uploadWorkspaceFile(sessionId, part)) {
                     is com.nekobot.app.data.repository.Resource.Success -> {
                         if (mode == "send") {
-                            // 发送文件：上传后在输入框插入文件引用，提示用户可编辑后发送
-                            input = buildString {
-                                if (input.isNotBlank()) { append(input); append("\n") }
-                                append(context.getString(R.string.chat_file_uploaded_ref_inline, name))
+                            // 发送文件：判断是否为图片
+                            val uploadedAttachment = buildWorkspaceChatAttachment(
+                                uploadResult = res.data,
+                                sessionId = sessionId,
+                                originalName = name,
+                                fallbackMime = guessMime(name)
+                            )
+                            val uploadedName = uploadedAttachment["name"]?.toString() ?: name
+                            val mime = uploadedAttachment["type"]?.toString() ?: guessMime(uploadedName)
+                            val isImage = mime.startsWith("image/")
+                            // 解析工作区绝对路径，供视觉识别读取
+                            val workspacePath = if (ServiceContainer.prefs.isLocalMode) {
+                                val filesDir = context.filesDir
+                                com.nekobot.app.data.local.LocalWorkspaceStorage.resolve(filesDir, sessionId)
+                                    ?.let { java.io.File(it, uploadedName).absolutePath }
+                            } else {
+                                null
                             }
-                            snackbarHostState.showSnackbar(context.getString(R.string.chat_file_uploaded_ref))
+                            if (isImage) {
+                                // 图片：加入待发送附件列表，输入框插入引用（可编辑）
+                                pendingImageAttachments = pendingImageAttachments + buildWorkspaceChatAttachment(
+                                    uploadResult = res.data,
+                                    sessionId = sessionId,
+                                    originalName = uploadedName,
+                                    fallbackMime = mime,
+                                    localPath = workspacePath
+                                )
+                                input = buildString {
+                                    if (input.isNotBlank()) { append(input); append("\n") }
+                                    append(context.getString(R.string.chat_file_uploaded_ref_inline, uploadedName))
+                                }
+                                snackbarHostState.showSnackbar(context.getString(R.string.chat_image_attached, uploadedName))
+                            } else {
+                                // 非图片：仅插入文本引用
+                                input = buildString {
+                                    if (input.isNotBlank()) { append(input); append("\n") }
+                                    append(context.getString(R.string.chat_file_uploaded_ref_inline, uploadedName))
+                                }
+                                snackbarHostState.showSnackbar(context.getString(R.string.chat_file_uploaded_ref))
+                            }
                         } else {
                             snackbarHostState.showSnackbar(context.getString(R.string.chat_uploaded_to_workspace, name))
                         }
@@ -597,10 +633,12 @@ fun ChatScreen(
                     onSend = {
                         val text = input
                         val plotChoiceId = pendingPlotChoiceId
+                        val images = pendingImageAttachments
                         input = ""
                         pendingPlotChoiceId = null
+                        pendingImageAttachments = emptyList()
                         keyboard?.hide()
-                        viewModel.sendMessage(text, plotChoiceId)
+                        viewModel.sendMessage(text, plotChoiceId, attachments = images)
                     },
                     onStop = { viewModel.stop() },
                     onClear = { showClearConfirm = true },
@@ -1446,10 +1484,13 @@ private fun MessageBubble(
     val parsedSegments = remember(segments) {
         segments.map { parseContentSegments(it) }
     }
+    val hasUserImage = isUser && parsedSegments.any { content ->
+        content.any { it.isImageContent() }
+    }
     // 是否包含多媒体内容（图片/视频/音频/txt/html）或音频 URL，决定气泡最大宽度
     val hasMultimedia = parsedSegments.any { segs -> segs.any { it.type != SegmentType.TEXT } }
     val hasAudioUrl = !message.audioUrl.isNullOrBlank()
-    val maxBubbleWidth = if (hasMultimedia || hasAudioUrl) 320.dp else 280.dp
+    val maxBubbleWidth = if (hasMultimedia || hasAudioUrl) 360.dp else 280.dp
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -1474,6 +1515,7 @@ private fun MessageBubble(
         Column(
             modifier = when {
                 !isUser && fillAiWidth -> Modifier.weight(1f)
+                hasUserImage -> Modifier.widthIn(min = 300.dp, max = maxBubbleWidth)
                 isUser -> Modifier.widthIn(max = maxBubbleWidth).width(IntrinsicSize.Max)
                 else -> Modifier.widthIn(max = maxBubbleWidth)
             }
@@ -1510,6 +1552,7 @@ private fun MessageBubble(
                 // 解析多媒体内容段
                 val contentSegments = parsedSegments[idx]
                 val segHasMultimedia = contentSegments.any { it.type != SegmentType.TEXT }
+                val segHasUserImage = isUser && contentSegments.any { it.isImageContent() }
                 // 气泡形状：主圆角 20dp，连续多段时中间段一侧收小形成连贯“气泡链”
                 val segShape = RoundedCornerShape(
                     topStart = 20.dp,
@@ -1521,10 +1564,15 @@ private fun MessageBubble(
                     modifier = Modifier
                         .then(if (!isUser && fillAiWidth) Modifier.fillMaxWidth() else Modifier)
                         // 用户气泡带轻微投影，浮于背景之上
-                        .then(if (isUser) Modifier.shadow(2.dp, segShape, clip = false) else Modifier)
+                        .then(if (isUser && !segHasUserImage) Modifier.shadow(2.dp, segShape, clip = false) else Modifier)
                         .then(
-                            if (isUser) Modifier.background(brush = userBrush, shape = segShape)
-                            else Modifier.background(color = aiContainer, shape = segShape)
+                            when {
+                                isUser && !segHasUserImage ->
+                                    Modifier.background(brush = userBrush, shape = segShape)
+                                !isUser ->
+                                    Modifier.background(color = aiContainer, shape = segShape)
+                                else -> Modifier
+                            }
                         )
                         .then(
                             when {
@@ -1537,14 +1585,18 @@ private fun MessageBubble(
                             onClick = { if (selectionMode) onToggleSelection() },
                             onLongClick = onLongClick
                         )
-                        .padding(horizontal = 14.dp, vertical = 9.dp)
+                        .then(
+                            if (segHasUserImage) Modifier
+                            else Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
+                        )
                 ) {
                     if (segHasMultimedia) {
                         // 多媒体内容：用渲染器渲染，宽度可超出普通文本宽度
                         RenderContentSegments(
                             segments = contentSegments,
-                            textColor = textColor,
-                            modifier = Modifier.widthIn(max = 320.dp),
+                            textColor = if (segHasUserImage) MaterialTheme.colorScheme.onSurface else textColor,
+                            modifier = if (segHasUserImage) Modifier.fillMaxWidth()
+                            else Modifier.widthIn(max = 360.dp),
                             sessionId = sessionId
                         )
                     } else {
@@ -3044,6 +3096,26 @@ private fun guessMime(name: String): String {
     }
 }
 
+internal fun buildChatMessageContent(
+    text: String,
+    attachments: List<Map<String, Any>>
+): String {
+    val normalizedText = text.trim()
+    val fileReferences = attachments
+        .mapNotNull { attachment ->
+            ((attachment["name"] as? String) ?: (attachment["filename"] as? String))
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        }
+        .distinct()
+        .map { name -> "[File: $name]" }
+        .filterNot(normalizedText::contains)
+    return buildList {
+        normalizedText.takeIf { it.isNotEmpty() }?.let(::add)
+        addAll(fileReferences)
+    }.joinToString("\n")
+}
+
 /**
  * 对话页 ViewModel：管理消息、会话信息与发送状态。
  *
@@ -3527,20 +3599,22 @@ class ChatViewModel : BaseViewModel() {
      * - 服务器模式：优先通过 Socket.IO send_message 触发 AI（服务端会推送流式回复），
      *   Socket 未连接时回退到 HTTP /chat
      */
-    fun sendMessage(text: String, plotChoiceId: String? = null) {
+    fun sendMessage(text: String, plotChoiceId: String? = null, attachments: List<Map<String, Any>> = emptyList()) {
         val content = text.trim()
-        if (content.isBlank() || _sending.value || currentSessionId.isBlank()) return
+        val messageContent = buildChatMessageContent(content, attachments)
+        if (messageContent.isBlank()) return
+        if (_sending.value || currentSessionId.isBlank()) return
         if (plotChoiceId != null) {
             viewModelScope.launch {
                 commitPlotChoiceSelection(plotChoiceId)
-                sendMessage(content)
+                sendMessage(content, attachments = attachments)
             }
             return
         }
         // 乐观更新
         val optimistic = Message(
             role = "user",
-            content = content,
+            content = messageContent,
             timestamp = System.currentTimeMillis().toString()
         )
         _messages.value = _messages.value + optimistic
@@ -3562,7 +3636,7 @@ class ChatViewModel : BaseViewModel() {
             localChatJob?.cancel()
             localChatJob = viewModelScope.launch {
                 val flow = try {
-                    unified.chatStream(currentSessionId, content)
+                    unified.chatStream(currentSessionId, messageContent, attachments)
                 } catch (e: Exception) {
                     _sending.value = false
                     _messages.value = _messages.value.filter { it.id != streamingId }
@@ -3584,7 +3658,7 @@ class ChatViewModel : BaseViewModel() {
             }
         } else if (socket.state.value == SocketState.Connected) {
             // Socket.IO 路径：触发 send_message，等待流式推送
-            socket.sendMessage(currentSessionId, content)
+            socket.sendMessage(currentSessionId, messageContent, attachments)
             // 兜底：若 60 秒仍无 chunk 回调，尝试刷新消息
             viewModelScope.launch {
                 kotlinx.coroutines.delay(60000)
@@ -3596,12 +3670,15 @@ class ChatViewModel : BaseViewModel() {
             }
         } else {
             // Socket 未连接，回退 HTTP
-            launchHttpChat(content)
+            launchHttpChat(messageContent, attachments)
         }
     }
 
     /** HTTP /chat 回退路径：触发后等待 socket 推送或轮询。 */
-    private fun launchHttpChat(content: String) {
+    private fun launchHttpChat(
+        content: String,
+        attachments: List<Map<String, Any>> = emptyList()
+    ) {
         // 创建流式占位消息，显示骨架动画（等待第一个 chunk）
         streamingContent.setLength(0)
         val placeholder = Message(
@@ -3612,7 +3689,7 @@ class ChatViewModel : BaseViewModel() {
         )
         _messages.value = _messages.value.filter { it.id != streamingId } + placeholder
         launchResult(
-            block = { unified.chat(currentSessionId, content) },
+            block = { unified.chat(currentSessionId, content, attachments) },
             onSuccess = {
                 _sending.value = false
                 // HTTP 成功后稍等再刷新，给 AI 生成时间

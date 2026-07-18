@@ -25,6 +25,7 @@ internal val localExecutableToolIds = setOf(
     "download_file",
     "send_message",
     "get_session_thinking_history",
+    "understand_image",
     "workspace_create_file",
     "workspace_read_file",
     "workspace_edit_file",
@@ -118,6 +119,8 @@ internal class LocalAgentToolExecutor(
     private val authorizationManager: LocalExecAuthorizationManager,
     private val onConfirmationRequired: (ExecConfirmationRequest) -> Unit,
     private val thinkingHistoryProvider: (Int) -> List<Map<String, Any>>,
+    /** 视觉识别函数：传入 imageUrl（http URL 或 data URI）和问题，返回描述文本（非 suspend） */
+    private val visionDescriber: ((String, String) -> String)? = null,
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -137,6 +140,7 @@ internal class LocalAgentToolExecutor(
             "download_file" -> downloadFile(args)
             "send_message" -> sendMessage(args)
             "get_session_thinking_history" -> thinkingHistory(args)
+            "understand_image" -> understandImage(args)
             "workspace_create_file", "workspace_edit_file" -> writeWorkspaceFile(args)
             "workspace_read_file", "workspace_parse_file" -> readWorkspaceFile(args)
             "workspace_delete_file" -> deleteWorkspaceFile(args)
@@ -321,6 +325,110 @@ internal class LocalAgentToolExecutor(
     private fun thinkingHistory(args: Map<String, Any>): Map<String, Any> {
         val limit = args.int("limit", 10).coerceIn(1, 50)
         return success("history" to thinkingHistoryProvider(limit))
+    }
+
+    /**
+     * 图片理解工具：调用 vision 模型识别图片内容。
+     *
+     * image_url 支持以下形式：
+     * - http/https URL：直接传给 vision API
+     * - data URI：直接传给 vision API
+     * - 工作区相对路径（如 "photo.png"）：解析为绝对路径后转 base64 data URI
+     * - 工作区绝对路径：转 base64 data URI（仅允许工作区内文件）
+     */
+    private fun understandImage(args: Map<String, Any>): Map<String, Any> {
+        val imageUrl = args.string("image_url")
+        if (imageUrl.isBlank()) return failure("image_url 不能为空")
+        val question = args.string("question").ifBlank { "请描述这张图片的内容。" }
+        val describer = visionDescriber ?: run {
+            android.util.Log.w("LocalAgentTool", "understand_image: visionDescriber 为 null（未注入视觉识别回调）")
+            return failure("视觉识别运行时不可用（未注入视觉识别回调）")
+        }
+
+        // 先尝试解析图片路径
+        val resolvedUrl = resolveImageUrlForVision(imageUrl)
+        if (resolvedUrl == null) {
+            android.util.Log.w("LocalAgentTool", "understand_image: 无法解析图片路径: $imageUrl")
+            // 列出工作区中可用的图片文件，帮助 AI 修正参数
+            val available = listWorkspaceImages()
+            val hint = if (available.isEmpty()) {
+                "工作区中没有可用图片"
+            } else {
+                "工作区可用图片: ${available.joinToString(", ")}"
+            }
+            return failure("无法解析图片路径: $imageUrl（仅支持工作区内文件或 http URL）。$hint")
+        }
+
+        android.util.Log.i("LocalAgentTool", "understand_image: 开始识别 | input=${imageUrl.take(100)} | resolved=${if (resolvedUrl.startsWith("data:")) "data:${resolvedUrl.length}字符" else resolvedUrl.take(100)} | question=${question.take(60)}")
+
+        return try {
+            val desc = describer.invoke(resolvedUrl, question).trim()
+            android.util.Log.i("LocalAgentTool", "understand_image: 识别完成 | 结果长度=${desc.length} | 含失败标记=${desc.contains(com.nekobot.app.data.local.VISION_FAILURE_MARKER)}")
+            // 检查是否为失败标记文本，若是则返回失败
+            if (desc.isBlank()) {
+                failure("视觉模型返回了空描述")
+            } else if (desc.contains(com.nekobot.app.data.local.VISION_FAILURE_MARKER)) {
+                failure("视觉模型返回失败: $desc")
+            } else {
+                success(
+                    "description" to desc,
+                    "image_url" to imageUrl,
+                    "resolved_url_kind" to when {
+                        resolvedUrl.startsWith("data:") -> "data_uri"
+                        resolvedUrl.startsWith("http") -> "http_url"
+                        else -> "file"
+                    }
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("LocalAgentTool", "understand_image: 异常: ${e.message}", e)
+            failure("视觉识别失败: ${e.message}")
+        }
+    }
+
+    /** 列出工作区中可用的图片文件名（用于错误提示）。 */
+    private fun listWorkspaceImages(): List<String> {
+        val root = workspace ?: return emptyList()
+        if (!root.isDirectory) return emptyList()
+        val imageExt = setOf("jpg", "jpeg", "png", "gif", "bmp", "webp", "svg")
+        return root.listFiles()
+            ?.filter { it.isFile && it.extension.lowercase(Locale.ROOT) in imageExt }
+            ?.map { it.name }
+            ?.sorted()
+            ?: emptyList()
+    }
+
+    /** 将图片输入解析为 vision API 可接受的 URL（http URL 或 data URI）。 */
+    private fun resolveImageUrlForVision(input: String): String? {
+        // http/https URL 或 data URI 直接返回
+        if (input.startsWith("http://") || input.startsWith("https://") || input.startsWith("data:")) {
+            return input
+        }
+        // 尝试作为工作区路径解析（支持相对路径、绝对路径、仅文件名）
+        val target = resolveWorkspacePath(input, allowRoot = false)
+            ?: resolveWorkspacePath(input.substringAfterLast('/'), allowRoot = false)
+            ?: resolveWorkspacePath(input.substringAfterLast('\\'), allowRoot = false)
+            ?: return null
+        if (!target.isFile) return null
+        return fileToDataUri(target)
+    }
+
+    /** 读取图片文件并转为 base64 data URI。 */
+    private fun fileToDataUri(file: File): String? {
+        return try {
+            if (file.length() > 20L * 1024 * 1024) return null  // 20MB 限制
+            val mime = when (file.extension.lowercase(Locale.ROOT)) {
+                "jpg", "jpeg" -> "image/jpeg"
+                "png" -> "image/png"
+                "gif" -> "image/gif"
+                "bmp" -> "image/bmp"
+                "webp" -> "image/webp"
+                "svg" -> "image/svg+xml"
+                else -> "image/jpeg"
+            }
+            val base64 = android.util.Base64.encodeToString(file.readBytes(), android.util.Base64.NO_WRAP)
+            "data:$mime;base64,$base64"
+        } catch (e: Exception) { null }
     }
 
     private fun writeWorkspaceFile(args: Map<String, Any>): Map<String, Any> {

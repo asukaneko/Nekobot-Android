@@ -247,6 +247,7 @@
     <string name="chat_read_file_failed">读取文件失败</string>
     <string name="chat_file_uploaded_ref">文件已上传，引用已插入输入框，编辑后发送</string>
     <string name="chat_file_uploaded_ref_inline">[已上传文件: %1$s]</string>
+    <string name="chat_image_attached">图片已附加: %1$s，发送时将自动识别内容</string>
     <string name="chat_uploaded_to_workspace">已上传到工作区: %1$s</string>
     <string name="chat_upload_failed">上传失败: %1$s</string>
     <string name="chat_operation_failed">操作失败: %1$s</string>

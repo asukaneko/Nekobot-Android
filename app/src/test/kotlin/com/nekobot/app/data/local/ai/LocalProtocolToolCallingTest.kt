@@ -58,6 +58,26 @@ class LocalProtocolToolCallingTest {
     }
 
     @Test
+    fun openAiResponseJoinsStructuredTextBlocks() {
+        val parsed = OpenAIChatProtocol.parseNonStreamResponse(
+            mapOf(
+                "choices" to listOf(
+                    mapOf(
+                        "message" to mapOf(
+                            "content" to listOf(
+                                mapOf("type" to "text", "text" to "图片中有"),
+                                mapOf("type" to "output_text", "text" to "一只猫")
+                            )
+                        )
+                    )
+                )
+            )
+        )
+
+        assertEquals("图片中有一只猫", parsed.content)
+    }
+
+    @Test
     fun anthropicPayloadAndResponsePreserveToolCalls() {
         val payload = AnthropicMessagesProtocol.buildPayload(
             model = "claude-test",

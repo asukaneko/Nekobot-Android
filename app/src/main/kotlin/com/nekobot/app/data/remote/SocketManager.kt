@@ -86,6 +86,19 @@ internal fun buildExecConfirmationPayload(
     "session_id" to sessionId
 )
 
+/** 构建与 Web 前端一致的 send_message 载荷，附件由服务端 WebCallbacks 解析。 */
+internal fun buildChatMessagePayload(
+    sessionId: String,
+    content: String,
+    attachments: List<Map<String, Any>> = emptyList()
+): Map<String, Any> = linkedMapOf(
+    "session_id" to sessionId,
+    "message" to content,
+    "content" to content,
+    "sender" to "web_user",
+    "attachments" to attachments
+)
+
 /** 解析服务端 `exec_confirm_request` 事件。缺少 request_id 时拒绝创建请求。 */
 internal fun parseExecConfirmationPayload(raw: Any?): ExecConfirmationRequest? {
     if (raw == null) return null
@@ -280,12 +293,12 @@ class SocketManager(private val prefs: PrefsManager) {
      * 通过 Socket.IO 发送消息（主聊天入口），触发 AI 生成。
      * 这是 Web 端的聊天方式，服务端会推送 ai_stream_* / new_message。
      */
-    fun sendMessage(sessionId: String, content: String) {
-        val payload = JSONObject().apply {
-            put("session_id", sessionId)
-            put("message", content)
-            put("content", content)
-        }
+    fun sendMessage(
+        sessionId: String,
+        content: String,
+        attachments: List<Map<String, Any>> = emptyList()
+    ) {
+        val payload = JSONObject(gson.toJson(buildChatMessagePayload(sessionId, content, attachments)))
         socket?.emit("send_message", payload)
     }
 

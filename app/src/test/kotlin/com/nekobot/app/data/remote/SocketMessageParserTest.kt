@@ -89,4 +89,24 @@ class SocketMessageParserTest {
         assertEquals("always", payload["permission"])
         assertEquals("session-1", payload["session_id"])
     }
+
+    @Test
+    fun buildChatMessagePayload_keepsRemoteImageAttachment() {
+        val attachment = mapOf<String, Any>(
+            "name" to "角色图.png",
+            "type" to "image/png",
+            "path" to "C:\\server\\workspace\\角色图.png",
+            "source" to "web"
+        )
+
+        val payload = buildChatMessagePayload(
+            sessionId = "session-1",
+            content = "看看这张图",
+            attachments = listOf(attachment)
+        )
+
+        assertEquals("session-1", payload["session_id"])
+        assertEquals("看看这张图", payload["content"])
+        assertEquals(listOf(attachment), payload["attachments"])
+    }
 }

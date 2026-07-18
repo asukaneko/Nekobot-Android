@@ -105,11 +105,11 @@ object BuiltinTools {
         BuiltinToolSpec(
             id = "understand_image",
             name = "图片理解",
-            description = "使用视觉模型识别图片内容并描述。",
+            description = "使用视觉模型识别图片内容并描述。支持工作区内的图片文件（通过附件名或 workspace_list_files 查询）、http URL 或 data URI。",
             parametersJson = params(
                 mapOf(
-                    "image_url" to mapOf("type" to "string", "description" to "图片 URL 或本地路径"),
-                    "question" to mapOf("type" to "string", "description" to "针对图片的问题")
+                    "image_url" to mapOf("type" to "string", "description" to "图片路径或 URL。优先使用工作区内文件名（如 photo.png），也支持 http(s) URL 和 data URI。可通过 workspace_list_files 查看工作区内可用文件。"),
+                    "question" to mapOf("type" to "string", "description" to "针对图片的问题，如“这张图片里有什么？”")
                 ),
                 listOf("image_url")
             )

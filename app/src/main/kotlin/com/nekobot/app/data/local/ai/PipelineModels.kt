@@ -34,8 +34,12 @@ class PipelineContext(
     var knowledgeRetrieved: Boolean = false
 
     // === 附件处理 ===
-    /** 图片 URL 列表 */
+    /** 图片 URL 列表（可能是 http URL 或 base64 data URI） */
     val imageUrls: MutableList<String> = mutableListOf()
+    /** 图片附件名列表（与 imageUrls 一一对应，用于描述标注） */
+    val imageNames: MutableList<String?> = mutableListOf()
+    /** 视觉模型识别后的图片描述列表 */
+    val imageDescriptions: MutableList<String> = mutableListOf()
     /** 文件文本内容列表 */
     val fileContents: MutableList<String> = mutableListOf()
 
@@ -253,6 +257,17 @@ open class PipelineCallbacks {
      * 解析单个附件，返回 {type, name, data, path, text_content, error} 或 null。
      */
     open fun resolveAttachmentData(ctx: PipelineContext, attachment: Map<String, Any>): Map<String, Any>? = null
+
+    /**
+     * 调用视觉模型识别图片内容，返回每张图片的文本描述。
+     *
+     * - 输入 [imageUrls] 为待识别的图片 URL 或 base64 data URI 列表
+     * - 返回与输入等长的描述列表；识别失败的图片返回失败标记文本（非空）
+     * - 默认实现返回空列表，表示该频道不支持视觉识别
+     *
+     * 此方法为 suspend，子类可通过协程调用异步视觉 API。
+     */
+    open suspend fun resolveImages(ctx: PipelineContext, imageUrls: List<String>): List<String> = emptyList()
 
     // ---- 后处理 ----
 

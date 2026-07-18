@@ -769,7 +769,8 @@ class LocalRepository(
     fun chatWithPipeline(
         sessionId: String,
         userMessage: String,
-        activeModel: LocalAiModelEntity
+        activeModel: LocalAiModelEntity,
+        attachments: List<Map<String, Any>> = emptyList()
     ): Flow<RealtimeEvent> = flow {
         try {
         // 标记当前会话，供二级 LLM 调用（AutoState/记忆）token 记账归属
@@ -802,7 +803,8 @@ class LocalRepository(
         val character = session.characterId?.let { characterDao.getById(it) }
 
         // 普通无角色会话沿用旧流程；Agent 无角色会话需要进入 Pipeline 产生进度卡片。
-        if (!shouldUseLocalPipeline(session.sessionMode, character != null)) {
+        // 图片附件必须经过 Pipeline 的附件解析与视觉描述阶段；普通无角色会话也不能回退旧聊天链路。
+        if (!shouldUseLocalPipeline(session.sessionMode, character != null, attachments.isNotEmpty())) {
             // 回退时需删除刚保存的用户消息（chat 会重新保存）
             messageDao.listBySession(sessionId).lastOrNull { it.role == "user" }?.let {
                 messageDao.deleteById(it.id)
@@ -848,7 +850,8 @@ class LocalRepository(
             skillToolExecutor = ::executeLocalSkillTool,
             failoverQueue = failoverQueue,
             coordinator = failoverCoordinator,
-            hookExecutor = hookExecutor
+            hookExecutor = hookExecutor,
+            visionDescriber = { imageUrl, question -> describeImageViaQueue(imageUrl, question) }
         )
 
         // 5. 构建上下文（含会话级配置：剧情模式、禁用注入项、自动状态间隔等）
@@ -860,6 +863,7 @@ class LocalRepository(
             sessionId = sessionId,
             content = userMessage,
             userId = "local-user",
+            attachments = attachments,
             metadata = buildMap {
                 put("session_mode", session.sessionMode)
                 if (session.plotMode) put("plot_mode", true)
@@ -1951,10 +1955,17 @@ $charSection$topicSection
         imageUrl: String,
         question: String = "请详细描述这张图片的内容。"
     ): String = withContext(Dispatchers.IO) {
-        val queue = queueFor("vision")
+        var queue = queueFor("vision")
+        // 回退：若未配置 vision 模型，尝试使用 chat 模型（GPT-4o 等多模态聊天模型支持图片）
         if (queue.isEmpty()) {
-            return@withContext VISION_FAILURE_MARKER + "未配置视觉模型，不得猜测图片内容。"
+            com.nekobot.app.data.local.LocalLogger.w("LocalRepo", "describeImageViaQueue: 视觉模型队列为空，回退到 chat 模型队列")
+            queue = queueFor("chat")
         }
+        if (queue.isEmpty()) {
+            com.nekobot.app.data.local.LocalLogger.w("LocalRepo", "describeImageViaQueue: 视觉和聊天模型队列均为空（没有 purpose=vision/chat 且 enabled=1 的模型）")
+            return@withContext VISION_FAILURE_MARKER + "未配置视觉模型或聊天模型，不得猜测图片内容。"
+        }
+        com.nekobot.app.data.local.LocalLogger.i("LocalRepo", "describeImageViaQueue: 开始识别 | 队列=${queue.size}个模型 | 首选=${queue.first().name} | url=${if (imageUrl.startsWith("data:")) "data:${imageUrl.length}字符" else imageUrl.take(100)}")
         try {
             val exec = failoverCoordinator.execute(queue, "vision") { model ->
                 aiClient.describeImage(model, imageUrl, question)
@@ -1974,9 +1985,11 @@ $charSection$topicSection
                     )
                 }
             }
+            com.nekobot.app.data.local.LocalLogger.i("LocalRepo", "describeImageViaQueue: 识别成功 | 模型=${exec.model.name} | 结果长度=${exec.value.content.length}")
             exec.value.content
         } catch (e: FailoverAllFailedException) {
-            VISION_FAILURE_MARKER + "视觉识别失败：" + (e.message ?: "所有视觉模型均不可用") + "。不得猜测图片内容。"
+            com.nekobot.app.data.local.LocalLogger.w("LocalRepo", "describeImageViaQueue: 所有模型失败 | 尝试=${e.attempts.size} | 失败原因=${e.failures.map { it.message }}")
+            VISION_FAILURE_MARKER + "视觉识别失败：" + (e.message ?: "所有模型均不可用") + "。不得猜测图片内容。"
         }
     }
 

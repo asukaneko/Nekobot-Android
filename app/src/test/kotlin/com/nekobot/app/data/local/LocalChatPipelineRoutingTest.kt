@@ -20,4 +20,15 @@ class LocalChatPipelineRoutingTest {
     fun boundCharacterAlwaysUsesPipeline() {
         assertTrue(shouldUseLocalPipeline(sessionMode = "character", hasCharacter = true))
     }
+
+    @Test
+    fun imageAttachmentForcesPipelineWithoutCharacter() {
+        assertTrue(
+            shouldUseLocalPipeline(
+                sessionMode = "character",
+                hasCharacter = false,
+                hasAttachments = true
+            )
+        )
+    }
 }

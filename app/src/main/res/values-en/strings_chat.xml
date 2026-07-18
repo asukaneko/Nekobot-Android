@@ -247,6 +247,7 @@
     <string name="chat_read_file_failed">Failed to read file</string>
     <string name="chat_file_uploaded_ref">File uploaded, reference inserted into input, edit before sending</string>
     <string name="chat_file_uploaded_ref_inline">[Uploaded file: %1$s]</string>
+    <string name="chat_image_attached">Image attached: %1$s, content will be recognized on send</string>
     <string name="chat_uploaded_to_workspace">Uploaded to workspace: %1$s</string>
     <string name="chat_upload_failed">Upload failed: %1$s</string>
     <string name="chat_operation_failed">Operation failed: %1$s</string>

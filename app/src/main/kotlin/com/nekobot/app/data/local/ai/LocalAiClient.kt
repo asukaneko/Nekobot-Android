@@ -359,20 +359,7 @@ class LocalAiClient(
         val protocol = LocalProtocols.get(model.protocol)
         val url = protocol.resolveUrl(model.baseUrl, model.model, model.appendBaseUrlPath)
         val headers = protocol.buildHeaders(model.apiKey, stream = false)
-        // vision 使用 chat/completions 端点，消息体包含 image_url
-        val payload = mapOf(
-            "model" to model.model,
-            "max_tokens" to (model.maxTokens ?: 1024),
-            "messages" to listOf(
-                mapOf(
-                    "role" to "user",
-                    "content" to listOf(
-                        mapOf("type" to "text", "text" to question),
-                        mapOf("type" to "image_url", "image_url" to mapOf("url" to imageUrl))
-                    )
-                )
-            )
-        )
+        val payload = buildVisionPayload(model, protocol, imageUrl, question)
         val body = gson.toJson(payload).toRequestBody(JSON_TYPE)
         val reqBuilder = Request.Builder().url(url).post(body)
         headers.forEach { (k, v) -> reqBuilder.header(k, v) }
@@ -386,10 +373,20 @@ class LocalAiClient(
                 val raw = resp.body?.string().orEmpty()
                 @Suppress("UNCHECKED_CAST")
                 val data = (gson.fromJson(raw, Map::class.java) as? Map<String, Any>) ?: emptyMap()
-                val choices = data["choices"] as? List<Map<String, Any>> ?: emptyList()
-                val msg = choices.firstOrNull()?.get("message") as? Map<String, Any>
-                val content = (msg?.get("content") as? String).orEmpty()
-                LocalAiResult(content, usedModelId = model.id, usedModelName = model.name)
+                val parsed = protocol.parseNonStreamResponse(data)
+                if (parsed.content.isBlank()) {
+                    throw IllegalStateException(
+                        "视觉模型返回空描述（protocol=${protocol.name}, responseKeys=${data.keys.joinToString()}）"
+                    )
+                }
+                LocalAiResult(
+                    content = parsed.content.trim(),
+                    usage = parsed.usage,
+                    usedModelId = model.id,
+                    usedModelName = model.name,
+                    finishReason = parsed.finishReason,
+                    thinkingContent = parsed.thinkingContent
+                )
             }
         } catch (e: FailoverHttpException) {
             throw e
@@ -399,6 +396,59 @@ class LocalAiClient(
             Log.e("LocalAiClient", "describeImage failed: ${e.message}")
             throw e
         }
+    }
+
+    private fun buildVisionPayload(
+        model: LocalAiModelEntity,
+        protocol: LocalProtocol,
+        imageUrl: String,
+        question: String
+    ): Map<String, Any> {
+        if (protocol.name == AnthropicMessagesProtocol.name) {
+            val source = if (imageUrl.startsWith("data:")) {
+                val mediaType = imageUrl.substringAfter("data:", "").substringBefore(';')
+                val data = imageUrl.substringAfter("base64,", "")
+                require(mediaType.isNotBlank() && data.isNotBlank()) { "无效的图片 data URI" }
+                mapOf(
+                    "type" to "base64",
+                    "media_type" to mediaType,
+                    "data" to data
+                )
+            } else {
+                mapOf(
+                    "type" to "url",
+                    "url" to imageUrl
+                )
+            }
+            return mapOf(
+                "model" to model.model,
+                "max_tokens" to (model.maxTokens ?: 1024),
+                "messages" to listOf(
+                    mapOf(
+                        "role" to "user",
+                        "content" to listOf(
+                            mapOf("type" to "image", "source" to source),
+                            mapOf("type" to "text", "text" to question)
+                        )
+                    )
+                )
+            )
+        }
+
+        return mapOf(
+            "model" to model.model,
+            "stream" to false,
+            "max_tokens" to (model.maxTokens ?: 1024),
+            "messages" to listOf(
+                mapOf(
+                    "role" to "user",
+                    "content" to listOf(
+                        mapOf("type" to "text", "text" to question),
+                        mapOf("type" to "image_url", "image_url" to mapOf("url" to imageUrl))
+                    )
+                )
+            )
+        )
     }
 
     /**

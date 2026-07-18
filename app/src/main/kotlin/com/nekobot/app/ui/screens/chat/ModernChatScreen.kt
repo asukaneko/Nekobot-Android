@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -97,6 +98,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -105,6 +107,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.google.gson.JsonObject
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
@@ -166,7 +169,9 @@ fun ModernChatScreen(
             plotChoicesLoading = plotChoicesLoading,
             plotMode = session?.plotMode == true,
             plotRealTimeSync = session?.plotRealTimeSync == true,
-            onSend = { text, plotChoiceId -> viewModel.sendMessage(text, plotChoiceId) },
+            onSend = { text, plotChoiceId, attachments ->
+                viewModel.sendMessage(text, plotChoiceId, attachments)
+            },
             onStop = viewModel::stop,
             onCompress = viewModel::compressContext,
             onClear = { viewModel.clearMessages(sessionId) },
@@ -200,7 +205,7 @@ private fun ModernChatComposer(
     plotChoicesLoading: Boolean,
     plotMode: Boolean,
     plotRealTimeSync: Boolean,
-    onSend: (String, String?) -> Unit,
+    onSend: (String, String?, List<Map<String, Any>>) -> Unit,
     onStop: () -> Unit,
     onCompress: () -> Unit,
     onClear: () -> Unit,
@@ -224,6 +229,9 @@ private fun ModernChatComposer(
     var pendingPlotChoiceId by remember { mutableStateOf<String?>(null) }
     var filePickMode by remember { mutableStateOf<String?>(null) }
     var fileBusy by remember { mutableStateOf(false) }
+    var pendingImageAttachments by remember(sessionId) {
+        mutableStateOf<List<Map<String, Any>>>(emptyList())
+    }
     var showClearConfirm by remember { mutableStateOf(false) }
     var showMyMessages by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
@@ -341,11 +349,35 @@ private fun ModernChatComposer(
                 when (val result = ServiceContainer.unified.uploadWorkspaceFile(sessionId, part)) {
                     is Resource.Success -> {
                         if (mode == "send") {
-                            input = buildString {
-                                if (input.isNotBlank()) append(input).append('\n')
-                                append(context.getString(R.string.chat_file_uploaded_ref_inline, name))
+                            val baseAttachment = buildWorkspaceChatAttachment(
+                                uploadResult = result.data,
+                                sessionId = sessionId,
+                                originalName = name,
+                                fallbackMime = modernGuessMime(name)
+                            )
+                            val uploadedName = baseAttachment["name"]?.toString() ?: name
+                            val mime = baseAttachment["type"]?.toString() ?: modernGuessMime(uploadedName)
+                            if (mime.startsWith("image/")) {
+                                val localFile = if (ServiceContainer.prefs.isLocalMode) {
+                                    resolveLocalWorkspaceFile(context, sessionId, uploadedName)
+                                } else {
+                                    null
+                                }
+                                pendingImageAttachments = pendingImageAttachments + buildWorkspaceChatAttachment(
+                                    uploadResult = result.data,
+                                    sessionId = sessionId,
+                                    originalName = uploadedName,
+                                    fallbackMime = mime,
+                                    localPath = localFile?.absolutePath
+                                )
+                                toast(context.getString(R.string.chat_image_attached, uploadedName))
+                            } else {
+                                input = buildString {
+                                    if (input.isNotBlank()) append(input).append('\n')
+                                    append(context.getString(R.string.chat_file_uploaded_ref_inline, uploadedName))
+                                }
+                                toast(context.getString(R.string.chat_file_uploaded_ref))
                             }
-                            toast(context.getString(R.string.chat_file_uploaded_ref))
                         } else {
                             toast(context.getString(R.string.chat_uploaded_to_workspace_colon, name))
                         }
@@ -419,7 +451,7 @@ private fun ModernChatComposer(
         layoutMode = chatInputLayout,
         inputExpanded = inputExpanded,
         hasPlotSurface = hasPlotSurface,
-        hasDraft = input.isNotBlank()
+        hasDraft = input.isNotBlank() || pendingImageAttachments.isNotEmpty()
     )
     // 跳过输入框首次退出动画：进入剧情模式会话时避免选项框从上方滑下的效果
     var skipInputExit by remember { mutableStateOf(true) }
@@ -427,7 +459,7 @@ private fun ModernChatComposer(
         if (hasPlotSurface) skipInputExit = false
     }
     val toggleInput = {
-        if (input.isBlank()) {
+        if (input.isBlank() && pendingImageAttachments.isEmpty()) {
             inputExpanded = !inputVisible
             if (inputVisible) keyboard?.hide()
         }
@@ -525,6 +557,16 @@ private fun ModernChatComposer(
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     val composerContainerColor = MaterialTheme.colorScheme.surfaceVariant
+
+                    if (pendingImageAttachments.isNotEmpty()) {
+                        PendingImageAttachments(
+                            sessionId = sessionId,
+                            attachments = pendingImageAttachments,
+                            onRemove = { target ->
+                                pendingImageAttachments = pendingImageAttachments.filterNot { it === target }
+                            }
+                        )
+                    }
 
                     // 草稿统计：胶囊样式，右对齐悬浮于输入框上方
                     if (input.isNotBlank()) {
@@ -634,7 +676,7 @@ private fun ModernChatComposer(
                             // 主操作按钮：背景和图标同步过渡，避免语音/发送/停止状态生硬跳变
                             val action = when {
                                 sending -> ModernComposerAction.STOP
-                                input.isNotBlank() -> ModernComposerAction.SEND
+                                input.isNotBlank() || pendingImageAttachments.isNotEmpty() -> ModernComposerAction.SEND
                                 else -> ModernComposerAction.VOICE
                             }
                             val idleActionColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f)
@@ -663,12 +705,14 @@ private fun ModernChatComposer(
                                         ModernComposerAction.SEND -> {
                                             val text = input
                                             val choiceId = pendingPlotChoiceId
+                                            val attachments = pendingImageAttachments
                                             input = ""
                                             inputExpanded = false
                                             pendingPlotChoiceId = null
+                                            pendingImageAttachments = emptyList()
                                             closePanel()
                                             keyboard?.hide()
-                                            onSend(text, choiceId)
+                                            onSend(text, choiceId, attachments)
                                         }
                                         ModernComposerAction.VOICE -> requestMicPermission.launch(
                                             android.Manifest.permission.RECORD_AUDIO
@@ -845,6 +889,72 @@ private fun ModernChatComposer(
             },
             confirmButton = {}
         )
+    }
+}
+
+@Composable
+private fun PendingImageAttachments(
+    sessionId: String,
+    attachments: List<Map<String, Any>>,
+    onRemove: (Map<String, Any>) -> Unit
+) {
+    val context = LocalContext.current
+    LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, top = 8.dp, end = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(
+            items = attachments,
+            key = { attachment ->
+                "${attachment["name"]}:${attachment["path"]}:${System.identityHashCode(attachment)}"
+            }
+        ) { attachment ->
+            val name = attachment["name"] as? String ?: return@items
+            val localFile = (attachment["path"] as? String)
+                ?.let { java.io.File(it) }
+                ?.takeIf { it.isFile }
+                ?: resolveLocalWorkspaceFile(context, sessionId, name)
+            val model: Any? = localFile ?: buildWorkspaceFileUrl(sessionId, name)
+
+            Surface(
+                modifier = Modifier.size(76.dp),
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                border = BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                )
+            ) {
+                Box {
+                    if (model != null) {
+                        AsyncImage(
+                            model = model,
+                            contentDescription = name,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    IconButton(
+                        onClick = { onRemove(attachment) },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(3.dp)
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.56f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.common_remove),
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
