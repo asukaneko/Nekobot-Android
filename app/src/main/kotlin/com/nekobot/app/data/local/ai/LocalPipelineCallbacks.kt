@@ -49,6 +49,8 @@ class LocalPipelineCallbacks(
     private val execAuthorizationManager: LocalExecAuthorizationManager = LocalExecAuthorizationManager(),
     /** 已连接 MCP 服务的工具执行入口。 */
     private val mcpToolExecutor: ((toolName: String, args: Map<String, Any>) -> Map<String, Any>)? = null,
+    /** 只读 Skills 存储工具执行入口。 */
+    private val skillToolExecutor: ((toolName: String, args: Map<String, Any>) -> Map<String, Any>)? = null,
     /** 故障转移队列：activeModel 优先 + 同 purpose 其他启用模型，按 priority 升序 */
     private val failoverQueue: List<LocalAiModelEntity> = emptyList(),
     /** 持久化故障转移协调器；非空时 [buildModelCall] 走 coordinator，否则回退到 chatOnceWithFailover */
@@ -402,6 +404,10 @@ class LocalPipelineCallbacks(
         if (parseMcpToolName(toolName) != null) {
             return mcpToolExecutor?.invoke(toolName, args)
                 ?: mapOf("success" to false, "error" to "MCP 工具运行时不可用")
+        }
+        if (toolName in localSkillToolIds) {
+            return skillToolExecutor?.invoke(toolName, args)
+                ?: mapOf("success" to false, "error" to "Skills 存储运行时不可用")
         }
         return localToolExecutor.execute(toolName, args)
     }

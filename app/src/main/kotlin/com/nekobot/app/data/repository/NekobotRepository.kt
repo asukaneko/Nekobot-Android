@@ -4,6 +4,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonParser
+import com.nekobot.app.data.local.DownloadedSkillPackage
 import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.model.*
 import com.nekobot.app.data.model.BindCharacterRequest
@@ -606,10 +607,136 @@ class NekobotRepository(
 
     // ==================== Skills 配置 ====================
     suspend fun listSkills(): Resource<List<Skill>> = safeCall { api.listSkills() }
-    suspend fun createSkill(req: SkillRequest): Resource<Skill> = safeCall { api.createSkill(req) }
-    suspend fun updateSkill(id: String, req: SkillRequest): Resource<Skill> = safeCall { api.updateSkill(id, req) }
+
+    suspend fun getSkillStorage(skill: Skill): Resource<Skill> {
+        val detail = when (val result = safeCall { api.getSkillStorage(skill.name) }) {
+            is Resource.Success -> result.data
+            is Resource.Error -> return result
+            is Resource.Loading -> return result
+        }
+        val sourceUrl = when (val config = safeCall { api.getSkillStorageConfig(skill.name) }) {
+            is Resource.Success -> runCatching {
+                val content = config.data.asJsonObject.get("content")?.asString.orEmpty()
+                JsonParser.parseString(content).asJsonObject.get("source_url")?.asString
+            }.getOrNull()
+            else -> null
+        }
+        return Resource.Success(
+            skill.copy(
+                skillMd = detail.skillMd,
+                referenceMd = detail.referenceMd,
+                license = detail.license,
+                sourceUrl = sourceUrl,
+                hasStorage = true,
+                files = detail.files
+            )
+        )
+    }
+
+    suspend fun createSkill(req: SkillRequest): Resource<Skill> {
+        val created = when (val result = safeCall { api.createSkill(req) }) {
+            is Resource.Success -> result.data.skill
+                ?: return Resource.Error("服务器未返回已创建的 Skill")
+            is Resource.Error -> return result
+            is Resource.Loading -> return result
+        }
+        if (req.referenceMd != null) {
+            when (val saved = safeCall {
+                api.saveSkillReference(created.name, mapOf("content" to req.referenceMd))
+            }) {
+                is Resource.Error -> return saved
+                else -> Unit
+            }
+        }
+        return getSkillStorage(created).let { detail ->
+            if (detail is Resource.Error) Resource.Success(created) else detail
+        }
+    }
+
+    suspend fun updateSkill(id: String, req: SkillRequest): Resource<Skill> {
+        val updated = when (val result = safeCall { api.updateSkill(id, req) }) {
+            is Resource.Success -> result.data.skill
+                ?: return Resource.Error("服务器未返回已更新的 Skill")
+            is Resource.Error -> return result
+            is Resource.Loading -> return result
+        }
+        if (req.skillMd != null) {
+            when (val saved = safeCall {
+                api.saveSkillMarkdown(updated.name, mapOf("content" to req.skillMd))
+            }) {
+                is Resource.Error -> return saved
+                else -> Unit
+            }
+        }
+        if (req.referenceMd != null) {
+            when (val saved = safeCall {
+                api.saveSkillReference(updated.name, mapOf("content" to req.referenceMd))
+            }) {
+                is Resource.Error -> return saved
+                else -> Unit
+            }
+        }
+        return getSkillStorage(updated).let { detail ->
+            if (detail is Resource.Error) Resource.Success(updated) else detail
+        }
+    }
+
     suspend fun deleteSkill(id: String): Resource<Unit> = safeCall { api.deleteSkill(id) }.map { }
-    suspend fun toggleSkill(id: String): Resource<Skill> = safeCall { api.toggleSkill(id) }
+
+    suspend fun toggleSkill(id: String): Resource<Skill> {
+        val enabled = when (val result = safeCall { api.toggleSkill(id) }) {
+            is Resource.Success -> result.data.enabled
+            is Resource.Error -> return result
+            is Resource.Loading -> return result
+        }
+        return when (val listed = listSkills()) {
+            is Resource.Success -> {
+                val skill = listed.data.firstOrNull { it.id == id }
+                    ?: return Resource.Error("切换成功，但未找到 Skill")
+                Resource.Success(if (enabled == null) skill else skill.copy(enabled = enabled))
+            }
+            is Resource.Error -> listed
+            is Resource.Loading -> listed
+        }
+    }
+
+    internal suspend fun uploadSkillPackage(pkg: DownloadedSkillPackage): Resource<Skill> {
+        val text = "text/plain; charset=utf-8".toMediaType()
+        val binary = "application/octet-stream".toMediaType()
+        val config = gson.toJson(
+            mapOf(
+                "name" to pkg.name,
+                "description" to pkg.description,
+                "aliases" to pkg.aliases
+            )
+        )
+        val uploadFiles = pkg.files.toMutableMap()
+        val configFile = runCatching {
+            uploadFiles.entries.firstOrNull { it.key.equals("config.json", true) }
+                ?.value
+                ?.toString(Charsets.UTF_8)
+                ?.let { JsonParser.parseString(it).asJsonObject }
+        }.getOrNull() ?: com.google.gson.JsonObject()
+        configFile.addProperty("source_url", pkg.sourceUrl)
+        uploadFiles["config.json"] = gson.toJson(configFile).toByteArray(Charsets.UTF_8)
+        val parts = uploadFiles.map { (path, bytes) ->
+            MultipartBody.Part.createFormData(
+                "files",
+                path,
+                bytes.toRequestBody(binary)
+            )
+        }
+        return safeCall {
+            api.uploadSkillFolder(
+                folderName = pkg.name.toRequestBody(text),
+                skillMd = pkg.skillMd.toRequestBody(text),
+                skillConfig = config.toRequestBody(text),
+                files = parts
+            )
+        }.mapData { response ->
+            response.skill ?: throw IllegalStateException("服务器未返回已上传的 Skill")
+        }
+    }
 
     // ==================== Tools 配置 ====================
     suspend fun listTools(): Resource<List<Tool>> = safeCall { api.listTools() }

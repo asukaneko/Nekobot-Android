@@ -11,7 +11,7 @@
     <string name="extensions_knowledge">ナレッジベース</string>
     <string name="extensions_knowledge_desc">RAG ドキュメントとベクトル検索</string>
     <string name="extensions_skills">Skills</string>
-    <string name="extensions_skills_desc">スキルメタデータ管理</string>
+    <string name="extensions_skills_desc">スキルフォルダー、SKILL.md、リポジトリ導入</string>
     <string name="extensions_tools">Tools</string>
     <string name="extensions_tools_desc">ツール関数と実装</string>
     <string name="extensions_mcp">MCP サーバー</string>

@@ -11,7 +11,7 @@
     <string name="extensions_knowledge">Knowledge Base</string>
     <string name="extensions_knowledge_desc">RAG documents and vector retrieval</string>
     <string name="extensions_skills">Skills</string>
-    <string name="extensions_skills_desc">Skill metadata management</string>
+    <string name="extensions_skills_desc">Skill folders, SKILL.md, and repository installs</string>
     <string name="extensions_tools">Tools</string>
     <string name="extensions_tools_desc">Tool functions and implementations</string>
     <string name="extensions_mcp">MCP Servers</string>

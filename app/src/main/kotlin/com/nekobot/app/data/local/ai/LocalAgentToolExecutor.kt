@@ -35,6 +35,13 @@ internal val localExecutableToolIds = setOf(
     "workspace_file_info"
 )
 
+internal val localSkillToolIds = setOf(
+    "skill_list",
+    "skill_view",
+    "skill_read",
+    "skill_get_info"
+)
+
 /** 将本地真正可执行的内置工具转换为 OpenAI function-calling 定义。 */
 internal fun buildLocalAgentToolDefinitions(): List<Map<String, Any>> {
     val gson = Gson()
@@ -54,6 +61,50 @@ internal fun buildLocalAgentToolDefinitions(): List<Map<String, Any>> {
                 )
             )
         }
+}
+
+/** 与原仓库 skills_tools.py 对齐的只读 Skill 工具。 */
+internal fun buildLocalSkillToolDefinitions(): List<Map<String, Any>> {
+    fun definition(name: String, description: String, parameters: Map<String, Any>): Map<String, Any> =
+        mapOf(
+            "type" to "function",
+            "function" to mapOf(
+                "name" to name,
+                "description" to description,
+                "parameters" to parameters
+            )
+        )
+
+    val emptyParameters = mapOf(
+        "type" to "object",
+        "properties" to emptyMap<String, Any>()
+    )
+    val skillNameParameters = mapOf(
+        "type" to "object",
+        "properties" to mapOf(
+            "skill_name" to mapOf("type" to "string", "description" to "Skill 名称或别名")
+        ),
+        "required" to listOf("skill_name")
+    )
+    return listOf(
+        definition("skill_list", "列出当前已启用的 Skills 及其文件数量。", emptyParameters),
+        definition("skill_view", "查看指定 Skill 的文件结构和来源。", skillNameParameters),
+        definition(
+            "skill_read",
+            "读取指定 Skill 中的文本文件。执行技能前应先读取 SKILL.md。",
+            mapOf(
+                "type" to "object",
+                "properties" to mapOf(
+                    "skill_name" to mapOf("type" to "string", "description" to "Skill 名称或别名"),
+                    "file_path" to mapOf("type" to "string", "description" to "相对路径，如 SKILL.md、reference.md、scripts/main.py"),
+                    "start_line" to mapOf("type" to "integer", "description" to "起始行，从 1 开始"),
+                    "end_line" to mapOf("type" to "integer", "description" to "结束行，包含该行")
+                ),
+                "required" to listOf("skill_name", "file_path")
+            )
+        ),
+        definition("skill_get_info", "获取本地 Skills 存储规范和统计信息。", emptyParameters)
+    )
 }
 
 /**

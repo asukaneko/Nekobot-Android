@@ -22,8 +22,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.MoreVert
-import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -36,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,16 +46,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.gson.JsonElement
+import com.google.gson.JsonParser
 import com.nekobot.app.R
 import com.nekobot.app.data.model.Skill
+import com.nekobot.app.data.model.SkillInstallRequest
 import com.nekobot.app.data.model.SkillRequest
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.EmptyState
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
+import com.nekobot.app.ui.components.GlassDropdownMenu
 import com.nekobot.app.ui.components.LoadingOverlay
 import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.theme.ErrorRed
@@ -64,22 +70,40 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/**
- * Skills 配置 ViewModel：负责技能元数据的 CRUD 与启停切换。
- */
+/** Skills 元数据、目录存储和 URL 安装的统一管理。 */
 class SkillsViewModel : BaseViewModel() {
     private val _list = MutableStateFlow<List<Skill>>(emptyList())
     val list: StateFlow<List<Skill>> = _list.asStateFlow()
 
-    init { load() }
+    init {
+        load()
+    }
 
-    fun load() = launchResult(block = { unified.listSkills() }, onSuccess = { _list.value = it ?: emptyList() })
+    fun load() = launchResult(
+        block = { unified.listSkills() },
+        onSuccess = { _list.value = it }
+    )
+
+    fun loadDetail(skill: Skill, onSuccess: (Skill) -> Unit) =
+        launchResult(block = { unified.getSkillStorage(skill) }, onSuccess = onSuccess)
 
     fun create(req: SkillRequest) =
-        launchResult(block = { unified.createSkill(req) }, onSuccess = { load() })
+        launchResult(block = { unified.createSkill(req) }, onSuccess = {
+            showToast(string(R.string.skills_saved))
+            load()
+        })
 
     fun update(id: String, req: SkillRequest) =
-        launchResult(block = { unified.updateSkill(id, req) }, onSuccess = { load() })
+        launchResult(block = { unified.updateSkill(id, req) }, onSuccess = {
+            showToast(string(R.string.skills_saved))
+            load()
+        })
+
+    fun install(req: SkillInstallRequest) =
+        launchResult(block = { unified.installSkillFromUrl(req) }, onSuccess = {
+            showToast(string(R.string.skills_installed_count, it.size))
+            load()
+        })
 
     fun delete(id: String) =
         launchResult(block = { unified.deleteSkill(id) }, onSuccess = { load() })
@@ -95,10 +119,20 @@ fun SkillsScreen(onBack: () -> Unit) {
     val list by vm.list.collectAsState()
     val loading by vm.loading.collectAsState()
     val error by vm.error.collectAsState()
+    val toast by vm.toast.collectAsState()
+    val context = LocalContext.current
 
     var showForm by remember { mutableStateOf(false) }
+    var showInstaller by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<Skill?>(null) }
     var deleteTarget by remember { mutableStateOf<Skill?>(null) }
+
+    LaunchedEffect(toast) {
+        toast?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            vm.clearToast()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -106,10 +140,19 @@ fun SkillsScreen(onBack: () -> Unit) {
                 title = { Text(stringResource(R.string.skills_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.common_back)
+                        )
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showInstaller = true }) {
+                        Icon(
+                            Icons.Filled.CloudDownload,
+                            contentDescription = stringResource(R.string.skills_install_url)
+                        )
+                    }
                     IconButton(onClick = {
                         editingItem = null
                         showForm = true
@@ -130,38 +173,47 @@ fun SkillsScreen(onBack: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (list.isEmpty() && !loading) {
-                EmptyState(title = stringResource(R.string.skills_empty_title), hint = stringResource(R.string.skills_empty_hint))
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    if (error != null) {
-                        item {
-                            ErrorBanner(message = error!!, onRetry = {
-                                vm.clearError()
-                                vm.load()
-                            })
-                        }
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                item { SkillInfoCard() }
+                error?.let { message ->
+                    item {
+                        ErrorBanner(message = message, onRetry = {
+                            vm.clearError()
+                            vm.load()
+                        })
                     }
-                    items(list, key = { it.id ?: it.hashCode().toString() }) { skill ->
+                }
+                if (list.isEmpty() && !loading) {
+                    item {
+                        EmptyState(
+                            title = stringResource(R.string.skills_empty_title),
+                            hint = stringResource(R.string.skills_empty_hint)
+                        )
+                    }
+                } else {
+                    items(list, key = { it.id ?: it.name }) { skill ->
                         SkillCard(
                             skill = skill,
-                            onEdit = { editingItem = skill; showForm = true },
+                            onEdit = {
+                                vm.loadDetail(skill) { detail ->
+                                    editingItem = detail
+                                    showForm = true
+                                }
+                            },
                             onDelete = { deleteTarget = skill },
-                            onToggle = { skill.id?.let { vm.toggle(it) } }
+                            onToggle = { skill.id?.let(vm::toggle) }
                         )
                     }
                 }
             }
-
             LoadingOverlay(visible = loading)
         }
     }
 
-    // 新建/编辑表单弹窗
     if (showForm) {
         SkillFormDialog(
             initial = editingItem,
@@ -177,7 +229,16 @@ fun SkillsScreen(onBack: () -> Unit) {
         )
     }
 
-    // 删除确认弹窗
+    if (showInstaller) {
+        SkillInstallDialog(
+            onConfirm = {
+                vm.install(it)
+                showInstaller = false
+            },
+            onDismiss = { showInstaller = false }
+        )
+    }
+
     deleteTarget?.let { target ->
         NekoDialog(
             onDismiss = { deleteTarget = null },
@@ -185,16 +246,30 @@ fun SkillsScreen(onBack: () -> Unit) {
             message = stringResource(R.string.skills_delete_message, target.displayName),
             confirmText = stringResource(R.string.common_delete),
             onConfirm = {
-                target.id?.let { vm.delete(it) }
+                target.id?.let(vm::delete)
                 deleteTarget = null
             }
         )
     }
 }
 
-/**
- * Skill 卡片：展示名称、启停状态、描述、别名与操作菜单。
- */
+@Composable
+private fun SkillInfoCard() {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.skills_storage_standard),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = stringResource(R.string.skills_storage_standard_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
 @Composable
 private fun SkillCard(
     skill: Skill,
@@ -203,20 +278,30 @@ private fun SkillCard(
     onToggle: () -> Unit
 ) {
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        // 顶部行：名称 + 启停状态标记 + 操作菜单
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = skill.displayName,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f)
-            )
-            // 启停状态标记（颜色区分）
-            val (statusText, statusColor) = if (skill.enabled) stringResource(R.string.skills_status_enabled) to SuccessGreen else stringResource(R.string.skills_status_disabled) to WarningAmber
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = skill.displayName,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (skill.hasStorage) {
+                    Text(
+                        text = stringResource(R.string.skills_storage_file_count, skill.files.size),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+            val (statusText, statusColor) = if (skill.enabled) {
+                stringResource(R.string.skills_status_enabled) to SuccessGreen
+            } else {
+                stringResource(R.string.skills_status_disabled) to WarningAmber
+            }
             Box(
                 modifier = Modifier
                     .background(statusColor.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
@@ -228,65 +313,108 @@ private fun SkillCard(
             var menuExpanded by remember { mutableStateOf(false) }
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.skills_action), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(
+                        Icons.Filled.MoreVert,
+                        contentDescription = stringResource(R.string.skills_action),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-                DropdownMenu(
+                GlassDropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false }
                 ) {
-                    DropdownMenuItem(text = { Text(stringResource(R.string.common_edit)) }, onClick = { menuExpanded = false; onEdit() })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.skills_toggle)) }, onClick = { menuExpanded = false; onToggle() })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.common_delete), color = ErrorRed) }, onClick = { menuExpanded = false; onDelete() })
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.common_edit)) },
+                        onClick = { menuExpanded = false; onEdit() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.skills_toggle)) },
+                        onClick = { menuExpanded = false; onToggle() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.common_delete), color = ErrorRed) },
+                        onClick = { menuExpanded = false; onDelete() }
+                    )
                 }
             }
         }
 
         Spacer(Modifier.height(8.dp))
-        Text(stringResource(R.string.skills_description, skill.description ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            stringResource(R.string.skills_description, skill.description ?: "—"),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         if (skill.aliases.isNotEmpty()) {
-            Text(stringResource(R.string.skills_aliases, skill.aliases.joinToString(", ")), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                stringResource(R.string.skills_aliases, skill.aliases.joinToString(", ")),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
-        Text(stringResource(R.string.skills_created_at, skill.createdAt ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        skill.sourceUrl?.takeIf { it.isNotBlank() }?.let {
+            Text(
+                text = stringResource(R.string.skills_source, it),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2
+            )
+        }
     }
 }
 
-/**
- * Skill 新建/编辑表单弹窗
- */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SkillFormDialog(
     initial: Skill?,
     onConfirm: (SkillRequest) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var name by remember { mutableStateOf(initial?.name ?: "") }
-    var description by remember { mutableStateOf(initial?.description ?: "") }
-    var aliases by remember { mutableStateOf(initial?.aliases?.joinToString(", ") ?: "") }
-    var enabled by remember { mutableStateOf(initial?.enabled ?: true) }
+    var name by remember(initial) { mutableStateOf(initial?.name ?: "") }
+    var description by remember(initial) { mutableStateOf(initial?.description ?: "") }
+    var aliases by remember(initial) { mutableStateOf(initial?.aliases?.joinToString(", ") ?: "") }
+    var parameters by remember(initial) {
+        mutableStateOf(initial?.parameters?.toString()?.takeUnless { it == "null" } ?: "{}")
+    }
+    var skillMd by remember(initial) { mutableStateOf(initial?.skillMd ?: "") }
+    var referenceMd by remember(initial) { mutableStateOf(initial?.referenceMd ?: "") }
+    var enabled by remember(initial) { mutableStateOf(initial?.enabled ?: true) }
     val context = LocalContext.current
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = if (initial == null) stringResource(R.string.skills_new) else stringResource(R.string.skills_edit),
+        title = if (initial == null) {
+            stringResource(R.string.skills_new)
+        } else {
+            stringResource(R.string.skills_edit)
+        },
         confirmText = stringResource(R.string.common_save),
         onConfirm = {
             if (name.isBlank()) {
                 Toast.makeText(context, context.getString(R.string.skills_name_required), Toast.LENGTH_SHORT).show()
-            } else {
-                val req = SkillRequest(
-                    name = name,
-                    description = description.ifBlank { null },
-                    aliases = aliases.split(",", "，").map { it.trim() }.filter { it.isNotBlank() },
-                    enabled = enabled
-                )
-                onConfirm(req)
+                return@NekoDialog
             }
+            val parsedParameters: JsonElement? = try {
+                parameters.takeIf { it.isNotBlank() }?.let(JsonParser::parseString)
+            } catch (_: Exception) {
+                Toast.makeText(context, context.getString(R.string.skills_parameters_invalid), Toast.LENGTH_SHORT).show()
+                return@NekoDialog
+            }
+            onConfirm(
+                SkillRequest(
+                    name = name.trim(),
+                    description = description.ifBlank { null },
+                    aliases = aliases.split(',', '，').map { it.trim() }.filter { it.isNotBlank() },
+                    enabled = enabled,
+                    parameters = parsedParameters,
+                    skillMd = skillMd.ifBlank { null },
+                    referenceMd = referenceMd
+                )
+            )
         }
     ) {
         Column(
             modifier = Modifier
-                .heightIn(max = 420.dp)
+                .heightIn(max = 620.dp)
                 .verticalScroll(rememberScrollState())
         ) {
             OutlinedTextField(
@@ -313,12 +441,122 @@ private fun SkillFormDialog(
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = skillMd,
+                onValueChange = { skillMd = it },
+                label = { Text(stringResource(R.string.skills_markdown_label)) },
+                supportingText = { Text(stringResource(R.string.skills_markdown_hint)) },
+                minLines = 7,
+                maxLines = 14,
+                textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = referenceMd,
+                onValueChange = { referenceMd = it },
+                label = { Text(stringResource(R.string.skills_reference_label)) },
+                minLines = 3,
+                maxLines = 10,
+                textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = parameters,
+                onValueChange = { parameters = it },
+                label = { Text(stringResource(R.string.skills_parameters_label)) },
+                minLines = 3,
+                textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(stringResource(R.string.skills_enabled_label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                Text(
+                    stringResource(R.string.skills_enabled_label),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f)
+                )
                 Switch(checked = enabled, onCheckedChange = { enabled = it })
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkillInstallDialog(
+    onConfirm: (SkillInstallRequest) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var url by remember { mutableStateOf("") }
+    var enabled by remember { mutableStateOf(true) }
+    var overwrite by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    NekoDialog(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.skills_install_url),
+        confirmText = stringResource(R.string.skills_install),
+        onConfirm = {
+            val normalized = url.trim()
+            if (!normalized.startsWith("https://") && !normalized.startsWith("http://")) {
+                Toast.makeText(context, context.getString(R.string.skills_url_invalid), Toast.LENGTH_SHORT).show()
+            } else {
+                onConfirm(SkillInstallRequest(normalized, enabled, overwrite))
+            }
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .heightIn(max = 460.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            Text(
+                text = stringResource(R.string.skills_install_formats),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = url,
+                onValueChange = { url = it },
+                label = { Text(stringResource(R.string.skills_url_label)) },
+                placeholder = { Text("https://github.com/owner/repo") },
+                minLines = 2,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.skills_enabled_label))
+                    Text(
+                        stringResource(R.string.skills_install_enabled_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(checked = enabled, onCheckedChange = { enabled = it })
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.skills_overwrite))
+                    Text(
+                        stringResource(R.string.skills_overwrite_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(checked = overwrite, onCheckedChange = { overwrite = it })
             }
         }
     }

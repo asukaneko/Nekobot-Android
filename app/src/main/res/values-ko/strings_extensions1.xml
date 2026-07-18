@@ -11,7 +11,7 @@
     <string name="extensions_knowledge">지식 베이스</string>
     <string name="extensions_knowledge_desc">RAG 문서 및 벡터 검색</string>
     <string name="extensions_skills">Skills</string>
-    <string name="extensions_skills_desc">스킬 메타데이터 관리</string>
+    <string name="extensions_skills_desc">스킬 폴더, SKILL.md 및 저장소 설치</string>
     <string name="extensions_tools">Tools</string>
     <string name="extensions_tools_desc">도구 함수 및 구현</string>
     <string name="extensions_mcp">MCP 서버</string>

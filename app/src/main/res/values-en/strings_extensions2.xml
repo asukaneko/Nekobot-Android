@@ -20,6 +20,25 @@
     <string name="skills_description_label">Description</string>
     <string name="skills_aliases_label">Aliases (comma-separated)</string>
     <string name="skills_enabled_label">Enabled</string>
+    <string name="skills_saved">Skill saved</string>
+    <string name="skills_install_url">Install from URL</string>
+    <string name="skills_install">Download and install</string>
+    <string name="skills_installed_count">Installed %1$d Skill(s)</string>
+    <string name="skills_url_label">GitHub, SKILL.md, or ZIP URL</string>
+    <string name="skills_url_invalid">Enter a valid http/https URL</string>
+    <string name="skills_install_formats">Supports skills.sh, GitHub/GitLab repositories and subpaths, direct SKILL.md links, and ZIP files. Repositories containing multiple SKILL.md files are installed in batch.</string>
+    <string name="skills_install_enabled_hint">Make it available to agents immediately</string>
+    <string name="skills_overwrite">Overwrite same-name Skills</string>
+    <string name="skills_overwrite_hint">When off, installation stops on a name conflict</string>
+    <string name="skills_storage_standard">Folder-based Skills</string>
+    <string name="skills_storage_standard_desc">Each Skill uses SKILL.md as its core instructions and may include reference.md, LICENSE.txt, resources/, and scripts/. Agents read enabled Skills when needed; downloaded scripts are never run automatically.</string>
+    <string name="skills_storage_file_count">%1$d stored file(s)</string>
+    <string name="skills_source">Source: %1$s</string>
+    <string name="skills_markdown_label">SKILL.md</string>
+    <string name="skills_markdown_hint">When to use the Skill, its steps, constraints, and output requirements</string>
+    <string name="skills_reference_label">reference.md (optional)</string>
+    <string name="skills_parameters_label">Parameter schema (JSON)</string>
+    <string name="skills_parameters_invalid">The parameter schema is not valid JSON</string>
 
     <!-- ==================== Tools ==================== -->
     <string name="tools_title">Tools</string>

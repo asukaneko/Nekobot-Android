@@ -464,16 +464,43 @@ interface ApiService {
     suspend fun listSkills(): Response<List<Skill>>
 
     @POST("api/skills")
-    suspend fun createSkill(@Body body: SkillRequest): Response<Skill>
+    suspend fun createSkill(@Body body: SkillRequest): Response<SkillMutationResponse>
 
     @PUT("api/skills/{id}")
-    suspend fun updateSkill(@Path("id") id: String, @Body body: SkillRequest): Response<Skill>
+    suspend fun updateSkill(@Path("id") id: String, @Body body: SkillRequest): Response<SkillMutationResponse>
 
     @DELETE("api/skills/{id}")
     suspend fun deleteSkill(@Path("id") id: String): Response<ApiResult>
 
     @POST("api/skills/{id}/toggle")
-    suspend fun toggleSkill(@Path("id") id: String): Response<Skill>
+    suspend fun toggleSkill(@Path("id") id: String): Response<SkillMutationResponse>
+
+    @GET("api/skills/storage/{skillName}")
+    suspend fun getSkillStorage(@Path("skillName") skillName: String): Response<SkillStorageDetail>
+
+    @GET("api/skills/storage/{skillName}/file/config.json")
+    suspend fun getSkillStorageConfig(@Path("skillName") skillName: String): Response<JsonElement>
+
+    @POST("api/skills/storage/{skillName}/skill-md")
+    suspend fun saveSkillMarkdown(
+        @Path("skillName") skillName: String,
+        @Body body: Map<String, String>
+    ): Response<ApiResult>
+
+    @POST("api/skills/storage/{skillName}/reference-md")
+    suspend fun saveSkillReference(
+        @Path("skillName") skillName: String,
+        @Body body: Map<String, String>
+    ): Response<ApiResult>
+
+    @Multipart
+    @POST("api/skills/upload-folder")
+    suspend fun uploadSkillFolder(
+        @Part("folder_name") folderName: RequestBody,
+        @Part("skill_md") skillMd: RequestBody,
+        @Part("skill_config") skillConfig: RequestBody,
+        @Part files: List<MultipartBody.Part>
+    ): Response<SkillUploadResponse>
 
     // ==================== Tools 配置 ====================
     @GET("api/tools")

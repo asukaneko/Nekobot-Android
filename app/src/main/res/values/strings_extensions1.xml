@@ -11,7 +11,7 @@
     <string name="extensions_knowledge">知识库</string>
     <string name="extensions_knowledge_desc">RAG 文档与向量检索</string>
     <string name="extensions_skills">Skills 配置</string>
-    <string name="extensions_skills_desc">技能元数据管理</string>
+    <string name="extensions_skills_desc">技能目录、SKILL.md 与仓库安装</string>
     <string name="extensions_tools">Tools 配置</string>
     <string name="extensions_tools_desc">工具函数与实现</string>
     <string name="extensions_mcp">MCP 服务</string>

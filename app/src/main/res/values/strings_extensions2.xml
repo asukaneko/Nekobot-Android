@@ -20,6 +20,25 @@
     <string name="skills_description_label">描述</string>
     <string name="skills_aliases_label">别名（逗号分隔）</string>
     <string name="skills_enabled_label">启用</string>
+    <string name="skills_saved">Skill 已保存</string>
+    <string name="skills_install_url">从 URL 安装</string>
+    <string name="skills_install">下载并安装</string>
+    <string name="skills_installed_count">已安装 %1$d 个 Skill</string>
+    <string name="skills_url_label">GitHub、SKILL.md 或 ZIP URL</string>
+    <string name="skills_url_invalid">请输入有效的 http/https URL</string>
+    <string name="skills_install_formats">支持 skills.sh、GitHub/GitLab 仓库及子路径、SKILL.md 直链和 ZIP。仓库中有多个 SKILL.md 时会批量安装。</string>
+    <string name="skills_install_enabled_hint">安装后立即提供给 Agent 使用</string>
+    <string name="skills_overwrite">覆盖同名 Skill</string>
+    <string name="skills_overwrite_hint">关闭时遇到同名技能会停止安装，避免误覆盖</string>
+    <string name="skills_storage_standard">目录式 Skill</string>
+    <string name="skills_storage_standard_desc">每个 Skill 使用 SKILL.md 作为核心说明，可附带 reference.md、LICENSE.txt、resources/ 和 scripts/。Agent 会按需读取已启用的技能；下载脚本不会自动执行。</string>
+    <string name="skills_storage_file_count">%1$d 个存储文件</string>
+    <string name="skills_source">来源: %1$s</string>
+    <string name="skills_markdown_label">SKILL.md</string>
+    <string name="skills_markdown_hint">技能的适用场景、步骤、限制和输出要求</string>
+    <string name="skills_reference_label">reference.md（可选）</string>
+    <string name="skills_parameters_label">参数定义（JSON）</string>
+    <string name="skills_parameters_invalid">参数定义不是有效的 JSON</string>
 
     <!-- ==================== Tools 配置 ==================== -->
     <string name="tools_title">Tools 配置</string>

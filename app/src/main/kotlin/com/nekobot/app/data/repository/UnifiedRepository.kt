@@ -8,6 +8,8 @@ import com.google.gson.JsonParser
 import com.nekobot.app.data.local.LocalRepository
 import com.nekobot.app.data.local.NbotConfigImporter
 import com.nekobot.app.data.local.PrefsManager
+import com.nekobot.app.data.local.SkillPackageDownloader
+import com.nekobot.app.data.local.validateSkillNameValue
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.local.db.LocalMessageEntity
 import com.nekobot.app.data.local.db.LocalSessionEntity
@@ -51,6 +53,7 @@ import com.nekobot.app.data.model.PlotSwitchRequest
 import com.nekobot.app.data.model.PlotToggleRequest
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.Skill
+import com.nekobot.app.data.model.SkillInstallRequest
 import com.nekobot.app.data.model.SkillRequest
 import com.nekobot.app.data.model.SttTranscribeResponse
 import com.nekobot.app.data.model.SwitchStateRequest
@@ -77,6 +80,8 @@ import com.nekobot.app.data.model.WorldBookRequest
 import com.nekobot.app.data.remote.RealtimeEvent
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.MultipartBody
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -98,6 +103,7 @@ class UnifiedRepository(
 ) {
     private val gson = Gson()
     private val isLocal: Boolean get() = prefs.isLocalMode
+    private val skillPackageDownloader = SkillPackageDownloader()
 
     // ==================== 认证 ====================
 
@@ -725,14 +731,29 @@ class UnifiedRepository(
         if (isLocal) runCatching { Resource.Success(local.listSkills()) }
             .getOrElse { Resource.Error(it.message ?: "加载失败") }
         else remote.listSkills()
-    suspend fun createSkill(req: SkillRequest): Resource<Skill> =
-        if (isLocal) runCatching { Resource.Success(local.createSkill(req)) }
+    suspend fun getSkillStorage(skill: Skill): Resource<Skill> =
+        if (isLocal) runCatching {
+            val latest = local.listSkills().firstOrNull { it.id == skill.id || it.name == skill.name }
+                ?: throw IllegalStateException("Skill 不存在")
+            Resource.Success(latest)
+        }.getOrElse { Resource.Error(it.message ?: "加载 Skill 文件失败") }
+        else remote.getSkillStorage(skill)
+    suspend fun createSkill(req: SkillRequest): Resource<Skill> {
+        val normalized = runCatching { validateSkillNameValue(req.name) }
+            .getOrElse { return Resource.Error(it.message ?: "Skill 名称无效") }
+        val body = if (normalized == req.name) req else req.copy(name = normalized)
+        return if (isLocal) runCatching { Resource.Success(local.createSkill(body)) }
             .getOrElse { Resource.Error(it.message ?: "创建失败") }
-        else remote.createSkill(req)
-    suspend fun updateSkill(id: String, req: SkillRequest): Resource<Skill> =
-        if (isLocal) runCatching { Resource.Success(local.updateSkill(id, req)) }
+        else remote.createSkill(body)
+    }
+    suspend fun updateSkill(id: String, req: SkillRequest): Resource<Skill> {
+        val normalized = runCatching { validateSkillNameValue(req.name) }
+            .getOrElse { return Resource.Error(it.message ?: "Skill 名称无效") }
+        val body = if (normalized == req.name) req else req.copy(name = normalized)
+        return if (isLocal) runCatching { Resource.Success(local.updateSkill(id, body)) }
             .getOrElse { Resource.Error(it.message ?: "更新失败") }
-        else remote.updateSkill(id, req)
+        else remote.updateSkill(id, body)
+    }
     suspend fun deleteSkill(id: String): Resource<Unit> =
         if (isLocal) runCatching { local.deleteSkill(id); Resource.Success(Unit) }
             .getOrElse { Resource.Error(it.message ?: "删除失败") }
@@ -741,6 +762,73 @@ class UnifiedRepository(
         if (isLocal) runCatching { Resource.Success(local.toggleSkill(id)) }
             .getOrElse { Resource.Error(it.message ?: "切换失败") }
         else remote.toggleSkill(id)
+    suspend fun installSkillFromUrl(req: SkillInstallRequest): Resource<List<Skill>> =
+        if (isLocal) {
+            runCatching { Resource.Success(local.installSkillFromUrl(req)) }
+                .getOrElse { Resource.Error(it.message ?: "安装失败") }
+        } else {
+            withContext(Dispatchers.IO) {
+                try {
+                    val packages = skillPackageDownloader.download(req.url)
+                    val duplicateNames = packages
+                        .groupBy { it.name.lowercase(java.util.Locale.ROOT) }
+                        .filterValues { it.size > 1 }
+                        .keys
+                    if (duplicateNames.isNotEmpty()) {
+                        return@withContext Resource.Error(
+                            "仓库中包含重名 Skill: ${duplicateNames.joinToString()}"
+                        )
+                    }
+                    val listed = when (val result = remote.listSkills()) {
+                        is Resource.Success -> result.data
+                        is Resource.Error -> return@withContext result
+                        is Resource.Loading -> return@withContext Resource.Loading
+                    }
+                    val conflicts = packages.mapNotNull { pkg ->
+                        listed.firstOrNull { it.name.equals(pkg.name, true) }
+                    }
+                    if (conflicts.isNotEmpty() && !req.overwrite) {
+                        return@withContext Resource.Error(
+                            "以下 Skill 已存在：${conflicts.joinToString { it.name }}。如需替换，请开启覆盖同名。"
+                        )
+                    }
+                    if (req.overwrite) {
+                        for (conflict in conflicts) {
+                            val id = conflict.id ?: continue
+                            if (remote.deleteSkill(id) is Resource.Error) {
+                                return@withContext Resource.Error("无法覆盖 Skill「${conflict.name}」")
+                            }
+                        }
+                    }
+                    val installed = mutableListOf<Skill>()
+                    for (pkg in packages) {
+                        val uploaded = when (val result = remote.uploadSkillPackage(pkg)) {
+                            is Resource.Success -> result.data
+                            is Resource.Error -> return@withContext result
+                            is Resource.Loading -> return@withContext Resource.Loading
+                        }
+                        val finalSkill = if (!req.enabled && uploaded.enabled) {
+                            val id = uploaded.id
+                                ?: return@withContext Resource.Error("服务器未返回 Skill ID")
+                            when (val toggled = remote.toggleSkill(id)) {
+                                is Resource.Success -> toggled.data
+                                is Resource.Error -> return@withContext toggled
+                                is Resource.Loading -> return@withContext Resource.Loading
+                            }
+                        } else uploaded
+                        installed += finalSkill.copy(
+                            skillMd = pkg.skillMd,
+                            referenceMd = pkg.referenceMd,
+                            sourceUrl = req.url,
+                            hasStorage = true
+                        )
+                    }
+                    Resource.Success(installed)
+                } catch (e: Exception) {
+                    Resource.Error(e.message ?: "安装失败")
+                }
+            }
+        }
 
     // ---- Tools 配置 ----
     suspend fun listTools(): Resource<List<Tool>> =

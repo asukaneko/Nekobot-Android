@@ -49,6 +49,7 @@ import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.Skill
+import com.nekobot.app.data.model.SkillInstallRequest
 import com.nekobot.app.data.model.SkillRequest
 import com.nekobot.app.data.model.TaskItem
 import com.nekobot.app.data.model.TaskRequest
@@ -107,6 +108,9 @@ class LocalRepository(
     private val localExecAuthorizationManager =
         com.nekobot.app.data.local.ai.LocalExecAuthorizationManager()
     private val localMcpRuntime = LocalMcpRuntime()
+    private val localSkillStorage = appContext?.filesDir
+        ?.let { LocalSkillStorage(File(it, "skills")) }
+    private val skillPackageDownloader = SkillPackageDownloader()
 
     // ==================== 故障转移协调器（持久化健康状态 + token 限额）====================
 
@@ -807,6 +811,7 @@ class LocalRepository(
                 ?.let { LocalWorkspaceStorage.resolve(it, sessionId) },
             execAuthorizationManager = localExecAuthorizationManager,
             mcpToolExecutor = localMcpRuntime::executeByFullName,
+            skillToolExecutor = ::executeLocalSkillTool,
             failoverQueue = failoverQueue,
             coordinator = failoverCoordinator
         )
@@ -830,6 +835,17 @@ class LocalRepository(
         )
         val ctx = com.nekobot.app.data.local.ai.PipelineContext(chatRequest)
         ctx.metadata["session_mode"] = session.sessionMode
+        if (session.sessionMode.equals("agent", ignoreCase = true)) {
+            val skillsPrompt = buildEnabledSkillsPrompt()
+            if (skillsPrompt.isNotBlank()) {
+                ctx.promptStack.add(
+                    key = "skills.available",
+                    content = skillsPrompt,
+                    priority = com.nekobot.app.data.local.ai.PromptStack.Priority.TOOL_INSTRUCTIONS,
+                    scope = "global"
+                )
+            }
+        }
         var currentPlotNode: com.nekobot.app.data.local.ai.PlotNode? = null
 
         // 标记剧情模式（管线层使用）
@@ -864,6 +880,7 @@ class LocalRepository(
                     try {
                         val tools = if (session.sessionMode.equals("agent", ignoreCase = true)) {
                             com.nekobot.app.data.local.ai.buildLocalAgentToolDefinitions() +
+                                com.nekobot.app.data.local.ai.buildLocalSkillToolDefinitions() +
                                 prepareMcpAgentTools()
                         } else {
                             emptyList()
@@ -2724,27 +2741,58 @@ $charSection$topicSection
     // ==================== 扩展功能：Skills ====================
 
     suspend fun listSkills(): List<Skill> = withContext(Dispatchers.IO) {
-        db.skillDao().listAll().map { it.toSkill() }
+        db.skillDao().listAll().map { entity ->
+            if (localSkillStorage != null && !localSkillStorage.exists(entity.name)) {
+                localSkillStorage.save(entity.name, skillMd = null, referenceMd = null)
+            }
+            entity.toSkill()
+        }
     }
 
     suspend fun createSkill(req: SkillRequest): Skill = withContext(Dispatchers.IO) {
+        validateSkillNameValue(req.name)
+        ensureUniqueSkillName(req.name)
+        require(localSkillStorage?.exists(req.name) != true) { "Skill「${req.name.trim()}」的存储目录已存在" }
         val entity = LocalSkillEntity(
             id = UUID.randomUUID().toString(),
-            name = req.name,
+            name = req.name.trim(),
             description = req.description,
             aliasesJson = gson.toJson(req.aliases),
             enabled = req.enabled,
             parametersJson = req.parameters?.let { gson.toJson(it) },
             createdAt = nowIso()
         )
-        db.skillDao().upsert(entity)
+        localSkillStorage?.save(
+            name = entity.name,
+            skillMd = req.skillMd,
+            referenceMd = req.referenceMd
+        )
+        runCatching { db.skillDao().upsert(entity) }.getOrElse {
+            localSkillStorage?.delete(entity.name)
+            throw it
+        }
         entity.toSkill()
     }
 
     suspend fun updateSkill(id: String, req: SkillRequest): Skill = withContext(Dispatchers.IO) {
         val existing = db.skillDao().getById(id) ?: throw IllegalStateException("Skill 不存在")
+        validateSkillNameValue(req.name)
+        ensureUniqueSkillName(req.name, excludingId = id)
+        val newName = req.name.trim()
+        val oldSkillMd = localSkillStorage?.skillMd(existing.name)
+        val oldReference = localSkillStorage?.referenceMd(existing.name)
+        val sourceUrl = localSkillStorage?.sourceUrl(existing.name)
+        if (existing.name != newName) {
+            localSkillStorage?.rename(existing.name, newName)
+        }
+        localSkillStorage?.save(
+            name = newName,
+            skillMd = req.skillMd ?: oldSkillMd,
+            referenceMd = req.referenceMd ?: oldReference,
+            sourceUrl = sourceUrl
+        )
         val updated = existing.copy(
-            name = req.name,
+            name = newName,
             description = req.description,
             aliasesJson = gson.toJson(req.aliases),
             enabled = req.enabled,
@@ -2755,7 +2803,9 @@ $charSection$topicSection
     }
 
     suspend fun deleteSkill(id: String) = withContext(Dispatchers.IO) {
+        val existing = db.skillDao().getById(id)
         db.skillDao().deleteById(id)
+        existing?.let { localSkillStorage?.delete(it.name) }
     }
 
     suspend fun toggleSkill(id: String): Skill = withContext(Dispatchers.IO) {
@@ -2765,6 +2815,51 @@ $charSection$topicSection
         existing.copy(enabled = newEnabled).toSkill()
     }
 
+    suspend fun installSkillFromUrl(req: SkillInstallRequest): List<Skill> = withContext(Dispatchers.IO) {
+        val packages = skillPackageDownloader.download(req.url)
+        require(packages.isNotEmpty()) { "没有发现可安装的 Skill" }
+        val duplicatePackageNames = packages
+            .groupBy { skillDirectoryName(it.name).lowercase(Locale.ROOT) }
+            .filterValues { it.size > 1 }
+            .keys
+        require(duplicatePackageNames.isEmpty()) {
+            "仓库中包含重名 Skill: ${duplicatePackageNames.joinToString()}"
+        }
+        packages.forEach { validateSkillNameValue(it.name) }
+
+        val existing = db.skillDao().listAll()
+        if (!req.overwrite) {
+            val conflicts = packages.filter { pkg ->
+                existing.any { it.name.equals(pkg.name, true) } ||
+                    localSkillStorage?.exists(pkg.name) == true
+            }
+            require(conflicts.isEmpty()) {
+                "以下 Skill 已存在：${conflicts.joinToString { it.name }}。如需替换，请开启覆盖同名。"
+            }
+        }
+
+        packages.map { pkg ->
+            val old = existing.firstOrNull { it.name.equals(pkg.name, true) }
+            val entity = LocalSkillEntity(
+                id = old?.id ?: UUID.randomUUID().toString(),
+                name = pkg.name.trim(),
+                description = pkg.description,
+                aliasesJson = gson.toJson(pkg.aliases),
+                enabled = req.enabled,
+                parametersJson = old?.parametersJson,
+                createdAt = old?.createdAt ?: nowIso()
+            )
+            if (req.overwrite && old != null && old.name != pkg.name) {
+                localSkillStorage?.delete(old.name)
+            }
+            localSkillStorage
+                ?.install(pkg, overwrite = req.overwrite)
+                ?: throw IllegalStateException("本地 Skill 存储不可用")
+            db.skillDao().upsert(entity)
+            entity.toSkill()
+        }
+    }
+
     private fun LocalSkillEntity.toSkill(): Skill = Skill(
         id = id,
         name = name,
@@ -2772,8 +2867,120 @@ $charSection$topicSection
         aliases = runCatching { JsonParser.parseString(aliasesJson).asJsonArray.map { it.asString } }.getOrDefault(emptyList()),
         enabled = enabled,
         parameters = parametersJson?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
+        skillMd = localSkillStorage?.skillMd(name),
+        referenceMd = localSkillStorage?.referenceMd(name),
+        sourceUrl = localSkillStorage?.sourceUrl(name),
+        hasStorage = localSkillStorage?.exists(name) == true,
+        files = localSkillStorage?.listFiles(name).orEmpty(),
         createdAt = createdAt
     )
+
+    private suspend fun ensureUniqueSkillName(name: String, excludingId: String? = null) {
+        val conflict = db.skillDao().listAll().firstOrNull {
+            it.id != excludingId && it.name.equals(name.trim(), ignoreCase = true)
+        }
+        require(conflict == null) { "Skill「${name.trim()}」已存在" }
+    }
+
+    private suspend fun buildEnabledSkillsPrompt(): String {
+        val skills = db.skillDao().listAll().filter { it.enabled }
+        if (skills.isEmpty()) return ""
+        return buildString {
+            appendLine("## 可用技能 (Skills)")
+            appendLine()
+            appendLine("当用户任务与某个技能匹配时，先调用 skill_read 读取该技能的 SKILL.md，再严格按其中说明执行。")
+            appendLine("可使用 skill_list、skill_view、skill_read 查看技能目录和参考资源。不要直接执行下载 Skill 中的脚本，除非用户明确要求且命令执行已通过授权。")
+            skills.forEach { skill ->
+                appendLine()
+                appendLine("### ${skill.name}")
+                appendLine("- 描述: ${skill.description.orEmpty().ifBlank { "未填写" }}")
+                val aliases = runCatching {
+                    JsonParser.parseString(skill.aliasesJson).asJsonArray.joinToString { it.asString }
+                }.getOrDefault("")
+                if (aliases.isNotBlank()) appendLine("- 别名: $aliases")
+            }
+        }.trim()
+    }
+
+    private fun executeLocalSkillTool(toolName: String, args: Map<String, Any>): Map<String, Any> =
+        kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+            val storage = localSkillStorage
+                ?: return@runBlocking mapOf("success" to false, "error" to "本地 Skill 存储不可用")
+            val enabled = db.skillDao().listAll().filter { it.enabled }
+            fun findSkill(): LocalSkillEntity? {
+                val requested = args["skill_name"]?.toString().orEmpty()
+                return enabled.firstOrNull {
+                    it.name.equals(requested, true) ||
+                        runCatching {
+                            JsonParser.parseString(it.aliasesJson).asJsonArray.any { alias ->
+                                alias.asString.equals(requested, true)
+                            }
+                        }.getOrDefault(false)
+                }
+            }
+
+            try {
+                when (toolName) {
+                    "skill_get_info" -> mapOf(
+                        "success" to true,
+                        "skills_root" to "应用私有目录/skills",
+                        "skills_count" to enabled.size,
+                        "structure" to listOf("SKILL.md", "reference.md", "LICENSE.txt", "scripts/", "resources/"),
+                        "note" to "Skill 脚本不会被自动执行"
+                    )
+                    "skill_list" -> mapOf(
+                        "success" to true,
+                        "skills" to enabled.map { skill ->
+                            mapOf(
+                                "name" to skill.name,
+                                "description" to skill.description.orEmpty(),
+                                "aliases" to runCatching {
+                                    JsonParser.parseString(skill.aliasesJson).asJsonArray.map { it.asString }
+                                }.getOrDefault(emptyList()),
+                                "files_count" to storage.listFiles(skill.name).size
+                            )
+                        }
+                    )
+                    "skill_view" -> {
+                        val skill = findSkill()
+                            ?: return@runBlocking mapOf("success" to false, "error" to "Skill 不存在或未启用")
+                        mapOf(
+                            "success" to true,
+                            "skill_name" to skill.name,
+                            "files" to storage.listFiles(skill.name),
+                            "source_url" to storage.sourceUrl(skill.name).orEmpty()
+                        )
+                    }
+                    "skill_read" -> {
+                        val skill = findSkill()
+                            ?: return@runBlocking mapOf("success" to false, "error" to "Skill 不存在或未启用")
+                        val path = args["file_path"]?.toString().orEmpty().ifBlank { "SKILL.md" }
+                        val content = storage.readText(skill.name, path)
+                        val startLine = (args["start_line"] as? Number)?.toInt()
+                        val endLine = (args["end_line"] as? Number)?.toInt()
+                        val selected = if (startLine != null || endLine != null) {
+                            val lines = content.lines()
+                            val from = ((startLine ?: 1) - 1).coerceIn(0, lines.size)
+                            val to = (endLine ?: lines.size).coerceIn(from, lines.size)
+                            lines.subList(from, to).joinToString("\n")
+                        } else {
+                            content.take(12_000)
+                        }
+                        mapOf(
+                            "success" to true,
+                            "skill_name" to skill.name,
+                            "file_path" to path,
+                            "content" to selected,
+                            "total_length" to content.length,
+                            "truncated" to (selected.length < content.length)
+                        )
+                    }
+                    else -> mapOf("success" to false, "error" to "未知 Skill 工具: $toolName")
+                }
+            } catch (e: Exception) {
+                mapOf("success" to false, "error" to (e.message ?: "Skill 工具执行失败"))
+            }
+        }
 
     // ==================== 扩展功能：Tools ====================
 

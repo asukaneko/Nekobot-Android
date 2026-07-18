@@ -799,17 +799,61 @@ data class Skill(
     val aliases: List<String> = emptyList(),
     val enabled: Boolean = true,
     val parameters: JsonElement? = null,
+    @SerializedName("skill_md") val skillMd: String? = null,
+    @SerializedName("reference_md") val referenceMd: String? = null,
+    val license: String? = null,
+    @SerializedName("source_url") val sourceUrl: String? = null,
+    @SerializedName("has_storage") val hasStorage: Boolean = false,
+    val files: List<SkillFileInfo> = emptyList(),
     @SerializedName("created_at") val createdAt: String? = null
 ) {
     val displayName: String get() = name.ifBlank { "未命名 Skill" }
 }
+
+data class SkillFileInfo(
+    val name: String = "",
+    val path: String = "",
+    val size: Long = 0,
+    val type: String = "other"
+)
 
 data class SkillRequest(
     val name: String,
     val description: String? = null,
     val aliases: List<String> = emptyList(),
     val enabled: Boolean = true,
-    val parameters: JsonElement? = null
+    val parameters: JsonElement? = null,
+    @SerializedName("skill_md") val skillMd: String? = null,
+    @SerializedName("reference_md") val referenceMd: String? = null
+)
+
+data class SkillInstallRequest(
+    val url: String,
+    val enabled: Boolean = true,
+    val overwrite: Boolean = false
+)
+
+data class SkillMutationResponse(
+    val success: Boolean? = null,
+    val skill: Skill? = null,
+    val enabled: Boolean? = null
+)
+
+data class SkillStorageDetail(
+    val name: String = "",
+    @SerializedName("skill_md") val skillMd: String? = null,
+    @SerializedName("reference_md") val referenceMd: String? = null,
+    val license: String? = null,
+    val files: List<SkillFileInfo> = emptyList(),
+    val scripts: List<String> = emptyList(),
+    val resources: List<String> = emptyList()
+)
+
+data class SkillUploadResponse(
+    val success: Boolean? = null,
+    val skill: Skill? = null,
+    val message: String? = null,
+    @SerializedName("files_count") val filesCount: Int? = null
 )
 
 // ==================== Tools 配置 ====================
