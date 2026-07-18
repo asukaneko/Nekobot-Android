@@ -390,6 +390,10 @@
     <string name="chat_my_messages_subtitle">내가 보낸 메시지 탐색</string>
     <string name="chat_upload_only">워크스페이스에만 업로드</string>
     <string name="chat_upload_only_subtitle">AI 트리거 없이 파일 저장</string>
+    <string name="chat_plot_mode">플롯 모드</string>
+    <string name="chat_plot_mode_subtitle">AI가 플롯 분기 옵션을 제공</string>
+    <string name="chat_plot_realtime_sync">실시간 동기화</string>
+    <string name="chat_plot_realtime_sync_subtitle">플롯 시간이 현실 시간과 동기화</string>
     <string name="chat_danger_zone">위험 구역</string>
     <string name="chat_clear_current_subtitle">모든 메시지 삭제, 되돌릴 수 없어요</string>
     <string name="chat_context_metric">컨텍스트</string>

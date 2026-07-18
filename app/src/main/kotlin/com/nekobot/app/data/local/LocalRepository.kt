@@ -1229,7 +1229,13 @@ class LocalRepository(
     suspend fun upsertWorldBook(book: WorldBook): WorldBook = withContext(Dispatchers.IO) {
         val now = nowIso()
         val entity = book.toEntity(now)
+        // 保留现有条目：REPLACE 冲突策略会先 DELETE 旧行再 INSERT，触发外键 CASCADE 删除所有条目；
+        // 这里先读出条目，upsert 后再插回，避免切换角色等场景下条目内容丢失
+        val existingEntries = worldBookDao.listEntries(entity.id)
         worldBookDao.upsert(entity)
+        if (existingEntries.isNotEmpty()) {
+            worldBookDao.upsertEntries(existingEntries)
+        }
         entity.toWorldBook()
     }
 
@@ -2208,7 +2214,12 @@ $charSection$topicSection
         id = id,
         name = name,
         description = description,
-        characterIds = listOfNotNull(characterId),
+        // 兼容多角色绑定：character_id 列以英文逗号分隔存储多个角色 ID
+        characterIds = characterId
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?: emptyList(),
         enabled = enabled,
         createdAt = createdAt,
         updatedAt = updatedAt
@@ -2218,7 +2229,10 @@ $charSection$topicSection
         id = id ?: UUID.randomUUID().toString(),
         name = name ?: "未命名世界书",
         description = description,
-        characterId = characterId,
+        // 多角色 ID 以英文逗号拼接存入单列，便于本地 SQLite 查询
+        characterId = characterIds
+            ?.takeIf { it.isNotEmpty() }
+            ?.joinToString(",") { it.trim() },
         enabled = enabled ?: true,
         createdAt = createdAt ?: now,
         updatedAt = now
@@ -2930,6 +2944,8 @@ $charSection$topicSection
             addProperty("model", active?.model ?: "")
             addProperty("temperature", active?.temperature ?: 0.7)
             addProperty("max_tokens", active?.maxTokens ?: 2048)
+            // 本地模型未单独存储上下文窗口长度，使用默认值 100k（与后端默认一致）
+            addProperty("max_context_length", 100000)
             addProperty("top_p", active?.topP ?: 1.0)
             addProperty("frequency_penalty", 0.0)
             addProperty("presence_penalty", 0.0)

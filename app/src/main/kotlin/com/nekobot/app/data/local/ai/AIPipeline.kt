@@ -314,7 +314,8 @@ class AIPipeline {
             if (item.key !in pipelineKeys) {
                 pipelineDebug.add(mapOf(
                     "key" to item.key,
-                    "content" to (if (item.content.length > 200) item.content.take(200) + "..." else item.content),
+                    // 注入详情界面展示完整内容，不再截断（与 PromptStack.renderDebug 行为一致）
+                    "content" to item.content,
                     "priority" to item.priority,
                     "role" to item.role,
                     "scope" to item.scope,

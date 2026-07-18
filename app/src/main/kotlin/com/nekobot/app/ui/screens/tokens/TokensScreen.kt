@@ -256,7 +256,7 @@ fun TokensScreen() {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
+                contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 110.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // 日期范围选择器
@@ -662,9 +662,12 @@ private fun TokenRecordCard(record: TokenRecordUi) {
                     overflow = TextOverflow.Ellipsis
                 )
                 if (record.source.isNotBlank() || record.sessionId.isNotBlank()) {
+                    // 对话类记录的 source 一般只是渠道标识（如 web 频道），与"联网搜索"含义不符，这里不展示
+                    val isChatChannelSource = record.purpose.equals("chat", ignoreCase = true) &&
+                        record.source.equals("web", ignoreCase = true)
                     Text(
                         listOfNotNull(
-                            record.source.takeIf { it.isNotBlank() }?.let { stringResource(R.string.tokens_source_prefix, sourceLabel(it)) },
+                            record.source.takeIf { it.isNotBlank() && !isChatChannelSource }?.let { stringResource(R.string.tokens_source_prefix, sourceLabel(it)) },
                             sessionDisplay.takeIf { it.isNotBlank() }
                         ).joinToString(" · "),
                         style = MaterialTheme.typography.labelSmall,

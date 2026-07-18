@@ -205,7 +205,7 @@ fun WorldBooksScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 110.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     if (error != null) {

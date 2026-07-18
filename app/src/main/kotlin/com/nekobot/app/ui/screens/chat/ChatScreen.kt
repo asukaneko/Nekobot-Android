@@ -129,6 +129,7 @@ import com.nekobot.app.data.local.ChatInputLayoutMode
 import com.nekobot.app.data.local.VISION_FAILURE_MARKER
 import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.Session
+import com.nekobot.app.data.model.UpdateSessionRequest
 import com.nekobot.app.data.remote.RealtimeEvent
 import com.nekobot.app.data.remote.SocketState
 import com.nekobot.app.data.repository.Resource
@@ -659,7 +660,14 @@ fun ChatScreen(
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        stringResource(R.string.chat_send_prompt, session?.displayName ?: stringResource(R.string.chat_ai_label)),
+                        stringResource(
+                            R.string.chat_send_prompt,
+                            // 优先显示角色名：characterName（本地模式）→ senderName（远程模式后端字段）→ displayName（会话名）→ AI
+                            session?.characterName?.takeIf { it.isNotBlank() }
+                                ?: session?.senderName?.takeIf { it.isNotBlank() }
+                                ?: session?.displayName?.takeIf { it.isNotBlank() }
+                                ?: stringResource(R.string.chat_ai_label)
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -2898,6 +2906,79 @@ class ChatViewModel : BaseViewModel() {
             }
         )
     }
+
+    /**
+     * 切换剧情模式开关。
+     * 使用 unified.updateSession 持久化（与 SessionDetailScreen 一致），
+     * 避免 plotToggle API 要求会话已加载到 server.sessions 内存字典的限制。
+     */
+    fun togglePlotMode() {
+        val sid = currentSessionId.ifBlank { return }
+        val current = _session.value?.plotMode == true
+        // 乐观更新：先翻转 UI 状态，再调用 API；API 失败时回滚并 Toast 提示
+        _session.value = _session.value?.copy(plotMode = !current)
+        if (current) {
+            // 关闭剧情模式时同步关闭实时同步，避免脏状态
+            _session.value = _session.value?.copy(plotRealTimeSync = false)
+        }
+        launchWith(
+            onError = {
+                // 回滚
+                _session.value = _session.value?.copy(
+                    plotMode = current,
+                    plotRealTimeSync = if (current) _session.value?.plotRealTimeSync else false
+                )
+                showToast(it)
+            },
+            block = {
+                unified.updateSession(
+                    sid,
+                    UpdateSessionRequest(
+                        plotMode = !current,
+                        plotRealTimeSync = if (current) false else _session.value?.plotRealTimeSync
+                    )
+                )
+            }
+        )
+        // 远程模式开启后异步拉取一次剧情选项
+        if (!current && !isLocalMode) {
+            loadPlotChoices()
+        }
+        showToast(
+            string(if (!current) R.string.sessions_detail_plot_mode_on else R.string.sessions_detail_plot_mode_off)
+        )
+    }
+
+    /**
+     * 切换同步现实时间开关：仅在剧情模式开启时可用。
+     * 使用 unified.updateSession 持久化（与 SessionDetailScreen 一致），
+     * 避免 plotRealTimeSyncToggle API 要求会话已加载到 server.sessions 内存字典的限制。
+     */
+    fun togglePlotRealTimeSync() {
+        val sid = currentSessionId.ifBlank { return }
+        if (_session.value?.plotMode != true) return
+        val current = _session.value?.plotRealTimeSync == true
+        // 乐观更新：先翻转 UI，再调用 API；API 失败回滚
+        _session.value = _session.value?.copy(plotRealTimeSync = !current)
+        launchWith(
+            onError = {
+                // 回滚
+                _session.value = _session.value?.copy(plotRealTimeSync = current)
+                showToast(it)
+            },
+            block = {
+                unified.updateSession(
+                    sid,
+                    UpdateSessionRequest(plotRealTimeSync = !current)
+                )
+            }
+        )
+        showToast(
+            string(if (!current) R.string.sessions_detail_realtime_sync_on else R.string.sessions_detail_realtime_sync_off)
+        )
+    }
+
+
 
     /** 从归档会话提取 N 轮对话回到当前会话。 */
     fun restoreFromArchive(turns: Int) {

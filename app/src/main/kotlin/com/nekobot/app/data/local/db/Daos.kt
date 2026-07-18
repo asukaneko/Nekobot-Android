@@ -150,7 +150,7 @@ interface WorldBookDao {
     @Query("SELECT * FROM local_world_books WHERE id = :id")
     suspend fun getById(id: String): LocalWorldBookEntity?
 
-    @Query("SELECT * FROM local_world_books WHERE character_id = :characterId")
+    @Query("SELECT * FROM local_world_books WHERE character_id IS NOT NULL AND ',' || character_id || ',' LIKE '%,' || :characterId || ',%'")
     suspend fun listByCharacter(characterId: String): List<LocalWorldBookEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -168,7 +168,7 @@ interface WorldBookDao {
     @Query("SELECT * FROM local_world_book_entries WHERE book_id = :bookId ORDER BY display_index ASC, insertion_order ASC")
     suspend fun listEntries(bookId: String): List<LocalWorldBookEntryEntity>
 
-    @Query("SELECT * FROM local_world_book_entries WHERE book_id IN (SELECT id FROM local_world_books WHERE enabled = 1 AND (character_id = :characterId OR character_id IS NULL))")
+    @Query("SELECT * FROM local_world_book_entries WHERE book_id IN (SELECT id FROM local_world_books WHERE enabled = 1 AND (character_id IS NULL OR ',' || character_id || ',' LIKE '%,' || :characterId || ',%'))")
     suspend fun listActiveEntriesForCharacter(characterId: String): List<LocalWorldBookEntryEntity>
 
     @Query("SELECT * FROM local_world_book_entries WHERE book_id IN (SELECT id FROM local_world_books WHERE enabled = 1)")

@@ -390,6 +390,10 @@
     <string name="chat_my_messages_subtitle">Browse my sent messages</string>
     <string name="chat_upload_only">Upload to workspace only</string>
     <string name="chat_upload_only_subtitle">Save file without triggering AI</string>
+    <string name="chat_plot_mode">Plot mode</string>
+    <string name="chat_plot_mode_subtitle">AI provides plot branch options</string>
+    <string name="chat_plot_realtime_sync">Real-time sync</string>
+    <string name="chat_plot_realtime_sync_subtitle">Plot time syncs with real time</string>
     <string name="chat_danger_zone">Danger zone</string>
     <string name="chat_clear_current_subtitle">Delete all messages, cannot be undone</string>
     <string name="chat_context_metric">Context</string>

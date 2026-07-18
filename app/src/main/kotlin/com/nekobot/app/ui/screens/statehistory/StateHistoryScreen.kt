@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -158,8 +159,10 @@ class StateHistoryViewModel : BaseViewModel() {
                 runCatching {
                     val arr = JsonParser.parseString(cacheJson).asJsonArray
                     val list = arr.mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject }
-                    _sessions.value = list
-                    if (_selected.value == null) _selected.value = list.firstOrNull()
+                    // 按 updated_at 倒序：最新会话排在最前
+                    val sorted = list.sortedByDescending { it.get("updated_at")?.asString ?: "" }
+                    _sessions.value = sorted
+                    if (_selected.value == null) _selected.value = sorted.firstOrNull()
                 }
             } else {
                 // 无缓存，首次加载从数据源获取
@@ -230,15 +233,18 @@ class StateHistoryViewModel : BaseViewModel() {
                     obj.addProperty("id", sid)
                     obj.addProperty("name", s.displayName)
                     obj.addProperty("character_id", s.characterId ?: "")
+                    obj.addProperty("updated_at", s.updatedAt ?: "")
                     obj.add("character_runtime_timeline", timelineArr)
                     obj
                 }
                 Resource.Success(jsonSessions)
             },
             onSuccess = { merged ->
-                _sessions.value = merged
-                if (_selected.value == null) _selected.value = merged.firstOrNull()
-                saveCache(merged)
+                // 按 updated_at 倒序：最新会话排在最前
+                val sorted = merged.sortedByDescending { it.get("updated_at")?.asString ?: "" }
+                _sessions.value = sorted
+                if (_selected.value == null) _selected.value = sorted.firstOrNull()
+                saveCache(sorted)
             }
         )
     }
@@ -277,9 +283,11 @@ class StateHistoryViewModel : BaseViewModel() {
                 Resource.Success(channelSessions + webTimelines)
             },
             onSuccess = { merged ->
-                _sessions.value = merged
-                if (_selected.value == null) _selected.value = merged.firstOrNull()
-                saveCache(merged)
+                // 按 updated_at 倒序：最新会话排在最前
+                val sorted = merged.sortedByDescending { it.get("updated_at")?.asString ?: "" }
+                _sessions.value = sorted
+                if (_selected.value == null) _selected.value = sorted.firstOrNull()
+                saveCache(sorted)
             }
         )
     }
@@ -313,6 +321,7 @@ class StateHistoryViewModel : BaseViewModel() {
         obj.addProperty("id", session.id)
         obj.addProperty("name", session.displayName)
         obj.addProperty("character_id", session.characterId)
+        obj.addProperty("updated_at", session.updatedAt ?: "")
         val timelineArr = JsonArray()
         timeline.forEach { timelineArr.add(it) }
         obj.add("character_runtime_timeline", timelineArr)
@@ -455,7 +464,8 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                                 }
                                 DropdownMenu(
                                     expanded = dropdownExpanded,
-                                    onDismissRequest = { dropdownExpanded = false }
+                                    onDismissRequest = { dropdownExpanded = false },
+                                    modifier = Modifier.heightIn(max = 420.dp)
                                 ) {
                                     sessions.forEach { s ->
                                         val name = s.get("name")?.asString ?: stringResource(R.string.state_history_unnamed_session)

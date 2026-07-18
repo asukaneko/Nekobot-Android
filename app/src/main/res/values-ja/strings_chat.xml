@@ -390,6 +390,10 @@
     <string name="chat_my_messages_subtitle">送信済みメッセージを閲覧</string>
     <string name="chat_upload_only">ワークスペースにのみアップロード</string>
     <string name="chat_upload_only_subtitle">AI をトリガーせずにファイルを保存</string>
+    <string name="chat_plot_mode">プロットモード</string>
+    <string name="chat_plot_mode_subtitle">AI がプロット分岐オプションを提供</string>
+    <string name="chat_plot_realtime_sync">リアルタイム同期</string>
+    <string name="chat_plot_realtime_sync_subtitle">プロット時間が現実時間と同期</string>
     <string name="chat_danger_zone">危険ゾーン</string>
     <string name="chat_clear_current_subtitle">すべてのメッセージを削除、元に戻せません</string>
     <string name="chat_context_metric">コンテキスト</string>

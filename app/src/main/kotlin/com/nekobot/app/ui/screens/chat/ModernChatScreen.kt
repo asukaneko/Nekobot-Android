@@ -58,6 +58,7 @@ import androidx.compose.material.icons.filled.KeyboardHide
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Stop
@@ -72,6 +73,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -135,6 +137,7 @@ fun ModernChatScreen(
     val sending by viewModel.sending.collectAsState()
     val plotChoices by viewModel.plotChoices.collectAsState()
     val plotChoicesLoading by viewModel.plotChoicesLoading.collectAsState()
+    val session by viewModel.session.collectAsState()
     val listState = rememberLazyListState()
     val composerScope = rememberCoroutineScope()
 
@@ -154,6 +157,8 @@ fun ModernChatScreen(
             sending = sending,
             plotChoices = plotChoices,
             plotChoicesLoading = plotChoicesLoading,
+            plotMode = session?.plotMode == true,
+            plotRealTimeSync = session?.plotRealTimeSync == true,
             onSend = { text, plotChoiceId -> viewModel.sendMessage(text, plotChoiceId) },
             onStop = viewModel::stop,
             onCompress = viewModel::compressContext,
@@ -161,6 +166,8 @@ fun ModernChatScreen(
             onRegeneratePlotChoices = viewModel::regeneratePlotChoices,
             onOpenWorkspace = { onOpenWorkspace(sessionId) },
             onJumpToLatest = onJumpToLatest,
+            onTogglePlotMode = viewModel::togglePlotMode,
+            onTogglePlotRealTimeSync = viewModel::togglePlotRealTimeSync,
             onJumpToMessage = { msg ->
                 val idx = messages.indexOfFirst { it.id == msg.id }
                 if (idx >= 0) composerScope.launch { listState.animateScrollToItem(idx + 1) }
@@ -184,6 +191,8 @@ private fun ModernChatComposer(
     sending: Boolean,
     plotChoices: List<PlotChoice>,
     plotChoicesLoading: Boolean,
+    plotMode: Boolean,
+    plotRealTimeSync: Boolean,
     onSend: (String, String?) -> Unit,
     onStop: () -> Unit,
     onCompress: () -> Unit,
@@ -191,6 +200,8 @@ private fun ModernChatComposer(
     onRegeneratePlotChoices: () -> Unit,
     onOpenWorkspace: () -> Unit,
     onJumpToLatest: () -> Unit,
+    onTogglePlotMode: () -> Unit,
+    onTogglePlotRealTimeSync: () -> Unit,
     onJumpToMessage: (Message) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -386,9 +397,10 @@ private fun ModernChatComposer(
     // 消息条数变化或发送中状态变化时刷新（远程模式发送后服务端会先写 token 记录）
     val refreshKey = messageCount.toString() + "_" + sending.toString()
     LaunchedEffect(refreshKey) {
-        // 远程模式无激活模型，maxTokens 保持 null（百分比置 0）
+        // 进度条分母：当前激活聊天模型的上下文窗口长度（max_context_length）
+        // 本地模式和远程模式均通过 unified.getActiveContextLength() 统一获取
         maxTokens = withContext(Dispatchers.IO) {
-            ServiceContainer.unified.getActiveLocalModel()?.maxTokens
+            ServiceContainer.unified.getActiveContextLength()
         }
         usedTokens = withContext(Dispatchers.IO) {
             ServiceContainer.unified.sessionTokenUsage(sessionId)
@@ -476,6 +488,8 @@ private fun ModernChatComposer(
                     maxTokens = maxTokens,
                     sending = sending,
                     fileBusy = fileBusy,
+                    plotMode = plotMode,
+                    plotRealTimeSync = plotRealTimeSync,
                     onCompress = { onCompress() },
                     onSendFile = {
                         filePickMode = "send"
@@ -490,6 +504,8 @@ private fun ModernChatComposer(
                         filePickMode = "upload"
                         pickFile.launch("*/*")
                     },
+                    onTogglePlotMode = onTogglePlotMode,
+                    onTogglePlotRealTimeSync = onTogglePlotRealTimeSync,
                     onClear = { showClearConfirm = true }
                 )
             }
@@ -1092,6 +1108,8 @@ private fun ModernChatActionPanel(
     maxTokens: Int?,
     sending: Boolean,
     fileBusy: Boolean,
+    plotMode: Boolean,
+    plotRealTimeSync: Boolean,
     onCompress: () -> Unit,
     onSendFile: () -> Unit,
     onOpenWorkspace: () -> Unit,
@@ -1100,6 +1118,8 @@ private fun ModernChatActionPanel(
     onJumpToLatest: () -> Unit,
     onMyMessages: () -> Unit,
     onUploadOnly: () -> Unit,
+    onTogglePlotMode: () -> Unit,
+    onTogglePlotRealTimeSync: () -> Unit,
     onClear: () -> Unit
 ) {
     GlassCard(
@@ -1199,6 +1219,26 @@ private fun ModernChatActionPanel(
                             enabled = !fileBusy,
                             onClick = onUploadOnly
                         )
+                        ModernMenuDivider()
+                        ModernToggleRow(
+                            icon = Icons.Filled.AutoAwesome,
+                            title = stringResource(R.string.chat_plot_mode),
+                            subtitle = stringResource(R.string.chat_plot_mode_subtitle),
+                            checked = plotMode,
+                            enabled = !sending,
+                            onCheckedChange = { onTogglePlotMode() }
+                        )
+                        if (plotMode) {
+                            ModernMenuDivider()
+                            ModernToggleRow(
+                                icon = Icons.Filled.Schedule,
+                                title = stringResource(R.string.chat_plot_realtime_sync),
+                                subtitle = stringResource(R.string.chat_plot_realtime_sync_subtitle),
+                                checked = plotRealTimeSync,
+                                enabled = !sending,
+                                onCheckedChange = { onTogglePlotRealTimeSync() }
+                            )
+                        }
                     }
                 }
             }
@@ -1438,6 +1478,65 @@ private fun ModernMenuDivider() {
         modifier = Modifier.padding(start = 64.dp),
         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
     )
+}
+
+/**
+ * 会话工具区带 Switch 的开关行：图标 + 标题/副标题 + 右侧 Switch。
+ * 视觉与 [ModernToolRow] 对齐，仅把右箭头换成 Switch。
+ */
+@Composable
+private fun ModernToggleRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    val accent = MaterialTheme.colorScheme.primary
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(accent.copy(alpha = if (enabled) 0.13f else 0.06f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = if (enabled) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled
+        )
+    }
 }
 
 @Composable

@@ -398,6 +398,7 @@ data class AiConfig(
     val model: String? = null,
     val temperature: Double? = null,
     @SerializedName("max_tokens") val maxTokens: Int? = null,
+    @SerializedName("max_context_length") val maxContextLength: Int? = null,
     @SerializedName("top_p") val topP: Double? = null,
     @SerializedName("frequency_penalty") val frequencyPenalty: Double? = null,
     @SerializedName("presence_penalty") val presencePenalty: Double? = null,

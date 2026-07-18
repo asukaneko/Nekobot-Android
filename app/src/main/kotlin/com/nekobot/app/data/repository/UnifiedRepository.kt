@@ -14,6 +14,7 @@ import com.nekobot.app.data.local.db.LocalSessionEntity
 import com.nekobot.app.data.model.ApiResult
 import com.nekobot.app.data.model.ApiKey
 import com.nekobot.app.data.model.ApiKeyRequest
+import com.nekobot.app.data.model.AiConfig
 import com.nekobot.app.data.model.BindCharacterRequest
 import com.nekobot.app.data.model.Channel
 import com.nekobot.app.data.model.ChannelPreset
@@ -440,6 +441,24 @@ class UnifiedRepository(
 
     suspend fun getActiveLocalModel(): LocalAiModelEntity? =
         if (isLocal) local.getActiveModel() else null
+
+    /**
+     * 获取当前激活聊天模型的上下文窗口长度（max_context_length），
+     * 用于聊天界面上下文圆环进度条百分比计算的分母。
+     * - 本地模式：从本地 getAiConfig() 读取（默认 100000）
+     * - 远程模式：从服务端 /api/ai-config 读取 max_context_length
+     */
+    suspend fun getActiveContextLength(): Int? {
+        return when (val res = getAiConfig()) {
+            is Resource.Success -> {
+                val json = res.data ?: return null
+                runCatching {
+                    Gson().fromJson(json, AiConfig::class.java)?.maxContextLength
+                }.getOrNull()
+            }
+            else -> null
+        }
+    }
 
     /** 获取指定 purpose 的激活模型（用于 vision/tts/stt 等场景）。 */
     suspend fun getActiveLocalModelByPurpose(purpose: String): LocalAiModelEntity? =

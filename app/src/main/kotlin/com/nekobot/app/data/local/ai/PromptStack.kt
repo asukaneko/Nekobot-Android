@@ -133,7 +133,7 @@ class PromptStack {
             .map { item ->
                 mapOf(
                     "key" to item.key,
-                    "content" to (if (item.content.length > 200) item.content.take(200) + "..." else item.content),
+                    "content" to item.content,
                     "priority" to item.priority,
                     "role" to item.role,
                     "scope" to item.scope,

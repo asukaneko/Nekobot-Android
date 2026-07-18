@@ -390,6 +390,10 @@
     <string name="chat_my_messages_subtitle">浏览我发送过的内容</string>
     <string name="chat_upload_only">仅上传到工作区</string>
     <string name="chat_upload_only_subtitle">保存文件，不触发 AI</string>
+    <string name="chat_plot_mode">剧情模式</string>
+    <string name="chat_plot_mode_subtitle">开启后 AI 提供剧情分支选项</string>
+    <string name="chat_plot_realtime_sync">同步现实时间</string>
+    <string name="chat_plot_realtime_sync_subtitle">剧情时间与现实时间同步</string>
     <string name="chat_danger_zone">危险操作</string>
     <string name="chat_clear_current_subtitle">删除全部消息且无法恢复</string>
     <string name="chat_context_metric">上下文</string>
