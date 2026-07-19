@@ -201,4 +201,16 @@
     <string name="dbprofile_default_no_delete">デフォルトデータベースは削除できません</string>
     <string name="dbprofile_deleted">DB \"%1$s\" を削除しました</string>
     <string name="dbprofile_input_display_name">表示名を入力してください</string>
+    <string name="dbprofile_export_to_downloads">ダウンロードにエクスポート</string>
+    <string name="dbprofile_export_success">ダウンロードにエクスポートしました：%1$s</string>
+    <string name="dbprofile_export_failed">エクスポート失敗、再試行してください</string>
+    <string name="dbprofile_export_failed_reason">エクスポート失敗：%1$s</string>
+    <string name="dbprofile_export_no_db">データベースファイルが存在しません、エクスポートできません</string>
+    <string name="dbprofile_import_file_button">ローカルファイルからインポート</string>
+    <string name="dbprofile_import_file_dialog_title">ファイルからデータベースをインポート</string>
+    <string name="dbprofile_import_file_tip">.zip（.db ファイルを含む）または .db ファイルを選択できます。インポート後、新しいデータベースに自動的に切り替わります。</string>
+    <string name="dbprofile_import_file_success">データベース「%1$s」をインポートして切り替えました</string>
+    <string name="dbprofile_import_file_failed">インポート失敗、再試行してください</string>
+    <string name="dbprofile_import_file_failed_reason">インポート失敗：%1$s</string>
+    <string name="dbprofile_selected_file">選択されたファイル：%1$s</string>
 </resources>

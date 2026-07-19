@@ -201,4 +201,16 @@
     <string name="dbprofile_default_no_delete">기본 데이터베이스는 삭제할 수 없어요</string>
     <string name="dbprofile_deleted">DB \"%1$s\" 삭제됨</string>
     <string name="dbprofile_input_display_name">표시 이름을 입력해 주세요</string>
+    <string name="dbprofile_export_to_downloads">다운로드로 내보내기</string>
+    <string name="dbprofile_export_success">다운로드로 내보냄: %1$s</string>
+    <string name="dbprofile_export_failed">내보내기 실패, 다시 시도해 주세요</string>
+    <string name="dbprofile_export_failed_reason">내보내기 실패: %1$s</string>
+    <string name="dbprofile_export_no_db">데이터베이스 파일이 없어 내보낼 수 없어요</string>
+    <string name="dbprofile_import_file_button">로컬 파일에서 가져오기</string>
+    <string name="dbprofile_import_file_dialog_title">파일에서 데이터베이스 가져오기</string>
+    <string name="dbprofile_import_file_tip">.zip(.db 파일 포함) 또는 .db 파일을 선택할 수 있어요. 가져오기 후 새 데이터베이스로 자동 전환됩니다.</string>
+    <string name="dbprofile_import_file_success">데이터베이스 \"%1$s\" 가져오기 및 전환 완료</string>
+    <string name="dbprofile_import_file_failed">가져오기 실패, 다시 시도해 주세요</string>
+    <string name="dbprofile_import_file_failed_reason">가져오기 실패: %1$s</string>
+    <string name="dbprofile_selected_file">선택된 파일: %1$s</string>
 </resources>

@@ -1,5 +1,11 @@
 package com.nekobot.app.ui.screens.settings
 
+import android.content.ContentValues
+import android.content.Context
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Storage
@@ -35,6 +42,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -72,9 +80,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 
 /**
  * 本地 DB Profile 管理 ViewModel：维护 profile 列表、激活态、远程导入与切换。
@@ -203,6 +217,259 @@ class DbProfileViewModel : ViewModel() {
         return android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
     }
 
+    /**
+     * 导出指定 profile 的数据库到下载目录。
+     *
+     * 流程：
+     * 1. 关闭目标 profile 的 db 连接（强制 WAL 刷盘）
+     * 2. 收集 .db / .db-wal / .db-shm 文件
+     * 3. 打包成 ZIP 写入 Downloads（Android 10+ 走 MediaStore，9- 直接写公共目录）
+     * 4. 若导出的是当前激活 db，重开连接以恢复正常使用
+     */
+    fun exportToDownloads(profileName: String) {
+        val profile = _profiles.value.firstOrNull { it.name == profileName } ?: return
+        val displayNameStr = profile.displayName
+        val ctx = ServiceContainer.appContext ?: run {
+            _toast.value = ServiceContainer.getString(R.string.dbprofile_export_failed)
+            return
+        }
+        val isActive = profileName == _activeName.value
+        _importing.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // 关闭目标 profile 的 db 连接，确保 WAL 刷盘
+                NekobotDatabase.closeProfile(profileName)
+                Thread.sleep(100)
+                val dbName = if (profileName.endsWith(".db")) profileName else "$profileName.db"
+                val dbFile = ctx.getDatabasePath(dbName)
+                if (!dbFile.exists()) {
+                    withContext(Dispatchers.Main) {
+                        _importing.value = false
+                        _toast.value = ServiceContainer.getString(R.string.dbprofile_export_no_db)
+                    }
+                    return@launch
+                }
+                // 收集 db + -wal + -shm
+                val entries = mutableListOf<Pair<String, File>>()
+                entries.add(dbFile.name to dbFile)
+                listOf("$dbName-wal", "$dbName-shm").forEach { suffix ->
+                    val f = ctx.getDatabasePath(suffix)
+                    if (f.exists()) entries.add(f.name to f)
+                }
+                // 打包成 ZIP
+                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                val safeName = displayNameStr.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim()
+                    .ifBlank { profileName }
+                val zipFileName = "nekobot_${safeName}_$timestamp.zip"
+                val baos = ByteArrayOutputStream()
+                ZipOutputStream(baos).use { zos ->
+                    entries.forEach { (entryName, file) ->
+                        zos.putNextEntry(ZipEntry(entryName))
+                        file.inputStream().use { it.copyTo(zos) }
+                        zos.closeEntry()
+                    }
+                }
+                val zipBytes = baos.toByteArray()
+                val saved = writeBytesToDownloads(ctx, zipFileName, "application/zip", zipBytes)
+                // 恢复 db 连接：激活 db 需要走 switchLocalDb 重建 LocalRepository
+                if (isActive) {
+                    ServiceContainer.switchLocalDb(profileName)
+                }
+                withContext(Dispatchers.Main) {
+                    _importing.value = false
+                    _toast.value = if (saved) {
+                        ServiceContainer.localizedContext?.getString(
+                            R.string.dbprofile_export_success, zipFileName
+                        ) ?: ""
+                    } else {
+                        ServiceContainer.getString(R.string.dbprofile_export_failed)
+                    }
+                }
+            } catch (e: Exception) {
+                // 异常时也尝试恢复连接
+                if (isActive) ServiceContainer.switchLocalDb(profileName)
+                withContext(Dispatchers.Main) {
+                    _importing.value = false
+                    _toast.value = ServiceContainer.localizedContext?.getString(
+                        R.string.dbprofile_export_failed_reason, e.message ?: ""
+                    ) ?: ""
+                }
+            }
+        }
+    }
+
+    /**
+     * 从本地文件导入数据库。支持 .zip（包含 .db 及可选的 -wal/-shm）或直接 .db 文件。
+     *
+     * @param uri 用户选择的文件 URI
+     * @param displayNameStr 新 db 的显示名
+     */
+    fun importFromFile(uri: Uri, displayNameStr: String) {
+        if (displayNameStr.isBlank()) {
+            _toast.value = ServiceContainer.getString(R.string.dbprofile_input_display_name)
+            return
+        }
+        val ctx = ServiceContainer.appContext ?: run {
+            _toast.value = ServiceContainer.getString(R.string.dbprofile_import_file_failed)
+            return
+        }
+        val profileName = sanitizeProfileName(displayNameStr)
+        _importing.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    ?: throw IllegalStateException("无法读取所选文件")
+                // 识别格式：ZIP（PK\x03\x04）或 SQLite 文件头（"SQLite format 3\0"）
+                val mainDb: ByteArray
+                val walBytes: ByteArray?
+                val shmBytes: ByteArray?
+                when {
+                    isZipBytes(bytes) -> {
+                        val extracted = extractDbFromZip(bytes)
+                            ?: throw IllegalStateException("ZIP 中未找到 .db 文件")
+                        mainDb = extracted.main
+                        walBytes = extracted.wal
+                        shmBytes = extracted.shm
+                    }
+                    isSqliteBytes(bytes) -> {
+                        mainDb = bytes
+                        walBytes = null
+                        shmBytes = null
+                    }
+                    else -> throw IllegalStateException("无法识别的文件格式：请选择 .zip 或 .db 文件")
+                }
+                // 关闭并清空目标 profile（若已存在）
+                NekobotDatabase.deleteProfileFile(ctx, profileName)
+                Thread.sleep(100)
+                // 写入新的 db 文件
+                val mainDbName = "$profileName.db"
+                val dbFile = ctx.getDatabasePath(mainDbName)
+                dbFile.parentFile?.mkdirs()
+                dbFile.writeBytes(mainDb)
+                walBytes?.let {
+                    ctx.getDatabasePath("$mainDbName-wal").writeBytes(it)
+                }
+                shmBytes?.let {
+                    ctx.getDatabasePath("$mainDbName-shm").writeBytes(it)
+                }
+                // 注册到 PrefsManager
+                prefs.saveDbProfile(
+                    PrefsManager.DbProfile(
+                        name = profileName,
+                        displayName = displayNameStr,
+                        source = "local",
+                        createdAt = System.currentTimeMillis()
+                    )
+                )
+                // 验证 db 可打开（触发迁移），失败则抛出异常
+                runCatching {
+                    NekobotDatabase.get(ctx, profileName).openHelper.writableDatabase
+                }.onFailure { e ->
+                    // 打开失败：清理文件并提示
+                    NekobotDatabase.deleteProfileFile(ctx, profileName)
+                    prefs.removeDbProfile(profileName)
+                    throw IllegalStateException("数据库无法打开（可能文件损坏或版本不兼容）：${e.message}")
+                }
+                // 自动切换到新导入的 db
+                prefs.activeDbName = profileName
+                ServiceContainer.switchLocalDb(profileName)
+                withContext(Dispatchers.Main) {
+                    _importing.value = false
+                    _activeName.value = profileName
+                    reload()
+                    _toast.value = ServiceContainer.localizedContext?.getString(
+                        R.string.dbprofile_import_file_success, displayNameStr
+                    ) ?: ""
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    _importing.value = false
+                    _toast.value = ServiceContainer.localizedContext?.getString(
+                        R.string.dbprofile_import_file_failed_reason, e.message ?: ""
+                    ) ?: ""
+                }
+            }
+        }
+    }
+
+    /** ZIP 文件头识别：PK\x03\x04 */
+    private fun isZipBytes(bytes: ByteArray): Boolean =
+        bytes.size >= 4 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte() &&
+            bytes[2] == 0x03.toByte() && bytes[3] == 0x04.toByte()
+
+    /** SQLite 文件头识别："SQLite format 3\0"（前 16 字节） */
+    private fun isSqliteBytes(bytes: ByteArray): Boolean =
+        bytes.size >= 16 && String(bytes, 0, 15, Charsets.ISO_8859_1) == "SQLite format 3"
+
+    /** 解压 ZIP 并提取 .db 主文件及同名 -wal / -shm（若有）。 */
+    private data class ExtractedDb(
+        val main: ByteArray,
+        val wal: ByteArray? = null,
+        val shm: ByteArray? = null
+    )
+
+    private fun extractDbFromZip(zipBytes: ByteArray): ExtractedDb? {
+        val rawEntries = mutableMapOf<String, ByteArray>()
+        ZipInputStream(ByteArrayInputStream(zipBytes)).use { zis ->
+            var entry: ZipEntry? = zis.nextEntry
+            while (entry != null) {
+                if (!entry.isDirectory) {
+                    val name = entry.name.substringAfterLast('/')
+                    val buf = ByteArrayOutputStream()
+                    val buffer = ByteArray(8192)
+                    while (true) {
+                        val n = zis.read(buffer)
+                        if (n <= 0) break
+                        buf.write(buffer, 0, n)
+                    }
+                    rawEntries[name] = buf.toByteArray()
+                }
+                zis.closeEntry()
+                entry = zis.nextEntry
+            }
+        }
+        // 找到主 .db 文件（不含 -wal / -shm 后缀）
+        val mainDbEntry = rawEntries.keys.firstOrNull {
+            it.endsWith(".db") && !it.endsWith(".db-wal") && !it.endsWith(".db-shm")
+        } ?: return null
+        val baseName = mainDbEntry.removeSuffix(".db")
+        return ExtractedDb(
+            main = rawEntries[mainDbEntry]!!,
+            wal = rawEntries["$baseName.db-wal"],
+            shm = rawEntries["$baseName.db-shm"]
+        )
+    }
+
+    /** 写入字节到 Downloads 目录（兼容 Android 10+ 作用域存储与 9- 公共目录）。 */
+    private fun writeBytesToDownloads(
+        context: Context,
+        fileName: String,
+        mime: String,
+        bytes: ByteArray
+    ): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val resolver = context.contentResolver
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                }
+                val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+                val uri = resolver.insert(collection, values) ?: return false
+                resolver.openOutputStream(uri)?.use { it.write(bytes) } ?: return false
+            } else {
+                @Suppress("DEPRECATION")
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                if (!downloadsDir.exists()) downloadsDir.mkdirs()
+                File(downloadsDir, fileName).outputStream().use { it.write(bytes) }
+            }
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     private fun displayName(name: String): String =
         _profiles.value.firstOrNull { it.name == name }?.displayName ?: name
 
@@ -230,6 +497,18 @@ fun DbProfileScreen(onBack: () -> Unit) {
 
     var showImportDialog by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<PrefsManager.DbProfile?>(null) }
+    var showImportFilePrompt by remember { mutableStateOf(false) }
+    var pendingFileUri by remember { mutableStateOf<Uri?>(null) }
+
+    // 文件选择器：选择 .zip 或 .db 文件
+    val pickFileLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            pendingFileUri = uri
+            showImportFilePrompt = true
+        }
+    }
 
     // 模式切换时自动刷新（兜底）
     val appMode by ServiceContainer.appModeFlow.collectAsState()
@@ -325,7 +604,8 @@ fun DbProfileScreen(onBack: () -> Unit) {
                             isActive = profile.name == activeName,
                             isDefault = profile.name == PrefsManager.DEFAULT_DB_NAME,
                             onSwitch = { vm.switchTo(profile.name) },
-                            onDelete = { deleteTarget = profile }
+                            onDelete = { deleteTarget = profile },
+                            onExport = { vm.exportToDownloads(profile.name) }
                         )
                     }
                 }
@@ -343,6 +623,16 @@ fun DbProfileScreen(onBack: () -> Unit) {
                 Icon(Icons.Filled.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.dbprofile_import_button))
+            }
+
+            // 从本地文件导入
+            OutlinedButton(
+                onClick = { pickFileLauncher.launch(arrayOf("application/zip", "application/octet-stream", "application/x-sqlite3", "*/*")) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Filled.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.dbprofile_import_file_button))
             }
 
             Text(
@@ -373,6 +663,61 @@ fun DbProfileScreen(onBack: () -> Unit) {
         }
     }
 
+    // 从文件导入：输入显示名
+    if (showImportFilePrompt && pendingFileUri != null) {
+        var displayNameInput by remember(pendingFileUri) {
+            mutableStateOf(pendingFileUri?.lastPathSegment?.substringAfterLast('/')?.substringBeforeLast('.')
+                ?.replace(Regex("[\\\\/:*?\"<>|]"), "_")?.trim() ?: "")
+        }
+        NekoDialog(
+            onDismiss = {
+                showImportFilePrompt = false
+                pendingFileUri = null
+            },
+            title = stringResource(R.string.dbprofile_import_file_dialog_title),
+            confirmText = stringResource(R.string.dbprofile_start_import),
+            confirmEnabled = displayNameInput.isNotBlank() && !importing,
+            onConfirm = {
+                val uri = pendingFileUri
+                if (uri != null && displayNameInput.isNotBlank()) {
+                    vm.importFromFile(uri, displayNameInput.trim())
+                    showImportFilePrompt = false
+                    pendingFileUri = null
+                }
+            }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val fileName = pendingFileUri?.lastPathSegment?.substringAfterLast('/') ?: ""
+                if (fileName.isNotBlank()) {
+                    Text(
+                        stringResource(R.string.dbprofile_selected_file, fileName),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                OutlinedTextField(
+                    value = displayNameInput,
+                    onValueChange = { displayNameInput = it },
+                    label = { Text(stringResource(R.string.dbprofile_new_display_name)) },
+                    placeholder = { Text(stringResource(R.string.dbprofile_display_name_placeholder)) },
+                    singleLine = true,
+                    enabled = !importing,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    stringResource(R.string.dbprofile_import_file_tip),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+
     deleteTarget?.let { profile ->
         NekoDialog(
             onDismiss = { deleteTarget = null },
@@ -393,7 +738,8 @@ private fun DbProfileCard(
     isActive: Boolean,
     isDefault: Boolean,
     onSwitch: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onExport: () -> Unit = {}
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     GlassCard(modifier = Modifier.fillMaxWidth()) {
@@ -465,6 +811,13 @@ private fun DbProfileCard(
                             if (!isActive) onSwitch()
                         },
                         enabled = !isActive
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.dbprofile_export_to_downloads)) },
+                        onClick = {
+                            menuExpanded = false
+                            onExport()
+                        }
                     )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) },

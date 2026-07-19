@@ -220,7 +220,13 @@ private fun ModernChatComposer(
     val keyboard = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
 
-    var input by remember { mutableStateOf("") }
+    var input by remember(sessionId) {
+        mutableStateOf(ServiceContainer.prefs.getChatInputDraft(sessionId))
+    }
+    // 输入框草稿持久化：退出会话后保留
+    LaunchedEffect(input, sessionId) {
+        ServiceContainer.prefs.setChatInputDraft(sessionId, input)
+    }
     var panelExpanded by remember { mutableStateOf(false) }
     var inputExpanded by remember { mutableStateOf(false) }
     var chatInputLayout by remember {

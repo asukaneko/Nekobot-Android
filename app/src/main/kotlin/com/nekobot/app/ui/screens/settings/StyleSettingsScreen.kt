@@ -106,14 +106,14 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
         1.3f to stringResource(R.string.style_size_xlarge),
     )
 
-    // 主题色选项：null 表示默认紫色
+    // 主题色选项：null 表示默认粉色
     val themeColorOptions = listOf<Pair<String?, String>>(
-        null to stringResource(R.string.style_color_purple),
+        null to stringResource(R.string.style_color_pink),
+        "#8B6CFF" to stringResource(R.string.style_color_purple),
         "#4D96FF" to stringResource(R.string.style_color_blue),
         "#22C1C5" to stringResource(R.string.style_color_cyan),
         "#6BCB77" to stringResource(R.string.style_color_green),
         "#FFB347" to stringResource(R.string.style_color_orange),
-        "#FF8FB1" to stringResource(R.string.style_color_pink),
         "#FF6B6B" to stringResource(R.string.style_color_red),
     )
 

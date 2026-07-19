@@ -199,8 +199,8 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
     }
 
     /**
-     * AI 生成立绘：提交异步任务并轮询直到完成，成功后将 URL 写入 portrait 字段。
-     * 需先填写角色名；远程模式专用。
+     * AI 生成立绘：远程模式提交异步任务并轮询直到完成；本地模式同步生成直接返回结果。
+     * 成功后将 URL 写入 portrait 字段。需先填写角色名。
      */
     fun generatePortraitAI() {
         val characterName = name.value.trim()
@@ -226,6 +226,14 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
                     showToast(if (needConfig) string(R.string.character_portrait_no_model) else (error ?: string(R.string.character_portrait_generate_failed)))
                     return@launchResult
                 }
+                // 本地模式：同步生成直接返回 completed + portrait_url，无需轮询
+                val status = obj?.get("status")?.takeIf { !it.isJsonNull }?.asString
+                val portraitUrl = obj?.get("portrait_url")?.takeIf { !it.isJsonNull }?.asString
+                if (status == "completed" && !portraitUrl.isNullOrBlank()) {
+                    applyGeneratedPortrait(portraitUrl)
+                    return@launchResult
+                }
+                // 远程模式：取 task_id 进入轮询
                 val taskId = obj?.get("task_id")?.takeIf { !it.isJsonNull }?.asString
                 if (taskId.isNullOrBlank()) {
                     showToast(string(R.string.character_portrait_submit_failed))
@@ -235,6 +243,26 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
                 pollPortraitTask(taskId)
             }
         )
+    }
+
+    /** 将生成的立绘 URL 写入 portrait 字段并自动保存（编辑模式下）。 */
+    private fun applyGeneratedPortrait(portraitUrl: String) {
+        portrait.value = portraitUrl
+        val id = _character.value?.id
+        if (!isNew && !id.isNullOrBlank()) {
+            viewModelScope.launch {
+                try {
+                    val payload = mapOf("portrait" to portraitUrl)
+                    val json = com.nekobot.app.ServiceContainer.gson.toJsonTree(payload)
+                    unified.updateCharacter(id, json)
+                    showToast(string(R.string.character_portrait_success_saved))
+                } catch (_: Exception) {
+                    showToast(string(R.string.character_portrait_save_manually))
+                }
+            }
+        } else {
+            showToast(string(R.string.character_portrait_save_manually))
+        }
     }
 
     /** 轮询 AI 立绘生成任务状态，完成或失败时结束。 */
@@ -458,7 +486,7 @@ fun CharacterDetailScreen(
                     onUploadClick = {
                         portraitLauncher.launch(arrayOf("image/*"))
                     },
-                    onAiGenerateClick = if (isLocalMode) null else { { vm.generatePortraitAI() } }
+                    onAiGenerateClick = { vm.generatePortraitAI() }
                 )
                 // 立绘预览：点击查看大图
                 PortraitPreview(portrait = portrait, onClick = { fullscreenPortrait = it })

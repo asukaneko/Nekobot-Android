@@ -12,10 +12,10 @@ val BgSurfaceVariant = Color(0xFF1E1E2E)
 val GlassWhite = Color(0xFFFFFFFF)
 val GlassAlpha = Color(0x14FFFFFF)
 
-val Primary = Color(0xFF8B6CFF)
-val PrimaryContainer = Color(0xFF4A3A8C)
+val Primary = Color(0xFFFF8FB1)
+val PrimaryContainer = Color(0xFFFF6B97)
 val Secondary = Color(0xFF6EC1E4)
-val Tertiary = Color(0xFFFF8FB1)
+val Tertiary = Color(0xFF8B6CFF)
 
 val OnPrimary = Color(0xFFFFFFFF)
 val OnSurface = Color(0xFFE8E8F0)
@@ -27,7 +27,7 @@ val SuccessGreen = Color(0xFF6BCF7F)
 val WarningAmber = Color(0xFFFFC56B)
 
 // 消息气泡
-val BubbleUser = Color(0xFF6E4FFF)
+val BubbleUser = Color(0xFFFF8FB1)
 val BubbleAssistant = Color(0xFF242436)
 
 // ==================== 浅色主题配色 ====================
@@ -36,10 +36,10 @@ val BgSurfaceLight = Color(0xFFFFFFFF)
 val BgSurfaceVariantLight = Color(0xFFECECF3)
 val GlassAlphaLight = Color(0x33000000)
 
-val PrimaryLight = Color(0xFF7A5CFF)
-val PrimaryContainerLight = Color(0xFFE5DEFF)
+val PrimaryLight = Color(0xFFFF6B97)
+val PrimaryContainerLight = Color(0xFFFFE5EE)
 val SecondaryLight = Color(0xFF3E9EC4)
-val TertiaryLight = Color(0xFFE0658A)
+val TertiaryLight = Color(0xFF7A5CFF)
 
 val OnPrimaryLight = Color(0xFFFFFFFF)
 val OnSurfaceLight = Color(0xFF1C1C28)
@@ -51,7 +51,7 @@ val SuccessGreenLight = Color(0xFF2E9E5A)
 val WarningAmberLight = Color(0xFFC77700)
 
 // 消息气泡（浅色）
-val BubbleUserLight = Color(0xFF7A5CFF)
+val BubbleUserLight = Color(0xFFFF6B97)
 val BubbleAssistantLight = Color(0xFFEDEDF6)
 
 /**
@@ -95,8 +95,8 @@ fun parseHexColor(hex: String?): Color? {
 }
 
 /**
- * 获取"默认紫色"主题色：与主题色覆盖为 null 时一致，
- * 不受当前已选主题色影响，供样式设置中的"紫色"选项展示用。
+ * 获取"默认粉色"主题色：与主题色覆盖为 null 时一致，
+ * 不受当前已选主题色影响，供样式设置中的"粉色"选项展示用。
  */
 @Composable
 fun defaultPrimaryColor(): Color =

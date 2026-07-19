@@ -201,4 +201,16 @@
     <string name="dbprofile_default_no_delete">默认数据库不可删除</string>
     <string name="dbprofile_deleted">已删除 db「%1$s」</string>
     <string name="dbprofile_input_display_name">请输入显示名</string>
+    <string name="dbprofile_export_to_downloads">导出到下载目录</string>
+    <string name="dbprofile_export_success">已导出到下载目录：%1$s</string>
+    <string name="dbprofile_export_failed">导出失败，请重试</string>
+    <string name="dbprofile_export_failed_reason">导出失败：%1$s</string>
+    <string name="dbprofile_export_no_db">数据库文件不存在，无法导出</string>
+    <string name="dbprofile_import_file_button">从本地文件导入数据库</string>
+    <string name="dbprofile_import_file_dialog_title">从文件导入数据库</string>
+    <string name="dbprofile_import_file_tip">支持选择 .zip（含 .db 文件）或 .db 文件。导入后会自动切换到新数据库。</string>
+    <string name="dbprofile_import_file_success">已导入数据库「%1$s」并切换</string>
+    <string name="dbprofile_import_file_failed">导入失败，请重试</string>
+    <string name="dbprofile_import_file_failed_reason">导入失败：%1$s</string>
+    <string name="dbprofile_selected_file">已选文件：%1$s</string>
 </resources>

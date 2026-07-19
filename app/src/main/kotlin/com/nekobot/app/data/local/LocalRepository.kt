@@ -2567,18 +2567,116 @@ $charSection$topicSection
         )
     }
 
+    // ==================== AI 立绘生成（本地模式） ====================
+
+    /**
+     * 本地模式 AI 立绘生成：调用 purpose=image_generation 模型生成竖版立绘，
+     * 保存到 filesDir/portraits/，返回与远程一致的成功响应（直接 completed，无需轮询）。
+     *
+     * 失败时返回 success=false 的 JsonObject：
+     * - 未配置图片生成模型 → need_config=true
+     * - 其他错误 → error 字段
+     */
+    suspend fun generatePortraitLocal(
+        characterName: String,
+        description: String,
+        basicInfo: String,
+        personality: String
+    ): com.google.gson.JsonElement = withContext(Dispatchers.IO) {
+        try {
+            val prompt = buildPortraitPrompt(characterName, description, basicInfo, personality)
+            // 竖版立绘：portrait 尺寸（1024x1792），便于呈现全身角色
+            val images = generateImages(prompt = prompt, size = "1024x1792", n = 1)
+            if (images.isEmpty()) {
+                throw IllegalStateException("图片生成未返回结果")
+            }
+            // 从缓存复制到 portraits 目录
+            val ctx = appContext ?: throw IllegalStateException("应用上下文未初始化")
+            val dir = java.io.File(ctx.filesDir, "portraits")
+            if (!dir.exists()) dir.mkdirs()
+            val sourceUri = android.net.Uri.parse(images.first().cacheUri)
+            val sourceFile = sourceUri.path?.let { java.io.File(it) }
+            val targetFile = java.io.File(dir, "portrait_${UUID.randomUUID().toString().take(16)}.png")
+            if (sourceFile != null && sourceFile.exists()) {
+                sourceFile.copyTo(targetFile, overwrite = true)
+            } else {
+                // 回退：通过 ContentResolver 读取
+                ctx.contentResolver.openInputStream(sourceUri)?.use { input ->
+                    targetFile.outputStream().use { output -> input.copyTo(output) }
+                } ?: throw IllegalStateException("无法读取生成的图片")
+            }
+            val portraitUrl = android.net.Uri.fromFile(targetFile).toString()
+            com.google.gson.JsonObject().apply {
+                addProperty("success", true)
+                addProperty("status", "completed")
+                addProperty("portrait_url", portraitUrl)
+            }
+        } catch (e: IllegalStateException) {
+            // 未配置图片生成模型等配置类错误
+            com.google.gson.JsonObject().apply {
+                addProperty("success", false)
+                val msg = e.message ?: "AI 立绘生成失败"
+                addProperty("need_config", msg.contains("未配置") || msg.contains("image_generation"))
+                addProperty("error", msg)
+            }
+        } catch (e: Exception) {
+            com.google.gson.JsonObject().apply {
+                addProperty("success", false)
+                addProperty("error", e.message ?: "AI 立绘生成失败")
+            }
+        }
+    }
+
+    /** 构建立绘生成 prompt：综合角色名/描述/基础信息/人格，引导生成竖版动漫立绘。 */
+    private fun buildPortraitPrompt(
+        characterName: String,
+        description: String,
+        basicInfo: String,
+        personality: String
+    ): String {
+        val sb = StringBuilder()
+        sb.append("anime style full-body character portrait, vertical composition, high quality, detailed, ")
+        sb.append("character name: $characterName")
+        if (description.isNotBlank()) sb.append(", description: $description")
+        if (basicInfo.isNotBlank()) sb.append(", basic info: $basicInfo")
+        if (personality.isNotBlank()) sb.append(", personality: $personality")
+        sb.append(", solo, clean background, masterpiece, best quality")
+        return sb.toString()
+    }
+
     // ==================== 状态历程（UI 用） ====================
+
+    /**
+     * 获取会话最新的角色运行时状态快照（用于会话详情页"角色进行时状态"展示）。
+     * 从 local_state_snapshots 读取最后一条记录，构造与远程 character_runtime_snapshot 一致的 JsonObject。
+     * 没有快照时返回 null。
+     */
+    suspend fun getLatestStateSnapshot(sessionId: String): com.google.gson.JsonObject? = withContext(Dispatchers.IO) {
+        val snapshots = db.stateSnapshotDao().listBySession(sessionId)
+        val latest = snapshots.lastOrNull() ?: return@withContext null
+        com.google.gson.JsonObject().apply {
+            addProperty("mood", latest.mood)
+            addProperty("mood_intensity", latest.moodIntensity)
+            addProperty("energy", latest.energy)
+            addProperty("affection", latest.affection)
+            addProperty("trust", latest.trust)
+            addProperty("familiarity", latest.familiarity)
+            addProperty("dependency", latest.dependency)
+            addProperty("security", latest.security)
+            addProperty("jealousy", latest.jealousy)
+        }
+    }
 
     /**
      * 构建本地模式的状态历程时间线。
      *
      * 从 local_state_snapshots 读取每轮 after_turn 写入的真实状态快照，
      * 呈现情绪/精力/关系六维（含 jealousy）随时间的演变，以及本轮质量评分。
-     * 快照按时间正序存储，此处倒序返回（最新在前）供 UI 展示。
+     * 快照按时间正序存储，正序返回（旧→新）供 UI 展示，UI 初始定位到末尾（最新）。
      */
     suspend fun listStateHistory(sessionId: String): List<Map<String, Any>> = withContext(Dispatchers.IO) {
         val snapshots = db.stateSnapshotDao().listBySession(sessionId)
-        snapshots.asReversed().map { snap ->
+        snapshots.map { snap ->
             val entry = mutableMapOf<String, Any>(
                 "timestamp" to snap.timestamp,
                 "type" to "state_snapshot",

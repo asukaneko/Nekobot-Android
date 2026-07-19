@@ -175,7 +175,7 @@ class PrefsManager(context: Context) {
             prefs.edit().putString(KEY_FONT_COLOR, value).apply()
         }
 
-    /** 主题色覆盖：null 表示使用默认紫色，否则为颜色 hex 值如 "#4D96FF" */
+    /** 主题色覆盖：null 表示使用默认粉色，否则为颜色 hex 值如 "#8B6CFF" */
     var themeColorOverride: String?
         get() = prefs.getString(KEY_THEME_COLOR, null)
         set(value) {
@@ -280,6 +280,23 @@ class PrefsManager(context: Context) {
     /** 设置指定会话的通知提醒开关 */
     fun setSessionNotificationEnabled(sessionId: String, enabled: Boolean) {
         prefs.edit().putBoolean("notif_$sessionId", enabled).apply()
+    }
+
+    // ==================== 会话输入框草稿缓存 ====================
+
+    /** 获取指定会话的输入框草稿（退出会话后保留） */
+    fun getChatInputDraft(sessionId: String): String {
+        return prefs.getString("chat_draft_$sessionId", "") ?: ""
+    }
+
+    /** 保存指定会话的输入框草稿 */
+    fun setChatInputDraft(sessionId: String, text: String) {
+        prefs.edit().putString("chat_draft_$sessionId", text).apply()
+    }
+
+    /** 清除指定会话的输入框草稿 */
+    fun clearChatInputDraft(sessionId: String) {
+        prefs.edit().remove("chat_draft_$sessionId").apply()
     }
 
     companion object {

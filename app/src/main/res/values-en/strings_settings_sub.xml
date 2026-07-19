@@ -201,4 +201,16 @@
     <string name="dbprofile_default_no_delete">The default database cannot be deleted</string>
     <string name="dbprofile_deleted">Deleted db \"%1$s\"</string>
     <string name="dbprofile_input_display_name">Please enter a display name</string>
+    <string name="dbprofile_export_to_downloads">Export to Downloads</string>
+    <string name="dbprofile_export_success">Exported to Downloads: %1$s</string>
+    <string name="dbprofile_export_failed">Export failed, please try again</string>
+    <string name="dbprofile_export_failed_reason">Export failed: %1$s</string>
+    <string name="dbprofile_export_no_db">Database file not found, cannot export</string>
+    <string name="dbprofile_import_file_button">Import database from local file</string>
+    <string name="dbprofile_import_file_dialog_title">Import database from file</string>
+    <string name="dbprofile_import_file_tip">Supports .zip (containing a .db file) or .db files. The new database will be auto-activated after import.</string>
+    <string name="dbprofile_import_file_success">Imported database \"%1$s\" and switched</string>
+    <string name="dbprofile_import_file_failed">Import failed, please try again</string>
+    <string name="dbprofile_import_file_failed_reason">Import failed: %1$s</string>
+    <string name="dbprofile_selected_file">Selected file: %1$s</string>
 </resources>

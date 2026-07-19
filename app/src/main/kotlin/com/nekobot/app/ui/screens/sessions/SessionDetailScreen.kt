@@ -241,7 +241,21 @@ class SessionDetailViewModel : BaseViewModel() {
 
     fun load(id: String) {
         launchResult(
-            block = { unified.getSession(id) },
+            block = {
+                val s = unified.getSession(id)
+                if (s is Resource.Success) {
+                    val data = s.data
+                    // 本地模式：从 local_state_snapshots 注入最新角色运行时状态快照
+                    if (isLocalMode && data != null && data.characterRuntimeSnapshot == null) {
+                        val snapshot = com.nekobot.app.ServiceContainer.localRepository.getLatestStateSnapshot(id)
+                        if (snapshot != null) Resource.Success(data.copy(characterRuntimeSnapshot = snapshot)) else s
+                    } else {
+                        s
+                    }
+                } else {
+                    s
+                }
+            },
             onSuccess = { s ->
                 _session.value = s
                 name.value = s.name.orEmpty()

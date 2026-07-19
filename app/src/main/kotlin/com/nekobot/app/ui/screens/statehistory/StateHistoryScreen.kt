@@ -401,13 +401,14 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                     }
 
                     // 状态提升到外层，供 stickyHeader 和 body 共享
+                    // timeline 正序（旧→新），初始定位到末尾（最新节点）
                     var currentIndex by remember { mutableStateOf(0) }
                     var isPlaying by remember { mutableStateOf(false) }
                     var selectedMetricIndex by remember { mutableStateOf(0) }
 
-                    // 切换会话时重置
+                    // 切换会话时重置到最新节点（末尾）
                     LaunchedEffect(timeline) {
-                        currentIndex = 0
+                        currentIndex = (timeline.size - 1).coerceAtLeast(0)
                         isPlaying = false
                     }
                     // 自动播放：每 1.5 秒推进一节，到末尾自动停止
@@ -541,7 +542,12 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                                         Icon(Icons.Filled.SkipPrevious, contentDescription = stringResource(R.string.state_history_prev), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                                     }
                                     IconButton(
-                                        onClick = { isPlaying = !isPlaying },
+                                        onClick = {
+                                            if (!isPlaying && timeline.isNotEmpty() && currentIndex >= timeline.size - 1) {
+                                                currentIndex = 0  // 已在末尾，从头开始播放
+                                            }
+                                            isPlaying = !isPlaying
+                                        },
                                         modifier = Modifier.size(32.dp)
                                     ) {
                                         Icon(

@@ -196,7 +196,13 @@ fun ChatScreen(
     val execConfirmation by viewModel.execConfirmation.collectAsState()
     val hookNotifications by viewModel.hookNotifications.collectAsState()
 
-    var input by remember { mutableStateOf("") }
+    var input by remember(sessionId) {
+        mutableStateOf(ServiceContainer.prefs.getChatInputDraft(sessionId))
+    }
+    // 输入框草稿持久化：退出会话后保留
+    LaunchedEffect(input, sessionId) {
+        ServiceContainer.prefs.setChatInputDraft(sessionId, input)
+    }
     var pendingPlotChoiceId by remember { mutableStateOf<String?>(null) }
     // Agent 进度卡片步骤详情弹窗目标（点击 step 时填充）
     var stepDetailTarget by remember { mutableStateOf<com.nekobot.app.data.model.ThinkingStep?>(null) }
