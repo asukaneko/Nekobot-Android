@@ -495,6 +495,10 @@ private fun ModernChatComposer(
                 .imePadding()
         ) {
             if (plotChoicesLoading || plotChoices.isNotEmpty()) {
+                // 剧情选项开启时，把草稿统计胶囊挪到选项栏按钮那一排
+                val draftStats = if (input.isNotBlank()) {
+                    stringResource(R.string.chat_draft_stats, charCount, tokenEstimate)
+                } else null
                 ModernPlotChoices(
                     loading = plotChoicesLoading,
                     choices = plotChoices,
@@ -504,6 +508,7 @@ private fun ModernChatComposer(
                     inputVisible = inputVisible,
                     panelExpanded = panelExpanded,
                     sending = sending,
+                    draftStats = draftStats,
                     onSelect = { choice ->
                         pendingPlotChoiceId = choice.id
                         input = choice.title
@@ -575,7 +580,8 @@ private fun ModernChatComposer(
                     }
 
                     // 草稿统计：胶囊样式，右对齐悬浮于输入框上方
-                    if (input.isNotBlank()) {
+                    // 剧情选项开启时挪到选项栏按钮排，这里不再显示
+                    if (input.isNotBlank() && plotChoices.isEmpty() && !plotChoicesLoading) {
                         Surface(
                             modifier = Modifier
                                 .align(Alignment.End)
@@ -975,6 +981,7 @@ private fun ModernPlotChoices(
     inputVisible: Boolean,
     panelExpanded: Boolean,
     sending: Boolean,
+    draftStats: String? = null,
     onSelect: (PlotChoice) -> Unit,
     onToggleInput: () -> Unit,
     onTogglePanel: () -> Unit,
@@ -1005,6 +1012,21 @@ private fun ModernPlotChoices(
                 fontWeight = FontWeight.SemiBold
             )
             Spacer(Modifier.weight(1f))
+            // 草稿统计胶囊：剧情选项开启时挪到这里，与按钮组在同一排
+            if (draftStats != null) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                ) {
+                    Text(
+                        text = draftStats,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
+            }
             if (layoutMode == ChatInputLayoutMode.MERGED) {
                 IconButton(onClick = onTogglePanel, modifier = Modifier.size(34.dp)) {
                     Icon(
