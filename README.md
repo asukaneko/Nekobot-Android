@@ -180,4 +180,5 @@ adb logcat -s NekoSocket:V
 
 ## 协议
 
-MIT
+本项目基于 [GNU General Public License v3](LICENSE) 发布。任何人可自由使用、修改与分发，但任何衍生作品必须同样以 GPL v3 开源。
+
