@@ -2506,7 +2506,18 @@ $charSection$topicSection
             } else {
                 db.memoryDao().listAll()
             }
-            entities.map { it.toLegacyMemory() }
+            if (entities.isEmpty()) return@withContext emptyList()
+            // 批量查询角色名，避免每条记忆一次 DB 查询
+            val charIds = entities.map { it.characterId }.distinct()
+            val charNameMap = mutableMapOf<String, String>()
+            for (cid in charIds) {
+                if (cid.isBlank()) continue
+                val char = try { db.characterDao().getById(cid) } catch (_: Exception) { null }
+                if (char != null) {
+                    charNameMap[cid] = char.name.ifBlank { cid }
+                }
+            }
+            entities.map { it.toLegacyMemory(charNameMap[it.characterId] ?: "") }
         }
 
     /** 删除本地角色记忆。 */
@@ -2542,7 +2553,7 @@ $charSection$topicSection
         memId
     }
 
-    private fun com.nekobot.app.data.local.db.LocalCharacterMemoryEntity.toLegacyMemory(): com.nekobot.app.data.model.LegacyMemory {
+    private fun com.nekobot.app.data.local.db.LocalCharacterMemoryEntity.toLegacyMemory(characterName: String = ""): com.nekobot.app.data.model.LegacyMemory {
         val typeLabel = when (type) {
             "flash" -> "short"
             "short" -> "short"
@@ -2561,9 +2572,10 @@ $charSection$topicSection
             type = typeLabel,
             priority = priorityLabel,
             targetId = targetId,
-            characterName = characterId,  // 本地模式用 characterId 代替
+            characterName = characterName,
             createdAt = createdAt,
-            updatedAt = createdAt
+            updatedAt = createdAt,
+            category = category  // 真实 memoryfs category
         )
     }
 

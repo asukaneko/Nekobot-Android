@@ -90,13 +90,8 @@ fun buildCharacterInjections(
         }
     }
 
-    // 记忆
-    if (!memories.isNullOrEmpty()) {
-        val memText = formatMemories(memories)
-        if (memText.isNotBlank()) {
-            stack.add("character.memories", memText.take(MAX_MEMORY_CHARS), priority = PromptStack.Priority.CHARACTER_MEMORIES)
-        }
-    }
+    // 记忆 - 已统一迁移到 MemoryFS（由 CharacterRuntime.beforeTurn 注入 memory_fs key）
+    // memories 参数仍传给 ReactionPlanner 用于反应计划生成，不再单独注入 PromptStack
 }
 
 private fun formatState(state: CharacterState): String {

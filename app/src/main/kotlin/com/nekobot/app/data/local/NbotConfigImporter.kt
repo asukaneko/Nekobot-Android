@@ -657,7 +657,7 @@ object NbotConfigImporter {
         //   characters/{char_id}/timeline.md
         //   characters/{char_id}/life_sim/{conversation_id}.md
         //   characters/{char_id}/users/{user_id}/recent_digest.md
-        // 安卓端 LocalCharacterMemoryEntity 用 category 字段代替 path，需做映射
+        // 安卓端 LocalCharacterMemoryEntity 保留 memory_path + conversationId 字段（v14 schema）
         val memoryFsRoot = configs.get("memory_fs")
         if (memoryFsRoot?.isJsonObject == true) {
             val fsObj = memoryFsRoot.asJsonObject
@@ -683,7 +683,11 @@ object NbotConfigImporter {
                         emotionImpact = null,
                         sourceTurnId = file.str("source_event_id"),
                         createdAt = file.str("updated_at") ?: now,
-                        expiresAt = null
+                        expiresAt = null,
+                        memoryPath = path,  // 保留原仓库 path 便于后续 append/replace
+                        version = file.get("version")?.takeIf { it.isJsonPrimitive }?.asInt ?: 1,
+                        updatedAt = file.str("updated_at") ?: now,
+                        conversationId = parsed.conversationId
                     ).also {
                         // memory_ids 暂不入库（LocalCharacterMemoryEntity 无对应字段），日志记录
                         @Suppress("UNUSED_VARIABLE")
@@ -710,7 +714,8 @@ object NbotConfigImporter {
         val targetId: String,
         val category: String,
         val type: String,           // long / short / flash
-        val defaultTitle: String
+        val defaultTitle: String,
+        val conversationId: String = ""
     )
 
     private fun parseMemoryFsPath(path: String): ParsedMemoryPath? {
@@ -733,16 +738,16 @@ object NbotConfigImporter {
         // characters/{char_id}/events/{conversation_id}.md
         if (parts.size >= 4 && parts[2] == "events" && parts[3].endsWith(".md")) {
             val convId = parts[3].removeSuffix(".md")
-            return ParsedMemoryPath(charId, convId, "important_event", "long", "重要事件")
+            return ParsedMemoryPath(charId, convId, "important_event", "long", "重要事件", conversationId = convId)
         }
-        // characters/{char_id}/timeline.md
+        // characters/{char_id}/timeline.md（跨会话，targetId=timeline）
         if (parts.size == 3 && parts[2] == "timeline.md") {
-            return ParsedMemoryPath(charId, "", "important_event", "long", "时间线")
+            return ParsedMemoryPath(charId, "timeline", "timeline", "long", "时间线")
         }
         // characters/{char_id}/life_sim/{conversation_id}.md
         if (parts.size >= 4 && parts[2] == "life_sim" && parts[3].endsWith(".md")) {
             val convId = parts[3].removeSuffix(".md")
-            return ParsedMemoryPath(charId, convId, "important_event", "long", "生活片段")
+            return ParsedMemoryPath(charId, "life_sim", "life_sim", "long", "生活片段", conversationId = convId)
         }
         // legacy 路径：users/{id}.md / diary/* / plot/* / world/* / general.md
         return ParsedMemoryPath(charId, "", "legacy", "long", path.substringAfterLast('/').removeSuffix(".md"))

@@ -3,6 +3,7 @@ package com.nekobot.app.data.local.ai
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.nekobot.app.data.local.LocalLogger
 import com.nekobot.app.data.local.db.CharacterStateDao
 import com.nekobot.app.data.local.db.LocalCharacterEntity
 import com.nekobot.app.data.local.db.LocalCharacterMemoryEntity
@@ -242,15 +243,17 @@ class LocalMemoryService(
         turnContext: CharacterTurnContext
     ) {
         val engine = autoMemory ?: run {
-            Log.w(TAG, "记忆抽取跳过：AI 客户端未配置")
+            LocalLogger.w(TAG, "记忆抽取跳过：AI 客户端未配置")
             return
         }
+        LocalLogger.i(TAG, "extractIfNeeded 入口: characterId=${turnContext.profile.id} sessionId=${chatRequest.conversationId} " +
+            "userId=${chatRequest.userId} userMsgLen=${chatRequest.content.length} aiMsgLen=${response.finalContent.length}")
         // 委托给完整版 AutoMemory，统一触发/缓冲/归一化行为。
         // scope 与 AutoState 一致：characterId:sessionId:targetId。
         engine.extractAndSave(
             characterId = turnContext.profile.id,
             characterName = turnContext.profile.name,
-            targetId = chatRequest.userId ?: "default",
+            targetId = chatRequest.userId ?: "local-user",
             sessionId = chatRequest.conversationId,
             userMessage = chatRequest.content,
             assistantMessage = response.finalContent

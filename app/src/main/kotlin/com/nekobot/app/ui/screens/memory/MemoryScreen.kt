@@ -92,11 +92,12 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
     /** 加载 MemoryFS 与旧版记忆 */
     fun load() {
         if (isLocalMode) {
-            // 本地模式：从 LocalRepository 加载角色记忆，并按 MemoryFS 类别分组构建文件视图
+            // 本地模式：从 LocalRepository 加载所有角色的记忆（characterId=null），
+            // 角色筛选由 UI 层根据 selectedCharacterId 完成，避免 DB 层过滤后 characterOptions 缺失
             launchResult(
                 block = {
                     val memories = com.nekobot.app.ServiceContainer.localRepository
-                        .listMemories(_selectedCharacterId.value)
+                        .listMemories(null)
                     com.nekobot.app.data.repository.Resource.Success(
                         com.nekobot.app.data.model.LegacyMemoryListResponse(memories = memories)
                     )
@@ -128,32 +129,72 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
     /**
      * 本地模式：按 MemoryFS 类别元数据将扁平记忆列表分组为文件视图。
      *
-     * 每个 category 对应一个"文件"，content 为该类别下所有记忆的合并文本。
+     * 对齐原仓库 fs.py 的文件结构：以"角色 × 类别"为粒度，每个 MemoryFile 对应一个
+     * 逻辑路径（如 `characters/森亚露露卡/users/asuka/character_persona.md`）。
+     *
+     * 优先使用 LegacyMemory.category（真实 memoryfs category），
+     * 若为空则回退到 type → category 的旧映射（兼容历史数据）。
      */
     private fun buildLocalMemoryFsFiles(memories: List<LegacyMemory>): List<MemoryFile> {
         if (memories.isEmpty()) return emptyList()
-        // LegacyMemory.type 映射回 MemoryFS category
-        val grouped = memories.groupBy { mem ->
-            when (mem.type) {
-                "long" -> "important_event"
-                "short" -> "recent_digest"
-                else -> "legacy"
+        // 第一层：按角色分组（characterName 可能为空，统一归到 "未知角色"）
+        val byCharacter = memories.groupBy { it.characterName.ifBlank { "未知角色" } }
+        val result = mutableListOf<MemoryFile>()
+        for ((charName, charMems) in byCharacter) {
+            // 第二层：按 category 分组
+            val grouped = charMems.groupBy { mem ->
+                mem.category?.takeIf { it.isNotBlank() } ?: when (mem.type) {
+                    "long" -> "important_event"
+                    "short" -> "recent_digest"
+                    else -> "legacy"
+                }
+            }
+            for (meta in com.nekobot.app.data.local.ai.MEMORY_CATEGORY_META) {
+                val entries = grouped[meta.key] ?: continue
+                if (entries.isEmpty()) continue
+                val content = entries.joinToString("\n\n") { e ->
+                    val title = e.title?.trim().orEmpty()
+                    val body = e.content?.trim().orEmpty()
+                    if (title.isNotEmpty()) "[$title]\n$body" else body
+                }
+                // 构造真实 memoryfs 路径（仅用于 UI 展示与区分角色）
+                // 对齐原仓库路径规范：characters/{charName}/(users/{targetId}|events|life_sim|)/{category}.md
+                val targetId = entries.firstOrNull()?.targetId?.takeIf { it.isNotBlank() } ?: "local-user"
+                val path = buildLocalMemoryPath(meta.key, charName, targetId, entries.firstOrNull())
+                MemoryFile(
+                    path = path,
+                    characterId = charName,  // 本地模式用角色名做 ID（远程模式用真实 ID）
+                    targetId = targetId,
+                    title = meta.label,
+                    content = content,
+                    summary = string(R.string.memory_count_summary, entries.size),
+                    category = meta.key,
+                    categoryLabel = meta.label,
+                    categoryOrder = meta.order,
+                    injectsToPrompt = meta.injectsToPrompt
+                ).also { result.add(it) }
             }
         }
-        return com.nekobot.app.data.local.ai.MEMORY_CATEGORY_META.mapNotNull { meta ->
-            val entries = grouped[meta.key] ?: return@mapNotNull null
-            if (entries.isEmpty()) return@mapNotNull null
-            val content = entries.joinToString("\n\n") { e ->
-                val title = e.title?.trim().orEmpty()
-                val body = e.content?.trim().orEmpty()
-                if (title.isNotEmpty()) "[$title]\n$body" else body
-            }
-            MemoryFile(
-                path = "memory/${meta.key}.md",
-                title = meta.label,
-                content = content,
-                summary = string(R.string.memory_count_summary, entries.size)
-            )
+        // 按 categoryOrder 排序，同一 category 内按角色名排序
+        return result.sortedWith(compareBy({ it.categoryOrder }, { it.characterId }))
+    }
+
+    /** 构造本地模式 MemoryFS 展示路径（对齐原仓库 fs.py 路径规范） */
+    private fun buildLocalMemoryPath(
+        category: String,
+        charName: String,
+        targetId: String,
+        sample: LegacyMemory?
+    ): String {
+        // timeline / life_sim 是跨会话的，不按 targetId 隔离
+        return when (category) {
+            "user_persona" -> "characters/$charName/users/$targetId/user_persona.md"
+            "character_persona" -> "characters/$charName/users/$targetId/character_persona.md"
+            "important_event" -> "characters/$charName/events/${sample?.id ?: "general"}.md"
+            "timeline" -> "characters/$charName/timeline.md"
+            "life_sim" -> "characters/$charName/life_sim/${sample?.id ?: "general"}.md"
+            "recent_digest" -> "characters/$charName/users/$targetId/recent_digest.md"
+            else -> "characters/$charName/users/$targetId/legacy.md"
         }
     }
 
@@ -337,35 +378,49 @@ fun MemoryScreen(
     var deleteFile by remember { mutableStateOf<MemoryFile?>(null) }
     var deleteLegacyItem by remember { mutableStateOf<LegacyMemory?>(null) }
 
-    // 角色选项：从 MemoryFS 文件中提取
+    // 角色选项：从 MemoryFS 文件中提取（本地模式 characterId 即角色名）
     val characterOptions = remember(files) {
         val map = linkedMapOf<String, String>()
         files.forEach { f ->
             val id = f.characterId
             if (!id.isNullOrBlank()) {
-                map[id] = f.title.takeIf { it.contains(id) } ?: id
+                // 本地模式 characterId 直接是角色名，显示更友好
+                map[id] = id
             }
         }
         map
     }
 
-    // 搜索过滤
-    val filteredFiles = remember(files, searchQuery) {
-        if (searchQuery.isBlank()) files
-        else files.filter {
-            it.title.contains(searchQuery, true) ||
-            it.summary.contains(searchQuery, true) ||
-            it.content.contains(searchQuery, true) ||
-            it.path.contains(searchQuery, true)
+    // 搜索 + 角色筛选
+    val filteredFiles = remember(files, searchQuery, selectedChar) {
+        var result = files
+        if (selectedChar != null) {
+            result = result.filter { it.characterId == selectedChar }
         }
+        if (searchQuery.isNotBlank()) {
+            result = result.filter {
+                it.title.contains(searchQuery, true) ||
+                it.summary.contains(searchQuery, true) ||
+                it.content.contains(searchQuery, true) ||
+                it.path.contains(searchQuery, true)
+            }
+        }
+        result
     }
-    val filteredLegacy = remember(legacy, searchQuery) {
-        if (searchQuery.isBlank()) legacy
-        else legacy.filter {
-            it.title.contains(searchQuery, true) ||
-            it.content.contains(searchQuery, true) ||
-            (it.summary?.contains(searchQuery, true) == true)
+    val filteredLegacy = remember(legacy, searchQuery, selectedChar) {
+        var result = legacy
+        if (selectedChar != null) {
+            // 本地模式 LegacyMemory.characterName 即角色名，与 MemoryFile.characterId 对齐
+            result = result.filter { it.characterName == selectedChar }
         }
+        if (searchQuery.isNotBlank()) {
+            result = result.filter {
+                it.title.contains(searchQuery, true) ||
+                it.content.contains(searchQuery, true) ||
+                (it.summary?.contains(searchQuery, true) == true)
+            }
+        }
+        result
     }
 
     // MemoryFS 文件按 category 分组
@@ -376,8 +431,11 @@ fun MemoryScreen(
             })
     }
     // 旧版记忆按 type 分组
-    val longTermLegacy = filteredLegacy.filter { it.type == "long" }
-    val shortTermLegacy = filteredLegacy.filter { it.type == "short" }
+    // 注意：已被分类到 MemoryFS 文件视图的记忆（category=user_persona/character_persona/important_event/timeline/life_sim/recent_digest）
+    // 不在"旧版记忆"区重复展示，只显示真正的旧版（category 为空/null/"legacy"）
+    val isLegacyCategory = { cat: String? -> cat.isNullOrBlank() || cat == "legacy" }
+    val longTermLegacy = filteredLegacy.filter { it.type == "long" && isLegacyCategory(it.category) }
+    val shortTermLegacy = filteredLegacy.filter { it.type == "short" && isLegacyCategory(it.category) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -659,12 +717,26 @@ private fun MemoryFileItem(
                         )
                     }
                 }
+                // 角色名 + 路径：模仿原仓库展示 characters/{charName}/users/{targetId}/{category}.md
+                // 让用户能直观区分属于哪个角色
                 Spacer(Modifier.height(4.dp))
+                if (file.characterId.isNotBlank()) {
+                    AssistChip(
+                        onClick = {},
+                        label = { Text(file.characterId, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f),
+                            labelColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    )
+                    Spacer(Modifier.height(4.dp))
+                }
                 Text(
                     text = file.path,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 if (file.summary.isNotBlank()) {

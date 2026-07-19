@@ -15,6 +15,9 @@ import com.nekobot.app.data.remote.NetworkClient
 import com.nekobot.app.data.remote.SocketManager
 import com.nekobot.app.data.repository.NekobotRepository
 import com.nekobot.app.data.repository.UnifiedRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,6 +45,15 @@ object ServiceContainer {
     lateinit var socket: SocketManager
         private set
     val gson: Gson = GsonBuilder().setLenient().disableHtmlEscaping().create()
+
+    /**
+     * 应用级协程作用域：生命周期独立于 Activity/Fragment/ViewModel。
+     *
+     * 用途：后台异步任务（如记忆抽取、状态快照写入等不应因 UI 退出而中断的操作）。
+     * 使用 SupervisorJob：单个子协程失败不会影响其他子协程。
+     * 使用 IO dispatcher：这些任务主要是 I/O 密集型（DB + 网络）。
+     */
+    val applicationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** 全局运行模式流：模式切换时所有观察页面自动刷新 */
     private val _appModeFlow = MutableStateFlow(AppMode.SERVER)

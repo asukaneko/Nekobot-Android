@@ -34,7 +34,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalApiKeyEntity::class,
         LocalMessageFavoriteEntity::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -368,6 +368,22 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v13 → v14：local_character_memories 新增 memory_path/version/updated_at/conversation_id 列
+         * + 索引（对齐原仓库 memoryfs 的 path 概念，支持 append/replace 语义与会话隔离）。
+         */
+        private val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_character_memories ADD COLUMN memory_path TEXT")
+                db.execSQL("ALTER TABLE local_character_memories ADD COLUMN version INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE local_character_memories ADD COLUMN updated_at TEXT")
+                db.execSQL("ALTER TABLE local_character_memories ADD COLUMN conversation_id TEXT")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_local_character_memories_character_id_category ON local_character_memories(character_id, category)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_local_character_memories_character_id_target_id_category ON local_character_memories(character_id, target_id, category)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_local_character_memories_memory_path ON local_character_memories(memory_path)")
+            }
+        }
+
         fun get(context: Context): NekobotDatabase =
             get(context, com.nekobot.app.data.local.PrefsManager.DEFAULT_DB_NAME)
 
@@ -380,7 +396,7 @@ abstract class NekobotDatabase : RoomDatabase() {
                 NekobotDatabase::class.java,
                 dbName
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
                 // 仅当迁移脚本未覆盖的未来版本变更时才回退到破坏性迁移（保护现有数据）
                 .fallbackToDestructiveMigration()
                 .build()

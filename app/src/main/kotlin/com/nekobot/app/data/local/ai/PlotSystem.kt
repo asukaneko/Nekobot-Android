@@ -448,10 +448,11 @@ class PlotChoiceGenerator(
 ) {
     companion object {
         private const val TAG = "PlotChoiceGenerator"
+        private const val MAX_LLM_RETRIES = 3
     }
 
     /**
-     * 生成剧情选项。
+     * 生成剧情选项（含 3 次重试）。
      *
      * @param responseText AI 回复文本
      * @param recentHistory 最近对话历史 [{role, content}]
@@ -479,39 +480,63 @@ class PlotChoiceGenerator(
             mapOf("role" to "user", "content" to userPrompt)
         )
 
-        return try {
-            val result = aiClient.chatOnce(model, messages)
-            if (result.error != null || result.content.isBlank()) return DEFAULT_CHOICES
+        // 3 次重试
+        var lastError: String? = null
+        repeat(MAX_LLM_RETRIES) { attempt ->
+            try {
+                val result = aiClient.chatOnce(model, messages)
+                if (result.error != null) {
+                    lastError = "LLM 错误: ${result.error}"
+                    com.nekobot.app.data.local.LocalLogger.w(TAG, "剧情选项 LLM 第 ${attempt + 1}/$MAX_LLM_RETRIES 次失败: ${result.error}")
+                    return@repeat
+                }
+                if (result.content.isBlank()) {
+                    lastError = "LLM 返回空内容"
+                    com.nekobot.app.data.local.LocalLogger.w(TAG, "剧情选项 LLM 第 ${attempt + 1}/$MAX_LLM_RETRIES 次返回空内容")
+                    return@repeat
+                }
 
-            // 记录 token 用量（剧情生成用途）
-            if (onTokenUsage != null && result.usage.isNotEmpty()) {
-                try {
-                    val input = (result.usage["prompt"] as? Int)
-                        ?: (result.usage["input_tokens"] as? Int)
-                        ?: (result.usage["prompt_tokens"] as? Int)
-                        ?: 0
-                    val output = (result.usage["completion"] as? Int)
-                        ?: (result.usage["output_tokens"] as? Int)
-                        ?: (result.usage["completion_tokens"] as? Int)
-                        ?: 0
-                    if (input > 0 || output > 0) {
-                        onTokenUsage.invoke(model.model, input, output)
-                    }
-                } catch (_: Exception) { }
+                // 记录 token 用量（剧情生成用途）
+                if (onTokenUsage != null && result.usage.isNotEmpty()) {
+                    try {
+                        val input = (result.usage["prompt"] as? Int)
+                            ?: (result.usage["input_tokens"] as? Int)
+                            ?: (result.usage["prompt_tokens"] as? Int)
+                            ?: 0
+                        val output = (result.usage["completion"] as? Int)
+                            ?: (result.usage["output_tokens"] as? Int)
+                            ?: (result.usage["completion_tokens"] as? Int)
+                            ?: 0
+                        if (input > 0 || output > 0) {
+                            onTokenUsage.invoke(model.model, input, output)
+                        }
+                    } catch (_: Exception) { }
+                }
+
+                val cleaned = cleanResponseContent(result.content)
+                val parsed = parseChoices(cleaned)
+
+                if (parsed.isEmpty()) {
+                    lastError = "解析后为空"
+                    com.nekobot.app.data.local.LocalLogger.w(TAG, "剧情选项 LLM 第 ${attempt + 1}/$MAX_LLM_RETRIES 次解析失败，将重试")
+                    return@repeat
+                }
+
+                com.nekobot.app.data.local.LocalLogger.i(TAG, "剧情选项 LLM 第 ${attempt + 1}/$MAX_LLM_RETRIES 次成功，生成 ${parsed.size} 个选项")
+
+                // 不足 3 个用默认补齐
+                val finalChoices = parsed.toMutableList()
+                while (finalChoices.size < 3) {
+                    finalChoices.add(DEFAULT_CHOICES[finalChoices.size])
+                }
+                return finalChoices.take(3)
+            } catch (e: Exception) {
+                lastError = "异常: ${e.message}"
+                com.nekobot.app.data.local.LocalLogger.w(TAG, "剧情选项 LLM 第 ${attempt + 1}/$MAX_LLM_RETRIES 次异常: ${e.message}", e)
             }
-
-            val cleaned = cleanResponseContent(result.content)
-            val parsed = parseChoices(cleaned)
-
-            // 不足 3 个用默认补齐
-            val finalChoices = parsed.toMutableList()
-            while (finalChoices.size < 3) {
-                finalChoices.add(DEFAULT_CHOICES[finalChoices.size])
-            }
-            finalChoices.take(3)
-        } catch (e: Exception) {
-            DEFAULT_CHOICES
         }
+        com.nekobot.app.data.local.LocalLogger.w(TAG, "剧情选项 LLM $MAX_LLM_RETRIES 次重试均失败: $lastError，使用默认选项")
+        return DEFAULT_CHOICES
     }
 
     private fun buildSystemPrompt(style: String): String {

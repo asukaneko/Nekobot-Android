@@ -253,7 +253,10 @@ data class LocalRelationshipStateEntity(
     indices = [
         Index("character_id"),
         Index("target_id"),
-        Index(value = ["character_id", "target_id"])
+        Index(value = ["character_id", "target_id"]),
+        Index(value = ["character_id", "category"]),
+        Index(value = ["character_id", "target_id", "category"]),
+        Index("memory_path")
     ]
 )
 data class LocalCharacterMemoryEntity(
@@ -269,7 +272,26 @@ data class LocalCharacterMemoryEntity(
     @ColumnInfo(name = "emotion_impact") val emotionImpact: String? = null,   // JSON
     @ColumnInfo(name = "source_turn_id") val sourceTurnId: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: String,
-    @ColumnInfo(name = "expires_at") val expiresAt: String? = null
+    @ColumnInfo(name = "expires_at") val expiresAt: String? = null,
+    /**
+     * 逻辑路径（对齐原仓库 memoryfs 概念）：
+     * - user_persona:     characters/{charId}/users/{targetId}/user_persona.md
+     * - character_persona:characters/{charId}/users/{targetId}/character_persona.md
+     * - important_event:  characters/{charId}/events/{conversationId}.md
+     * - timeline:         characters/{charId}/timeline.md
+     * - life_sim:         characters/{charId}/life_sim/{conversationId}.md
+     * - recent_digest:    characters/{charId}/users/{targetId}/recent_digest.md
+     *
+     * 同 path 的多条记忆在 append/replace 时按 path 聚合。
+     * 旧数据（无 path）保留兼容，按 category + targetId + conversationId 推断。
+     */
+    @ColumnInfo(name = "memory_path") val memoryPath: String? = null,
+    /** 同 path 的写入版本号，每次 append/replace 自增 */
+    @ColumnInfo(name = "version") val version: Int = 1,
+    /** 最近一次写入时间（ISO），用于排序最新 N 条 */
+    @ColumnInfo(name = "updated_at") val updatedAt: String? = null,
+    /** 该记忆所属会话（important_event/life_sim 按 conversationId 隔离） */
+    @ColumnInfo(name = "conversation_id") val conversationId: String? = null
 )
 
 /**

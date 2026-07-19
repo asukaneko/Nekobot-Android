@@ -614,7 +614,10 @@ data class LegacyMemory(
     @SerializedName("target_id") val targetId: String = "",
     @SerializedName("character_name") val characterName: String = "",
     @SerializedName("created_at") val createdAt: String? = null,
-    @SerializedName("updated_at") val updatedAt: String? = null
+    @SerializedName("updated_at") val updatedAt: String? = null,
+    // 本地模式扩展：真实 memoryfs category（user_persona/character_persona/important_event/timeline/life_sim/recent_digest/legacy）
+    // 远程模式反序列化时若无此字段则为 null，不影响兼容性
+    val category: String? = null
 )
 
 /** 旧版记忆列表响应：{memories, long_term, short_term} */

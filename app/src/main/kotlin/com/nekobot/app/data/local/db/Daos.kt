@@ -300,6 +300,49 @@ interface MemoryDao {
     @Query("SELECT * FROM local_character_memories WHERE character_id = :characterId AND target_id = :targetId AND category = :category ORDER BY created_at DESC LIMIT :limit")
     suspend fun listByCategory(characterId: String, targetId: String, category: String, limit: Int = 10): List<LocalCharacterMemoryEntity>
 
+    /**
+     * 按 path 精确查询（对齐原仓库 memoryfs 的 path 概念）。
+     * 用于 append/replace 语义时获取同 path 的已有记忆。
+     */
+    @Query("SELECT * FROM local_character_memories WHERE memory_path = :path ORDER BY version DESC, created_at DESC")
+    suspend fun listByPath(path: String): List<LocalCharacterMemoryEntity>
+
+    /**
+     * 按 characterId + category 查询所有会话的记忆（用于 timeline 跨会话聚合）。
+     */
+    @Query("SELECT * FROM local_character_memories WHERE character_id = :characterId AND category = :category ORDER BY updated_at DESC, created_at DESC LIMIT :limit")
+    suspend fun listByCharacterAndCategory(characterId: String, category: String, limit: Int = 80): List<LocalCharacterMemoryEntity>
+
+    /**
+     * 按 characterId + category + conversationId 查询（用于 events/life_sim 会话隔离读取）。
+     */
+    @Query("SELECT * FROM local_character_memories WHERE character_id = :characterId AND category = :category AND conversation_id = :conversationId ORDER BY updated_at DESC, created_at DESC LIMIT :limit")
+    suspend fun listByCharacterCategoryAndConversation(characterId: String, category: String, conversationId: String, limit: Int = 30): List<LocalCharacterMemoryEntity>
+
+    /**
+     * 删除指定 path 的所有记忆（用于 recent_digest replace 前清空）。
+     */
+    @Query("DELETE FROM local_character_memories WHERE memory_path = :path")
+    suspend fun deleteByPath(path: String)
+
+    /**
+     * 删除指定 characterId + category + conversationId 的所有记忆（用于 events/life_sim 替换前清空）。
+     */
+    @Query("DELETE FROM local_character_memories WHERE character_id = :characterId AND category = :category AND conversation_id = :conversationId")
+    suspend fun deleteByCharacterCategoryAndConversation(characterId: String, category: String, conversationId: String)
+
+    /**
+     * 保留指定 characterId + category 的最新 N 条，删除更早的（用于 timeline 截断）。
+     */
+    @Query("DELETE FROM local_character_memories WHERE id IN (SELECT id FROM local_character_memories WHERE character_id = :characterId AND category = :category ORDER BY updated_at DESC LIMIT -1 OFFSET :keep)")
+    suspend fun trimByCharacterAndCategory(characterId: String, category: String, keep: Int)
+
+    /**
+     * 保留指定 path 的最新 N 条，删除更早的（用于 append 后截断）。
+     */
+    @Query("DELETE FROM local_character_memories WHERE id IN (SELECT id FROM local_character_memories WHERE memory_path = :path ORDER BY version DESC, created_at DESC LIMIT -1 OFFSET :keep)")
+    suspend fun trimByPath(path: String, keep: Int)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(memory: LocalCharacterMemoryEntity)
 

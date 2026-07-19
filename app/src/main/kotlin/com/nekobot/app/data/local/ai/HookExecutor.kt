@@ -377,7 +377,7 @@ class HookExecutor(
         return ActionResult(true, "log", message)
     }
 
-    /** memory_write：写入角色记忆到 MemoryDao */
+    /** memory_write：写入角色记忆到 MemoryDao（按 memoryfs 路径规范写入） */
     private suspend fun actionMemoryWrite(
         action: JsonObject,
         hook: Hook,
@@ -385,6 +385,7 @@ class HookExecutor(
     ): ActionResult {
         val characterId = ctx.characterId ?: return ActionResult(false, "memory_write", "无角色 ID")
         val targetId = ctx.targetId.ifEmpty { "local-user" }
+        val conversationId = ctx.conversationId.ifBlank { "general" }
         val title = action.get("title")?.takeUnless { it.isJsonNull }?.asString.orEmpty()
         val content = action.get("content")?.takeUnless { it.isJsonNull }?.asString.orEmpty()
         val summary = action.get("summary")?.takeUnless { it.isJsonNull }?.asString
@@ -396,24 +397,82 @@ class HookExecutor(
         val importanceInt = (importance * 10).toInt().coerceIn(1, 10)
         val memType = action.get("mem_type")?.takeUnless { it.isJsonNull }?.asString ?: "long"
 
+        // 对齐 AutoMemory.buildMemoryPath：按 category 分发到不同 memoryfs 路径
+        val memoryPath = buildMemoryPath(category, characterId, targetId, conversationId)
+        val now = com.nekobot.app.data.local.LocalRepository.nowIsoStatic()
+        // version：同 path 累积（对齐 AutoMemory.nextVersionForPath）
+        val version = try {
+            (memoryDao.listByPath(memoryPath).maxOfOrNull { it.version } ?: 0) + 1
+        } catch (e: Exception) { 1 }
+
+        // recent_digest 走 replace 语义（先删除同 path 旧值）
+        if (category == "recent_digest") {
+            try { memoryDao.deleteByPath(memoryPath) } catch (_: Exception) {}
+        }
+
         val entity = LocalCharacterMemoryEntity(
             id = UUID.randomUUID().toString(),
             characterId = characterId,
             targetId = targetId,
             type = memType,
-            category = category,
+            category = category.ifBlank { "legacy" },
             title = title,
             summary = summary,
             content = content,
             importance = importanceInt,
-            createdAt = com.nekobot.app.data.local.LocalRepository.nowIsoStatic()
+            createdAt = now,
+            memoryPath = memoryPath,
+            version = version,
+            updatedAt = now,
+            conversationId = conversationId
         )
         try {
             memoryDao.upsert(entity)
-            LocalLogger.i(TAG, "[Hook:${hook.name}] 写入记忆: $title")
+            // important_event 同步派生 timeline 条目（对齐 AutoMemory 行为）
+            if (category == "important_event") {
+                val ts = java.time.LocalDateTime.now()
+                    .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+                val timelineContent = "[$ts] [conv:$conversationId] $title: ${content.take(120)}"
+                val timelinePath = buildMemoryPath("timeline", characterId, "timeline", conversationId)
+                val tlEntity = LocalCharacterMemoryEntity(
+                    id = UUID.randomUUID().toString(),
+                    characterId = characterId,
+                    targetId = "timeline",
+                    type = "long",
+                    category = "timeline",
+                    title = title,
+                    summary = title,
+                    content = timelineContent,
+                    importance = importanceInt,
+                    createdAt = now,
+                    memoryPath = timelinePath,
+                    version = 1,
+                    updatedAt = now,
+                    conversationId = conversationId
+                )
+                memoryDao.upsert(tlEntity)
+                memoryDao.trimByCharacterAndCategory(characterId, "timeline", keep = 80)
+            }
+            LocalLogger.i(TAG, "[Hook:${hook.name}] 写入记忆: $title [category=$category path=$memoryPath]")
             return ActionResult(true, "memory_write", "已写入记忆: $title")
         } catch (e: Exception) {
             return ActionResult(false, "memory_write", "写入记忆失败: ${e.message}")
+        }
+    }
+
+    /**
+     * 构造 memoryfs 逻辑路径（与 AutoMemory.buildMemoryPath 保持一致）。
+     * Hook 写入的记忆需走相同路径规范，才能在 MemoryFS 注入时被正确读取。
+     */
+    private fun buildMemoryPath(category: String, characterId: String, targetId: String, conversationId: String): String {
+        return when (category) {
+            "user_persona" -> "characters/$characterId/users/$targetId/user_persona.md"
+            "character_persona" -> "characters/$characterId/users/$targetId/character_persona.md"
+            "important_event" -> "characters/$characterId/events/$conversationId.md"
+            "timeline" -> "characters/$characterId/timeline.md"
+            "life_sim" -> "characters/$characterId/life_sim/$conversationId.md"
+            "recent_digest" -> "characters/$characterId/users/$targetId/recent_digest.md"
+            else -> "characters/$characterId/users/$targetId/legacy.md"
         }
     }
 

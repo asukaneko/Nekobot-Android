@@ -2,6 +2,7 @@ package com.nekobot.app.data.local.ai
 
 import android.util.Log
 import java.time.Instant
+import kotlinx.coroutines.launch
 
 /**
  * 角色运行时引擎，对应原仓库 nbot/character/runtime.py。
@@ -238,13 +239,21 @@ class CharacterRuntime(
             }
         }
 
-        // 记忆抽取
+        // 记忆抽取：异步执行，不阻塞 afterTurn 主流程，也不受 viewModelScope 生命周期影响
+        // （记忆抽取含 3 次 LLM 重试，可能耗时 30-60 秒，不应因用户退出聊天界面而被取消）
         if (memoryService != null) {
-            try {
-                val response = ChatResponse(finalContent = finalContent)
-                memoryService.extractIfNeeded(chatRequest, response, turnContext)
-            } catch (e: Exception) {
-                com.nekobot.app.data.local.LocalLogger.w(TAG, "记忆抽取失败（不影响主流程）: ${e.message}", e)
+            val response = ChatResponse(finalContent = finalContent)
+            val capturedRequest = chatRequest
+            val capturedTurn = turnContext
+            com.nekobot.app.ServiceContainer.applicationScope.launch {
+                try {
+                    memoryService.extractIfNeeded(capturedRequest, response, capturedTurn)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    // applicationScope 不会被 UI 生命周期取消，仅在 app 进程结束时取消
+                    com.nekobot.app.data.local.LocalLogger.w(TAG, "记忆抽取被取消（应用进程退出）: ${e.message}")
+                } catch (e: Exception) {
+                    com.nekobot.app.data.local.LocalLogger.w(TAG, "记忆抽取失败（不影响主流程）: ${e.message}", e)
+                }
             }
         }
     }
