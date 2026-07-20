@@ -84,6 +84,8 @@ data class Session(
     @SerializedName("plot_choice_style") val plotChoiceStyle: String? = null,
     /** 剧情大纲文本（用户导入/粘贴，AI 生成选项时围绕此走向推进） */
     @SerializedName(value = "plot_outline", alternate = ["plotOutline"]) val plotOutline: String? = null,
+    /** 本会话用户人设/背景提示词（注入到 PromptStack 的 user.persona 项） */
+    @SerializedName(value = "user_persona", alternate = ["userPersona"]) val userPersona: String? = null,
     @SerializedName("character_runtime_snapshot") val characterRuntimeSnapshot: JsonElement? = null,
     @SerializedName("user_id") val userId: String? = null,
     @SerializedName("group_id") val groupId: String? = null,
@@ -131,6 +133,7 @@ data class UpdateSessionRequest(
     @SerializedName("plot_real_time_sync") val plotRealTimeSync: Boolean? = null,
     @SerializedName("plot_choice_style") val plotChoiceStyle: String? = null,
     @SerializedName("plot_outline") val plotOutline: String? = null,
+    @SerializedName("user_persona") val userPersona: String? = null,
     @SerializedName("proactive_chat") val proactiveChat: JsonElement? = null,
     @SerializedName("tts_config") val ttsConfig: JsonElement? = null,
     @SerializedName("share_config") val shareConfig: JsonElement? = null,

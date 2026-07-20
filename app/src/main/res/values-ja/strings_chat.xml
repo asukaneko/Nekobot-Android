@@ -207,6 +207,13 @@
     <string name="sessions_detail_plot_outline_clear">クリア</string>
     <string name="sessions_detail_plot_outline_import_failed">インポート失敗：ファイル内容を読み込めません</string>
     <string name="sessions_detail_plot_outline_chars">%1$d 字</string>
+    <string name="sessions_detail_user_persona">ユーザー人格 / 背景</string>
+    <string name="sessions_detail_user_persona_unset">未設定</string>
+    <string name="sessions_detail_user_persona_set">設定済み（%1$d 字）</string>
+    <string name="sessions_detail_edit_user_persona">ユーザー人格 / 背景を編集</string>
+    <string name="sessions_detail_user_persona_desc">このセッションのプレイヤー名と背景プロンプトを設定します。AI はこの名前でプレイヤーを呼び、背景を元にプレイヤーの身分・好み・状況を理解します。自動記憶も「ユーザー」の代わりにこの名前を使います。</string>
+    <string name="sessions_detail_user_persona_hint">プレイヤー名、身分、好み、背景ストーリーなどを入力…</string>
+    <string name="sessions_detail_user_persona_chars">%1$d 字</string>
     <string name="sessions_detail_interval_global">グローバルデフォルト</string>
     <string name="sessions_detail_interval_off">オフ</string>
     <string name="sessions_detail_interval_every_1">1 ターンごと</string>

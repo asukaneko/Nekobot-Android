@@ -250,13 +250,16 @@ class LocalMemoryService(
             "userId=${chatRequest.userId} userMsgLen=${chatRequest.content.length} aiMsgLen=${response.finalContent.length}")
         // 委托给完整版 AutoMemory，统一触发/缓冲/归一化行为。
         // scope 与 AutoState 一致：characterId:sessionId:targetId。
+        // senderName 来自会话配置（SessionDetailScreen 中编辑），传给 AutoMemory 用作"用户"标签
+        val senderName = (chatRequest.metadata["sender_name"] as? String).orEmpty()
         engine.extractAndSave(
             characterId = turnContext.profile.id,
             characterName = turnContext.profile.name,
             targetId = chatRequest.userId ?: "local-user",
             sessionId = chatRequest.conversationId,
             userMessage = chatRequest.content,
-            assistantMessage = response.finalContent
+            assistantMessage = response.finalContent,
+            userName = senderName
         )
     }
 

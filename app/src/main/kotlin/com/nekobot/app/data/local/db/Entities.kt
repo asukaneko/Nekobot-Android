@@ -38,6 +38,8 @@ data class LocalSessionEntity(
     @ColumnInfo(name = "plot_choice_style") val plotChoiceStyle: String? = null,
     /** 剧情大纲文本（用户导入/粘贴，AI 生成选项时围绕此走向推进） */
     @ColumnInfo(name = "plot_outline") val plotOutline: String? = null,
+    /** 本会话用户人设/背景提示词（注入到 PromptStack 的 user.persona 项） */
+    @ColumnInfo(name = "user_persona") val userPersona: String? = null,
     @ColumnInfo(name = "auto_state_interval") val autoStateInterval: Int = 2,
     /** 禁用的提示词注入项 key 列表，逗号分隔 */
     @ColumnInfo(name = "disabled_prompt_keys") val disabledPromptKeys: String? = null,

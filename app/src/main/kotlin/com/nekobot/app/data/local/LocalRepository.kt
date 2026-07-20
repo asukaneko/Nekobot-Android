@@ -314,6 +314,7 @@ class LocalRepository(
         plotRealTimeSync: Boolean? = null,
         plotChoiceStyle: String? = null,
         plotOutline: String? = null,
+        userPersona: String? = null,
         autoStateInterval: Int? = null,
         disabledPromptKeys: List<String>? = null,
         isPublic: Boolean? = null,
@@ -336,6 +337,7 @@ class LocalRepository(
             plotRealTimeSync = plotRealTimeSync ?: entity.plotRealTimeSync,
             plotChoiceStyle = plotChoiceStyle ?: entity.plotChoiceStyle,
             plotOutline = plotOutline ?: entity.plotOutline,
+            userPersona = userPersona ?: entity.userPersona,
             autoStateInterval = autoStateInterval ?: entity.autoStateInterval,
             disabledPromptKeys = disabledPromptKeys?.let { it.joinToString(",") } ?: entity.disabledPromptKeys,
             isPublic = isPublic ?: entity.isPublic,
@@ -894,6 +896,9 @@ class LocalRepository(
                 if (session.plotRealTimeSync) put("plot_realtime_sync", true)
                 put("auto_state_interval", session.autoStateInterval)
                 if (disabledKeys.isNotEmpty()) put("disabled_prompt_keys", disabledKeys)
+                // 本会话用户名 + 用户人设/背景，供 AIPipeline 注入 PromptStack、AutoMemory 替换"用户"标签
+                session.senderName?.takeIf { it.isNotBlank() }?.let { put("sender_name", it) }
+                session.userPersona?.takeIf { it.isNotBlank() }?.let { put("user_persona", it) }
             }
         )
         val ctx = com.nekobot.app.data.local.ai.PipelineContext(chatRequest)
@@ -922,6 +927,9 @@ class LocalRepository(
         }
         // auto_state_interval 同步到 ctx.metadata（供 AutoState 读取）
         ctx.metadata["auto_state_interval"] = session.autoStateInterval
+        // sender_name / user_persona 同步到 ctx.metadata（供 AIPipeline 注入 PromptStack 的 user.persona 项）
+        session.senderName?.takeIf { it.isNotBlank() }?.let { ctx.metadata["sender_name"] = it }
+        session.userPersona?.takeIf { it.isNotBlank() }?.let { ctx.metadata["user_persona"] = it }
 
         // 注入会话自定义提示词
         val customPromptsRaw = session.customPrompts
@@ -2353,6 +2361,7 @@ $charSection$topicSection
         plotRealTimeSync = plotRealTimeSync,
         plotChoiceStyle = plotChoiceStyle,
         plotOutline = plotOutline,
+        userPersona = userPersona,
         autoStateInterval = autoStateInterval,
         disabledPromptKeys = disabledPromptKeys?.split(",")?.filter { it.isNotEmpty() },
         customPrompts = customPrompts?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },

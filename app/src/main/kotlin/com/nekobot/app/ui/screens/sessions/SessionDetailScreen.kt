@@ -126,6 +126,7 @@ class SessionDetailViewModel : BaseViewModel() {
     val plotRealTimeSync = MutableStateFlow(false)
     val plotChoiceStyle = MutableStateFlow("")
     val plotOutline = MutableStateFlow("")
+    val userPersona = MutableStateFlow("")
     // TTS / 主动聊天 / 公开分享
     val ttsEnabled = MutableStateFlow(false)
     val ttsModelId = MutableStateFlow("")
@@ -269,6 +270,7 @@ class SessionDetailViewModel : BaseViewModel() {
                 plotRealTimeSync.value = s.plotRealTimeSync == true
                 plotChoiceStyle.value = s.plotChoiceStyle ?: ""
                 plotOutline.value = s.plotOutline ?: ""
+                userPersona.value = s.userPersona ?: ""
                 // 解析 TTS / 主动聊天 / 公开分享
                 android.util.Log.d("SessionDetail", "load: s.isPublic=${s.isPublic}, s.ttsConfig=${s.ttsConfig}, s.shareConfig=${s.shareConfig}")
                 isPublic.value = false
@@ -446,6 +448,7 @@ class SessionDetailViewModel : BaseViewModel() {
                         plotRealTimeSync = plotRealTimeSync.value,
                         plotChoiceStyle = plotChoiceStyle.value.ifBlank { null },
                         plotOutline = plotOutline.value.ifBlank { null },
+                        userPersona = userPersona.value.ifBlank { null },
                         disabledPromptKeys = _disabledPromptKeys.value.toList(),
                         proactiveChat = proactiveJson,
                         ttsConfig = ttsJson
@@ -615,6 +618,7 @@ fun SessionDetailScreen(
     val plotRealTimeSync by vm.plotRealTimeSync.collectAsState()
     val plotChoiceStyle by vm.plotChoiceStyle.collectAsState()
     val plotOutline by vm.plotOutline.collectAsState()
+    val userPersona by vm.userPersona.collectAsState()
     val ttsEnabled by vm.ttsEnabled.collectAsState()
     val ttsModelId by vm.ttsModelId.collectAsState()
     val ttsVoice by vm.ttsVoice.collectAsState()
@@ -693,6 +697,9 @@ fun SessionDetailScreen(
     val characterIdLabel = stringResource(R.string.sessions_detail_character_id)
     val characterNameLabelText = stringResource(R.string.sessions_detail_character_name_label)
     val senderNameLabel = stringResource(R.string.sessions_detail_sender_name)
+    val userPersonaLabel = stringResource(R.string.sessions_detail_user_persona)
+    val userPersonaUnset = stringResource(R.string.sessions_detail_user_persona_unset)
+    val userPersonaSetFmt = stringResource(R.string.sessions_detail_user_persona_set)
     val scenarioLabel = stringResource(R.string.sessions_detail_scenario)
     val groupCharactersLabel = stringResource(R.string.sessions_detail_group_characters)
     val changeCharacterLabel = stringResource(R.string.sessions_detail_change_character)
@@ -1050,6 +1057,42 @@ fun SessionDetailScreen(
                                 Text(
                                     changeCharacterLabel,
                                     color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
+                        // === 4.5 用户人设 / 背景 ===
+                        // 本会话玩家名称 + 背景提示词，注入到 PromptStack 的 user.persona 项
+                        GlassCard(modifier = Modifier.fillMaxWidth()) {
+                            SectionHeader(title = userPersonaLabel)
+                            Spacer(Modifier.height(8.dp))
+                            var showUserPersonaDialog by remember { mutableStateOf(false) }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    userPersonaLabel,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedButton(onClick = { showUserPersonaDialog = true }) {
+                                    Text(
+                                        text = if (userPersona.isBlank()) userPersonaUnset
+                                               else userPersonaSetFmt.format(userPersona.length),
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                }
+                            }
+                            if (showUserPersonaDialog) {
+                                UserPersonaEditorDialog(
+                                    currentPersona = userPersona,
+                                    onConfirm = { newText ->
+                                        vm.userPersona.value = newText
+                                        showUserPersonaDialog = false
+                                    },
+                                    onDismiss = { showUserPersonaDialog = false }
                                 )
                             }
                         }
@@ -1918,6 +1961,73 @@ private fun PlotOutlineEditorDialog(
         },
         confirmButton = {
             androidx.compose.material3.TextButton(onClick = { onConfirm(outlineText.trim()) }) {
+                Text(stringResource(R.string.common_confirm))
+            }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
+        }
+    )
+}
+
+/**
+ * 用户人设 / 背景编辑器弹窗：粘贴或输入玩家名称+身份+背景故事。
+ *
+ * 内容会被注入到 PromptStack 的 user.persona 项（priority=BEHAVIOR，高优先级），
+ * 让 AI 用此名称称呼玩家，并依据背景理解玩家身份；同时 AutoMemory 也会用此名称替代泛称「用户」。
+ */
+@Composable
+private fun UserPersonaEditorDialog(
+    currentPersona: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var personaText by remember { mutableStateOf(currentPersona) }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.sessions_detail_edit_user_persona), fontWeight = FontWeight.SemiBold) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    stringResource(R.string.sessions_detail_user_persona_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = personaText,
+                    onValueChange = { personaText = it },
+                    label = { Text(stringResource(R.string.sessions_detail_user_persona_hint)) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 160.dp, max = 320.dp),
+                    minLines = 6,
+                    maxLines = 12
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (personaText.isNotEmpty()) {
+                        OutlinedButton(
+                            onClick = { personaText = "" }
+                        ) {
+                            Text(stringResource(R.string.sessions_detail_plot_outline_clear))
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        stringResource(R.string.sessions_detail_user_persona_chars, personaText.length),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = { onConfirm(personaText.trim()) }) {
                 Text(stringResource(R.string.common_confirm))
             }
         },

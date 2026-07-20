@@ -207,6 +207,13 @@
     <string name="sessions_detail_plot_outline_clear">Clear</string>
     <string name="sessions_detail_plot_outline_import_failed">Import failed: unable to read file</string>
     <string name="sessions_detail_plot_outline_chars">%1$d chars</string>
+    <string name="sessions_detail_user_persona">User Persona / Background</string>
+    <string name="sessions_detail_user_persona_unset">Not set</string>
+    <string name="sessions_detail_user_persona_set">Set (%1$d chars)</string>
+    <string name="sessions_detail_edit_user_persona">Edit User Persona / Background</string>
+    <string name="sessions_detail_user_persona_desc">Define the player\'s name and background prompt for this session. The AI will address the player by this name and interpret their identity, preferences, and circumstances from the background. Auto Memory will also use this name instead of the generic \"user\".</string>
+    <string name="sessions_detail_user_persona_hint">Enter player name, identity, preferences, backstory, etc.…</string>
+    <string name="sessions_detail_user_persona_chars">%1$d chars</string>
     <string name="sessions_detail_interval_global">Global default</string>
     <string name="sessions_detail_interval_off">Off</string>
     <string name="sessions_detail_interval_every_1">Every 1 turn</string>
