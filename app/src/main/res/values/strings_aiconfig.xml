@@ -127,6 +127,8 @@
     <string name="localai_new_model">新建 AI 模型</string>
     <string name="localai_edit_model">编辑 AI 模型</string>
     <string name="localai_protocol">协议</string>
+    <string name="localai_provider">Provider</string>
+    <string name="localai_provider_placeholder">留空 / openai / openai_compatible / xiaomi / mimo</string>
     <string name="localai_model_name">模型名</string>
     <string name="localai_append_path">自动拼接路径</string>
     <string name="localai_priority">优先级</string>
@@ -143,7 +145,7 @@
     <string name="localai_purpose_hint_vision">用于图片消息理解，将作为图片描述的回退模型</string>
     <string name="localai_purpose_hint_video">用于视频消息理解（暂未在本地模式自动调用）</string>
     <string name="localai_purpose_hint_tts">用于文本转语音，可在聊天界面手动触发</string>
-    <string name="localai_purpose_hint_stt">用于语音转文字，可在录音后自动调用</string>
+    <string name="localai_purpose_hint_stt">用于语音转文字，可在录音后自动调用。Provider 留空或填 openai/openai_compatible 走 OpenAI 兼容 /audio/transcriptions；填 xiaomi 或 mimo 走小米 MiMo /v1/chat/completions（录音 m4a 会自动转码为 16kHz 单声道 WAV，≤10MB）</string>
     <string name="localai_purpose_hint_embedding">用于向量嵌入（本地模式暂未接入知识库）</string>
     <string name="localai_purpose_hint_image_generation">用于 AI 生图（本地模式暂未接入）</string>
 </resources>

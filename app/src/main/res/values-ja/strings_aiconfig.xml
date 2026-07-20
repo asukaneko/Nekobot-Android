@@ -127,6 +127,8 @@
     <string name="localai_new_model">新規 AI モデル</string>
     <string name="localai_edit_model">AI モデルを編集</string>
     <string name="localai_protocol">プロトコル</string>
+    <string name="localai_provider">Provider</string>
+    <string name="localai_provider_placeholder">空欄 / openai / openai_compatible / xiaomi / mimo</string>
     <string name="localai_model_name">モデル名</string>
     <string name="localai_append_path">パスを自動付与</string>
     <string name="localai_priority">優先度</string>
@@ -143,7 +145,7 @@
     <string name="localai_purpose_hint_vision">画像メッセージの理解用、画像説明のフォールバックとして使用</string>
     <string name="localai_purpose_hint_video">動画メッセージの理解用（ローカルモードでは自動呼び出し未対応）</string>
     <string name="localai_purpose_hint_tts">音声合成用、チャットで手動トリガー可能</string>
-    <string name="localai_purpose_hint_stt">音声認識用、録音後に自動呼び出し</string>
+    <string name="localai_purpose_hint_stt">音声認識用、録音後に自動呼び出し。Provider 空欄または openai/openai_compatible で OpenAI 互換 /audio/transcriptions、xiaomi または mimo で小米 MiMo /v1/chat/completions（m4a 録音は 16kHz モノラル WAV に自動変換、≤10MB）</string>
     <string name="localai_purpose_hint_embedding">Embedding 用（ローカルモードではナレッジベース未統合）</string>
     <string name="localai_purpose_hint_image_generation">AI 画像生成用（ローカルモードでは未統合）</string>
 </resources>

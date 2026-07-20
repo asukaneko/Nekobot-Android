@@ -554,6 +554,7 @@ private fun LocalAiModelEditDialog(
 
     var name by remember(model) { mutableStateOf(model?.name ?: "") }
     var protocol by remember(model) { mutableStateOf(model?.protocol ?: protocols.first()) }
+    var provider by remember(model) { mutableStateOf(model?.provider ?: "") }
     var apiKey by remember(model) { mutableStateOf(model?.apiKey ?: "") }
     var baseUrl by remember(model) { mutableStateOf(model?.baseUrl ?: "") }
     var modelName by remember(model) { mutableStateOf(model?.model ?: "") }
@@ -581,6 +582,7 @@ private fun LocalAiModelEditDialog(
                     id = model?.id ?: UUID.randomUUID().toString(),
                     name = name.trim(),
                     protocol = protocol,
+                    provider = provider.trim().ifBlank { null },
                     apiKey = apiKey.trim(),
                     baseUrl = baseUrl.trim(),
                     model = modelName.trim(),
@@ -672,6 +674,15 @@ private fun LocalAiModelEditDialog(
                     }
                 }
             }
+            // Provider（仅 STT 等多协议 purpose 实际生效；留空走默认）
+            OutlinedTextField(
+                value = provider,
+                onValueChange = { provider = it },
+                label = { Text(stringResource(R.string.localai_provider)) },
+                placeholder = { Text(stringResource(R.string.localai_provider_placeholder)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
             OutlinedTextField(
                 value = baseUrl,
                 onValueChange = { baseUrl = it },

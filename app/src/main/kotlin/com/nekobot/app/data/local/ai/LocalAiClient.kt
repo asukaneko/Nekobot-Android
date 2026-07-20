@@ -512,7 +512,10 @@ class LocalAiClient(
 
     /**
      * STT 语音识别（purpose = stt）。
-     * 调用 OpenAI 兼容 /audio/transcriptions 端点。
+     * 根据 [LocalAiModelEntity.provider] 字段路由：
+     * - `openai` / `openai_compatible` / 空 → OpenAI 兼容 /audio/transcriptions（multipart）
+     * - `xiaomi` / `mimo` → 小米 MiMo /v1/chat/completions（JSON + base64 data URL）
+     *
      * audioBytes 为音频字节数组（mp3/wav/m4a 等），返回识别文本。
      * 非 2xx 抛出 [FailoverHttpException] 供协调器捕获。
      */
@@ -522,9 +525,26 @@ class LocalAiClient(
         filename: String = "audio.mp3",
         language: String? = null
     ): LocalAiResult {
+        val provider = (model.provider ?: "").trim().lowercase()
+        return when (provider) {
+            "xiaomi", "mimo" -> transcribeSpeechXiaomi(model, audioBytes, filename, language)
+            else -> transcribeSpeechOpenAI(model, audioBytes, filename, language)
+        }
+    }
+
+    /**
+     * OpenAI 兼容 STT：POST /audio/transcriptions（multipart/form-data）。
+     * 响应：JSON 中 `text` 字段（或 response_format=text 时为纯文本）。
+     */
+    private suspend fun transcribeSpeechOpenAI(
+        model: LocalAiModelEntity,
+        audioBytes: ByteArray,
+        filename: String,
+        language: String?
+    ): LocalAiResult {
         val url = resolveAudioUrl(model.baseUrl, model.appendBaseUrlPath, "audio/transcriptions")
         val audioMediaType = guessAudioMediaType(filename).toMediaType()
-        Log.i("LocalAiClient", "STT 请求: url=$url, model=${model.model}, file=$filename, size=${audioBytes.size}, mime=$audioMediaType")
+        Log.i("LocalAiClient", "STT(openai) 请求: url=$url, model=${model.model}, file=$filename, size=${audioBytes.size}, mime=$audioMediaType")
         val audioPart = okhttp3.MultipartBody.Builder()
             .setType(okhttp3.MultipartBody.FORM)
             .addFormDataPart("model", model.model)
@@ -540,14 +560,20 @@ class LocalAiClient(
             client.newCall(req).awaitResponse().use { resp ->
                 if (!resp.isSuccessful) {
                     val err = resp.body?.string().orEmpty().take(500)
-                    Log.e("LocalAiClient", "STT 失败: HTTP ${resp.code} url=$url resp=$err")
+                    Log.e("LocalAiClient", "STT(openai) 失败: HTTP ${resp.code} url=$url resp=$err")
                     throw FailoverHttpException(resp.code, "HTTP ${resp.code} [POST $url]: $err")
                 }
                 val raw = resp.body?.string().orEmpty()
-                @Suppress("UNCHECKED_CAST")
-                val data = (gson.fromJson(raw, Map::class.java) as? Map<String, Any>) ?: emptyMap()
+                // 兼容两种响应格式：JSON {"text": "..."} 或纯文本
+                val text = if (raw.trimStart().startsWith("{")) {
+                    @Suppress("UNCHECKED_CAST")
+                    val data = (gson.fromJson(raw, Map::class.java) as? Map<String, Any>) ?: emptyMap()
+                    data["text"] as? String ?: ""
+                } else {
+                    raw.trim()
+                }
                 LocalAiResult(
-                    data["text"] as? String ?: "",
+                    text,
                     usedModelId = model.id,
                     usedModelName = model.name
                 )
@@ -557,9 +583,124 @@ class LocalAiClient(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e("LocalAiClient", "transcribeSpeech failed: ${e.message}")
+            Log.e("LocalAiClient", "transcribeSpeechOpenAI failed: ${e.message}")
             throw e
         }
+    }
+
+    /**
+     * 小米 MiMo STT：POST /v1/chat/completions（application/json）。
+     *
+     * 与 OpenAI 的关键差异：
+     * - 端点路径：`/v1/chat/completions`（非 /audio/transcriptions）
+     * - 认证头：`api-key: {key}`（非 Authorization: Bearer）
+     * - 请求体：JSON，音频以 base64 data URL 形式放在 messages[0].content[0].input_audio.data
+     * - 语言字段：放在顶层 `asr_options.language`（非 language）
+     * - 响应：Chat Completions JSON，文本在 choices[0].message.content
+     *
+     * 音频格式：仅支持 wav / mp3；其他格式（m4a/aac/webm/ogg/flac）会自动用
+     * Android 原生 MediaCodec 转码为 16kHz 单声道 WAV（与原仓库 ffmpeg 参数对齐）。
+     * 文件大小上限：10MB。
+     */
+    private suspend fun transcribeSpeechXiaomi(
+        model: LocalAiModelEntity,
+        audioBytes: ByteArray,
+        filename: String,
+        language: String?
+    ): LocalAiResult {
+        // 拼接 chat/completions URL（复用 resolveAudioUrl 会使路径变成 audio/transcriptions，需独立处理）
+        val url = resolveChatCompletionsUrl(model.baseUrl, model.appendBaseUrlPath)
+
+        // 小米 API 仅支持 wav/mp3；其他格式（m4a/aac/webm/ogg/flac）需先转码为 WAV。
+        // 用 Android 原生 MediaExtractor + MediaCodec 解码 + 重采样到 16kHz 单声道，对齐原仓库 ffmpeg 参数。
+        val ext = filename.substringAfterLast('.', "").lowercase()
+        val (effectiveBytes, effectiveFilename, effectiveMime) = when (ext) {
+            "wav", "mp3" -> Triple(audioBytes, filename, guessAudioMediaType(filename))
+            else -> try {
+                val wav = AudioConverter.toWav(audioBytes, targetSampleRate = 16000, targetChannels = 1)
+                Triple(wav, "audio.wav", "audio/wav")
+            } catch (e: Exception) {
+                Log.w("LocalAiClient", "STT(xiaomi) 转码失败 ext=$ext，回退原字节直传: ${e.message}")
+                Triple(audioBytes, filename, guessAudioMediaType(filename))
+            }
+        }
+
+        val b64 = android.util.Base64.encodeToString(effectiveBytes, android.util.Base64.NO_WRAP)
+        val dataUrl = "data:$effectiveMime;base64,$b64"
+        val lang = language?.takeIf { it.isNotBlank() } ?: "auto"
+
+        val bodyMap = mapOf(
+            "model" to model.model,
+            "messages" to listOf(
+                mapOf(
+                    "role" to "user",
+                    "content" to listOf(
+                        mapOf(
+                            "type" to "input_audio",
+                            "input_audio" to mapOf("data" to dataUrl)
+                        )
+                    )
+                )
+            ),
+            "asr_options" to mapOf("language" to lang)
+        )
+        val jsonBody = gson.toJson(bodyMap).toRequestBody("application/json".toMediaType())
+
+        Log.i("LocalAiClient", "STT(xiaomi) 请求: url=$url, model=${model.model}, origFile=$filename, effectiveFile=$effectiveFilename, size=${effectiveBytes.size}, mime=$effectiveMime, lang=$lang")
+
+        val req = Request.Builder().url(url).post(jsonBody)
+            .header("api-key", model.apiKey)
+            .header("Content-Type", "application/json")
+            .build()
+        return try {
+            client.newCall(req).awaitResponse().use { resp ->
+                if (!resp.isSuccessful) {
+                    val err = resp.body?.string().orEmpty().take(500)
+                    Log.e("LocalAiClient", "STT(xiaomi) 失败: HTTP ${resp.code} url=$url resp=$err")
+                    throw FailoverHttpException(resp.code, "HTTP ${resp.code} [POST $url]: $err")
+                }
+                val raw = resp.body?.string().orEmpty()
+                @Suppress("UNCHECKED_CAST")
+                val data = (gson.fromJson(raw, Map::class.java) as? Map<String, Any>) ?: emptyMap()
+                // choices[0].message.content
+                val choices = data["choices"] as? List<*> ?: emptyList<Any>()
+                val text = choices.firstOrNull()?.let { c ->
+                    @Suppress("UNCHECKED_CAST")
+                    ((c as? Map<String, Any>)?.get("message") as? Map<String, Any>)?.get("content") as? String
+                } ?: raw.trim()
+                LocalAiResult(
+                    text,
+                    usedModelId = model.id,
+                    usedModelName = model.name
+                )
+            }
+        } catch (e: FailoverHttpException) {
+            throw e
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e("LocalAiClient", "transcribeSpeechXiaomi failed: ${e.message}")
+            throw e
+        }
+    }
+
+    /**
+     * 解析 chat/completions 端点 URL（供小米 MiMo STT 使用）。
+     * - 已含 /chat/completions → 直接返回
+     * - 已含 /audio/transcriptions → 替换为 /chat/completions（用户从 OpenAI 配置复制的情况）
+     * - appendBaseUrlPath=false → 直接用 baseUrl
+     * - 已含 /v1 → 追加 /chat/completions
+     * - 其他 → 追加 /v1/chat/completions
+     */
+    private fun resolveChatCompletionsUrl(baseUrl: String, appendBaseUrlPath: Boolean): String {
+        val base = baseUrl.trimEnd('/')
+        if (base.contains("/chat/completions")) return base
+        if (base.contains("/audio/transcriptions")) {
+            return base.replace("/audio/transcriptions", "/chat/completions")
+        }
+        if (!appendBaseUrlPath) return base
+        if (base.endsWith("/v1")) return "$base/chat/completions"
+        return "$base/v1/chat/completions"
     }
 
     /**
