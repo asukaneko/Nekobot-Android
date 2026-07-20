@@ -478,10 +478,58 @@ internal class LocalAgentToolExecutor(
         val target = resolveWorkspacePath(args.workspacePath())
             ?: return failure("路径为空或超出会话工作区")
         if (!target.isFile) return failure("文件不存在")
+
+        // 参数：max_chars 默认 30000，<=0 视为不限制
+        val maxChars = args.int("max_chars", 30000).coerceAtLeast(0)
+        // 行号参数：1-based，含两端；未指定时覆盖整个文件
+        val startLine = args.int("start_line", 1).coerceAtLeast(1)
+        val endLine = args.int("end_line", 0) // 0 或负数 → 读到末尾
+
+        // 一次性读全文（UTF-8），按需切片
+        val fullText = target.readText(Charsets.UTF_8)
+        val totalChars = fullText.length
+        val totalLines: Int
+
+        // 统一按行切片：用 \r?\n 切分，每行保留行尾换行符（末行除外）
+        val rawLines: List<String> = fullText.split(Regex("\\r?\\n"))
+        // 若原文以换行结尾，split 会产生末尾空串，丢弃以保持"行数=换行数+1"的语义
+        val allLines: List<String> = when {
+            fullText.isEmpty() -> emptyList()
+            rawLines.isNotEmpty() && rawLines.last().isEmpty() ->
+                rawLines.subList(0, rawLines.size - 1).map { it + "\n" }
+            else -> rawLines.mapIndexed { i, line ->
+                if (i < rawLines.lastIndex) line + "\n" else line
+            }
+        }
+        totalLines = allLines.size
+
+        // 选取行范围（1-based，含两端；未指定则覆盖整个文件）
+        val from = (startLine - 1).coerceIn(0, allLines.size)
+        val to = when {
+            endLine <= 0 -> allLines.size
+            else -> endLine.coerceIn(startLine, allLines.size)
+        }
+        val sliced: String = if (from >= to) "" else allLines.subList(from, to).joinToString("")
+
+        // 应用字符上限截断
+        val truncated: Boolean
+        val content: String = if (maxChars > 0 && sliced.length > maxChars) {
+            truncated = true
+            sliced.take(maxChars)
+        } else {
+            truncated = false
+            sliced
+        }
+
         return success(
             "path" to relativeWorkspacePath(target),
             "absolute_path" to target.canonicalPath,
-            "content" to target.readText(Charsets.UTF_8).take(30000)
+            "content" to content,
+            "truncated" to truncated,
+            "total_chars" to totalChars,
+            "total_lines" to totalLines,
+            "start_line" to startLine,
+            "end_line" to if (endLine <= 0) totalLines else endLine.coerceAtMost(totalLines)
         )
     }
 

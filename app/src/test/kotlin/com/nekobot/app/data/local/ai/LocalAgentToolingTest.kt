@@ -144,6 +144,42 @@ class LocalAgentToolingTest {
                 mapOf("path" to "../outside.txt")
             )
             assertEquals(false, escaped["success"])
+
+            // 行范围与字符限制参数测试
+            val multi = root.resolve("notes/multi.txt")
+            multi.parentFile?.mkdirs()
+            multi.writeText("line1\nline2\nline3\nline4\nline5\n", Charsets.UTF_8)
+
+            // 只读第 2-4 行
+            val range = executor.execute(
+                "workspace_read_file",
+                mapOf("path" to "notes/multi.txt", "start_line" to 2, "end_line" to 4)
+            )
+            assertEquals(true, range["success"])
+            assertEquals("line2\nline3\nline4\n", range["content"])
+            assertEquals(5, range["total_lines"])
+            assertEquals(2, range["start_line"])
+            assertEquals(4, range["end_line"])
+            assertEquals(false, range["truncated"])
+
+            // max_chars 截断
+            val capped = executor.execute(
+                "workspace_read_file",
+                mapOf("path" to "notes/multi.txt", "max_chars" to 10)
+            )
+            assertEquals(true, capped["success"])
+            assertEquals(10, (capped["content"] as String).length)
+            assertEquals(true, capped["truncated"])
+            assertEquals(35, capped["total_chars"])
+
+            // max_chars=0 表示不限制
+            val unlimited = executor.execute(
+                "workspace_read_file",
+                mapOf("path" to "notes/multi.txt", "max_chars" to 0)
+            )
+            assertEquals(true, unlimited["success"])
+            assertEquals(false, unlimited["truncated"])
+            assertEquals("line1\nline2\nline3\nline4\nline5\n", unlimited["content"])
         } finally {
             root.deleteRecursively()
         }

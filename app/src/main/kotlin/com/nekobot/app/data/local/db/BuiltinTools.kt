@@ -198,9 +198,14 @@ object BuiltinTools {
         BuiltinToolSpec(
             id = "workspace_read_file",
             name = "工作区-读取文件",
-            description = "读取工作区中指定文件的内容。",
+            description = "读取工作区中指定文件的内容。支持按行范围读取（start_line/end_line，1-based 含两端）和限制返回字符数（max_chars，默认 30000）。若文件较大，建议先按行范围分片读取。返回值含 truncated 字段标识是否因 max_chars 截断，total_chars/total_lines 为完整文件大小。",
             parametersJson = params(
-                mapOf("path" to mapOf("type" to "string", "description" to "文件相对路径")),
+                mapOf(
+                    "path" to mapOf("type" to "string", "description" to "文件相对路径"),
+                    "start_line" to mapOf("type" to "integer", "description" to "起始行号（1-based，含），默认 1"),
+                    "end_line" to mapOf("type" to "integer", "description" to "结束行号（1-based，含），默认读到末尾"),
+                    "max_chars" to mapOf("type" to "integer", "description" to "最多返回的字符数，默认 30000；超出会被截断并置 truncated=true")
+                ),
                 listOf("path")
             )
         ),
