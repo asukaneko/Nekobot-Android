@@ -314,20 +314,13 @@ class AIPipeline {
         }
 
         // 注入本会话用户人设/背景（来自 SessionDetailScreen 的 userPersona 字段）
-        // 与 senderName 一起，作为高优先级行为约束，让 AI 用此名称/背景理解玩家
-        val senderName = ctx.metadata["sender_name"] as? String ?: ""
+        // 作为高优先级行为约束，让 AI 按此身份理解玩家（包括玩家姓名、偏好、处境等）
+        // 注意：senderName 是 AI 扮演的角色名，不是玩家名；玩家身份由 userPersona 字段承载
         val userPersona = ctx.metadata["user_persona"] as? String ?: ""
-        if (senderName.isNotBlank() || userPersona.isNotBlank()) {
-            val personaParts = mutableListOf<String>()
-            if (senderName.isNotBlank()) {
-                personaParts.add("The player's name is \"$senderName\". Always address or refer to the player by this name in dialogue.")
-            }
-            if (userPersona.isNotBlank()) {
-                personaParts.add("Player persona / background (use this to interpret the player's identity, preferences, and circumstances):\n$userPersona")
-            }
+        if (userPersona.isNotBlank()) {
             ctx.promptStack.add(
                 "user.persona",
-                personaParts.joinToString("\n\n"),
+                "Player persona / background (use this to interpret the player's identity, name, preferences, and circumstances; address or refer to the player by the name given in this description rather than generic terms like \"user\"):\n$userPersona",
                 priority = PromptStack.Priority.BEHAVIOR,
                 scope = "session"
             )

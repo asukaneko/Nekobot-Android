@@ -1534,9 +1534,10 @@ class SessionsViewModel : BaseViewModel() {
         val byChannel = applyChannelFilter(visible, chVal)
         val filtered = applyFilter(byChannel, f, charId)
         val searched = applySearch(filtered, query)
-        // 置顶强制置顶；非置顶按时间倒序（updatedAt 回退到 createdAt）
+        // 置顶强制置顶；归档会话沉到底部；同组内按时间倒序（updatedAt 回退到 createdAt）
         searched.sortedWith(
-            compareByDescending<Session> { it.pinned == true }
+            compareByDescending<Session> { it.archived != true }
+                .thenByDescending { it.pinned == true }
                 .thenByDescending { it.updatedAt ?: it.createdAt ?: "" }
         )
     }

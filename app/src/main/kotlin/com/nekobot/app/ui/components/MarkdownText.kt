@@ -78,6 +78,14 @@ private const val TILDE_PLACEHOLDER = "\u0001TILDE\u0001"
 /** 内心独白占位符标记 */
 private const val INNER_OPEN = "\u0002INNER:"
 private const val INNER_CLOSE = "\u0003"
+/**
+ * 全角括号斜体占位符标记。
+ *
+ * 与普通 `*text*` 斜体区分开，便于在 parseInline 中应用更醒目的差异化样式
+ * （斜体 + 降透明度 + 浅色背景），避免与正文混在一起。
+ */
+private const val PAREN_ITALIC_OPEN = "\u0004PAREN:"
+private const val PAREN_ITALIC_CLOSE = "\u0005"
 
 /**
  * 预处理 Markdown 文本（仅在 chatMode = true 时执行）：
@@ -101,14 +109,16 @@ fun preprocessMarkdown(text: String, chatMode: Boolean = false, processParens: B
         "$INNER_OPEN$content$INNER_CLOSE"
     }
 
-    // 3. 全角括号内容斜体：剩余的 `（...）` 转为 *...*
+    // 3. 全角括号内容斜体：剩余的 `（...）` 转为占位符段
     // 仅处理短括号内容（避免误伤长文本）
     // 用户发送的气泡不处理括号（保留原始括号字符）
+    // 使用 PAREN_ITALIC_OPEN/CLOSE 占位符而非 *...*，便于在 parseInline 中应用
+    // 差异化样式（斜体 + 降透明度 + 浅色背景），与普通 *text* 斜体区分开
     if (processParens) {
         val parenRegex = Regex("[（(]([^（）()]{1,50})[）)]")
         result = parenRegex.replace(result) { m ->
             val content = m.groupValues[1]
-            "*$content*"
+            "$PAREN_ITALIC_OPEN$content$PAREN_ITALIC_CLOSE"
         }
     }
 
@@ -504,6 +514,24 @@ fun parseInline(text: String, baseColor: androidx.compose.ui.graphics.Color, bas
                 append("~~")
                 i += TILDE_PLACEHOLDER.length
                 continue
+            }
+            // 全角括号斜体段（来自 （...） 预处理）
+            // 与普通 *text* 斜体区分：italic + 降透明度，视觉上更醒目（无背景，避免过深）
+            if (text.startsWith(PAREN_ITALIC_OPEN, i)) {
+                val end = text.indexOf(PAREN_ITALIC_CLOSE, i + PAREN_ITALIC_OPEN.length)
+                if (end > 0) {
+                    val content = text.substring(i + PAREN_ITALIC_OPEN.length, end)
+                    withStyle(SpanStyle(
+                        fontStyle = FontStyle.Italic,
+                        color = baseColor.copy(alpha = 0.62f)
+                    )) {
+                        append("（")
+                        append(content)
+                        append("）")
+                    }
+                    i = end + PAREN_ITALIC_CLOSE.length
+                    continue
+                }
             }
             // 粗体 **text**
             if (text.startsWith("**", i)) {

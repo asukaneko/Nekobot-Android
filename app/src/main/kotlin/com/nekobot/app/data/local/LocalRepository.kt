@@ -896,7 +896,8 @@ class LocalRepository(
                 if (session.plotRealTimeSync) put("plot_realtime_sync", true)
                 put("auto_state_interval", session.autoStateInterval)
                 if (disabledKeys.isNotEmpty()) put("disabled_prompt_keys", disabledKeys)
-                // 本会话用户名 + 用户人设/背景，供 AIPipeline 注入 PromptStack、AutoMemory 替换"用户"标签
+                // senderName 是 AI 扮演的角色名；userPersona 是本会话玩家身份描述（含姓名/背景）。
+                // userPersona 供 AIPipeline 注入 PromptStack 的 user.persona 项、AutoMemory 识别玩家姓名。
                 session.senderName?.takeIf { it.isNotBlank() }?.let { put("sender_name", it) }
                 session.userPersona?.takeIf { it.isNotBlank() }?.let { put("user_persona", it) }
             }
@@ -927,7 +928,8 @@ class LocalRepository(
         }
         // auto_state_interval 同步到 ctx.metadata（供 AutoState 读取）
         ctx.metadata["auto_state_interval"] = session.autoStateInterval
-        // sender_name / user_persona 同步到 ctx.metadata（供 AIPipeline 注入 PromptStack 的 user.persona 项）
+        // senderName（角色名）/ userPersona（玩家身份描述）同步到 ctx.metadata。
+        // AIPipeline 读 user_persona 注入 PromptStack；AutoMemory 读 user_persona 识别玩家姓名。
         session.senderName?.takeIf { it.isNotBlank() }?.let { ctx.metadata["sender_name"] = it }
         session.userPersona?.takeIf { it.isNotBlank() }?.let { ctx.metadata["user_persona"] = it }
 

@@ -250,8 +250,10 @@ class LocalMemoryService(
             "userId=${chatRequest.userId} userMsgLen=${chatRequest.content.length} aiMsgLen=${response.finalContent.length}")
         // 委托给完整版 AutoMemory，统一触发/缓冲/归一化行为。
         // scope 与 AutoState 一致：characterId:sessionId:targetId。
-        // senderName 来自会话配置（SessionDetailScreen 中编辑），传给 AutoMemory 用作"用户"标签
-        val senderName = (chatRequest.metadata["sender_name"] as? String).orEmpty()
+        // userPersona 来自会话配置（SessionDetailScreen 中编辑），传给 AutoMemory 作为玩家身份描述，
+        // 让 LLM 从中识别玩家姓名，避免在记忆里写"用户"泛称。
+        // 注意：senderName 是 AI 扮演的角色名，不是玩家名，不能用作玩家标签。
+        val userPersona = (chatRequest.metadata["user_persona"] as? String).orEmpty()
         engine.extractAndSave(
             characterId = turnContext.profile.id,
             characterName = turnContext.profile.name,
@@ -259,7 +261,7 @@ class LocalMemoryService(
             sessionId = chatRequest.conversationId,
             userMessage = chatRequest.content,
             assistantMessage = response.finalContent,
-            userName = senderName
+            userPersona = userPersona
         )
     }
 

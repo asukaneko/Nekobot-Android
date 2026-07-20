@@ -70,6 +70,9 @@ class AutoMemory(
         val characterName = (memoryContext["character_name"] as? String) ?: ""
         val targetId = (memoryContext["target_id"] as? String) ?: ctx.chatRequest.userId ?: ""
         val sessionId = (memoryContext["session_id"] as? String) ?: ctx.chatRequest.conversationId
+        // 从 ctx.metadata 读取本会话玩家身份描述（由 LocalRepository.chatWithPipeline 注入），
+        // 传给 LLM 让其按此描述称呼玩家，避免在记忆条目里写"用户"泛称。
+        val userPersona = (ctx.metadata["user_persona"] as? String).orEmpty()
 
         return extractAndSave(
             characterId = characterId,
@@ -77,7 +80,8 @@ class AutoMemory(
             targetId = targetId,
             sessionId = sessionId,
             userMessage = ctx.chatRequest.content,
-            assistantMessage = result.finalContent
+            assistantMessage = result.finalContent,
+            userPersona = userPersona
         )
     }
 
@@ -96,7 +100,7 @@ class AutoMemory(
         sessionId: String,
         userMessage: String,
         assistantMessage: String,
-        userName: String = targetId
+        userPersona: String = ""
     ): Int {
         if (userMessage.length < 2 || assistantMessage.length < 2) return 0
         if (characterId.isEmpty() || targetId.isEmpty()) {
@@ -124,10 +128,10 @@ class AutoMemory(
         val turns = buffer.toList()
 
         // 调用 LLM 提取记忆（含 3 次重试 + 附当前已有记忆供 LLM 取舍）
-        // 用会话配置的 senderName 作为"用户"标签，避免 LLM 在记忆里写"用户"泛称
-        val effectiveUserName = userName.takeIf { it.isNotBlank() } ?: targetId
+        // userPersona 为本会话配置的玩家身份描述（含玩家姓名/背景），传给 LLM 让其按此称呼玩家，
+        // 避免在记忆条目里写"用户"泛称。注意：senderName 是 AI 扮演的角色名，不是玩家名。
         val memories = try {
-            callMemoryModel(turns, characterName, effectiveUserName, characterId, sessionId)
+            callMemoryModel(turns, characterName, targetId, userPersona, characterId, sessionId)
         } catch (e: Exception) {
             LocalLogger.w(TAG, "记忆抽取失败: ${e.message}", e)
             // 失败回滚：放回缓冲区，计数器重置为间隔值（下一轮重试）
@@ -341,14 +345,16 @@ class AutoMemory(
      *
      * @param turns 本轮对话缓冲
      * @param characterName 角色名
-     * @param userName 用户名
+     * @param targetId 玩家 ID（用于读取已有记忆路径）
+     * @param userPersona 玩家身份描述（含姓名/背景，注入 prompt 让 LLM 据此称呼玩家）
      * @param characterId 角色 ID（用于读取当前已有记忆）
      * @param sessionId 会话 ID（用于读取/隔离记忆）
      */
     private suspend fun callMemoryModel(
         turns: List<Map<String, String>>,
         characterName: String,
-        userName: String,
+        targetId: String,
+        userPersona: String,
         characterId: String,
         sessionId: String
     ): List<Map<String, Any>> {
@@ -357,11 +363,11 @@ class AutoMemory(
             return emptyList()
         }
 
-        // 读取当前已有记忆，供 LLM 决定 append/replace
-        val existingMemories = readExistingMemoriesForPrompt(characterId, userName, sessionId)
+        // 读取当前已有记忆，供 LLM 决定 append/replace（按 targetId 查记忆路径）
+        val existingMemories = readExistingMemoriesForPrompt(characterId, targetId, sessionId)
 
-        val systemPrompt = buildMemorySystemPrompt(characterName, userName)
-        val userPrompt = buildMemoryUserPrompt(turns, characterName, userName, existingMemories)
+        val systemPrompt = buildMemorySystemPrompt(characterName, userPersona)
+        val userPrompt = buildMemoryUserPrompt(turns, characterName, userPersona, existingMemories)
 
         val messages = listOf(
             mapOf("role" to "system", "content" to systemPrompt),
@@ -442,16 +448,25 @@ class AutoMemory(
     private data class ExistingMemoryView(val category: String, val contents: List<String>)
 
     /** 构建记忆抽取 system prompt（强制生成 4 类 + action 字段） */
-    private fun buildMemorySystemPrompt(characterName: String, userName: String): String {
-        // 用真实用户名替代泛称"用户"，避免 LLM 在记忆条目里写"用户"导致后续 prompt 模糊
-        val userLabel = userName.takeIf { it.isNotBlank() } ?: "用户"
+    private fun buildMemorySystemPrompt(characterName: String, userPersona: String): String {
+        // userPersona 为本会话配置的玩家身份描述（含姓名/背景），引导 LLM 从中识别玩家姓名
+        // 并在记忆条目中用该姓名指代玩家，避免写"用户"泛称。
+        // 注意：senderName 是 AI 扮演的角色名，不是玩家名，不能用作玩家标签。
+        val personaSection = if (userPersona.isNotBlank()) {
+            """玩家身份描述如下（请从中识别玩家姓名，并在记忆条目中用该姓名指代玩家）：
+$userPersona"""
+        } else {
+            "本会话未提供玩家身份描述，记忆条目中请用「玩家」指代玩家。"
+        }
         return """你是一个记忆抽取中间件，不是角色扮演角色。
 
 任务：从对话中提取值得长期记忆的信息，返回 JSON 数组。
 
+$personaSection
+
 必须尽量覆盖以下 4 个类别（如果对话中确实没有相关信息，对应类别可省略）：
-1. "user_persona" — $userLabel 的人格特征、偏好、习惯、身份信息
-2. "character_persona" — 角色对 $userLabel 的态度、关系变化、情感进展
+1. "user_persona" — 玩家的人格特征、偏好、习惯、身份信息
+2. "character_persona" — 角色对玩家的态度、关系变化、情感进展
 3. "important_event" — 重要事件、剧情转折、关键互动
 4. "recent_digest" — 本轮对话的摘要（一两句话概括发生了什么）
 
@@ -469,7 +484,7 @@ action 决策规则：
 
 要求：
 - 只提取与角色 "$characterName" 相关的有长期价值的信息
-- 写记忆时统一用「$userLabel」指代玩家，禁止使用「用户」「玩家」等泛称
+- 写记忆时禁止使用「用户」泛称指代玩家；若玩家身份描述中给出了姓名，必须用该姓名，否则用「玩家」
 - 忽略寒暄和闲聊
 - 尽量覆盖前 4 个类别，每类 1 条（重要的可多条）
 - 写摘要不写原始对话转录
@@ -483,22 +498,21 @@ action 决策规则：
     private fun buildMemoryUserPrompt(
         turns: List<Map<String, String>>,
         characterName: String,
-        userName: String,
+        userPersona: String,
         existingMemories: List<ExistingMemoryView>
     ): String {
-        // 用真实用户名作为对话标签，避免 LLM 在记忆里出现"用户"字样
-        val userLabel = userName.takeIf { it.isNotBlank() } ?: "用户"
+        // turn 标签用中性「玩家」，避免"用户"字样；LLM 会按 system prompt 中的玩家身份描述识别姓名
         val turnTexts = turns.mapIndexed { idx, turn ->
-            "--- Turn ${idx + 1} ---\n$userLabel:\n${turn["user"] ?: ""}\n\n$characterName:\n${turn["assistant"] ?: ""}"
+            "--- Turn ${idx + 1} ---\n玩家:\n${turn["user"] ?: ""}\n\n$characterName:\n${turn["assistant"] ?: ""}"
         }.joinToString("\n\n")
 
-        val parts = mutableListOf("请从以下对话中提取记忆（用「$userLabel」指代玩家，不要写「用户」）：\n\n$turnTexts")
+        val parts = mutableListOf("请从以下对话中提取记忆（在记忆条目中按玩家身份描述里的姓名指代玩家，不要写「用户」）：\n\n$turnTexts")
 
         // 附上当前已有记忆，让 LLM 决定 append/replace
         if (existingMemories.isNotEmpty()) {
             val existingText = existingMemories.joinToString("\n\n") { view ->
                 val label = when (view.category) {
-                    "user_persona" -> "$userLabel 人格（当前）"
+                    "user_persona" -> "玩家人格（当前）"
                     "character_persona" -> "角色人格（当前）"
                     "recent_digest" -> "近期摘要（当前）"
                     else -> view.category
