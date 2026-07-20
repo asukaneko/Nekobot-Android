@@ -65,8 +65,6 @@ class SessionNameGenerator(
         characterDescription: String = ""
     ): String? {
         val sessionId = session.id
-        // agent 会话不自动命名
-        if (session.sessionMode.equals("agent", ignoreCase = true)) return null
 
         // 仅处理 user/assistant 消息
         val userAssistantMsgs = messages.filter { it.role == "user" || it.role == "assistant" }

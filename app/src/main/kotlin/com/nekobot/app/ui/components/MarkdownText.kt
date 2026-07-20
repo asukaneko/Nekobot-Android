@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -31,9 +32,13 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nekobot.app.R
@@ -206,23 +211,60 @@ fun parseBlocks(text: String): List<MdBlock> {
             continue
         }
 
-        // 有序列表
+        // 有序列表（允许项之间有空行：1.\n\n2. 视为同一列表）
         if (line.matches(Regex("^\\d+\\.\\s+.*"))) {
             val items = mutableListOf<String>()
-            while (i < lines.size && lines[i].matches(Regex("^\\d+\\.\\s+.*"))) {
-                items.add(lines[i].replaceFirst(Regex("^\\d+\\.\\s+"), ""))
-                i++
+            // 提取起始编号用于显示连续编号（保留 AI 原始编号或用 idx+1）
+            val firstNumMatch = Regex("^(\\d+)\\.\\s+").find(line)
+            val startNum = firstNumMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1
+            var currentNum = startNum
+            while (i < lines.size) {
+                val cur = lines[i]
+                if (cur.matches(Regex("^\\d+\\.\\s+.*"))) {
+                    // 同一编号（如都是 1.）或连续编号都视为列表项
+                    val numMatch = Regex("^(\\d+)\\.\\s+").find(cur)
+                    val num = numMatch?.groupValues?.get(1)?.toIntOrNull() ?: currentNum
+                    // 编号必须连续或相同才视为同一列表；若跳变（如 1. 然后 5.）则结束列表
+                    if (num != currentNum && num != currentNum + 1 && num != startNum) {
+                        break
+                    }
+                    currentNum = num
+                    items.add(cur.replaceFirst(Regex("^\\d+\\.\\s+"), ""))
+                    i++
+                } else if (cur.isBlank()) {
+                    // 空行：检查下一行是否还是列表项，是则跳过空行继续，否则结束
+                    val next = lines.getOrNull(i + 1)
+                    if (next != null && next.matches(Regex("^\\d+\\.\\s+.*"))) {
+                        i++
+                    } else {
+                        break
+                    }
+                } else {
+                    break
+                }
             }
             blocks.add(MdBlock.ListItem(true, items))
             continue
         }
 
-        // 无序列表
+        // 无序列表（允许项之间有空行）
         if (line.matches(Regex("^[-*+]\\s+.*"))) {
             val items = mutableListOf<String>()
-            while (i < lines.size && lines[i].matches(Regex("^[-*+]\\s+.*"))) {
-                items.add(lines[i].replaceFirst(Regex("^[-*+]\\s+"), ""))
-                i++
+            while (i < lines.size) {
+                val cur = lines[i]
+                if (cur.matches(Regex("^[-*+]\\s+.*"))) {
+                    items.add(cur.replaceFirst(Regex("^[-*+]\\s+"), ""))
+                    i++
+                } else if (cur.isBlank()) {
+                    val next = lines.getOrNull(i + 1)
+                    if (next != null && next.matches(Regex("^[-*+]\\s+.*"))) {
+                        i++
+                    } else {
+                        break
+                    }
+                } else {
+                    break
+                }
             }
             blocks.add(MdBlock.ListItem(false, items))
             continue
@@ -418,43 +460,113 @@ private fun ListRenderer(block: MdBlock.ListItem, color: androidx.compose.ui.gra
 
 @Composable
 private fun TableRenderer(block: MdBlock.Table, color: androidx.compose.ui.graphics.Color, style: androidx.compose.ui.text.TextStyle) {
+    val borderColor = color.copy(alpha = 0.25f)
+    val headerBg = color.copy(alpha = 0.10f)
+    val cellBg = color.copy(alpha = 0.03f)
+
+    // 统一列数：不足列的行用空字符串补齐，保证每行列数一致
+    val columnCount = maxOf(block.header.size, block.rows.maxOfOrNull { it.size } ?: 1)
+    val header = block.header + List(maxOf(0, columnCount - block.header.size)) { "" }
+    val rows = block.rows.map { it + List(maxOf(0, columnCount - it.size)) { "" } }
+
+    // === 统一列宽方案 ===
+    // 目标：所有列等宽，宽度 = 所有单元格中最长内容的宽度，但设上限避免超长单元格撑爆气泡。
+    // 实现思路：用 rememberTextMeasurer 预测量每个单元格的内容宽度，取最大值作为统一列宽 W；
+    //          每个单元格用 width(W) 固定宽度（替代 weight(1f)，因为 weight 无法基于内容宽度）。
+    // 同行等高：Row.height(IntrinsicSize.Max) + 单元格 fillMaxHeight。
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    // 列宽上限：超过则触发横向滚动，避免气泡被撑爆
+    val maxColumnWidthDp = 200.dp
+    val horizontalPaddingDp = 16.dp // 左右各 8.dp
+
+    val columnWidth: Dp = remember(block, style, color, maxColumnWidthDp) {
+        val headerStyle = style.copy(fontWeight = FontWeight.Bold)
+        var maxContentWidthPx = 0f
+        // 测量表头
+        for (col in 0 until columnCount) {
+            val w = textMeasurer.measure(header[col], style = headerStyle).size.width.toFloat()
+            if (w > maxContentWidthPx) maxContentWidthPx = w
+        }
+        // 测量数据行
+        for (row in rows) {
+            for (col in 0 until columnCount) {
+                val w = textMeasurer.measure(row[col], style = style).size.width.toFloat()
+                if (w > maxContentWidthPx) maxContentWidthPx = w
+            }
+        }
+        // 加上左右 padding，并施加上限
+        val totalPx = with(density) { maxContentWidthPx + horizontalPaddingDp.toPx() }
+        val cappedPx = with(density) { maxColumnWidthDp.toPx() }
+        val finalPx = minOf(totalPx, cappedPx)
+        with(density) { finalPx.toDp() }
+    }
+
     Column(
         modifier = Modifier
-            .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
             .horizontalScroll(rememberScrollState())
-            .padding(4.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(cellBg)
     ) {
-        // 表头
-        Row {
-            block.header.forEach { cell ->
-                Text(
+        // === 表头 ===
+        Row(
+            modifier = Modifier
+                .height(IntrinsicSize.Max)
+                .background(headerBg)
+        ) {
+            header.forEach { cell ->
+                TableCell(
                     text = cell,
-                    style = style.copy(fontWeight = FontWeight.Bold),
                     color = color,
-                    modifier = Modifier
-                        .widthIn(min = 60.dp)
-                        .padding(4.dp)
+                    style = style.copy(fontWeight = FontWeight.Bold),
+                    borderColor = borderColor,
+                    width = columnWidth
                 )
             }
         }
-        // 数据行
-        block.rows.forEach { row ->
-            Row {
+        // === 数据行 ===
+        rows.forEach { row ->
+            Row(
+                modifier = Modifier.height(IntrinsicSize.Max)
+            ) {
                 row.forEach { cell ->
-                    Text(
-                        text = parseInline(cell, color, style),
-                        style = style,
+                    TableCell(
+                        text = cell,
                         color = color,
-                        modifier = Modifier
-                            .widthIn(min = 60.dp)
-                            .padding(4.dp)
+                        style = style,
+                        borderColor = borderColor,
+                        width = columnWidth
                     )
                 }
             }
         }
+    }
+}
+
+/** 表格单元格：固定宽度 width + fillMaxHeight 统一行高 + 居中文本 */
+@Composable
+private fun androidx.compose.foundation.layout.RowScope.TableCell(
+    text: String,
+    color: androidx.compose.ui.graphics.Color,
+    style: androidx.compose.ui.text.TextStyle,
+    borderColor: androidx.compose.ui.graphics.Color,
+    width: Dp
+) {
+    Box(
+        modifier = Modifier
+            .width(width)
+            .fillMaxHeight()
+            .border(0.5.dp, borderColor)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            style = style,
+            color = color,
+            textAlign = TextAlign.Center
+        )
     }
 }
 
