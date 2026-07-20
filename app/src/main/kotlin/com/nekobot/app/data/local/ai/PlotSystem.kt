@@ -586,8 +586,9 @@ class PlotChoiceGenerator(
         (sessionContext["current_arc"] as? String)?.let { if (it.isNotEmpty()) parts.add("当前剧情弧: $it") }
 
         // 剧情大纲：用户导入/粘贴，选项需围绕此走向推进
+        // 上限 8000 字符（约 8k token），覆盖大多数 5k-7k 字大纲，对上下文窗口压力可控
         if (outline.isNotBlank()) {
-            val truncated = outline.take(2000)
+            val truncated = outline.take(8000)
             parts.add("剧情大纲（生成选项时需契合此整体走向，但每个选择仍必须引入新的推进，不要直接复述大纲原文）：\n$truncated")
         }
 
