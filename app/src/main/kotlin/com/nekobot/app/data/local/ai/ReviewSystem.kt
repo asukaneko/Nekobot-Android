@@ -312,7 +312,13 @@ object RuleReview {
         return parts.joinToString("\n")
     }
 
-    private fun buildOfflinePlotUpdate(inp: ReviewInput, timeLevel: String, elapsedLabel: String): OfflinePlotUpdate {
+    /**
+     * 构建离线剧情更新（对齐原仓库 build_offline_plot_update）。
+     *
+     * 当 plot_mode + plot_real_time_sync 开启且时间间隔达到 same_day_gap/days/long_absence 时，
+     * 生成离线剧情推进提示，供 AIPipeline 注入 plot.real_time_sync PromptStack 项。
+     */
+    fun buildOfflinePlotUpdate(inp: ReviewInput, timeLevel: String, elapsedLabel: String): OfflinePlotUpdate {
         val (activity, worldChanges) = when (timeLevel) {
             "same_day_gap" -> "你稍作休息，继续之前的活动。" to listOf("时间推进到下午")
             "days" -> "你度过了平静的几天，处理了一些日常事务。" to listOf("时间推进数日", "日常事务推进")
@@ -403,9 +409,9 @@ object TimeContext {
                 "current_time" to nowIso,
                 "previous_turn_time" to "",
                 "elapsed_seconds" to 0L,
-                "elapsed_label" to "首次对话",
+                "elapsed_label" to "初次记录",
                 "continuity_level" to "first_contact",
-                "roleplay_hint" to "这是第一次对话，请自然地开始互动。"
+                "roleplay_hint" to "这是第一次可用的现实时间记录；不要假装已经知道之前离线时发生的事。"
             )
         }
 
@@ -418,9 +424,9 @@ object TimeContext {
             "roleplay_hint" to ""
         )
 
-        val elapsedSeconds = Duration.between(prevTime, currentTime).seconds
+        val elapsedSeconds = Duration.between(prevTime, currentTime).seconds.coerceAtLeast(0L)
         val elapsedLabel = elapsedLabel(elapsedSeconds)
-        val level = continuityLevel(elapsedSeconds)
+        val level = continuityLevel(elapsedSeconds, hasPrevious = true)
         val hint = roleplayHint(level, elapsedLabel)
 
         return mapOf(
@@ -433,33 +439,55 @@ object TimeContext {
         )
     }
 
-    /** 计算连续性等级 */
-    private fun continuityLevel(seconds: Long): String = when {
-        seconds < 1800 -> "continuous"      // 30 分钟内
-        seconds < 21600 -> "short_gap"      // 6 小时内
-        seconds < 86400 -> "same_day_gap"   // 24 小时内
-        seconds < 604800 -> "days"          // 7 天内
-        else -> "long_absence"
+    /** 计算连续性等级（对齐原仓库 _continuity_level） */
+    private fun continuityLevel(seconds: Long, hasPrevious: Boolean = true): String {
+        if (!hasPrevious) return "first_contact"
+        return when {
+            seconds < 1800 -> "continuous"      // < 30 分钟
+            seconds < 21600 -> "short_gap"      // < 6 小时
+            seconds < 86400 -> "same_day_gap"   // < 24 小时
+            seconds < 604800 -> "days"          // < 7 天
+            else -> "long_absence"
+        }
     }
 
-    /** 秒数 → 可读标签 */
-    private fun elapsedLabel(seconds: Long): String = when {
-        seconds < 60 -> "刚刚"
-        seconds < 3600 -> "${seconds / 60}分钟前"
-        seconds < 86400 -> "${seconds / 3600}小时前"
-        seconds < 604800 -> "${seconds / 86400}天${(seconds % 86400) / 3600}小时前"
-        else -> "${seconds / 86400}天前"
+    /** 秒数 → 可读标签（对齐原仓库 _elapsed_label，不加"前"字） */
+    private fun elapsedLabel(seconds: Long): String {
+        if (seconds <= 0) return "刚刚"
+        val minutes = seconds / 60
+        if (minutes < 1) return "刚刚"
+        if (minutes < 60) return "${minutes}分钟"
+        val hours = minutes / 60
+        if (hours < 24) return "${hours}小时"
+        val days = hours / 24
+        val remainingHours = hours % 24
+        return if (remainingHours > 0) "${days}天${remainingHours}小时" else "${days}天"
     }
 
-    /** 角色扮演提示 */
+    /** 角色扮演提示（对齐原仓库 _roleplay_hint） */
     private fun roleplayHint(level: String, label: String): String = when (level) {
-        "first_contact" -> "这是第一次对话，请自然地开始互动。"
-        "continuous" -> "对话连续进行中，保持当前节奏。"
-        "short_gap" -> "距上次对话已过去$label，可以自然衔接之前的话题。"
-        "same_day_gap" -> "今天已有过对话，距上次已过去$label，可以提及今天的互动。"
-        "days" -> "已经过去${label}了，角色应该表现出对这段时间的感知。"
-        "long_absence" -> "已经过去${label}了，角色应该表现出想念和对近况的关心。"
+        "first_contact" -> "这是第一次可用的现实时间记录；不要假装已经知道之前离线时发生的事。"
+        "continuous" -> "现实中几乎没有间隔；把这轮当作连续对话自然承接。"
+        "short_gap" -> "现实中已经过去$label；可轻微承认时间流逝，但不要夸大成久别。"
+        "same_day_gap" -> "现实中已经过去$label；角色可以像在同一天稍后再次见面一样回应。"
+        "days" -> "现实中已经过去$label；角色应意识到隔了几天，可体现等待、生活延续或重新见面的感觉。"
+        "long_absence" -> "现实中已经过去$label；角色应把这当作较长分别后的再次互动，但不要编造未经确认的具体经历。"
         else -> ""
+    }
+
+    /** 将时间上下文格式化为可注入 Prompt 的文本（对齐原仓库 format_real_time_prompt_context） */
+    fun formatRealTimePromptContext(context: Map<String, Any>): String {
+        if (context.isEmpty()) return ""
+        val lines = mutableListOf<String>()
+        lines.add("当前现实时间: ${context["current_time"] ?: ""}")
+        val prev = (context["previous_turn_time"] as? String).orEmpty()
+        if (prev.isNotEmpty()) lines.add("上次互动时间: $prev")
+        lines.add("现实时间间隔: ${context["elapsed_label"] ?: ""}")
+        lines.add("连续性等级: ${context["continuity_level"] ?: ""}")
+        lines.add("角色扮演提示: ${context["roleplay_hint"] ?: ""}")
+        lines.add("把现实时间流逝当作角色生活连续性的一部分；可以体现等待、日常延续、重新见面的感觉。")
+        lines.add("不要编造未经用户确认的具体离线经历、事件或承诺。")
+        return lines.joinToString("\n") { it }
     }
 
     /** 解析时间字符串 */
@@ -468,40 +496,43 @@ object TimeContext {
             LocalDateTime.parse(value, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
         } catch (e: Exception) {
             try {
-                LocalDateTime.parse(value.replace("Z", ""), DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                // 兼容带时区的 ISO 字符串（如 2026-06-20T10:00:00+08:00）
+                val cleaned = value.replace("Z", "").substringBefore("+").substringBeforeLast("-")
+                LocalDateTime.parse(cleaned, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
             } catch (e2: Exception) { null }
         }
     }
 
     // ---- 昼夜节律 ----
 
-    /** 昼夜阶段 */
+    /** 昼夜阶段（对齐原仓库 _circadian_phase，evening 18-21，night 22-23） */
     fun circadianPhase(hour: Int): String = when (hour) {
         in 0..5 -> "sleeping"
         in 6..8 -> "morning"
         in 9..11 -> "forenoon"
         in 12..13 -> "noon"
         in 14..17 -> "afternoon"
-        in 18..20 -> "evening"
-        else -> "night"
+        in 18..21 -> "evening"
+        else -> "night"  // 22-23
     }
 
-    /** 昼夜标签 */
+    /** 昼夜标签（对齐原仓库 _circadian_label） */
     fun circadianLabel(phase: String): String = when (phase) {
-        "sleeping" -> "深夜睡眠时间"
-        "morning" -> "清晨"
-        "forenoon" -> "上午"
-        "noon" -> "中午"
-        "afternoon" -> "下午"
-        "evening" -> "傍晚"
-        "night" -> "夜晚"
-        else -> ""
+        "sleeping" -> "深夜睡眠"
+        "morning" -> "清晨起床"
+        "forenoon" -> "上午时段"
+        "noon" -> "午间休息"
+        "afternoon" -> "下午时段"
+        "evening" -> "傍晚晚间"
+        "night" -> "深夜准备休息"
+        else -> "日常"
     }
 
-    /** 昼夜精力修正 */
+    /** 昼夜精力修正（对齐原仓库 _circadian_energy_modifier） */
     fun circadianEnergyModifier(phase: String): Int = when (phase) {
         "sleeping" -> -25
         "morning" -> -8
+        "forenoon" -> 0
         "noon" -> -5
         "afternoon" -> 0
         "evening" -> -3
@@ -509,16 +540,44 @@ object TimeContext {
         else -> 0
     }
 
-    /** 构建昼夜状态 */
+    /** 每个时段的详细角色扮演提示（对齐原仓库 _circadian_roleplay_hint） */
+    fun circadianRoleplayHint(phase: String, hour: Int): String = when (phase) {
+        "sleeping" -> "现在是凌晨${hour}点，角色应当处于睡眠状态。若被消息吵醒，反应可以带迷糊、困倦、不情愿，甚至略带起床气；不要主动展开长对话，节奏应放慢。"
+        "morning" -> "现在是清晨${hour}点，角色可能刚起床不久，可以体现晨间状态（刚醒、洗漱、吃早餐、规划今天的事），语气可以略带慵懒或清新。"
+        "forenoon" -> "现在是上午${hour}点，角色通常处于工作/学习/日常事务中，回复节奏可以略紧凑，体现被打断或抽空回应的感觉。"
+        "noon" -> "现在是午间${hour}点，角色可能在吃饭或午休，可以体现餐后困倦、午睡被打扰或边吃边聊的状态。"
+        "afternoon" -> "现在是下午${hour}点，角色处于下午时段，可以是继续工作、小憩、喝茶、散步等，状态相对松弛。"
+        "evening" -> "现在是晚间${hour}点，角色已结束主要日程，处于放松时段，可以体现晚餐、洗澡、看电视/看书、准备休息等生活气息。"
+        "night" -> "现在是深夜${hour}点，角色应当正在准备睡觉或已经入睡，语气可以带倦意，互动节奏放缓，可体现'该睡了'的边界感。"
+        else -> ""
+    }
+
+    /** 构建昼夜状态（含 roleplay_hint，对齐原仓库 build_circadian_state） */
     fun buildCircadianState(now: LocalDateTime = LocalDateTime.now()): Map<String, Any> {
         val phase = circadianPhase(now.hour)
         return mapOf(
             "phase" to phase,
             "hour" to now.hour,
             "label" to circadianLabel(phase),
+            "roleplay_hint" to circadianRoleplayHint(phase, now.hour),
             "energy_modifier" to circadianEnergyModifier(phase),
             "current_time" to now.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
         )
+    }
+
+    /** 将昼夜节律格式化为可注入 Prompt 的文本（对齐原仓库 format_circadian_prompt） */
+    fun formatCircadianPrompt(context: Map<String, Any>): String {
+        if (context.isEmpty()) return ""
+        val lines = mutableListOf<String>()
+        lines.add("作息阶段: ${context["label"] ?: ""}（${context["hour"] ?: ""}点）")
+        lines.add("扮演提示: ${context["roleplay_hint"] ?: ""}")
+        val modifier = (context["energy_modifier"] as? Number)?.toInt() ?: 0
+        if (modifier != 0) {
+            val direction = if (modifier < 0) "下降" else "上升"
+            lines.add("本轮精力修正: ${kotlin.math.abs(modifier)}（$direction）")
+        }
+        lines.add("把当前时段当作角色真实生活的背景；不要刻意强调时间，但要让反应自然带有此时段的状态。")
+        return lines.joinToString("\n") { it }
     }
 
     // ---- 当前活动推断 ----

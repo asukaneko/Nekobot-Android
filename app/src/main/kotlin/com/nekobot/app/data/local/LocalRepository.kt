@@ -946,6 +946,82 @@ class LocalRepository(
             }
         }
 
+        // === life_sim 懒触发（对齐原仓库静默心跳）===
+        // plot_mode + plot_realtime_sync 开启且非 agent 模式时，
+        // 检查距离上次 life_sim 生成的时间，超过阈值则补生成一次写入 MemoryFS。
+        // CharacterRuntime.beforeTurn 会从 MemoryFS 读取 life_sim 注入到 prompt。
+        if (session.plotMode && session.plotRealTimeSync &&
+            !session.sessionMode.equals("agent", ignoreCase = true) && character != null) {
+            try {
+                val stateRepo = com.nekobot.app.data.local.ai.LocalCharacterStateRepository(db.characterStateDao())
+                val state = stateRepo.get(character.id, sessionId)
+                val lastRun = (state?.scene?.get("life_sim_last_run") as? String)
+
+                if (com.nekobot.app.data.local.ai.LifeSimulator.shouldTrigger(lastRun)) {
+                    // 构建角色卡文本
+                    val profileText = buildString {
+                        append("【角色名】${character.name}")
+                        character.description?.takeIf { it.isNotBlank() }?.let { append("\n【描述】$it") }
+                        character.personality?.takeIf { it.isNotBlank() }?.let { append("\n【性格】$it") }
+                        character.scenario?.takeIf { it.isNotBlank() }?.let { append("\n【场景】$it") }
+                        character.systemPrompt?.takeIf { it.isNotBlank() }?.let { append("\n【系统提示词】$it") }
+                    }
+
+                    // 收集最近用户消息（仅用于了解用户身份）
+                    val recentMessages = messageDao.listBySession(sessionId)
+                        .filter { it.role == "user" }
+                        .takeLast(5)
+                        .map { it.content }
+
+                    // 昼夜状态
+                    val circadianState = com.nekobot.app.data.local.ai.TimeContext.buildCircadianState()
+
+                    // 生成并持久化
+                    val activity = com.nekobot.app.data.local.ai.LifeSimulator.generateAndPersist(
+                        aiClient = aiClient,
+                        activeModel = activeModel,
+                        memoryDao = db.memoryDao(),
+                        characterId = character.id,
+                        conversationId = sessionId,
+                        targetId = "local-user",
+                        profileText = profileText,
+                        circadianState = circadianState,
+                        recentMessages = recentMessages
+                    ) { input, output, model ->
+                        appendTokenUsageRecord(
+                            sessionId = sessionId,
+                            model = model,
+                            inputTokens = input,
+                            outputTokens = output,
+                            timestamp = nowIsoTimestamp(),
+                            source = "web",
+                            purpose = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_HEARTBEAT
+                        )
+                    }
+
+                    // 更新 CharacterState.scene（life_sim_last_run + current_activity）
+                    val currentState = state ?: com.nekobot.app.data.local.ai.CharacterState(
+                        characterId = character.id,
+                        scopeId = sessionId
+                    )
+                    val newScene = currentState.scene.toMutableMap().apply {
+                        put("life_sim_last_run", java.time.LocalDateTime.now()
+                            .format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME))
+                        if (activity.isNotBlank()) {
+                            put("current_activity", activity)
+                            put("activity_source", "heartbeat_ai")
+                        }
+                    }
+                    currentState.scene = newScene
+                    stateRepo.save(currentState)
+
+                    com.nekobot.app.data.local.LocalLogger.i(TAG, "life_sim 懒触发完成 | activity=$activity")
+                }
+            } catch (e: Exception) {
+                com.nekobot.app.data.local.LocalLogger.w(TAG, "life_sim 懒触发异常: ${e.message}", e)
+            }
+        }
+
         // 6. 执行 Pipeline + 转发流式事件
         try {
             // 在单独协程中执行 Pipeline，同时从 Channel 转发事件到 Flow

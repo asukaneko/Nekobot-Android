@@ -288,6 +288,11 @@ class AIPipeline {
         // 角色运行时 before_turn
         phaseCharacterRuntimeBeforeTurn(ctx, callbacks)
 
+        // 现实时间连续性 + 昼夜节律 + 离线剧情推进注入（对齐原仓库 _phase_real_time_prompt_fallback
+        // 与 character/runtime._inject_real_time_context / _inject_circadian_state）
+        // CharacterRuntime 未注入时由管线兜底注入，确保现实时间感知生效。
+        phaseRealTimeAndCircadianInjection(ctx)
+
         // 使用角色运行时编译的提示词作为 basePrompt（包含角色卡 systemPrompt / 基本信息 / 性格 / 状态 / 关系 / 记忆 / 世界书）
         val characterBasePrompt = ctx.characterTurn?.promptText ?: ""
 
@@ -406,6 +411,98 @@ class AIPipeline {
             com.nekobot.app.data.local.LocalLogger.i(TAG, "CharacterRuntime before_turn 完成 | 角色=${turn.profile.name} | 心情=${turn.state.mood} | 注入项=${turn.promptStackItems.size}个 | promptText=${turn.promptText.length}字符")
         } catch (e: Exception) {
             com.nekobot.app.data.local.LocalLogger.w(TAG, "CharacterRuntime before_turn 异常: ${e.message}", e)
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 现实时间连续性 / 昼夜节律 / 离线剧情推进注入
+    // ------------------------------------------------------------------
+
+    /**
+     * 注入 real_time.continuity + character.circadian + plot.real_time_sync。
+     *
+     * 对齐原仓库：
+     * - nbot/character/runtime._inject_real_time_context / _inject_circadian_state
+     * - nbot/core/ai_pipeline._phase_real_time_prompt_fallback
+     *
+     * Agent 模式跳过（与原仓库 mode_policy.inject_real_time_prompt_fallback 一致）。
+     */
+    private fun phaseRealTimeAndCircadianInjection(ctx: PipelineContext) {
+        try {
+            // Agent 模式不注入现实时间相关 prompt
+            val sessionMode = (ctx.metadata["session_mode"] as? String).orEmpty()
+            if (sessionMode.equals("agent", ignoreCase = true)) return
+
+            // === 1. real_time.continuity ===
+            // 上次互动时间取自角色运行时状态 lastActiveAt（由 CharacterRuntime 维护）
+            val previousTurnTime = ctx.characterTurn?.state?.lastActiveAt?.takeIf { it.isNotBlank() }
+            val realTimeContext = TimeContext.buildRealTimeContext(previousTurnTime)
+            ctx.metadata["real_time_context"] = realTimeContext
+
+            val realTimeText = TimeContext.formatRealTimePromptContext(realTimeContext)
+            if (realTimeText.isNotBlank()) {
+                ctx.promptStack.add(
+                    "real_time.continuity",
+                    realTimeText,
+                    priority = PromptStack.Priority.CHARACTER_STATE + 1,
+                    scope = "turn"
+                )
+            }
+
+            // === 2. character.circadian ===
+            val circadianState = TimeContext.buildCircadianState()
+            ctx.metadata["circadian_state"] = circadianState
+
+            val circadianText = TimeContext.formatCircadianPrompt(circadianState)
+            if (circadianText.isNotBlank()) {
+                ctx.promptStack.add(
+                    "character.circadian",
+                    circadianText,
+                    priority = PromptStack.Priority.CHARACTER_STATE + 2,
+                    scope = "turn"
+                )
+            }
+
+            // === 3. plot.real_time_sync（剧情模式 + 同步现实时间 开启时）===
+            val plotMode = (ctx.metadata["plot_mode"] as? Boolean) == true ||
+                (ctx.chatRequest.metadata["plot_mode"] as? Boolean) == true
+            val plotRealTimeSync = (ctx.metadata["plot_realtime_sync"] as? Boolean) == true ||
+                (ctx.chatRequest.metadata["plot_realtime_sync"] as? Boolean) == true
+            if (plotMode && plotRealTimeSync) {
+                val timeLevel = (realTimeContext["continuity_level"] as? String).orEmpty()
+                if (timeLevel in listOf("same_day_gap", "days", "long_absence")) {
+                    val elapsedLabel = (realTimeContext["elapsed_label"] as? String).orEmpty()
+                    val reviewInput = ReviewInput(
+                        conversationId = ctx.chatRequest.conversationId,
+                        characterId = ctx.characterTurn?.profile?.id ?: "",
+                        userId = ctx.chatRequest.userId ?: "",
+                        userMessage = ctx.chatRequest.content,
+                        realTimeContext = realTimeContext,
+                        plotMode = true,
+                        plotRealTimeSync = true
+                    )
+                    val offlineUpdate = RuleReview.buildOfflinePlotUpdate(reviewInput, timeLevel, elapsedLabel)
+                    if (offlineUpdate.shouldInject && offlineUpdate.promptText.isNotBlank()) {
+                        ctx.promptStack.add(
+                            "plot.real_time_sync",
+                            offlineUpdate.promptText,
+                            priority = PromptStack.Priority.REACTION_PLAN + 1,
+                            scope = "turn"
+                        )
+                        com.nekobot.app.data.local.LocalLogger.i(
+                            TAG,
+                            "离线剧情推进注入 | level=$timeLevel | elapsed=$elapsedLabel | promptLen=${offlineUpdate.promptText.length}"
+                        )
+                    }
+                }
+            }
+
+            com.nekobot.app.data.local.LocalLogger.i(
+                TAG,
+                "现实时间注入完成 | level=${realTimeContext["continuity_level"]} | elapsed=${realTimeContext["elapsed_label"]} | circadian=${circadianState["phase"]}"
+            )
+        } catch (e: Exception) {
+            com.nekobot.app.data.local.LocalLogger.w(TAG, "现实时间注入异常: ${e.message}", e)
         }
     }
 

@@ -312,6 +312,8 @@ class CharacterRuntime(
             repo.get(identity.characterId, identity.scopeId)?.let { return it }
         }
         // 创建初始状态
+        // lastActiveAt 留空：首次对话时 real_time.continuity 会判定为 first_contact，
+        // 与原仓库 build_current_real_time_context(previous_turn_time="") 行为一致。
         val now = Instant.now().toString()
         return CharacterState(
             characterId = identity.characterId,
@@ -319,7 +321,7 @@ class CharacterRuntime(
             mood = "平静",
             moodIntensity = 0.5f,
             energy = 70,
-            lastActiveAt = now,
+            lastActiveAt = "",
             updatedAt = now
         )
     }
