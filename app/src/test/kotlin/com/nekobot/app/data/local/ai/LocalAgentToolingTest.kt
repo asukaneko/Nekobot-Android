@@ -12,6 +12,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import java.nio.file.Files
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class LocalAgentToolingTest {
 
@@ -25,6 +27,7 @@ class LocalAgentToolingTest {
         assertTrue("get_date_time" in names)
         assertTrue("exec_command" in names)
         assertTrue("workspace_read_file" in names)
+        assertTrue("workspace_extract_epub" in names)
         assertFalse("save_to_memory" in names)
         assertEquals(names.distinct().size, names.size)
     }
@@ -120,6 +123,10 @@ class LocalAgentToolingTest {
                 mapOf("path" to "notes/todo.txt", "content" to "完成工具测试")
             )
             assertEquals(true, created["success"])
+            assertEquals(
+                root.resolve("notes/todo.txt").canonicalPath,
+                created["absolute_path"]
+            )
 
             val read = executor.execute(
                 "workspace_read_file",
@@ -127,6 +134,10 @@ class LocalAgentToolingTest {
             )
             assertEquals(true, read["success"])
             assertEquals("完成工具测试", read["content"])
+            assertEquals(
+                root.resolve("notes/todo.txt").canonicalPath,
+                read["absolute_path"]
+            )
 
             val escaped = executor.execute(
                 "workspace_read_file",
@@ -135,6 +146,87 @@ class LocalAgentToolingTest {
             assertEquals(false, escaped["success"])
         } finally {
             root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun workspaceExtractEpubCreatesOrderedTxtAndReturnsCanonicalPath() {
+        val root = Files.createTempDirectory("nekobot-agent-epub").toFile()
+        try {
+            val epub = root.resolve("novels/book.epub")
+            epub.parentFile?.mkdirs()
+            createTestEpub(epub)
+            val executor = LocalAgentToolExecutor(
+                sessionId = "session-epub",
+                workspaceRoot = root,
+                authorizationManager = LocalExecAuthorizationManager(100),
+                onConfirmationRequired = {},
+                thinkingHistoryProvider = { emptyList() }
+            )
+
+            val extracted = executor.execute(
+                "workspace_extract_epub",
+                mapOf("path" to "novels/book.epub")
+            )
+
+            assertEquals(true, extracted["success"])
+            val output = root.resolve("novels/book.txt")
+            assertEquals("novels/book.txt", extracted["path"])
+            assertEquals(output.canonicalPath, extracted["absolute_path"])
+            assertEquals(epub.canonicalPath, extracted["source_absolute_path"])
+            assertEquals(2, extracted["chapter_count"])
+            val text = output.readText(Charsets.UTF_8)
+            assertTrue(text.indexOf("第一章") < text.indexOf("第二章"))
+            assertTrue("你好 & 世界" in text)
+            assertTrue("故事继续……" in text)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    private fun createTestEpub(file: java.io.File) {
+        ZipOutputStream(file.outputStream()).use { zip ->
+            fun add(path: String, content: String) {
+                zip.putNextEntry(ZipEntry(path))
+                zip.write(content.toByteArray(Charsets.UTF_8))
+                zip.closeEntry()
+            }
+
+            add(
+                "META-INF/container.xml",
+                """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <container xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+                  <rootfiles>
+                    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+                  </rootfiles>
+                </container>
+                """.trimIndent()
+            )
+            add(
+                "OEBPS/content.opf",
+                """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+                  <manifest>
+                    <item id="second" href="Text/chapter%202.xhtml" media-type="application/xhtml+xml"/>
+                    <item id="first" href="Text/chapter1.xhtml" media-type="application/xhtml+xml"/>
+                  </manifest>
+                  <spine>
+                    <itemref idref="first"/>
+                    <itemref idref="second"/>
+                  </spine>
+                </package>
+                """.trimIndent()
+            )
+            add(
+                "OEBPS/Text/chapter1.xhtml",
+                "<html><body><h1>第一章</h1><p>你好 &amp; 世界</p></body></html>"
+            )
+            add(
+                "OEBPS/Text/chapter 2.xhtml",
+                "<html><body><h1>第二章</h1><p>故事继续&#x2026;&#x2026;</p></body></html>"
+            )
         }
     }
 }

@@ -252,6 +252,18 @@ object BuiltinTools {
             )
         ),
         BuiltinToolSpec(
+            id = "workspace_extract_epub",
+            name = "工作区-提取 EPUB",
+            description = "按小说阅读顺序提取工作区中的 EPUB 正文，生成 UTF-8 TXT 到工作区。成功时返回 TXT 的相对路径和真实绝对路径。",
+            parametersJson = params(
+                mapOf(
+                    "path" to mapOf("type" to "string", "description" to "EPUB 文件的工作区相对路径"),
+                    "output_path" to mapOf("type" to "string", "description" to "可选的 TXT 输出相对路径，默认与 EPUB 同目录同名")
+                ),
+                listOf("path")
+            )
+        ),
+        BuiltinToolSpec(
             id = "workspace_file_info",
             name = "工作区-文件信息",
             description = "获取工作区文件的元信息（大小/类型/修改时间）。",
@@ -271,7 +283,7 @@ object BuiltinTools {
         )
     )
 
-    /** 全部内置工具列表（21 个）。 */
+    /** 全部内置工具列表（22 个）。 */
     val all: List<BuiltinToolSpec> = standardTools + workspaceTools
 
     /** 判断 id 是否为内置工具。 */

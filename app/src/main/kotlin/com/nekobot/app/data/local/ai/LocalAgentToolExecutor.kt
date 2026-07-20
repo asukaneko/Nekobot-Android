@@ -33,6 +33,7 @@ internal val localExecutableToolIds = setOf(
     "workspace_list_files",
     "workspace_send_file",
     "workspace_parse_file",
+    "workspace_extract_epub",
     "workspace_file_info"
 )
 
@@ -149,6 +150,7 @@ internal class LocalAgentToolExecutor(
                 "workspace_delete_file" -> deleteWorkspaceFile(args)
                 "workspace_list_files" -> listWorkspaceFiles(args)
                 "workspace_send_file" -> sendWorkspaceFile(args)
+                "workspace_extract_epub" -> extractWorkspaceEpub(args)
                 "workspace_file_info" -> workspaceFileInfo(args)
                 else -> failure("本地模式不支持工具: $toolName")
             }
@@ -338,8 +340,9 @@ internal class LocalAgentToolExecutor(
         }
         return success(
             "path" to relativeWorkspacePath(target),
+            "absolute_path" to target.canonicalPath,
             "size" to target.length(),
-            "_file_path" to target.absolutePath,
+            "_file_path" to target.canonicalPath,
             "_file_name" to target.name
         )
     }
@@ -464,7 +467,11 @@ internal class LocalAgentToolExecutor(
             ?: return failure("路径为空或超出会话工作区")
         target.parentFile?.mkdirs()
         target.writeText(args.string("content"), Charsets.UTF_8)
-        return success("path" to relativeWorkspacePath(target), "size" to target.length())
+        return success(
+            "path" to relativeWorkspacePath(target),
+            "absolute_path" to target.canonicalPath,
+            "size" to target.length()
+        )
     }
 
     private fun readWorkspaceFile(args: Map<String, Any>): Map<String, Any> {
@@ -473,6 +480,7 @@ internal class LocalAgentToolExecutor(
         if (!target.isFile) return failure("文件不存在")
         return success(
             "path" to relativeWorkspacePath(target),
+            "absolute_path" to target.canonicalPath,
             "content" to target.readText(Charsets.UTF_8).take(30000)
         )
     }
@@ -484,7 +492,11 @@ internal class LocalAgentToolExecutor(
         if (target.isDirectory && target.listFiles()?.isNotEmpty() == true) {
             return failure("不允许删除非空目录")
         }
-        return if (target.delete()) success("path" to relativeWorkspacePath(target))
+        val relativePath = relativeWorkspacePath(target)
+        val absolutePath = target.canonicalPath
+        return if (target.delete()) {
+            success("path" to relativePath, "absolute_path" to absolutePath)
+        }
         else failure("删除失败")
     }
 
@@ -500,12 +512,17 @@ internal class LocalAgentToolExecutor(
                 mapOf(
                     "name" to it.name,
                     "path" to relativeWorkspacePath(it),
+                    "absolute_path" to it.canonicalPath,
                     "directory" to it.isDirectory,
                     "size" to if (it.isFile) it.length() else 0L
                 )
             }
             .orEmpty()
-        return success("path" to relativeWorkspacePath(target), "files" to files)
+        return success(
+            "path" to relativeWorkspacePath(target),
+            "absolute_path" to target.canonicalPath,
+            "files" to files
+        )
     }
 
     private fun sendWorkspaceFile(args: Map<String, Any>): Map<String, Any> {
@@ -514,8 +531,39 @@ internal class LocalAgentToolExecutor(
         if (!target.isFile) return failure("文件不存在")
         return success(
             "path" to relativeWorkspacePath(target),
-            "_file_path" to target.absolutePath,
+            "absolute_path" to target.canonicalPath,
+            "_file_path" to target.canonicalPath,
             "_file_name" to target.name
+        )
+    }
+
+    private fun extractWorkspaceEpub(args: Map<String, Any>): Map<String, Any> {
+        val source = resolveWorkspacePath(args.workspacePath())
+            ?: return failure("路径为空或超出会话工作区")
+        if (!source.isFile) return failure("EPUB 文件不存在")
+        if (!source.extension.equals("epub", ignoreCase = true)) {
+            return failure("输入文件必须是 EPUB 格式")
+        }
+
+        val defaultOutputPath = relativeWorkspacePath(
+            File(source.parentFile, "${source.nameWithoutExtension}.txt")
+        )
+        val outputPath = args.string("output_path").ifBlank { defaultOutputPath }
+        val output = resolveWorkspacePath(outputPath)
+            ?: return failure("输出路径为空或超出会话工作区")
+        if (!output.extension.equals("txt", ignoreCase = true)) {
+            return failure("输出文件必须使用 .txt 扩展名")
+        }
+
+        val result = EpubTextExtractor.extract(source, output)
+        return success(
+            "source_path" to relativeWorkspacePath(source),
+            "source_absolute_path" to source.canonicalPath,
+            "path" to relativeWorkspacePath(output),
+            "absolute_path" to output.canonicalPath,
+            "size" to output.length(),
+            "chapter_count" to result.chapterCount,
+            "character_count" to result.characterCount
         )
     }
 
@@ -525,6 +573,7 @@ internal class LocalAgentToolExecutor(
         if (!target.exists()) return failure("文件不存在")
         return success(
             "path" to relativeWorkspacePath(target),
+            "absolute_path" to target.canonicalPath,
             "name" to target.name,
             "directory" to target.isDirectory,
             "size" to if (target.isFile) target.length() else 0L,
