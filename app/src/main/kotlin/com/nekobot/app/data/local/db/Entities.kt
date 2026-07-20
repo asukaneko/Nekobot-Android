@@ -36,6 +36,8 @@ data class LocalSessionEntity(
     @ColumnInfo(name = "plot_realtime_sync") val plotRealTimeSync: Boolean = false,
     /** 剧情选项风格（回复风格）文本 */
     @ColumnInfo(name = "plot_choice_style") val plotChoiceStyle: String? = null,
+    /** 剧情大纲文本（用户导入/粘贴，AI 生成选项时围绕此走向推进） */
+    @ColumnInfo(name = "plot_outline") val plotOutline: String? = null,
     @ColumnInfo(name = "auto_state_interval") val autoStateInterval: Int = 2,
     /** 禁用的提示词注入项 key 列表，逗号分隔 */
     @ColumnInfo(name = "disabled_prompt_keys") val disabledPromptKeys: String? = null,

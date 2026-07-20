@@ -142,6 +142,7 @@ class UnifiedRepository(
                 plotMode = req.plotMode,
                 plotRealTimeSync = req.plotRealTimeSync,
                 plotChoiceStyle = req.plotChoiceStyle,
+                plotOutline = req.plotOutline,
                 autoStateInterval = req.autoStateInterval,
                 disabledPromptKeys = req.disabledPromptKeys,
                 isPublic = req.isPublic,

@@ -197,6 +197,16 @@
     <string name="sessions_detail_edit_reply_style">응답 스타일 편집</string>
     <string name="sessions_detail_reply_style_desc">플롯 선택의 생성 스타일 선택(AI가 생성하는 3개 분기 옵션의 톤과 방향에 영향)</string>
     <string name="sessions_detail_custom_style_desc">사용자 정의 스타일 설명</string>
+    <string name="sessions_detail_plot_outline">플롯 대강</string>
+    <string name="sessions_detail_plot_outline_unset">미설정</string>
+    <string name="sessions_detail_plot_outline_set">설정됨 (%1$d자)</string>
+    <string name="sessions_detail_edit_plot_outline">플롯 대강 편집</string>
+    <string name="sessions_detail_plot_outline_desc">플롯 대강을 가져오거나 붙여넣으면 AI가 생성하는 분기 선택지가 이 방향을 따라 진행됩니다. 각 선택지는 여전히 새로운 진전을 도입합니다.</string>
+    <string name="sessions_detail_plot_outline_hint">여기에 플롯 대강을 붙여넣거나 입력…</string>
+    <string name="sessions_detail_plot_outline_import">.txt 파일 가져오기</string>
+    <string name="sessions_detail_plot_outline_clear">지우기</string>
+    <string name="sessions_detail_plot_outline_import_failed">가져오기 실패: 파일 내용을 읽을 수 없습니다</string>
+    <string name="sessions_detail_plot_outline_chars">%1$d자</string>
     <string name="sessions_detail_interval_global">전역 기본값</string>
     <string name="sessions_detail_interval_off">끄기</string>
     <string name="sessions_detail_interval_every_1">1턴마다</string>

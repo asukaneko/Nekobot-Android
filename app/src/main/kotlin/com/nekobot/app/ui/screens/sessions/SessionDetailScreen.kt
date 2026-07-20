@@ -125,6 +125,7 @@ class SessionDetailViewModel : BaseViewModel() {
     val plotMode = MutableStateFlow(false)
     val plotRealTimeSync = MutableStateFlow(false)
     val plotChoiceStyle = MutableStateFlow("")
+    val plotOutline = MutableStateFlow("")
     // TTS / 主动聊天 / 公开分享
     val ttsEnabled = MutableStateFlow(false)
     val ttsModelId = MutableStateFlow("")
@@ -267,6 +268,7 @@ class SessionDetailViewModel : BaseViewModel() {
                 plotMode.value = s.plotMode == true
                 plotRealTimeSync.value = s.plotRealTimeSync == true
                 plotChoiceStyle.value = s.plotChoiceStyle ?: ""
+                plotOutline.value = s.plotOutline ?: ""
                 // 解析 TTS / 主动聊天 / 公开分享
                 android.util.Log.d("SessionDetail", "load: s.isPublic=${s.isPublic}, s.ttsConfig=${s.ttsConfig}, s.shareConfig=${s.shareConfig}")
                 isPublic.value = false
@@ -443,6 +445,7 @@ class SessionDetailViewModel : BaseViewModel() {
                         plotMode = plotMode.value,
                         plotRealTimeSync = plotRealTimeSync.value,
                         plotChoiceStyle = plotChoiceStyle.value.ifBlank { null },
+                        plotOutline = plotOutline.value.ifBlank { null },
                         disabledPromptKeys = _disabledPromptKeys.value.toList(),
                         proactiveChat = proactiveJson,
                         ttsConfig = ttsJson
@@ -611,6 +614,7 @@ fun SessionDetailScreen(
     val plotMode by vm.plotMode.collectAsState()
     val plotRealTimeSync by vm.plotRealTimeSync.collectAsState()
     val plotChoiceStyle by vm.plotChoiceStyle.collectAsState()
+    val plotOutline by vm.plotOutline.collectAsState()
     val ttsEnabled by vm.ttsEnabled.collectAsState()
     val ttsModelId by vm.ttsModelId.collectAsState()
     val ttsVoice by vm.ttsVoice.collectAsState()
@@ -1131,6 +1135,37 @@ fun SessionDetailScreen(
                                             showStyleDialog = false
                                         },
                                         onDismiss = { showStyleDialog = false }
+                                    )
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                // 剧情大纲编辑器入口
+                                var showOutlineDialog by remember { mutableStateOf(false) }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        stringResource(R.string.sessions_detail_plot_outline),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    OutlinedButton(onClick = { showOutlineDialog = true }) {
+                                        Text(
+                                            text = if (plotOutline.isBlank()) stringResource(R.string.sessions_detail_plot_outline_unset)
+                                                   else stringResource(R.string.sessions_detail_plot_outline_set, plotOutline.length),
+                                            style = MaterialTheme.typography.labelMedium
+                                        )
+                                    }
+                                }
+                                if (showOutlineDialog) {
+                                    PlotOutlineEditorDialog(
+                                        currentOutline = plotOutline,
+                                        onConfirm = { newOutline ->
+                                            vm.plotOutline.value = newOutline
+                                            showOutlineDialog = false
+                                        },
+                                        onDismiss = { showOutlineDialog = false }
                                     )
                                 }
                             }
@@ -1765,6 +1800,126 @@ private fun PlotStylePickerDialog(
                 }
                 onConfirm(result)
             }) { Text(stringResource(R.string.common_confirm)) }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
+        }
+    )
+}
+
+/**
+ * 剧情大纲编辑器弹窗：支持粘贴/输入文本 + 导入 .txt 文件。
+ *
+ * 大纲会被注入到剧情选项生成 Prompt 中，AI 生成的 3 个分支选项会围绕此走向推进。
+ */
+@Composable
+private fun PlotOutlineEditorDialog(
+    currentOutline: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var outlineText by remember { mutableStateOf(currentOutline) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var importError by remember { mutableStateOf(false) }
+
+    val filePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val content = context.contentResolver.openInputStream(uri)?.use { input ->
+                    input.bufferedReader().readText()
+                }
+                if (!content.isNullOrEmpty()) {
+                    // 追加到现有内容（用换行分隔），便于多次导入拼接
+                    outlineText = if (outlineText.isBlank()) content
+                                  else buildString {
+                                      append(outlineText.trimEnd())
+                                      append("\n\n")
+                                      append(content.trim())
+                                  }
+                    importError = false
+                } else {
+                    importError = true
+                }
+            } catch (_: Exception) {
+                importError = true
+            }
+        }
+    }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.sessions_detail_edit_plot_outline), fontWeight = FontWeight.SemiBold) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    stringResource(R.string.sessions_detail_plot_outline_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = outlineText,
+                    onValueChange = {
+                        outlineText = it
+                        importError = false
+                    },
+                    label = { Text(stringResource(R.string.sessions_detail_plot_outline_hint)) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 160.dp, max = 320.dp),
+                    minLines = 6,
+                    maxLines = 12
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(
+                        onClick = { filePickerLauncher.launch("*/*") }
+                    ) {
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Filled.Book,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.sessions_detail_plot_outline_import))
+                    }
+                    if (outlineText.isNotEmpty()) {
+                        OutlinedButton(
+                            onClick = {
+                                outlineText = ""
+                                importError = false
+                            }
+                        ) {
+                            Text(stringResource(R.string.sessions_detail_plot_outline_clear))
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        stringResource(R.string.sessions_detail_plot_outline_chars, outlineText.length),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (importError) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        stringResource(R.string.sessions_detail_plot_outline_import_failed),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = { onConfirm(outlineText.trim()) }) {
+                Text(stringResource(R.string.common_confirm))
+            }
         },
         dismissButton = {
             androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }

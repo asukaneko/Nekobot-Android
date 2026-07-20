@@ -313,6 +313,7 @@ class LocalRepository(
         plotMode: Boolean? = null,
         plotRealTimeSync: Boolean? = null,
         plotChoiceStyle: String? = null,
+        plotOutline: String? = null,
         autoStateInterval: Int? = null,
         disabledPromptKeys: List<String>? = null,
         isPublic: Boolean? = null,
@@ -334,6 +335,7 @@ class LocalRepository(
             plotMode = plotMode ?: entity.plotMode,
             plotRealTimeSync = plotRealTimeSync ?: entity.plotRealTimeSync,
             plotChoiceStyle = plotChoiceStyle ?: entity.plotChoiceStyle,
+            plotOutline = plotOutline ?: entity.plotOutline,
             autoStateInterval = autoStateInterval ?: entity.autoStateInterval,
             disabledPromptKeys = disabledPromptKeys?.let { it.joinToString(",") } ?: entity.disabledPromptKeys,
             isPublic = isPublic ?: entity.isPublic,
@@ -1073,7 +1075,9 @@ class LocalRepository(
                         .map { mapOf("role" to it.role, "content" to it.content) }
                     val choices = plotGen.generate(
                         responseText = ctx.finalContent,
-                        recentHistory = recentHistory
+                        recentHistory = recentHistory,
+                        style = session.plotChoiceStyle ?: "default",
+                        outline = session.plotOutline ?: ""
                     )
                     if (choices.isNotEmpty()) {
                         // 为每个选项添加 id（parsePlotChoices 要求 id 非空）
@@ -1168,7 +1172,9 @@ class LocalRepository(
             )
             val choices = plotGen.generate(
                 responseText = lastAssistant.content,
-                recentHistory = recentHistory
+                recentHistory = recentHistory,
+                style = session.plotChoiceStyle ?: "default",
+                outline = session.plotOutline ?: ""
             )
             if (choices.isNotEmpty()) {
                 val choicesWithId = choices.mapIndexed { idx, c ->
@@ -2346,6 +2352,7 @@ $charSection$topicSection
         plotMode = plotMode,
         plotRealTimeSync = plotRealTimeSync,
         plotChoiceStyle = plotChoiceStyle,
+        plotOutline = plotOutline,
         autoStateInterval = autoStateInterval,
         disabledPromptKeys = disabledPromptKeys?.split(",")?.filter { it.isNotEmpty() },
         customPrompts = customPrompts?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },

@@ -459,6 +459,7 @@ class PlotChoiceGenerator(
      * @param turnContext 当前轮上下文（mood/relationship）
      * @param sessionContext 会话上下文（recent_topics/current_arc）
      * @param style 风格预设
+     * @param outline 剧情大纲文本（用户导入/粘贴，选项需契合此整体走向）
      * @return 选项列表 [{level, text, intent}]
      */
     suspend fun generate(
@@ -466,14 +467,15 @@ class PlotChoiceGenerator(
         recentHistory: List<Map<String, String>> = emptyList(),
         turnContext: Map<String, Any> = emptyMap(),
         sessionContext: Map<String, Any> = emptyMap(),
-        style: String = "default"
+        style: String = "default",
+        outline: String = ""
     ): List<Map<String, String>> {
         if (responseText.isBlank()) return DEFAULT_CHOICES
 
         val model = aiModelProvider?.invoke() ?: return DEFAULT_CHOICES
 
-        val systemPrompt = buildSystemPrompt(style)
-        val userPrompt = buildUserPrompt(responseText, recentHistory, turnContext, sessionContext)
+        val systemPrompt = buildSystemPrompt(style, outline)
+        val userPrompt = buildUserPrompt(responseText, recentHistory, turnContext, sessionContext, outline)
 
         val messages = listOf(
             mapOf("role" to "system", "content" to systemPrompt),
@@ -539,7 +541,7 @@ class PlotChoiceGenerator(
         return DEFAULT_CHOICES
     }
 
-    private fun buildSystemPrompt(style: String): String {
+    private fun buildSystemPrompt(style: String, outline: String = ""): String {
         val base = """你是一个剧情选项生成器。根据当前对话，生成 3 个力度递增的选项。
 
 铁律：
@@ -552,14 +554,18 @@ class PlotChoiceGenerator(
 
 只返回 JSON，不要其他文字。"""
         val styleHint = STYLE_PRESETS[style] ?: ""
-        return if (styleHint.isNotEmpty()) "$base\n\n$styleHint" else base
+        val outlineHint = if (outline.isNotBlank()) {
+            "\n\n【剧情大纲已启用】本次生成的 3 个选项必须契合下方「剧情大纲」的整体走向与既定目标，但每个选项仍需引入新的推进元素，禁止直接复述大纲原文。"
+        } else ""
+        return base + outlineHint + (if (styleHint.isNotEmpty()) "\n\n$styleHint" else "")
     }
 
     private fun buildUserPrompt(
         responseText: String,
         recentHistory: List<Map<String, String>>,
         turnContext: Map<String, Any>,
-        sessionContext: Map<String, Any>
+        sessionContext: Map<String, Any>,
+        outline: String = ""
     ): String {
         val parts = mutableListOf<String>()
         parts.add("角色回复:\n$responseText")
@@ -578,6 +584,12 @@ class PlotChoiceGenerator(
             parts.add("关系: 好感${it["affection"]}/信任${it["trust"]}")
         }
         (sessionContext["current_arc"] as? String)?.let { if (it.isNotEmpty()) parts.add("当前剧情弧: $it") }
+
+        // 剧情大纲：用户导入/粘贴，选项需围绕此走向推进
+        if (outline.isNotBlank()) {
+            val truncated = outline.take(2000)
+            parts.add("剧情大纲（生成选项时需契合此整体走向，但每个选择仍必须引入新的推进，不要直接复述大纲原文）：\n$truncated")
+        }
 
         return parts.joinToString("\n\n")
     }

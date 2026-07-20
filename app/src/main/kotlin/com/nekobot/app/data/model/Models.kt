@@ -82,6 +82,8 @@ data class Session(
     @SerializedName("plot_real_time_sync") val plotRealTimeSync: Boolean? = null,
     /** 剧情选项风格（回复风格）：预设 key 或自定义文本 */
     @SerializedName("plot_choice_style") val plotChoiceStyle: String? = null,
+    /** 剧情大纲文本（用户导入/粘贴，AI 生成选项时围绕此走向推进） */
+    @SerializedName(value = "plot_outline", alternate = ["plotOutline"]) val plotOutline: String? = null,
     @SerializedName("character_runtime_snapshot") val characterRuntimeSnapshot: JsonElement? = null,
     @SerializedName("user_id") val userId: String? = null,
     @SerializedName("group_id") val groupId: String? = null,
@@ -128,6 +130,7 @@ data class UpdateSessionRequest(
     @SerializedName("plot_mode") val plotMode: Boolean? = null,
     @SerializedName("plot_real_time_sync") val plotRealTimeSync: Boolean? = null,
     @SerializedName("plot_choice_style") val plotChoiceStyle: String? = null,
+    @SerializedName("plot_outline") val plotOutline: String? = null,
     @SerializedName("proactive_chat") val proactiveChat: JsonElement? = null,
     @SerializedName("tts_config") val ttsConfig: JsonElement? = null,
     @SerializedName("share_config") val shareConfig: JsonElement? = null,

@@ -197,6 +197,16 @@
     <string name="sessions_detail_edit_reply_style">编辑回复风格</string>
     <string name="sessions_detail_reply_style_desc">选择剧情选项的生成风格（影响 AI 生成的 3 个分支选项的语气与取向）</string>
     <string name="sessions_detail_custom_style_desc">自定义风格描述</string>
+    <string name="sessions_detail_plot_outline">剧情大纲</string>
+    <string name="sessions_detail_plot_outline_unset">未设置</string>
+    <string name="sessions_detail_plot_outline_set">已设置（%1$d 字）</string>
+    <string name="sessions_detail_edit_plot_outline">编辑剧情大纲</string>
+    <string name="sessions_detail_plot_outline_desc">导入或粘贴剧情发展大纲，AI 生成分支选项时会围绕此走向推进。每个选项仍会引入新的推进，不会直接复述大纲原文。</string>
+    <string name="sessions_detail_plot_outline_hint">在此粘贴或输入剧情大纲…</string>
+    <string name="sessions_detail_plot_outline_import">导入 .txt 文件</string>
+    <string name="sessions_detail_plot_outline_clear">清空</string>
+    <string name="sessions_detail_plot_outline_import_failed">导入失败：无法读取文件内容</string>
+    <string name="sessions_detail_plot_outline_chars">%1$d 字</string>
     <string name="sessions_detail_interval_global">全局默认</string>
     <string name="sessions_detail_interval_off">关闭</string>
     <string name="sessions_detail_interval_every_1">每 1 轮</string>

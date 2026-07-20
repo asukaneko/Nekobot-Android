@@ -197,6 +197,16 @@
     <string name="sessions_detail_edit_reply_style">応答スタイルを編集</string>
     <string name="sessions_detail_reply_style_desc">プロット選択肢の生成スタイルを選択 (AI が生成する 3 つの分岐選択肢のトーンと方向に影響)</string>
     <string name="sessions_detail_custom_style_desc">カスタムスタイルの説明</string>
+    <string name="sessions_detail_plot_outline">プロット大綱</string>
+    <string name="sessions_detail_plot_outline_unset">未設定</string>
+    <string name="sessions_detail_plot_outline_set">設定済み（%1$d 字）</string>
+    <string name="sessions_detail_edit_plot_outline">プロット大綱を編集</string>
+    <string name="sessions_detail_plot_outline_desc">プロット大綱をインポートまたは貼り付けると、AI が生成する分岐選択肢がこの方向に沿って進みます。各選択肢は新しい進展を導入します。</string>
+    <string name="sessions_detail_plot_outline_hint">ここにプロット大綱を貼り付けまたは入力…</string>
+    <string name="sessions_detail_plot_outline_import">.txt ファイルをインポート</string>
+    <string name="sessions_detail_plot_outline_clear">クリア</string>
+    <string name="sessions_detail_plot_outline_import_failed">インポート失敗：ファイル内容を読み込めません</string>
+    <string name="sessions_detail_plot_outline_chars">%1$d 字</string>
     <string name="sessions_detail_interval_global">グローバルデフォルト</string>
     <string name="sessions_detail_interval_off">オフ</string>
     <string name="sessions_detail_interval_every_1">1 ターンごと</string>
