@@ -205,18 +205,25 @@ fun SessionsScreen(
                 onSelect = viewModel::setFilter
             )
 
-            // 搜索栏（点击展开半屏搜索面板）
-            SearchEntryBar(
-                searchQuery = searchQuery,
-                filter = filter,
-                channelFilterValue = channelFilterValue,
-                availableChannels = availableChannels,
-                onClick = { showSearchPanel = true }
-            )
-
             Box(modifier = Modifier.fillMaxSize()) {
                 when {
                     loading && sessionRows.isEmpty() -> {
+                        // 初次加载时搜索框仍可见（固定在顶部），下方显示加载指示。
+                        // 外层 padding 与有数据时 LazyColumn 的 contentPadding 保持一致，
+                        // 保证搜索框在所有状态下样式统一。
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 12.dp, end = 12.dp, top = 8.dp)
+                        ) {
+                            SearchEntryBar(
+                                searchQuery = searchQuery,
+                                filter = filter,
+                                channelFilterValue = channelFilterValue,
+                                availableChannels = availableChannels,
+                                onClick = { showSearchPanel = true }
+                            )
+                        }
                         Column(
                             modifier = Modifier.fillMaxSize(),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -226,6 +233,22 @@ fun SessionsScreen(
                         }
                     }
                     sessionRows.isEmpty() -> {
+                        // 空状态下搜索框仍可见（固定在顶部），下方显示空状态。
+                        // 外层 padding 与有数据时 LazyColumn 的 contentPadding 保持一致，
+                        // 保证搜索框在所有状态下样式统一。
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 12.dp, end = 12.dp, top = 8.dp)
+                        ) {
+                            SearchEntryBar(
+                                searchQuery = searchQuery,
+                                filter = filter,
+                                channelFilterValue = channelFilterValue,
+                                availableChannels = availableChannels,
+                                onClick = { showSearchPanel = true }
+                            )
+                        }
                         val emptyTitle = when {
                             searchQuery.isNotBlank() -> noMatchTitle
                             filter != SessionFilter.ALL -> filterEmptyTitle
@@ -250,11 +273,25 @@ fun SessionsScreen(
                         )
                     }
                     else -> {
+                        // 列表不为空时，搜索框作为 LazyColumn 的第一个 item，跟随列表滚动
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 110.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            // 搜索栏：跟随列表滚动的首项
+                            item(
+                                key = "search-entry-bar",
+                                contentType = "search-entry-bar"
+                            ) {
+                                SearchEntryBar(
+                                    searchQuery = searchQuery,
+                                    filter = filter,
+                                    channelFilterValue = channelFilterValue,
+                                    availableChannels = availableChannels,
+                                    onClick = { showSearchPanel = true }
+                                )
+                            }
                             item(
                                 key = "session-section-header",
                                 contentType = "session-section-header"

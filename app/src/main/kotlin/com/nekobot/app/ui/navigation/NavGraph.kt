@@ -5,14 +5,21 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -405,6 +412,23 @@ fun NekobotNavGraph() {
         // 作为覆盖层悬浮在页面上方，不再为底栏预留整块背景；
         // 胶囊外的透明区域没有手势处理，点击和滚动会继续交给下方内容。
         if (showBottomBar) {
+            // 底栏下方的渐变遮罩：从透明渐变到背景色，让接近底栏的列表内容
+            // 自然"淡入"背景，模拟毛玻璃的朦胧感（Telegram / iOS 常用技巧）。
+            // 不消耗手势事件，点击与滚动穿透到下方内容。
+            val bgColor = androidx.compose.material3.MaterialTheme.colorScheme.background
+            Spacer(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(120.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.5f to bgColor.copy(alpha = 0.45f),
+                            1f to bgColor.copy(alpha = 0.85f)
+                        )
+                    )
+            )
             LiquidGlassBottomBar(
                 items = bottomItems(),
                 selectedRoute = currentRoute,

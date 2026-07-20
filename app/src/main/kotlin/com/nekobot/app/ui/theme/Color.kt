@@ -6,9 +6,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 
 // ==================== 深色玻璃拟态主题配色 ====================
-val BgDark = Color(0xFF0E0E16)
-val BgSurface = Color(0xFF161623)
-val BgSurfaceVariant = Color(0xFF1E1E2E)
+// 深色蓝灰主题：背景 #1F2732 / 表面 #242D38 / 变体 #2B3440
+val BgDark = Color(0xFF1F2732)
+val BgSurface = Color(0xFF242D38)
+val BgSurfaceVariant = Color(0xFF2B3440)
 val GlassWhite = Color(0xFFFFFFFF)
 val GlassAlpha = Color(0x14FFFFFF)
 
