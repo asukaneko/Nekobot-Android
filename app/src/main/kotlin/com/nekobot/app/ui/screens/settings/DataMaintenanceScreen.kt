@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
@@ -285,14 +286,12 @@ fun DataMaintenanceScreen(onBack: () -> Unit) {
                     }
                 },
                 actions = {
-                    if (appMode != AppMode.LOCAL) {
-                        IconButton(onClick = { vm.refreshStorageInfo(context) }) {
-                            Icon(
-                                Icons.Filled.Refresh,
-                                contentDescription = stringResource(R.string.maintenance_refresh),
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
+                    IconButton(onClick = { vm.refreshStorageInfo(context) }) {
+                        Icon(
+                            Icons.Filled.Refresh,
+                            contentDescription = stringResource(R.string.maintenance_refresh),
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -316,6 +315,77 @@ fun DataMaintenanceScreen(onBack: () -> Unit) {
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    error?.let {
+                        ErrorBanner(message = it, onRetry = { vm.clearError() })
+                    }
+
+                    // 1. 存储使用情况
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        SectionHeader(title = stringResource(R.string.maintenance_storage_usage), subtitle = stringResource(R.string.maintenance_storage_subtitle))
+                        Spacer(Modifier.height(12.dp))
+                        StorageRow(
+                            icon = Icons.Filled.Storage,
+                            label = stringResource(R.string.maintenance_cache_size),
+                            value = storageInfo.cacheSizeText
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        StorageRow(
+                            icon = Icons.Filled.Storage,
+                            label = stringResource(R.string.maintenance_db_size),
+                            value = storageInfo.dbSizeText
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        StorageRow(
+                            icon = Icons.Filled.Storage,
+                            label = stringResource(R.string.maintenance_total_size),
+                            value = storageInfo.totalSizeText,
+                            highlighted = true
+                        )
+                    }
+
+                    // 2. 清除缓存
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        SectionHeader(title = stringResource(R.string.maintenance_clear_cache_title), subtitle = stringResource(R.string.maintenance_clear_cache_subtitle))
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = stringResource(R.string.maintenance_clear_cache_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Button(
+                            onClick = { vm.clearCache(context) },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Filled.DeleteSweep, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.maintenance_clear_cache_title), color = MaterialTheme.colorScheme.onPrimary)
+                        }
+                    }
+
+                    // 3. 清除所有本地数据
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        SectionHeader(title = stringResource(R.string.maintenance_clear_all_title), subtitle = stringResource(R.string.maintenance_clear_all_subtitle))
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = stringResource(R.string.maintenance_clear_all_warning),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Button(
+                            onClick = { showClearDataDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.maintenance_clear_all_title), color = MaterialTheme.colorScheme.onPrimary)
+                        }
+                    }
+
+                    // 4. 缓存文件（支持递归浏览）
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         SectionHeader(title = stringResource(R.string.maintenance_cache_files), subtitle = stringResource(R.string.maintenance_cache_files_subtitle))
                         Spacer(Modifier.height(12.dp))
@@ -492,54 +562,70 @@ fun DataMaintenanceScreen(onBack: () -> Unit) {
     }
 }
 
-/** 缓存文件列表对话框：列出 cacheDir 下的文件，点击可用 FileProvider 打开 */
+/**
+ * 缓存文件列表对话框：支持递归浏览 cacheDir 下的文件和子目录，
+ * 点击文件夹进入下一级，点击文件用 FileProvider 打开。
+ */
 @Composable
 private fun CacheFilesDialog(context: android.content.Context, onDismiss: () -> Unit) {
-    val cacheFiles = remember {
-        val dir = context.cacheDir
-        val files = mutableListOf<Pair<java.io.File, String>>()
-        // 列出 cacheDir 下的文件和子目录
-        dir.listFiles()?.forEach { f ->
-            if (f.isDirectory) {
-                files.add(f to context.getString(R.string.maintenance_folder))
-                f.listFiles()?.forEach { sub ->
-                    if (sub.isFile) {
-                        files.add(sub to "${f.name}/")
-                    }
-                }
-            } else {
-                files.add(f to "")
-            }
-        }
-        files.sortedByDescending { it.first.lastModified() }
+    // 根目录 = cacheDir，禁止向上越界
+    val rootDir = remember { context.cacheDir }
+    // 当前所在目录，初始为根目录
+    var currentDir by remember { mutableStateOf(rootDir) }
+    // 当前目录下的条目（目录在前，文件在后，均按名称排序）
+    val entries = remember(currentDir) {
+        currentDir.listFiles()?.toList()?.sortedWith(
+            compareBy<java.io.File> { !it.isDirectory }  // 目录在前
+                .thenBy { it.name.lowercase() }            // 名称升序（不区分大小写）
+        ) ?: emptyList()
     }
 
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
         androidx.compose.material3.Surface(
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
-            modifier = Modifier.fillMaxWidth().heightIn(max = 500.dp)
+            modifier = Modifier.fillMaxWidth().heightIn(max = 600.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
+                // 顶部：标题 + 返回上级按钮（当不在根目录时显示）
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    if (currentDir != rootDir) {
+                        IconButton(onClick = { currentDir = currentDir.parentFile ?: rootDir }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.common_back),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    } else {
+                        Icon(Icons.Filled.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    }
                     Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = stringResource(R.string.maintenance_cache_files_count, cacheFiles.size),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        text = context.cacheDir.absolutePath,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.maintenance_cache_files_count, entries.size),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Bold
+                        )
+                        // 显示当前相对路径（cacheDir 为根）
+                        val relPath = remember(currentDir) {
+                            val rootAbs = rootDir.absolutePath.trimEnd('/')
+                            val curAbs = currentDir.absolutePath.trimEnd('/')
+                            if (curAbs.length <= rootAbs.length) "/"
+                            else curAbs.substring(rootAbs.length)
+                        }
+                        Text(
+                            text = relPath,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    }
                 }
                 Spacer(Modifier.height(12.dp))
-                if (cacheFiles.isEmpty()) {
+                if (entries.isEmpty()) {
                     Text(
                         text = stringResource(R.string.maintenance_cache_empty),
                         style = MaterialTheme.typography.bodyMedium,
@@ -551,13 +637,17 @@ private fun CacheFilesDialog(context: android.content.Context, onDismiss: () -> 
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        items(cacheFiles, key = { "${it.first.absolutePath}_${it.first.lastModified()}" }) { (file, prefix) ->
+                        items(entries, key = { it.absolutePath }) { file ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(8.dp))
                                     .clickable {
-                                        if (file.isFile) {
+                                        if (file.isDirectory) {
+                                            // 点击文件夹：进入下一级
+                                            currentDir = file
+                                        } else {
+                                            // 点击文件：用 FileProvider 打开
                                             try {
                                                 val uri = androidx.core.content.FileProvider.getUriForFile(
                                                     context,
@@ -580,22 +670,32 @@ private fun CacheFilesDialog(context: android.content.Context, onDismiss: () -> 
                                 Icon(
                                     imageVector = if (file.isDirectory) Icons.Filled.Folder else Icons.Filled.InsertDriveFile,
                                     contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    tint = if (file.isDirectory) MaterialTheme.colorScheme.primary
+                                           else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(24.dp)
                                 )
                                 Spacer(Modifier.width(8.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "$prefix${file.name}",
+                                        text = file.name,
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurface,
                                         maxLines = 1,
                                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = formatFileSize(file.length()),
+                                        text = if (file.isDirectory)
+                                            stringResource(R.string.maintenance_folder)
+                                        else formatFileSize(file.length()),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                if (file.isDirectory) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }

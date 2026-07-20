@@ -418,7 +418,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                     }
                 }
 
-                // 4.5 高级功能（仅服务器模式）：功能开关 / 数据维护 / 配置迁移 / WebDAV 备份
+                // 4.5 高级功能：本地模式仅显示"数据维护"，服务器模式显示全部
                 if (appMode != AppMode.LOCAL) {
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         SectionHeader(title = stringResource(R.string.settings_advanced))
@@ -447,6 +447,18 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                             title = stringResource(R.string.settings_webdav_backup),
                             subtitle = stringResource(R.string.settings_webdav_backup_desc)
                         ) { onNavigate("webdav_backup") }
+                    }
+                } else {
+                    // 本地模式：仅显示"数据维护"入口（其他高级功能依赖服务器）
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        SectionHeader(title = stringResource(R.string.settings_advanced))
+                        Spacer(Modifier.height(12.dp))
+                        SettingNavRow(
+                            icon = Icons.Filled.Build,
+                            iconColor = MaterialTheme.colorScheme.tertiary,
+                            title = stringResource(R.string.settings_data_maintenance),
+                            subtitle = stringResource(R.string.settings_data_maintenance_desc)
+                        ) { onNavigate("data_maintenance") }
                     }
                 }
 
