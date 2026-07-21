@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,7 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
@@ -72,7 +73,14 @@ import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
+import com.nekobot.app.ui.components.ModelCardDivider
+import com.nekobot.app.ui.components.ModelCardFrame
+import com.nekobot.app.ui.components.ModelCardMenuButton
+import com.nekobot.app.ui.components.ModelEndpointRow
+import com.nekobot.app.ui.components.ModelInfoChip
+import com.nekobot.app.ui.components.ModelStatusBadge
 import com.nekobot.app.ui.components.NekoDialog
+import com.nekobot.app.ui.components.ProviderLogo
 import com.nekobot.app.ui.components.SectionHeader
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -427,93 +435,64 @@ private fun ModelCard(
     onTest: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
-    GlassCard(modifier = Modifier.fillMaxWidth()) {
+    val purposeLabel = when (model.purpose) {
+        "chat" -> stringResource(R.string.localai_purpose_chat)
+        "vision" -> stringResource(R.string.localai_purpose_vision)
+        "video" -> stringResource(R.string.localai_purpose_video)
+        "tts" -> stringResource(R.string.localai_purpose_tts)
+        "stt" -> stringResource(R.string.localai_purpose_stt)
+        "embedding" -> stringResource(R.string.localai_purpose_embedding)
+        "image_generation" -> stringResource(R.string.localai_purpose_image_generation)
+        else -> model.purpose
+    }
+
+    ModelCardFrame(
+        isActive = isActive,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        // 身份区与服务器模型卡片保持一致，切换模式时不改变阅读路径。
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Filled.Memory,
-                    contentDescription = null,
-                    tint = if (isActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-            Spacer(Modifier.width(12.dp))
+            ProviderLogo(
+                provider = model.provider,
+                baseUrl = model.baseUrl,
+                model = model.model,
+                size = 52.dp
+            )
+            Spacer(Modifier.width(13.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        model.name,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (isActive) {
-                        Spacer(Modifier.width(6.dp))
-                        Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                    }
-                }
                 Text(
-                    "${model.protocol} · ${model.model}",
+                    text = model.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = model.model,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                val purposeLabel = when (model.purpose) {
-                    "chat" -> stringResource(R.string.localai_purpose_chat)
-                    "vision" -> stringResource(R.string.localai_purpose_vision)
-                    "video" -> stringResource(R.string.localai_purpose_video)
-                    "tts" -> stringResource(R.string.localai_purpose_tts)
-                    "stt" -> stringResource(R.string.localai_purpose_stt)
-                    "embedding" -> stringResource(R.string.localai_purpose_embedding)
-                    "image_generation" -> stringResource(R.string.localai_purpose_image_generation)
-                    else -> model.purpose
-                }
-                Text(
-                    purposeLabel,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
             }
+            Spacer(Modifier.width(10.dp))
             Box {
-                IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.localai_more), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                ModelCardMenuButton(
+                    contentDescription = stringResource(R.string.localai_more),
+                    onClick = { menuExpanded = true }
+                )
                 DropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text(if (isActive) stringResource(R.string.localai_current_model) else stringResource(R.string.localai_set_current)) },
-                        onClick = {
-                            menuExpanded = false
-                            if (!isActive) onSetActive()
-                        },
-                        enabled = !isActive
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.aiconfig_test)) },
-                        onClick = {
-                            menuExpanded = false
-                            onTest()
-                        }
-                    )
-                    DropdownMenuItem(
                         text = { Text(stringResource(R.string.common_edit)) },
+                        leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
                         onClick = {
                             menuExpanded = false
                             onEdit()
@@ -521,12 +500,74 @@ private fun ModelCard(
                     )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) },
+                        leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
                         onClick = {
                             menuExpanded = false
                             onDelete()
                         }
                     )
                 }
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isActive) {
+                ModelStatusBadge(text = stringResource(R.string.localai_current_model))
+            }
+            ModelInfoChip(text = model.protocol)
+            ModelInfoChip(
+                text = purposeLabel,
+                accent = true,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+        }
+
+        if (model.baseUrl.isNotBlank()) {
+            Spacer(Modifier.height(11.dp))
+            ModelEndpointRow(url = model.baseUrl)
+        }
+
+        ModelCardDivider(modifier = Modifier.padding(vertical = 13.dp))
+
+        // 高频操作直接露出，避免每次测试或切换模型都要打开菜单。
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(9.dp)
+        ) {
+            OutlinedButton(
+                onClick = onTest,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp)
+            ) {
+                Icon(Icons.Filled.Science, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.aiconfig_test), maxLines = 1)
+            }
+            Button(
+                onClick = onSetActive,
+                enabled = !isActive,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
+                colors = ButtonDefaults.buttonColors(
+                    disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    disabledContentColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.65f)
+                )
+            ) {
+                Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = if (isActive) stringResource(R.string.localai_current_model)
+                    else stringResource(R.string.localai_set_current),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }

@@ -138,6 +138,8 @@ class NekobotApp : Application(), coil.ImageLoaderFactory {
             // 工作区图片接口需要与 Retrofit 相同的 Bearer Token 鉴权。
             .okHttpClient(ServiceContainer.network.client)
             .components {
+                // SVG 解码器：用于 AI 提供商 Logo 等矢量图标（assets/providers/）
+                add(coil.decode.SvgDecoder.Factory())
                 // GIF 动图解码器：API 28+ 用系统 ImageDecoder（性能更优），低版本用纯 Kotlin 解码器
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                     add(coil.decode.ImageDecoderDecoder.Factory())

@@ -1,10 +1,10 @@
 package com.nekobot.app.ui.screens.aiconfig
 
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,10 +23,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -35,6 +39,7 @@ import com.nekobot.app.ui.components.GlassExposedDropdownMenu as ExposedDropdown
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -54,6 +59,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonElement
@@ -64,14 +70,15 @@ import com.nekobot.app.data.model.FetchModelsRequest
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.EmptyState
 import com.nekobot.app.ui.components.ErrorBanner
-import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
+import com.nekobot.app.ui.components.ModelCardDivider
+import com.nekobot.app.ui.components.ModelCardFrame
+import com.nekobot.app.ui.components.ModelCardMenuButton
+import com.nekobot.app.ui.components.ModelEndpointRow
+import com.nekobot.app.ui.components.ModelInfoChip
+import com.nekobot.app.ui.components.ModelStatusBadge
 import com.nekobot.app.ui.components.NekoDialog
-import com.nekobot.app.ui.theme.BgDark
-import com.nekobot.app.ui.theme.OnPrimary
-import com.nekobot.app.ui.theme.OnSurface
-import com.nekobot.app.ui.theme.OnSurfaceVariant
-import com.nekobot.app.ui.theme.Primary
+import com.nekobot.app.ui.components.ProviderLogo
 import com.nekobot.app.ui.theme.SuccessGreen
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -429,68 +436,141 @@ private fun ModelCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    GlassCard(modifier = Modifier.fillMaxWidth()) {
-        // 顶部行：名称 + 激活标记 + 操作菜单
+    val isActive = model.active == true
+    val isEnabled = model.enabled == true
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    ModelCardFrame(
+        isActive = isActive,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        // 身份区：Logo、显示名称与真实模型名保持明确层级。
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = model.displayName,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f)
+            ProviderLogo(
+                provider = model.provider,
+                baseUrl = model.baseUrl,
+                model = model.model,
+                size = 52.dp
             )
-            if (model.active == true) {
-                Box(
-                    modifier = Modifier
-                        .background(SuccessGreen.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(stringResource(R.string.aimodels_active_badge), style = MaterialTheme.typography.labelSmall, color = SuccessGreen)
-                }
-                Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(13.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = model.displayName,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = model.model ?: "—",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
-            // 操作菜单
-            var menuExpanded by remember { mutableStateOf(false) }
+            Spacer(Modifier.width(10.dp))
             Box {
-                IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.aimodels_action), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                ModelCardMenuButton(
+                    contentDescription = stringResource(R.string.aimodels_action),
+                    onClick = { menuExpanded = true }
+                )
                 DropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false }
                 ) {
-                    DropdownMenuItem(text = { Text(stringResource(R.string.common_apply)) }, onClick = { menuExpanded = false; onApply() })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.aiconfig_test)) }, onClick = { menuExpanded = false; onTest() })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.aimodels_clone)) }, onClick = { menuExpanded = false; onClone() })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.common_edit)) }, onClick = { menuExpanded = false; onEdit() })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.common_delete)) }, onClick = { menuExpanded = false; onDelete() })
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.aimodels_clone)) },
+                        leadingIcon = { Icon(Icons.Filled.ContentCopy, contentDescription = null) },
+                        onClick = { menuExpanded = false; onClone() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.common_edit)) },
+                        leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                        onClick = { menuExpanded = false; onEdit() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) },
+                        leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                        onClick = { menuExpanded = false; onDelete() }
+                    )
                 }
             }
         }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(14.dp))
 
-        // 信息行
-        Text(stringResource(R.string.aimodels_protocol, model.protocol ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(stringResource(R.string.aimodels_base_url, model.baseUrl ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(stringResource(R.string.aimodels_purpose, model.purpose ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(stringResource(R.string.aimodels_model, model.model ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // 状态和能力标签放在同一视觉层，快速区分当前模型与用途。
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isActive) {
+                ModelStatusBadge(
+                    text = stringResource(R.string.aimodels_active_badge),
+                    color = SuccessGreen
+                )
+            }
+            ModelInfoChip(text = model.protocol ?: "—")
+            ModelInfoChip(
+                text = model.purpose ?: "—",
+                accent = true,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+        }
 
-        Spacer(Modifier.height(8.dp))
+        if (!model.baseUrl.isNullOrBlank()) {
+            Spacer(Modifier.height(11.dp))
+            ModelEndpointRow(url = model.baseUrl)
+        }
 
-        // 启用开关
+        ModelCardDivider(modifier = Modifier.padding(vertical = 13.dp))
+
+        // 高频操作直接展示，克隆、编辑和删除保留在更多菜单中。
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(stringResource(R.string.aimodels_enabled), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
-            Switch(
-                checked = model.enabled ?: false,
-                onCheckedChange = { onToggle() }
-            )
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.aimodels_enabled),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isEnabled) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.width(5.dp))
+                Switch(
+                    checked = isEnabled,
+                    onCheckedChange = { onToggle() }
+                )
+            }
+            OutlinedButton(
+                onClick = onTest,
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 11.dp, vertical = 8.dp)
+            ) {
+                Icon(Icons.Filled.Science, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(5.dp))
+                Text(stringResource(R.string.aiconfig_test))
+            }
+            Spacer(Modifier.width(8.dp))
+            Button(
+                onClick = onApply,
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(5.dp))
+                Text(stringResource(R.string.common_apply))
+            }
         }
     }
 }
