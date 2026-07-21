@@ -2156,36 +2156,59 @@ $charSection$topicSection
 
     // ==================== Token 用量统计（从独立存储聚合，不受会话删除影响）====================
 
-    /** 本地 token 用量统计（基于独立 SharedPreferences 存储，非 messageDao）。 */
-    suspend fun tokenStats(): TokenStats = withContext(Dispatchers.IO) {
-        val records = readTokenUsageRecords()
+    /**
+     * 本地 token 用量统计（基于独立 SharedPreferences 存储，非 messageDao）。
+     *
+     * [dateRange] 控制聚合范围，与远程 API 字段语义对齐：
+     * - "today"：仅今日记录
+     * - "month"：仅本月记录
+     * - "total" 或 null：全部记录
+     * - "custom"：按 [startDate]/[endDate]（yyyy-MM-dd）闭区间过滤
+     *
+     * 返回的 TokenStats 中所有字段均表示「当前所选范围内」的统计；
+     * UI 端无需根据范围挑选不同字段展示。
+     */
+    suspend fun tokenStats(
+        dateRange: String? = null,
+        startDate: String? = null,
+        endDate: String? = null
+    ): TokenStats = withContext(Dispatchers.IO) {
+        val allRecords = readTokenUsageRecords()
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
         val monthStr = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date())
 
-        var todayInput = 0L
-        var todayOutput = 0L
-        var monthTotal = 0L
-        var totalTokens = 0L
+        // 按所选范围过滤记录
+        val filtered = when (dateRange) {
+            "today" -> allRecords.filter { (it.get("date")?.asString ?: "") == todayStr }
+            "month" -> allRecords.filter { (it.get("date")?.asString ?: "").startsWith(monthStr) }
+            "custom" -> {
+                val start = startDate?.trim() ?: ""
+                val end = endDate?.trim() ?: ""
+                allRecords.filter { rec ->
+                    val date = rec.get("date")?.asString ?: ""
+                    (start.isEmpty() || date >= start) && (end.isEmpty() || date <= end)
+                }
+            }
+            else -> allRecords // "total" 或 null：全部
+        }
+
+        var rangeInput = 0L
+        var rangeOutput = 0L
+        var rangeTotal = 0L
         var msgCount = 0L
 
-        for (rec in records) {
+        for (rec in filtered) {
             val input = rec.get("input_tokens")?.asLong ?: 0
             val output = rec.get("output_tokens")?.asLong ?: 0
             val total = rec.get("total_tokens")?.asLong ?: (input + output)
-            val date = rec.get("date")?.asString ?: ""
-            totalTokens += total
+            rangeInput += input
+            rangeOutput += output
+            rangeTotal += total
             msgCount++
-            if (date == todayStr) {
-                todayInput += input
-                todayOutput += output
-            }
-            if (date.startsWith(monthStr)) {
-                monthTotal += total
-            }
         }
 
-        // 最近记录：最多 50 条
-        val recent = records.takeLast(50).reversed().map { rec ->
+        // 范围内最近记录：最多 50 条
+        val recent = filtered.takeLast(50).reversed().map { rec ->
             JsonObject().apply {
                 addProperty("session_id", rec.get("session_id")?.asString ?: "")
                 addProperty("model", rec.get("model")?.asString ?: "")
@@ -2207,14 +2230,15 @@ $charSection$topicSection
             }
         }
 
+        // 所有字段统一表示「当前所选范围内」的统计；UI 不再需要按范围挑字段。
         TokenStats(
-            today = todayInput + todayOutput,
-            month = monthTotal,
-            totalTokens = totalTokens,
-            todayInput = todayInput,
-            todayOutput = todayOutput,
+            today = rangeTotal,
+            month = rangeTotal,
+            totalTokens = rangeTotal,
+            todayInput = rangeInput,
+            todayOutput = rangeOutput,
             messageCount = msgCount,
-            avgTokensPerMsg = if (msgCount > 0) totalTokens.toDouble() / msgCount else 0.0,
+            avgTokensPerMsg = if (msgCount > 0) rangeTotal.toDouble() / msgCount else 0.0,
             estimatedCost = "—",
             recentRecords = recent,
             records = recent
@@ -2256,12 +2280,17 @@ $charSection$topicSection
             }
             .sortedByDescending { it.get("total_tokens").asLong }
 
-        // 按会话聚合
+        // 按会话聚合（已删除的会话不纳入排行榜）
         val sessionsRank = records.groupBy { it.get("session_id")?.asString ?: "" }
-            .map { (sid, recs) ->
+            .mapNotNull { (sid, recs) ->
+                // 会话已删除（无法匹配会话名）则跳过
+                val sessionName = if (sid.isNotEmpty()) {
+                    sessionDao.getById(sid)?.name ?: return@mapNotNull null
+                } else {
+                    "未知会话"
+                }
                 val input = recs.sumOf { it.get("input_tokens")?.asLong ?: 0 }
                 val output = recs.sumOf { it.get("output_tokens")?.asLong ?: 0 }
-                val sessionName = if (sid.isNotEmpty()) sessionDao.getById(sid)?.name ?: sid else "未知会话"
                 JsonObject().apply {
                     addProperty("name", sessionName)
                     addProperty("session_id", sid)
@@ -2782,7 +2811,7 @@ $charSection$topicSection
      */
     suspend fun listStateHistory(sessionId: String): List<Map<String, Any>> = withContext(Dispatchers.IO) {
         val snapshots = db.stateSnapshotDao().listBySession(sessionId)
-        snapshots.map { snap ->
+        snapshots.mapIndexed { idx, snap ->
             val entry = mutableMapOf<String, Any>(
                 "timestamp" to snap.timestamp,
                 "type" to "state_snapshot",
@@ -2797,8 +2826,12 @@ $charSection$topicSection
                 "familiarity" to snap.familiarity,
                 "dependency" to snap.dependency,
                 "security" to snap.security,
-                "jealousy" to snap.jealousy
+                "jealousy" to snap.jealousy,
+                // 对话回放：本轮对话原文 + 1-based 序号（按时间顺序）
+                "message_index" to (idx + 1)
             )
+            snap.userMessage?.takeIf { it.isNotBlank() }?.let { entry["user_message"] = it }
+            snap.assistantMessage?.takeIf { it.isNotBlank() }?.let { entry["assistant_message"] = it }
             // 质量评分（AutoState 产出，可空）
             snap.qualityScoresJson?.let { json ->
                 try {

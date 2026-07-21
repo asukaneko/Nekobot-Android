@@ -79,6 +79,10 @@
     <!-- ==================== Session detail (SessionDetailScreen) ==================== -->
     <string name="sessions_detail_title">Chat details</string>
     <string name="sessions_detail_enter_chat">Enter chat</string>
+    <string name="sessions_detail_export">Export session</string>
+    <string name="sessions_detail_export_success">Exported to Downloads: %1$s</string>
+    <string name="sessions_detail_export_failed">Export failed: %1$s</string>
+    <string name="sessions_detail_export_empty">No messages to export</string>
     <string name="sessions_detail_portrait">Portrait</string>
     <string name="sessions_detail_character_colon">Character: %1$s</string>
     <string name="sessions_detail_pinned_badge">Pinned</string>

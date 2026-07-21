@@ -185,10 +185,7 @@ fun NekobotNavGraph() {
             ) { entry ->
                 SessionDetailScreen(
                     sessionId = entry.arguments?.getString("sessionId").orEmpty(),
-                    onBack = { navController.popBackStack() },
-                    onOpenChat = { id ->
-                        navController.navigate(Routes.chat(id))
-                    }
+                    onBack = { navController.popBackStack() }
                 )
             }
             composable(

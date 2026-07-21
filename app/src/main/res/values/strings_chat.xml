@@ -79,6 +79,10 @@
     <!-- ==================== 会话详情页 (SessionDetailScreen) ==================== -->
     <string name="sessions_detail_title">会话详情</string>
     <string name="sessions_detail_enter_chat">进入对话</string>
+    <string name="sessions_detail_export">导出会话</string>
+    <string name="sessions_detail_export_success">已导出到下载目录：%1$s</string>
+    <string name="sessions_detail_export_failed">导出失败：%1$s</string>
+    <string name="sessions_detail_export_empty">会话无消息，无法导出</string>
     <string name="sessions_detail_portrait">立绘</string>
     <string name="sessions_detail_character_colon">角色：%1$s</string>
     <string name="sessions_detail_pinned_badge">置顶</string>

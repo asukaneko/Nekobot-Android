@@ -223,7 +223,7 @@ class CharacterRuntime(
             }
         }
 
-        // 写入状态历史快照（供「状态历程」界面呈现随时间演变）
+        // 写入状态历史快照（供「状态历程」界面呈现随时间演变，并保留本轮对话原文供底部回放）
         if (snapshotRepo != null) {
             try {
                 snapshotRepo.append(
@@ -231,7 +231,9 @@ class CharacterRuntime(
                     state = turnContext.state,
                     relationship = turnContext.relationship,
                     qualityScores = qualityScores,
-                    triggerType = triggerType
+                    triggerType = triggerType,
+                    userMessage = chatRequest.content,
+                    assistantMessage = finalContent
                 )
                 com.nekobot.app.data.local.LocalLogger.d(TAG, "状态快照已写入 (trigger=$triggerType, hasQuality=${qualityScores != null})")
             } catch (e: Exception) {

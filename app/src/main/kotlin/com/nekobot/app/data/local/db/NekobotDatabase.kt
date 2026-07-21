@@ -34,7 +34,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalApiKeyEntity::class,
         LocalMessageFavoriteEntity::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = false
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -402,6 +402,17 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v16 → v17：local_state_snapshots 新增 user_message/assistant_message 列
+         *（本轮对话原文，供「状态历程」界面底部对话回放展示）。
+         */
+        private val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_state_snapshots ADD COLUMN user_message TEXT")
+                db.execSQL("ALTER TABLE local_state_snapshots ADD COLUMN assistant_message TEXT")
+            }
+        }
+
         fun get(context: Context): NekobotDatabase =
             get(context, com.nekobot.app.data.local.PrefsManager.DEFAULT_DB_NAME)
 
@@ -414,7 +425,7 @@ abstract class NekobotDatabase : RoomDatabase() {
                 NekobotDatabase::class.java,
                 dbName
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
                 // 仅当迁移脚本未覆盖的未来版本变更时才回退到破坏性迁移（保护现有数据）
                 .fallbackToDestructiveMigration()
                 .build()

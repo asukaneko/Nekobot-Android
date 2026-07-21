@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -48,6 +49,7 @@ fun GlassCard(
 ) {
     Box(
         modifier = modifier
+            .clip(RoundedCornerShape(cornerRadius.dp))
             .background(
                 color = containerColor,
                 shape = RoundedCornerShape(cornerRadius.dp)

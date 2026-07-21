@@ -24,7 +24,6 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -34,6 +33,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.SmartToy
@@ -106,6 +106,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * 会话详情 ViewModel：加载单个会话、编辑名称 / 标签 / 置顶 / 收藏 / 系统提示词 /
@@ -547,6 +549,102 @@ class SessionDetailViewModel : BaseViewModel() {
         )
     }
 
+    /**
+     * 导出当前会话为 JSON 文件到下载目录。
+     *
+     * 包含会话元数据 + 全量消息列表，便于备份/迁移。
+     */
+    fun exportSessionAsJson() {
+        val s = _session.value ?: return
+        val sessionId = s.id ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // 拉取消息列表
+                val messages = when (val res = unified.listMessages(sessionId)) {
+                    is Resource.Success -> res.data ?: emptyList()
+                    is Resource.Error -> {
+                        withContext(Dispatchers.Main) {
+                            showToast(string(R.string.sessions_detail_export_failed, res.message ?: ""))
+                        }
+                        return@launch
+                    }
+                    is Resource.Loading -> return@launch
+                }
+                if (messages.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        showToast(string(R.string.sessions_detail_export_empty))
+                    }
+                    return@launch
+                }
+                // 构造导出 JSON：会话元数据 + 消息列表 + 导出元信息
+                val gson = com.google.gson.GsonBuilder()
+                    .setPrettyPrinting()
+                    .disableHtmlEscaping()
+                    .create()
+                val exportData = JsonObject().apply {
+                    add("session", gson.toJsonTree(s))
+                    add("messages", gson.toJsonTree(messages))
+                    addProperty("exported_at", System.currentTimeMillis())
+                    addProperty("exported_by", "nekobot-android")
+                    addProperty("message_count", messages.size)
+                }
+                val json = gson.toJson(exportData)
+                // 生成文件名：nekobot_session_<会话名>_<时间戳>.json
+                val safeName = (s.name ?: sessionId).replace(Regex("[\\\\/:*?\"<>|]"), "_").trim().ifBlank { "session" }
+                val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
+                val fileName = "nekobot_session_${safeName}_$timestamp.json"
+                val ctx = com.nekobot.app.ServiceContainer.appContext
+                if (ctx == null) {
+                    withContext(Dispatchers.Main) {
+                        showToast(string(R.string.sessions_detail_export_failed, "no context"))
+                    }
+                    return@launch
+                }
+                val saved = writeJsonToDownloads(ctx, fileName, json.toByteArray(Charsets.UTF_8))
+                withContext(Dispatchers.Main) {
+                    if (saved) {
+                        showToast(string(R.string.sessions_detail_export_success, fileName))
+                    } else {
+                        showToast(string(R.string.sessions_detail_export_failed, "io error"))
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    showToast(string(R.string.sessions_detail_export_failed, e.message ?: ""))
+                }
+            }
+        }
+    }
+
+    /** 写入 JSON 字节到 Downloads 目录（兼容 Android 10+ 作用域存储与 9- 公共目录）。 */
+    private fun writeJsonToDownloads(
+        context: android.content.Context,
+        fileName: String,
+        bytes: ByteArray
+    ): Boolean {
+        return try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                val resolver = context.contentResolver
+                val values = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/json")
+                    put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+                }
+                val collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+                val uri = resolver.insert(collection, values) ?: return false
+                resolver.openOutputStream(uri)?.use { it.write(bytes) } ?: return false
+            } else {
+                @Suppress("DEPRECATION")
+                val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                if (!downloadsDir.exists()) downloadsDir.mkdirs()
+                java.io.File(downloadsDir, fileName).outputStream().use { it.write(bytes) }
+            }
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     // ---- JSON 解析辅助 ----
     private fun parseCustomPrompts(el: JsonElement?): List<CustomPromptItem> {
         if (el == null || !el.isJsonArray) return emptyList()
@@ -603,8 +701,7 @@ data class PromptStackItem(
 @Composable
 fun SessionDetailScreen(
     sessionId: String,
-    onBack: () -> Unit,
-    onOpenChat: (String) -> Unit
+    onBack: () -> Unit
 ) {
     val vm: SessionDetailViewModel = viewModel(key = "session_detail_$sessionId")
     val session by vm.session.collectAsState()
@@ -666,7 +763,7 @@ fun SessionDetailScreen(
     // 提取本地化字符串
     val detailTitle = stringResource(R.string.sessions_detail_title)
     val backDesc = stringResource(R.string.common_back)
-    val enterChatDesc = stringResource(R.string.sessions_detail_enter_chat)
+    val exportDesc = stringResource(R.string.sessions_detail_export)
     val saveDesc = stringResource(R.string.common_save)
     val deleteDesc = stringResource(R.string.common_delete)
     val portraitDesc = stringResource(R.string.sessions_detail_portrait)
@@ -793,8 +890,8 @@ fun SessionDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { session?.id?.let(onOpenChat) }) {
-                        Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = enterChatDesc, tint = MaterialTheme.colorScheme.primary)
+                    IconButton(onClick = { vm.exportSessionAsJson() }) {
+                        Icon(Icons.Filled.FileDownload, contentDescription = exportDesc, tint = MaterialTheme.colorScheme.primary)
                     }
                     IconButton(onClick = { vm.save(onBack) }) {
                         Icon(Icons.Filled.Save, contentDescription = saveDesc, tint = MaterialTheme.colorScheme.primary)

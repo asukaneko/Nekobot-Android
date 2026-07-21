@@ -170,7 +170,9 @@ class LocalStateSnapshotRepository(
         state: CharacterState,
         relationship: RelationshipState,
         qualityScores: Map<String, Float>?,
-        triggerType: String
+        triggerType: String,
+        userMessage: String?,
+        assistantMessage: String?
     ) {
         val entity = LocalStateSnapshotEntity(
             id = UUID.randomUUID().toString(),
@@ -188,7 +190,9 @@ class LocalStateSnapshotRepository(
             security = relationship.security,
             jealousy = relationship.jealousy,
             qualityScoresJson = qualityScores?.takeIf { it.isNotEmpty() }?.let { repoGson.toJson(it) },
-            triggerType = triggerType
+            triggerType = triggerType,
+            userMessage = userMessage?.takeIf { it.isNotBlank() },
+            assistantMessage = assistantMessage?.takeIf { it.isNotBlank() }
         )
         snapshotDao.insert(entity)
     }

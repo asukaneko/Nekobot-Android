@@ -495,7 +495,7 @@ class UnifiedRepository(
     // ==================== Token 用量统计 ====================
 
     suspend fun tokenStats(dateRange: String? = null, startDate: String? = null, endDate: String? = null): Resource<TokenStats> =
-        if (isLocal) Resource.Success(local.tokenStats())
+        if (isLocal) Resource.Success(local.tokenStats(dateRange, startDate, endDate))
         else remote.tokenStats(dateRange, startDate, endDate)
 
     suspend fun tokenRankings(): Resource<TokenRankings> =

@@ -9,6 +9,8 @@ import android.provider.MediaStore
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -742,7 +744,24 @@ private fun DbProfileCard(
     onExport: () -> Unit = {}
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
-    GlassCard(modifier = Modifier.fillMaxWidth()) {
+    // 按下时背景色加深，作为可点击切换的视觉反馈
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val pressedContainerColor = if (isPressed && !isActive) {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+    }
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = interactionSource,
+                indication = androidx.compose.foundation.LocalIndication.current,
+                enabled = !isActive
+            ) { onSwitch() },
+        containerColor = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else pressedContainerColor
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()

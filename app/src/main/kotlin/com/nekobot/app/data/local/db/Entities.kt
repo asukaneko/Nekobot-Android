@@ -306,6 +306,7 @@ data class LocalCharacterMemoryEntity(
  *
  * triggerType: state_machine（规则状态机）/ auto_state（LLM 评估）
  * qualityScoresJson: 可空，AutoState 产出的质量评分（character_fidelity/immersion/world_consistency/risk）JSON。
+ * userMessage/assistantMessage: 可空，本轮对话原文，供「状态历程」底部对话回放展示。
  */
 @Entity(
     tableName = "local_state_snapshots",
@@ -330,7 +331,11 @@ data class LocalStateSnapshotEntity(
     val security: Int,
     val jealousy: Int,
     @ColumnInfo(name = "quality_scores_json") val qualityScoresJson: String? = null,
-    @ColumnInfo(name = "trigger_type") val triggerType: String
+    @ColumnInfo(name = "trigger_type") val triggerType: String,
+    /** 本轮用户消息原文，供对话回放展示（v17 新增）。 */
+    @ColumnInfo(name = "user_message") val userMessage: String? = null,
+    /** 本轮 AI 回复原文，供对话回放展示（v17 新增）。 */
+    @ColumnInfo(name = "assistant_message") val assistantMessage: String? = null
 )
 
 // ==================== 扩展功能表（v10，本地模式补齐远程同款能力）====================

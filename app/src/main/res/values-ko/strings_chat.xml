@@ -79,6 +79,10 @@
     <!-- ==================== 대화 상세 (SessionDetailScreen) ==================== -->
     <string name="sessions_detail_title">대화 상세</string>
     <string name="sessions_detail_enter_chat">대화 입장</string>
+    <string name="sessions_detail_export">세션 내보내기</string>
+    <string name="sessions_detail_export_success">다운로드 폴더에 내보냈습니다: %1$s</string>
+    <string name="sessions_detail_export_failed">내보내기 실패: %1$s</string>
+    <string name="sessions_detail_export_empty">내보낼 메시지가 없습니다</string>
     <string name="sessions_detail_portrait">초상화</string>
     <string name="sessions_detail_character_colon">캐릭터: %1$s</string>
     <string name="sessions_detail_pinned_badge">고정됨</string>

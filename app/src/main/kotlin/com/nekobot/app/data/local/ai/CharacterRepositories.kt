@@ -32,13 +32,17 @@ interface StateSnapshotRepository {
      * @param relationship 当前关系状态（六维）
      * @param qualityScores 可空，AutoState 产出的质量评分
      * @param triggerType state_machine / auto_state
+     * @param userMessage 可空，本轮用户消息原文，供「状态历程」底部对话回放展示
+     * @param assistantMessage 可空，本轮 AI 回复原文，供「状态历程」底部对话回放展示
      */
     suspend fun append(
         sessionId: String,
         state: CharacterState,
         relationship: RelationshipState,
         qualityScores: Map<String, Float>?,
-        triggerType: String
+        triggerType: String,
+        userMessage: String? = null,
+        assistantMessage: String? = null
     )
 }
 

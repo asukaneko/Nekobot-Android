@@ -79,6 +79,10 @@
     <!-- ==================== チャット詳細 (SessionDetailScreen) ==================== -->
     <string name="sessions_detail_title">チャット詳細</string>
     <string name="sessions_detail_enter_chat">チャットへ</string>
+    <string name="sessions_detail_export">セッションをエクスポート</string>
+    <string name="sessions_detail_export_success">ダウンロードフォルダにエクスポートしました: %1$s</string>
+    <string name="sessions_detail_export_failed">エクスポート失敗: %1$s</string>
+    <string name="sessions_detail_export_empty">エクスポートするメッセージがありません</string>
     <string name="sessions_detail_portrait">立絵</string>
     <string name="sessions_detail_character_colon">キャラクター: %1$s</string>
     <string name="sessions_detail_pinned_badge">ピン留め</string>
