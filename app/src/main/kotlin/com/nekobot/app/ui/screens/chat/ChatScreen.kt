@@ -166,6 +166,8 @@ import com.nekobot.app.ui.theme.parseHexColor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 
 /**
  * 对话页：展示会话消息列表与输入栏，支持发送、重新生成、停止、清空、删除消息。
@@ -3257,9 +3259,17 @@ class ChatViewModel : BaseViewModel() {
     /** 本地模式：收集 HookExecutor.events，将 HookNotificationEvent 路由到 handleRealtimeEvent。 */
     private fun connectLocalHookEvents() {
         eventsJob?.cancel()
+        // 同时收集两路：
+        // 1. hookExecutor.events → HookNotificationEvent
+        // 2. localRepository.execConfirmationEvents → 高风险工具（删除角色卡等）的确认请求
+        //    修复"删除角色卡卡住"：原实现把确认事件 emit 到 LocalPipelineCallbacks.eventChannel
+        //    但 eventChannel 没人 collect，导致 requestAuthorization 的 runBlocking 永远等待。
         eventsJob = viewModelScope.launch {
-            com.nekobot.app.ServiceContainer.localRepository.hookExecutor.events
-                .collect { event -> handleRealtimeEvent(event) }
+            kotlinx.coroutines.flow.merge(
+                com.nekobot.app.ServiceContainer.localRepository.hookExecutor.events,
+                com.nekobot.app.ServiceContainer.localRepository.execConfirmationEvents
+                    .map { request -> RealtimeEvent.ExecConfirmationRequired(request) }
+            ).collect { event -> handleRealtimeEvent(event) }
         }
     }
 
@@ -3279,10 +3289,11 @@ class ChatViewModel : BaseViewModel() {
             generationStopRequested && (
                 event is RealtimeEvent.StreamStart ||
                     event is RealtimeEvent.StreamChunk ||
-                    event is RealtimeEvent.ExecConfirmationRequired ||
                     event is RealtimeEvent.ThinkingCardUpdate
                 )
         ) {
+            // 注意：保留 ExecConfirmationRequired 的处理，否则删除角色卡等高风险工具
+            // 会因为旧 generation 已停止导致用户收不到确认弹窗 → 工具卡 10 分钟。
             return
         }
         when (event) {

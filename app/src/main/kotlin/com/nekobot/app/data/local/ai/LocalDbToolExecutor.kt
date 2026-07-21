@@ -1,9 +1,10 @@
-﻿package com.nekobot.app.data.local.ai
+package com.nekobot.app.data.local.ai
 
 import com.google.gson.Gson
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.local.db.LocalCharacterEntity
 import com.nekobot.app.data.local.db.LocalHookEntity
+import com.nekobot.app.data.local.db.LocalRelationshipStateEntity
 import com.nekobot.app.data.local.db.LocalSkillEntity
 import com.nekobot.app.data.local.db.LocalTaskEntity
 import com.nekobot.app.data.local.db.LocalWorkflowEntity
@@ -79,8 +80,22 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
     fun int(desc: String) = mapOf("type" to "integer", "description" to desc)
     fun bool(desc: String) = mapOf("type" to "boolean", "description" to desc)
     fun num(desc: String) = mapOf("type" to "number", "description" to desc)
-    fun arr(desc: String) = mapOf("type" to "array", "description" to desc)
     fun obj(desc: String) = mapOf("type" to "object", "description" to desc)
+    /**
+     * 字符串数组。必须带 items 字段，OpenAI function-calling 才能正确推断元素类型，
+     * 避免 AI 误传单字符串/对象/数字导致 stringList 解析失败（修复"角色卡规则无法添加"）。
+     */
+    fun strArr(desc: String) = mapOf(
+        "type" to "array",
+        "description" to desc,
+        "items" to mapOf("type" to "string")
+    )
+    /** 任意 JSON 元素数组（用于 actions / world book entries 等结构化列表）。 */
+    fun anyArr(desc: String) = mapOf(
+        "type" to "array",
+        "description" to desc,
+        "items" to mapOf("type" to "object", "additionalProperties" to true)
+    )
 
     return listOf(
         // ===== 角色卡 =====
@@ -88,7 +103,13 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
         definition("db_get_character", "查看指定角色卡完整字段。", params(mapOf("character_id" to str("角色卡 ID")), listOf("character_id"))),
         definition(
             "db_create_character",
-            "创建一张新的本地角色卡。name 必填；其它字段可选。",
+            "创建一张新的本地角色卡。name 必填；其它字段可选，但建议一次调用就把" +
+                "description / personality / scenario / first_message / system_prompt / greeting / " +
+                "basic_info / example_dialogues / response_format / tags / alternate_greetings / rules " +
+                "/ initial_relationship（好感/信任/熟悉/依赖/安全感/嫉妒 0-100）" +
+                "全部填齐，避免分多次调用浪费 token。tags / alternate_greetings / rules 必须是字符串数组。" +
+                "initial_relationship 必须传 JSON 对象，6 个整数字段，缺失字段会回退到默认值" +
+                "（affection=50 / trust=50 / familiarity=30 / dependency=30 / security=50 / jealousy=0）。",
             params(
                 mapOf(
                     "name" to str("角色名（必填）"),
@@ -101,16 +122,29 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
                     "basic_info" to str("基本信息（身高/年龄/职业等，多行文本）"),
                     "example_dialogues" to str("对话示例"),
                     "response_format" to str("回复格式约束"),
-                    "tags" to arr("标签数组（字符串）"),
-                    "alternate_greetings" to arr("备选开场白数组（字符串）"),
-                    "rules" to arr("规则数组（字符串）")
+                    "tags" to strArr("标签数组（字符串，如 [\"古风\",\"女\",\"傲娇\"]）"),
+                    "alternate_greetings" to strArr("备选开场白数组（字符串）"),
+                    "rules" to strArr("规则数组（字符串，如 [\"不能说出自己是 AI\",\"回复要用第二人称\"]）"),
+                    "initial_relationship" to mapOf(
+                        "type" to "object",
+                        "description" to "六维关系初始值（0-100 整数）",
+                        "properties" to mapOf(
+                            "affection" to mapOf("type" to "integer", "description" to "好感，默认 50"),
+                            "trust" to mapOf("type" to "integer", "description" to "信任，默认 50"),
+                            "familiarity" to mapOf("type" to "integer", "description" to "熟悉，默认 30"),
+                            "dependency" to mapOf("type" to "integer", "description" to "依赖，默认 30"),
+                            "security" to mapOf("type" to "integer", "description" to "安全感，默认 50"),
+                            "jealousy" to mapOf("type" to "integer", "description" to "嫉妒，默认 0")
+                        )
+                    )
                 ),
                 listOf("name")
             )
         ),
         definition(
             "db_update_character",
-            "修改指定角色卡的可变字段。仅传入需要修改的字段。",
+            "修改指定角色卡的可变字段。仅传入需要修改的字段；tags/alternate_greetings/rules 必须是字符串数组，传入时整体覆盖原有值。" +
+                "initial_relationship 字段仅在显式传入时覆盖该角色对 local-user 的关系六维初始值。",
             params(
                 mapOf(
                     "character_id" to str("角色卡 ID（必填）"),
@@ -124,9 +158,21 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
                     "basic_info" to str("基本信息"),
                     "example_dialogues" to str("对话示例"),
                     "response_format" to str("回复格式约束"),
-                    "tags" to arr("标签数组"),
-                    "alternate_greetings" to arr("备选开场白数组"),
-                    "rules" to arr("规则数组")
+                    "tags" to strArr("标签数组（字符串）"),
+                    "alternate_greetings" to strArr("备选开场白数组（字符串）"),
+                    "rules" to strArr("规则数组（字符串）"),
+                    "initial_relationship" to mapOf(
+                        "type" to "object",
+                        "description" to "六维关系初始值（0-100 整数），显式传入时整体覆盖",
+                        "properties" to mapOf(
+                            "affection" to mapOf("type" to "integer"),
+                            "trust" to mapOf("type" to "integer"),
+                            "familiarity" to mapOf("type" to "integer"),
+                            "dependency" to mapOf("type" to "integer"),
+                            "security" to mapOf("type" to "integer"),
+                            "jealousy" to mapOf("type" to "integer")
+                        )
+                    )
                 ),
                 listOf("character_id")
             )
@@ -171,7 +217,7 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
                 mapOf(
                     "book_id" to str("所属世界书 ID（必填）"),
                     "entry_id" to str("条目 ID（修改时必填，新增时留空）"),
-                    "keys" to arr("触发关键词数组（字符串）"),
+                    "keys" to strArr("触发关键词数组（字符串）"),
                     "content" to str("条目内容"),
                     "comment" to str("备注"),
                     "enabled" to bool("是否启用"),
@@ -232,7 +278,7 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
                     "enabled" to bool("是否启用，默认 true"),
                     "scope" to str("作用域：global / character / conversation / user，默认 global"),
                     "priority" to int("优先级，默认 100"),
-                    "actions" to arr("动作数组（JSON 对象列表）"),
+                    "actions" to anyArr("动作数组（JSON 对象列表）"),
                     "conditions" to obj("条件 JSON"),
                     "permissions" to obj("权限 JSON"),
                     "timeout_ms" to int("超时毫秒，默认 3000"),
@@ -258,7 +304,7 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
                     "enabled" to bool("是否启用"),
                     "scope" to str("作用域"),
                     "priority" to int("优先级"),
-                    "actions" to arr("动作数组"),
+                    "actions" to anyArr("动作数组"),
                     "conditions" to obj("条件 JSON"),
                     "permissions" to obj("权限 JSON"),
                     "timeout_ms" to int("超时毫秒"),
@@ -354,7 +400,7 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
                 mapOf(
                     "name" to str("Skill 名称（必填，唯一）"),
                     "description" to str("描述"),
-                    "aliases" to arr("别名数组（字符串）"),
+                    "aliases" to strArr("别名数组（字符串）"),
                     "enabled" to bool("是否启用，默认 true"),
                     "parameters" to obj("参数 JSON"),
                     "skill_md" to str("SKILL.md 内容（可选）"),
@@ -371,7 +417,7 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
                     "skill_id" to str("Skill ID（必填）"),
                     "name" to str("Skill 名称"),
                     "description" to str("描述"),
-                    "aliases" to arr("别名数组"),
+                    "aliases" to strArr("别名数组（字符串）"),
                     "enabled" to bool("是否启用"),
                     "parameters" to obj("参数 JSON"),
                     "skill_md" to str("SKILL.md 内容"),
@@ -595,7 +641,28 @@ internal class LocalDbToolExecutor(
     private suspend fun getCharacter(args: Map<String, Any>): Map<String, Any> {
         val id = args.string("character_id").ifBlank { return failure("character_id 不能为空") }
         val entity = db.characterDao().getById(id) ?: return failure("角色卡不存在: $id")
-        return success("character" to entity.toDetail())
+        // 同步返回该角色对 local-user 的六维关系当前值，让 AI 看到完整画像
+        val relationship = db.relationshipDao().get(id, "local-user")
+            ?.let { runCatching { gson.fromJson(it.dataJson, com.nekobot.app.data.local.ai.RelationshipState::class.java) }.getOrNull() }
+        val relationshipMap = relationship?.let {
+            mapOf(
+                "affection" to it.affection,
+                "trust" to it.trust,
+                "familiarity" to it.familiarity,
+                "dependency" to it.dependency,
+                "security" to it.security,
+                "jealousy" to it.jealousy,
+                "updated_at" to it.updatedAt
+            )
+        } ?: mapOf(
+            "affection" to 50, "trust" to 50, "familiarity" to 30,
+            "dependency" to 30, "security" to 50, "jealousy" to 0,
+            "default" to true
+        )
+        return success(
+            "character" to entity.toDetail(),
+            "relationship" to relationshipMap
+        )
     }
 
     private suspend fun createCharacter(args: Map<String, Any>): Map<String, Any> {
@@ -620,12 +687,41 @@ internal class LocalDbToolExecutor(
             updatedAt = now
         )
         db.characterDao().upsert(entity)
-        return success("character" to entity.toDetail(), "character_id" to entity.id)
+        // 写入六维关系初始值（affection=50 / trust=50 / familiarity=30 / dependency=30 / security=50 / jealousy=0）
+        val initialRel = args.relationshipMap("initial_relationship")
+        if (initialRel != null) {
+            val relationship = com.nekobot.app.data.local.ai.RelationshipState(
+                characterId = entity.id,
+                targetId = "local-user",
+                affection = initialRel.coerceIn("affection", 0, 100, default = 50),
+                trust = initialRel.coerceIn("trust", 0, 100, default = 50),
+                familiarity = initialRel.coerceIn("familiarity", 0, 100, default = 30),
+                dependency = initialRel.coerceIn("dependency", 0, 100, default = 30),
+                security = initialRel.coerceIn("security", 0, 100, default = 50),
+                jealousy = initialRel.coerceIn("jealousy", 0, 100, default = 0),
+                updatedAt = now
+            )
+            db.relationshipDao().upsert(
+                LocalRelationshipStateEntity(
+                    id = UUID.randomUUID().toString(),
+                    characterId = entity.id,
+                    targetId = "local-user",
+                    dataJson = gson.toJson(relationship),
+                    updatedAt = now
+                )
+            )
+        }
+        return success(
+            "character" to entity.toDetail(),
+            "character_id" to entity.id,
+            "initial_relationship_applied" to (initialRel != null)
+        )
     }
 
     private suspend fun updateCharacter(args: Map<String, Any>): Map<String, Any> {
         val id = args.string("character_id").ifBlank { return failure("character_id 不能为空") }
         val existing = db.characterDao().getById(id) ?: return failure("角色卡不存在: $id")
+        val now = nowIso()
         val updated = existing.copy(
             name = args.string("name").ifBlank { existing.name },
             description = args.optString("description", existing.description),
@@ -640,10 +736,46 @@ internal class LocalDbToolExecutor(
             tags = args.stringList("tags")?.let { gson.toJson(it) } ?: existing.tags,
             systemPrompt = args.optString("system_prompt", existing.systemPrompt),
             greeting = args.optString("greeting", existing.greeting),
-            updatedAt = nowIso()
+            updatedAt = now
         )
         db.characterDao().upsert(updated)
-        return success("character" to updated.toDetail())
+        // initial_relationship 仅在显式传入时覆盖该角色对 local-user 的关系六维
+        val initialRel = args.relationshipMap("initial_relationship")
+        var relationshipApplied = false
+        if (initialRel != null) {
+            val existingRel = db.relationshipDao().get(id, "local-user")
+            val base = existingRel?.let {
+                runCatching {
+                    gson.fromJson(it.dataJson, com.nekobot.app.data.local.ai.RelationshipState::class.java)
+                }.getOrNull()
+            } ?: com.nekobot.app.data.local.ai.RelationshipState(
+                characterId = id,
+                targetId = "local-user"
+            )
+            val newRel = base.copy(
+                affection = initialRel.coerceIn("affection", 0, 100, default = base.affection),
+                trust = initialRel.coerceIn("trust", 0, 100, default = base.trust),
+                familiarity = initialRel.coerceIn("familiarity", 0, 100, default = base.familiarity),
+                dependency = initialRel.coerceIn("dependency", 0, 100, default = base.dependency),
+                security = initialRel.coerceIn("security", 0, 100, default = base.security),
+                jealousy = initialRel.coerceIn("jealousy", 0, 100, default = base.jealousy),
+                updatedAt = now
+            )
+            db.relationshipDao().upsert(
+                LocalRelationshipStateEntity(
+                    id = existingRel?.id ?: UUID.randomUUID().toString(),
+                    characterId = id,
+                    targetId = "local-user",
+                    dataJson = gson.toJson(newRel),
+                    updatedAt = now
+                )
+            )
+            relationshipApplied = true
+        }
+        return success(
+            "character" to updated.toDetail(),
+            "initial_relationship_applied" to relationshipApplied
+        )
     }
 
     private suspend fun deleteCharacter(args: Map<String, Any>): Map<String, Any> {
@@ -1286,6 +1418,34 @@ internal class LocalDbToolExecutor(
     private fun Map<String, Any>.int(key: String, default: Int): Int =
         (this[key] as? Number)?.toInt() ?: this[key]?.toString()?.toIntOrNull() ?: default
 
+    /**
+     * 提取六维关系字段 Map（initial_relationship 整体或六个单独字段）。
+     * - 优先从 initial_relationship 键读取嵌套 Map
+     * - 否则从扁平字段 initial_affection / initial_trust / ... 读取
+     * - 都没有则返回 null（表示调用方未指定）
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun Map<String, Any>.relationshipMap(key: String): Map<String, Any>? {
+        val raw = this[key] ?: return null
+        if (raw is Map<*, *>) return raw as Map<String, Any>
+        // 兜底：AI 传扁平字段 {initial_affection: 60, initial_trust: 50, ...}
+        val flat = buildMap<String, Any> {
+            this@relationshipMap["initial_affection"]?.let { put("affection", it) }
+                ?: this@relationshipMap["initial_affection_gte"]?.let { put("affection", it) }
+            this@relationshipMap["initial_trust"]?.let { put("trust", it) }
+                ?: this@relationshipMap["initial_trust_gte"]?.let { put("trust", it) }
+            this@relationshipMap["initial_familiarity"]?.let { put("familiarity", it) }
+            this@relationshipMap["initial_dependency"]?.let { put("dependency", it) }
+            this@relationshipMap["initial_security"]?.let { put("security", it) }
+            this@relationshipMap["initial_jealousy"]?.let { put("jealousy", it) }
+        }
+        return flat.takeIf { it.isNotEmpty() }
+    }
+
+    /** 从六维关系 Map 中读取整数字段并裁剪到 [min, max] 区间。 */
+    private fun Map<String, Any>.coerceIn(key: String, min: Int, max: Int, default: Int): Int =
+        int(key, default).coerceIn(min, max)
+
     private fun Map<String, Any>.optInt(key: String, default: Int): Int = int(key, default)
 
     private fun Map<String, Any>.intOrNull(key: String): Int? =
@@ -1313,9 +1473,40 @@ internal class LocalDbToolExecutor(
     private fun Map<String, Any>.optDoubleOrNull(key: String, default: Double?): Double? =
         doubleOrNull(key) ?: default
 
+    /**
+     * 从 args 提取字符串数组，兼容以下输入：
+     *  - List<String>：原生字符串列表
+     *  - List<Any>：元素 toString 转换（数字/对象也兜底）
+     *  - 单个 String：拆成 [value]（AI 误传字符串也能挽救）
+     *  - JSON 字符串：`["a","b"]` 形式反序列化
+     *
+     * 返回 null 表示未传该参数；返回空列表表示传了但内容为空。
+     */
     @Suppress("UNCHECKED_CAST")
-    private fun Map<String, Any>.stringList(key: String): List<String>? =
-        (this[key] as? List<String>) ?: (this[key] as? List<*>)?.map { it.toString() }?.takeIf { it.isNotEmpty() }
+    private fun Map<String, Any>.stringList(key: String): List<String>? {
+        val raw = this[key] ?: return null
+        if (raw is List<*>) {
+            return raw.mapNotNull { it?.toString()?.takeIf { s -> s.isNotBlank() } }
+                .takeIf { it.isNotEmpty() }
+        }
+        if (raw is String) {
+            val trimmed = raw.trim()
+            if (trimmed.isEmpty()) return null
+            // 尝试解析 JSON 数组
+            if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+                return try {
+                    val arr = gson.fromJson(trimmed, List::class.java) as? List<*>
+                    arr?.mapNotNull { it?.toString()?.takeIf { s -> s.isNotBlank() } }
+                        ?.takeIf { it.isNotEmpty() }
+                } catch (_: Exception) {
+                    null
+                }
+            }
+            // 单字符串：包成单元素列表
+            return listOf(trimmed)
+        }
+        return null
+    }
 
     private fun Map<String, Any>.any(key: String): Any? = this[key]
 

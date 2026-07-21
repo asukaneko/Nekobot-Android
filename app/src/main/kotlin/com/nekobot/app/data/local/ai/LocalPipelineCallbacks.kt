@@ -65,7 +65,13 @@ internal class LocalPipelineCallbacks(
     /** 视觉识别 suspend 函数：传入 imageUrl（http URL 或 data URI）和问题，返回描述文本 */
     private val visionDescriber: (suspend (imageUrl: String, question: String) -> String)? = null,
     /** 当前生成的会话级取消控制器。 */
-    private val generationController: LocalGenerationController = LocalGenerationController()
+    private val generationController: LocalGenerationController = LocalGenerationController(),
+    /**
+     * 高风险工具授权请求的桥接 emitter：把 LocalDbToolExecutor.requestAuthorization
+     * 内部的 ExecConfirmationRequest 路由到 LocalRepository 的 execConfirmationEvents
+     * SharedFlow（由 ChatViewModel 收集弹窗）。为空时降级到 eventChannel。
+     */
+    private val execConfirmationEmitter: ((com.nekobot.app.data.remote.ExecConfirmationRequest) -> Unit)? = null
 ) : PipelineCallbacks() {
 
     companion object {
@@ -120,7 +126,12 @@ internal class LocalPipelineCallbacks(
             sessionId = session.id,
             authorizationManager = execAuthorizationManager,
             onConfirmationRequired = { request ->
-                emitEvent(RealtimeEvent.ExecConfirmationRequired(request))
+                // 修复"删除角色卡卡住"：原实现 emit 到 LocalPipelineCallbacks.eventChannel
+                // 但 eventChannel 没人 collect，requestAuthorization 的 runBlocking 永远等待。
+                // 改为路由到 LocalRepository 的 execConfirmationEvents SharedFlow，
+                // 由 ChatViewModel.connectLocalHookEvents 统一收集弹窗。
+                execConfirmationEmitter?.invoke(request)
+                    ?: emitEvent(RealtimeEvent.ExecConfirmationRequired(request))
             },
             generationController = generationController
         )

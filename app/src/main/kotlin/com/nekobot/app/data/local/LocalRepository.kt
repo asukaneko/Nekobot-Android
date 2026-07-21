@@ -238,6 +238,22 @@ class LocalRepository(
         com.nekobot.app.data.local.ai.HookExecutor(db)
     }
 
+    /**
+     * 跨 pipeline 共享的 Agent 命令授权请求流。
+     *
+     * 修复"角色卡/世界书/Hook 等高风险工具删除卡住"：
+     * LocalDbToolExecutor.requestAuthorization 内部用 runBlocking 等待用户授权，
+     * 它通过 LocalPipelineCallbacks.onConfirmationRequired 推送 ExecConfirmationRequest。
+     * 旧实现把事件 emit 到 LocalPipelineCallbacks.eventChannel（一个没人 collect 的 Channel），
+     * 导致用户永远收不到弹窗、决策永远不会被 resolve，工具卡 10 分钟才超时。
+     * 现在统一 emit 到这个 SharedFlow，由 ChatViewModel.connectLocalHookEvents 收集。
+     */
+    private val _execConfirmationEvents = kotlinx.coroutines.flow.MutableSharedFlow<com.nekobot.app.data.remote.ExecConfirmationRequest>(
+        extraBufferCapacity = 16
+    )
+    val execConfirmationEvents: kotlinx.coroutines.flow.SharedFlow<com.nekobot.app.data.remote.ExecConfirmationRequest> =
+        _execConfirmationEvents
+
     /** 本地模式会话自动命名器（跨会话保持 autoNamed/lastRenameCount 状态） */
     val sessionNameGenerator by lazy {
         com.nekobot.app.data.local.ai.SessionNameGenerator(
@@ -877,7 +893,8 @@ class LocalRepository(
                     shouldStop = { generationController.isStopped }
                 )
             },
-            generationController = generationController
+            generationController = generationController,
+            execConfirmationEmitter = { request -> _execConfirmationEvents.tryEmit(request) }
         )
 
         // 5. 构建上下文（含会话级配置：剧情模式、禁用注入项、自动状态间隔等）
