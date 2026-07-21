@@ -54,6 +54,8 @@ internal class LocalPipelineCallbacks(
     private val mcpToolExecutor: ((toolName: String, args: Map<String, Any>) -> Map<String, Any>)? = null,
     /** 只读 Skills 存储工具执行入口。 */
     private val skillToolExecutor: ((toolName: String, args: Map<String, Any>) -> Map<String, Any>)? = null,
+    /** 本地数据库操作工具执行入口（角色卡/世界书/Hook/工作流/Skill/AI 模型等 CRUD）。 */
+    private val dbToolExecutor: ((toolName: String, args: Map<String, Any>) -> Map<String, Any>)? = null,
     /** 故障转移队列：activeModel 优先 + 同 purpose 其他启用模型，按 priority 升序 */
     private val failoverQueue: List<LocalAiModelEntity> = emptyList(),
     /** 持久化故障转移协调器；非空时 [buildModelCall] 走 coordinator，否则回退到 chatOnceWithFailover */
@@ -106,6 +108,19 @@ internal class LocalPipelineCallbacks(
                     visionDescriber?.invoke(url, question)
                         ?: VISION_FAILURE_MARKER + "视觉识别运行时不可用"
                 }
+            },
+            generationController = generationController
+        )
+    }
+
+    /** 本地数据库 CRUD 工具执行器（角色卡/世界书/Hook/工作流/Skill/AI 模型等）。 */
+    private val localDbToolExecutor by lazy {
+        LocalDbToolExecutor(
+            db = db,
+            sessionId = session.id,
+            authorizationManager = execAuthorizationManager,
+            onConfirmationRequired = { request ->
+                emitEvent(RealtimeEvent.ExecConfirmationRequired(request))
             },
             generationController = generationController
         )
@@ -622,6 +637,9 @@ internal class LocalPipelineCallbacks(
         if (toolName in localSkillToolIds) {
             return skillToolExecutor?.invoke(toolName, args)
                 ?: mapOf("success" to false, "error" to "Skills 存储运行时不可用")
+        }
+        if (toolName in localDbToolIds) {
+            return dbToolExecutor?.invoke(toolName, args) ?: localDbToolExecutor.execute(toolName, args)
         }
         return localToolExecutor.execute(toolName, args)
     }

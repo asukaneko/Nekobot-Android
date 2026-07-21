@@ -1033,6 +1033,7 @@ class LocalRepository(
                         val tools = if (session.sessionMode.equals("agent", ignoreCase = true)) {
                             com.nekobot.app.data.local.ai.buildLocalAgentToolDefinitions() +
                                 com.nekobot.app.data.local.ai.buildLocalSkillToolDefinitions() +
+                                com.nekobot.app.data.local.ai.buildLocalDbToolDefinitions() +
                                 prepareMcpAgentTools()
                         } else {
                             emptyList()

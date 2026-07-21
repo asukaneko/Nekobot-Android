@@ -164,6 +164,16 @@ interface WorldBookDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(book: LocalWorldBookEntity)
 
+    /**
+     * 更新已存在的世界书：使用 @Update 而非 @Insert(REPLACE)。
+     *
+     * Room 的 REPLACE 策略底层是 DELETE + INSERT，会触发 local_world_book_entries
+     * 的外键级联删除，导致更新世界书时条目全部丢失。@Update 只生成 UPDATE SQL，
+     * 不影响关联表。
+     */
+    @Update
+    suspend fun update(book: LocalWorldBookEntity)
+
     @Query("DELETE FROM local_world_books WHERE id = :id")
     suspend fun deleteById(id: String)
 
