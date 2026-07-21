@@ -2366,7 +2366,10 @@ $charSection$topicSection
     // ==================== 角色卡导入 ====================
 
     /**
-     * 导入 nekobot 协议角色卡：支持 .json 和 .zip（含 character.json + portrait 图片）。
+     * 导入角色卡：支持 nekobot 协议（.json / .zip）与 SillyTavern 酒馆格式（v2/v3 .json、PNG 嵌入式 .png）。
+     * - .zip：nekobot 协议，含 character.json + portrait 图片
+     * - .json：nekobot 协议 或 SillyTavern v2（flat snake_case）/ v3（data 包裹层，spec=chara_card_v3）
+     * - .png：SillyTavern PNG 嵌入式角色卡，从 tEXt chunk（chara/ccv3）提取 base64 JSON；PNG 自身作为立绘
      * @param bytes 文件内容
      * @param fileName 文件名（用于判断类型）
      * @return 导入后的 CharacterPreset（已保存到本地数据库）
@@ -2376,8 +2379,15 @@ $charSection$topicSection
             val lower = fileName.lowercase()
             val jsonStr: String
             var portraitPath: String? = null
+            var pngBytesForPortrait: ByteArray? = null
 
             when {
+                lower.endsWith(".png") -> {
+                    // SillyTavern PNG 嵌入式角色卡：从 tEXt chunk 提取 chara/ccv3
+                    pngBytesForPortrait = bytes
+                    jsonStr = extractCharacterJsonFromPng(bytes)
+                        ?: throw IllegalArgumentException("PNG 文件中未找到角色卡数据（chara/ccv3 tEXt chunk）")
+                }
                 lower.endsWith(".zip") -> {
                     ZipInputStream(ByteArrayInputStream(bytes)).use { zis ->
                         var foundJson: String? = null
@@ -2416,9 +2426,12 @@ $charSection$topicSection
                 else -> throw IllegalArgumentException("不支持的文件格式：$fileName")
             }
 
-            // 解析 JSON 为 CharacterPreset
+            // SillyTavern v3 解包：若 spec=chara_card_v3 且含 data 对象，提取 data 内容合并为顶层
+            val normalizedJson = unwrapSillyTavernV3(jsonStr)
+
+            // 解析 JSON 为 CharacterPreset（@SerializedName alternate 处理 v2 snake_case）
             val preset = try {
-                gson.fromJson(jsonStr, CharacterPreset::class.java)
+                gson.fromJson(normalizedJson, CharacterPreset::class.java)
             } catch (e: Exception) {
                 throw IllegalArgumentException("角色卡 JSON 解析失败：${e.message}")
             } ?: throw IllegalArgumentException("角色卡 JSON 为空")
@@ -2427,11 +2440,124 @@ $charSection$topicSection
                 throw IllegalArgumentException("角色卡缺少 name 字段")
             }
 
-            // 如果 ZIP 中有立绘，覆盖 preset.portrait
-            val finalPreset = if (portraitPath != null) preset.copy(portrait = portraitPath) else preset
+            // 立绘优先级：ZIP 内立绘 > PNG 自身（SillyTavern 嵌入式角色卡的 PNG 即角色图像）> 原有 portrait 字段
+            val finalPreset = when {
+                portraitPath != null -> preset.copy(portrait = portraitPath)
+                pngBytesForPortrait != null -> {
+                    val pngPortraitPath = savePortraitLocal(pngBytesForPortrait, "png")
+                    preset.copy(portrait = pngPortraitPath)
+                }
+                else -> preset
+            }
             // 保存到数据库（新建 id）
             upsertCharacter(finalPreset.copy(id = null))
         }
+
+    /**
+     * 从 SillyTavern PNG 角色卡中提取嵌入的 JSON。
+     * 解析 PNG tEXt chunk，查找 keyword 为 `ccv3`（v3，优先）或 `chara`（v2）的文本，
+     * 内容为 base64 编码的 JSON 字符串。
+     * @return 解码后的 JSON 字符串；非 PNG 或未找到 chunk 时返回 null
+     */
+    private fun extractCharacterJsonFromPng(bytes: ByteArray): String? {
+        // PNG 签名: 89 50 4E 47 0D 0A 1A 0A
+        val pngSig = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+        if (bytes.size < pngSig.size || !bytes.copyOfRange(0, pngSig.size).contentEquals(pngSig)) {
+            return null  // 不是 PNG
+        }
+        var offset = pngSig.size
+        var foundV3: String? = null
+        var foundV2: String? = null
+        while (offset + 8 <= bytes.size) {
+            // 4 字节长度（大端）
+            val length = ((bytes[offset].toInt() and 0xFF) shl 24) or
+                         ((bytes[offset + 1].toInt() and 0xFF) shl 16) or
+                         ((bytes[offset + 2].toInt() and 0xFF) shl 8) or
+                         (bytes[offset + 3].toInt() and 0xFF)
+            offset += 4
+            // 4 字节 chunk 类型
+            if (offset + 4 > bytes.size) break
+            val type = String(bytes, offset, 4, Charsets.US_ASCII)
+            offset += 4
+            if (length < 0 || offset + length + 4 > bytes.size) break  // 截断或非法
+            val data = bytes.copyOfRange(offset, offset + length)
+            offset += length + 4  // 跳过数据 + 4 字节 CRC
+
+            if (type == "tEXt") {
+                // tEXt chunk: keyword\0text（均为 Latin-1/ASCII）
+                val nullIdx = data.indexOf(0.toByte())
+                if (nullIdx > 0) {
+                    val keyword = String(data, 0, nullIdx, Charsets.US_ASCII)
+                    val text = String(data, nullIdx + 1, data.size - nullIdx - 1, Charsets.US_ASCII)
+                    when (keyword) {
+                        "ccv3" -> foundV3 = text
+                        "chara" -> foundV2 = text
+                    }
+                }
+            } else if (type == "iTXt") {
+                // iTXt chunk（国际化文本）：keyword\0 compressionFlag compressionMethod langTag\0 translatedKeyword\0 text
+                // SillyTavern 角色卡一般用 tEXt，此处兼容处理未压缩的 iTXt chara/ccv3
+                val nullIdx = data.indexOf(0.toByte())
+                if (nullIdx > 0) {
+                    val keyword = String(data, 0, nullIdx, Charsets.US_ASCII)
+                    if (keyword == "ccv3" || keyword == "chara") {
+                        // compressionFlag 在 nullIdx+1，compressionMethod 在 nullIdx+2
+                        if (nullIdx + 2 < data.size && data[nullIdx + 1].toInt() == 0) {
+                            // 跳过 langTag 和 translatedKeyword（各以 \0 结尾）
+                            var p = nullIdx + 3
+                            // langTag
+                            while (p < data.size && data[p].toInt() != 0) p++
+                            p++ // 跳过 \0
+                            // translatedKeyword
+                            while (p < data.size && data[p].toInt() != 0) p++
+                            p++ // 跳过 \0
+                            if (p < data.size) {
+                                val text = String(data, p, data.size - p, Charsets.UTF_8)
+                                if (keyword == "ccv3") foundV3 = text else foundV2 = text
+                            }
+                        }
+                    }
+                }
+            }
+            if (foundV3 != null) break  // v3 优先，找到即停
+        }
+        val base64 = foundV3 ?: foundV2 ?: return null
+        return try {
+            val decoded = java.util.Base64.getDecoder().decode(base64)
+            String(decoded, Charsets.UTF_8)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * SillyTavern v3 角色卡的 data 包裹层解包。
+     * v3 规范：顶层含 `spec: "chara_card_v3"` 和 `data: { ... }`，真正的角色字段在 data 对象内。
+     * 本函数检测到 v3 结构后，将 data 内容提升到顶层（data 优先，顶层非 spec/data 字段补充覆盖）。
+     * @return 解包后的 JSON 字符串；非 v3 格式则原样返回
+     */
+    private fun unwrapSillyTavernV3(jsonStr: String): String {
+        return try {
+            val obj = JsonParser.parseString(jsonStr).asJsonObject
+            val spec = obj.get("spec")?.takeIf { !it.isJsonNull }?.asString
+            val dataEl = obj.get("data")?.takeIf { it.isJsonObject }
+            if (spec != null && spec.startsWith("chara_card_v") && dataEl != null) {
+                // 合并：先放 data 内容，再用顶层非 spec/data 字段补充（creator / character_version 等）
+                val merged = JsonObject()
+                dataEl.asJsonObject.entrySet().forEach { (k, v) -> merged.add(k, v) }
+                obj.entrySet().forEach { (k, v) ->
+                    if (k != "spec" && k != "data" && !v.isJsonNull) {
+                        merged.add(k, v)
+                    }
+                }
+                merged.toString()
+            } else {
+                jsonStr
+            }
+        } catch (e: Exception) {
+            jsonStr  // 解析失败，原样返回，交给后续 Gson 解析抛错
+        }
+    }
 
     /** 把立绘图片保存到应用私有目录，返回 file:// 路径供 Coil 加载。 */
     private fun savePortraitLocal(imageBytes: ByteArray, ext: String): String {

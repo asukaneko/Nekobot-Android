@@ -194,9 +194,9 @@ fun CharactersScreen(
                     IconButton(onClick = { viewModel.load() }) {
                         Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.characters_refresh), tint = MaterialTheme.colorScheme.onSurface)
                     }
-                    // 导入角色卡按钮
+                    // 导入角色卡按钮（支持 .json / .zip / .png 酒馆角色卡）
                     IconButton(onClick = {
-                        importLauncher.launch(arrayOf("application/json", "application/zip", "application/x-zip-compressed", "*/*"))
+                        importLauncher.launch(arrayOf("application/json", "application/zip", "application/x-zip-compressed", "image/png", "*/*"))
                     }) {
                         Icon(Icons.Filled.Upload, contentDescription = stringResource(R.string.characters_import_card), tint = MaterialTheme.colorScheme.onSurface)
                     }

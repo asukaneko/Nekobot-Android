@@ -313,15 +313,17 @@ data class CharacterPreset(
     val basicInfo: String? = null,
     val personality: String? = null,
     val scenario: String? = null,
-    @SerializedName("firstMessage") val firstMessage: String? = null,
-    @SerializedName("alternateGreetings") val alternateGreetings: List<String>? = null,
+    // 兼容 SillyTavern v2 snake_case：first_mes / alternate_greetings
+    @SerializedName(value = "firstMessage", alternate = ["first_mes"]) val firstMessage: String? = null,
+    @SerializedName(value = "alternateGreetings", alternate = ["alternate_greetings"]) val alternateGreetings: List<String>? = null,
     @SerializedName("exampleDialogues", alternate = ["dialog_examples", "mes_example"])
     val exampleDialogues: String? = null,
     @SerializedName("responseFormat") val responseFormat: String? = null,
     val rules: List<String>? = null,
     // state 是 JSON 对象（affection / trust / familiarity / dependency / security / mood）
     val state: com.google.gson.JsonObject? = null,
-    @SerializedName("systemPrompt") val systemPrompt: String? = null,
+    // 兼容 SillyTavern v2 snake_case：system_prompt
+    @SerializedName(value = "systemPrompt", alternate = ["system_prompt"]) val systemPrompt: String? = null,
     val greeting: String? = null,
 
     @SerializedName("created_at") val createdAt: String? = null,
