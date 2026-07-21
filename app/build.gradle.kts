@@ -13,8 +13,8 @@ android {
         applicationId = "com.nekobot.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
-        versionName = "0.3.3"
+        versionCode = 16
+        versionName = "0.3.4"
         vectorDrawables { useSupportLibrary = true }
     }
 
