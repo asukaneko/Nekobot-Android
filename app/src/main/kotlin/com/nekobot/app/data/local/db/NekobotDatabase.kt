@@ -26,6 +26,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalCharacterMemoryEntity::class,
         LocalStateSnapshotEntity::class,
         LocalHookEntity::class,
+        LocalHookLogEntity::class,
         LocalTaskEntity::class,
         LocalWorkflowEntity::class,
         LocalSkillEntity::class,
@@ -34,7 +35,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalApiKeyEntity::class,
         LocalMessageFavoriteEntity::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = false
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -49,6 +50,7 @@ abstract class NekobotDatabase : RoomDatabase() {
     abstract fun memoryDao(): MemoryDao
     abstract fun stateSnapshotDao(): StateSnapshotDao
     abstract fun hookDao(): HookDao
+    abstract fun hookLogDao(): HookLogDao
     abstract fun taskDao(): TaskDao
     abstract fun workflowDao(): WorkflowDao
     abstract fun skillDao(): SkillDao
@@ -413,6 +415,35 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v17 → v18：新增 local_hook_logs 表（Hook 执行日志持久化）。
+         *
+         * 每次 hook 触发（成功/失败/部分成功）追加一条日志，供 HooksScreen 的"查看日志"功能展示。
+         * 字段对齐 [com.nekobot.app.data.model.HookExecutionLog]。
+         */
+        private val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_hook_logs (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        hook_id TEXT NOT NULL,
+                        event_id TEXT,
+                        status TEXT NOT NULL,
+                        actions_executed INTEGER NOT NULL DEFAULT 0,
+                        error TEXT,
+                        duration_ms INTEGER NOT NULL DEFAULT 0,
+                        conversation_id TEXT,
+                        event_type TEXT,
+                        created_at TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_local_hook_logs_hook_id ON local_hook_logs (hook_id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_local_hook_logs_created_at ON local_hook_logs (created_at)")
+            }
+        }
+
         fun get(context: Context): NekobotDatabase =
             get(context, com.nekobot.app.data.local.PrefsManager.DEFAULT_DB_NAME)
 
@@ -425,7 +456,7 @@ abstract class NekobotDatabase : RoomDatabase() {
                 NekobotDatabase::class.java,
                 dbName
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
                 // 仅当迁移脚本未覆盖的未来版本变更时才回退到破坏性迁移（保护现有数据）
                 .fallbackToDestructiveMigration()
                 .build()

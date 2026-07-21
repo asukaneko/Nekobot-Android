@@ -2959,8 +2959,13 @@ $charSection$topicSection
     }
 
     suspend fun listHookLogs(hookId: String?, limit: Int): List<HookExecutionLog> = withContext(Dispatchers.IO) {
-        // 本地模式不持久化执行日志，返回空列表
-        emptyList()
+        val effectiveLimit = limit.coerceIn(1, 500)
+        val logs = if (hookId.isNullOrBlank()) {
+            db.hookLogDao().listAll(effectiveLimit)
+        } else {
+            db.hookLogDao().listByHook(hookId, effectiveLimit)
+        }
+        logs.map { it.toHookExecutionLog() }
     }
 
     suspend fun hookStats(): JsonElement = withContext(Dispatchers.IO) {
@@ -2994,6 +2999,21 @@ $charSection$topicSection
         createdAt = createdAt,
         updatedAt = updatedAt
     )
+
+    /** Hook 执行日志实体转 API 模型，供 HooksScreen 展示。 */
+    private fun com.nekobot.app.data.local.db.LocalHookLogEntity.toHookExecutionLog(): HookExecutionLog =
+        HookExecutionLog(
+            id = id,
+            hookId = hookId,
+            eventId = eventId,
+            status = status,
+            actionsExecuted = actionsExecuted,
+            error = error,
+            durationMs = durationMs,
+            conversationId = conversationId,
+            eventType = eventType,
+            createdAt = createdAt
+        )
 
     // ==================== 扩展功能：任务中心 ====================
 

@@ -364,6 +364,29 @@ data class LocalHookEntity(
     @ColumnInfo(name = "updated_at") val updatedAt: String
 )
 
+/**
+ * 本地 Hook 执行日志。每次 hook 触发（无论成功/失败/部分成功）追加一条。
+ *
+ * 字段对齐 [com.nekobot.app.data.model.HookExecutionLog]，供 HooksScreen 的"查看日志"功能展示。
+ * 通过 hook_id 索引加速按 hook 查询；通过 created_at 索引加速时间排序。
+ */
+@Entity(
+    tableName = "local_hook_logs",
+    indices = [Index("hook_id"), Index("created_at")]
+)
+data class LocalHookLogEntity(
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "hook_id") val hookId: String,
+    @ColumnInfo(name = "event_id") val eventId: String? = null,
+    val status: String,                      // success / partial / failed
+    @ColumnInfo(name = "actions_executed") val actionsExecuted: Int = 0,
+    val error: String? = null,
+    @ColumnInfo(name = "duration_ms") val durationMs: Int = 0,
+    @ColumnInfo(name = "conversation_id") val conversationId: String? = null,
+    @ColumnInfo(name = "event_type") val eventType: String? = null,
+    @ColumnInfo(name = "created_at") val createdAt: String
+)
+
 /** 本地任务中心条目。config 为 JSON 字符串。 */
 @Entity(tableName = "local_tasks")
 data class LocalTaskEntity(

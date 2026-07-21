@@ -156,10 +156,23 @@ internal class LocalPipelineCallbacks(
         // 无角色的 Agent 会话沿用旧聊天流程的提示词/世界书组装规则，
         // 仅将执行入口切换到 Pipeline，以便获得进度卡片事件。
         if (character == null) {
+            // Agent 模式下，把每条用户消息关联的 thinking_cards 渲染为文本块
+            // 追加到该用户消息末尾，让 AI 能看到之前 agent 做过的步骤（修复"继续"场景失忆）。
+            val isAgentMode = session.sessionMode.equals("agent", ignoreCase = true)
+            val enhancedHistory = if (isAgentMode) {
+                history.map { msg ->
+                    if (msg.role != "user") return@map msg
+                    val cardsBlock = renderThinkingCardsForContext(msg.thinkingCards)
+                    if (cardsBlock.isBlank()) return@map msg
+                    msg.copy(content = msg.content + cardsBlock)
+                }
+            } else {
+                history
+            }
             return LocalPromptBuilder.build(
                 session = session,
                 character = null,
-                history = history,
+                history = enhancedHistory,
                 userInput = ctx.chatRequest.content,
                 worldBookEntries = worldBookEntries
             )
@@ -169,9 +182,18 @@ internal class LocalPipelineCallbacks(
 
         // 历史消息
         for (msg in history) {
+            // Agent 模式：把用户消息关联的 thinking_cards 渲染为文本块追加到末尾，
+            // 让 AI 知道上一轮 agent 做了哪些工具调用与思考（修复"继续"场景下 AI 失忆）。
+            val content = if (msg.role == "user" &&
+                session.sessionMode.equals("agent", ignoreCase = true)) {
+                val cardsBlock = renderThinkingCardsForContext(msg.thinkingCards)
+                if (cardsBlock.isBlank()) msg.content else msg.content + cardsBlock
+            } else {
+                msg.content
+            }
             messages.add(mapOf(
                 "role" to msg.role,
-                "content" to msg.content
+                "content" to content
             ))
         }
 
@@ -179,6 +201,68 @@ internal class LocalPipelineCallbacks(
         messages.add(mapOf("role" to "user", "content" to ctx.chatRequest.content))
 
         return messages
+    }
+
+    /**
+     * 将一条用户消息的 thinking_cards JSON 渲染为可读文本块，用于"继续"场景下
+     * 把上一轮 agent 的进度步骤注入到 AI 上下文中，避免 AI 失忆。
+     *
+     * 格式示例：
+     * ```
+     *
+     * [上一轮 Agent 进度]
+     * - 思考: AI 正在思考...（detail）
+     * - 工具调用: db_list_characters（参数预览）→ 结果: <result preview>
+     * - 工具调用: db_update_character（参数预览）→ 结果: <result preview>
+     * - 处理完成
+     * ```
+     *
+     * @return 文本块（含前置换行）；无 thinking_cards 或解析失败时返回空串。
+     */
+    private fun renderThinkingCardsForContext(thinkingCardsJson: String?): String {
+        if (thinkingCardsJson.isNullOrBlank()) return ""
+        return try {
+            @Suppress("UNCHECKED_CAST")
+            val cards = gson.fromJson(thinkingCardsJson, List::class.java) as? List<Map<String, Any>>
+                ?: return ""
+            if (cards.isEmpty()) return ""
+            val sb = StringBuilder()
+            sb.append("\n\n[上一轮 Agent 进度]")
+            for (card in cards) {
+                @Suppress("UNCHECKED_CAST")
+                val steps = (card["steps"] as? List<Map<String, Any>>).orEmpty()
+                for (step in steps) {
+                    val type = (step["type"] as? String).orEmpty()
+                    val name = (step["name"] as? String).orEmpty()
+                    val status = (step["status"] as? String).orEmpty()
+                    val detail = (step["detail"] as? String).orEmpty()
+                    val label = when (type) {
+                        "thinking", "ai_thinking" -> "思考"
+                        "tool", "tool_done" -> "工具调用"
+                        "send_message" -> "发送消息"
+                        "file" -> "文件"
+                        "upload" -> "附件"
+                        "knowledge" -> "知识库"
+                        "done" -> "完成"
+                        else -> type.ifBlank { "步骤" }
+                    }
+                    val statusMark = when (status) {
+                        "done" -> "✓"
+                        "running", "active" -> "…"
+                        "error" -> "✗"
+                        else -> ""
+                    }
+                    sb.append("\n- ").append(label).append(": ").append(name)
+                    if (statusMark.isNotEmpty()) sb.append(" [").append(statusMark).append("]")
+                    if (detail.isNotBlank()) {
+                        sb.append("（").append(detail.take(160)).append("）")
+                    }
+                }
+            }
+            sb.toString()
+        } catch (e: Exception) {
+            ""
+        }
     }
 
     override fun saveAssistantMessage(ctx: PipelineContext, message: Map<String, Any>) {

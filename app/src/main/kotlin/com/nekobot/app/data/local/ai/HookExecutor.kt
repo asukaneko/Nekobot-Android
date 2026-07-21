@@ -6,6 +6,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.nekobot.app.data.local.LocalLogger
 import com.nekobot.app.data.local.db.LocalCharacterMemoryEntity
+import com.nekobot.app.data.local.db.LocalHookLogEntity
 import com.nekobot.app.data.local.db.LocalWorldBookEntryEntity
 import com.nekobot.app.data.local.db.LocalWorldBookEntity
 import com.nekobot.app.data.local.db.NekobotDatabase
@@ -53,6 +54,7 @@ class HookExecutor(
 
     private val gson = Gson()
     private val hookDao get() = db.hookDao()
+    private val hookLogDao get() = db.hookLogDao()
     private val memoryDao get() = db.memoryDao()
     private val worldBookDao get() = db.worldBookDao()
     private val stateDao get() = db.characterStateDao()
@@ -144,12 +146,24 @@ class HookExecutor(
                 if (triggeredKeys.containsKey(key)) continue
             }
 
+            val hookId = hook.id ?: continue
+            val t0 = System.currentTimeMillis()
+
             // 评估条件
             val conditionsMet = try {
                 evaluateConditions(hook.conditions, effCtx)
             } catch (e: Exception) {
                 LocalLogger.w(TAG, "Hook ${hook.name} 条件评估异常: ${e.message}")
-                false
+                recordHookLog(
+                    hookId = hookId,
+                    eventType = eventType,
+                    status = "failed",
+                    actionsExecuted = 0,
+                    error = "条件评估异常: ${e.message}",
+                    durationMs = (System.currentTimeMillis() - t0).toInt(),
+                    conversationId = conversationId
+                )
+                continue
             }
             if (!conditionsMet) continue
 
@@ -171,6 +185,19 @@ class HookExecutor(
                 successCount == 0 -> "failed"
                 else -> "partial"
             }
+            val durationMs = (System.currentTimeMillis() - t0).toInt()
+            val firstError = results.firstOrNull { !it.success }?.message
+
+            // 无条件写入执行日志（含 failed），供 HooksScreen "查看日志"展示
+            recordHookLog(
+                hookId = hookId,
+                eventType = eventType,
+                status = status,
+                actionsExecuted = results.size,
+                error = firstError,
+                durationMs = durationMs,
+                conversationId = conversationId
+            )
 
             // 仅在 success/partial 时触发通知（与后端 _notify_frontend 行为一致）
             if (status == "success" || status == "partial") {
@@ -220,6 +247,7 @@ class HookExecutor(
             eventType = "test"
         )
 
+        val t0 = System.currentTimeMillis()
         val results = mutableListOf<ActionResult>()
         for (actionJson in hook.actions) {
             val result = try {
@@ -237,6 +265,21 @@ class HookExecutor(
             successCount == 0 -> "failed"
             else -> "partial"
         }
+        val durationMs = (System.currentTimeMillis() - t0).toInt()
+        val firstError = results.firstOrNull { !it.success }?.message
+
+        // 测试触发也写入日志，方便用户在"查看日志"中立即看到结果
+        hook.id?.let { hid ->
+            recordHookLog(
+                hookId = hid,
+                eventType = "test",
+                status = status,
+                actionsExecuted = results.size,
+                error = firstError,
+                durationMs = durationMs,
+                conversationId = conversationId
+            )
+        }
 
         if (status == "success" || status == "partial") {
             val displayMessage = extractDisplayMessage(hook)
@@ -250,6 +293,40 @@ class HookExecutor(
             )
             _events.tryEmit(RealtimeEvent.HookNotificationEvent(notif))
             LocalLogger.i(TAG, "Hook 测试触发: ${hook.name} -> $displayMessage")
+        }
+    }
+
+    /**
+     * 写入一条 hook 执行日志到 DB，并自动截断到最近 200 条（防止无限增长）。
+     * 无条件写入（含 failed），供 HooksScreen "查看日志"功能展示。
+     */
+    private suspend fun recordHookLog(
+        hookId: String,
+        eventType: String,
+        status: String,
+        actionsExecuted: Int,
+        error: String?,
+        durationMs: Int,
+        conversationId: String
+    ) {
+        try {
+            val log = LocalHookLogEntity(
+                id = UUID.randomUUID().toString(),
+                hookId = hookId,
+                eventId = null,
+                status = status,
+                actionsExecuted = actionsExecuted,
+                error = error,
+                durationMs = durationMs,
+                conversationId = conversationId,
+                eventType = eventType,
+                createdAt = com.nekobot.app.data.local.LocalRepository.nowIsoStatic()
+            )
+            hookLogDao.insert(log)
+            // 每个 hook 保留最近 200 条日志
+            hookLogDao.trimByHook(hookId, keep = 200)
+        } catch (e: Exception) {
+            LocalLogger.w(TAG, "写入 hook 日志失败: ${e.message}")
         }
     }
 

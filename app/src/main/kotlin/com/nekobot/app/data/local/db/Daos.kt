@@ -398,6 +398,34 @@ interface HookDao {
     suspend fun setEnabled(id: String, enabled: Boolean)
 }
 
+/**
+ * Hook 执行日志 DAO。每次 hook 触发（成功/失败/部分成功）追加一条日志。
+ * HooksScreen 的"查看日志"功能通过 [listByHook] 按 hook_id 倒序查询。
+ */
+@Dao
+interface HookLogDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(log: LocalHookLogEntity)
+
+    /** 按 hook 查询执行日志，最新在前。 */
+    @Query("SELECT * FROM local_hook_logs WHERE hook_id = :hookId ORDER BY created_at DESC LIMIT :limit")
+    suspend fun listByHook(hookId: String, limit: Int): List<LocalHookLogEntity>
+
+    /** 全局查询最近日志（用于"全部日志"视图）。 */
+    @Query("SELECT * FROM local_hook_logs ORDER BY created_at DESC LIMIT :limit")
+    suspend fun listAll(limit: Int): List<LocalHookLogEntity>
+
+    @Query("DELETE FROM local_hook_logs WHERE hook_id = :hookId")
+    suspend fun deleteByHook(hookId: String)
+
+    @Query("DELETE FROM local_hook_logs")
+    suspend fun clearAll()
+
+    /** 截断每个 hook 的日志数量到最近 :keep 条，防止无限增长。 */
+    @Query("DELETE FROM local_hook_logs WHERE hook_id = :hookId AND id NOT IN (SELECT id FROM local_hook_logs WHERE hook_id = :hookId ORDER BY created_at DESC LIMIT :keep)")
+    suspend fun trimByHook(hookId: String, keep: Int)
+}
+
 @Dao
 interface TaskDao {
     @Query("SELECT * FROM local_tasks ORDER BY created_at DESC")
