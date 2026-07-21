@@ -187,6 +187,7 @@
 
   /* ---------- 11. 从 GitHub Releases 拉取更新日志 ---------- */
   const FALLBACK_RELEASES = [
+    { tag_name: 'v0.3.5', published_at: '2026-07-21', body: '- 支持导入 SillyTavern 酒馆角色卡（PNG 嵌入、v2/v3）\n- 新增 Nekobot 官方网站页面\n- 角色卡六维关系系统、Agent 模式数据库工具\n- Hook 执行日志持久化、应用内更新检查' },
     { tag_name: 'v0.3.4', published_at: '2026-07-21', body: '- 会话状态快照、对话回放与会话导出\n- 现实时间对齐：昼夜节律与静默心跳生活模拟\n- 增强 Markdown 渲染，优化暗色主题配色' },
     { tag_name: 'v0.3.3', published_at: '2026-07-20', body: '- 小米 MiMo 语音识别与多 Provider 路由\n- 剧情大幻境：自写引导 AI 生成选项\n- EPUB 正文提取工具' },
     { tag_name: 'v0.3.2', published_at: '2026-07-19', body: '- 本地模式 AI 立绘生成与会话草稿缓存\n- 数据库导入导出、主题色切换\n- 重构记忆系统，对齐 MemoryFS 规范' },
