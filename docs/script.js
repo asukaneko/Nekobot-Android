@@ -34,7 +34,7 @@
   });
 
   /* ---------- 3. 滚动高亮当前导航（Scroll Spy） ---------- */
-  const sections = ['features', 'modes', 'showcase', 'download', 'changelog', 'faq']
+  const sections = ['features', 'modes', 'showcase', 'advanced', 'download', 'changelog', 'faq']
     .map((id) => document.getElementById(id))
     .filter(Boolean);
   const linkMap = new Map(
@@ -191,6 +191,8 @@
     { tag_name: 'v0.3.4', published_at: '2026-07-21', body: '- 会话状态快照、对话回放与会话导出\n- 现实时间对齐：昼夜节律与静默心跳生活模拟\n- 增强 Markdown 渲染，优化暗色主题配色' },
     { tag_name: 'v0.3.3', published_at: '2026-07-20', body: '- 小米 MiMo 语音识别与多 Provider 路由\n- 剧情大幻境：自写引导 AI 生成选项\n- EPUB 正文提取工具' },
     { tag_name: 'v0.3.2', published_at: '2026-07-19', body: '- 本地模式 AI 立绘生成与会话草稿缓存\n- 数据库导入导出、主题色切换\n- 重构记忆系统，对齐 MemoryFS 规范' },
+    { tag_name: 'v0.3.1', published_at: '2026-07-18', body: '- MCP 服务器支持（stdio + Streamable HTTP）\n- 技能 & 工作流系统\n- 35 个 db_ 本地数据库工具' },
+    { tag_name: 'v0.3.0', published_at: '2026-07-17', body: '- Agent 模式与磨砂玻璃进度卡片\n- 故障转移队列（7 类用途独立优先级）\n- 剧情分支图（节点 / 选项 / 边三元组）' },
   ];
   function renderReleases(releases) {
     const container = $('#changelogList');

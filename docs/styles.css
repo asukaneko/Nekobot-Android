@@ -466,6 +466,109 @@ code {
 }
 .ms-rank b { color: var(--primary-deep); }
 
+/* ============ Agent 进度卡片 mock ============ */
+.mock-agent { padding: 16px 16px; }
+.ag-head { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px dashed var(--border); margin-bottom: 14px; }
+.ag-spinner { display: flex; gap: 3px; }
+.ag-spinner i { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); opacity: .5; animation: tBounce 1.2s infinite; }
+.ag-spinner i:nth-child(2) { animation-delay: .15s; }
+.ag-spinner i:nth-child(3) { animation-delay: .3s; }
+.ag-title { font-size: 13.5px; font-weight: 700; color: var(--text); }
+.ag-count { color: var(--primary-deep); font-weight: 800; }
+.ag-sub { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+.ag-steps { display: grid; gap: 8px; }
+.ag-step {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; background: #fff; border-radius: var(--r-sm);
+  border-left: 3px solid var(--border); transition: border-color .25s;
+}
+.ag-step.done { border-left-color: #4ADE80; }
+.ag-step.running { border-left-color: var(--primary); }
+.ag-step.pending { opacity: .55; border-left-color: var(--text-3); }
+.ag-icon { font-size: 16px; flex-shrink: 0; width: 22px; text-align: center; }
+.ag-step > div:nth-child(2) { flex: 1; min-width: 0; }
+.ag-step b { font-size: 12.5px; font-weight: 700; color: var(--text); display: block; }
+.ag-step p { font-size: 11px; color: var(--text-3); margin-top: 1px; line-height: 1.5; }
+.ag-state { font-size: 13px; font-weight: 800; color: #4ADE80; flex-shrink: 0; }
+.ag-state-running { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--primary); border-top-color: transparent; animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.ag-state-pending { color: var(--text-3); font-size: 14px; }
+
+/* ============ 记忆面板 mock ============ */
+.mock-memory { padding: 16px; }
+.mm-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+.mm-cards > div { background: #fff; border-radius: var(--r-sm); padding: 10px; text-align: center; }
+.mm-cards label { font-size: 11px; color: var(--text-3); display: block; }
+.mm-cards b { font-size: 16px; color: var(--primary-deep); }
+.mm-bars { display: grid; gap: 6px; margin-bottom: 14px; }
+.mm-bars > div { display: flex; align-items: center; gap: 10px; }
+.mm-bars span { font-size: 11px; color: var(--text-3); width: 50px; flex-shrink: 0; }
+.mm-bars b { flex: 1; height: 6px; border-radius: 999px; background: var(--peach-soft); position: relative; overflow: hidden; }
+.mm-bars b::after {
+  content: ""; position: absolute; inset: 0; width: var(--v, 50%); border-radius: 999px;
+  background: linear-gradient(90deg, var(--peach), var(--primary));
+  animation: barGrow 1.2s var(--ease-spring);
+}
+.mm-list { display: grid; gap: 6px; }
+.mm-item {
+  background: #fff; border-radius: var(--r-sm); padding: 8px 12px;
+  font-size: 12px; color: var(--text-2); display: flex; align-items: center; gap: 8px;
+}
+.mm-tag { background: var(--accent-soft); color: var(--accent); font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; flex-shrink: 0; }
+
+/* ============ 配置中心 mock ============ */
+.mock-config { padding: 14px 16px; }
+.cfg-tabs { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 12px; }
+.cfg-tab {
+  padding: 5px 12px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  background: var(--bg-soft); color: var(--text-3);
+  transition: all .2s;
+}
+.cfg-tab.active { background: linear-gradient(135deg, var(--primary), var(--primary-deep)); color: #fff; }
+.cfg-list { display: grid; gap: 8px; }
+.cfg-item {
+  display: flex; gap: 12px; align-items: stretch;
+  background: #fff; border-radius: var(--r-sm); padding: 10px 12px;
+}
+.cfg-prio {
+  display: grid; place-items: center; width: 28px; flex-shrink: 0;
+  font-size: 11px; font-weight: 800; color: var(--primary-deep);
+  background: var(--primary-soft); border-radius: 8px;
+}
+.cfg-body { flex: 1; min-width: 0; }
+.cfg-name { display: flex; align-items: center; gap: 8px; }
+.cfg-name b { font-size: 12.5px; color: var(--text); }
+.cfg-tag { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+.cfg-tag.ok { background: #E4F4E0; color: #3F9B5C; }
+.cfg-tag.cool { background: #FFE9E3; color: #D4956A; }
+.cfg-meta { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+.cfg-bar { height: 5px; border-radius: 999px; background: var(--peach-soft); margin-top: 6px; overflow: hidden; }
+.cfg-bar i {
+  display: block; height: 100%; width: var(--w, 0%); border-radius: 999px;
+  background: linear-gradient(90deg, var(--peach), var(--primary));
+  animation: barGrow 1.2s var(--ease-spring);
+}
+
+/* ============ 进阶能力（小卡片网格） ============ */
+.adv-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.adv-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: 20px 18px;
+  box-shadow: var(--shadow-sm);
+  transition: transform .35s var(--ease-spring), box-shadow .35s, border-color .35s;
+}
+.adv-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-md); border-color: #FBD0DC; }
+.adv-icon {
+  width: 38px; height: 38px; border-radius: 12px;
+  background: var(--ic, var(--primary-soft));
+  display: grid; place-items: center; color: var(--primary-deep);
+  margin-bottom: 12px;
+  transition: transform .35s var(--ease-spring);
+}
+.adv-card:hover .adv-icon { transform: scale(1.12) rotate(-6deg); }
+.adv-card h4 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.adv-card p { font-size: 12.5px; color: var(--text-2); line-height: 1.7; }
+
 /* ============ 下载 ============ */
 .download-card {
   max-width: 960px; margin: 0 auto;
@@ -621,6 +724,7 @@ code {
   .float-chip { display: none; }
   .feature-grid { grid-template-columns: repeat(2, 1fr); }
   .sc-panel { grid-template-columns: 1fr; gap: 24px; }
+  .adv-grid { grid-template-columns: repeat(2, 1fr); }
   .download-card { grid-template-columns: 1fr; text-align: center; padding: 40px 28px; }
   .download-actions { justify-content: center; }
   .footer-inner { grid-template-columns: 1fr 1fr; }
@@ -642,6 +746,7 @@ code {
   .hero { padding-top: calc(var(--nav-h) + 40px); }
   .feature-grid { grid-template-columns: 1fr; }
   .mode-grid { grid-template-columns: 1fr; }
+  .adv-grid { grid-template-columns: 1fr; }
   .showcase { padding: 16px; }
   .sc-tab { padding: 8px 16px; font-size: 13px; }
   .phone { width: 250px; height: 510px; }
