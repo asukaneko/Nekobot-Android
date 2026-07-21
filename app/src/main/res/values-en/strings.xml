@@ -129,4 +129,20 @@
     <string name="settings_about_android_repo">Android repo</string>
     <string name="settings_about_server_repo">Server repo</string>
     <string name="settings_about_version">Nekobot for Android · v%1$s</string>
+    <string name="settings_check_update">Check for updates</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_no_new">Already up to date</string>
+    <string name="update_new_available">New version %1$s available</string>
+    <string name="update_check_failed">Update check failed: %1$s</string>
+    <string name="update_release_notes">Release notes</string>
+    <string name="update_current_version">Current version</string>
+    <string name="update_latest_version">Latest version</string>
+    <string name="update_published_at">Published at</string>
+    <string name="update_download">Download &amp; install</string>
+    <string name="update_downloading">Downloading…%1$d%%</string>
+    <string name="update_download_failed">Download failed: %1$s</string>
+    <string name="update_install_failed">Unable to start installation, please try downloading from browser</string>
+    <string name="update_open_in_browser">Open in browser</string>
+    <string name="update_no_asset">No APK asset attached to this release, please check GitHub</string>
+    <string name="update_view_releases">View Releases page</string>
 </resources>

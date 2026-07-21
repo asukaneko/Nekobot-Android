@@ -129,4 +129,20 @@
     <string name="settings_about_android_repo">Android 저장소</string>
     <string name="settings_about_server_repo">서버 저장소</string>
     <string name="settings_about_version">Nekobot for Android · v%1$s</string>
+    <string name="settings_check_update">업데이트 확인</string>
+    <string name="update_checking">업데이트 확인 중…</string>
+    <string name="update_no_new">최신 버전입니다</string>
+    <string name="update_new_available">새 버전 %1$s 발견</string>
+    <string name="update_check_failed">업데이트 확인 실패: %1$s</string>
+    <string name="update_release_notes">릴리스 노트</string>
+    <string name="update_current_version">현재 버전</string>
+    <string name="update_latest_version">최신 버전</string>
+    <string name="update_published_at">게시 시각</string>
+    <string name="update_download">다운로드 및 설치</string>
+    <string name="update_downloading">다운로드 중…%1$d%%</string>
+    <string name="update_download_failed">다운로드 실패: %1$s</string>
+    <string name="update_install_failed">설치를 시작할 수 없습니다, 브라우저에서 다운로드하세요</string>
+    <string name="update_open_in_browser">브라우저에서 열기</string>
+    <string name="update_no_asset">이 릴리스에는 APK가 없습니다, GitHub를 확인하세요</string>
+    <string name="update_view_releases">Releases 페이지 보기</string>
 </resources>

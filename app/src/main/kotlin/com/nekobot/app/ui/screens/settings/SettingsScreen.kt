@@ -38,12 +38,14 @@ import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Settings as SettingsIcon
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
@@ -68,6 +70,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonElement
@@ -77,10 +80,12 @@ import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.data.local.LocalLogger
 import com.nekobot.app.data.local.PrefsManager
+import com.nekobot.app.update.UpdateChecker
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
+import com.nekobot.app.ui.components.MarkdownText
 import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.components.SectionHeader
 import com.nekobot.app.ui.theme.BgDark
@@ -93,6 +98,7 @@ import com.nekobot.app.ui.theme.Primary
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /** 用于格式化 JSON 输出 */
 private val prettyGson = GsonBuilder().setPrettyPrinting().setLenient().disableHtmlEscaping().create()
@@ -233,6 +239,88 @@ class SettingsViewModel : BaseViewModel() {
         _serverUrl.value = ServiceContainer.prefs.serverUrl
         showToast(string(R.string.settings_server_url_updated))
     }
+
+    // ==================== 更新检查 ====================
+
+    private val _updateState = MutableStateFlow<UpdateUiState>(UpdateUiState.Idle)
+    val updateState: StateFlow<UpdateUiState> = _updateState.asStateFlow()
+
+    private val _downloadState = MutableStateFlow<DownloadUiState>(DownloadUiState.Idle)
+    val downloadState: StateFlow<DownloadUiState> = _downloadState.asStateFlow()
+
+    /** 检查更新：调用 GitHub Releases API。 */
+    fun checkForUpdate(currentVersion: String) {
+        _updateState.value = UpdateUiState.Checking
+        viewModelScope.launch {
+            when (val res = UpdateChecker.checkForUpdate(currentVersion)) {
+                is UpdateChecker.CheckResult.UpToDate -> {
+                    _updateState.value = UpdateUiState.UpToDate
+                }
+                is UpdateChecker.CheckResult.Available -> {
+                    _updateState.value = UpdateUiState.Available(res.info)
+                }
+                is UpdateChecker.CheckResult.Error -> {
+                    _updateState.value = UpdateUiState.Error(res.message)
+                }
+            }
+        }
+    }
+
+    fun dismissUpdateState() {
+        _updateState.value = UpdateUiState.Idle
+    }
+
+    /** 下载 APK；完成后调用 onReady 触发安装。 */
+    fun downloadApk(
+        context: android.content.Context,
+        asset: UpdateChecker.ReleaseAsset,
+        onReady: (java.io.File) -> Unit
+    ) {
+        _downloadState.value = DownloadUiState.Downloading(0)
+        viewModelScope.launch {
+            val res = UpdateChecker.downloadApk(context, asset) { progress ->
+                when (progress) {
+                    is UpdateChecker.DownloadResult.Progress -> {
+                        _downloadState.value = DownloadUiState.Downloading(progress.percent)
+                    }
+                    is UpdateChecker.DownloadResult.Error -> {
+                        _downloadState.value = DownloadUiState.Idle
+                    }
+                    is UpdateChecker.DownloadResult.Done -> {
+                        _downloadState.value = DownloadUiState.Done(progress.file)
+                    }
+                }
+            }
+            when (res) {
+                is UpdateChecker.DownloadResult.Done -> onReady(res.file)
+                is UpdateChecker.DownloadResult.Error -> {
+                    _downloadState.value = DownloadUiState.Idle
+                    showError(string(R.string.update_download_failed, res.message))
+                }
+                else -> {}
+            }
+        }
+    }
+
+    fun dismissDownloadState() {
+        _downloadState.value = DownloadUiState.Idle
+    }
+}
+
+/** 更新检查 UI 状态。 */
+sealed class UpdateUiState {
+    data object Idle : UpdateUiState()
+    data object Checking : UpdateUiState()
+    data object UpToDate : UpdateUiState()
+    data class Available(val info: UpdateChecker.ReleaseInfo) : UpdateUiState()
+    data class Error(val message: String) : UpdateUiState()
+}
+
+/** 下载进度 UI 状态。 */
+sealed class DownloadUiState {
+    data object Idle : DownloadUiState()
+    data class Downloading(val percent: Int) : DownloadUiState()
+    data class Done(val file: java.io.File) : DownloadUiState()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -248,6 +336,8 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
     val loading by vm.loading.collectAsState()
     val error by vm.error.collectAsState()
     val toast by vm.toast.collectAsState()
+    val updateState by vm.updateState.collectAsState()
+    val downloadState by vm.downloadState.collectAsState()
     val context = LocalContext.current
 
     // 本地编辑状态
@@ -541,6 +631,13 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                     SectionHeader(title = stringResource(R.string.settings_about))
                     Spacer(Modifier.height(8.dp))
                     AboutRow(
+                        icon = Icons.Filled.SystemUpdate,
+                        iconColor = MaterialTheme.colorScheme.primary,
+                        title = stringResource(R.string.settings_check_update),
+                        subtitle = "v${getAppVersion(context)}",
+                        onClick = { vm.checkForUpdate(getAppVersion(context)) }
+                    )
+                    AboutRow(
                         icon = Icons.Filled.Person,
                         iconColor = MaterialTheme.colorScheme.primary,
                         title = stringResource(R.string.settings_about_producer),
@@ -570,8 +667,66 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                 }
             }
 
-            LoadingOverlay(visible = loading)
+            LoadingOverlay(visible = loading || updateState is UpdateUiState.Checking, message = if (updateState is UpdateUiState.Checking) stringResource(R.string.update_checking) else stringResource(R.string.common_loading))
         }
+    }
+
+    // 检查结果：已是最新版本
+    if (updateState is UpdateUiState.UpToDate) {
+        NekoDialog(
+            onDismiss = { vm.dismissUpdateState() },
+            title = stringResource(R.string.settings_check_update),
+            message = stringResource(R.string.update_no_new),
+            confirmText = stringResource(R.string.common_confirm),
+            onConfirm = { vm.dismissUpdateState() },
+            cancelText = null,
+            onCancel = null
+        )
+    }
+
+    // 检查结果：出错
+    if (updateState is UpdateUiState.Error) {
+        val errMsg = (updateState as UpdateUiState.Error).message
+        NekoDialog(
+            onDismiss = { vm.dismissUpdateState() },
+            title = stringResource(R.string.settings_check_update),
+            message = stringResource(R.string.update_check_failed, errMsg),
+            confirmText = stringResource(R.string.common_confirm),
+            onConfirm = { vm.dismissUpdateState() },
+            cancelText = null,
+            onCancel = null
+        )
+    }
+
+    // 发现新版本：发布详情 + 下载
+    if (updateState is UpdateUiState.Available) {
+        val info = (updateState as UpdateUiState.Available).info
+        UpdateDetailDialog(
+            info = info,
+            currentVersion = getAppVersion(context),
+            downloadState = downloadState,
+            onDismiss = { vm.dismissUpdateState() },
+            onDownload = { asset ->
+                vm.downloadApk(context, asset) { file ->
+                    runCatching {
+                        context.startActivity(UpdateChecker.buildInstallIntent(context, file))
+                    }.onFailure {
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.update_install_failed),
+                            Toast.LENGTH_LONG
+                        ).show()
+                        // 回退：用浏览器打开 release 页面
+                        runCatching {
+                            context.startActivity(UpdateChecker.buildReleasesPageIntent())
+                        }
+                    }
+                }
+            },
+            onOpenInBrowser = {
+                runCatching { context.startActivity(UpdateChecker.buildReleasesPageIntent()) }
+            }
+        )
     }
 
     // 语言选择弹窗
@@ -807,4 +962,148 @@ private fun getAppVersion(context: android.content.Context): String {
         val info = pm.getPackageInfo(context.packageName, 0)
         info.versionName ?: "unknown"
     }.getOrDefault("unknown")
+}
+
+/**
+ * 发布详情弹窗：展示 tag、发布时间、markdown 发布说明，并提供下载/在浏览器打开按钮。
+ * 下载中显示进度条；无 APK 资产时禁用下载按钮。
+ */
+@Composable
+private fun UpdateDetailDialog(
+    info: UpdateChecker.ReleaseInfo,
+    currentVersion: String,
+    downloadState: DownloadUiState,
+    onDismiss: () -> Unit,
+    onDownload: (UpdateChecker.ReleaseAsset) -> Unit,
+    onOpenInBrowser: () -> Unit
+) {
+    val apkAsset = info.apkAsset
+    val isDownloading = downloadState is DownloadUiState.Downloading
+    val percent = (downloadState as? DownloadUiState.Downloading)?.percent ?: 0
+
+    NekoDialog(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.update_new_available, info.tagName),
+        confirmText = if (apkAsset != null) stringResource(R.string.update_download) else stringResource(R.string.update_view_releases),
+        confirmEnabled = !isDownloading,
+        onConfirm = {
+            if (apkAsset != null) onDownload(apkAsset) else onOpenInBrowser()
+        },
+        cancelText = stringResource(R.string.update_open_in_browser),
+        onCancel = { onOpenInBrowser() }
+    ) {
+        // 版本信息
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.update_current_version),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "v$currentVersion",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.update_latest_version),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = info.tagName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        // 发布时间
+        Text(
+            text = "${stringResource(R.string.update_published_at)}：${formatIsoTime(info.publishedAt)}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(12.dp))
+        // 发布说明
+        Text(
+            text = stringResource(R.string.update_release_notes),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold
+        )
+        Spacer(Modifier.height(6.dp))
+        if (info.body.isBlank()) {
+            Text(
+                text = "—",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            MarkdownText(
+                text = info.body,
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+        // 资产说明
+        if (apkAsset == null) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = stringResource(R.string.update_no_asset),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        } else {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "${apkAsset.name} · ${formatSize(apkAsset.size)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        // 下载进度
+        if (isDownloading) {
+            Spacer(Modifier.height(12.dp))
+            LinearProgressIndicator(
+                progress = { percent / 100f },
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = stringResource(R.string.update_downloading, percent),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+/** 把 ISO 时间字符串（如 2024-05-01T12:34:56Z）格式化为可读形式。失败时原样返回。 */
+private fun formatIsoTime(iso: String): String {
+    if (iso.isBlank()) return "—"
+    return runCatching {
+        // 截取到分钟：YYYY-MM-DD HH:mm
+        val core = iso.replace("T", " ").replace("Z", "")
+        core.substring(0, minOf(16, core.length))
+    }.getOrDefault(iso)
+}
+
+/** 格式化文件大小。 */
+private fun formatSize(bytes: Long): String {
+    if (bytes <= 0) return "0 B"
+    val units = arrayOf("B", "KB", "MB", "GB")
+    var size = bytes.toDouble()
+    var idx = 0
+    while (size >= 1024 && idx < units.lastIndex) {
+        size /= 1024
+        idx++
+    }
+    return if (idx == 0) "${bytes} ${units[idx]}" else String.format("%.1f %s", size, units[idx])
 }
