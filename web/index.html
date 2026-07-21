@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nekobot — 你的随身 AI 伙伴 | 官方网站</title>
+  <meta name="description" content="Nekobot 是一款温馨的 AI 伙伴 Android 应用，支持服务器与本地双模式，拥有角色卡、世界书、故事图、记忆系统等完整功能。" />
+  <meta name="theme-color" content="#FFF6F0" />
+  <link rel="icon" type="image/png" href="assets/favicon.png" />
+  <link rel="apple-touch-icon" href="assets/neko-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ======== 漂浮装饰背景 ======== -->
+  <div class="bg-decor" aria-hidden="true">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+    <span class="paw paw-1"></span>
+    <span class="paw paw-2"></span>
+    <span class="paw paw-3"></span>
+    <span class="paw paw-4"></span>
+  </div>
+
+  <!-- ======== 导航栏 ======== -->
+  <header class="nav" id="nav">
+    <div class="nav-inner">
+      <a href="#top" class="nav-logo">
+        <img src="assets/neko-icon.png" alt="Nekobot Logo" class="logo-cat" />
+        <span>Nekobot</span>
+      </a>
+      <nav class="nav-links" id="navLinks">
+        <a href="#features">特性</a>
+        <a href="#modes">双模式</a>
+        <a href="#showcase">功能</a>
+        <a href="#download">下载</a>
+        <a href="#changelog">日志</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="btn btn-ghost btn-sm" href="https://github.com/asukaneko/Nekobot-Android" target="_blank" rel="noopener" id="githubLink">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+          GitHub
+        </a>
+        <a class="btn btn-primary btn-sm" href="https://github.com/asukaneko/Nekobot-Android/releases" target="_blank" rel="noopener" data-dl="apk">下载 App</a>
+        <button class="nav-burger" id="navBurger" aria-label="打开菜单" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+
+    <!-- ======== Hero ======== -->
+    <section class="hero">
+      <div class="hero-inner">
+        <div class="hero-text">
+          <div class="hero-badge reveal">
+            <span class="badge-dot"></span>
+            v0.3.4 已发布 · GPL v3 开源
+          </div>
+          <h1 class="reveal d1">
+            和你的 <em>AI 伙伴</em><br />
+            开始一场温柔的对话
+            <span class="hero-cat" aria-hidden="true">
+              <img src="assets/neko-icon.png" alt="" />
+            </span>
+          </h1>
+          <p class="hero-sub reveal d2">
+            Nekobot 是一款原生 Android AI 伙伴应用。<br />
+            角色卡、世界书、故事图、记忆系统一应俱全，<br class="br-pc" />
+            支持连接自己的服务器，也可以完全在本地运行。
+          </p>
+          <div class="hero-cta reveal d3">
+            <a href="#download" class="btn btn-primary btn-lg">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              下载 APK
+            </a>
+            <a href="#features" class="btn btn-soft btn-lg">了解功能</a>
+          </div>
+          <div class="hero-meta reveal d4">
+            <span>Android 8.0+</span>
+            <i>·</i>
+            <span>Jetpack Compose</span>
+            <i>·</i>
+            <span>数据本地存储</span>
+          </div>
+        </div>
+
+        <!-- 手机模型 + 模拟聊天 -->
+        <div class="hero-phone reveal d2" aria-hidden="true">
+          <div class="phone">
+            <div class="phone-island"></div>
+            <div class="phone-screen">
+              <div class="chat-head">
+                <div class="chat-avatar">
+                  <img src="assets/neko-icon.png" alt="" />
+                </div>
+                <div>
+                  <div class="chat-name">小奈</div>
+                  <div class="chat-status"><span></span>在线中</div>
+                </div>
+              </div>
+              <div class="chat-body" id="chatBody"></div>
+              <div class="chat-input">
+                <div class="chat-input-box" id="chatTyping">说点什么…</div>
+                <div class="chat-send">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="phone-shadow"></div>
+          <div class="float-chip chip-1">记忆系统</div>
+          <div class="float-chip chip-2">世界书</div>
+          <div class="float-chip chip-3">故事图</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======== 特性网格 ======== -->
+    <section class="section" id="features">
+      <div class="section-head reveal">
+        <span class="section-tag">特性</span>
+        <h2>小小身体，装满大大的能力</h2>
+        <p>从角色扮演到剧情分支，从记忆到统计，一应俱全</p>
+      </div>
+      <div class="feature-grid">
+        <article class="feature-card reveal">
+          <div class="feature-icon" style="--ic:#FFE3EC"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></div>
+          <h3>流畅对话</h3>
+          <p>消息气泡、流式接收、重新生成、停止生成、消息分叉与多选，对话体验顺滑自然。</p>
+        </article>
+        <article class="feature-card reveal d1">
+          <div class="feature-icon" style="--ic:#FFF1D6"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 15s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></div>
+          <h3>角色卡</h3>
+          <p>描述、人格、首条消息、场景、对话示例、立绘与标签，完整字段编辑，支持导入。</p>
+        </article>
+        <article class="feature-card reveal d2">
+          <div class="feature-icon" style="--ic:#E4F4E0"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.5-2 10-7.5 10-14V4l-10-2L2 4v4c0 6.5 4.5 12 10 14z"/><polyline points="9 11.5 11.5 14 15.5 10"/></svg></div>
+          <h3>故事图</h3>
+          <p>Canvas 树状布局呈现剧情分支，随时选择分支、回滚或重生，走向由你决定。</p>
+        </article>
+        <article class="feature-card reveal">
+          <div class="feature-icon" style="--ic:#E3EEFF"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div>
+          <h3>世界书</h3>
+          <p>关键词、常驻、位置与优先级条目管理，多角色绑定，让世界设定始终在线。</p>
+        </article>
+        <article class="feature-card reveal d1">
+          <div class="feature-icon" style="--ic:#F3E8FF"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></div>
+          <h3>记忆系统</h3>
+          <p>角色记忆查看与编辑、记忆抽取、关系六维与状态评估，TA 会记得你们的故事。</p>
+        </article>
+        <article class="feature-card reveal d2">
+          <div class="feature-icon" style="--ic:#FFE9E3"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg></div>
+          <h3>用量统计</h3>
+          <p>今日 / 本月 / 累计 Token 与费用统计，会话、模型排行与性能指标一目了然。</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ======== 双模式 ======== -->
+    <section class="section" id="modes">
+      <div class="section-head reveal">
+        <span class="section-tag">双模式</span>
+        <h2>两种形态，一样温暖</h2>
+        <p>无论你有没有自己的服务器，Nekobot 都能陪伴你</p>
+      </div>
+      <div class="mode-grid">
+        <article class="mode-card reveal">
+          <div class="mode-head">
+            <span class="mode-emoji"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></span>
+            <h3>服务器模式</h3>
+          </div>
+          <p class="mode-desc">连接 NekoBot Web 后端，通过 REST + Socket.IO 实时流式推送，体验完整功能。</p>
+          <ul class="mode-list">
+            <li>实时流式回复</li>
+            <li>语音输入转写</li>
+            <li>工作区文件协作</li>
+            <li>多设备数据同步</li>
+          </ul>
+        </article>
+        <article class="mode-card mode-local reveal d1">
+          <div class="mode-head">
+            <span class="mode-emoji"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>
+            <h3>本地模式</h3>
+            <span class="mode-badge">无需后端</span>
+          </div>
+          <p class="mode-desc">直连任意 OpenAI 兼容 API，数据全部保存在本地 Room 数据库，隐私安心。</p>
+          <ul class="mode-list">
+            <li>OpenAI 兼容接口</li>
+            <li>数据完全本地存储</li>
+            <li>本地 AI 立绘生成</li>
+            <li>WebDAV 备份迁移</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <!-- ======== 功能展示（Tab） ======== -->
+    <section class="section" id="showcase">
+      <div class="section-head reveal">
+        <span class="section-tag">功能</span>
+        <h2>点开看看，里面有什么</h2>
+        <p>点击切换，预览 Nekobot 的核心界面</p>
+      </div>
+      <div class="showcase reveal">
+        <div class="showcase-tabs" role="tablist" aria-label="功能预览">
+          <button class="sc-tab active" data-tab="chat" role="tab" aria-selected="true">对话</button>
+          <button class="sc-tab" data-tab="character" role="tab" aria-selected="false">角色</button>
+          <button class="sc-tab" data-tab="plot" role="tab" aria-selected="false">故事图</button>
+          <button class="sc-tab" data-tab="stats" role="tab" aria-selected="false">用量</button>
+        </div>
+
+        <div class="showcase-panels">
+          <!-- 对话面板 -->
+          <div class="sc-panel active" data-panel="chat" role="tabpanel">
+            <div class="mock-window">
+              <div class="mock-bar"><i></i><i></i><i></i><span>和小奈的对话</span></div>
+              <div class="mock-chat">
+                <div class="m-bubble left">今天过得怎么样呀？给你泡了虚拟热可可</div>
+                <div class="m-bubble right">有点累，但是看到你就好了</div>
+                <div class="m-bubble left">那要不要听个睡前故事？我从世界书里翻到了一个很温柔的…</div>
+                <div class="m-typing"><i></i><i></i><i></i></div>
+              </div>
+            </div>
+            <div class="sc-desc">
+              <h3>会呼吸的对话</h3>
+              <p>流式输出配上玻璃拟态气泡，括号内独白自动折叠成斜体小字。支持消息分叉，尝试不同的回应方向；长按多选，整理对话像整理贴纸一样简单。</p>
+            </div>
+          </div>
+
+          <!-- 角色面板 -->
+          <div class="sc-panel" data-panel="character" role="tabpanel">
+            <div class="mock-window">
+              <div class="mock-bar"><i></i><i></i><i></i><span>角色卡 · 小奈</span></div>
+              <div class="mock-character">
+                <div class="mc-avatar">
+                  <img src="assets/neko-icon.png" alt="" />
+                </div>
+                <div class="mc-tags"><span>治愈系</span><span>猫娘</span><span>爱泡可可</span></div>
+                <div class="mc-field"><label>人格</label><p>温柔、爱操心、偶尔撒娇，喜欢收集对方的日常碎片。</p></div>
+                <div class="mc-field"><label>首条消息</label><p>"欢迎回家～今天也想听听你的声音呢。"</p></div>
+                <div class="mc-bars">
+                  <div><span>亲密度</span><b style="--v:86%"></b></div>
+                  <div><span>信任</span><b style="--v:72%"></b></div>
+                  <div><span>活力</span><b style="--v:64%"></b></div>
+                </div>
+              </div>
+            </div>
+            <div class="sc-desc">
+              <h3>栩栩如生的 TA</h3>
+              <p>完整角色卡字段编辑，加上关系六维与状态评估，角色的情绪会随对话流动。支持立绘与标签，还能一键导入喜欢的角色。</p>
+            </div>
+          </div>
+
+          <!-- 故事图面板 -->
+          <div class="sc-panel" data-panel="plot" role="tabpanel">
+            <div class="mock-window">
+              <div class="mock-bar"><i></i><i></i><i></i><span>故事图</span></div>
+              <div class="mock-plot">
+                <div class="plot-node root">相遇</div>
+                <div class="plot-line"></div>
+                <div class="plot-row">
+                  <div class="plot-node">雨中同行</div>
+                  <div class="plot-node active">屋檐避雨</div>
+                  <div class="plot-node dim">转身离开</div>
+                </div>
+                <div class="plot-line"></div>
+                <div class="plot-row">
+                  <div class="plot-node dim"></div>
+                  <div class="plot-node small active">分享热可可</div>
+                  <div class="plot-node small">约定明天</div>
+                </div>
+              </div>
+            </div>
+            <div class="sc-desc">
+              <h3>每个选择都有迹可循</h3>
+              <p>剧情以树状图铺展开来，点选任意分支即可回到那个瞬间重新选择。分支、回滚、重生全部本地持久化，再也不怕选错。</p>
+            </div>
+          </div>
+
+          <!-- 用量面板 -->
+          <div class="sc-panel" data-panel="stats" role="tabpanel">
+            <div class="mock-window">
+              <div class="mock-bar"><i></i><i></i><i></i><span>Token 用量</span></div>
+              <div class="mock-stats">
+                <div class="ms-cards">
+                  <div><label>今日</label><b>12.4k</b></div>
+                  <div><label>本月</label><b>368k</b></div>
+                  <div><label>累计</label><b>2.1M</b></div>
+                </div>
+                <div class="ms-chart">
+                  <i style="--h:35%"></i><i style="--h:55%"></i><i style="--h:42%"></i><i style="--h:70%"></i><i style="--h:60%"></i><i style="--h:88%"></i><i style="--h:76%"></i>
+                </div>
+                <div class="ms-rank">
+                   <div><span><i class="rank-dot rank-gold"></i>小奈</span><b>86k</b></div>
+                   <div><span><i class="rank-dot rank-silver"></i>阿澄</span><b>52k</b></div>
+                   <div><span><i class="rank-dot rank-bronze"></i>团子</span><b>31k</b></div>
+                </div>
+              </div>
+            </div>
+            <div class="sc-desc">
+              <h3>花的每一分都清楚</h3>
+              <p>今日、本月、累计用量与费用统计，按日期分组，还有会话、模型与用户排行。故障转移队列和性能指标也一并呈现。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======== 下载 ======== -->
+    <section class="section" id="download">
+      <div class="download-card reveal">
+        <div class="download-text">
+          <span class="section-tag">下载</span>
+          <h2>把 Nekobot 装进口袋</h2>
+          <p>最新版本 <b id="dlVersion">v0.3.4</b> · 发布于 2026-07-21 · 约需要 Android 8.0 及以上系统</p>
+          <div class="download-actions">
+            <a href="https://github.com/asukaneko/Nekobot-Android/releases" class="btn btn-primary btn-lg" target="_blank" rel="noopener" data-dl="apk">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              下载 APK
+            </a>
+            <a href="https://github.com/asukaneko/Nekobot-Android" class="btn btn-soft btn-lg" target="_blank" rel="noopener">
+              <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+              仓库地址
+            </a>
+          </div>
+          <p class="download-note">也可以从源码构建：<code>gradlew.bat assembleRelease</code></p>
+        </div>
+        <div class="download-side" aria-hidden="true">
+          <div class="dl-qr">
+            <img src="assets/neko-icon.png" class="dl-cat" alt="Nekobot 图标" />
+            <span>免费 · 开源 · 无广告</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======== 更新日志 ======== -->
+    <section class="section" id="changelog">
+      <div class="section-head reveal">
+        <span class="section-tag">日志</span>
+        <h2>一点一点，变得更好</h2>
+        <p>Nekobot 的成长记录</p>
+      </div>
+      <div class="timeline" id="changelogList"></div>
+      <div class="changelog-more reveal">
+        <a class="btn btn-ghost" href="https://github.com/asukaneko/Nekobot-Android/releases" target="_blank" rel="noopener">查看完整日志 →</a>
+      </div>
+    </section>
+
+    <!-- ======== FAQ ======== -->
+    <section class="section" id="faq">
+      <div class="section-head reveal">
+        <span class="section-tag">FAQ</span>
+        <h2>好奇宝宝问与答</h2>
+      </div>
+      <div class="faq-list">
+        <details class="faq-item reveal">
+          <summary>Nekobot 是免费的吗？<span class="faq-arrow"></span></summary>
+          <div class="faq-body">完全免费，且基于 GPL v3 开源。没有广告、没有内购，AI 调用的费用取决于你自己配置的 API。</div>
+        </details>
+        <details class="faq-item reveal d1">
+          <summary>没有服务器可以用吗？<span class="faq-arrow"></span></summary>
+          <div class="faq-body">可以！切换到「本地模式」，填入任意 OpenAI 兼容 API 的地址和密钥即可。所有数据都保存在手机本地，不需要任何后端。</div>
+        </details>
+        <details class="faq-item reveal d2">
+          <summary>我的对话数据安全吗？<span class="faq-arrow"></span></summary>
+          <div class="faq-body">本地模式下数据只存在你的设备里（Room 数据库），支持 WebDAV 备份到你自己信任的位置。服务器模式下数据流向取决于你连接的后端，建议只连接自己部署的服务。</div>
+        </details>
+        <details class="faq-item reveal d3">
+          <summary>支持哪些 AI 模型？<span class="faq-arrow"></span></summary>
+          <div class="faq-body">本地模式支持任何 OpenAI 兼容接口（OpenAI、DeepSeek、Gemini 兼容端点、本地部署的开源模型等）。应用内可以管理多个模型配置、克隆与故障转移队列。</div>
+        </details>
+        <details class="faq-item reveal d4">
+          <summary>可以导入 SillyTavern 的角色卡吗？<span class="faq-arrow"></span></summary>
+          <div class="faq-body">角色卡支持导入功能，兼容常见的角色卡字段（描述、人格、首条消息、场景、对话示例等），导入后可继续编辑完善。</div>
+        </details>
+      </div>
+    </section>
+
+    <!-- ======== 结尾 CTA ======== -->
+    <section class="section final-cta">
+      <div class="final-card reveal">
+        <img src="assets/neko-icon.png" class="final-cat" alt="" aria-hidden="true" />
+        <h2>准备好遇见你的 AI 伙伴了吗？</h2>
+        <p>下载 Nekobot，开始属于你们的故事</p>
+        <a href="#download" class="btn btn-primary btn-lg">立即下载</a>
+      </div>
+    </section>
+  </main>
+
+  <!-- ======== Footer ======== -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="#top" class="nav-logo">
+          <img src="assets/neko-icon.png" alt="Nekobot Logo" class="logo-cat" />
+          <span>Nekobot</span>
+        </a>
+        <p>温柔的 AI 伙伴，装进口袋里。</p>
+      </div>
+      <div class="footer-col">
+        <b>产品</b>
+        <a href="#features">特性</a>
+        <a href="#modes">双模式</a>
+        <a href="#download">下载</a>
+      </div>
+      <div class="footer-col">
+        <b>资源</b>
+        <a href="#changelog">更新日志</a>
+        <a href="#faq">常见问题</a>
+        <a href="https://github.com/asukaneko/Nekobot-Android" target="_blank" rel="noopener">GitHub</a>
+      </div>
+      <div class="footer-col">
+        <b>开源</b>
+        <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GPL v3 协议</a>
+        <a href="https://github.com/asukaneko/Nekobot-Android/issues" target="_blank" rel="noopener">问题反馈</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Nekobot · Made with love</span>
+    </div>
+  </footer>
+
+  <!-- 回到顶部 -->
+  <button class="to-top" id="toTop" aria-label="回到顶部">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+  </button>
+
+  <script src="script.js"></script>
+</body>
+</html>
