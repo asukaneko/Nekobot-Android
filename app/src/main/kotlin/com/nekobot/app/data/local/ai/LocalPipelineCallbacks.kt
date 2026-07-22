@@ -162,7 +162,9 @@ internal class LocalPipelineCallbacks(
         val history = kotlinx.coroutines.runBlocking {
             messageDao.listBySession(session.id)
         }.filter { it.role != "system" }
-            .dropLast(1)  // 最后一条是刚保存的用户消息
+            // 当前用户消息由下面统一追加。按 id 排除而不是 dropLast(1)，否则群聊第二名
+            // 角色执行时，最后一条已经是前一名角色回复，会被错误删掉并重复注入用户消息。
+            .filterNot { it.id == parentMessageId }
 
         // 无角色的 Agent 会话沿用旧聊天流程的提示词/世界书组装规则，
         // 仅将执行入口切换到 Pipeline，以便获得进度卡片事件。
@@ -202,9 +204,14 @@ internal class LocalPipelineCallbacks(
             } else {
                 msg.content
             }
+            val historyContent = if (session.sessionMode.equals("group", ignoreCase = true)) {
+                LocalGroupChat.annotateHistoryContent(msg.role, content, msg.sender)
+            } else {
+                content
+            }
             messages.add(mapOf(
                 "role" to msg.role,
-                "content" to content
+                "content" to historyContent
             ))
         }
 
@@ -287,6 +294,13 @@ internal class LocalPipelineCallbacks(
             ?: (ctx.usage["output_tokens"] as? Int)
             ?: (ctx.usage["completion"] as? Int)
         val modelName = (ctx.metadata["model_name"] as? String) ?: activeModel.model
+        val senderName = if (session.sessionMode.equals("group", ignoreCase = true)) {
+            (ctx.metadata["group_speaker_name"] as? String)
+                ?.takeIf { it.isNotBlank() }
+                ?: character?.name
+        } else {
+            null
+        }
 
         // 保存到 Room（同步执行，因为已在 IO 线程）
         kotlinx.coroutines.runBlocking {
@@ -295,6 +309,7 @@ internal class LocalPipelineCallbacks(
                 sessionId = session.id,
                 role = "assistant",
                 content = content,
+                sender = senderName,
                 timestamp = System.currentTimeMillis().toString(),
                 inputTokens = inputTokens,
                 outputTokens = outputTokens,
@@ -490,6 +505,11 @@ internal class LocalPipelineCallbacks(
             id = (message["id"] as? String),
             role = "assistant",
             content = (message["content"] as? String) ?: "",
+            sender = if (session.sessionMode.equals("group", ignoreCase = true)) {
+                (ctx.metadata["group_speaker_name"] as? String) ?: character?.name
+            } else {
+                null
+            },
             timestamp = (message["timestamp"] as? String) ?: System.currentTimeMillis().toString(),
             model = (ctx.metadata["model_name"] as? String) ?: activeModel.model
         )

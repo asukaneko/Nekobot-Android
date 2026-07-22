@@ -55,6 +55,10 @@ interface SessionDao {
     @Query("UPDATE local_sessions SET composed_system_prompt = :prompt WHERE id = :id")
     suspend fun updateComposedSystemPrompt(id: String, prompt: String)
 
+    /** 群聊每轮结束后保存调度游标，保证 round_robin 跨轮次连续。 */
+    @Query("UPDATE local_sessions SET group_active_speaker = :speakerId, group_turn_count = group_turn_count + 1, updated_at = :updatedAt WHERE id = :id")
+    suspend fun advanceGroupTurn(id: String, speakerId: String, updatedAt: String)
+
     @Query("UPDATE local_sessions SET is_public = :isPublic, share_config = :shareConfig, tts_config = :ttsConfig, proactive_chat = :proactiveChat, updated_at = :updatedAt WHERE id = :id")
     suspend fun updatePublicShareConfig(id: String, isPublic: Boolean, shareConfig: String?, ttsConfig: String?, proactiveChat: String?, updatedAt: String)
 

@@ -769,6 +769,9 @@ class AIPipeline {
             @Suppress("UNCHECKED_CAST")
             val streamedMsg = (ctx.streamedMessage as Map<String, Any>).toMutableMap()
             streamedMsg["content"] = ctx.finalContent
+            (ctx.metadata["group_speaker_name"] as? String)?.takeIf { it.isNotBlank() }?.let {
+                streamedMsg["sender"] = it
+            }
             ctx.streamedMessage = streamedMsg
 
             callbacks.saveAssistantMessage(ctx, streamedMsg)
@@ -822,7 +825,7 @@ class AIPipeline {
             "role" to "assistant",
             "content" to ctx.finalContent,
             "timestamp" to Instant.now().toString(),
-            "sender" to "AI"
+            "sender" to ((ctx.metadata["group_speaker_name"] as? String)?.takeIf { it.isNotBlank() } ?: "AI")
         )
 
         // 添加工具调用历史（用于「继续」功能）

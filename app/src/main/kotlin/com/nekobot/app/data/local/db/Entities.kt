@@ -60,7 +60,17 @@ data class LocalSessionEntity(
     /** 压缩上下文时产生的归档会话 ID（用于"提取归档 N 轮"功能） */
     @ColumnInfo(name = "archive_session_id") val archiveSessionId: String? = null,
     /** 会话模式：character（默认）/ agent / group；用于 agent 模式进度卡片显示等场景 */
-    @ColumnInfo(name = "session_mode", defaultValue = "character") val sessionMode: String = "character"
+    @ColumnInfo(name = "session_mode", defaultValue = "character") val sessionMode: String = "character",
+    /** 群聊会话 ID；本地模式与原仓库一样单独保留 gc_* 标识。 */
+    @ColumnInfo(name = "group_id") val groupId: String? = null,
+    /** 群聊成员角色 ID，JSON 数组。 */
+    @ColumnInfo(name = "character_ids") val characterIds: String? = null,
+    /** 群聊配置，JSON 对象（speaker_strategy / round_robin_mode 等）。 */
+    @ColumnInfo(name = "group_config") val groupConfig: String? = null,
+    /** 上一个发言角色 ID，供轮询策略跨轮次续接。 */
+    @ColumnInfo(name = "group_active_speaker") val groupActiveSpeaker: String? = null,
+    /** 已完成的群聊用户轮次数。 */
+    @ColumnInfo(name = "group_turn_count", defaultValue = "0") val groupTurnCount: Int = 0
 )
 
 /**

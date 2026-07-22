@@ -35,7 +35,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalApiKeyEntity::class,
         LocalMessageFavoriteEntity::class
     ],
-    version = 18,
+    version = 19,
     exportSchema = false
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -444,6 +444,22 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v18 → v19：补齐本地群聊会话持久化字段。
+         *
+         * 旧版本只保存 session_mode，创建弹窗提交的 character_ids / group_config 会丢失，
+         * 因而重进会话后无法构建群聊管线。新增字段均可空或有默认值，保留现有数据。
+         */
+        private val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_sessions ADD COLUMN group_id TEXT")
+                db.execSQL("ALTER TABLE local_sessions ADD COLUMN character_ids TEXT")
+                db.execSQL("ALTER TABLE local_sessions ADD COLUMN group_config TEXT")
+                db.execSQL("ALTER TABLE local_sessions ADD COLUMN group_active_speaker TEXT")
+                db.execSQL("ALTER TABLE local_sessions ADD COLUMN group_turn_count INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun get(context: Context): NekobotDatabase =
             get(context, com.nekobot.app.data.local.PrefsManager.DEFAULT_DB_NAME)
 
@@ -456,7 +472,7 @@ abstract class NekobotDatabase : RoomDatabase() {
                 NekobotDatabase::class.java,
                 dbName
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
                 // 仅当迁移脚本未覆盖的未来版本变更时才回退到破坏性迁移（保护现有数据）
                 .fallbackToDestructiveMigration()
                 .build()

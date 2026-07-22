@@ -89,6 +89,8 @@ data class Session(
     @SerializedName("character_runtime_snapshot") val characterRuntimeSnapshot: JsonElement? = null,
     @SerializedName("user_id") val userId: String? = null,
     @SerializedName("group_id") val groupId: String? = null,
+    /** 群聊配置（本地模式直接持久化；服务器模式按返回字段透传）。 */
+    @SerializedName("group_config") val groupConfig: JsonElement? = null,
     /** 自定义提示词列表（持久化，用户编辑，每项含 order/title/content） */
     @SerializedName("custom_prompts") val customPrompts: JsonElement? = null,
     /** 运行时提示词注入栈调试信息（每次对话后由后端更新，只读展示） */

@@ -17,6 +17,11 @@ class LocalChatPipelineRoutingTest {
     }
 
     @Test
+    fun groupSessionUsesPipelineWithoutSingleBoundCharacter() {
+        assertTrue(shouldUseLocalPipeline(sessionMode = "group", hasCharacter = false))
+    }
+
+    @Test
     fun boundCharacterAlwaysUsesPipeline() {
         assertTrue(shouldUseLocalPipeline(sessionMode = "character", hasCharacter = true))
     }

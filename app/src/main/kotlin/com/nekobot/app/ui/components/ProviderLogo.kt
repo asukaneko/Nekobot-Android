@@ -2,7 +2,6 @@ package com.nekobot.app.ui.components
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -159,14 +158,13 @@ fun ModelInfoChip(
     else MaterialTheme.colorScheme.onSurfaceVariant
     Surface(
         modifier = modifier,
-        color = color.copy(alpha = if (accent) 0.11f else 0.07f),
+        color = color.copy(alpha = if (accent) 0.09f else 0.055f),
         contentColor = color,
-        shape = RoundedCornerShape(9.dp),
-        border = BorderStroke(1.dp, color.copy(alpha = if (accent) 0.18f else 0.10f))
+        shape = RoundedCornerShape(7.dp)
     ) {
         Text(
             text = text,
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Medium,
             maxLines = 1,

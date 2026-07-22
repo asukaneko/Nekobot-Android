@@ -6,7 +6,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,15 +23,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Science
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -40,11 +35,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -459,19 +454,26 @@ private fun ModelCard(
                 provider = model.provider,
                 baseUrl = model.baseUrl,
                 model = model.model,
-                size = 52.dp
+                size = 46.dp
             )
-            Spacer(Modifier.width(13.dp))
+            Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = model.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(3.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = model.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (isActive) {
+                        Spacer(Modifier.width(8.dp))
+                        ModelStatusBadge(text = stringResource(R.string.localai_current_model))
+                    }
+                }
+                Spacer(Modifier.height(2.dp))
                 Text(
                     text = model.model,
                     style = MaterialTheme.typography.bodySmall,
@@ -510,15 +512,12 @@ private fun ModelCard(
             }
         }
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(12.dp))
 
         Row(
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (isActive) {
-                ModelStatusBadge(text = stringResource(R.string.localai_current_model))
-            }
             ModelInfoChip(text = model.protocol)
             ModelInfoChip(
                 text = purposeLabel,
@@ -528,46 +527,25 @@ private fun ModelCard(
         }
 
         if (model.baseUrl.isNotBlank()) {
-            Spacer(Modifier.height(11.dp))
+            Spacer(Modifier.height(9.dp))
             ModelEndpointRow(url = model.baseUrl)
         }
 
-        ModelCardDivider(modifier = Modifier.padding(vertical = 13.dp))
+        ModelCardDivider(modifier = Modifier.padding(vertical = 10.dp))
 
-        // 高频操作直接露出，避免每次测试或切换模型都要打开菜单。
+        // 操作区保持轻量；当前模型不再重复展示一个禁用按钮。
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(9.dp)
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            OutlinedButton(
-                onClick = onTest,
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(12.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp)
-            ) {
-                Icon(Icons.Filled.Science, contentDescription = null, modifier = Modifier.size(17.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(stringResource(R.string.aiconfig_test), maxLines = 1)
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onTest) {
+                Text(stringResource(R.string.aiconfig_test))
             }
-            Button(
-                onClick = onSetActive,
-                enabled = !isActive,
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(12.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
-                colors = ButtonDefaults.buttonColors(
-                    disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                    disabledContentColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.65f)
-                )
-            ) {
-                Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(17.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = if (isActive) stringResource(R.string.localai_current_model)
-                    else stringResource(R.string.localai_set_current),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+            if (!isActive) {
+                TextButton(onClick = onSetActive) {
+                    Text(stringResource(R.string.localai_set_current))
+                }
             }
         }
     }

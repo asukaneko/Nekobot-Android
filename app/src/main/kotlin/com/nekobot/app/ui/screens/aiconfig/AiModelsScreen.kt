@@ -23,13 +23,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Science
-import androidx.compose.material3.Button
 import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,11 +36,11 @@ import com.nekobot.app.ui.components.GlassExposedDropdownMenu as ExposedDropdown
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -453,19 +450,29 @@ private fun ModelCard(
                 provider = model.provider,
                 baseUrl = model.baseUrl,
                 model = model.model,
-                size = 52.dp
+                size = 46.dp
             )
-            Spacer(Modifier.width(13.dp))
+            Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = model.displayName,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(3.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = model.displayName,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (isActive) {
+                        Spacer(Modifier.width(8.dp))
+                        ModelStatusBadge(
+                            text = stringResource(R.string.aimodels_active_badge),
+                            color = SuccessGreen
+                        )
+                    }
+                }
+                Spacer(Modifier.height(2.dp))
                 Text(
                     text = model.model ?: "—",
                     style = MaterialTheme.typography.bodySmall,
@@ -503,19 +510,13 @@ private fun ModelCard(
             }
         }
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(12.dp))
 
-        // 状态和能力标签放在同一视觉层，快速区分当前模型与用途。
+        // 协议和用途保持弱强调，激活状态只在标题区出现一次。
         Row(
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (isActive) {
-                ModelStatusBadge(
-                    text = stringResource(R.string.aimodels_active_badge),
-                    color = SuccessGreen
-                )
-            }
             ModelInfoChip(text = model.protocol ?: "—")
             ModelInfoChip(
                 text = model.purpose ?: "—",
@@ -525,13 +526,13 @@ private fun ModelCard(
         }
 
         if (!model.baseUrl.isNullOrBlank()) {
-            Spacer(Modifier.height(11.dp))
+            Spacer(Modifier.height(9.dp))
             ModelEndpointRow(url = model.baseUrl)
         }
 
-        ModelCardDivider(modifier = Modifier.padding(vertical = 13.dp))
+        ModelCardDivider(modifier = Modifier.padding(vertical = 10.dp))
 
-        // 高频操作直接展示，克隆、编辑和删除保留在更多菜单中。
+        // 高频操作使用轻量文字按钮，避免底部再形成一层按钮卡片。
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -540,35 +541,28 @@ private fun ModelCard(
                 modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Switch(
+                    checked = isEnabled,
+                    onCheckedChange = { onToggle() }
+                )
+                Spacer(Modifier.width(7.dp))
                 Text(
                     text = stringResource(R.string.aimodels_enabled),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (isEnabled) MaterialTheme.colorScheme.onSurface
                     else MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(Modifier.width(5.dp))
-                Switch(
-                    checked = isEnabled,
-                    onCheckedChange = { onToggle() }
-                )
             }
-            OutlinedButton(
+            TextButton(
                 onClick = onTest,
-                shape = RoundedCornerShape(12.dp),
-                contentPadding = PaddingValues(horizontal = 11.dp, vertical = 8.dp)
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
             ) {
-                Icon(Icons.Filled.Science, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(5.dp))
                 Text(stringResource(R.string.aiconfig_test))
             }
-            Spacer(Modifier.width(8.dp))
-            Button(
+            TextButton(
                 onClick = onApply,
-                shape = RoundedCornerShape(12.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
             ) {
-                Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(5.dp))
                 Text(stringResource(R.string.common_apply))
             }
         }

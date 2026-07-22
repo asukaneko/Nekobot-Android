@@ -491,7 +491,13 @@ object NbotConfigImporter {
                     proactiveChat = obj.jsonStr("proactive_chat"),
                     ttsConfig = obj.jsonStr("tts_config"),
                     shareConfig = obj.jsonStr("share_config"),
-                    archiveSessionId = obj.str("archive_session_id")
+                    archiveSessionId = obj.str("archive_session_id"),
+                    sessionMode = obj.str("session_mode") ?: "character",
+                    groupId = obj.str("group_id"),
+                    characterIds = obj.jsonStr("character_ids"),
+                    groupConfig = obj.jsonStr("group_config"),
+                    groupActiveSpeaker = obj.str("group_active_speaker"),
+                    groupTurnCount = obj.int("group_turn_count", 0)
                 )
             )
             count++

@@ -1,7 +1,11 @@
 package com.nekobot.app.data.local.ai
 
 import java.time.Duration
+import java.time.Instant
 import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.random.Random
 
@@ -401,9 +405,11 @@ object TimeContext {
      */
     fun buildRealTimeContext(
         previousTurnTime: String? = null,
-        currentTime: LocalDateTime = LocalDateTime.now()
+        currentTime: LocalDateTime = LocalDateTime.now(),
+        zoneId: ZoneId = ZoneId.systemDefault()
     ): Map<String, Any> {
-        val nowIso = currentTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+        val current = currentTime.atZone(zoneId)
+        val nowIso = current.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
         if (previousTurnTime.isNullOrBlank()) {
             return mapOf(
                 "current_time" to nowIso,
@@ -415,7 +421,7 @@ object TimeContext {
             )
         }
 
-        val prevTime = parseDateTime(previousTurnTime) ?: return mapOf(
+        val prevTime = parseDateTime(previousTurnTime, zoneId) ?: return mapOf(
             "current_time" to nowIso,
             "previous_turn_time" to previousTurnTime,
             "elapsed_seconds" to 0L,
@@ -424,14 +430,15 @@ object TimeContext {
             "roleplay_hint" to ""
         )
 
-        val elapsedSeconds = Duration.between(prevTime, currentTime).seconds.coerceAtLeast(0L)
+        val elapsedSeconds = Duration.between(prevTime.toInstant(), current.toInstant()).seconds.coerceAtLeast(0L)
         val elapsedLabel = elapsedLabel(elapsedSeconds)
         val level = continuityLevel(elapsedSeconds, hasPrevious = true)
         val hint = roleplayHint(level, elapsedLabel)
 
         return mapOf(
             "current_time" to nowIso,
-            "previous_turn_time" to previousTurnTime,
+            // 显示当前设备时区；旧数据即使保存为 UTC(Z)，也不会再早几个小时。
+            "previous_turn_time" to prevTime.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
             "elapsed_seconds" to elapsedSeconds,
             "elapsed_label" to elapsedLabel,
             "continuity_level" to level,
@@ -491,16 +498,24 @@ object TimeContext {
     }
 
     /** 解析时间字符串 */
-    private fun parseDateTime(value: String): LocalDateTime? {
-        return try {
-            LocalDateTime.parse(value, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
-        } catch (e: Exception) {
-            try {
-                // 兼容带时区的 ISO 字符串（如 2026-06-20T10:00:00+08:00）
-                val cleaned = value.replace("Z", "").substringBefore("+").substringBeforeLast("-")
-                LocalDateTime.parse(cleaned, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
-            } catch (e2: Exception) { null }
+    private fun parseDateTime(value: String, zoneId: ZoneId): ZonedDateTime? {
+        val text = value.trim()
+        if (text.isEmpty()) return null
+
+        // 新数据/原仓库格式：带本地 offset；旧 Android 数据：UTC Instant（Z）。
+        runCatching {
+            return OffsetDateTime.parse(text, DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                .atZoneSameInstant(zoneId)
         }
+        runCatching { return Instant.parse(text).atZone(zoneId) }
+        runCatching {
+            return ZonedDateTime.parse(text, DateTimeFormatter.ISO_ZONED_DATE_TIME)
+                .withZoneSameInstant(zoneId)
+        }
+        // 兼容历史 naive 时间：按设备本地时区解释，与原仓库行为一致。
+        return runCatching {
+            LocalDateTime.parse(text, DateTimeFormatter.ISO_LOCAL_DATE_TIME).atZone(zoneId)
+        }.getOrNull()
     }
 
     // ---- 昼夜节律 ----

@@ -279,6 +279,8 @@ class LocalRepository(
         val now = nowIso()
         val id = UUID.randomUUID().toString()
         val character = req.characterId?.let { characterDao.getById(it) }
+        val isGroup = req.sessionMode.equals("group", ignoreCase = true)
+        val groupCharacterIds = req.characterIds.orEmpty().filter { it.isNotBlank() }.distinct()
         val entity = LocalSessionEntity(
             id = id,
             name = req.name ?: character?.name ?: "新会话",
@@ -294,7 +296,11 @@ class LocalRepository(
             tags = req.tags?.joinToString(","),
             createdAt = now,
             updatedAt = now,
-            sessionMode = req.sessionMode
+            sessionMode = req.sessionMode,
+            groupId = if (isGroup) "gc_${UUID.randomUUID().toString().replace("-", "").take(12)}" else null,
+            characterIds = groupCharacterIds.takeIf { isGroup }
+                ?.let { gson.toJson(it) },
+            groupConfig = req.groupConfig?.takeIf { isGroup }?.toString()
         )
         sessionDao.upsert(entity)
 
@@ -331,6 +337,7 @@ class LocalRepository(
         plotChoiceStyle: String? = null,
         plotOutline: String? = null,
         userPersona: String? = null,
+        characterIds: List<String>? = null,
         autoStateInterval: Int? = null,
         disabledPromptKeys: List<String>? = null,
         isPublic: Boolean? = null,
@@ -354,6 +361,8 @@ class LocalRepository(
             plotChoiceStyle = plotChoiceStyle ?: entity.plotChoiceStyle,
             plotOutline = plotOutline ?: entity.plotOutline,
             userPersona = userPersona ?: entity.userPersona,
+            characterIds = characterIds?.filter { it.isNotBlank() }?.distinct()
+                ?.let { gson.toJson(it) } ?: entity.characterIds,
             autoStateInterval = autoStateInterval ?: entity.autoStateInterval,
             disabledPromptKeys = disabledPromptKeys?.let { it.joinToString(",") } ?: entity.disabledPromptKeys,
             isPublic = isPublic ?: entity.isPublic,
@@ -834,6 +843,20 @@ class LocalRepository(
             return@flow
         }
 
+        // 群聊会话没有单一 character_id：按 group_config 调度一个或多个角色，
+        // 每个角色使用自己的 CharacterRuntime/角色卡执行同一条共享消息历史。
+        if (session.sessionMode.equals("group", ignoreCase = true)) {
+            chatGroupWithPipeline(
+                session = session,
+                userMessage = userMessage,
+                activeModel = activeModel,
+                attachments = attachments,
+                parentMessageId = parentMessageId,
+                generationController = generationController
+            ).collect { emit(it) }
+            return@flow
+        }
+
         val character = session.characterId?.let { characterDao.getById(it) }
 
         // 普通无角色会话沿用旧流程；Agent 无角色会话需要进入 Pipeline 产生进度卡片。
@@ -1226,6 +1249,212 @@ class LocalRepository(
             activeGenerations.remove(sessionId, generationController)
         }
     }.flowOn(Dispatchers.IO)
+
+    /**
+     * 本地群聊一轮处理。
+     *
+     * 对齐原仓库 Web 群聊路径：持久化 GroupConfig/成员，按策略选择发言者；round_robin
+     * 一轮内让所有角色各回复一次，并顺序执行，使后发言角色能看到前面角色刚落库的消息。
+     */
+    private fun chatGroupWithPipeline(
+        session: LocalSessionEntity,
+        userMessage: String,
+        activeModel: LocalAiModelEntity,
+        attachments: List<Map<String, Any>>,
+        parentMessageId: String,
+        generationController: LocalGenerationController
+    ): Flow<RealtimeEvent> = flow {
+        val characterIds = session.characterIds?.let { json ->
+            runCatching {
+                val type = object : TypeToken<List<String>>() {}.type
+                gson.fromJson<List<String>>(json, type)
+            }.getOrNull()
+        }.orEmpty().filter { it.isNotBlank() }.distinct()
+
+        val charactersById = characterIds.mapNotNull { id ->
+            characterDao.getById(id)?.let { id to it }
+        }.toMap(LinkedHashMap())
+
+        if (charactersById.isEmpty()) {
+            emit(RealtimeEvent.Error("群聊没有可用角色，请重新创建群聊并至少选择一个角色"))
+            emit(RealtimeEvent.StreamEnd(session.id))
+            return@flow
+        }
+
+        val participants = charactersById.values.map { character ->
+            val relationship = db.relationshipDao().get(character.id, "local-user")
+                ?.let { entity ->
+                    runCatching {
+                        com.nekobot.app.data.local.ai.RelationshipState.fromJson(entity.dataJson)
+                    }.getOrNull()
+                }
+            com.nekobot.app.data.local.ai.LocalGroupParticipant(
+                id = character.id,
+                name = character.name,
+                description = character.description.orEmpty(),
+                personality = character.personality.orEmpty(),
+                relationWeight = relationship?.let {
+                    it.affection + it.trust * 0.8 + it.familiarity * 0.5
+                }
+            )
+        }
+        val groupConfig = com.nekobot.app.data.local.ai.LocalGroupConfig.fromJson(session.groupConfig)
+        val speakers = com.nekobot.app.data.local.ai.LocalGroupChat.selectSpeakers(
+            config = groupConfig,
+            message = userMessage,
+            participants = participants,
+            lastSpeakerId = session.groupActiveSpeaker
+        )
+        if (speakers.isEmpty()) {
+            emit(RealtimeEvent.Error("未能选择群聊发言角色"))
+            emit(RealtimeEvent.StreamEnd(session.id))
+            return@flow
+        }
+
+        val disabledKeys = session.disabledPromptKeys
+            ?.split(",")
+            ?.filter { it.isNotBlank() }
+            ?: emptyList()
+        val customPrompts = session.customPrompts?.let { raw ->
+            runCatching {
+                val type = object : TypeToken<List<Map<String, Any>>>() {}.type
+                gson.fromJson<List<Map<String, Any>>>(raw, type)
+            }.getOrNull()
+        }.orEmpty()
+        val failoverQueue = aiModelDao.listByPurpose(activeModel.purpose.ifBlank { "chat" })
+            .filter { it.id != activeModel.id }
+
+        var lastCompletedSpeaker: com.nekobot.app.data.local.ai.LocalGroupParticipant? = null
+        var lastContext: com.nekobot.app.data.local.ai.PipelineContext? = null
+
+        for ((index, speaker) in speakers.withIndex()) {
+            if (generationController.isStopped) break
+            val character = charactersById[speaker.id] ?: continue
+            val callbacks = com.nekobot.app.data.local.ai.LocalPipelineCallbacks(
+                db = db,
+                aiClient = aiClient,
+                activeModel = activeModel,
+                session = session,
+                character = character,
+                worldBookEntries = loadWorldBookEntries(character.id),
+                characterRuntime = characterRuntime,
+                characterIdentity = com.nekobot.app.data.local.ai.CharacterIdentity(
+                    characterId = character.id,
+                    targetId = "local-user",
+                    scopeId = session.id,
+                    channel = "local"
+                ),
+                parentMessageId = parentMessageId,
+                onTokenRecorded = { sid, model, input, output, ts, purpose ->
+                    appendTokenUsageRecord(sid, model, input, output, ts, purpose = purpose)
+                },
+                workspaceRoot = appContext?.filesDir
+                    ?.let { LocalWorkspaceStorage.resolve(it, session.id) },
+                execAuthorizationManager = localExecAuthorizationManager,
+                mcpToolExecutor = localMcpRuntime::executeByFullName,
+                skillToolExecutor = ::executeLocalSkillTool,
+                failoverQueue = failoverQueue,
+                coordinator = failoverCoordinator,
+                hookExecutor = hookExecutor,
+                visionDescriber = { imageUrl, question ->
+                    describeImageViaQueue(
+                        imageUrl = imageUrl,
+                        question = question,
+                        requestTag = session.id,
+                        shouldStop = { generationController.isStopped }
+                    )
+                },
+                generationController = generationController,
+                execConfirmationEmitter = { request -> _execConfirmationEvents.tryEmit(request) }
+            )
+
+            val metadata = buildMap<String, Any> {
+                put("session_mode", "group")
+                put("group_id", session.groupId ?: session.id)
+                put("group_speaker", speaker.id)
+                put("group_speaker_name", speaker.name)
+                put("group_round_complete", index == speakers.lastIndex)
+                put("auto_state_interval", session.autoStateInterval)
+                if (disabledKeys.isNotEmpty()) put("disabled_prompt_keys", disabledKeys)
+                if (customPrompts.isNotEmpty()) put("custom_prompts", customPrompts)
+                session.userPersona?.takeIf { it.isNotBlank() }?.let { put("user_persona", it) }
+            }
+            val request = com.nekobot.app.data.local.ai.ChatRequest.forLocal(
+                sessionId = session.id,
+                content = userMessage,
+                userId = "local-user",
+                attachments = attachments,
+                metadata = metadata
+            )
+            val ctx = com.nekobot.app.data.local.ai.PipelineContext(request).apply {
+                stopRequested = { generationController.isStopped }
+                this.metadata.putAll(metadata)
+                promptStack.add(
+                    key = "group.scene",
+                    content = com.nekobot.app.data.local.ai.LocalGroupChat.buildSystemPrompt(
+                        groupName = session.name,
+                        participants = participants,
+                        speaker = speaker
+                    ),
+                    priority = 85,
+                    scope = "turn"
+                )
+            }
+
+            coroutineScope {
+                val pipelineJob = launch {
+                    try {
+                        com.nekobot.app.data.local.ai.aiPipeline.process(
+                            ctx = ctx,
+                            callbacks = callbacks,
+                            tools = emptyList()
+                        )
+                    } finally {
+                        callbacks.eventChannel.close()
+                    }
+                }
+                for (event in callbacks.eventChannel) emit(event)
+                pipelineJob.join()
+            }
+
+            lastCompletedSpeaker = speaker
+            lastContext = ctx
+        }
+
+        if (lastCompletedSpeaker != null && !generationController.isStopped) {
+            sessionDao.advanceGroupTurn(session.id, lastCompletedSpeaker.id, nowIso())
+        }
+
+        // 与单角色会话一致：保存最后一名发言角色实际使用的完整提示词栈，供详情页查看。
+        lastContext?.let { ctx ->
+            ctx.metadata["prompt_stack_debug"]?.let { stackDebug ->
+                runCatching { sessionDao.updatePromptStackDebug(session.id, gson.toJson(stackDebug)) }
+            }
+            (ctx.metadata["composed_system_prompt"] as? String)?.takeIf { it.isNotBlank() }?.let { prompt ->
+                runCatching { sessionDao.updateComposedSystemPrompt(session.id, prompt) }
+            }
+        }
+
+        // 群聊同样只在一轮全部结束后尝试自动命名一次。
+        if (!generationController.isStopped && lastContext?.finalContent?.isNotBlank() == true) {
+            runCatching {
+                val latestSession = sessionDao.getById(session.id) ?: return@runCatching
+                val latestMessages = messageDao.listBySession(session.id)
+                val newName = sessionNameGenerator.tryAutoName(
+                    session = latestSession,
+                    messages = latestMessages,
+                    characterName = participants.joinToString("、") { it.name },
+                    characterDescription = participants.joinToString("；") { it.description }.take(500)
+                )
+                if (newName != null) {
+                    sessionDao.updateName(session.id, newName, nowIso())
+                    emit(RealtimeEvent.SessionRenamed(session.id, newName))
+                }
+            }.onFailure { error ->
+                LocalLogger.w(TAG, "群聊会话自动命名失败（不影响主流程）: ${error.message}", error)
+            }
+        }
+    }
 
     /** 提交本地 Agent 命令授权结果。 */
     fun respondToExecConfirmation(
@@ -2623,7 +2852,15 @@ $charSection$topicSection
         ttsConfig = ttsConfig?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
         shareConfig = shareConfig?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
         archiveSessionId = archiveSessionId,
-        sessionMode = sessionMode
+        sessionMode = sessionMode,
+        groupId = groupId,
+        characterIds = characterIds?.let {
+            runCatching {
+                val type = object : TypeToken<List<String>>() {}.type
+                gson.fromJson<List<String>>(it, type)
+            }.getOrNull()
+        },
+        groupConfig = groupConfig?.let { runCatching { JsonParser.parseString(it) }.getOrNull() }
     )
 
     private fun LocalMessageEntity.toMessage(): Message = Message(

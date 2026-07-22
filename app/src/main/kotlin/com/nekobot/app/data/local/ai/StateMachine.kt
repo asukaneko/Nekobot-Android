@@ -1,6 +1,7 @@
 package com.nekobot.app.data.local.ai
 
-import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 import kotlin.random.Random
 
 /**
@@ -98,7 +99,9 @@ object StateMachine {
         userMessage: String = "",
         assistantMessage: String = ""
     ): CharacterState {
-        val now = Instant.now().toString()
+        // 与原仓库 datetime.now().astimezone().isoformat() 一致：保存本地 offset，
+        // 避免提示词栈直接展示 UTC 时间而比真实时间早数小时。
+        val now = OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
         val newState = CharacterState(
             characterId = oldState.characterId,
             scopeId = oldState.scopeId,
@@ -212,7 +215,7 @@ object StateMachine {
             dependency = oldRel.dependency,
             security = oldRel.security,
             jealousy = oldRel.jealousy,
-            updatedAt = Instant.now().toString()
+            updatedAt = OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
         )
 
         val deltas = plan.relationshipDeltas
