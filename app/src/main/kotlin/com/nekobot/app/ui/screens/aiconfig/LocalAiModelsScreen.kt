@@ -693,15 +693,17 @@ private fun LocalAiModelEditDialog(
                     }
                 }
             }
-            // Provider（仅 STT 等多协议 purpose 实际生效；留空走默认）
-            OutlinedTextField(
-                value = provider,
-                onValueChange = { provider = it },
-                label = { Text(stringResource(R.string.localai_provider)) },
-                placeholder = { Text(stringResource(R.string.localai_provider_placeholder)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
+            // Provider 仅在 STT 用途下显示（STT 多协议路由需要：xiaomi/mimo 走小米 MiMo，其他走 OpenAI 兼容）
+            if (purpose == "stt") {
+                OutlinedTextField(
+                    value = provider,
+                    onValueChange = { provider = it },
+                    label = { Text(stringResource(R.string.localai_provider)) },
+                    placeholder = { Text(stringResource(R.string.localai_provider_placeholder)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
             OutlinedTextField(
                 value = baseUrl,
                 onValueChange = { baseUrl = it },

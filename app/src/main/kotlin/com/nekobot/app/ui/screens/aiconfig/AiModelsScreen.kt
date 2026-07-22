@@ -634,13 +634,16 @@ private fun AiModelFormDialog(
                 labelFor = { key -> protocolOptions.find { it.key == key }?.displayName ?: key }
             )
 
-            OutlinedTextField(
-                value = provider,
-                onValueChange = { provider = it },
-                label = { Text(stringResource(R.string.aimodels_provider)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
+            // Provider 仅在 STT 用途下显示（多协议路由需要，其他用途留空走默认避免歧义）
+            if (purpose == "stt") {
+                OutlinedTextField(
+                    value = provider,
+                    onValueChange = { provider = it },
+                    label = { Text(stringResource(R.string.aimodels_provider)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
 
             OutlinedTextField(
                 value = baseUrl,
