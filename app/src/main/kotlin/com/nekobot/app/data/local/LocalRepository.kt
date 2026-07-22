@@ -14,10 +14,13 @@ import com.nekobot.app.data.local.ai.FailoverUsage
 import com.nekobot.app.data.local.ai.FailoverUsageReader
 import com.nekobot.app.data.local.ai.LocalAiClient
 import com.nekobot.app.data.local.ai.LocalAiResult
+import com.nekobot.app.data.local.ai.LocalContextTokenMessage
 import com.nekobot.app.data.local.ai.LocalGenerationController
 import com.nekobot.app.data.local.ai.LocalMcpRuntime
 import com.nekobot.app.data.local.ai.LocalPromptBuilder
 import com.nekobot.app.data.local.ai.TokenStatsManager
+import com.nekobot.app.data.local.ai.currentLocalContextTokens
+import com.nekobot.app.data.local.ai.resolveLocalTokenUsage
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.local.db.LocalApiKeyEntity
 import com.nekobot.app.data.local.db.LocalFailoverHealthEntity
@@ -160,6 +163,7 @@ class LocalRepository(
     @Volatile
     private var currentChatJob: Job? = null
     private val activeGenerations = ConcurrentHashMap<String, LocalGenerationController>()
+    private val tokenUsageLock = Any()
 
     /**
      * 当前进行中会话 ID。二级 LLM 调用（AutoState/记忆抽取）在跨会话单例内触发，
@@ -546,7 +550,8 @@ class LocalRepository(
         content: String,
         inputTokens: Int? = null,
         outputTokens: Int? = null,
-        model: String? = null
+        model: String? = null,
+        usageEstimated: Boolean = false
     ) = withContext(Dispatchers.IO) {
         val now = nowIso()
         val msg = LocalMessageEntity(
@@ -572,13 +577,16 @@ class LocalRepository(
             )
         }
         // 同时追加到独立 token 用量存储（不受会话删除影响）
-        appendTokenUsageRecord(
-            sessionId = sessionId,
-            model = model ?: "",
-            inputTokens = inputTokens ?: 0,
-            outputTokens = outputTokens ?: 0,
-            timestamp = now
-        )
+        if ((inputTokens ?: 0) > 0 || (outputTokens ?: 0) > 0) {
+            appendTokenUsageRecord(
+                sessionId = sessionId,
+                model = model ?: "",
+                inputTokens = inputTokens ?: 0,
+                outputTokens = outputTokens ?: 0,
+                timestamp = now,
+                estimated = usageEstimated
+            )
+        }
         msg.toMessage()
     }
 
@@ -602,29 +610,36 @@ class LocalRepository(
         sessionId: String, model: String,
         inputTokens: Int, outputTokens: Int, timestamp: String,
         source: String = "chat",
-        purpose: String = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_CHAT
+        purpose: String = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_CHAT,
+        estimated: Boolean = false
     ) {
         val prefs = tokenUsagePrefs ?: return
-        val existing = prefs.getString("records", "[]") ?: "[]"
-        try {
-            val arr = JsonParser.parseString(existing).asJsonArray
-            val record = JsonObject().apply {
-                addProperty("session_id", sessionId)
-                addProperty("model", model)
-                addProperty("input_tokens", inputTokens)
-                addProperty("output_tokens", outputTokens)
-                addProperty("total_tokens", inputTokens + outputTokens)
-                addProperty("timestamp", timestamp)
-                addProperty("source", source)
-                addProperty("purpose", purpose)
-                // 提取日期部分（yyyy-MM-dd）用于按日聚合
-                addProperty("date", timestamp.substringBefore("T").substringBefore(" ").ifBlank { timestamp })
+        synchronized(tokenUsageLock) {
+            val existing = prefs.getString("records", "[]") ?: "[]"
+            try {
+                val arr = JsonParser.parseString(existing).asJsonArray
+                val record = JsonObject().apply {
+                    addProperty("id", UUID.randomUUID().toString())
+                    addProperty("session_id", sessionId)
+                    addProperty("model", model)
+                    addProperty("input_tokens", inputTokens)
+                    addProperty("output_tokens", outputTokens)
+                    addProperty("total_tokens", inputTokens + outputTokens)
+                    addProperty("timestamp", timestamp)
+                    addProperty("source", source)
+                    addProperty("purpose", purpose)
+                    addProperty("estimated", estimated)
+                    // 提取日期部分（yyyy-MM-dd）用于按日聚合
+                    addProperty("date", timestamp.substringBefore("T").substringBefore(" ").ifBlank { timestamp })
+                }
+                arr.add(record)
+                // 限制最多 5000 条，超出则丢弃最早的
+                while (arr.size() > 5000) arr.remove(0)
+                prefs.edit().putString("records", arr.toString()).apply()
+            } catch (e: Exception) {
+                LocalLogger.w("LocalRepo", "Token 用量记录写入失败: ${e.message}")
             }
-            arr.add(record)
-            // 限制最多 5000 条，超出则丢弃最早的
-            while (arr.size() > 5000) arr.remove(0)
-            prefs.edit().putString("records", arr.toString()).apply()
-        } catch (_: Exception) { }
+        }
     }
 
     /** 读取所有 token 用量记录 */
@@ -718,7 +733,22 @@ class LocalRepository(
                     // 保存 assistant 消息（含 token 用量）
                     val content = fullContent.toString().trim()
                     if (content.isNotEmpty()) {
-                        addAssistantMessage(sessionId, content, inputTokens, outputTokens, modelName ?: activeModel.model)
+                        val usage = resolveLocalTokenUsage(
+                            usage = buildMap {
+                                inputTokens?.let { put("prompt", it) }
+                                outputTokens?.let { put("completion", it) }
+                            },
+                            messages = messages,
+                            outputText = content
+                        )
+                        addAssistantMessage(
+                            sessionId,
+                            content,
+                            usage.inputTokens,
+                            usage.outputTokens,
+                            modelName ?: activeModel.model,
+                            usageEstimated = usage.estimated
+                        )
                     }
                     emit(RealtimeEvent.StreamEnd(sessionId))
                 }
@@ -891,8 +921,8 @@ class LocalRepository(
         val callbacks = com.nekobot.app.data.local.ai.LocalPipelineCallbacks(
             db, aiClient, activeModel, session, character, worldBookEntries, runtime, identity,
             parentMessageId = parentMessageId,
-            onTokenRecorded = { sid, model, input, output, ts, purpose ->
-                appendTokenUsageRecord(sid, model, input, output, ts, purpose = purpose)
+            onTokenRecorded = { sid, model, input, output, ts, purpose, estimated ->
+                appendTokenUsageRecord(sid, model, input, output, ts, purpose = purpose, estimated = estimated)
             },
             onThinkingCardUpdate = { card ->
                 // 持久化进度卡片到父用户消息
@@ -1355,8 +1385,8 @@ class LocalRepository(
                     channel = "local"
                 ),
                 parentMessageId = parentMessageId,
-                onTokenRecorded = { sid, model, input, output, ts, purpose ->
-                    appendTokenUsageRecord(sid, model, input, output, ts, purpose = purpose)
+                onTokenRecorded = { sid, model, input, output, ts, purpose, estimated ->
+                    appendTokenUsageRecord(sid, model, input, output, ts, purpose = purpose, estimated = estimated)
                 },
                 workspaceRoot = appContext?.filesDir
                     ?.let { LocalWorkspaceStorage.resolve(it, session.id) },
@@ -2548,6 +2578,23 @@ $charSection$topicSection
             sum += input + output
         }
         sum
+    }
+
+    /**
+     * 获取当前仍处于模型上下文中的 Token 数。
+     * 最近一条助手消息的 input+output 已覆盖此前完整 prompt，不能再把各轮 input 重复求和。
+     */
+    suspend fun sessionContextTokenUsage(sessionId: String): Long = withContext(Dispatchers.IO) {
+        val messages = messageDao.listBySession(sessionId)
+            .filter { it.role != "system" }
+            .map {
+                LocalContextTokenMessage(
+                    content = it.content,
+                    inputTokens = it.inputTokens,
+                    outputTokens = it.outputTokens
+                )
+            }
+        currentLocalContextTokens(messages)
     }
 
     /** 本地 token 用量排行榜（按 model / session 聚合，从独立存储读取）。 */

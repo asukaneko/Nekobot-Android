@@ -24,6 +24,7 @@
     <string name="tokens_ranking_models">模型</string>
     <string name="tokens_ranking_purposes">用途</string>
     <string name="tokens_records_title">Token 记录</string>
+    <string name="tokens_estimated_badge">%1$s · 估算</string>
     <string name="tokens_records_subtitle">共 %1$d 条，第 %2$d/%3$d 页 · 每页 %4$d 条</string>
     <string name="tokens_prev_page">上一页</string>
     <string name="tokens_next_page">下一页</string>

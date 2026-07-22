@@ -440,7 +440,7 @@ private fun ModernChatComposer(
 
     // 加载激活模型的 maxTokens，用于上下文圆环进度条百分比计算
     var maxTokens by remember { mutableStateOf<Int?>(null) }
-    // 会话历史已用 Token：服务端消息不携带 token，需从 token 统计端点按 session_id 聚合
+    // 当前上下文 Token：本地模式取最近一次完整 prompt usage，避免把每轮累计计费用量重复相加
     var usedTokens by remember { mutableStateOf(0L) }
     // 消息条数变化或发送中状态变化时刷新（远程模式发送后服务端会先写 token 记录）
     val refreshKey = messageCount.toString() + "_" + sending.toString()
@@ -451,7 +451,7 @@ private fun ModernChatComposer(
             ServiceContainer.unified.getActiveContextLength()
         }
         usedTokens = withContext(Dispatchers.IO) {
-            ServiceContainer.unified.sessionTokenUsage(sessionId)
+            ServiceContainer.unified.sessionContextTokenUsage(sessionId)
         }
     }
     val hasPlotSurface = plotChoicesLoading || plotChoices.isNotEmpty()

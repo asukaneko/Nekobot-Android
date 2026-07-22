@@ -550,6 +550,10 @@ class UnifiedRepository(
         }
     }
 
+    /** 当前仍会发送给模型的上下文 Token；本地模式避免重复累计每轮完整 prompt。 */
+    suspend fun sessionContextTokenUsage(sessionId: String): Long =
+        if (isLocal) local.sessionContextTokenUsage(sessionId) else sessionTokenUsage(sessionId)
+
     // ==================== 角色卡导入 ====================
 
     /**

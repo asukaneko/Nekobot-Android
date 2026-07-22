@@ -43,7 +43,7 @@ internal class LocalPipelineCallbacks(
     private val characterIdentity: CharacterIdentity? = null,
     /** 父用户消息 id；agent 模式进度卡片关联用，UI 在用户气泡下方渲染 */
     private val parentMessageId: String? = null,
-    private val onTokenRecorded: ((sessionId: String, model: String, inputTokens: Int, outputTokens: Int, timestamp: String, purpose: String) -> Unit)? = null,
+    private val onTokenRecorded: ((sessionId: String, model: String, inputTokens: Int, outputTokens: Int, timestamp: String, purpose: String, estimated: Boolean) -> Unit)? = null,
     /** 进度卡片更新回调；本地模式用于持久化到父用户消息 */
     private val onThinkingCardUpdate: ((card: ThinkingCard) -> Unit)? = null,
     /** 当前会话的本地 Agent 工作区。 */
@@ -287,12 +287,21 @@ internal class LocalPipelineCallbacks(
         val content = (message["content"] as? String) ?: ""
         if (content.isBlank()) return
 
-        val inputTokens = (ctx.usage["prompt_tokens"] as? Int)
-            ?: (ctx.usage["input_tokens"] as? Int)
-            ?: (ctx.usage["prompt"] as? Int)
-        val outputTokens = (ctx.usage["completion_tokens"] as? Int)
-            ?: (ctx.usage["output_tokens"] as? Int)
-            ?: (ctx.usage["completion"] as? Int)
+        val resolvedUsage = if (ctx.error == null) {
+            resolveLocalTokenUsage(ctx.usage, ctx.messages, content)
+        } else {
+            null
+        }
+        val inputTokens = resolvedUsage?.inputTokens
+        val outputTokens = resolvedUsage?.outputTokens
+        if (resolvedUsage != null) {
+            ctx.usage = mapOf(
+                "prompt" to resolvedUsage.inputTokens,
+                "completion" to resolvedUsage.outputTokens,
+                "total" to (resolvedUsage.inputTokens + resolvedUsage.outputTokens),
+                "estimated" to resolvedUsage.estimated
+            )
+        }
         val modelName = (ctx.metadata["model_name"] as? String) ?: activeModel.model
         val senderName = if (session.sessionMode.equals("group", ignoreCase = true)) {
             (ctx.metadata["group_speaker_name"] as? String)
@@ -345,7 +354,8 @@ internal class LocalPipelineCallbacks(
                     inputTokens ?: 0,
                     outputTokens ?: 0,
                     com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
-                    TokenStatsManager.PURPOSE_CHAT
+                    TokenStatsManager.PURPOSE_CHAT,
+                    resolvedUsage?.estimated == true
                 )
             } catch (e: Exception) {
                 com.nekobot.app.data.local.LocalLogger.w(TAG, "持久化 Token 记录失败: ${e.message}")

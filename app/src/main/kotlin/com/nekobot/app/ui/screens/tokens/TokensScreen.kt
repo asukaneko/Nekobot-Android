@@ -99,7 +99,8 @@ internal data class TokenRecordUi(
     val total: Long,
     val cost: String?,
     val durationMs: Double?,
-    val ttftMs: Double?
+    val ttftMs: Double?,
+    val estimated: Boolean
 )
 
 class TokensViewModel : BaseViewModel() {
@@ -684,7 +685,12 @@ private fun TokenRecordCard(record: TokenRecordUi) {
                         .background(badgeColor.copy(alpha = 0.18f))
                         .padding(horizontal = 7.dp, vertical = 3.dp)
                 ) {
-                    Text(purposeLabel, style = MaterialTheme.typography.labelSmall, color = badgeColor, fontWeight = FontWeight.Medium)
+                    Text(
+                        if (record.estimated) stringResource(R.string.tokens_estimated_badge, purposeLabel) else purposeLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = badgeColor,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
                 if (!compactTs.isNullOrBlank()) {
                     Spacer(Modifier.height(4.dp))
@@ -764,6 +770,9 @@ private fun parseTokenRecord(elem: JsonElement): TokenRecordUi? {
     fun long(vararg keys: String): Long? = keys.firstNotNullOfOrNull { key ->
         obj.get(key)?.takeIf { !it.isJsonNull }?.runCatching { asLong }?.getOrNull()
     }
+    fun bool(vararg keys: String): Boolean = keys.firstNotNullOfOrNull { key ->
+        obj.get(key)?.takeIf { !it.isJsonNull }?.runCatching { asBoolean }?.getOrNull()
+    } ?: false
     fun double(key: String): Double? = obj.get(key)?.takeIf { !it.isJsonNull }?.runCatching { asDouble }?.getOrNull()
 
     val timestamp = string("timestamp", "created_at", "time")
@@ -789,7 +798,8 @@ private fun parseTokenRecord(elem: JsonElement): TokenRecordUi? {
         total = long("total", "total_tokens", "tokens") ?: (input + output),
         cost = string("cost").takeIf { it.isNotBlank() },
         durationMs = double("duration_ms"),
-        ttftMs = double("ttft_ms")
+        ttftMs = double("ttft_ms"),
+        estimated = bool("estimated", "usage_estimated")
     )
 }
 
