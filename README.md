@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/neko-full.png" alt="NekoBot" width="280" style="border-radius: 28px;" />
+<img src="docs/assets/neko-full-rounded.png" alt="NekoBot" width="280" />
 
 # NekoBot Android
 
