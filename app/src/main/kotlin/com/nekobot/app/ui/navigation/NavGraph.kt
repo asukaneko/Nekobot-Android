@@ -11,10 +11,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -70,6 +73,7 @@ import com.nekobot.app.ui.screens.extensions.TtsPlaygroundScreen
 import com.nekobot.app.ui.screens.extensions.ImageGenerationPlaygroundScreen
 import com.nekobot.app.ui.screens.extensions.LoginTokensScreen
 import com.nekobot.app.ui.screens.extensions.ApiKeysScreen
+import kotlinx.coroutines.launch
 
 private val mainRoutes = setOf(
     Routes.SESSIONS, Routes.CHARACTERS, Routes.WORLD_BOOKS,
@@ -96,9 +100,17 @@ private fun tabDirection(from: String?, to: String?): Int {
 @Composable
 fun NekobotNavGraph() {
     val navController = rememberNavController()
+    val mainPagerState = rememberPagerState(
+        initialPage = 0,
+        pageCount = { bottomRoutes.size }
+    )
+    val mainPagerScope = rememberCoroutineScope()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val showBottomBar = currentRoute in mainRoutes
+    val selectedMainRoute = bottomRoutes.getOrElse(mainPagerState.currentPage) {
+        Routes.SESSIONS
+    }
 
     // 观察全局登录态：登出时自动跳登录页，登录时跳会话页
     val isLoggedIn by ServiceContainer.loginStateFlow.collectAsState()
@@ -108,6 +120,7 @@ fun NekobotNavGraph() {
                 popUpTo(0) { inclusive = true }
             }
         } else if (isLoggedIn && currentRoute == Routes.LOGIN) {
+            mainPagerState.scrollToPage(0)
             navController.navigate(Routes.SESSIONS) {
                 popUpTo(Routes.LOGIN) { inclusive = true }
             }
@@ -167,17 +180,51 @@ fun NekobotNavGraph() {
                 })
             }
             composable(Routes.SESSIONS) {
-                SessionsScreen(
-                    onOpenChat = { id ->
-                        navController.navigate(Routes.chat(id))
-                    },
-                    onOpenDetail = { id ->
-                        navController.navigate(Routes.sessionDetail(id))
-                    },
-                    onOpenStoryGraph = { id ->
-                        navController.navigate(Routes.storyGraph(id))
+                HorizontalPager(
+                    state = mainPagerState,
+                    modifier = Modifier.fillMaxSize(),
+                    key = { page -> bottomRoutes[page] },
+                    beyondViewportPageCount = 1
+                ) { page ->
+                    when (bottomRoutes[page]) {
+                        Routes.SESSIONS -> SessionsScreen(
+                            onOpenChat = { id ->
+                                navController.navigate(Routes.chat(id))
+                            },
+                            onOpenDetail = { id ->
+                                navController.navigate(Routes.sessionDetail(id))
+                            },
+                            onOpenStoryGraph = { id ->
+                                navController.navigate(Routes.storyGraph(id))
+                            }
+                        )
+
+                        Routes.CHARACTERS -> CharactersScreen(
+                            onOpenCharacter = { id ->
+                                if (id == "new") navController.navigate(Routes.characterDetail(id))
+                                else navController.navigate(Routes.characterView(id))
+                            },
+                            onOpenEdit = { id ->
+                                navController.navigate(Routes.characterDetail(id))
+                            }
+                        )
+
+                        Routes.WORLD_BOOKS -> WorldBooksScreen(onOpenBook = { id ->
+                            navController.navigate(Routes.worldBookDetail(id))
+                        })
+
+                        Routes.TOKENS -> TokensScreen()
+
+                        Routes.MORE -> MoreScreen(
+                            onNavigate = { route -> navController.navigate(route) },
+                            onLogout = {
+                                ServiceContainer.socket.disconnect()
+                                ServiceContainer.repository.logoutLocal()
+                                ServiceContainer.notifyLoginState(false)
+                            }
+                        )
                     }
-                )
+                }
             }
             composable(
                 route = Routes.SESSION_DETAIL,
@@ -428,12 +475,29 @@ fun NekobotNavGraph() {
             )
             LiquidGlassBottomBar(
                 items = bottomItems(),
-                selectedRoute = currentRoute,
+                selectedRoute = if (currentRoute == Routes.SESSIONS) {
+                    selectedMainRoute
+                } else {
+                    currentRoute
+                },
                 onItemSelected = { item ->
-                    navController.navigate(item.route) {
-                        popUpTo(Routes.SESSIONS) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
+                    val targetPage = bottomRoutes.indexOf(item.route)
+                    if (targetPage == -1) return@LiquidGlassBottomBar
+
+                    if (currentRoute == Routes.SESSIONS) {
+                        if (targetPage != mainPagerState.currentPage) {
+                            mainPagerScope.launch {
+                                mainPagerState.animateScrollToPage(targetPage)
+                            }
+                        }
+                    } else {
+                        mainPagerScope.launch {
+                            mainPagerState.scrollToPage(targetPage)
+                        }
+                        navController.navigate(Routes.SESSIONS) {
+                            popUpTo(Routes.SESSIONS) { inclusive = true }
+                            launchSingleTop = true
+                        }
                     }
                 },
                 modifier = Modifier.align(Alignment.BottomCenter)

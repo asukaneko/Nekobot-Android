@@ -1,6 +1,7 @@
 package com.nekobot.app.ui.screens.sessions
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +22,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -31,6 +34,7 @@ import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
@@ -80,7 +84,10 @@ import com.nekobot.app.R
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.model.CreateSessionRequest
 import com.nekobot.app.data.model.Session
+import com.nekobot.app.data.model.TokenRankings
+import com.nekobot.app.data.model.TokenStats
 import com.nekobot.app.data.model.UpdateSessionRequest
+import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.EmptyState
 import com.nekobot.app.ui.components.ErrorBanner
@@ -93,6 +100,8 @@ import com.nekobot.app.ui.theme.OnSurface
 import com.nekobot.app.ui.theme.OnSurfaceVariant
 import com.nekobot.app.ui.theme.Primary
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -101,6 +110,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /** 会话列表筛选类型。 */
 enum class SessionFilter(val labelResId: Int) {
@@ -120,7 +130,7 @@ data class ChannelOption(val label: String, val value: String?)
  * 会话列表页：展示所有会话，支持新建、重命名、删除、收藏 / 置顶切换、筛选、搜索。
  * 点击会话项调用 [onOpenChat]。
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun SessionsScreen(
     onOpenChat: (String) -> Unit,
@@ -134,6 +144,8 @@ fun SessionsScreen(
     val loading by viewModel.loading.collectAsState()
     val error by viewModel.error.collectAsState()
     val toast by viewModel.toast.collectAsState()
+    val dashboardData by viewModel.dashboardData.collectAsState()
+    val dashboardLoading by viewModel.dashboardLoading.collectAsState()
 
     val filter by viewModel.filter.collectAsState()
     val channelFilterValue by viewModel.channelFilterValue.collectAsState()
@@ -157,16 +169,34 @@ fun SessionsScreen(
     val deleteTitle = stringResource(R.string.sessions_delete_title)
     val deleteConfirmFmt = stringResource(R.string.sessions_delete_confirm)
     val deleteText = stringResource(R.string.common_delete)
+    val dashboardTitle = stringResource(R.string.stats_dashboard_title)
+    val dashboardRefreshDesc = stringResource(R.string.stats_dashboard_refresh)
+
+    val pagerState = rememberPagerState(initialPage = 1, pageCount = { 2 })
+    val dashboardVisible = pagerState.currentPage == 0
 
     // 模式切换时自动刷新会话列表
     val appMode by ServiceContainer.appModeFlow.collectAsState()
-    LaunchedEffect(appMode) { viewModel.loadAll() }
+    LaunchedEffect(appMode) {
+        viewModel.loadAll()
+        viewModel.loadDashboardMetrics()
+    }
 
     // 弹窗状态
     var showCreate by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<SessionListRow?>(null) }
     var deleting by remember { mutableStateOf<SessionListRow?>(null) }
     var showSearchPanel by remember { mutableStateOf(false) }
+    var showDashboardLayout by remember { mutableStateOf(false) }
+    var dashboardWidgetOrder by remember {
+        mutableStateOf(ServiceContainer.prefs.statsDashboardWidgetOrder)
+    }
+    var dashboardHiddenWidgets by remember {
+        mutableStateOf(ServiceContainer.prefs.statsDashboardHiddenWidgets)
+    }
+    var characterRankingMode by remember {
+        mutableStateOf(CharacterRankingMode.fromStorage(ServiceContainer.prefs.statsCharacterRankingMode))
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -174,17 +204,49 @@ fun SessionsScreen(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(titleText, color = MaterialTheme.colorScheme.onSurface)
+                        Text(
+                            if (dashboardVisible) dashboardTitle else titleText,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                         Spacer(Modifier.size(8.dp))
-                        SessionCountBadge(sessionRows.size)
+                        if (dashboardVisible) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                            ) {
+                                Text(
+                                    stringResource(R.string.stats_dashboard_badge),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        } else {
+                            SessionCountBadge(sessionRows.size)
+                        }
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.loadAll() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = refreshDesc, tint = MaterialTheme.colorScheme.onSurface)
-                    }
-                    IconButton(onClick = { showCreate = true }) {
-                        Icon(Icons.Filled.Add, contentDescription = newSessionDesc, tint = MaterialTheme.colorScheme.primary)
+                    if (dashboardVisible) {
+                        IconButton(
+                            onClick = {
+                                viewModel.loadAll()
+                                viewModel.loadDashboardMetrics()
+                            }
+                        ) {
+                            Icon(Icons.Filled.Refresh, contentDescription = dashboardRefreshDesc, tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                        IconButton(onClick = { showDashboardLayout = true }) {
+                            Icon(Icons.Filled.DashboardCustomize, contentDescription = stringResource(R.string.stats_customize_layout), tint = MaterialTheme.colorScheme.primary)
+                        }
+                    } else {
+                        IconButton(onClick = { viewModel.loadAll() }) {
+                            Icon(Icons.Filled.Refresh, contentDescription = refreshDesc, tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                        IconButton(onClick = { showCreate = true }) {
+                            Icon(Icons.Filled.Add, contentDescription = newSessionDesc, tint = MaterialTheme.colorScheme.primary)
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -193,11 +255,26 @@ fun SessionsScreen(
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize().padding(padding),
+            key = { it }
+        ) { page ->
+            if (page == 0) {
+                SessionStatsDashboard(
+                    data = dashboardData,
+                    loading = dashboardLoading,
+                    widgetOrder = dashboardWidgetOrder,
+                    hiddenWidgets = dashboardHiddenWidgets,
+                    characterRankingMode = characterRankingMode,
+                    onCharacterRankingModeChange = { mode ->
+                        characterRankingMode = mode
+                        ServiceContainer.prefs.statsCharacterRankingMode = mode.name
+                    },
+                    onCustomize = { showDashboardLayout = true }
+                )
+            } else {
+                Column(modifier = Modifier.fillMaxSize()) {
             // 概览统计 + 快速筛选合并：每张卡显示数量并可点击筛选
             SessionStatFilters(
                 overview = overview,
@@ -340,7 +417,24 @@ fun SessionsScreen(
                     }
                 }
             }
+                }
+            }
         }
+    }
+
+    if (showDashboardLayout) {
+        DashboardLayoutDialog(
+            order = dashboardWidgetOrder,
+            hidden = dashboardHiddenWidgets,
+            onDismiss = { showDashboardLayout = false },
+            onSave = { order, hidden ->
+                dashboardWidgetOrder = order
+                dashboardHiddenWidgets = hidden
+                ServiceContainer.prefs.statsDashboardWidgetOrder = order
+                ServiceContainer.prefs.statsDashboardHiddenWidgets = hidden
+                showDashboardLayout = false
+            }
+        )
     }
 
     // 新建会话弹窗
@@ -1510,6 +1604,28 @@ private fun SessionItem(
 class SessionsViewModel : BaseViewModel() {
 
     private val _sessions = MutableStateFlow<List<Session>>(emptyList())
+    private val _dashboardTokenStats = MutableStateFlow<TokenStats?>(null)
+    private val _dashboardRankings = MutableStateFlow<TokenRankings?>(null)
+    private val _dashboardLoading = MutableStateFlow(false)
+    private val _characters = MutableStateFlow<List<CharacterPreset>>(emptyList())
+    val characters: StateFlow<List<CharacterPreset>> = _characters.asStateFlow()
+    val dashboardLoading: StateFlow<Boolean> = _dashboardLoading.asStateFlow()
+
+    val dashboardData: StateFlow<SessionStatsDashboardData> = combine(
+        _sessions,
+        _dashboardTokenStats,
+        _dashboardRankings,
+        _characters
+    ) { sessions, stats, rankings, characters ->
+        buildSessionStatsDashboardData(sessions, stats, rankings, characters)
+    }
+        .flowOn(Dispatchers.Default)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = SessionStatsDashboardData()
+        )
+
     val overview: StateFlow<SessionOverview> = _sessions
         .map(::buildSessionOverview)
         .flowOn(Dispatchers.Default)
@@ -1518,9 +1634,6 @@ class SessionsViewModel : BaseViewModel() {
             started = SharingStarted.Eagerly,
             initialValue = SessionOverview()
         )
-
-    private val _characters = MutableStateFlow<List<CharacterPreset>>(emptyList())
-    val characters: StateFlow<List<CharacterPreset>> = _characters.asStateFlow()
 
     private val _filter = MutableStateFlow(SessionFilter.ALL)
     val filter: StateFlow<SessionFilter> = _filter.asStateFlow()
@@ -1626,6 +1739,30 @@ class SessionsViewModel : BaseViewModel() {
     fun loadAll() {
         loadSessions()
         loadCharacters()
+    }
+
+    /** 独立加载负一屏 Token 总览与排行榜；失败时仍展示会话派生统计。 */
+    fun loadDashboardMetrics() {
+        viewModelScope.launch {
+            _dashboardLoading.value = true
+            try {
+                val (statsResult, rankingsResult) = coroutineScope {
+                    val statsRequest = async { unified.tokenStats(dateRange = "total") }
+                    val rankingsRequest = async { unified.tokenRankings() }
+                    statsRequest.await() to rankingsRequest.await()
+                }
+                if (statsResult is Resource.Success) {
+                    _dashboardTokenStats.value = statsResult.data
+                }
+                if (rankingsResult is Resource.Success) {
+                    _dashboardRankings.value = rankingsResult.data
+                }
+            } catch (_: Exception) {
+                // 会话统计可独立工作，Token 接口失败不阻断负一屏。
+            } finally {
+                _dashboardLoading.value = false
+            }
+        }
     }
 
     /** 加载会话列表。 */

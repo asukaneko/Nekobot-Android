@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="stats_dashboard_title">データ概要</string>
+    <string name="stats_dashboard_badge">ダッシュボード</string>
+    <string name="stats_dashboard_refresh">統計を更新</string>
+    <string name="stats_customize_layout">レイアウトを編集</string>
+    <string name="stats_banner_eyebrow">NEKOBOT データセンター</string>
+    <string name="stats_banner_title">会話の世界が成長しています</string>
+    <string name="stats_banner_tokens">累計 %1$s Tokens</string>
+    <string name="stats_banner_streak">%1$d 日連続アクティブ</string>
+    <string name="stats_banner_today_usage">今日の使用量</string>
+    <string name="stats_banner_active_sessions">7日間のアクティブ会話</string>
+    <string name="stats_widget_banner">データバナー</string>
+    <string name="stats_overview_title">主要データ</string>
+    <string name="stats_total_sessions">会話</string>
+    <string name="stats_total_messages">メッセージ</string>
+    <string name="stats_active_sessions">7日間のアクティブ</string>
+    <string name="stats_favorites">お気に入り</string>
+    <string name="stats_frequent_characters_title">よく使うキャラクター</string>
+    <string name="stats_character_swipe_hint">左右にスワイプ</string>
+    <string name="stats_sort_by_sessions">会話数順</string>
+    <string name="stats_sort_by_tokens">会話 Token 順</string>
+    <string name="stats_character_rank">TOP %1$d</string>
+    <string name="stats_character_metrics">%1$d 会話 · %2$s Tokens</string>
+    <string name="stats_character_sessions_label">会話数</string>
+    <string name="stats_character_tokens_label">会話 Token</string>
+    <string name="stats_character_average">1会話平均 %1$s Token</string>
+    <string name="stats_heatmap_title">アクティビティ</string>
+    <string name="stats_last_twelve_weeks">過去12週間</string>
+    <string name="stats_less">少</string>
+    <string name="stats_more">多</string>
+    <string name="stats_trend_title">7日間の使用量</string>
+    <string name="stats_today_tokens">今日 %1$s</string>
+    <string name="stats_session_ranking_title">人気の会話</string>
+    <string name="stats_model_ranking_title">モデル順位</string>
+    <string name="stats_channels_title">チャンネル</string>
+    <string name="stats_empty_data">データがまだありません</string>
+    <string name="stats_all_widgets_hidden">すべての統計ウィジェットが非表示です</string>
+    <string name="stats_layout_title">統計レイアウト</string>
+    <string name="stats_layout_subtitle">ウィジェットの順序と表示を設定します。</string>
+    <string name="stats_move_up">上へ</string>
+    <string name="stats_move_down">下へ</string>
+    <string name="stats_reset_layout">初期状態</string>
+</resources>

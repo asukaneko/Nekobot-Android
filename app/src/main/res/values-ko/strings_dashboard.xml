@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="stats_dashboard_title">데이터 개요</string>
+    <string name="stats_dashboard_badge">대시보드</string>
+    <string name="stats_dashboard_refresh">통계 새로고침</string>
+    <string name="stats_customize_layout">레이아웃 편집</string>
+    <string name="stats_banner_eyebrow">NEKOBOT 데이터 센터</string>
+    <string name="stats_banner_title">대화 세계가 성장하고 있어요</string>
+    <string name="stats_banner_tokens">누적 %1$s Tokens</string>
+    <string name="stats_banner_streak">%1$d일 연속 활동</string>
+    <string name="stats_banner_today_usage">오늘 사용량</string>
+    <string name="stats_banner_active_sessions">최근 7일 활성 대화</string>
+    <string name="stats_widget_banner">데이터 배너</string>
+    <string name="stats_overview_title">핵심 데이터</string>
+    <string name="stats_total_sessions">대화</string>
+    <string name="stats_total_messages">메시지</string>
+    <string name="stats_active_sessions">최근 7일 활동</string>
+    <string name="stats_favorites">즐겨찾기</string>
+    <string name="stats_frequent_characters_title">자주 쓰는 캐릭터</string>
+    <string name="stats_character_swipe_hint">좌우로 넘기기</string>
+    <string name="stats_sort_by_sessions">대화 수</string>
+    <string name="stats_sort_by_tokens">대화 Token</string>
+    <string name="stats_character_rank">TOP %1$d</string>
+    <string name="stats_character_metrics">%1$d개 대화 · %2$s Tokens</string>
+    <string name="stats_character_sessions_label">대화 수</string>
+    <string name="stats_character_tokens_label">대화 Token</string>
+    <string name="stats_character_average">대화당 평균 %1$s Token</string>
+    <string name="stats_heatmap_title">활동 히트맵</string>
+    <string name="stats_last_twelve_weeks">최근 12주</string>
+    <string name="stats_less">적음</string>
+    <string name="stats_more">많음</string>
+    <string name="stats_trend_title">7일 사용량</string>
+    <string name="stats_today_tokens">오늘 %1$s</string>
+    <string name="stats_session_ranking_title">인기 대화</string>
+    <string name="stats_model_ranking_title">모델 순위</string>
+    <string name="stats_channels_title">채널 분포</string>
+    <string name="stats_empty_data">아직 데이터가 부족합니다</string>
+    <string name="stats_all_widgets_hidden">모든 통계 위젯이 숨겨졌습니다</string>
+    <string name="stats_layout_title">통계 레이아웃</string>
+    <string name="stats_layout_subtitle">위젯 순서와 표시 여부를 설정합니다.</string>
+    <string name="stats_move_up">위로</string>
+    <string name="stats_move_down">아래로</string>
+    <string name="stats_reset_layout">기본값</string>
+</resources>

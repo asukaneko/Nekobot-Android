@@ -133,6 +133,52 @@ class PrefsManager(context: Context) {
             prefs.edit().putString(KEY_CHAT_INPUT_LAYOUT, value.name).apply()
         }
 
+    /** 负一屏统计组件顺序；显示状态单独保存在 [statsDashboardHiddenWidgets]。 */
+    var statsDashboardWidgetOrder: List<String>
+        get() {
+            val saved = prefs.getString(KEY_STATS_DASHBOARD_ORDER, null)
+                ?.let { raw ->
+                    runCatching {
+                        val type = object : TypeToken<List<String>>() {}.type
+                        gson.fromJson<List<String>>(raw, type)
+                    }.getOrNull()
+                }
+                .orEmpty()
+                .filter { it in DEFAULT_STATS_DASHBOARD_WIDGET_ORDER }
+                .distinct()
+            if (saved == LEGACY_DEFAULT_STATS_DASHBOARD_WIDGET_ORDER) {
+                return DEFAULT_STATS_DASHBOARD_WIDGET_ORDER
+            }
+            return saved + DEFAULT_STATS_DASHBOARD_WIDGET_ORDER.filterNot(saved::contains)
+        }
+        set(value) {
+            val normalized = value
+                .filter { it in DEFAULT_STATS_DASHBOARD_WIDGET_ORDER }
+                .distinct() + DEFAULT_STATS_DASHBOARD_WIDGET_ORDER.filterNot(value::contains)
+            prefs.edit().putString(KEY_STATS_DASHBOARD_ORDER, gson.toJson(normalized)).apply()
+        }
+
+    var statsDashboardHiddenWidgets: Set<String>
+        get() = prefs.getStringSet(KEY_STATS_DASHBOARD_HIDDEN, emptySet())
+            .orEmpty()
+            .filterTo(linkedSetOf()) { it in DEFAULT_STATS_DASHBOARD_WIDGET_ORDER }
+        set(value) {
+            prefs.edit().putStringSet(
+                KEY_STATS_DASHBOARD_HIDDEN,
+                value.filterTo(linkedSetOf()) { it in DEFAULT_STATS_DASHBOARD_WIDGET_ORDER }
+            ).apply()
+        }
+
+    /** 高频角色组件排序：SESSIONS / TOKENS。 */
+    var statsCharacterRankingMode: String
+        get() = prefs.getString(KEY_STATS_CHARACTER_RANKING_MODE, "TOKENS") ?: "TOKENS"
+        set(value) {
+            prefs.edit().putString(
+                KEY_STATS_CHARACTER_RANKING_MODE,
+                if (value == "SESSIONS") "SESSIONS" else "TOKENS"
+            ).apply()
+        }
+
     /** 角色列表视图模式：LIST / GRID，持久化用户选择 */
     var characterViewMode: String
         get() = prefs.getString(KEY_CHARACTER_VIEW_MODE, "LIST") ?: "LIST"
@@ -307,6 +353,9 @@ class PrefsManager(context: Context) {
         private const val KEY_APP_MODE = "app_mode"
         private const val KEY_LOGIN_RECORDS = "login_records"
         private const val KEY_CHAT_INPUT_LAYOUT = "chat_input_layout"
+        private const val KEY_STATS_DASHBOARD_ORDER = "stats_dashboard_widget_order"
+        private const val KEY_STATS_DASHBOARD_HIDDEN = "stats_dashboard_hidden_widgets"
+        private const val KEY_STATS_CHARACTER_RANKING_MODE = "stats_character_ranking_mode"
         private const val KEY_CHARACTER_VIEW_MODE = "character_view_mode"
         private const val DEFAULT_SERVER = "http://localhost:5000"
 
@@ -329,6 +378,28 @@ class PrefsManager(context: Context) {
         const val KEY_ACTIVE_DB_NAME = "active_db_name"
         const val KEY_DB_PROFILES = "db_profiles"
         const val DEFAULT_DB_NAME = "nekobot_local"
+
+        val DEFAULT_STATS_DASHBOARD_WIDGET_ORDER = listOf(
+            "banner",
+            "overview",
+            "heatmap",
+            "frequent_characters",
+            "trend",
+            "session_ranking",
+            "model_ranking",
+            "channels"
+        )
+
+        private val LEGACY_DEFAULT_STATS_DASHBOARD_WIDGET_ORDER = listOf(
+            "banner",
+            "overview",
+            "frequent_characters",
+            "heatmap",
+            "trend",
+            "session_ranking",
+            "model_ranking",
+            "channels"
+        )
 
         // nbotcfg 导入密码记忆
         const val KEY_LAST_NBOTCFG_PWD = "last_nbotcfg_password"

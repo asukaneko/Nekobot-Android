@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="stats_dashboard_title">数据概览</string>
+    <string name="stats_dashboard_badge">负一屏</string>
+    <string name="stats_dashboard_refresh">刷新统计</string>
+    <string name="stats_customize_layout">自定义布局</string>
+    <string name="stats_banner_eyebrow">NEKOBOT 数据中心</string>
+    <string name="stats_banner_title">你的对话宇宙正在生长</string>
+    <string name="stats_banner_tokens">累计 %1$s Tokens</string>
+    <string name="stats_banner_streak">连续活跃 %1$d 天</string>
+    <string name="stats_banner_today_usage">今日用量</string>
+    <string name="stats_banner_active_sessions">近 7 日活跃会话</string>
+    <string name="stats_widget_banner">数据 Banner</string>
+    <string name="stats_overview_title">核心数据</string>
+    <string name="stats_total_sessions">会话</string>
+    <string name="stats_total_messages">消息</string>
+    <string name="stats_active_sessions">近 7 日活跃</string>
+    <string name="stats_favorites">收藏</string>
+    <string name="stats_frequent_characters_title">高频角色</string>
+    <string name="stats_character_swipe_hint">左右滑动切换</string>
+    <string name="stats_sort_by_sessions">按会话数</string>
+    <string name="stats_sort_by_tokens">按聊天 Token</string>
+    <string name="stats_character_rank">TOP %1$d</string>
+    <string name="stats_character_metrics">%1$d 个会话 · %2$s Tokens</string>
+    <string name="stats_character_sessions_label">会话数</string>
+    <string name="stats_character_tokens_label">聊天 Token</string>
+    <string name="stats_character_average">单会话平均 %1$s Token</string>
+    <string name="stats_heatmap_title">互动热力图</string>
+    <string name="stats_last_twelve_weeks">最近 12 周</string>
+    <string name="stats_less">少</string>
+    <string name="stats_more">多</string>
+    <string name="stats_trend_title">近 7 日用量</string>
+    <string name="stats_today_tokens">今日 %1$s</string>
+    <string name="stats_session_ranking_title">热门会话</string>
+    <string name="stats_model_ranking_title">模型排行</string>
+    <string name="stats_channels_title">频道分布</string>
+    <string name="stats_empty_data">暂无足够数据</string>
+    <string name="stats_all_widgets_hidden">所有统计组件都已隐藏</string>
+    <string name="stats_layout_title">自定义统计布局</string>
+    <string name="stats_layout_subtitle">调整组件顺序，并选择要在负一屏显示的内容。</string>
+    <string name="stats_move_up">上移</string>
+    <string name="stats_move_down">下移</string>
+    <string name="stats_reset_layout">恢复默认</string>
+</resources>

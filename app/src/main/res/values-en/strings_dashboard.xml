@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="stats_dashboard_title">Insights</string>
+    <string name="stats_dashboard_badge">Dashboard</string>
+    <string name="stats_dashboard_refresh">Refresh insights</string>
+    <string name="stats_customize_layout">Customize layout</string>
+    <string name="stats_banner_eyebrow">NEKOBOT DATA CENTER</string>
+    <string name="stats_banner_title">Your conversation universe is growing</string>
+    <string name="stats_banner_tokens">%1$s Tokens total</string>
+    <string name="stats_banner_streak">%1$d day streak</string>
+    <string name="stats_banner_today_usage">Today’s usage</string>
+    <string name="stats_banner_active_sessions">Active chats in 7 days</string>
+    <string name="stats_widget_banner">Data banner</string>
+    <string name="stats_overview_title">Overview</string>
+    <string name="stats_total_sessions">Chats</string>
+    <string name="stats_total_messages">Messages</string>
+    <string name="stats_active_sessions">Active in 7 days</string>
+    <string name="stats_favorites">Favorites</string>
+    <string name="stats_frequent_characters_title">Frequent characters</string>
+    <string name="stats_character_swipe_hint">Swipe to browse</string>
+    <string name="stats_sort_by_sessions">By chats</string>
+    <string name="stats_sort_by_tokens">By chat Tokens</string>
+    <string name="stats_character_rank">TOP %1$d</string>
+    <string name="stats_character_metrics">%1$d chats · %2$s Tokens</string>
+    <string name="stats_character_sessions_label">Chats</string>
+    <string name="stats_character_tokens_label">Chat Tokens</string>
+    <string name="stats_character_average">Avg %1$s Tokens / chat</string>
+    <string name="stats_heatmap_title">Activity heatmap</string>
+    <string name="stats_last_twelve_weeks">Last 12 weeks</string>
+    <string name="stats_less">Less</string>
+    <string name="stats_more">More</string>
+    <string name="stats_trend_title">7-day usage</string>
+    <string name="stats_today_tokens">Today %1$s</string>
+    <string name="stats_session_ranking_title">Top chats</string>
+    <string name="stats_model_ranking_title">Top models</string>
+    <string name="stats_channels_title">Channels</string>
+    <string name="stats_empty_data">Not enough data yet</string>
+    <string name="stats_all_widgets_hidden">All insight widgets are hidden</string>
+    <string name="stats_layout_title">Customize insights</string>
+    <string name="stats_layout_subtitle">Reorder widgets and choose what appears on the dashboard.</string>
+    <string name="stats_move_up">Move up</string>
+    <string name="stats_move_down">Move down</string>
+    <string name="stats_reset_layout">Reset</string>
+</resources>
