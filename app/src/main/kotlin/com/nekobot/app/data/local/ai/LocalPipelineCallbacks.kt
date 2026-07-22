@@ -43,7 +43,7 @@ internal class LocalPipelineCallbacks(
     private val characterIdentity: CharacterIdentity? = null,
     /** 父用户消息 id；agent 模式进度卡片关联用，UI 在用户气泡下方渲染 */
     private val parentMessageId: String? = null,
-    private val onTokenRecorded: ((sessionId: String, model: String, inputTokens: Int, outputTokens: Int, timestamp: String, purpose: String, estimated: Boolean) -> Unit)? = null,
+    private val onTokenRecorded: ((sessionId: String, messageId: String, model: String, inputTokens: Int, outputTokens: Int, timestamp: String, purpose: String, estimated: Boolean) -> Unit)? = null,
     /** 进度卡片更新回调；本地模式用于持久化到父用户消息 */
     private val onThinkingCardUpdate: ((card: ThinkingCard) -> Unit)? = null,
     /** 当前会话的本地 Agent 工作区。 */
@@ -311,10 +311,12 @@ internal class LocalPipelineCallbacks(
             null
         }
 
+        val messageId = (message["id"] as? String) ?: java.util.UUID.randomUUID().toString()
+
         // 保存到 Room（同步执行，因为已在 IO 线程）
         kotlinx.coroutines.runBlocking {
             messageDao.upsert(LocalMessageEntity(
-                id = (message["id"] as? String) ?: java.util.UUID.randomUUID().toString(),
+                id = messageId,
                 sessionId = session.id,
                 role = "assistant",
                 content = content,
@@ -350,6 +352,7 @@ internal class LocalPipelineCallbacks(
             try {
                 onTokenRecorded?.invoke(
                     session.id,
+                    messageId,
                     modelName,
                     inputTokens ?: 0,
                     outputTokens ?: 0,

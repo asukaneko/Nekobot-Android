@@ -1,5 +1,9 @@
 package com.nekobot.app.data.local.ai
 
+import com.google.gson.JsonObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.ceil
 
 /** 本地模型单次调用的标准化 Token 用量。 */
@@ -69,6 +73,201 @@ internal data class LocalContextTokenMessage(
     val inputTokens: Int?,
     val outputTokens: Int?
 )
+
+/** Room 中可用于补回 token 明细的 assistant 消息快照。 */
+internal data class LocalPersistedTokenMessage(
+    val id: String,
+    val sessionId: String,
+    val model: String,
+    val inputTokens: Int,
+    val outputTokens: Int,
+    val timestamp: String,
+    val createdAt: String,
+    val sessionCreatedAt: String,
+    val content: String
+)
+
+internal data class LocalTokenUsageReconciliation(
+    val records: List<JsonObject>,
+    val recoveredCount: Int,
+    val changed: Boolean
+)
+
+/**
+ * 用 Room 内已成功落库的 assistant 消息修复缺失的主对话 token 记录。
+ *
+ * 新记录用 message_id 精确去重；旧版本记录没有 message_id 时，按会话和 token 数量逐条匹配，
+ * 并回填关联，避免升级后把已有用量重复计算。
+ */
+internal fun reconcileLocalTokenUsageRecords(
+    records: List<JsonObject>,
+    messages: List<LocalPersistedTokenMessage>
+): LocalTokenUsageReconciliation {
+    val normalized = records.map { it.deepCopy() }.toMutableList()
+    val linkedRecordByMessageId = normalized.mapIndexedNotNull { index, record ->
+        record.stringValue("message_id")?.let { it to index }
+    }.toMap().toMutableMap()
+    val legacyByUsage = mutableMapOf<LegacyChatUsageKey, ArrayDeque<Int>>()
+
+    normalized.forEachIndexed { index, record ->
+        if (record.stringValue("message_id").isNullOrBlank() && record.isPrimaryChatUsage()) {
+            record.legacyChatUsageKey()?.let { key ->
+                legacyByUsage.getOrPut(key) { ArrayDeque() }.addLast(index)
+            }
+        }
+    }
+
+    // fork 会完整复制历史消息（仅更换 message/session id）。同一指纹跨会话重复时，
+    // 保留一条实际调用记录，其余标记为继承用量，供会话统计使用但不重复计入全局消耗。
+    val inheritedMessageIds = messages
+        .groupBy { it.usageFingerprint() }
+        .values
+        .filter { group -> group.map { it.sessionId }.distinct().size > 1 }
+        .flatMap { group ->
+            val canonical = group.firstOrNull { message ->
+                linkedRecordByMessageId[message.id]?.let { index ->
+                    normalized[index].booleanValue("inherited") != true &&
+                        normalized[index].booleanValue("recovered") != true
+                } == true
+            } ?: group.firstOrNull { message ->
+                legacyByUsage[message.legacyChatUsageKey()]?.isNotEmpty() == true
+            } ?: group.firstOrNull { message ->
+                linkedRecordByMessageId[message.id]?.let { index ->
+                    normalized[index].booleanValue("inherited") != true
+                } == true
+            } ?: group.minWith(compareBy(LocalPersistedTokenMessage::sessionCreatedAt, LocalPersistedTokenMessage::id))
+            group.filterNot { it.id == canonical.id }.map { it.id }
+        }
+        .toSet()
+
+    var recoveredCount = 0
+    var changed = false
+    messages.forEach { message ->
+        if (message.inputTokens <= 0 && message.outputTokens <= 0) return@forEach
+
+        val linkedIndex = linkedRecordByMessageId[message.id]
+        if (message.id in inheritedMessageIds) {
+            if (linkedIndex != null) {
+                val record = normalized[linkedIndex]
+                if (record.booleanValue("inherited") != true || record.stringValue("source") != "fork") {
+                    record.addProperty("inherited", true)
+                    record.addProperty("source", "fork")
+                    record.addProperty("purpose", TokenStatsManager.PURPOSE_CHAT)
+                    changed = true
+                }
+            } else {
+                normalized += message.toUsageRecord(inherited = true)
+                linkedRecordByMessageId[message.id] = normalized.lastIndex
+                changed = true
+            }
+            return@forEach
+        }
+
+        if (linkedIndex != null) return@forEach
+
+        val key = message.legacyChatUsageKey()
+        val legacyIndex = legacyByUsage[key]?.removeFirstOrNull()
+        if (legacyIndex != null) {
+            normalized[legacyIndex].addProperty("message_id", message.id)
+            linkedRecordByMessageId[message.id] = legacyIndex
+            changed = true
+            return@forEach
+        }
+
+        normalized += message.toUsageRecord(inherited = false)
+        linkedRecordByMessageId[message.id] = normalized.lastIndex
+        recoveredCount++
+        changed = true
+    }
+
+    return LocalTokenUsageReconciliation(normalized, recoveredCount, changed)
+}
+
+private data class LegacyChatUsageKey(
+    val sessionId: String,
+    val inputTokens: Int,
+    val outputTokens: Int
+)
+
+private data class PersistedMessageUsageFingerprint(
+    val model: String,
+    val inputTokens: Int,
+    val outputTokens: Int,
+    val timestamp: String,
+    val createdAt: String,
+    val content: String
+)
+
+private fun LocalPersistedTokenMessage.usageFingerprint() = PersistedMessageUsageFingerprint(
+    model = model,
+    inputTokens = inputTokens,
+    outputTokens = outputTokens,
+    timestamp = timestamp,
+    createdAt = createdAt,
+    content = content
+)
+
+private fun LocalPersistedTokenMessage.legacyChatUsageKey() = LegacyChatUsageKey(
+    sessionId = sessionId,
+    inputTokens = inputTokens,
+    outputTokens = outputTokens
+)
+
+private fun LocalPersistedTokenMessage.toUsageRecord(inherited: Boolean) = JsonObject().apply {
+    addProperty("id", "message:$id")
+    addProperty("message_id", id)
+    addProperty("session_id", sessionId)
+    addProperty("model", model)
+    addProperty("input_tokens", inputTokens)
+    addProperty("output_tokens", outputTokens)
+    addProperty("total_tokens", inputTokens + outputTokens)
+    addProperty("timestamp", timestamp)
+    addProperty("source", if (inherited) "fork" else "chat")
+    addProperty("purpose", TokenStatsManager.PURPOSE_CHAT)
+    // Room 仅保存 token 数量，无法判断原始接口是否返回 usage，恢复项保守标为估算。
+    addProperty("estimated", true)
+    addProperty("recovered", true)
+    addProperty("inherited", inherited)
+    addProperty("date", localTokenRecordDate(timestamp))
+}
+
+private fun JsonObject.legacyChatUsageKey(): LegacyChatUsageKey? {
+    val sessionId = stringValue("session_id") ?: return null
+    val inputTokens = intValue("input_tokens") ?: return null
+    val outputTokens = intValue("output_tokens") ?: return null
+    return LegacyChatUsageKey(sessionId, inputTokens, outputTokens)
+}
+
+private fun JsonObject.isPrimaryChatUsage(): Boolean {
+    val source = stringValue("source").orEmpty()
+    val purpose = stringValue("purpose").orEmpty()
+    return (source.isBlank() || source == "chat") &&
+        (purpose.isBlank() || purpose == TokenStatsManager.PURPOSE_CHAT)
+}
+
+private fun JsonObject.stringValue(name: String): String? = runCatching {
+    get(name)?.takeIf { it.isJsonPrimitive }?.asString
+}.getOrNull()
+
+private fun JsonObject.intValue(name: String): Int? = runCatching {
+    get(name)?.takeIf { it.isJsonPrimitive }?.asInt
+}.getOrNull()
+
+private fun JsonObject.booleanValue(name: String): Boolean? = runCatching {
+    get(name)?.takeIf { it.isJsonPrimitive }?.asBoolean
+}.getOrNull()
+
+private fun localTokenRecordDate(timestamp: String): String {
+    val epochMillis = timestamp.toLongOrNull()?.let { value ->
+        if (value < 10_000_000_000L) value * 1000L else value
+    }
+    if (epochMillis != null) {
+        return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(epochMillis))
+    }
+    val date = timestamp.substringBefore('T').substringBefore(' ')
+    return date.takeIf { it.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) }
+        ?: SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+}
 
 /** 轻量估算器仅用于服务商不返回 usage 的降级路径。 */
 internal fun estimateLocalTextTokens(text: String): Int {

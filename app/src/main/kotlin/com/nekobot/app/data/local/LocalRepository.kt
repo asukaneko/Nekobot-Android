@@ -17,12 +17,14 @@ import com.nekobot.app.data.local.ai.LocalAiResult
 import com.nekobot.app.data.local.ai.LocalContextTokenMessage
 import com.nekobot.app.data.local.ai.LocalGenerationController
 import com.nekobot.app.data.local.ai.LocalMcpRuntime
+import com.nekobot.app.data.local.ai.LocalPersistedTokenMessage
 import com.nekobot.app.data.local.ai.LocalPromptBuilder
 import com.nekobot.app.data.local.ai.LocalProfileRepository
 import com.nekobot.app.data.local.ai.LocalRelationshipRepository
 import com.nekobot.app.data.local.ai.RelationshipState
 import com.nekobot.app.data.local.ai.TokenStatsManager
 import com.nekobot.app.data.local.ai.currentLocalContextTokens
+import com.nekobot.app.data.local.ai.reconcileLocalTokenUsageRecords
 import com.nekobot.app.data.local.ai.relationshipStateFromInitial
 import com.nekobot.app.data.local.ai.resolveLocalTokenUsage
 import com.nekobot.app.data.local.ai.sessionRelationshipTargetId
@@ -128,9 +130,9 @@ class LocalRepository(
     /** Room DAO 适配器：将 [FailoverHealthDao] 暴露为 [FailoverHealthStore] */
     private val failoverHealthStore: FailoverHealthStore by lazy { RoomFailoverHealthStore(failoverHealthDao) }
 
-    /** SharedPreferences 适配器：聚合每个模型的日/周 token 用量供 [FailoverCoordinator] 限额检查 */
+    /** 聚合每个模型的日/周 token 用量供 [FailoverCoordinator] 限额检查。 */
     private val failoverUsageReader: FailoverUsageReader by lazy {
-        PrefsFailoverUsageReader(tokenUsagePrefs) { id ->
+        ReconciledFailoverUsageReader(::readTokenUsageRecordsReconciled) { id ->
             // records 中存储的是 model 名（如 "gpt-4o"），需要把 modelId (UUID) 解析为对应的 model 名
             aiModelDao.getById(id)?.model
         }
@@ -170,6 +172,8 @@ class LocalRepository(
     private var currentChatJob: Job? = null
     private val activeGenerations = ConcurrentHashMap<String, LocalGenerationController>()
     private val tokenUsageLock = Any()
+    @Volatile
+    private var tokenUsageReconciled = false
 
     /**
      * 当前进行中会话 ID。二级 LLM 调用（AutoState/记忆抽取）在跨会话单例内触发，
@@ -638,6 +642,7 @@ class LocalRepository(
         if ((inputTokens ?: 0) > 0 || (outputTokens ?: 0) > 0) {
             appendTokenUsageRecord(
                 sessionId = sessionId,
+                messageId = msg.id,
                 model = model ?: "",
                 inputTokens = inputTokens ?: 0,
                 outputTokens = outputTokens ?: 0,
@@ -669,15 +674,22 @@ class LocalRepository(
         inputTokens: Int, outputTokens: Int, timestamp: String,
         source: String = "chat",
         purpose: String = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_CHAT,
-        estimated: Boolean = false
+        estimated: Boolean = false,
+        messageId: String? = null
     ) {
         val prefs = tokenUsagePrefs ?: return
         synchronized(tokenUsageLock) {
             val existing = prefs.getString("records", "[]") ?: "[]"
             try {
-                val arr = JsonParser.parseString(existing).asJsonArray
+                val parsed = runCatching { JsonParser.parseString(existing).asJsonArray }
+                val arr = parsed.getOrElse {
+                    tokenUsageReconciled = false
+                    LocalLogger.w("LocalRepo", "Token 用量记录损坏，已备份并重建: ${it.message}")
+                    JsonArray()
+                }
                 val record = JsonObject().apply {
                     addProperty("id", UUID.randomUUID().toString())
+                    messageId?.let { addProperty("message_id", it) }
                     addProperty("session_id", sessionId)
                     addProperty("model", model)
                     addProperty("input_tokens", inputTokens)
@@ -693,8 +705,14 @@ class LocalRepository(
                 arr.add(record)
                 // 限制最多 5000 条，超出则丢弃最早的
                 while (arr.size() > 5000) arr.remove(0)
-                prefs.edit().putString("records", arr.toString()).apply()
+                val editor = prefs.edit().putString("records", arr.toString())
+                if (parsed.isFailure) editor.putString("records_corrupt_backup", existing)
+                if (!editor.commit()) {
+                    tokenUsageReconciled = false
+                    LocalLogger.w("LocalRepo", "Token 用量记录写入失败，稍后将从消息记录恢复")
+                }
             } catch (e: Exception) {
+                tokenUsageReconciled = false
                 LocalLogger.w("LocalRepo", "Token 用量记录写入失败: ${e.message}")
             }
         }
@@ -703,12 +721,77 @@ class LocalRepository(
     /** 读取所有 token 用量记录 */
     private fun readTokenUsageRecords(): List<JsonObject> {
         val prefs = tokenUsagePrefs ?: return emptyList()
-        val raw = prefs.getString("records", "[]") ?: "[]"
-        return try {
-            JsonParser.parseString(raw).asJsonArray
-                .mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject }
-        } catch (_: Exception) { emptyList() }
+        return synchronized(tokenUsageLock) {
+            val raw = prefs.getString("records", "[]") ?: "[]"
+            runCatching { parseTokenUsageRecords(raw) }.getOrDefault(emptyList())
+        }
     }
+
+    /** 首次读取时以 Room 消息为事实来源，补回消息已保存但明细写入失败的记录。 */
+    private suspend fun readTokenUsageRecordsReconciled(): List<JsonObject> {
+        if (tokenUsageReconciled) return readTokenUsageRecords()
+
+        val sessionCreatedAtById = sessionDao.listAll().associate { it.id to it.createdAt }
+        val messages = messageDao.listAllAssistant().asReversed().mapNotNull { message ->
+            val input = message.inputTokens ?: return@mapNotNull null
+            val output = message.outputTokens ?: return@mapNotNull null
+            if (input <= 0 && output <= 0) return@mapNotNull null
+            LocalPersistedTokenMessage(
+                id = message.id,
+                sessionId = message.sessionId,
+                model = message.model.orEmpty(),
+                inputTokens = input,
+                outputTokens = output,
+                timestamp = message.timestamp.ifBlank { message.createdAt },
+                createdAt = message.createdAt,
+                sessionCreatedAt = sessionCreatedAtById[message.sessionId].orEmpty(),
+                content = message.content
+            )
+        }
+        val prefs = tokenUsagePrefs
+            ?: return reconcileLocalTokenUsageRecords(emptyList(), messages).records.takeLast(5000)
+
+        return synchronized(tokenUsageLock) {
+            if (tokenUsageReconciled) {
+                val raw = prefs.getString("records", "[]") ?: "[]"
+                return@synchronized runCatching { parseTokenUsageRecords(raw) }.getOrDefault(emptyList())
+            }
+
+            val raw = prefs.getString("records", "[]") ?: "[]"
+            val parsed = runCatching { parseTokenUsageRecords(raw) }
+            val reconciliation = reconcileLocalTokenUsageRecords(
+                records = parsed.getOrDefault(emptyList()),
+                messages = messages
+            )
+            val normalized = reconciliation.records.takeLast(5000)
+            val needsWrite = parsed.isFailure || reconciliation.changed ||
+                normalized.size != reconciliation.records.size
+
+            if (needsWrite) {
+                val array = JsonArray().apply { normalized.forEach(::add) }
+                val editor = prefs.edit().putString("records", array.toString())
+                if (parsed.isFailure) editor.putString("records_corrupt_backup", raw)
+                if (!editor.commit()) {
+                    tokenUsageReconciled = false
+                    LocalLogger.w("LocalRepo", "Token 用量修复写入失败，下次读取将重试")
+                    return@synchronized normalized
+                }
+                if (reconciliation.recoveredCount > 0) {
+                    LocalLogger.i("LocalRepo", "已从消息记录补回 ${reconciliation.recoveredCount} 条 Token 用量")
+                }
+            }
+            tokenUsageReconciled = true
+            normalized
+        }
+    }
+
+    private fun parseTokenUsageRecords(raw: String): List<JsonObject> =
+        JsonParser.parseString(raw).asJsonArray
+            .mapNotNull { it.takeIf(JsonElement::isJsonObject)?.asJsonObject }
+
+    private fun JsonObject.isInheritedTokenUsage(): Boolean = runCatching {
+        get("inherited")?.takeIf { it.isJsonPrimitive }?.asBoolean == true
+    }.getOrDefault(false)
 
     suspend fun deleteMessage(sessionId: String, messageId: String) = withContext(Dispatchers.IO) {
         messageDao.deleteById(messageId)
@@ -980,8 +1063,13 @@ class LocalRepository(
         val callbacks = com.nekobot.app.data.local.ai.LocalPipelineCallbacks(
             db, aiClient, activeModel, session, character, worldBookEntries, runtime, identity,
             parentMessageId = parentMessageId,
-            onTokenRecorded = { sid, model, input, output, ts, purpose, estimated ->
-                appendTokenUsageRecord(sid, model, input, output, ts, purpose = purpose, estimated = estimated)
+            onTokenRecorded = { sid, messageId, model, input, output, ts, purpose, estimated ->
+                appendTokenUsageRecord(
+                    sid, model, input, output, ts,
+                    purpose = purpose,
+                    estimated = estimated,
+                    messageId = messageId
+                )
             },
             onThinkingCardUpdate = { card ->
                 // 持久化进度卡片到父用户消息
@@ -1444,8 +1532,13 @@ class LocalRepository(
                     channel = "local"
                 ),
                 parentMessageId = parentMessageId,
-                onTokenRecorded = { sid, model, input, output, ts, purpose, estimated ->
-                    appendTokenUsageRecord(sid, model, input, output, ts, purpose = purpose, estimated = estimated)
+                onTokenRecorded = { sid, messageId, model, input, output, ts, purpose, estimated ->
+                    appendTokenUsageRecord(
+                        sid, model, input, output, ts,
+                        purpose = purpose,
+                        estimated = estimated,
+                        messageId = messageId
+                    )
                 },
                 workspaceRoot = appContext?.filesDir
                     ?.let { LocalWorkspaceStorage.resolve(it, session.id) },
@@ -1693,6 +1786,9 @@ class LocalRepository(
                 it.copy(id = UUID.randomUUID().toString(), sessionId = newId)
             }
             messageDao.upsertAll(copied)
+            // fork 历史消息需要计入新会话统计，但不能重复算作新的模型调用。
+            // 下次读取统计时由消息指纹识别并写入 inherited 记录。
+            tokenUsageReconciled = false
             newId
         }
 
@@ -2551,23 +2647,25 @@ $charSection$topicSection
         startDate: String? = null,
         endDate: String? = null
     ): TokenStats = withContext(Dispatchers.IO) {
-        val allRecords = readTokenUsageRecords()
+        val allRecords = readTokenUsageRecordsReconciled()
+        // fork 继承记录只用于新会话归属，不代表发生了新的模型调用。
+        val usageRecords = allRecords.filterNot { it.isInheritedTokenUsage() }
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
         val monthStr = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date())
 
         // 按所选范围过滤记录
         val filtered = when (dateRange) {
-            "today" -> allRecords.filter { (it.get("date")?.asString ?: "") == todayStr }
-            "month" -> allRecords.filter { (it.get("date")?.asString ?: "").startsWith(monthStr) }
+            "today" -> usageRecords.filter { (it.get("date")?.asString ?: "") == todayStr }
+            "month" -> usageRecords.filter { (it.get("date")?.asString ?: "").startsWith(monthStr) }
             "custom" -> {
                 val start = startDate?.trim() ?: ""
                 val end = endDate?.trim() ?: ""
-                allRecords.filter { rec ->
+                usageRecords.filter { rec ->
                     val date = rec.get("date")?.asString ?: ""
                     (start.isEmpty() || date >= start) && (end.isEmpty() || date <= end)
                 }
             }
-            else -> allRecords // "total" 或 null：全部
+            else -> usageRecords // "total" 或 null：全部实际调用
         }
 
         var rangeInput = 0L
@@ -2585,26 +2683,29 @@ $charSection$topicSection
             msgCount++
         }
 
-        // 范围内最近记录：最多 50 条
-        val recent = filtered.takeLast(50).reversed().map { rec ->
-            JsonObject().apply {
-                addProperty("session_id", rec.get("session_id")?.asString ?: "")
-                addProperty("model", rec.get("model")?.asString ?: "")
-                addProperty("input_tokens", rec.get("input_tokens")?.asLong ?: 0)
-                addProperty("output_tokens", rec.get("output_tokens")?.asLong ?: 0)
-                addProperty("total_tokens", rec.get("total_tokens")?.asLong ?: 0)
-                addProperty("timestamp", rec.get("timestamp")?.asString ?: "")
-                // 用量来源：chat / state / memory / plot（旧记录无此字段时默认 chat）
-                addProperty("source", rec.get("source")?.asString ?: "chat")
-                // 用途标签（与 TokenStatsManager 常量对齐）：旧记录无此字段时按 source 推断
-                val purpose = rec.get("purpose")?.asString
-                    ?: when (rec.get("source")?.asString) {
+        // records 返回范围内完整明细；recentRecords 仅保留最近 50 条用于兼容旧调用方。
+        val details = filtered.asReversed().mapIndexed { index, rec ->
+            rec.deepCopy().apply {
+                val input = get("input_tokens")?.asLong ?: 0L
+                val output = get("output_tokens")?.asLong ?: 0L
+                if (!has("id")) {
+                    addProperty(
+                        "id",
+                        "legacy:${get("session_id")?.asString.orEmpty()}:" +
+                            "${get("timestamp")?.asString.orEmpty()}:$index"
+                    )
+                }
+                if (!has("total_tokens")) addProperty("total_tokens", input + output)
+                if (!has("source")) addProperty("source", "chat")
+                if (!has("purpose")) {
+                    val purpose = when (get("source")?.asString) {
                         "state" -> com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_UTILITY
                         "memory" -> com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_MEMORY
                         "plot" -> com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_PLOT
                         else -> com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_CHAT
                     }
-                addProperty("purpose", purpose)
+                    addProperty("purpose", purpose)
+                }
             }
         }
 
@@ -2618,8 +2719,8 @@ $charSection$topicSection
             messageCount = msgCount,
             avgTokensPerMsg = if (msgCount > 0) rangeTotal.toDouble() / msgCount else 0.0,
             estimatedCost = "—",
-            recentRecords = recent,
-            records = recent
+            recentRecords = details.take(50),
+            records = details
         )
     }
 
@@ -2627,7 +2728,7 @@ $charSection$topicSection
      * 获取指定会话历史总 Token 数：从本地 token 用量记录按 session_id 聚合 input+output。
      */
     suspend fun sessionTokenUsage(sessionId: String): Long = withContext(Dispatchers.IO) {
-        val records = readTokenUsageRecords()
+        val records = readTokenUsageRecordsReconciled()
         var sum = 0L
         for (rec in records) {
             val sid = rec.get("session_id")?.asString ?: continue
@@ -2658,10 +2759,11 @@ $charSection$topicSection
 
     /** 本地 token 用量排行榜（按 model / session 聚合，从独立存储读取）。 */
     suspend fun tokenRankings(): TokenRankings = withContext(Dispatchers.IO) {
-        val records = readTokenUsageRecords()
+        val records = readTokenUsageRecordsReconciled()
+        val usageRecords = records.filterNot { it.isInheritedTokenUsage() }
 
-        // 按模型聚合
-        val modelsRank = records.groupBy { it.get("model")?.asString ?: "未知" }
+        // 模型与用途排行只统计实际调用，避免 fork 历史重复增加全局消耗。
+        val modelsRank = usageRecords.groupBy { it.get("model")?.asString ?: "未知" }
             .map { (model, recs) ->
                 val input = recs.sumOf { it.get("input_tokens")?.asLong ?: 0 }
                 val output = recs.sumOf { it.get("output_tokens")?.asLong ?: 0 }
@@ -2699,7 +2801,7 @@ $charSection$topicSection
 
         // 按用途聚合（兼容旧记录：无 purpose 字段时按 source 推断）
         val purposeLabels = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_LABELS
-        val purposesRank = records.groupBy { rec ->
+        val purposesRank = usageRecords.groupBy { rec ->
             rec.get("purpose")?.asString
                 ?: when (rec.get("source")?.asString) {
                     "state" -> com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_UTILITY
@@ -4808,7 +4910,7 @@ private class RoomFailoverHealthStore(
 }
 
 /**
- * SharedPreferences 适配器：从 token_usage_<dbName>.xml 中聚合每个模型的日/周 token 用量，
+ * 从修复后的 token 明细中聚合每个模型的日/周 token 用量，
  * 供 [FailoverCoordinator] 在执行前检查 [LocalAiModelEntity.tokenLimitDaily] /
  * [LocalAiModelEntity.tokenLimitWeekly] 限额。
  *
@@ -4816,31 +4918,29 @@ private class RoomFailoverHealthStore(
  * 由于 records 中存储的是 model 名（如 "gpt-4o"），而协调器传入的是 model.id (UUID)，
  * 需通过 [resolveModelName] 回调把 id 解析为对应的 model 名后再做匹配。
  */
-private class PrefsFailoverUsageReader(
-    private val prefs: android.content.SharedPreferences?,
+private class ReconciledFailoverUsageReader(
+    private val readRecords: suspend () -> List<JsonObject>,
     private val resolveModelName: suspend (String) -> String?
 ) : FailoverUsageReader {
     override suspend fun getUsage(modelId: String): FailoverUsage {
-        val p = prefs ?: return FailoverUsage()
         // 先把 modelId (UUID) 解析为对应的 model 名，再按名匹配历史 records
         val modelName = resolveModelName(modelId) ?: return FailoverUsage()
-        val raw = p.getString("records", "[]") ?: "[]"
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         val weekStart = weekStartDateString()
         var daily = 0L
         var weekly = 0L
-        try {
-            val arr = JsonParser.parseString(raw).asJsonArray
-            for (item in arr) {
-                val obj = item.takeIf { it.isJsonObject }?.asJsonObject ?: continue
-                val model = obj.get("model")?.asString ?: continue
-                if (model != modelName) continue
-                val total = obj.get("total_tokens")?.asLong ?: continue
-                val date = obj.get("date")?.asString ?: continue
-                if (date == today) daily += total
-                if (date >= weekStart) weekly += total
-            }
-        } catch (_: Exception) { }
+        for (record in readRecords()) {
+            val inherited = runCatching {
+                record.get("inherited")?.takeIf { it.isJsonPrimitive }?.asBoolean == true
+            }.getOrDefault(false)
+            if (inherited) continue
+            val model = record.get("model")?.asString ?: continue
+            if (model != modelName) continue
+            val total = record.get("total_tokens")?.asLong ?: continue
+            val date = record.get("date")?.asString ?: continue
+            if (date == today) daily += total
+            if (date >= weekStart) weekly += total
+        }
         return FailoverUsage(dailyTokens = daily, weeklyTokens = weekly)
     }
 
