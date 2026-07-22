@@ -129,7 +129,8 @@ class MemoryFS(
 
         try {
             // 1. user_persona
-            val userPersona = memoryDao.listByCategory(characterId, targetId, "user_persona", MAX_ENTRIES_PER_CATEGORY)
+            // user_persona 是单槽记忆；兼容升级前已产生的重复数据，注入时只取最新一条。
+            val userPersona = memoryDao.listByCategory(characterId, targetId, "user_persona", 1)
             if (userPersona.isNotEmpty()) {
                 val text = formatMemoryList(userPersona)
                 if (text.isNotBlank()) parts.add("【用户人格】\n$text")

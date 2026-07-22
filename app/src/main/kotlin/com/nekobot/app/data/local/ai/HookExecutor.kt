@@ -482,11 +482,6 @@ class HookExecutor(
             (memoryDao.listByPath(memoryPath).maxOfOrNull { it.version } ?: 0) + 1
         } catch (e: Exception) { 1 }
 
-        // recent_digest 走 replace 语义（先删除同 path 旧值）
-        if (category == "recent_digest") {
-            try { memoryDao.deleteByPath(memoryPath) } catch (_: Exception) {}
-        }
-
         val entity = LocalCharacterMemoryEntity(
             id = UUID.randomUUID().toString(),
             characterId = characterId,
@@ -504,7 +499,12 @@ class HookExecutor(
             conversationId = conversationId
         )
         try {
-            memoryDao.upsert(entity)
+            if (isSingleSlotMemoryCategory(category)) {
+                // 与 AutoMemory 一致：单槽类别始终替换，顺便收敛历史重复记录。
+                memoryDao.replaceByCharacterTargetAndCategory(entity)
+            } else {
+                memoryDao.upsert(entity)
+            }
             // important_event 同步派生 timeline 条目（对齐 AutoMemory 行为）
             if (category == "important_event") {
                 val ts = java.time.LocalDateTime.now()

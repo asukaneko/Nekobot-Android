@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
@@ -338,6 +339,19 @@ interface MemoryDao {
      */
     @Query("DELETE FROM local_character_memories WHERE memory_path = :path")
     suspend fun deleteByPath(path: String)
+
+    /**
+     * 原子替换某个角色和玩家下的单槽记忆类别。
+     * 会清理早期版本中 path 为空或重复写入产生的旧记录。
+     */
+    @Query("DELETE FROM local_character_memories WHERE character_id = :characterId AND target_id = :targetId AND category = :category")
+    suspend fun deleteByCharacterTargetAndCategory(characterId: String, targetId: String, category: String)
+
+    @Transaction
+    suspend fun replaceByCharacterTargetAndCategory(memory: LocalCharacterMemoryEntity) {
+        deleteByCharacterTargetAndCategory(memory.characterId, memory.targetId, memory.category)
+        upsert(memory)
+    }
 
     /**
      * 删除指定 characterId + category + conversationId 的所有记忆（用于 events/life_sim 替换前清空）。

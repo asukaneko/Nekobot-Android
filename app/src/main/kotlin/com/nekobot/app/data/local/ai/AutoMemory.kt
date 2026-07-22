@@ -167,9 +167,9 @@ class AutoMemory(
     /**
      * 按 category + action 分发保存记忆（对齐原仓库 _save_structured_memories_to_memory_fs）。
      *
-     * action 字段由 LLM 决定：
-     * - "append"：新增一条（适用于 important_event 和全新的 persona 信息）
-     * - "replace"：替换该类别下同 path 的所有旧记忆（适用于 persona 演化、recent_digest 刷新）
+     * action 字段由 LLM 决定，但 user_persona / recent_digest 固定为单槽替换：
+     * - "append"：新增一条（适用于 important_event 和全新的 character_persona 信息）
+     * - "replace"：替换该类别下的旧记忆（适用于 user_persona、persona 演化、recent_digest 刷新）
      *
      * 重要：important_event 同步派生 timeline 条目（跨会话时间线）
      */
@@ -188,15 +188,14 @@ class AutoMemory(
             val category = (memory["category"] as? String) ?: "recent_digest"
             val action = (memory["action"] as? String)?.lowercase() ?: defaultActionForCategory(category)
             val path = buildMemoryPath(category, characterId, targetId, convId)
-            when (category) {
-                "recent_digest" -> {
-                    // recent_digest 始终 replace（无论 action 字段）
-                    memoryDao.deleteByPath(path)
+            when {
+                isSingleSlotMemoryCategory(category) -> {
+                    // 玩家人格和近期摘要都是单槽记忆；忽略 LLM 的 append，始终只保留最新一条。
                     val entity = memoryToEntityWithPath(memory, characterId, targetId, path, convId, now, version = 1)
-                    memoryDao.upsert(entity)
+                    memoryDao.replaceByCharacterTargetAndCategory(entity)
                     saved++
                 }
-                "important_event" -> {
+                category == "important_event" -> {
                     // append：直接插入新行，后续 trim 截断
                     val entity = memoryToEntityWithPath(memory, characterId, targetId, path, convId, now, version = nextVersionForPath(path))
                     memoryDao.upsert(entity)
@@ -205,7 +204,7 @@ class AutoMemory(
                     val timelineEntity = buildTimelineEntry(memory, characterId, convId, now)
                     timelineEntries.add(timelineEntity)
                 }
-                "user_persona", "character_persona" -> {
+                category == "character_persona" -> {
                     if (action == "replace") {
                         // LLM 决定 replace：删除同 path 旧值，插入新值
                         memoryDao.deleteByPath(path)
@@ -240,8 +239,7 @@ class AutoMemory(
         val eventsPath = buildMemoryPath("important_event", characterId, targetId, convId)
         memoryDao.trimByPath(eventsPath, keep = MAX_EVENTS_PER_CONVERSATION)
 
-        // 截断 user_persona / character_persona（按字符数粗略控制，保留最新 10 条）
-        memoryDao.trimByPath(buildMemoryPath("user_persona", characterId, targetId, convId), keep = MAX_ENTRIES_PER_PATH)
+        // character_persona 仍可 append，保留最新 10 条；user_persona 已在写入时原子替换为 1 条。
         memoryDao.trimByPath(buildMemoryPath("character_persona", characterId, targetId, convId), keep = MAX_ENTRIES_PER_PATH)
 
         return saved
@@ -264,8 +262,8 @@ class AutoMemory(
     private fun defaultActionForCategory(category: String): String {
         return when (category) {
             "important_event" -> "append"
-            "recent_digest" -> "replace"
-            "user_persona", "character_persona" -> "append"  // 默认 append，LLM 可主动返回 replace
+            "user_persona", "recent_digest" -> "replace"
+            "character_persona" -> "append"  // 默认 append，LLM 可主动返回 replace
             else -> "append"
         }
     }
@@ -433,7 +431,9 @@ class AutoMemory(
         try {
             for (category in listOf("user_persona", "character_persona", "recent_digest")) {
                 val path = buildMemoryPath(category, characterId, targetId, convId)
-                val entries = memoryDao.listByPath(path)
+                val entries = memoryDao.listByPath(path).let {
+                    if (category == "user_persona") it.take(1) else it
+                }
                 if (entries.isNotEmpty()) {
                     result.add(ExistingMemoryView(category, entries.map { it.content }))
                 }
@@ -480,7 +480,8 @@ action 字段说明：
 action 决策规则：
 - important_event：始终用 "append"
 - recent_digest：始终用 "replace"（每轮覆盖旧摘要）
-- user_persona / character_persona：如果新信息与已有记忆冲突或需要更新演化，用 "replace"；如果是全新的独立信息，用 "append"
+- user_persona：始终用 "replace"，将已有信息与本轮新信息整合成一条完整的最新玩家人格，禁止拆成多条或 append
+- character_persona：如果新信息与已有记忆冲突或需要更新演化，用 "replace"；如果是全新的独立信息，用 "append"
 
 要求：
 - 只提取与角色 "$characterName" 相关的有长期价值的信息
