@@ -19,6 +19,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -95,6 +96,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -485,8 +487,8 @@ private fun ModernChatComposer(
 
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 10.dp
+        color = Color.Transparent,
+        shadowElevation = 0.dp
     ) {
         Column(
             modifier = Modifier
@@ -567,7 +569,21 @@ private fun ModernChatComposer(
                 exit = if (skipInputExit) ExitTransition.None else shrinkVertically() + fadeOut()
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    val composerContainerColor = MaterialTheme.colorScheme.surfaceVariant
+                    val composerShape = RoundedCornerShape(30.dp)
+                    val composerGlassFill = Brush.linearGradient(
+                        colorStops = arrayOf(
+                            0f to MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
+                            0.52f to MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
+                            1f to MaterialTheme.colorScheme.primary.copy(alpha = 0.13f)
+                        )
+                    )
+                    val composerGlassBorder = Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.50f),
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                        )
+                    )
 
                     if (pendingImageAttachments.isNotEmpty()) {
                         PendingImageAttachments(
@@ -598,17 +614,20 @@ private fun ModernChatComposer(
                         }
                     }
 
-                    Surface(
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        shape = RoundedCornerShape(30.dp),
-                        color = composerContainerColor,
-                        border = BorderStroke(
-                            width = 1.dp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.09f)
-                        ),
-                        shadowElevation = 4.dp
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                            .shadow(
+                                elevation = 12.dp,
+                                shape = composerShape,
+                                clip = false,
+                                ambientColor = Color.Black.copy(alpha = 0.06f),
+                                spotColor = Color.Black.copy(alpha = 0.09f)
+                            )
+                            .clip(composerShape)
+                            .background(composerGlassFill, composerShape)
+                            .border(1.dp, composerGlassBorder, composerShape)
                     ) {
                         Row(
                             modifier = Modifier.padding(6.dp),
@@ -646,8 +665,7 @@ private fun ModernChatComposer(
                                 modifier = Modifier
                                     .weight(1f)
                                     .heightIn(min = 44.dp, max = 128.dp)
-                                    .clip(RoundedCornerShape(22.dp))
-                                    .background(composerContainerColor),
+                                    .clip(RoundedCornerShape(22.dp)),
                                 contentAlignment = Alignment.TopStart
                             ) {
                                 BasicTextField(

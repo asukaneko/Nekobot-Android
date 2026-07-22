@@ -1,57 +1,153 @@
-# Nekobot Android
+<div align="center">
 
-基于 Jetpack Compose + Material3 实现的 NekoBot 原生 Android 客户端，支持服务器模式与本地模式双形态。
+<img src="docs/assets/neko-full.png" alt="NekoBot" width="280" />
 
-## 功能特性
+# NekoBot Android
 
-### 双模式架构
+**和你的 AI 伙伴，开始一场温柔的对话**
 
-- **服务器模式**：连接 NekoBot Web 后端，通过 REST + Socket.IO 实现完整功能
-- **本地模式**：直连 OpenAI 兼容 AI API，数据全部存储于本地 Room 数据库，无需后端
+原生 Android 客户端 · 服务器 / 本地双模式 · 深色玻璃拟态 UI
 
-### 核心功能
+[![Release](https://img.shields.io/github/v/release/asukaneko/Nekobot-Android?style=flat-square&color=f78fb3&labelColor=2b2b3a)](https://github.com/asukaneko/Nekobot-Android/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/asukaneko/Nekobot-Android/total?style=flat-square&color=f78fb3&labelColor=2b2b3a&label=downloads)](https://github.com/asukaneko/Nekobot-Android/releases)
+[![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-f78fb3?style=flat-square&labelColor=2b2b3a&logo=android&logoColor=white)](https://developer.android.com)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-f78fb3?style=flat-square&labelColor=2b2b3a&logo=kotlin&logoColor=white)](https://kotlinlang.org)
+[![License](https://img.shields.io/badge/license-GPL--3.0-f78fb3?style=flat-square&labelColor=2b2b3a)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/asukaneko/Nekobot-Android?style=flat-square&color=f78fb3&labelColor=2b2b3a&logo=github)](https://github.com/asukaneko/Nekobot-Android/stargazers)
 
-- **对话**：消息气泡、流式接收、乐观更新、重新生成、停止生成、消息分叉、消息多选
-- **会话管理**：列表搜索/筛选/置顶、归档、会话详情、TTS / 主动聊天 / 公开分享配置
-- **角色卡**：完整字段编辑（描述/人格/首条消息/场景/对话示例/规则/立绘/标签）、新建/删除/导入
-- **角色运行时**：状态评估、关系六维编辑、记忆抽取、世界书注入、PromptStack 合成
-- **故事图**：Canvas 树状布局展示剧情分支，支持分支选择、回滚与重生，本地持久化
-- **状态历程**：可视化角色状态随时间变化的时间线视图
-- **世界书**：书信息编辑、条目 CRUD（关键词/常驻/选择/位置/优先级）、多角色绑定
-- **记忆管理**：角色记忆查看与编辑
-- **Token 用量**：今日/本月/累计/费用统计、日期分组、会话/模型/用户排行、性能指标
-- **AI 配置中心**：模型/温度/max_tokens/top_p/惩罚参数编辑、故障转移队列、测试连接
-- **AI 模型**：模型 CRUD、应用/启用/克隆、拉取可用模型列表、本地 AI 模型配置
-- **语音输入**：录音转写为文字（服务器模式）
-- **工作区**：文件引用、预览与下载
-- **Markdown 渲染**：内独白折叠、全角括号斜体、代码块带语言标签与复制、横滑表格、内联样式
-- **系统设置**：服务器地址切换、系统设置 JSON 编辑器、功能开关、数据维护、配置迁移、WebDAV 备份
-- **扩展功能**：API Keys、频道、钩子、知识库、登录令牌、MCP 服务器、消息过滤、技能、任务中心、工具、TTS 试听、工作流
+[功能特性](#-功能特性) · [下载安装](#-下载安装) · [双模式](#-双模式架构) · [从源码构建](#-从源码构建) · [更新日志](changelog.md) · [官方网站](https://asukaneko.github.io/Nekobot-Android/)
 
-### 设计
+</div>
 
-- 深色玻璃拟态主题，液态玻璃底部导航栏
-- 自定义弹窗、玻璃卡片、状态芯片组件
-- 自定义主题色
-- 流式占位骨架动画
+---
 
-## 技术栈
+## ✨ 功能特性
 
-| 类别 | 选型 |
-|------|------|
-| 语言 | Kotlin 2.0.21 |
-| UI | Jetpack Compose（BOM 2024.09.02）+ Material3 |
-| 架构 | MVVM（BaseViewModel + StateFlow） |
-| 异步 | Kotlin Coroutines 1.9.0 |
-| 网络 | Retrofit 2.11 + OkHttp 4.12 + Gson |
-| 实时 | socket.io-client-java 2.1.0 |
-| 数据库 | Room 2.6.1（KSP 注解处理） |
-| 图片 | Coil 2.7.0（crossfade + 256MB 磁盘缓存） |
-| 导航 | Navigation Compose 2.8.2 |
-| 构建 | Gradle 8.11.1 + AGP 8.9.1 + KSP |
-| minSdk / targetSdk | 26 / 35 |
+### 🐾 核心体验
 
-## 项目结构
+- **💬 沉浸式对话** — Socket.IO 流式回复、乐观更新、重新生成 / 停止生成、消息分叉与多选操作
+- **🎭 角色卡系统** — 完整字段编辑（描述 / 人格 / 首条消息 / 场景 / 规则 / 立绘），支持导入 SillyTavern 酒馆卡（PNG 嵌入式、v2 / v3 JSON）
+- **💞 角色运行时** — 六维关系系统、状态评估、记忆抽取、世界书注入、PromptStack 合成
+- **🌍 世界书** — 条目 CRUD（关键词 / 常驻 / 选择 / 位置 / 优先级）、书信息编辑、多角色绑定
+- **🌳 故事图** — Canvas 树状布局呈现剧情分支，支持分支选择、回滚与重生，本地持久化
+- **📈 状态历程** — 角色状态随时间变化的可视化时间线
+- **🧠 记忆管理** — 角色记忆的查看与编辑
+
+### 🛠 个性化与工具
+
+- **🤖 AI 配置中心** — 模型 / 温度 / max_tokens / top_p / 惩罚参数编辑、故障转移队列、一键测试连接
+- **🧩 AI 模型管理** — 模型 CRUD、应用 / 启用 / 克隆、拉取可用模型列表、本地 AI 模型配置
+- **📊 Token 用量** — 今日 / 本月 / 累计 / 费用统计、日期分组、会话 / 模型 / 用户排行、性能指标
+- **🎤 语音与 TTS** — 录音转写为文字（服务器模式）、TTS 试听
+- **📝 Markdown 渲染** — 内独白折叠、全角括号斜体、带语言标签与复制按钮的代码块、横滑表格
+- **🗂 工作区** — 文件引用、预览与下载
+- **🧰 12+ 扩展功能** — API Keys、频道、钩子、知识库、登录令牌、MCP 服务器、消息过滤、技能、任务中心、工具、工作流
+- **⚙️ 系统设置** — 服务器地址切换、设置 JSON 编辑器、功能开关、数据维护、配置迁移、WebDAV 备份
+
+### 🎨 设计
+
+- **🌙 深色玻璃拟态** — 液态玻璃底部导航栏、玻璃卡片、自定义弹窗与状态芯片
+- **🌈 自定义主题色** — 配合流式占位骨架动画，等待也优雅
+
+## 🔄 双模式架构
+
+|          | 🌐 服务器模式                | 📱 本地模式               |
+| -------- | ----------------------- | --------------------- |
+| **后端**   | 连接 NekoBot Web 后端       | 无需后端，直连 OpenAI 兼容 API |
+| **通信**   | REST + Socket.IO 实时流式推送 | 本地直接请求 AI API         |
+| **数据存储** | 服务器 + 本地缓存              | 全部存储于本地 Room 数据库      |
+| **适用场景** | 完整功能生态、多端同步             | 隐私优先、离线可用、自有 API Key  |
+
+## 📦 下载安装
+
+<div align="center">
+
+[![下载最新版](https://img.shields.io/github/v/release/asukaneko/Nekobot-Android?style=for-the-badge&logo=android&logoColor=white&label=%E4%B8%8B%E8%BD%BD%E6%9C%80%E6%96%B0%E7%89%88&color=f78fb3&labelColor=2b2b3a)](https://github.com/asukaneko/Nekobot-Android/releases/latest)
+
+**要求 Android 8.0（API 26）及以上** · 应用内支持检查更新与下载安装
+
+</div>
+
+## 🚀 快速上手
+
+**🌐 服务器模式**
+
+1. 启动应用，在登录页输入服务器地址、用户名、密码
+2. 登录成功进入会话页，底部导航切换功能
+3. 聊天页发送消息后，AI 回复通过 Socket.IO 实时流式推送
+4. 设置页可修改服务器地址（写入后自动重建网络与 Socket 客户端）
+
+**📱 本地模式**
+
+1. 登录页切换至本地模式
+2. 在「本地 AI 模型」中配置 OpenAI 兼容 API 地址与密钥
+3. 数据全部存储于本地，支持会话 / 角色 / 世界书 / 记忆等完整功能
+4. 设置页可查看本地运行日志
+
+## 🛠 技术栈
+
+| 类别   | 选型                                         |
+| ---- | ------------------------------------------ |
+| 语言   | Kotlin 2.0.21                              |
+| UI   | Jetpack Compose（BOM 2024.09.02）+ Material3 |
+| 架构   | MVVM（BaseViewModel + StateFlow）            |
+| 异步   | Kotlin Coroutines 1.9.0                    |
+| 网络   | Retrofit 2.11 + OkHttp 4.12 + Gson         |
+| 实时通信 | socket.io-client-java 2.1.0                |
+| 数据库  | Room 2.6.1（KSP 注解处理）                       |
+| 图片加载 | Coil 2.7.0（crossfade + 256MB 磁盘缓存）         |
+| 导航   | Navigation Compose 2.8.2                   |
+| 构建   | Gradle 8.11.1 + AGP 8.9.1 + KSP            |
+
+## 🔧 从源码构建
+
+<details>
+<summary><b>展开构建指南</b>（JDK 17+ / Android SDK 35）</summary>
+
+<br>
+
+**1. 配置 SDK 路径**
+
+在项目根目录创建 `local.properties`：
+
+```properties
+sdk.dir=/path/to/Android/Sdk
+```
+
+**2. 编译**
+
+```bash
+# Windows
+gradlew.bat assembleDebug
+
+# Linux / macOS
+./gradlew assembleDebug
+```
+
+产物：`app/build/outputs/apk/debug/app-debug.apk`
+
+**3. Release 构建**
+
+```bash
+gradlew.bat assembleRelease
+```
+
+产物：`app/build/outputs/apk/release/app-release.apk`
+
+> Release 构建复用 debug 签名配置，生成的 APK 可直接安装。
+
+**4. 安装到设备**
+
+```bash
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+</details>
+
+<details>
+<summary><b>项目结构</b></summary>
+
+<br>
 
 ```
 app/src/main/kotlin/com/nekobot/app/
@@ -97,88 +193,37 @@ app/src/main/kotlin/com/nekobot/app/
     └── theme/                       # 颜色 / 排版 / 主题
 ```
 
-## 构建
+</details>
 
-### 环境要求
+## 🔐 权限说明
 
-- JDK 17+（构建兼容 JDK 24）
-- Android SDK 35
-- Gradle Wrapper 已包含，无需全局安装 Gradle
+| 权限                     | 用途          |
+| ---------------------- | ----------- |
+| `INTERNET`             | 网络通信        |
+| `ACCESS_NETWORK_STATE` | 检测网络状态      |
+| `RECORD_AUDIO`         | 语音输入（服务器模式） |
+| `POST_NOTIFICATIONS`   | 会话通知提醒      |
 
-### 配置
+## 🐞 调试
 
-创建 `local.properties` 指向 Android SDK：
-
-```properties
-sdk.dir=/path/to/Android/Sdk
-```
-
-### 编译
-
-```bash
-# Windows
-gradlew.bat assembleDebug
-
-# Linux/macOS
-./gradlew assembleDebug
-```
-
-产物：`app/build/outputs/apk/debug/app-debug.apk`
-
-### Release 构建
-
-```bash
-gradlew.bat assembleRelease
-```
-
-产物：`app/build/outputs/apk/release/app-release.apk`
-
-> Release 构建复用 debug 签名配置，生成的 APK 可直接安装。
-
-### 安装
-
-```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
-
-## 使用
-
-### 服务器模式
-
-1. 启动应用，登录页输入服务器地址、用户名、密码
-2. 登录成功后进入会话页，底部导航切换功能
-3. 聊天页发消息后，AI 回复通过 Socket.IO 实时流式推送
-4. 设置页可修改服务器地址（写入本地后会重建网络与 Socket 客户端）
-
-### 本地模式
-
-1. 登录页切换至本地模式
-2. 在「本地 AI 模型」中配置 OpenAI 兼容 API 地址与密钥
-3. 数据全部存储于本地，支持会话/角色/世界书/记忆等完整功能
-4. 设置页可查看本地运行日志
-
-## 权限说明
-
-| 权限 | 用途 |
-|------|------|
-| `INTERNET` | 网络通信 |
-| `ACCESS_NETWORK_STATE` | 检测网络状态 |
-| `RECORD_AUDIO` | 语音输入（服务器模式） |
-| `POST_NOTIFICATIONS` | 会话通知提醒 |
-
-## 调试
-
-实时通信日志标签：`NekoSocket`（可 `adb logcat -s NekoSocket` 观察连接/重连/错误）
+实时通信日志标签为 `NekoSocket`：
 
 ```bash
 adb logcat -s NekoSocket:V
 ```
 
-## 版本记录
+## 🤝 参与贡献
 
-详见 [changelog.md](changelog.md)。
+欢迎提交 Issue 与 Pull Request！版本变更记录见 [changelog.md](changelog.md)。
 
-## 协议
+---
 
-本项目基于 [GNU General Public License v3](LICENSE) 发布。任何人可自由使用、修改与分发，但任何衍生作品必须同样以 GPL v3 开源。
+<div align="center">
 
+基于 [GPL v3](LICENSE) 协议开源 · 衍生作品须同样以 GPL v3 发布
+
+**[官方网站](https://asukaneko.github.io/Nekobot-Android/)** · **[问题反馈](https://github.com/asukaneko/Nekobot-Android/issues)** · **[最新版本](https://github.com/asukaneko/Nekobot-Android/releases/latest)**
+
+🐾 Made with 💗 by [Asukaneko](https://github.com/asukaneko)
+
+</div>
