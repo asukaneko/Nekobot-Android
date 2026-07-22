@@ -217,6 +217,39 @@ data class RelationshipState(
     fun toJson(): String = gson.toJson(toDict())
 }
 
+/** 会话级六维关系状态使用独立 targetId，避免不同角色会话互相覆盖。 */
+fun sessionRelationshipTargetId(sessionId: String): String = "session:$sessionId"
+
+/** 按角色卡中的初始状态创建一份六维关系状态。 */
+fun relationshipStateFromInitial(
+    characterId: String,
+    targetId: String,
+    initialState: Map<String, Any>,
+    updatedAt: String
+): RelationshipState {
+    fun value(key: String, default: Int): Int {
+        val raw = initialState[key]
+        val parsed = when (raw) {
+            is Number -> raw.toInt()
+            is String -> raw.toDoubleOrNull()?.toInt()
+            else -> null
+        }
+        return (parsed ?: default).coerceIn(0, 100)
+    }
+
+    return RelationshipState(
+        characterId = characterId,
+        targetId = targetId,
+        affection = value("affection", 50),
+        trust = value("trust", 50),
+        familiarity = value("familiarity", 30),
+        dependency = value("dependency", 30),
+        security = value("security", 50),
+        jealousy = value("jealousy", 0),
+        updatedAt = updatedAt
+    )
+}
+
 // ==================== 角色记忆 ====================
 
 /**
@@ -310,6 +343,8 @@ data class CharacterIdentity(
     val targetId: String = "",
     /** 状态隔离作用域 */
     val scopeId: String = "",
+    /** 六维关系状态的独立存储键；留空时兼容旧版，继续使用 targetId。 */
+    val relationshipTargetId: String = "",
     val channel: String = ""
 )
 

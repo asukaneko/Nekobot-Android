@@ -119,8 +119,13 @@ data class CreateSessionRequest(
     @SerializedName("sender_avatar") val senderAvatar: String? = null,
     @SerializedName("sender_portrait") val senderPortrait: String? = null,
     val tags: List<String>? = null,
-    @SerializedName("group_config") val groupConfig: com.google.gson.JsonElement? = null
+    @SerializedName("group_config") val groupConfig: com.google.gson.JsonElement? = null,
+    /** 仅供本地模式创建角色会话时选择六维状态来源，不发送给远程服务。 */
+    @Transient val relationshipStateSource: String = RELATIONSHIP_STATE_SOURCE_INHERIT
 )
+
+const val RELATIONSHIP_STATE_SOURCE_INITIAL = "initial"
+const val RELATIONSHIP_STATE_SOURCE_INHERIT = "inherit"
 
 data class UpdateSessionRequest(
     val name: String? = null,

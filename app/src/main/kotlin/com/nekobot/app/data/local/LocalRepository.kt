@@ -18,9 +18,14 @@ import com.nekobot.app.data.local.ai.LocalContextTokenMessage
 import com.nekobot.app.data.local.ai.LocalGenerationController
 import com.nekobot.app.data.local.ai.LocalMcpRuntime
 import com.nekobot.app.data.local.ai.LocalPromptBuilder
+import com.nekobot.app.data.local.ai.LocalProfileRepository
+import com.nekobot.app.data.local.ai.LocalRelationshipRepository
+import com.nekobot.app.data.local.ai.RelationshipState
 import com.nekobot.app.data.local.ai.TokenStatsManager
 import com.nekobot.app.data.local.ai.currentLocalContextTokens
+import com.nekobot.app.data.local.ai.relationshipStateFromInitial
 import com.nekobot.app.data.local.ai.resolveLocalTokenUsage
+import com.nekobot.app.data.local.ai.sessionRelationshipTargetId
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.local.db.LocalApiKeyEntity
 import com.nekobot.app.data.local.db.LocalFailoverHealthEntity
@@ -51,6 +56,7 @@ import com.nekobot.app.data.model.McpServer
 import com.nekobot.app.data.model.McpServerRequest
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.model.MessageFavoriteRequest
+import com.nekobot.app.data.model.RELATIONSHIP_STATE_SOURCE_INITIAL
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.Skill
 import com.nekobot.app.data.model.SkillInstallRequest
@@ -308,6 +314,14 @@ class LocalRepository(
         )
         sessionDao.upsert(entity)
 
+        if (character != null && req.sessionMode.equals("character", ignoreCase = true)) {
+            initializeSessionRelationship(
+                characterId = character.id,
+                sessionId = id,
+                source = req.relationshipStateSource
+            )
+        }
+
         // 角色会话：若角色有 firstMessage，自动插入一条 assistant 消息到数据库
         // （agent 模式不插入，agent 会话由用户主动发起）
         val firstMsg = req.firstMessage ?: character?.firstMessage ?: character?.greeting
@@ -328,6 +342,50 @@ class LocalRepository(
         }
 
         entity.toSession()
+    }
+
+    /**
+     * 为新角色会话保存独立的六维状态。
+     * 继承时优先采用最近一轮真实对话快照；旧数据没有快照时再读取最近保存的关系行。
+     */
+    private suspend fun initializeSessionRelationship(
+        characterId: String,
+        sessionId: String,
+        source: String
+    ) {
+        val targetId = sessionRelationshipTargetId(sessionId)
+        val now = nowIso()
+        val inherited = if (source != RELATIONSHIP_STATE_SOURCE_INITIAL) {
+            db.stateSnapshotDao().getLatestForCharacter(characterId)?.let { snapshot ->
+                RelationshipState(
+                    characterId = characterId,
+                    targetId = targetId,
+                    affection = snapshot.affection,
+                    trust = snapshot.trust,
+                    familiarity = snapshot.familiarity,
+                    dependency = snapshot.dependency,
+                    security = snapshot.security,
+                    jealousy = snapshot.jealousy,
+                    updatedAt = now
+                )
+            } ?: db.relationshipDao().getLatestForCharacter(characterId, targetId)?.let { entity ->
+                RelationshipState.fromJson(entity.dataJson).copy(
+                    characterId = characterId,
+                    targetId = targetId,
+                    updatedAt = now
+                )
+            }
+        } else {
+            null
+        }
+
+        val relationship = inherited ?: relationshipStateFromInitial(
+            characterId = characterId,
+            targetId = targetId,
+            initialState = LocalProfileRepository(characterDao).getById(characterId)?.initialState.orEmpty(),
+            updatedAt = now
+        )
+        LocalRelationshipRepository(db.relationshipDao()).save(relationship)
     }
 
     suspend fun updateSession(
@@ -911,6 +969,7 @@ class LocalRepository(
                 characterId = it.id,
                 targetId = "local-user",
                 scopeId = sessionId,
+                relationshipTargetId = sessionRelationshipTargetId(sessionId),
                 channel = "local"
             )
         }

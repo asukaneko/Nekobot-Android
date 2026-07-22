@@ -296,6 +296,9 @@ interface RelationshipDao {
     @Query("SELECT * FROM local_relationship_states WHERE character_id = :characterId AND target_id = :targetId LIMIT 1")
     suspend fun get(characterId: String, targetId: String): LocalRelationshipStateEntity?
 
+    @Query("SELECT * FROM local_relationship_states WHERE character_id = :characterId AND target_id != :excludedTargetId ORDER BY updated_at DESC LIMIT 1")
+    suspend fun getLatestForCharacter(characterId: String, excludedTargetId: String): LocalRelationshipStateEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(relationship: LocalRelationshipStateEntity)
 
@@ -310,6 +313,9 @@ interface StateSnapshotDao {
 
     @Query("SELECT * FROM local_state_snapshots WHERE session_id = :sessionId ORDER BY timestamp ASC")
     suspend fun listBySession(sessionId: String): List<LocalStateSnapshotEntity>
+
+    @Query("SELECT * FROM local_state_snapshots WHERE character_id = :characterId ORDER BY timestamp DESC LIMIT 1")
+    suspend fun getLatestForCharacter(characterId: String): LocalStateSnapshotEntity?
 
     @Query("DELETE FROM local_state_snapshots WHERE session_id = :sessionId")
     suspend fun deleteBySession(sessionId: String)

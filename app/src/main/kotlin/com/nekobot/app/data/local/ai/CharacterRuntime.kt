@@ -329,23 +329,29 @@ class CharacterRuntime(
     }
 
     private suspend fun getOrCreateRelationship(identity: CharacterIdentity, profile: CharacterProfile): RelationshipState {
+        val storageTargetId = identity.relationshipTargetId.ifBlank { identity.targetId }
         relationshipRepo?.let { repo ->
-            repo.get(identity.characterId, identity.targetId)?.let { return it }
+            repo.get(identity.characterId, storageTargetId)?.let { return it }
+
+            // 旧版本按角色 + 用户全局存储。已有会话首次打开时复制为会话级状态，避免升级后丢失关系进度。
+            if (storageTargetId != identity.targetId) {
+                repo.get(identity.characterId, identity.targetId)?.let { legacy ->
+                    val migrated = legacy.copy(
+                        characterId = identity.characterId,
+                        targetId = storageTargetId,
+                        updatedAt = Instant.now().toString()
+                    )
+                    repo.save(migrated)
+                    return migrated
+                }
+            }
         }
         // 从角色卡初始状态读取关系初值
-        val initial = profile.initialState
         val now = Instant.now().toString()
-        fun getInt(key: String, default: Int): Int = (initial[key] as? Number)?.toInt() ?: default
-
-        return RelationshipState(
+        return relationshipStateFromInitial(
             characterId = identity.characterId,
-            targetId = identity.targetId,
-            affection = getInt("affection", 50),
-            trust = getInt("trust", 50),
-            familiarity = getInt("familiarity", 30),
-            dependency = getInt("dependency", 30),
-            security = getInt("security", 50),
-            jealousy = getInt("jealousy", 0),
+            targetId = storageTargetId,
+            initialState = profile.initialState,
             updatedAt = now
         )
     }

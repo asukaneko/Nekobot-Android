@@ -82,8 +82,10 @@ import coil.request.repeatCount
 import androidx.lifecycle.viewModelScope
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.R
+import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.model.CreateSessionRequest
+import com.nekobot.app.data.model.RELATIONSHIP_STATE_SOURCE_INHERIT
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.TokenRankings
 import com.nekobot.app.data.model.TokenStats
@@ -94,6 +96,7 @@ import com.nekobot.app.ui.components.EmptyState
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.NekoDialog
+import com.nekobot.app.ui.components.RelationshipStateSourceSelector
 import com.nekobot.app.ui.components.resolveAvatarUrl
 import com.nekobot.app.ui.theme.BgSurface
 import com.nekobot.app.ui.theme.BgSurfaceVariant
@@ -449,6 +452,7 @@ fun SessionsScreen(
     if (showCreate) {
         CreateSessionDialog(
             characters = characters,
+            isLocalMode = appMode == AppMode.LOCAL,
             onDismiss = { showCreate = false },
             onCreate = { req ->
                 viewModel.createSession(req) { showCreate = false }
@@ -939,6 +943,7 @@ private fun SelectableChip(
 @Composable
 private fun CreateSessionDialog(
     characters: List<CharacterPreset>,
+    isLocalMode: Boolean,
     onDismiss: () -> Unit,
     onCreate: (CreateSessionRequest) -> Unit,
     onLoadCharacters: () -> Unit
@@ -976,6 +981,7 @@ private fun CreateSessionDialog(
     var dropdownExpanded by remember { mutableStateOf(false) }
     /** 选中的角色对象（来自下拉或 ID 输入匹配） */
     var selectedCharacter by remember { mutableStateOf<CharacterPreset?>(null) }
+    var relationshipStateSource by remember { mutableStateOf(RELATIONSHIP_STATE_SOURCE_INHERIT) }
     /** 标记用户是否手动编辑过会话名 / 首条消息，避免被角色切换覆盖。 */
     var nameEditedByUser by remember { mutableStateOf(false) }
     var firstMessageEditedByUser by remember { mutableStateOf(false) }
@@ -1050,7 +1056,8 @@ private fun CreateSessionDialog(
                     senderName = char?.displayName,
                     senderAvatar = char?.avatar,
                     senderPortrait = char?.portrait,
-                    userId = ServiceContainer.prefs.username.takeIf { it.isNotBlank() }
+                    userId = ServiceContainer.prefs.username.takeIf { it.isNotBlank() },
+                    relationshipStateSource = relationshipStateSource
                 )
             }
             onCreate(req)
@@ -1343,6 +1350,15 @@ private fun CreateSessionDialog(
                                 }
                             }
                         }
+                    }
+
+                    if (isLocalMode && selectedCharacter != null) {
+                        Spacer(Modifier.height(12.dp))
+                        RelationshipStateSourceSelector(
+                            selectedSource = relationshipStateSource,
+                            onSourceSelected = { relationshipStateSource = it },
+                            initialState = selectedCharacter?.state
+                        )
                     }
 
                     Spacer(Modifier.height(12.dp))

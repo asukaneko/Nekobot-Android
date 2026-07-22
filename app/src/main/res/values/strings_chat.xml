@@ -53,6 +53,12 @@
     <string name="sessions_select_button">选择</string>
     <string name="sessions_none_select">（不选）</string>
     <string name="sessions_first_message_optional">首条消息（可选）</string>
+    <string name="sessions_relationship_state_source">六维状态来源</string>
+    <string name="sessions_relationship_state_initial">角色卡初始状态</string>
+    <string name="sessions_relationship_state_inherit">继承此前状态</string>
+    <string name="sessions_relationship_state_initial_desc">来自角色卡的「初始关系状态」；角色卡未填写的维度使用默认值。</string>
+    <string name="sessions_relationship_state_inherit_desc">来自该角色最近保存的六维状态，优先取最近一轮本地对话；没有历史时自动使用角色卡初始状态。</string>
+    <string name="sessions_relationship_state_initial_values">好感 %1$d · 信任 %2$d · 熟悉 %3$d · 依赖 %4$d · 安全感 %5$d · 嫉妒 %6$d</string>
     <string name="sessions_msg_count">%1$d 条</string>
     <string name="sessions_pinned_badge">已置顶</string>
     <string name="sessions_favorited_badge">已收藏</string>

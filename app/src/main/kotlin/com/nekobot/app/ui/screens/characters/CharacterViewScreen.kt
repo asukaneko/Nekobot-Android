@@ -42,12 +42,15 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import coil.compose.AsyncImage
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.model.CreateSessionRequest
+import com.nekobot.app.data.model.RELATIONSHIP_STATE_SOURCE_INHERIT
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
 import com.nekobot.app.ui.components.MarkdownText
 import com.nekobot.app.ui.components.NekoDialog
+import com.nekobot.app.ui.components.RelationshipStateSourceSelector
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -87,7 +90,11 @@ class CharacterViewModelView(characterId: String) : com.nekobot.app.ui.BaseViewM
      * 用当前角色直接创建一个名为"新会话"的会话，成功后回调 [onSuccess] 传入新会话 ID。
      * 复用与 SessionsScreen 一致的请求结构（character 模式）。
      */
-    fun createSessionWithCharacter(onSuccess: (String) -> Unit, onError: () -> Unit = {}) {
+    fun createSessionWithCharacter(
+        relationshipStateSource: String,
+        onSuccess: (String) -> Unit,
+        onError: () -> Unit = {}
+    ) {
         val c = _character.value ?: return
         val req = CreateSessionRequest(
             name = string(R.string.character_new_session),
@@ -99,7 +106,8 @@ class CharacterViewModelView(characterId: String) : com.nekobot.app.ui.BaseViewM
             senderName = c.displayName,
             senderAvatar = c.avatar,
             senderPortrait = c.portrait,
-            userId = ServiceContainer.prefs.username.takeIf { it.isNotBlank() }
+            userId = ServiceContainer.prefs.username.takeIf { it.isNotBlank() },
+            relationshipStateSource = relationshipStateSource
         )
         launchResult(
             block = { unified.createSession(req) },
@@ -182,8 +190,24 @@ fun CharacterViewScreen(
     var exporting by remember { mutableStateOf(false) }
     var exportResult by remember { mutableStateOf<String?>(null) }
     var creatingSession by remember { mutableStateOf(false) }
+    var showRelationshipSourceDialog by remember { mutableStateOf(false) }
+    var relationshipStateSource by remember { mutableStateOf(RELATIONSHIP_STATE_SOURCE_INHERIT) }
+    val appMode by ServiceContainer.appModeFlow.collectAsState()
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+
+    fun createCharacterSession(source: String) {
+        if (creatingSession) return
+        creatingSession = true
+        vm.createSessionWithCharacter(
+            relationshipStateSource = source,
+            onSuccess = { sessionId ->
+                creatingSession = false
+                onOpenChat(sessionId)
+            },
+            onError = { creatingSession = false }
+        )
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -266,16 +290,8 @@ fun CharacterViewScreen(
                     // 用此角色新建会话
                     Button(
                         onClick = {
-                            if (!creatingSession) {
-                                creatingSession = true
-                                vm.createSessionWithCharacter(
-                                    onSuccess = { sessionId ->
-                                        creatingSession = false
-                                        onOpenChat(sessionId)
-                                    },
-                                    onError = { creatingSession = false }
-                                )
-                            }
+                            if (appMode == AppMode.LOCAL) showRelationshipSourceDialog = true
+                            else createCharacterSession(RELATIONSHIP_STATE_SOURCE_INHERIT)
                         },
                         enabled = !creatingSession,
                         modifier = Modifier.fillMaxWidth()
@@ -316,6 +332,26 @@ fun CharacterViewScreen(
             }
             LoadingOverlay(visible = loading)
         }
+    }
+
+    if (showRelationshipSourceDialog) {
+        NekoDialog(
+            onDismiss = { showRelationshipSourceDialog = false },
+            title = stringResource(R.string.sessions_relationship_state_source),
+            confirmText = stringResource(R.string.common_create),
+            onConfirm = {
+                showRelationshipSourceDialog = false
+                createCharacterSession(relationshipStateSource)
+            },
+            onCancel = { showRelationshipSourceDialog = false },
+            content = {
+                RelationshipStateSourceSelector(
+                    selectedSource = relationshipStateSource,
+                    onSourceSelected = { relationshipStateSource = it },
+                    initialState = character?.state
+                )
+            }
+        )
     }
 
     if (showDeleteDialog) {
