@@ -29,7 +29,9 @@ data class SessionListRow(
     val messageCount: Int?,
     val pinned: Boolean,
     val favorite: Boolean,
-    val archived: Boolean
+    val archived: Boolean,
+    /** 群聊会话：列表项无立绘时回退到群聊图标而非默认聊天图标。 */
+    val isGroupSession: Boolean = false
 )
 
 val QUICK_SESSION_FILTERS = listOf(
@@ -125,7 +127,8 @@ fun buildSessionListRows(
             messageCount = session.messageCount,
             pinned = session.pinned == true,
             favorite = session.favorite == true,
-            archived = session.archived == true
+            archived = session.archived == true,
+            isGroupSession = isGroupSession
         )
     }
 }

@@ -18,7 +18,9 @@ import com.nekobot.app.data.repository.UnifiedRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -67,7 +69,20 @@ object ServiceContainer {
     private val _pendingSessionId = MutableStateFlow<String?>(null)
     val pendingSessionId: StateFlow<String?> = _pendingSessionId.asStateFlow()
 
+    /**
+     * 角色卡数据变化事件流：角色卡立绘/头像等关键字段更新后广播其 ID，
+     * 会话列表/聊天页等持有角色快照的 ViewModel 订阅后重新加载，保持立绘同步。
+     * 使用 SharedFlow + replay=0，只关心最新变化，订阅前的旧事件不重放。
+     */
+    private val _characterChanged = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val characterChanged: SharedFlow<String> = _characterChanged
+
     fun setPendingSessionId(id: String?) { _pendingSessionId.value = id }
+
+    /** 广播角色卡数据变化（id 为变化的角色卡 ID，null/blank 时广播通配符 ""）。 */
+    fun notifyCharacterChanged(characterId: String?) {
+        _characterChanged.tryEmit(characterId?.takeIf { it.isNotBlank() } ?: "")
+    }
 
     fun init(app: Application) {
         appContext = app.applicationContext

@@ -66,6 +66,17 @@ interface SessionDao {
     /** nbotcfg 导入后批量改写立绘 URL 为本地路径（portrait / sender_avatar / character_avatar）。 */
     @Query("UPDATE local_sessions SET portrait = :portrait, sender_avatar = :senderAvatar, character_avatar = :characterAvatar WHERE id = :id")
     suspend fun updatePortraits(id: String, portrait: String?, senderAvatar: String?, characterAvatar: String?)
+
+    /**
+     * 角色卡立绘变更后，同步刷新所有以该角色为主角的会话立绘快照。
+     *
+     * 仅更新 character_id = :characterId 的普通会话；群聊会话（character_ids 数组）
+     * 不在此更新，因为群聊列表不显示单一角色立绘，消息头像在运行时回查角色卡。
+     * - portrait：只在角色卡 portrait 非空时覆盖，避免清空 senderPortrait 兜底值
+     * - character_avatar：始终同步角色卡 avatar
+     */
+    @Query("UPDATE local_sessions SET character_avatar = :characterAvatar, portrait = CASE WHEN :portrait IS NULL OR :portrait = '' THEN portrait ELSE :portrait END WHERE character_id = :characterId")
+    suspend fun updatePortraitsByCharacterId(characterId: String, portrait: String?, characterAvatar: String?)
 }
 
 @Dao

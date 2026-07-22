@@ -5,6 +5,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalRepository
 import com.nekobot.app.data.local.NbotConfigImporter
 import com.nekobot.app.data.local.PrefsManager
@@ -306,8 +307,17 @@ class UnifiedRepository(
     suspend fun updateCharacter(id: String, req: JsonElement): Resource<CharacterPreset> =
         if (isLocal) {
             val preset = gson.fromJson(req, CharacterPreset::class.java).copy(id = id)
-            Resource.Success(local.upsertCharacter(preset))
-        } else remote.updateCharacter(id, req)
+            val result = local.upsertCharacter(preset)
+            // 广播角色卡变化：会话列表/聊天页订阅后重新加载，同步立绘
+            ServiceContainer.notifyCharacterChanged(id)
+            Resource.Success(result)
+        } else {
+            val result = remote.updateCharacter(id, req)
+            if (result is Resource.Success) {
+                ServiceContainer.notifyCharacterChanged(id)
+            }
+            result
+        }
 
     suspend fun deleteCharacter(id: String): Resource<Unit> =
         if (isLocal) { local.deleteCharacter(id); Resource.Success(Unit) } else remote.deleteCharacter(id)

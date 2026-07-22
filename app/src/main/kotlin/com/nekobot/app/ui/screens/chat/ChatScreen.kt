@@ -86,6 +86,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.AccountTree
+import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
@@ -355,6 +356,12 @@ fun ChatScreen(
         initialLoad = true
         viewModel.init(sessionId)
     }
+    // 角色卡立绘/头像变更后刷新当前会话，使顶栏头像和消息头像跟随更新
+    LaunchedEffect(Unit) {
+        ServiceContainer.characterChanged.collect {
+            viewModel.refreshSession()
+        }
+    }
     // 生命周期绑定：聊天界面可见性追踪（用于通知提醒判断）
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -516,7 +523,12 @@ fun ChatScreen(
                     TopAppBar(
                         title = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                ChatAvatar(portraitUrl = session?.portraitUrl, size = 34.dp, ring = true)
+                                ChatAvatar(
+                                    portraitUrl = session?.portraitUrl,
+                                    size = 34.dp,
+                                    ring = true,
+                                    fallbackIcon = if (session?.sessionMode == "group") Icons.Outlined.Group else Icons.Outlined.SmartToy
+                                )
                                 Spacer(Modifier.width(10.dp))
                                 Column {
                                     Text(
@@ -722,7 +734,8 @@ fun ChatScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                Icons.Outlined.SmartToy,
+                                if (session?.sessionMode == "group") Icons.Outlined.Group
+                                else Icons.Outlined.SmartToy,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(40.dp)
@@ -782,7 +795,8 @@ fun ChatScreen(
                                 ThinkingIndicator(
                                     portraitUrl = session?.portraitUrl,
                                     showAiAvatar = session?.sessionMode != "agent",
-                                    fillAiWidth = session?.sessionMode == "agent"
+                                    fillAiWidth = session?.sessionMode == "agent",
+                                    fallbackIcon = if (session?.sessionMode == "group") Icons.Outlined.Group else Icons.Outlined.SmartToy
                                 )
                             } else {
                                 val groupIdentity = if (session?.sessionMode.equals("group", ignoreCase = true)) {
@@ -2318,7 +2332,8 @@ private fun BackgroundSettingCard(content: String?) {
 private fun ThinkingIndicator(
     portraitUrl: String? = null,
     showAiAvatar: Boolean = true,
-    fillAiWidth: Boolean = false
+    fillAiWidth: Boolean = false,
+    fallbackIcon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Outlined.SmartToy
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -2326,7 +2341,7 @@ private fun ThinkingIndicator(
         verticalAlignment = Alignment.Top
     ) {
         if (showAiAvatar) {
-            ChatAvatar(portraitUrl = portraitUrl, size = 34.dp, ring = true)
+            ChatAvatar(portraitUrl = portraitUrl, size = 34.dp, ring = true, fallbackIcon = fallbackIcon)
             Spacer(Modifier.width(8.dp))
         }
         val shape = RoundedCornerShape(
@@ -2385,7 +2400,8 @@ private fun TypingDots(
 private fun ChatAvatar(
     portraitUrl: String?,
     size: androidx.compose.ui.unit.Dp,
-    ring: Boolean = false
+    ring: Boolean = false,
+    fallbackIcon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Outlined.SmartToy
 ) {
     val resolved = resolveAvatarUrl(portraitUrl)
     Box(
@@ -2405,7 +2421,7 @@ private fun ChatAvatar(
     ) {
         val fallback: @Composable () -> Unit = {
             Icon(
-                Icons.Outlined.SmartToy,
+                fallbackIcon,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(size * 0.55f)
@@ -3567,6 +3583,23 @@ class ChatViewModel : BaseViewModel() {
                     viewModelScope.launch {
                         if (isLocalMode) loadLocalPlotChoices() else loadPlotChoices()
                     }
+                }
+            }
+        )
+    }
+
+    /**
+     * 刷新当前会话信息（用于角色卡立绘变更后同步头像）。
+     * 仅重新拉取 session 数据，不重置消息列表和 Socket 连接。
+     */
+    fun refreshSession() {
+        val sid = currentSessionId.takeIf { it.isNotBlank() } ?: return
+        launchResult(
+            block = { unified.getSession(sid) },
+            onSuccess = { latest ->
+                _session.value = latest
+                if (latest?.sessionMode.equals("group", ignoreCase = true)) {
+                    loadGroupCharacters(latest?.characterIds.orEmpty())
                 }
             }
         )

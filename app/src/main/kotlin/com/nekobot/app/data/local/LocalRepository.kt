@@ -1760,6 +1760,15 @@ class LocalRepository(
             val now = nowIso()
             val entity = preset.toEntity(now)
             characterDao.upsert(entity)
+            // 同步刷新以该角色为主角的会话立绘快照，使会话列表/聊天头像跟随角色卡立绘变更
+            val cid = preset.id?.takeIf { it.isNotBlank() }
+            if (cid != null) {
+                sessionDao.updatePortraitsByCharacterId(
+                    characterId = cid,
+                    portrait = entity.portrait,
+                    characterAvatar = entity.avatar
+                )
+            }
             entity.toCharacterPreset()
         }
 

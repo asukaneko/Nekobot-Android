@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
@@ -180,6 +181,13 @@ fun SessionsScreen(
     LaunchedEffect(appMode) {
         viewModel.loadAll()
         viewModel.loadDashboardMetrics()
+    }
+
+    // 角色卡立绘/头像变更后自动刷新会话列表，使会话头像跟随角色卡更新
+    LaunchedEffect(Unit) {
+        ServiceContainer.characterChanged.collect {
+            viewModel.loadAll()
+        }
     }
 
     // 弹窗状态
@@ -1471,7 +1479,8 @@ private fun SessionItem(
                     )
                 } else {
                     Icon(
-                        Icons.AutoMirrored.Outlined.Chat,
+                        if (row.isGroupSession) Icons.Outlined.Group
+                        else Icons.AutoMirrored.Outlined.Chat,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(28.dp)
