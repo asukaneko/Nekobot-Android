@@ -1326,10 +1326,20 @@ class LocalRepository(
 
         var lastCompletedSpeaker: com.nekobot.app.data.local.ai.LocalGroupParticipant? = null
         var lastContext: com.nekobot.app.data.local.ai.PipelineContext? = null
+        val roundResponses = mutableListOf<com.nekobot.app.data.local.ai.LocalGroupRoundResponse>()
+        val scheduledSpeakers = speakers.toMutableList()
+        val initialSpeakerCount = speakers.size
 
-        for ((index, speaker) in speakers.withIndex()) {
+        var index = 0
+        while (index < scheduledSpeakers.size) {
+            val speaker = scheduledSpeakers[index]
             if (generationController.isStopped) break
-            val character = charactersById[speaker.id] ?: continue
+            val character = charactersById[speaker.id]
+            if (character == null) {
+                index++
+                continue
+            }
+            val isCrossTalk = index >= initialSpeakerCount
             val callbacks = com.nekobot.app.data.local.ai.LocalPipelineCallbacks(
                 db = db,
                 aiClient = aiClient,
@@ -1373,7 +1383,11 @@ class LocalRepository(
                 put("group_id", session.groupId ?: session.id)
                 put("group_speaker", speaker.id)
                 put("group_speaker_name", speaker.name)
-                put("group_round_complete", index == speakers.lastIndex)
+                put(
+                    "group_round_complete",
+                    if (isCrossTalk) index == scheduledSpeakers.lastIndex else index == initialSpeakerCount - 1
+                )
+                if (isCrossTalk) put("cross_talk_triggered", true)
                 put("auto_state_interval", session.autoStateInterval)
                 if (disabledKeys.isNotEmpty()) put("disabled_prompt_keys", disabledKeys)
                 if (customPrompts.isNotEmpty()) put("custom_prompts", customPrompts)
@@ -1417,8 +1431,27 @@ class LocalRepository(
                 pipelineJob.join()
             }
 
+            if (!isCrossTalk && ctx.finalContent.isNotBlank()) {
+                roundResponses += com.nekobot.app.data.local.ai.LocalGroupRoundResponse(
+                    speakerId = speaker.id,
+                    speakerName = speaker.name,
+                    content = ctx.finalContent
+                )
+            }
+            if (
+                index == initialSpeakerCount - 1 &&
+                groupConfig.allowCharacterCrossTalk &&
+                !generationController.isStopped
+            ) {
+                scheduledSpeakers += com.nekobot.app.data.local.ai.LocalGroupChat.collectCrossTalkSpeakers(
+                    responses = roundResponses,
+                    participants = participants,
+                    maxMentions = groupConfig.crossTalkMaxMentions
+                )
+            }
             lastCompletedSpeaker = speaker
             lastContext = ctx
+            index++
         }
 
         if (lastCompletedSpeaker != null && !generationController.isStopped) {

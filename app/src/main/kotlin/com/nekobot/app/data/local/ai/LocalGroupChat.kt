@@ -13,6 +13,13 @@ data class LocalGroupParticipant(
     val relationWeight: Double? = null
 )
 
+/** 一轮群聊中已完成的角色回复，用于解析角色间 @。 */
+data class LocalGroupRoundResponse(
+    val speakerId: String,
+    val speakerName: String,
+    val content: String
+)
+
 /**
  * 本地群聊配置，对齐原仓库 nbot/group/models.py:GroupConfig 的核心字段。
  *
@@ -24,6 +31,7 @@ data class LocalGroupConfig(
     val roundRobinMode: String = "sequential",
     val maxCharsPerTurn: Int = 800,
     val allowCharacterCrossTalk: Boolean = true,
+    val crossTalkMaxMentions: Int = 5,
     val sharedMemory: Boolean = true
 ) {
     companion object {
@@ -39,6 +47,8 @@ data class LocalGroupConfig(
                         ?.takeIf { it.isNotBlank() } ?: "sequential",
                     maxCharsPerTurn = obj.get("max_chars_per_turn")?.asInt ?: 800,
                     allowCharacterCrossTalk = obj.get("allow_character_cross_talk")?.asBoolean ?: true,
+                    crossTalkMaxMentions = (obj.get("cross_talk_max_mentions")?.asInt ?: 5)
+                        .coerceIn(0, 20),
                     sharedMemory = obj.get("shared_memory")?.asBoolean ?: true
                 )
             }.getOrDefault(LocalGroupConfig())
@@ -48,6 +58,63 @@ data class LocalGroupConfig(
 
 /** 本地群聊调度与提示词构建，对齐原仓库 SpeakerScheduler 的 Web 会话路径。 */
 object LocalGroupChat {
+
+    /**
+     * 对齐原仓库 group/cross_talk.py：从本轮角色回复中收集被 @ 的角色。
+     * 已在本轮发言的角色不重复触发，同一目标只触发一次，并限制最大数量。
+     */
+    fun collectCrossTalkSpeakers(
+        responses: List<LocalGroupRoundResponse>,
+        participants: List<LocalGroupParticipant>,
+        maxMentions: Int = 5
+    ): List<LocalGroupParticipant> {
+        if (responses.isEmpty() || participants.isEmpty() || maxMentions <= 0) return emptyList()
+        val alreadySpoken = responses.mapTo(linkedSetOf()) { it.speakerId }
+        return responses
+            .flatMap { response -> parseMentions(response.content, participants) }
+            .distinctBy(LocalGroupParticipant::id)
+            .filterNot { it.id in alreadySpoken }
+            .take(maxMentions)
+    }
+
+    /** 按文本中的出现顺序解析 @角色ID / @角色名，支持中文名和带连字符的 ID。 */
+    fun parseMentions(
+        text: String,
+        participants: List<LocalGroupParticipant>
+    ): List<LocalGroupParticipant> {
+        if (text.isBlank() || participants.isEmpty()) return emptyList()
+        data class Match(val position: Int, val participant: LocalGroupParticipant)
+
+        val matches = buildList {
+            participants.forEach { participant ->
+                listOf(participant.id, participant.name)
+                    .map(String::trim)
+                    .filter(String::isNotEmpty)
+                    .distinctBy(String::lowercase)
+                    .forEach { alias ->
+                        val needle = "@$alias"
+                        var searchStart = 0
+                        while (searchStart < text.length) {
+                            val position = text.indexOf(
+                                string = needle,
+                                startIndex = searchStart,
+                                ignoreCase = true
+                            )
+                            if (position < 0) break
+                            val next = text.getOrNull(position + needle.length)
+                            val endsHere = next == null ||
+                                !(next.isLetterOrDigit() || next == '_' || next == '-')
+                            if (endsHere) add(Match(position, participant))
+                            searchStart = position + 1
+                        }
+                    }
+            }
+        }
+        return matches
+            .sortedBy(Match::position)
+            .distinctBy { it.participant.id }
+            .map(Match::participant)
+    }
 
     /**
      * 决定本轮发言角色。

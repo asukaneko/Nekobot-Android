@@ -36,6 +36,52 @@ class LocalGroupChatTest {
     }
 
     @Test
+    fun characterMentionTriggersUnspokenTargetInOrder() {
+        val responses = listOf(
+            LocalGroupRoundResponse(
+                speakerId = "alice",
+                speakerName = "爱丽丝",
+                content = "@卡萝尔 你来画一下，@小明 帮忙准备工具。"
+            )
+        )
+
+        val speakers = LocalGroupChat.collectCrossTalkSpeakers(
+            responses = responses,
+            participants = participants,
+            maxMentions = 5
+        )
+
+        assertEquals(listOf("carol", "bob"), speakers.map { it.id })
+    }
+
+    @Test
+    fun characterCrossTalkDoesNotRepeatCharactersThatAlreadySpoke() {
+        val responses = listOf(
+            LocalGroupRoundResponse("alice", "爱丽丝", "@小明 你觉得呢？"),
+            LocalGroupRoundResponse("bob", "小明", "我同意。")
+        )
+
+        val speakers = LocalGroupChat.collectCrossTalkSpeakers(responses, participants)
+
+        assertTrue(speakers.isEmpty())
+    }
+
+    @Test
+    fun characterCrossTalkSupportsCharacterIdAndMentionLimit() {
+        val responses = listOf(
+            LocalGroupRoundResponse("alice", "爱丽丝", "请 @bob 和 @carol 继续。")
+        )
+
+        val speakers = LocalGroupChat.collectCrossTalkSpeakers(
+            responses = responses,
+            participants = participants,
+            maxMentions = 1
+        )
+
+        assertEquals(listOf("bob"), speakers.map { it.id })
+    }
+
+    @Test
     fun groupPromptForbidsWritingOtherCharacters() {
         val prompt = LocalGroupChat.buildSystemPrompt("测试群聊", participants, participants.first())
 
