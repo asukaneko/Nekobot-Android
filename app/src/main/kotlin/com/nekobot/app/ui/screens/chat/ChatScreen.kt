@@ -141,6 +141,7 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import com.nekobot.app.R
 import com.nekobot.app.data.model.Message
+import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.local.ChatInputLayoutMode
 import com.nekobot.app.data.local.VISION_FAILURE_MARKER
 import com.nekobot.app.data.model.MessageFavoriteRequest
@@ -188,6 +189,7 @@ fun ChatScreen(
     val viewModel: ChatViewModel = viewModel()
     val messages by viewModel.messages.collectAsState()
     val session by viewModel.session.collectAsState()
+    val groupCharacters by viewModel.groupCharacters.collectAsState()
     val sending by viewModel.sending.collectAsState()
     val loading by viewModel.loading.collectAsState()
     val error by viewModel.error.collectAsState()
@@ -783,9 +785,15 @@ fun ChatScreen(
                                     fillAiWidth = session?.sessionMode == "agent"
                                 )
                             } else {
+                                val groupIdentity = if (session?.sessionMode.equals("group", ignoreCase = true)) {
+                                    resolveGroupMessageIdentity(msg, groupCharacters)
+                                } else {
+                                    GroupMessageIdentity()
+                                }
                                 MessageBubble(
                                     message = msg,
-                                    portraitUrl = session?.portraitUrl,
+                                    portraitUrl = groupIdentity.portraitUrl ?: session?.portraitUrl,
+                                    senderName = groupIdentity.name,
                                     showAiAvatar = session?.sessionMode != "agent",
                                     fillAiWidth = session?.sessionMode == "agent",
                                     onLongClick = {
@@ -1461,6 +1469,7 @@ private fun MessageSearchDialog(
 private fun MessageBubble(
     message: Message,
     portraitUrl: String? = null,
+    senderName: String? = null,
     showAiAvatar: Boolean = true,
     fillAiWidth: Boolean = false,
     onLongClick: () -> Unit,
@@ -1538,6 +1547,17 @@ private fun MessageBubble(
                 else -> Modifier.widthIn(max = maxBubbleWidth)
             }
         ) {
+            if (!isUser && !senderName.isNullOrBlank()) {
+                Text(
+                    text = senderName,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 5.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             // 视觉识别失败警告：当消息内容包含 VISION_FAILURE_MARKER 时显示非阻塞提示
             if (message.displayContent.contains(VISION_FAILURE_MARKER)) {
                 Row(
@@ -3157,6 +3177,9 @@ class ChatViewModel : BaseViewModel() {
     private val _session = MutableStateFlow<Session?>(null)
     val session: StateFlow<Session?> = _session.asStateFlow()
 
+    private val _groupCharacters = MutableStateFlow<List<CharacterPreset>>(emptyList())
+    val groupCharacters: StateFlow<List<CharacterPreset>> = _groupCharacters.asStateFlow()
+
     private val _sending = MutableStateFlow(false)
     val sending: StateFlow<Boolean> = _sending.asStateFlow()
 
@@ -3245,6 +3268,7 @@ class ChatViewModel : BaseViewModel() {
     fun init(sessionId: String) {
         if (sessionId == currentSessionId && _session.value != null) return
         currentSessionId = sessionId
+        _groupCharacters.value = emptyList()
         loadSession(sessionId)
         loadMessages()
         if (!isLocalMode) {
@@ -3532,6 +3556,11 @@ class ChatViewModel : BaseViewModel() {
             block = { unified.getSession(sessionId) },
             onSuccess = {
                 _session.value = it
+                if (it?.sessionMode.equals("group", ignoreCase = true)) {
+                    loadGroupCharacters(it?.characterIds.orEmpty())
+                } else {
+                    _groupCharacters.value = emptyList()
+                }
                 // 剧情模式：立即标记加载中，避免输入框先出现再消失的滑动动画
                 if (it?.plotMode == true) {
                     _plotChoicesLoading.value = true
@@ -3918,6 +3947,25 @@ class ChatViewModel : BaseViewModel() {
                 else R.string.chat_stop_requested
             )
         )
+    }
+
+    /** 群聊气泡需要按每条消息的 sender 匹配成员角色卡头像。 */
+    private fun loadGroupCharacters(characterIds: List<String>) {
+        val selectedIds = characterIds.filter(String::isNotBlank).toSet()
+        viewModelScope.launch {
+            when (val result = unified.listCharacters()) {
+                is Resource.Success -> {
+                    val characters = result.data ?: emptyList()
+                    _groupCharacters.value = if (selectedIds.isEmpty()) {
+                        characters
+                    } else {
+                        characters.filter { it.id in selectedIds }
+                    }
+                }
+                is Resource.Error -> _groupCharacters.value = emptyList()
+                is Resource.Loading -> Unit
+            }
+        }
     }
 
     /** 压缩上下文：将早期消息摘要化以节省 token。 */

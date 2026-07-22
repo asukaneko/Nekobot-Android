@@ -510,6 +510,16 @@ internal class LocalPipelineCallbacks(
             } else {
                 null
             },
+            name = if (session.sessionMode.equals("group", ignoreCase = true)) {
+                (ctx.metadata["group_speaker_name"] as? String) ?: character?.name
+            } else {
+                null
+            },
+            avatar = if (session.sessionMode.equals("group", ignoreCase = true)) {
+                character?.portrait ?: character?.avatar
+            } else {
+                null
+            },
             timestamp = (message["timestamp"] as? String) ?: System.currentTimeMillis().toString(),
             model = (ctx.metadata["model_name"] as? String) ?: activeModel.model
         )

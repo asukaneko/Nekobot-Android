@@ -200,8 +200,14 @@ data class Message(
     val id: String? = null,
     val role: String? = null,
     val content: String? = null,
+    @SerializedName(value = "sender", alternate = ["sender_name", "character_name"])
     val sender: String? = null,
+    @SerializedName(value = "name", alternate = ["display_name"])
     val name: String? = null,
+    @SerializedName(
+        value = "avatar",
+        alternate = ["sender_avatar", "sender_portrait", "character_avatar", "portrait"]
+    )
     val avatar: String? = null,
     val type: String? = null,
     val timestamp: String? = null,

@@ -146,6 +146,11 @@
           <p>Canvas 树状布局呈现剧情分支，随时选择分支、回滚或重生，走向由你决定。</p>
         </article>
         <article class="feature-card reveal">
+          <div class="feature-icon" style="--ic:#FFF1D6"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+          <h3>群聊模式</h3>
+          <p>邀请多个角色加入同一会话，5 种发言策略智能调度，每个角色只演自己。</p>
+        </article>
+        <article class="feature-card reveal">
           <div class="feature-icon" style="--ic:#E3EEFF"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div>
           <h3>世界书</h3>
           <p>关键词、常驻、位置与优先级条目管理，多角色绑定，让世界设定始终在线。</p>
@@ -227,6 +232,7 @@
         <div class="showcase-tabs" role="tablist" aria-label="功能预览">
           <button class="sc-tab active" data-tab="chat" role="tab" aria-selected="true">对话</button>
           <button class="sc-tab" data-tab="character" role="tab" aria-selected="false">角色</button>
+          <button class="sc-tab" data-tab="group" role="tab" aria-selected="false">群聊</button>
           <button class="sc-tab" data-tab="plot" role="tab" aria-selected="false">故事图</button>
           <button class="sc-tab" data-tab="stats" role="tab" aria-selected="false">用量</button>
           <button class="sc-tab" data-tab="agent" role="tab" aria-selected="false">Agent</button>
@@ -273,6 +279,45 @@
             <div class="sc-desc">
               <h3>栩栩如生的 TA</h3>
               <p>完整角色卡字段编辑，加上关系六维与状态评估，角色的情绪会随对话流动。支持立绘与标签，还能一键导入喜欢的角色。</p>
+            </div>
+          </div>
+
+          <!-- 群聊面板 -->
+          <div class="sc-panel" data-panel="group" role="tabpanel">
+            <div class="mock-window">
+              <div class="mock-bar"><i></i><i></i><i></i><span>群聊 · 下午茶时间</span></div>
+              <div class="mock-group">
+                <div class="grp-strategy">
+                  <span class="grp-label">发言策略</span>
+                  <span class="grp-strat-active">轮流发言</span>
+                </div>
+                <div class="grp-members">
+                  <span class="grp-member">小奈</span>
+                  <span class="grp-member">阿澄</span>
+                  <span class="grp-member">团子</span>
+                </div>
+                <div class="grp-chat">
+                  <div class="grp-msg user">
+                    <div class="grp-bubble">今天谁想去看电影？</div>
+                  </div>
+                  <div class="grp-msg">
+                    <span class="grp-sender" style="--sc:#FF8FA3">小奈</span>
+                    <div class="grp-bubble">我想去！最近上映的那部听说很治愈～</div>
+                  </div>
+                  <div class="grp-msg">
+                    <span class="grp-sender" style="--sc:#7B9EFF">阿澄</span>
+                    <div class="grp-bubble">…我也可以。不过你们挑的片，我大概只是负责吃爆米花。</div>
+                  </div>
+                  <div class="grp-msg">
+                    <span class="grp-sender" style="--sc:#FFB95C">团子</span>
+                    <div class="grp-bubble">电影？有吃的吗！不管了我也去 @小奈 记得帮我占座！</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="sc-desc">
+              <h3>一群人，更热闹</h3>
+              <p>邀请多个 AI 角色加入同一个会话，模拟真实群聊氛围。5 种发言策略：轮流发言让每个人依次表态、@提及点名指定角色回应、智能推荐按消息相关度自动选人、世界引擎综合关系亲密度调度、随机增加戏剧性。每个角色只演自己，严禁代演别人，需要互动就用 @。</p>
             </div>
           </div>
 
