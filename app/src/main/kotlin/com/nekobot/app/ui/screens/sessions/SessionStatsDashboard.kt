@@ -484,6 +484,16 @@ private fun DashboardCharacterPortraitStack(
     val nearCharacter = if (movingForward) next else previous
     val farCharacter = if (movingForward) previous else next
     val direction = if (movingForward) 1f else -1f
+    var rearStackFadeProgress by remember(current.id) {
+        mutableFloatStateOf(0f)
+    }
+    LaunchedEffect(current.id) {
+        animate(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 260)
+        ) { value, _ -> rearStackFadeProgress = value }
+    }
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         DashboardCharacterPortrait(
             character = farCharacter,
@@ -495,7 +505,7 @@ private fun DashboardCharacterPortraitStack(
                     rotationZ = -direction * 5f
                     scaleX = 0.82f
                     scaleY = 0.82f
-                    alpha = 0.55f
+                    alpha = 0.55f * rearStackFadeProgress
                 },
             elevation = 4.dp
         )
@@ -511,7 +521,9 @@ private fun DashboardCharacterPortraitStack(
                     rotationZ = direction * 5f * (1f - revealFraction)
                     scaleX = 0.87f + revealFraction * 0.13f
                     scaleY = 0.87f + revealFraction * 0.13f
-                    alpha = 0.68f + revealFraction * 0.32f
+                    val staggeredFade = ((rearStackFadeProgress - 0.14f) / 0.86f)
+                        .coerceIn(0f, 1f)
+                    alpha = (0.68f + revealFraction * 0.32f) * staggeredFade
                 },
             elevation = 6.dp
         )
