@@ -43,7 +43,7 @@ internal class LocalPipelineCallbacks(
     private val characterIdentity: CharacterIdentity? = null,
     /** 父用户消息 id；agent 模式进度卡片关联用，UI 在用户气泡下方渲染 */
     private val parentMessageId: String? = null,
-    private val onTokenRecorded: ((sessionId: String, messageId: String, model: String, inputTokens: Int, outputTokens: Int, timestamp: String, purpose: String, estimated: Boolean) -> Unit)? = null,
+    private val onTokenRecorded: ((sessionId: String, messageId: String, model: String, inputTokens: Int, outputTokens: Int, timestamp: String, purpose: String, estimated: Boolean, durationMs: Double?, ttftMs: Double?) -> Unit)? = null,
     /** 进度卡片更新回调；本地模式用于持久化到父用户消息 */
     private val onThinkingCardUpdate: ((card: ThinkingCard) -> Unit)? = null,
     /** 当前会话的本地 Agent 工作区。 */
@@ -336,6 +336,9 @@ internal class LocalPipelineCallbacks(
 
         // 记录 Token 用量到 TokenStatsManager（内存统计）
         if (inputTokens != null || outputTokens != null) {
+            // 从 Pipeline metadata 提取首字延迟与总耗时
+            val durationMs = (ctx.metadata["duration_ms"] as? Number)?.toDouble()
+            val ttftMs = (ctx.metadata["ttft_ms"] as? Number)?.toDouble()
             try {
                 getGlobalTokenStatsManager().recordUsage(
                     promptTokens = inputTokens ?: 0,
@@ -343,7 +346,9 @@ internal class LocalPipelineCallbacks(
                     model = modelName,
                     sessionId = session.id,
                     userId = "local-user",
-                    purpose = TokenStatsManager.PURPOSE_CHAT
+                    purpose = TokenStatsManager.PURPOSE_CHAT,
+                    durationMs = durationMs,
+                    ttftMs = ttftMs
                 )
             } catch (e: Exception) {
                 com.nekobot.app.data.local.LocalLogger.w(TAG, "TokenStats 记录失败: ${e.message}")
@@ -358,7 +363,9 @@ internal class LocalPipelineCallbacks(
                     outputTokens ?: 0,
                     com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
                     TokenStatsManager.PURPOSE_CHAT,
-                    resolvedUsage?.estimated == true
+                    resolvedUsage?.estimated == true,
+                    durationMs,
+                    ttftMs
                 )
             } catch (e: Exception) {
                 com.nekobot.app.data.local.LocalLogger.w(TAG, "持久化 Token 记录失败: ${e.message}")

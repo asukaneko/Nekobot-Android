@@ -851,7 +851,9 @@ class LocalRepository(
         inputTokens: Int? = null,
         outputTokens: Int? = null,
         model: String? = null,
-        usageEstimated: Boolean = false
+        usageEstimated: Boolean = false,
+        durationMs: Double? = null,
+        ttftMs: Double? = null
     ) = withContext(Dispatchers.IO) {
         val now = nowIso()
         val msg = LocalMessageEntity(
@@ -885,7 +887,9 @@ class LocalRepository(
                 inputTokens = inputTokens ?: 0,
                 outputTokens = outputTokens ?: 0,
                 timestamp = now,
-                estimated = usageEstimated
+                estimated = usageEstimated,
+                durationMs = durationMs,
+                ttftMs = ttftMs
             )
         }
         msg.toMessage()
@@ -906,6 +910,8 @@ class LocalRepository(
      * 追加一条 token 用量记录到 SharedPreferences JSON 数组。
      * @param source 用量来源：chat（主对话）/ state（状态评估）/ memory（记忆抽取）/ plot（剧情）
      * @param purpose 用途标签（与 TokenStatsManager 常量对齐）：chat/utility/memory/plot 等
+     * @param durationMs 完成耗时（毫秒），主对话路径从 AIPipeline 透传
+     * @param ttftMs 首字延迟（毫秒），主对话路径从 AIPipeline 透传
      */
     private fun appendTokenUsageRecord(
         sessionId: String, model: String,
@@ -913,7 +919,9 @@ class LocalRepository(
         source: String = "chat",
         purpose: String = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_CHAT,
         estimated: Boolean = false,
-        messageId: String? = null
+        messageId: String? = null,
+        durationMs: Double? = null,
+        ttftMs: Double? = null
     ) {
         val prefs = tokenUsagePrefs ?: return
         synchronized(tokenUsageLock) {
@@ -937,6 +945,10 @@ class LocalRepository(
                     addProperty("source", source)
                     addProperty("purpose", purpose)
                     addProperty("estimated", estimated)
+                    // 完成耗时（毫秒），主对话路径来自 AIPipeline
+                    durationMs?.let { addProperty("duration_ms", it) }
+                    // 首字延迟（毫秒），主对话路径来自 AIPipeline
+                    ttftMs?.let { addProperty("ttft_ms", it) }
                     // 提取日期部分（yyyy-MM-dd）用于按日聚合
                     addProperty("date", timestamp.substringBefore("T").substringBefore(" ").ifBlank { timestamp })
                 }
@@ -1098,9 +1110,14 @@ class LocalRepository(
         var inputTokens: Int? = null
         var outputTokens: Int? = null
         var modelName: String? = null
+        val streamStartNano = System.nanoTime()
+        var firstChunkNano: Long? = null
         aiClient.chatStreamWithFailover(queue, messages, extra).collect { event ->
             when (event) {
-                is RealtimeEvent.StreamChunk -> fullContent.append(event.chunk)
+                is RealtimeEvent.StreamChunk -> {
+                    if (fullContent.isEmpty()) firstChunkNano = System.nanoTime()
+                    fullContent.append(event.chunk)
+                }
                 is RealtimeEvent.Usage -> {
                     inputTokens = event.inputTokens
                     outputTokens = event.outputTokens
@@ -1120,13 +1137,17 @@ class LocalRepository(
                             messages = messages,
                             outputText = content
                         )
+                        val durationMs = (System.nanoTime() - streamStartNano) / 1_000_000.0
+                        val ttftMs = firstChunkNano?.let { (it - streamStartNano) / 1_000_000.0 }
                         addAssistantMessage(
                             sessionId,
                             content,
                             usage.inputTokens,
                             usage.outputTokens,
                             modelName ?: activeModel.model,
-                            usageEstimated = usage.estimated
+                            usageEstimated = usage.estimated,
+                            durationMs = durationMs,
+                            ttftMs = ttftMs ?: durationMs
                         )
                     }
                     emit(RealtimeEvent.StreamEnd(sessionId))
@@ -1301,12 +1322,14 @@ class LocalRepository(
         val callbacks = com.nekobot.app.data.local.ai.LocalPipelineCallbacks(
             db, aiClient, activeModel, session, character, worldBookEntries, runtime, identity,
             parentMessageId = parentMessageId,
-            onTokenRecorded = { sid, messageId, model, input, output, ts, purpose, estimated ->
+            onTokenRecorded = { sid, messageId, model, input, output, ts, purpose, estimated, durationMs, ttftMs ->
                 appendTokenUsageRecord(
                     sid, model, input, output, ts,
                     purpose = purpose,
                     estimated = estimated,
-                    messageId = messageId
+                    messageId = messageId,
+                    durationMs = durationMs,
+                    ttftMs = ttftMs
                 )
             },
             onThinkingCardUpdate = { card ->
@@ -1770,12 +1793,14 @@ class LocalRepository(
                     channel = "local"
                 ),
                 parentMessageId = parentMessageId,
-                onTokenRecorded = { sid, messageId, model, input, output, ts, purpose, estimated ->
+                onTokenRecorded = { sid, messageId, model, input, output, ts, purpose, estimated, durationMs, ttftMs ->
                     appendTokenUsageRecord(
                         sid, model, input, output, ts,
                         purpose = purpose,
                         estimated = estimated,
-                        messageId = messageId
+                        messageId = messageId,
+                        durationMs = durationMs,
+                        ttftMs = ttftMs
                     )
                 },
                 workspaceRoot = appContext?.filesDir
