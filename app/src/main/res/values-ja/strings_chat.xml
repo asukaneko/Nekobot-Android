@@ -83,6 +83,13 @@
     <string name="sessions_detail_export_success">ダウンロードフォルダにエクスポートしました: %1$s</string>
     <string name="sessions_detail_export_failed">エクスポート失敗: %1$s</string>
     <string name="sessions_detail_export_empty">エクスポートするメッセージがありません</string>
+    <string name="sessions_import">セッションをインポート</string>
+    <string name="sessions_import_success">%1$d 件のセッションをインポートしました</string>
+    <string name="sessions_import_partial">%1$d 件インポート、%2$d 件失敗</string>
+    <string name="sessions_import_failed">インポート失敗: %1$s</string>
+    <string name="sessions_import_empty">インポート可能なセッションがありません</string>
+    <string name="sessions_import_invalid_format">無効なセッションエクスポートファイル</string>
+    <string name="sessions_import_progress">セッションをインポート中…</string>
     <string name="sessions_detail_portrait">立絵</string>
     <string name="sessions_detail_character_colon">キャラクター: %1$s</string>
     <string name="sessions_detail_pinned_badge">ピン留め</string>

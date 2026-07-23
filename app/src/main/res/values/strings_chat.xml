@@ -89,6 +89,13 @@
     <string name="sessions_detail_export_success">已导出到下载目录：%1$s</string>
     <string name="sessions_detail_export_failed">导出失败：%1$s</string>
     <string name="sessions_detail_export_empty">会话无消息，无法导出</string>
+    <string name="sessions_import">导入会话</string>
+    <string name="sessions_import_success">成功导入 %1$d 个会话</string>
+    <string name="sessions_import_partial">成功导入 %1$d 个会话，失败 %2$d 个</string>
+    <string name="sessions_import_failed">导入失败：%1$s</string>
+    <string name="sessions_import_empty">文件中无可导入的会话</string>
+    <string name="sessions_import_invalid_format">无效的会话导出文件</string>
+    <string name="sessions_import_progress">正在导入会话…</string>
     <string name="sessions_detail_portrait">立绘</string>
     <string name="sessions_detail_character_colon">角色：%1$s</string>
     <string name="sessions_detail_pinned_badge">置顶</string>

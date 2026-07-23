@@ -115,6 +115,14 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.FileUpload
+import com.google.gson.JsonParser
+import com.nekobot.app.data.repository.SessionImportResult
 
 /** 会话列表筛选类型。 */
 enum class SessionFilter(val labelResId: Int) {
@@ -175,6 +183,16 @@ fun SessionsScreen(
     val deleteText = stringResource(R.string.common_delete)
     val dashboardTitle = stringResource(R.string.stats_dashboard_title)
     val dashboardRefreshDesc = stringResource(R.string.stats_dashboard_refresh)
+    val importDesc = stringResource(R.string.sessions_import)
+
+    val context = LocalContext.current
+    val importFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.importSessions(uri, context)
+        }
+    }
 
     val pagerState = rememberPagerState(initialPage = 1, pageCount = { 2 })
     val dashboardVisible = pagerState.currentPage == 0
@@ -254,6 +272,9 @@ fun SessionsScreen(
                     } else {
                         IconButton(onClick = { viewModel.loadAll() }) {
                             Icon(Icons.Filled.Refresh, contentDescription = refreshDesc, tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                        IconButton(onClick = { importFileLauncher.launch("*/*") }) {
+                            Icon(Icons.Filled.FileUpload, contentDescription = importDesc, tint = MaterialTheme.colorScheme.onSurface)
                         }
                         IconButton(onClick = { showCreate = true }) {
                             Icon(Icons.Filled.Add, contentDescription = newSessionDesc, tint = MaterialTheme.colorScheme.primary)
@@ -1796,6 +1817,61 @@ class SessionsViewModel : BaseViewModel() {
             block = { unified.listSessions() },
             onSuccess = { _sessions.value = it ?: emptyList() }
         )
+    }
+
+    /**
+     * 导入会话：支持本地模式导出格式、nekobot 远程导出格式，远程模式也兼容本地导出。
+     * 在 IO 线程读取 Uri 字节并解析，统一调用 [unified.importSessions] 分发到本地或远程实现。
+     */
+    fun importSessions(uri: Uri, context: Context) {
+        viewModelScope.launch {
+            setLoading(true)
+            try {
+                val bytes = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                }
+                if (bytes == null || bytes.isEmpty()) {
+                    showToast(string(R.string.sessions_import_empty))
+                    return@launch
+                }
+                val payload = withContext(Dispatchers.Default) {
+                    JsonParser.parseString(String(bytes, Charsets.UTF_8))
+                }
+                if (payload.isJsonNull || (!payload.isJsonObject && !payload.isJsonArray)) {
+                    showToast(string(R.string.sessions_import_invalid_format))
+                    return@launch
+                }
+                showToast(string(R.string.sessions_import_progress))
+                when (val res = unified.importSessions(payload)) {
+                    is Resource.Success -> {
+                        val r = res.data
+                        when {
+                            r.imported > 0 && r.failed == 0 -> {
+                                showToast(string(R.string.sessions_import_success, r.imported))
+                            }
+                            r.imported > 0 && r.failed > 0 -> {
+                                showToast(string(R.string.sessions_import_partial, r.imported, r.failed))
+                            }
+                            r.imported == 0 && r.failed > 0 -> {
+                                val detail = r.errors.firstOrNull() ?: ""
+                                showToast(
+                                    if (detail.isBlank()) string(R.string.sessions_import_failed, "")
+                                    else string(R.string.sessions_import_failed, detail)
+                                )
+                            }
+                            else -> showToast(string(R.string.sessions_import_empty))
+                        }
+                        if (r.imported > 0) loadSessions()
+                    }
+                    is Resource.Error -> showToast(string(R.string.sessions_import_failed, res.message ?: ""))
+                    is Resource.Loading -> {}
+                }
+            } catch (e: Exception) {
+                showToast(string(R.string.sessions_import_failed, e.message ?: ""))
+            } finally {
+                setLoading(false)
+            }
+        }
     }
 
     /** 加载角色列表（供新建会话下拉菜单使用）。 */

@@ -91,6 +91,10 @@ interface ApiService {
     @DELETE("api/sessions/{id}/messages")
     suspend fun clearMessages(@Path("id") id: String): Response<ApiResult>
 
+    // 批量导入会话（兼容本地导出与 nekobot 远程导出格式）
+    @POST("api/sessions/import")
+    suspend fun importSessions(@Body body: JsonElement): Response<JsonElement>
+
     // ==================== 角色 ====================
     @GET("api/characters")
     suspend fun listCharacters(): Response<List<Character>>

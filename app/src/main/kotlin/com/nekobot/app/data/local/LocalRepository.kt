@@ -29,6 +29,7 @@ import com.nekobot.app.data.local.ai.relationshipStateFromInitial
 import com.nekobot.app.data.local.ai.resolveLocalTokenUsage
 import com.nekobot.app.data.local.ai.sessionRelationshipTargetId
 import com.nekobot.app.data.local.db.LocalAiModelEntity
+import com.nekobot.app.data.repository.SessionImportResult
 import com.nekobot.app.data.local.db.LocalApiKeyEntity
 import com.nekobot.app.data.local.db.LocalFailoverHealthEntity
 import com.nekobot.app.data.local.db.LocalCharacterEntity
@@ -346,6 +347,243 @@ class LocalRepository(
         }
 
         entity.toSession()
+    }
+
+    /**
+     * 导入会话：兼容三种导出格式并写入本地 Room。
+     *
+     * 支持的 JSON 格式：
+     * 1. 本地导出：{session:{...}, messages:[...], exported_at, exported_by}
+     * 2. nekobot 远程导出：{version, type:"nbot_session_export", sessions:[{...含内嵌 messages...}]}
+     * 3. 单个 session 对象：{id, name, messages:[...], ...}
+     *
+     * 每个会话生成新 UUID 避免与现有会话冲突；跳过 system 角色消息（本地模式 system_prompt 存于 session 表）。
+     */
+    suspend fun importSessions(payload: JsonElement): SessionImportResult = withContext(Dispatchers.IO) {
+        val parsed = normalizeImportPayload(payload)
+        if (parsed.isEmpty()) return@withContext SessionImportResult(0, 0, emptyList())
+
+        val now = nowIso()
+        var imported = 0
+        val errors = mutableListOf<String>()
+
+        parsed.forEachIndexed { idx, (sessionObj, messagesArr) ->
+            try {
+                val newId = UUID.randomUUID().toString()
+                val entity = mapJsonToSessionEntity(sessionObj, messagesArr, newId, now)
+                sessionDao.upsert(entity)
+
+                // 映射并写入消息（跳过 system 消息）
+                val msgEntities = mapJsonToMessageEntities(messagesArr, newId, now)
+                if (msgEntities.isNotEmpty()) {
+                    messageDao.upsertAll(msgEntities)
+                    val lastContent = msgEntities.last().content
+                    sessionDao.touch(newId, lastContent.take(200), msgEntities.size, now)
+                }
+                imported++
+            } catch (e: Exception) {
+                errors.add("Session #${idx + 1}: ${e.message ?: "unknown"}")
+            }
+        }
+        SessionImportResult(imported, parsed.size - imported, errors)
+    }
+
+    /** 将多种导出格式统一归一化为 (sessionObj, messagesArr) 列表。 */
+    private fun normalizeImportPayload(payload: JsonElement): List<Pair<JsonObject, JsonArray>> {
+        if (!payload.isJsonObject) {
+            // 顶层是数组：视为多会话列表
+            if (payload.isJsonArray) {
+                return payload.asJsonArray.mapNotNull { el ->
+                    if (el.isJsonObject) extractSessionWithMessages(el.asJsonObject) else null
+                }
+            }
+            return emptyList()
+        }
+        val obj = payload.asJsonObject
+
+        // 格式 2：nekobot 远程导出
+        if (obj.str("type") == "nbot_session_export") {
+            val arr = obj.getAsJsonArray("sessions") ?: return emptyList()
+            return arr.mapNotNull { el ->
+                if (el.isJsonObject) extractSessionWithMessages(el.asJsonObject) else null
+            }
+        }
+
+        // 格式 1：本地导出 {session, messages}
+        val sessionEl = obj.get("session")
+        if (sessionEl?.isJsonObject == true) {
+            val msgs = obj.getAsJsonArray("messages") ?: JsonArray()
+            return listOf(sessionEl.asJsonObject to msgs)
+        }
+
+        // 格式 3：{sessions: [...]}
+        val sessionsArr = obj.getAsJsonArray("sessions")
+        if (sessionsArr != null) {
+            return sessionsArr.mapNotNull { el ->
+                if (el.isJsonObject) extractSessionWithMessages(el.asJsonObject) else null
+            }
+        }
+
+        // 格式 4：单个 session 对象（含 messages 或 name/id 字段）
+        if (obj.has("messages") || obj.has("name") || obj.has("id") || obj.has("role")) {
+            return listOf(extractSessionWithMessages(obj))
+        }
+        return emptyList()
+    }
+
+    /** 从 session 对象提取 (session, messages)，messages 内嵌或不存在。 */
+    private fun extractSessionWithMessages(sessionObj: JsonObject): Pair<JsonObject, JsonArray> {
+        val msgs = sessionObj.getAsJsonArray("messages") ?: JsonArray()
+        return sessionObj to msgs
+    }
+
+    /** 把 JSON session 对象映射为 [LocalSessionEntity]，生成新 ID。 */
+    private fun mapJsonToSessionEntity(
+        sessionObj: JsonObject,
+        messagesArr: JsonArray,
+        newId: String,
+        now: String
+    ): LocalSessionEntity {
+        // system_prompt：优先 session 字段，否则从 messages 里找 role==system 的消息
+        var systemPrompt = sessionObj.str("system_prompt", "systemPrompt")
+        if (systemPrompt.isNullOrBlank()) {
+            systemPrompt = messagesArr.firstOrNull { el ->
+                el.isJsonObject && (el.asJsonObject.str("role")?.equals("system", ignoreCase = true) == true)
+            }?.asJsonObject?.str("content")
+        }
+
+        val tagsArr = sessionObj.getAsJsonArray("tags")
+        val charIdsArr = sessionObj.getAsJsonArray("character_ids")
+            ?: sessionObj.getAsJsonArray("characterIds")
+        val disabledKeysArr = sessionObj.getAsJsonArray("disabled_prompt_keys")
+            ?: sessionObj.getAsJsonArray("disabledPromptKeys")
+
+        val sessionMode = sessionObj.str("session_mode", "sessionMode") ?: "character"
+        val isGroup = sessionMode.equals("group", ignoreCase = true)
+        val groupCharacterIds = charIdsArr?.mapNotNull { el ->
+            el.takeIf { !it.isJsonNull }?.asString
+        }?.filter { it.isNotBlank() }?.distinct() ?: emptyList()
+
+        return LocalSessionEntity(
+            id = newId,
+            name = sessionObj.str("name") ?: "Imported ${newId.take(8)}",
+            characterId = sessionObj.str("character_id", "characterId"),
+            systemPrompt = systemPrompt,
+            firstMessage = sessionObj.str("first_message", "firstMessage"),
+            scenario = sessionObj.str("scenario"),
+            senderName = sessionObj.str("sender_name", "senderName"),
+            senderAvatar = sessionObj.str("sender_avatar", "senderAvatar"),
+            characterName = sessionObj.str("character_name", "characterName"),
+            characterAvatar = sessionObj.str("character_avatar", "characterAvatar"),
+            portrait = sessionObj.str("portrait", "portrait_url", "character_portrait", "character_portrait_url"),
+            tags = tagsArr?.mapNotNull { el -> el.takeIf { !it.isJsonNull }?.asString }
+                ?.joinToString(","),
+            favorite = sessionObj.boolVal("favorite") ?: false,
+            pinned = sessionObj.boolVal("pinned") ?: false,
+            archived = sessionObj.boolVal("archived") ?: false,
+            createdAt = sessionObj.str("created_at", "createdAt") ?: now,
+            updatedAt = now,
+            plotMode = sessionObj.boolVal("plot_mode", "plotMode") ?: false,
+            plotRealTimeSync = sessionObj.boolVal("plot_realtime_sync", "plot_real_time_sync") ?: false,
+            plotChoiceStyle = sessionObj.str("plot_choice_style", "plotChoiceStyle"),
+            plotOutline = sessionObj.str("plot_outline", "plotOutline"),
+            userPersona = sessionObj.str("user_persona", "userPersona"),
+            autoStateInterval = sessionObj.intVal("auto_state_interval", "autoStateInterval") ?: 2,
+            disabledPromptKeys = disabledKeysArr?.mapNotNull { el ->
+                el.takeIf { !it.isJsonNull }?.asString
+            }?.joinToString(","),
+            customPrompts = sessionObj.jsonStr("custom_prompts", "customPrompts"),
+            ttsConfig = sessionObj.jsonStr("tts_config", "ttsConfig"),
+            shareConfig = sessionObj.jsonStr("share_config", "shareConfig"),
+            proactiveChat = sessionObj.jsonStr("proactive_chat", "proactiveChat"),
+            groupConfig = sessionObj.jsonStr("group_config", "groupConfig")?.takeIf { isGroup },
+            sessionMode = sessionMode,
+            groupId = if (isGroup) "gc_${UUID.randomUUID().toString().replace("-", "").take(12)}" else null,
+            characterIds = if (isGroup && groupCharacterIds.isNotEmpty()) gson.toJson(groupCharacterIds) else null
+        )
+    }
+
+    /** 把 JSON messages 数组映射为 [LocalMessageEntity] 列表，跳过 system 消息。 */
+    private fun mapJsonToMessageEntities(
+        messagesArr: JsonArray,
+        sessionId: String,
+        now: String
+    ): List<LocalMessageEntity> {
+        val result = mutableListOf<LocalMessageEntity>()
+        messagesArr.forEach { el ->
+            if (!el.isJsonObject) return@forEach
+            val m = el.asJsonObject
+            val role = m.str("role") ?: return@forEach
+            // 跳过 system 消息：本地模式 system_prompt 存于 session 表，避免上下文重复
+            if (role.equals("system", ignoreCase = true)) return@forEach
+            // 跳过进度卡片类型消息（thinking_card），不作为常规消息导入
+            val type = m.str("type")
+            if (type?.equals("thinking_card", ignoreCase = true) == true) return@forEach
+
+            val content = m.str("content") ?: ""
+            val ts = m.str("timestamp") ?: m.str("created_at", "createdAt")
+                ?: System.currentTimeMillis().toString()
+            val createdAt = m.str("created_at", "createdAt") ?: now
+            val thinkingCardsEl = m.get("thinking_cards") ?: m.get("thinkingCards")
+
+            result.add(
+                LocalMessageEntity(
+                    id = UUID.randomUUID().toString(),
+                    sessionId = sessionId,
+                    role = role,
+                    content = content,
+                    sender = m.str("sender", "sender_name", "character_name"),
+                    timestamp = ts,
+                    model = m.str("model"),
+                    inputTokens = m.intVal("input_tokens", "inputTokens"),
+                    outputTokens = m.intVal("output_tokens", "outputTokens"),
+                    createdAt = createdAt,
+                    thinkingCards = thinkingCardsEl?.takeIf { !it.isJsonNull }?.toString()
+                )
+            )
+        }
+        return result
+    }
+
+    // ---- JsonObject 取值辅助（兼容 snake_case / camelCase 多键名）----
+    private fun JsonObject.str(vararg keys: String): String? {
+        for (k in keys) {
+            val el = get(k) ?: continue
+            if (el.isJsonPrimitive) {
+                val v = el.asString
+                if (v.isNotEmpty()) return v
+            }
+        }
+        return null
+    }
+
+    private fun JsonObject.boolVal(vararg keys: String): Boolean? {
+        for (k in keys) {
+            val el = get(k) ?: continue
+            if (el.isJsonPrimitive) {
+                return runCatching { el.asBoolean }.getOrNull()
+            }
+        }
+        return null
+    }
+
+    private fun JsonObject.intVal(vararg keys: String): Int? {
+        for (k in keys) {
+            val el = get(k) ?: continue
+            if (el.isJsonPrimitive) {
+                return runCatching { el.asInt }.getOrNull()
+            }
+        }
+        return null
+    }
+
+    private fun JsonObject.jsonStr(vararg keys: String): String? {
+        for (k in keys) {
+            val el = get(k) ?: continue
+            if (el.isJsonNull) continue
+            return el.toString()
+        }
+        return null
     }
 
     /**

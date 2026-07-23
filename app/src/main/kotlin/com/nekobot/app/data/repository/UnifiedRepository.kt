@@ -87,6 +87,15 @@ import okhttp3.MultipartBody
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
+/** 会话导入结果：成功数、失败数、错误明细。 */
+data class SessionImportResult(
+    val imported: Int,
+    val failed: Int,
+    val errors: List<String>
+) {
+    val isSuccess: Boolean get() = imported > 0
+}
+
 /**
  * 统一仓库：根据 [PrefsManager.appMode] 分发到本地或远程实现。
  *
@@ -159,6 +168,66 @@ class UnifiedRepository(
 
     suspend fun deleteSession(id: String): Resource<Unit> =
         if (isLocal) { local.deleteSession(id); Resource.Success(Unit) } else remote.deleteSession(id)
+
+    /**
+     * 导入会话：本地模式写入 Room；远程模式透传给后端 /api/sessions/import。
+     *
+     * 兼容本地导出（{session, messages}）与 nekobot 远程导出（{type:"nbot_session_export", sessions:[...]}）格式，
+     * 远程模式会把本地导出格式归一化为后端期望的 {sessions:[...]} 结构（messages 内嵌进 session）。
+     */
+    suspend fun importSessions(payload: JsonElement): Resource<SessionImportResult> =
+        if (isLocal) {
+            Resource.Success(local.importSessions(payload))
+        } else {
+            val body = normalizeForRemoteImport(payload)
+            when (val res = remote.importSessions(body)) {
+                is Resource.Success -> {
+                    val resultObj = res.data?.takeIf { it.isJsonObject }?.asJsonObject
+                    val imported = resultObj?.get("imported")?.takeIf { it.isJsonPrimitive }?.asInt ?: 0
+                    val failed = resultObj?.get("failed")?.takeIf { it.isJsonPrimitive }?.asInt ?: 0
+                    val errors = resultObj?.getAsJsonArray("errors")?.mapNotNull { e ->
+                        e.takeIf { it.isJsonObject }?.asJsonObject?.toString()
+                    } ?: emptyList()
+                    Resource.Success(SessionImportResult(imported, failed, errors))
+                }
+                is Resource.Error -> res
+                is Resource.Loading -> res
+            }
+        }
+
+    /**
+     * 远程模式导入预处理：把本地导出格式归一化为后端 /api/sessions/import 期望的结构。
+     * - {type:"nbot_session_export", sessions:[...]} 或 {sessions:[...]} → 原样透传
+     * - {session:{...}, messages:[...]} → 合并 messages 到 session，包装为 {sessions:[session]}
+     * - 单个 session 对象 → 包装为 {sessions:[obj]}
+     */
+    private fun normalizeForRemoteImport(payload: JsonElement): JsonElement {
+        if (!payload.isJsonObject) return payload
+        val obj = payload.asJsonObject
+        // 已是后端接受的格式，直接透传
+        val typeEl = obj.get("type")
+        if (obj.has("sessions") ||
+            (typeEl?.isJsonPrimitive == true && typeEl.asString == "nbot_session_export")
+        ) {
+            return payload
+        }
+        // 本地导出格式 {session, messages} → 合并 messages 到 session
+        val sessionEl = obj.get("session")
+        if (sessionEl?.isJsonObject == true) {
+            val sessionObj = sessionEl.asJsonObject.deepCopy()
+            val msgs = obj.getAsJsonArray("messages")
+            if (msgs != null) {
+                sessionObj.add("messages", msgs)
+            }
+            return JsonObject().apply {
+                add("sessions", JsonArray().apply { add(sessionObj) })
+            }
+        }
+        // 单个 session 对象 → 包装
+        return JsonObject().apply {
+            add("sessions", JsonArray().apply { add(obj) })
+        }
+    }
 
     suspend fun listMessages(id: String): Resource<List<Message>> =
         if (isLocal) Resource.Success(local.listMessages(id)) else remote.listMessages(id)

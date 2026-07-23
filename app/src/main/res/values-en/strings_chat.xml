@@ -83,6 +83,13 @@
     <string name="sessions_detail_export_success">Exported to Downloads: %1$s</string>
     <string name="sessions_detail_export_failed">Export failed: %1$s</string>
     <string name="sessions_detail_export_empty">No messages to export</string>
+    <string name="sessions_import">Import session</string>
+    <string name="sessions_import_success">Imported %1$d session(s)</string>
+    <string name="sessions_import_partial">Imported %1$d session(s), failed %2$d</string>
+    <string name="sessions_import_failed">Import failed: %1$s</string>
+    <string name="sessions_import_empty">No importable sessions in file</string>
+    <string name="sessions_import_invalid_format">Invalid session export file</string>
+    <string name="sessions_import_progress">Importing sessions…</string>
     <string name="sessions_detail_portrait">Portrait</string>
     <string name="sessions_detail_character_colon">Character: %1$s</string>
     <string name="sessions_detail_pinned_badge">Pinned</string>

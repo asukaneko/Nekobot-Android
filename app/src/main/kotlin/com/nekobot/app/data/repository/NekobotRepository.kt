@@ -123,6 +123,10 @@ class NekobotRepository(
     suspend fun deleteMessage(id: String, messageId: String): Resource<Unit> = safeCall { api.deleteMessage(id, messageId) }.map { }
     suspend fun clearMessages(id: String): Resource<Unit> = safeCall { api.clearMessages(id) }.map { }
 
+    /** 批量导入会话，透传 JSON 给后端 /api/sessions/import。 */
+    suspend fun importSessions(body: JsonElement): Resource<JsonElement> =
+        safeCall { api.importSessions(body) }
+
     // ==================== 完整角色卡数据源（custom-presets）====================
     // 注意：以下方法用 `/api/personality/custom-presets` 接口，
     // 数据源为 `data/web/custom_personality_presets.json`（完整字段）。
