@@ -166,10 +166,14 @@ import com.nekobot.app.ui.theme.BubbleUser
 import com.nekobot.app.ui.theme.BubbleUserLight
 import com.nekobot.app.ui.theme.parseHexColor
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.stateIn
 
 /**
  * 对话页：展示会话消息列表与输入栏，支持发送、重新生成、停止、清空、删除消息。
@@ -3176,6 +3180,7 @@ internal fun buildChatMessageContent(
  * 服务器模式：通过 Socket.IO 接收 AI 的流式回复与消息推送。
  * 本地模式：通过 [UnifiedRepository.chatStream] 返回的 Flow 接收流式分片，不走 Socket。
  */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ChatViewModel : BaseViewModel() {
 
     companion object {
@@ -3187,8 +3192,25 @@ class ChatViewModel : BaseViewModel() {
 
     private val socket = ServiceContainer.socket
 
-    private val _messages = MutableStateFlow<List<Message>>(emptyList())
-    val messages: StateFlow<List<Message>> = _messages.asStateFlow()
+    /**
+     * 跨 ViewModel 共享的会话运行时状态。
+     *
+     * 所有"需要跨 VM 持久"的状态（messages/sending/execConfirmation/plotChoices/
+     * plotChoicesLoading/hookNotifications/streamingContent 等）以及后台 Job
+     * 都由 [ChatSessionState] 持有。本 VM 只是这些 StateFlow 的订阅者，
+     * VM 销毁时只减少引用计数，不取消正在运行的 AI 生成 Job。
+     *
+     * 在 [init] 调用前为占位状态（sessionId 为空），所有访问都会落到空集合上。
+     */
+    private val _runtime = MutableStateFlow<ChatSessionState>(ChatSessionState(""))
+    private val runtime: ChatSessionState get() = _runtime.value
+
+    val messages: StateFlow<List<Message>> = _runtime
+        .map { it.messages }
+        .distinctUntilChanged()
+        .flatMapLatest { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    private val _messages: MutableStateFlow<List<Message>> get() = runtime.messages
 
     private val _session = MutableStateFlow<Session?>(null)
     val session: StateFlow<Session?> = _session.asStateFlow()
@@ -3196,19 +3218,35 @@ class ChatViewModel : BaseViewModel() {
     private val _groupCharacters = MutableStateFlow<List<CharacterPreset>>(emptyList())
     val groupCharacters: StateFlow<List<CharacterPreset>> = _groupCharacters.asStateFlow()
 
-    private val _sending = MutableStateFlow(false)
-    val sending: StateFlow<Boolean> = _sending.asStateFlow()
+    val sending: StateFlow<Boolean> = _runtime
+        .map { it.sending }
+        .distinctUntilChanged()
+        .flatMapLatest { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    private val _sending: MutableStateFlow<Boolean> get() = runtime.sending
 
-    private val _execConfirmation = MutableStateFlow<ExecConfirmationRequest?>(null)
-    val execConfirmation: StateFlow<ExecConfirmationRequest?> = _execConfirmation.asStateFlow()
+    val execConfirmation: StateFlow<ExecConfirmationRequest?> = _runtime
+        .map { it.execConfirmation }
+        .distinctUntilChanged()
+        .flatMapLatest { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    private val _execConfirmation: MutableStateFlow<ExecConfirmationRequest?> get() = runtime.execConfirmation
 
-    /** 剧情选项列表（plot_mode 开启时从服务器获取） */
-    private val _plotChoices = MutableStateFlow<List<PlotChoice>>(emptyList())
-    val plotChoices: StateFlow<List<PlotChoice>> = _plotChoices.asStateFlow()
+    /** 跨 VM 共享的剧情选项列表（plot_mode 开启时从服务器获取） */
+    val plotChoices: StateFlow<List<PlotChoice>> = _runtime
+        .map { it.plotChoices }
+        .distinctUntilChanged()
+        .flatMapLatest { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    private val _plotChoices: MutableStateFlow<List<PlotChoice>> get() = runtime.plotChoices
 
-    /** 剧情选项是否正在生成中（用于骨架动画） */
-    private val _plotChoicesLoading = MutableStateFlow(false)
-    val plotChoicesLoading: StateFlow<Boolean> = _plotChoicesLoading.asStateFlow()
+    /** 跨 VM 共享的剧情选项加载状态（用于骨架动画） */
+    val plotChoicesLoading: StateFlow<Boolean> = _runtime
+        .map { it.plotChoicesLoading }
+        .distinctUntilChanged()
+        .flatMapLatest { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    private val _plotChoicesLoading: MutableStateFlow<Boolean> get() = runtime.plotChoicesLoading
 
     /**
      * Hook 触发通知列表（成就式弹窗）。
@@ -3218,8 +3256,12 @@ class ChatViewModel : BaseViewModel() {
      *
      * 通知最多保留 5 条，每条 5 秒后自动移除（与原仓库前端 5s 超时一致）。
      */
-    private val _hookNotifications = MutableStateFlow<List<com.nekobot.app.data.remote.HookNotification>>(emptyList())
-    val hookNotifications: StateFlow<List<com.nekobot.app.data.remote.HookNotification>> = _hookNotifications.asStateFlow()
+    val hookNotifications: StateFlow<List<com.nekobot.app.data.remote.HookNotification>> = _runtime
+        .map { it.hookNotifications }
+        .distinctUntilChanged()
+        .flatMapLatest { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    private val _hookNotifications: MutableStateFlow<List<com.nekobot.app.data.remote.HookNotification>> get() = runtime.hookNotifications
 
     /**
      * Agent 模式进度卡片（thinking_card）管理。
@@ -3256,20 +3298,28 @@ class ChatViewModel : BaseViewModel() {
 
     private var currentSessionId: String = ""
 
-    /** 流式生成中的临时消息内容累加器 */
-    private val streamingContent = StringBuilder()
+    /** 流式生成中的临时消息内容累加器（引用 runtime，跨 VM 共享） */
+    private val streamingContent: StringBuilder get() = runtime.streamingContent
     /** 流式消息在列表中的临时 id */
     private val streamingId = STREAMING_ID
     /** 上次流式 chunk 更新 UI 的时间戳，用于节流（避免高频 chunk 触发 MarkdownText 全量重解析） */
-    private var lastStreamUiUpdateMs: Long = 0L
+    private var lastStreamUiUpdateMs: Long
+        get() = runtime.lastStreamUiUpdateMs
+        set(value) { runtime.lastStreamUiUpdateMs = value }
     /** 流式节流间隔（毫秒） */
-    private val streamThrottleMs = 60L
+    private val streamThrottleMs: Long get() = runtime.streamThrottleMs
 
-    /** 收集 Socket.IO 事件的 Job（服务器模式） */
-    private var eventsJob: kotlinx.coroutines.Job? = null
-    /** 本地模式流式聊天收集 Job */
-    private var localChatJob: kotlinx.coroutines.Job? = null
-    private var generationStopRequested = false
+    /** 收集 Socket.IO 事件 / 本地 Hook 事件的 Job（挂到 applicationScope，不随 VM 销毁） */
+    private var eventsJob: kotlinx.coroutines.Job?
+        get() = runtime.eventsJob
+        set(value) { runtime.eventsJob = value }
+    /** 本地模式流式聊天收集 Job（挂到 applicationScope，不随 VM 销毁） */
+    private var localChatJob: kotlinx.coroutines.Job?
+        get() = runtime.localChatJob
+        set(value) { runtime.localChatJob = value }
+    private var generationStopRequested: Boolean
+        get() = runtime.generationStopRequested
+        set(value) { runtime.generationStopRequested = value }
 
     /** 当前会话是否对用户可见（在聊天界面且应用在前台） */
     var isChatVisible: Boolean = false
@@ -3283,10 +3333,21 @@ class ChatViewModel : BaseViewModel() {
     /** 初始化：加载会话信息与消息列表；服务器模式额外连接 Socket.IO。 */
     fun init(sessionId: String) {
         if (sessionId == currentSessionId && _session.value != null) return
+        // 切换会话时释放旧 runtime 引用
+        if (currentSessionId.isNotBlank() && currentSessionId != sessionId) {
+            ChatSessionManager.release(currentSessionId)
+        }
         currentSessionId = sessionId
+        // 获取（或创建）跨 VM 共享的运行时状态，引用计数 +1
+        // 通过 _runtime.value 赋值使 Compose 的 flatMapLatest 自动切换到新 runtime
+        _runtime.value = ChatSessionManager.acquire(sessionId)
         _groupCharacters.value = emptyList()
         loadSession(sessionId)
-        loadMessages()
+        // 仅当该会话没有正在进行的 AI 生成时才重新加载消息，
+        // 否则保留 runtime 中的流式状态（用户切回正在生成的会话时能看到进度）。
+        if (!runtime.hasActiveJobs()) {
+            loadMessages()
+        }
         if (!isLocalMode) {
             connectSocket(sessionId)
         } else {
@@ -3298,13 +3359,14 @@ class ChatViewModel : BaseViewModel() {
 
     /** 本地模式：收集 HookExecutor.events，将 HookNotificationEvent 路由到 handleRealtimeEvent。 */
     private fun connectLocalHookEvents() {
-        eventsJob?.cancel()
+        // 仅当没有现存的 eventsJob 时才启动，避免重复订阅
+        if (eventsJob?.isActive == true) return
         // 同时收集两路：
         // 1. hookExecutor.events → HookNotificationEvent
         // 2. localRepository.execConfirmationEvents → 高风险工具（删除角色卡等）的确认请求
         //    修复"删除角色卡卡住"：原实现把确认事件 emit 到 LocalPipelineCallbacks.eventChannel
         //    但 eventChannel 没人 collect，导致 requestAuthorization 的 runBlocking 永远等待。
-        eventsJob = viewModelScope.launch {
+        eventsJob = ServiceContainer.applicationScope.launch {
             kotlinx.coroutines.flow.merge(
                 com.nekobot.app.ServiceContainer.localRepository.hookExecutor.events,
                 com.nekobot.app.ServiceContainer.localRepository.execConfirmationEvents
@@ -3315,10 +3377,11 @@ class ChatViewModel : BaseViewModel() {
 
     /** 连接 Socket.IO 并加入会话 room，监听实时事件。 */
     private fun connectSocket(sessionId: String) {
-        eventsJob?.cancel()
         socket.connect()
         socket.joinSession(sessionId)
-        eventsJob = viewModelScope.launch {
+        // 仅当没有现存的 eventsJob 时才启动订阅，避免重复
+        if (eventsJob?.isActive == true) return
+        eventsJob = ServiceContainer.applicationScope.launch {
             socket.events.collect { event -> handleRealtimeEvent(event) }
         }
     }
@@ -3377,7 +3440,7 @@ class ChatViewModel : BaseViewModel() {
                 loadMessages()
                 // 本地模式：会话 TTS 启用时，为刚生成的助手消息合成语音（延迟等待 loadMessages 完成）
                 if (isLocalMode) {
-                    viewModelScope.launch {
+                    ServiceContainer.applicationScope.launch {
                         kotlinx.coroutines.delay(800)
                         synthesizeTtsForLastAssistant()
                     }
@@ -3391,7 +3454,7 @@ class ChatViewModel : BaseViewModel() {
                     if (isLocalMode) {
                         // 本地模式：等待 PlotChoices 事件到达（chatWithPipeline 在 StreamEnd 后生成）
                         // 15 秒超时保护：生成失败时自动关闭骨架（Phase 6 含 AI 调用，需充足时间）
-                        viewModelScope.launch {
+                        ServiceContainer.applicationScope.launch {
                             kotlinx.coroutines.delay(15000)
                             if (_plotChoicesLoading.value) {
                                 _plotChoicesLoading.value = false
@@ -3400,7 +3463,7 @@ class ChatViewModel : BaseViewModel() {
                     } else {
                         // 服务器模式：延迟 8 秒后通过 HTTP 加载（兜底：若 plot_choices socket 事件先到则覆盖）
                         // 延迟足够长以避免拉到上一轮的旧选项（服务端生成新选项需要时间）
-                        viewModelScope.launch {
+                        ServiceContainer.applicationScope.launch {
                             kotlinx.coroutines.delay(8000)
                             if (_plotChoicesLoading.value) loadPlotChoices()
                         }
@@ -3434,7 +3497,7 @@ class ChatViewModel : BaseViewModel() {
                 if (_session.value?.plotMode == true) {
                     _plotChoices.value = emptyList()
                     _plotChoicesLoading.value = true
-                    viewModelScope.launch {
+                    ServiceContainer.applicationScope.launch {
                         kotlinx.coroutines.delay(1000)
                         if (_plotChoicesLoading.value) loadPlotChoices()
                     }
@@ -3515,7 +3578,7 @@ class ChatViewModel : BaseViewModel() {
         }
         _hookNotifications.value = current
         // 5 秒后自动移除
-        viewModelScope.launch {
+        ServiceContainer.applicationScope.launch {
             kotlinx.coroutines.delay(5000)
             _hookNotifications.value = _hookNotifications.value.filter { it !== notif }
         }
@@ -3580,7 +3643,7 @@ class ChatViewModel : BaseViewModel() {
                 // 剧情模式：立即标记加载中，避免输入框先出现再消失的滑动动画
                 if (it?.plotMode == true) {
                     _plotChoicesLoading.value = true
-                    viewModelScope.launch {
+                    ServiceContainer.applicationScope.launch {
                         if (isLocalMode) loadLocalPlotChoices() else loadPlotChoices()
                     }
                 }
@@ -3677,7 +3740,7 @@ class ChatViewModel : BaseViewModel() {
         val lastAssistant = _messages.value.lastOrNull { !it.isUser } ?: return
         val content = lastAssistant.displayContent.trim()
         if (content.isBlank()) return
-        viewModelScope.launch {
+        ServiceContainer.applicationScope.launch {
             try {
                 when (val res = unified.synthesizeAudio(content, voice)) {
                     is Resource.Success -> {
@@ -3734,8 +3797,9 @@ class ChatViewModel : BaseViewModel() {
 
         if (isLocalMode) {
             // 本地模式：直接收集 Flow 事件
+            // 挂到 applicationScope：退出聊天界面后 AI 生成继续后台运行
             localChatJob?.cancel()
-            localChatJob = viewModelScope.launch {
+            localChatJob = ServiceContainer.applicationScope.launch {
                 val flow = try {
                     unified.chatStream(currentSessionId, messageContent, attachments)
                 } catch (e: Exception) {
@@ -3758,14 +3822,17 @@ class ChatViewModel : BaseViewModel() {
                     ) return@launch
                     _sending.value = false
                     _messages.value = _messages.value.filter { it.id != streamingId }
-                    showError(e.message ?: string(R.string.chat_send_failed))
+                    val errMsg = e.message ?: string(R.string.chat_send_failed)
+                    showError(errMsg)
+                    // 用户已退出聊天界面时，通过通知栏告知后台生成失败
+                    trySendErrorNotification(errMsg)
                 }
             }
         } else if (socket.state.value == SocketState.Connected) {
             // Socket.IO 路径：触发 send_message，等待流式推送
             socket.sendMessage(currentSessionId, messageContent, attachments)
             // 兜底：若 60 秒仍无 chunk 回调，尝试刷新消息
-            viewModelScope.launch {
+            ServiceContainer.applicationScope.launch {
                 kotlinx.coroutines.delay(60000)
                 if (_sending.value && streamingContent.isEmpty()) {
                     _sending.value = false
@@ -3798,7 +3865,7 @@ class ChatViewModel : BaseViewModel() {
             onSuccess = {
                 _sending.value = false
                 // HTTP 成功后稍等再刷新，给 AI 生成时间
-                viewModelScope.launch {
+                ServiceContainer.applicationScope.launch {
                     kotlinx.coroutines.delay(1500)
                     loadMessages()
                     // 再次延迟刷新确保拉到回复
@@ -3822,7 +3889,7 @@ class ChatViewModel : BaseViewModel() {
         val sid = currentSessionId
         if (sid.isBlank()) return
         if (!ServiceContainer.prefs.isSessionNotificationEnabled(sid)) return
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+        ServiceContainer.applicationScope.launch(kotlinx.coroutines.Dispatchers.Main) {
             try {
                 val ctx = ServiceContainer.appContext ?: return@launch
                 val sender = _session.value?.senderName ?: _session.value?.characterName ?: "AI"
@@ -3861,6 +3928,63 @@ class ChatViewModel : BaseViewModel() {
         }
     }
 
+    /**
+     * 后台 AI 生成失败时通过通知栏告知用户。
+     *
+     * 与 [trySendNotification] 的区别：
+     * - 标题明确标注"生成失败"，避免与正常回复通知混淆
+     * - 不检查 [isChatVisible]：用户可能已经退出聊天界面，但仍需知道后台生成失败
+     * - 仍检查通知开关：尊重用户"不通知"的偏好
+     */
+    private fun trySendErrorNotification(errorMessage: String) {
+        if (errorMessage.isBlank()) return
+        val sid = currentSessionId
+        if (sid.isBlank()) return
+        // 仅在用户不在界面（VM 即将销毁或已销毁）时发送错误通知；
+        // 在界面内时 showError 已经显示了 Toast/Banner，无需重复
+        if (isChatVisible) return
+        if (!ServiceContainer.prefs.isSessionNotificationEnabled(sid)) return
+        ServiceContainer.applicationScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+            try {
+                val ctx = ServiceContainer.appContext ?: return@launch
+                val sessionName = _session.value?.name
+                    ?: _session.value?.characterName
+                    ?: string(R.string.chat_notification_channel)
+                val mgr = androidx.core.app.NotificationManagerCompat.from(ctx)
+                if (!mgr.areNotificationsEnabled()) return@launch
+                // 复用 chat_reply 渠道，避免新建渠道打扰用户
+                val channelId = "nekobot_chat_reply"
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    val channel = android.app.NotificationChannel(
+                        channelId,
+                        string(R.string.chat_notification_channel),
+                        android.app.NotificationManager.IMPORTANCE_DEFAULT
+                    ).apply { description = string(R.string.chat_notification_desc) }
+                    mgr.createNotificationChannel(channel)
+                }
+                val launchIntent = android.content.Intent(ctx, com.nekobot.app.MainActivity::class.java).apply {
+                    putExtra("session_id", sid)
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                }
+                val pendingIntent = android.app.PendingIntent.getActivity(
+                    ctx, sid.hashCode(), launchIntent,
+                    android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                )
+                val notif = androidx.core.app.NotificationCompat.Builder(ctx, channelId)
+                    .setSmallIcon(android.R.drawable.stat_notify_error)
+                    .setContentTitle("[$sessionName] 生成失败")
+                    .setContentText(errorMessage.take(200))
+                    .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(errorMessage.take(500)))
+                    .setContentIntent(pendingIntent)
+                    .setAutoCancel(true)
+                    .setPriority(androidx.core.app.NotificationCompat.PRIORITY_DEFAULT)
+                    .build()
+                // 用 sid.hashCode() + 1 避免与正常回复通知 ID 冲突
+                mgr.notify(sid.hashCode() + 1, notif)
+            } catch (_: Exception) { /* 忽略通知发送失败 */ }
+        }
+    }
+
     /** 重新生成最后一条 AI 回复：先隐藏旧 AI 消息，再请求重新生成。 */
     fun regenerate() {
         if (_sending.value || currentSessionId.isBlank()) return
@@ -3885,8 +4009,9 @@ class ChatViewModel : BaseViewModel() {
         }
         if (isLocalMode) {
             // 本地模式：直接收集 Flow 事件
+            // 挂到 applicationScope：退出聊天界面后 AI 生成继续后台运行
             localChatJob?.cancel()
-            localChatJob = viewModelScope.launch {
+            localChatJob = ServiceContainer.applicationScope.launch {
                 val flow = try {
                     unified.regenerateStream(currentSessionId, messageId)
                 } catch (e: Exception) {
@@ -3908,7 +4033,10 @@ class ChatViewModel : BaseViewModel() {
                     ) return@launch
                     _sending.value = false
                     _messages.value = _messages.value.filter { it.id != streamingId }
-                    showError(e.message ?: string(R.string.chat_regenerate_failed))
+                    val errMsg = e.message ?: string(R.string.chat_regenerate_failed)
+                    showError(errMsg)
+                    // 用户已退出聊天界面时，通过通知栏告知后台重新生成失败
+                    trySendErrorNotification(errMsg)
                 }
             }
         } else {
@@ -3916,7 +4044,7 @@ class ChatViewModel : BaseViewModel() {
                 block = { unified.regenerate(currentSessionId, messageId) },
                 onSuccess = {
                     // 等待 socket 推送流式，或延迟刷新
-                    viewModelScope.launch {
+                    ServiceContainer.applicationScope.launch {
                         kotlinx.coroutines.delay(3000)
                         if (_sending.value) loadMessages()
                     }
@@ -4201,11 +4329,13 @@ class ChatViewModel : BaseViewModel() {
 
     override fun onCleared() {
         super.onCleared()
-        eventsJob?.cancel()
-        localChatJob?.cancel()
-        if (!isLocalMode && currentSessionId.isNotBlank()) {
-            socket.leaveSession(currentSessionId)
+        // 不取消 eventsJob / localChatJob：让 AI 生成流程在后台继续运行
+        // 仅释放本 VM 对 runtime 的引用计数；若没有其他订阅者且无活跃 Job，状态会被清理
+        if (currentSessionId.isNotBlank()) {
+            ChatSessionManager.release(currentSessionId)
         }
+        // 服务器模式：不主动 leaveSession，让 Socket.IO 继续接收推送，
+        // 用户下次进入会话时通过 loadMessages 拉持久化结果即可
     }
 
     /** 加载最新剧情选项（仅服务器模式 + plot_mode 开启时调用）。 */
@@ -4281,7 +4411,8 @@ class ChatViewModel : BaseViewModel() {
             // 本地模式：清除当前选项，重新触发聊天流程的最后一步生成选项
             _plotChoicesLoading.value = true
             _plotChoices.value = emptyList()
-            viewModelScope.launch {
+            // 挂到 applicationScope：剧情选项的 AI 生成不应因退出界面而中断
+            ServiceContainer.applicationScope.launch {
                 try {
                     val repo = com.nekobot.app.ServiceContainer.localRepository
                     val session = repo.getSession(currentSessionId)
