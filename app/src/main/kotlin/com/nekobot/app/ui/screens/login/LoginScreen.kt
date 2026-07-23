@@ -125,7 +125,7 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
                     value = serverUrl,
                     onValueChange = viewModel::onServerUrlChange,
                     label = { Text(stringResource(R.string.login_server_address)) },
-                    placeholder = { Text("http://192.168.1.x:5000") },
+                    placeholder = { Text("http://IP:5000 或 [::1]:5000") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Uri,

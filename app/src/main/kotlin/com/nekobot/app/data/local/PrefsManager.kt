@@ -49,9 +49,8 @@ class PrefsManager(context: Context) {
     var serverUrl: String
         get() = prefs.getString(KEY_SERVER_URL, DEFAULT_SERVER) ?: DEFAULT_SERVER
         set(value) {
-            // 规范化：去掉末尾斜杠
-            val normalized = if (value.endsWith("/")) value.dropLast(1) else value
-            prefs.edit().putString(KEY_SERVER_URL, normalized).apply()
+            // 规范化：去掉末尾斜杠 + 自动为 IPv6 主机加方括号
+            prefs.edit().putString(KEY_SERVER_URL, normalizeServerUrl(value)).apply()
         }
 
     var token: String?
@@ -92,7 +91,7 @@ class PrefsManager(context: Context) {
 
     /** 保存/更新一条登录记录（同 serverUrl+username 覆盖） */
     fun saveLoginRecord(server: String, user: String, tkn: String) {
-        val normalized = if (server.endsWith("/")) server.dropLast(1) else server
+        val normalized = normalizeServerUrl(server)
         val current = listLoginRecords().toMutableList()
         // 去重：同 server + user 视为同一条
         current.removeAll { it.serverUrl == normalized && it.username == user }
@@ -104,7 +103,7 @@ class PrefsManager(context: Context) {
 
     /** 删除指定登录记录 */
     fun removeLoginRecord(server: String, user: String) {
-        val normalized = if (server.endsWith("/")) server.dropLast(1) else server
+        val normalized = normalizeServerUrl(server)
         val remaining = listLoginRecords().filterNot { it.serverUrl == normalized && it.username == user }
         prefs.edit().putString(KEY_LOGIN_RECORDS, gson.toJson(remaining)).apply()
     }
@@ -403,6 +402,63 @@ class PrefsManager(context: Context) {
 
         // nbotcfg 导入密码记忆
         const val KEY_LAST_NBOTCFG_PWD = "last_nbotcfg_password"
+
+        /**
+         * 规范化服务器地址：
+         * - 去掉首尾空白与末尾斜杠
+         * - 自动补全缺失的 http:// scheme（防止 Retrofit baseUrl 解析崩溃）
+         * - 自动为未加方括号的 IPv6 主机添加方括号（RFC 3986 要求）
+         *
+         * 例如：
+         *   ::1:5000               → http://[::1]:5000
+         *   192.168.1.1:5000       → http://192.168.1.1:5000
+         *   example.com            → http://example.com
+         *   http://::1:5000         → http://[::1]:5000
+         *   http://2001:db8::1:5000 → http://[2001:db8::1]:5000
+         *   http://[::1]:5000       → 保持不变
+         *   http://192.168.1.1:5000 → 保持不变
+         *   http://example.com      → 保持不变
+         *
+         * 启发式：authority 含 2 个及以上冒号视为 IPv6；
+         * 最后一个冒号后为纯数字端口（2~5 位，1 位视为 IPv6 地址段如 ::1），
+         * 且去掉端口后的 host 仍含冒号，视为 IPv6 + 端口；否则视为无端口 IPv6。
+         */
+        fun normalizeServerUrl(input: String): String {
+            val trimmed = input.trim().trimEnd('/')
+            if (trimmed.isEmpty()) return trimmed
+            // 已包含方括号，无需处理 IPv6；但可能仍缺 scheme
+            val withScheme = if (Regex("^(https?)://", RegexOption.IGNORE_CASE).containsMatchIn(trimmed)) {
+                trimmed
+            } else {
+                "http://$trimmed"
+            }
+            if (withScheme.contains("[")) return withScheme
+            // 提取 scheme:// 后的部分
+            val schemeMatch = Regex("^(https?)://(.+)$", RegexOption.IGNORE_CASE).find(withScheme)
+                ?: return withScheme
+            val scheme = schemeMatch.groupValues[1].lowercase()
+            val rest = schemeMatch.groupValues[2]
+            // 分离 authority（host[:port]）和 path
+            val slashIdx = rest.indexOf('/')
+            val authority = if (slashIdx >= 0) rest.substring(0, slashIdx) else rest
+            val pathPart = if (slashIdx >= 0) rest.substring(slashIdx) else ""
+            // authority 中冒号数量：普通 host:port 最多 1 个；IPv6 至少 2 个
+            val colonCount = authority.count { it == ':' }
+            if (colonCount <= 1) return withScheme
+            // IPv6 地址（可能带端口）
+            val lastColonIdx = authority.lastIndexOf(':')
+            val afterLastColon = authority.substring(lastColonIdx + 1)
+            // 端口要求 2~5 位数字；1 位数字（如 ::1 末段）视为 IPv6 地址段
+            val isPort = afterLastColon.matches(Regex("^\\d{2,5}$"))
+            return if (isPort) {
+                val host = authority.substring(0, lastColonIdx)
+                // host 仍含冒号 → IPv6 + 端口
+                if (host.contains(':')) "$scheme://[$host]:$afterLastColon$pathPart" else withScheme
+            } else {
+                // 整个 authority 是 IPv6 地址，无端口
+                "$scheme://[$authority]$pathPart"
+            }
+        }
 
         // 语言偏好：system（跟随系统）/ zh / en / ja / ko
         const val KEY_LANGUAGE = "language"
