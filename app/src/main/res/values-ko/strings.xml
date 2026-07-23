@@ -134,6 +134,13 @@
     <string name="update_no_new">최신 버전입니다</string>
     <string name="update_new_available">새 버전 %1$s 발견</string>
     <string name="update_check_failed">업데이트 확인 실패: %1$s</string>
+    <!-- 정보 페이지 -->
+    <string name="about_open_source_license">오픈소스 라이선스</string>
+    <string name="about_privacy_statement">개인정보 처리방침</string>
+    <string name="about_privacy_statement_subtitle">데이터 처리 방식 보기</string>
+    <string name="about_official_website">공식 웹사이트</string>
+    <string name="about_footer">© 2024-2026 Asukaneko · GPL-3.0</string>
+    <string name="about_privacy_content">Nekobot for Android 개인정보 처리방침\n\n1. 데이터 수집\n본 앱은 개인정보를 수집하지 않으며, 통계·광고·추적 SDK를 포함하지 않습니다.\n\n2. 로컬 데이터\n로컬 모드에서는 대화·메시지·캐릭터 카드·세계관 책·기억·Token 사용량 기록 등 모든 데이터가 기기 본체(앱 프라이빗 디렉터리와 SharedPreferences)에 저장되며, 서버로 업로드되지 않습니다.\n\n3. 원격 데이터\n원격 모드에서는 데이터가 사용자가 설정한 백엔드 서버(기본값은 자체 배포한 Nekobot 서버)로 업로드됩니다. 본 앱 자체는 제3자 서비스와 통신하지 않고, 설정한 서버와만 통신합니다.\n\n4. 서드파티 API\n설정한 AI 모델 API(OpenAI, Gemini 등)는 각자의 개인정보 처리방침에 따라 요청 내용을 처리합니다. 해당 제공자의 방침을 참조하세요.\n\n5. 앱 권한\n- 네트워크 권한: 설정한 백엔드 서버 및 AI API 통신\n- 저장소 권한: 대화·캐릭터 카드 등 내보내기/가져오기\n- 알림 권한: AI 능동 메시지 알림(선택)\n\n6. 데이터 보안\n민감한 대화에는 비밀번호 보호를 설정하는 것을 권장합니다. 내보낸 데이터 파일은 안전하게 보관하여 미승인 접근을 방지하세요.\n\n7. 오픈소스\n본 프로젝트는 GPL-3.0 라이선스로 오픈소스화되어 있습니다. 소스 코드: https://github.com/asukaneko/Nekobot-Android\n\n궁금한 점이 있으면 GitHub에서 issue를 등록하세요.</string>
     <string name="update_release_notes">릴리스 노트</string>
     <string name="update_current_version">현재 버전</string>
     <string name="update_latest_version">최신 버전</string>

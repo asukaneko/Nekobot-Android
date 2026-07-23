@@ -134,6 +134,13 @@
     <string name="update_no_new">Already up to date</string>
     <string name="update_new_available">New version %1$s available</string>
     <string name="update_check_failed">Update check failed: %1$s</string>
+    <!-- About page -->
+    <string name="about_open_source_license">Open Source License</string>
+    <string name="about_privacy_statement">Privacy Policy</string>
+    <string name="about_privacy_statement_subtitle">See how data is handled</string>
+    <string name="about_official_website">Official Website</string>
+    <string name="about_footer">© 2024-2026 Asukaneko · GPL-3.0</string>
+    <string name="about_privacy_content">Nekobot for Android Privacy Policy\n\n1. Data Collection\nThis app does not collect any personal information and contains no analytics, advertising, or tracking SDKs.\n\n2. Local Data\nIn Local Mode, your conversations, messages, character cards, world books, memories, token usage records, etc. are stored entirely on your device (in the app private directory and SharedPreferences), and will not be uploaded to any server.\n\n3. Remote Data\nIn Remote Mode, your data will be uploaded to the backend server you configured (by default, your self-deployed Nekobot server). The app itself does not communicate with any third-party services, only with your configured server.\n\n4. Third-party APIs\nThe AI model APIs you configure (such as OpenAI, Gemini, etc.) will process request content according to their respective privacy policies. Please refer to the corresponding provider\'s privacy policy.\n\n5. App Permissions\n- Network: to communicate with your configured backend server and AI APIs\n- Storage: to export/import conversations, character cards, etc.\n- Notifications: for AI proactive message notifications (optional)\n\n6. Data Security\nIt is recommended to set password protection for sensitive conversations. Please keep exported data files safe to prevent unauthorized access.\n\n7. Open Source\nThis project is open-sourced under the GPL-3.0 license. Source: https://github.com/asukaneko/Nekobot-Android\n\nFor questions, please open an issue on GitHub.</string>
     <string name="update_release_notes">Release notes</string>
     <string name="update_current_version">Current version</string>
     <string name="update_latest_version">Latest version</string>

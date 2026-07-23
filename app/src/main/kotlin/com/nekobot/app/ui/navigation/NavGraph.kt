@@ -54,6 +54,9 @@ import com.nekobot.app.ui.screens.settings.SettingsScreen
 import com.nekobot.app.ui.screens.settings.StyleSettingsScreen
 import com.nekobot.app.ui.screens.settings.SystemSettingsScreen
 import com.nekobot.app.ui.screens.settings.WebDavBackupScreen
+import com.nekobot.app.ui.screens.settings.AboutScreen
+import com.nekobot.app.ui.screens.settings.LicenseScreen
+import com.nekobot.app.ui.screens.settings.PrivacyScreen
 import com.nekobot.app.ui.screens.statehistory.StateHistoryScreen
 import com.nekobot.app.ui.screens.tokens.TokensScreen
 import com.nekobot.app.ui.screens.worldbook.WorldBookDetailScreen
@@ -384,6 +387,20 @@ fun NekobotNavGraph() {
             }
             composable(Routes.WEBDAV_BACKUP) {
                 WebDavBackupScreen(onBack = { navController.popBackStack() })
+            }
+            // ==================== 关于 / 许可证 / 隐私 ====================
+            composable(Routes.ABOUT) {
+                AboutScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenLicense = { navController.navigate(Routes.LICENSE) },
+                    onOpenPrivacy = { navController.navigate(Routes.PRIVACY) }
+                )
+            }
+            composable(Routes.LICENSE) {
+                LicenseScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.PRIVACY) {
+                PrivacyScreen(onBack = { navController.popBackStack() })
             }
             // ==================== 扩展功能（仅远程模式）====================
             composable(Routes.EXTENSIONS) {

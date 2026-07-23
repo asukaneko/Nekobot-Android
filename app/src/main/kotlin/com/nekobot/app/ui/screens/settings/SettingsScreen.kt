@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ImportExport
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Tune
@@ -626,43 +627,16 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                     }
                 }
 
-                // 8. 关于
+                // 8. 关于（跳转独立关于页面）
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     SectionHeader(title = stringResource(R.string.settings_about))
                     Spacer(Modifier.height(8.dp))
                     AboutRow(
-                        icon = Icons.Filled.SystemUpdate,
+                        icon = Icons.Filled.Info,
                         iconColor = MaterialTheme.colorScheme.primary,
-                        title = stringResource(R.string.settings_check_update),
+                        title = stringResource(R.string.settings_about),
                         subtitle = "v${getAppVersion(context)}",
-                        onClick = { vm.checkForUpdate(getAppVersion(context)) }
-                    )
-                    AboutRow(
-                        icon = Icons.Filled.Person,
-                        iconColor = MaterialTheme.colorScheme.primary,
-                        title = stringResource(R.string.settings_about_producer),
-                        subtitle = "Asukaneko",
-                        onClick = { openUrl(context, "https://github.com/asukaneko") }
-                    )
-                    AboutRow(
-                        icon = Icons.Filled.Description,
-                        iconColor = MaterialTheme.colorScheme.tertiary,
-                        title = stringResource(R.string.settings_about_android_repo),
-                        subtitle = "github.com/asukaneko/Nekobot-Android",
-                        onClick = { openUrl(context, "https://github.com/asukaneko/Nekobot-Android") }
-                    )
-                    AboutRow(
-                        icon = Icons.Filled.Memory,
-                        iconColor = MaterialTheme.colorScheme.secondary,
-                        title = stringResource(R.string.settings_about_server_repo),
-                        subtitle = "github.com/asukaneko/nekobot",
-                        onClick = { openUrl(context, "https://github.com/asukaneko/nekobot") }
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = stringResource(R.string.settings_about_version, getAppVersion(context)),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        onClick = { onNavigate("about") }
                     )
                 }
             }

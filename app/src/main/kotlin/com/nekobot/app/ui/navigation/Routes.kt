@@ -56,6 +56,12 @@ object Routes {
     const val CONFIG_TRANSFER = "config_transfer"
     const val FEATURE_SWITCHES = "feature_switches"
     const val DATA_MAINTENANCE = "data_maintenance"
+    /** 关于页面 */
+    const val ABOUT = "about"
+    /** 开源许可证页面 */
+    const val LICENSE = "license"
+    /** 隐私声明页面 */
+    const val PRIVACY = "privacy"
     /** 本地模式：DB Profile 管理（导入 nbotcfg / 切换 / 删除） */
     const val DB_PROFILE = "db_profile"
 
