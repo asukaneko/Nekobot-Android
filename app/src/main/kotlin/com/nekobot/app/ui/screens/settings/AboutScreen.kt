@@ -58,8 +58,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.nekobot.app.R
+import com.nekobot.app.update.UpdateChecker
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
+import com.nekobot.app.ui.components.NekoDialog
 
 /**
  * 关于页面：顶部居中显示 App 图标 logo，下面展示版本号、检查更新、制作人、
@@ -77,6 +79,7 @@ fun AboutScreen(
     val context = LocalContext.current
     val loading by vm.loading.collectAsState()
     val updateState by vm.updateState.collectAsState()
+    val downloadState by vm.downloadState.collectAsState()
     val toast by vm.toast.collectAsState()
 
     val version = remember(context) { getAppVersion(context) }
@@ -224,6 +227,64 @@ fun AboutScreen(
                 message = if (updateState is UpdateUiState.Checking) stringResource(R.string.update_checking) else stringResource(R.string.common_loading)
             )
         }
+    }
+
+    // 检查结果：已是最新版本
+    if (updateState is UpdateUiState.UpToDate) {
+        NekoDialog(
+            onDismiss = { vm.dismissUpdateState() },
+            title = stringResource(R.string.settings_check_update),
+            message = stringResource(R.string.update_no_new),
+            confirmText = stringResource(R.string.common_confirm),
+            onConfirm = { vm.dismissUpdateState() },
+            cancelText = null,
+            onCancel = null
+        )
+    }
+
+    // 检查结果：出错
+    if (updateState is UpdateUiState.Error) {
+        val errMsg = (updateState as UpdateUiState.Error).message
+        NekoDialog(
+            onDismiss = { vm.dismissUpdateState() },
+            title = stringResource(R.string.settings_check_update),
+            message = stringResource(R.string.update_check_failed, errMsg),
+            confirmText = stringResource(R.string.common_confirm),
+            onConfirm = { vm.dismissUpdateState() },
+            cancelText = null,
+            onCancel = null
+        )
+    }
+
+    // 发现新版本：发布详情 + 下载
+    if (updateState is UpdateUiState.Available) {
+        val info = (updateState as UpdateUiState.Available).info
+        UpdateDetailDialog(
+            info = info,
+            currentVersion = getAppVersion(context),
+            downloadState = downloadState,
+            onDismiss = { vm.dismissUpdateState() },
+            onDownload = { asset ->
+                vm.downloadApk(context, asset) { file ->
+                    runCatching {
+                        context.startActivity(UpdateChecker.buildInstallIntent(context, file))
+                    }.onFailure {
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.update_install_failed),
+                            Toast.LENGTH_LONG
+                        ).show()
+                        // 回退：用浏览器打开 release 页面
+                        runCatching {
+                            context.startActivity(UpdateChecker.buildReleasesPageIntent())
+                        }
+                    }
+                }
+            },
+            onOpenInBrowser = {
+                runCatching { context.startActivity(UpdateChecker.buildReleasesPageIntent()) }
+            }
+        )
     }
 }
 

@@ -943,7 +943,7 @@ private fun getAppVersion(context: android.content.Context): String {
  * 下载中显示进度条；无 APK 资产时禁用下载按钮。
  */
 @Composable
-private fun UpdateDetailDialog(
+fun UpdateDetailDialog(
     info: UpdateChecker.ReleaseInfo,
     currentVersion: String,
     downloadState: DownloadUiState,
@@ -1060,7 +1060,7 @@ private fun UpdateDetailDialog(
 }
 
 /** 把 ISO 时间字符串（如 2024-05-01T12:34:56Z）格式化为可读形式。失败时原样返回。 */
-private fun formatIsoTime(iso: String): String {
+fun formatIsoTime(iso: String): String {
     if (iso.isBlank()) return "—"
     return runCatching {
         // 截取到分钟：YYYY-MM-DD HH:mm
@@ -1070,7 +1070,7 @@ private fun formatIsoTime(iso: String): String {
 }
 
 /** 格式化文件大小。 */
-private fun formatSize(bytes: Long): String {
+fun formatSize(bytes: Long): String {
     if (bytes <= 0) return "0 B"
     val units = arrayOf("B", "KB", "MB", "GB")
     var size = bytes.toDouble()
