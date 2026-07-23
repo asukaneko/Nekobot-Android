@@ -144,7 +144,9 @@ class TokensViewModel : BaseViewModel() {
                         val parsedRecords = withContext(Dispatchers.Default) {
                             (value.records ?: value.recentRecords ?: emptyList())
                                 .mapNotNull(::parseTokenRecord)
-                                .sortedByDescending { it.timestamp }
+                                // 统一把空格分隔符替换为 'T'，避免 ISO(带T) 与 "yyyy-MM-dd HH:mm:ss"(带空格)
+                                // 混合时字符串排序错乱，导致同日记录时间不降序
+                                .sortedByDescending { it.timestamp.replace(' ', 'T') }
                         }
                         _stats.value = value
                         _records.value = parsedRecords
@@ -224,7 +226,10 @@ fun TokensScreen() {
     val pageSize = 30
     val totalPages = ((records.size + pageSize - 1) / pageSize).coerceAtLeast(1)
     val pageRecords = records.drop(recordPage * pageSize).take(pageSize)
-    val groupedRecords = remember(pageRecords) { pageRecords.groupBy { it.date } }
+    // 日期 header 仍保留，但分组键统一按日期降序排列，避免任何来源的归类顺序干扰时间线
+    val groupedRecords = remember(pageRecords) {
+        pageRecords.groupBy { it.date }.toSortedMap(reverseOrder())
+    }
 
     // 模式切换时自动刷新 Token 用量
     val appMode by ServiceContainer.appModeFlow.collectAsState()
