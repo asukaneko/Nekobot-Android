@@ -187,9 +187,9 @@
 
   /* ---------- 11. 从 GitHub Releases 拉取更新日志 ---------- */
   const FALLBACK_RELEASES = [
+    { tag_name: 'v0.3.8', published_at: '2026-07-22', body: '- 关于页面、开源许可证与隐私声明\n- 本地模式记录首字时间（TTFT）与完成时间\n- 会话导入功能（支持本地与远程导出格式）\n- 跨 ViewModel 共享的会话运行时状态管理\n- IPv6 服务器地址规范化支持' },
     { tag_name: 'v0.3.7', published_at: '2026-07-21', body: '- 群聊角色间 @ 触发回复（cross-talk）\n- 会话级六维关系状态管理与来源选择\n- 本地模型 Token 用量标准化解析与估算\n- Token 用量记录消息恢复与会话继承\n- 角色卡立绘变更同步刷新会话头像\n- 改进 AI 模型配置与故障转移队列 UI' },
     { tag_name: 'v0.3.6', published_at: '2026-07-21', body: '- 群聊模式：多角色同会话，5 种发言策略\n- 会话统计仪表盘（负一屏）\n- 聊天输入框玻璃拟态效果\n- 单槽记忆类别策略（原子替换）\n- AI 模型管理页面重构，提供商 Logo' },
-    { tag_name: 'v0.3.5', published_at: '2026-07-21', body: '- 支持导入 SillyTavern 酒馆角色卡（PNG 嵌入、v2/v3）\n- 新增 Nekobot 官方网站页面\n- 角色卡六维关系系统、Agent 模式数据库工具\n- Hook 执行日志持久化、应用内更新检查' },
   ];
   function renderReleases(releases) {
     const container = $('#changelogList');
