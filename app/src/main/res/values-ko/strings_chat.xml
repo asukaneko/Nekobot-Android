@@ -489,6 +489,7 @@
     <string name="chat_media_html_load_failed">HTML 불러오기 실패: %1$s</string>
     <string name="chat_media_download">다운로드</string>
     <string name="chat_media_click_to_download">누르면 파일 다운로드</string>
+    <string name="chat_media_click_to_preview">누르면 파일 미리보기</string>
     <string name="chat_media_empty_response">빈 응답</string>
     <string name="chat_media_pdf_no_content">PDF 내용을 읽을 수 없어요</string>
     <string name="chat_media_pdf_render_failed">PDF 렌더링 실패</string>

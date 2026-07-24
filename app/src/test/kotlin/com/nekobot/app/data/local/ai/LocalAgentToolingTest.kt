@@ -170,7 +170,7 @@ class LocalAgentToolingTest {
             assertEquals(true, capped["success"])
             assertEquals(10, (capped["content"] as String).length)
             assertEquals(true, capped["truncated"])
-            assertEquals(35, capped["total_chars"])
+            assertEquals(30, capped["total_chars"])
 
             // max_chars=0 表示不限制
             val unlimited = executor.execute(

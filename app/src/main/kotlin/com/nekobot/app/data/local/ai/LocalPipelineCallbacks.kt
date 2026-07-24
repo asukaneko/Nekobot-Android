@@ -3,6 +3,7 @@ package com.nekobot.app.data.local.ai
 import android.util.Log
 import com.google.gson.Gson
 import com.nekobot.app.data.local.VISION_FAILURE_MARKER
+import com.nekobot.app.data.local.isLocalCommandMessage
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.local.db.LocalCharacterEntity
 import com.nekobot.app.data.local.db.LocalMessageEntity
@@ -162,6 +163,7 @@ internal class LocalPipelineCallbacks(
         val history = kotlinx.coroutines.runBlocking {
             messageDao.listBySession(session.id)
         }.filter { it.role != "system" }
+            .filterNot { it.isLocalCommandMessage() }
             // 当前用户消息由下面统一追加。按 id 排除而不是 dropLast(1)，否则群聊第二名
             // 角色执行时，最后一条已经是前一名角色回复，会被错误删掉并重复注入用户消息。
             .filterNot { it.id == parentMessageId }

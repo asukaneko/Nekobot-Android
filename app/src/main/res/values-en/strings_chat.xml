@@ -488,6 +488,7 @@
     <string name="chat_media_html_load_failed">HTML load failed: %1$s</string>
     <string name="chat_media_download">Download</string>
     <string name="chat_media_click_to_download">Tap to download file</string>
+    <string name="chat_media_click_to_preview">Tap to preview file</string>
     <string name="chat_media_empty_response">Empty response</string>
     <string name="chat_media_pdf_no_content">Cannot read PDF content</string>
     <string name="chat_media_pdf_render_failed">PDF render failed</string>

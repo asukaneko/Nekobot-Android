@@ -715,12 +715,38 @@ fun FileCardRenderer(fileName: String, sessionId: String, modifier: Modifier = M
         resolveLocalWorkspaceFile(context, sessionId, fileName)
     }
     val previewType = remember(fileName) { classifyFilePreview(fileName) }
+    var showLocalPreview by remember(localFile) { mutableStateOf(false) }
+
+    if (localFile != null) {
+        if (previewType == FilePreviewType.IMAGE) {
+            ImageRendererModel(model = localFile, modifier = modifier)
+        } else {
+            LocalWorkspaceFileCard(
+                fileName = fileName,
+                modifier = modifier,
+                onClick = {
+                    if (previewType == FilePreviewType.UNSUPPORTED) {
+                        openLocalWorkspaceFile(context, localFile)
+                    } else {
+                        showLocalPreview = true
+                    }
+                }
+            )
+        }
+        if (showLocalPreview) {
+            FilePreviewDialog(
+                fileName = fileName,
+                file = localFile,
+                onDismiss = { showLocalPreview = false }
+            )
+        }
+        return
+    }
 
     when (previewType) {
         FilePreviewType.IMAGE -> {
-            val model: Any? = localFile ?: fileUrl
-            if (model != null) {
-                ImageRendererModel(model = model, modifier = modifier)
+            if (fileUrl != null) {
+                ImageRendererModel(model = fileUrl, modifier = modifier)
             } else {
                 UnsupportedFileCard(fileName, fileUrl, modifier)
             }
@@ -728,11 +754,8 @@ fun FileCardRenderer(fileName: String, sessionId: String, modifier: Modifier = M
         FilePreviewType.TEXT -> {
             if (fileUrl != null) {
                 TxtRenderer(url = fileUrl, modifier = modifier)
-                // 下载按钮
-                if (fileUrl != null) {
-                    Spacer(Modifier.height(4.dp))
-                    DownloadButton(fileName, fileUrl)
-                }
+                Spacer(Modifier.height(4.dp))
+                DownloadButton(fileName, fileUrl)
             } else {
                 UnsupportedFileCard(fileName, fileUrl, modifier)
             }
@@ -751,6 +774,86 @@ fun FileCardRenderer(fileName: String, sessionId: String, modifier: Modifier = M
         FilePreviewType.UNSUPPORTED -> {
             UnsupportedFileCard(fileName, fileUrl, modifier)
         }
+    }
+}
+
+/** 本地工作区文件卡：点击后直接预览，无法内置预览的类型交给系统应用打开。 */
+@Composable
+private fun LocalWorkspaceFileCard(
+    fileName: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val previewText = stringResource(R.string.chat_media_click_to_preview)
+    GlassCard(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        cornerRadius = 12
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = fileExt(fileName).take(3).ifBlank { "?" }.uppercase(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = fileName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = previewText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                imageVector = Icons.Filled.Fullscreen,
+                contentDescription = previewText,
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+private fun openLocalWorkspaceFile(context: android.content.Context, file: File) {
+    runCatching {
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+        val extension = file.extension.lowercase()
+        val mime = android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(extension)
+            ?: "application/octet-stream"
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mime)
+            addFlags(
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+            )
+        }
+        context.startActivity(intent)
     }
 }
 

@@ -747,6 +747,11 @@ class LocalRepository(
         messageDao.listBySession(sessionId).map { it.toMessage() }
     }
 
+    /** 仅供 AI 调用链读取；命令输入和命令结果继续保留在聊天记录中。 */
+    private suspend fun listAiContextMessages(sessionId: String): List<LocalMessageEntity> =
+        messageDao.listBySession(sessionId)
+            .filterNot { it.isLocalCommandMessage() }
+
     fun observeMessages(sessionId: String): Flow<List<LocalMessageEntity>> =
         messageDao.observeBySession(sessionId)
 
@@ -893,6 +898,303 @@ class LocalRepository(
             )
         }
         msg.toMessage()
+    }
+
+    /**
+     * 执行本地斜杠命令并保存一条普通 assistant 回复。
+     *
+     * 这里只放 Android 能稳定完成的能力。依赖 Python native wheel、QQ Bot API 或
+     * 服务器进程的命令由命令目录统一返回说明，不能继续落入 AI Pipeline 猜测执行。
+     */
+    private suspend fun executeLocalSlashCommand(
+        session: LocalSessionEntity,
+        activeModel: LocalAiModelEntity,
+        command: LocalParsedCommand
+    ): Message {
+        val content = when (command.action) {
+            LocalCommandAction.HELP -> LocalSlashCommands.helpText()
+            LocalCommandAction.LOCAL_STATUS -> localStatusText(session, activeModel)
+            LocalCommandAction.EXPORT_CHAT -> localExportChatText(session)
+            LocalCommandAction.NOTE_ADD -> localNoteAddText(session.id, command.args)
+            LocalCommandAction.NOTES_SHOW -> localNotesShowText(session.id)
+            LocalCommandAction.TTS -> executeLocalTtsCommand(session, command.args)
+            LocalCommandAction.WORKSPACE_LIST -> localWorkspaceListText(session.id)
+            LocalCommandAction.WORKSPACE_SEND -> localWorkspaceSendText(session.id, command.args)
+            LocalCommandAction.ROLL -> localCommandResult {
+                LocalCommandUtilities.rollDiceText(command.args)
+            }
+            LocalCommandAction.RANDOM_RPS -> {
+                val choice = listOf("石头 ✊", "剪刀 ✌️", "布 ✋").random()
+                "我出：**$choice**"
+            }
+            LocalCommandAction.COIN ->
+                if (kotlin.random.Random.nextBoolean()) "🪙 **正面**" else "🪙 **反面**"
+            LocalCommandAction.PICK -> localCommandResult {
+                LocalCommandUtilities.pickText(command.args)
+            }
+            LocalCommandAction.CALCULATE -> localCommandResult {
+                val result = LocalCommandUtilities.calculate(command.args)
+                "🧮 **计算结果：$result**"
+            }
+            LocalCommandAction.PASSWORD -> localCommandResult {
+                val password = LocalCommandUtilities.generatePassword(command.args)
+                "🔐 已在本机生成随机密码：\n\n`$password`\n\n密码不会发送给 AI 或服务器。"
+            }
+            LocalCommandAction.HASH -> localCommandResult {
+                val digest = LocalCommandUtilities.sha256(command.args)
+                "SHA-256：\n\n`$digest`"
+            }
+            LocalCommandAction.FORTUNE -> localFortuneText(session.id)
+            LocalCommandAction.PYTHON_RUNTIME_REQUIRED ->
+                LocalSlashCommands.pythonRuntimeMessage(command.name)
+            LocalCommandAction.REMOTE_RUNTIME_REQUIRED ->
+                LocalSlashCommands.remoteRuntimeMessage(command.name)
+            LocalCommandAction.UNKNOWN -> LocalSlashCommands.unknownMessage(command.name)
+        }
+        return addAssistantMessage(
+            sessionId = session.id,
+            content = content,
+            model = LOCAL_COMMAND_MODEL
+        )
+    }
+
+    private suspend fun localStatusText(
+        session: LocalSessionEntity,
+        activeModel: LocalAiModelEntity
+    ): String {
+        val messages = messageDao.listBySession(session.id).dropLast(1)
+        val userCount = messages.count { it.role.equals("user", ignoreCase = true) }
+        val assistantCount = messages.count { it.role.equals("assistant", ignoreCase = true) }
+        val inputTokens = messages.sumOf { it.inputTokens ?: 0 }
+        val outputTokens = messages.sumOf { it.outputTokens ?: 0 }
+        val workspaceRoot = localWorkspaceRoot(session.id)
+        val workspaceFiles = workspaceRoot
+            ?.walkTopDown()
+            ?.filter { it.isFile }
+            ?.toList()
+            .orEmpty()
+        val workspaceBytes = workspaceFiles.sumOf(File::length)
+        val ttsEnabled = session.ttsConfig
+            ?.let { raw ->
+                runCatching {
+                    JsonParser.parseString(raw).asJsonObject
+                        .get("enabled")
+                        ?.takeUnless { it.isJsonNull }
+                        ?.asBoolean
+                }.getOrNull()
+            }
+            ?: false
+        val mode = when (session.sessionMode.lowercase()) {
+            "agent" -> "Agent"
+            "group" -> "群聊"
+            else -> "角色对话"
+        }
+        return buildString {
+            appendLine("📱 **本地会话状态**")
+            appendLine()
+            appendLine("• 会话：${session.name}")
+            appendLine("• 模式：$mode")
+            session.characterName?.takeIf { it.isNotBlank() }?.let {
+                appendLine("• 角色：$it")
+            }
+            appendLine("• 模型：${activeModel.name.ifBlank { activeModel.model }}")
+            appendLine("• 消息：${messages.size} 条（用户 $userCount / AI $assistantCount）")
+            appendLine("• 已记录 Token：${inputTokens + outputTokens}（输入 $inputTokens / 输出 $outputTokens）")
+            appendLine("• 工作区：${workspaceFiles.size} 个文件，${formatLocalFileSize(workspaceBytes)}")
+            append("• TTS：${if (ttsEnabled) "已开启" else "已关闭"}")
+        }
+    }
+
+    private suspend fun localExportChatText(session: LocalSessionEntity): String {
+        val root = localWorkspaceRoot(session.id)
+            ?: return "无法打开当前会话工作区。"
+        val messages = messageDao.listBySession(session.id).dropLast(1)
+        if (messages.isEmpty()) return "当前会话还没有可导出的消息。"
+
+        val exportedAt = java.time.LocalDateTime.now()
+        val fileStamp = exportedAt.format(
+            java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
+        )
+        val relativePath = "exports/chat-$fileStamp.md"
+        val target = File(root, relativePath)
+        target.parentFile?.mkdirs()
+        val markdown = buildString {
+            appendLine("# ${session.name}")
+            appendLine()
+            appendLine("- 导出时间：${exportedAt.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME)}")
+            appendLine("- 会话模式：${session.sessionMode}")
+            session.characterName?.takeIf { it.isNotBlank() }?.let {
+                appendLine("- 角色：$it")
+            }
+            appendLine()
+            messages.forEach { message ->
+                val role = when (message.role.lowercase()) {
+                    "user", "human" -> "用户"
+                    "assistant" -> message.sender?.takeIf { it.isNotBlank() } ?: "AI"
+                    else -> message.role
+                }
+                appendLine("## $role · ${message.timestamp}")
+                appendLine()
+                appendLine(message.content.ifBlank { "（空消息）" })
+                appendLine()
+            }
+        }
+        return runCatching {
+            target.writeText(markdown, Charsets.UTF_8)
+            "已将 ${messages.size} 条消息导出到本地工作区。\n\n[File: $relativePath]"
+        }.getOrElse { error ->
+            "导出失败：${error.message ?: "无法写入文件"}"
+        }
+    }
+
+    private fun localNoteAddText(sessionId: String, rawNote: String): String {
+        val note = rawNote.trim()
+        if (note.isEmpty()) return "格式：`/note <内容>`"
+        if (note.length > 10_000) return "单条速记不能超过 10000 个字符。"
+        val root = localWorkspaceRoot(sessionId)
+            ?: return "无法打开当前会话工作区。"
+        val relativePath = "notes/local-notes.md"
+        val target = File(root, relativePath)
+        target.parentFile?.mkdirs()
+        val timestamp = java.time.LocalDateTime.now()
+            .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+        val indented = note
+            .replace("\r\n", "\n")
+            .replace('\r', '\n')
+            .replace("\n", "\n  ")
+        return runCatching {
+            if (!target.exists()) {
+                target.writeText("# 本地速记\n\n", Charsets.UTF_8)
+            }
+            target.appendText("- **$timestamp**\n  $indented\n\n", Charsets.UTF_8)
+            "已保存本地速记。\n\n[File: $relativePath]"
+        }.getOrElse { error ->
+            "保存速记失败：${error.message ?: "无法写入文件"}"
+        }
+    }
+
+    private fun localNotesShowText(sessionId: String): String {
+        val root = localWorkspaceRoot(sessionId)
+            ?: return "无法打开当前会话工作区。"
+        val relativePath = "notes/local-notes.md"
+        val target = File(root, relativePath)
+        return if (target.isFile) {
+            "[File: $relativePath]"
+        } else {
+            "当前会话还没有本地速记，使用 `/note <内容>` 添加。"
+        }
+    }
+
+    private suspend fun executeLocalTtsCommand(
+        session: LocalSessionEntity,
+        args: String
+    ): String {
+        val config = session.ttsConfig
+            ?.let { raw ->
+                runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull()
+            }
+            ?: JsonObject()
+        val currentlyEnabled = config.get("enabled")
+            ?.takeUnless { it.isJsonNull }
+            ?.asBoolean
+            ?: false
+
+        val enabled = when (args.trim().lowercase()) {
+            "" -> !currentlyEnabled
+            "on", "开启", "开" -> true
+            "off", "关闭", "关" -> false
+            else -> return "格式：`/tts [on|off]`"
+        }
+        config.addProperty("enabled", enabled)
+        if (!config.has("voice")) config.addProperty("voice", "alloy")
+        updateSession(session.id, ttsConfig = config.toString())
+
+        if (!enabled) return "已关闭当前会话的 TTS。"
+
+        val hasTtsModel = aiModelDao.listByPurpose("tts").isNotEmpty()
+        return if (hasTtsModel) {
+            "已开启当前会话的 TTS。"
+        } else {
+            "已开启当前会话的 TTS，但还没有可用的 TTS 模型；请先在 AI 配置中心添加并启用 `purpose=tts` 的模型。"
+        }
+    }
+
+    private fun localWorkspaceListText(sessionId: String): String {
+        val root = localWorkspaceRoot(sessionId)
+            ?: return "无法打开当前会话工作区。"
+        val files = root.walkTopDown()
+            .filter { it.isFile }
+            .take(100)
+            .toList()
+
+        if (files.isEmpty()) return "当前会话工作区为空。"
+
+        val lines = files.map { file ->
+            val relative = file.relativeTo(root).invariantSeparatorsPath
+            "• `$relative`（${formatLocalFileSize(file.length())}）"
+        }
+        return buildString {
+            appendLine("当前会话工作区")
+            appendLine()
+            append(lines.joinToString("\n"))
+            if (files.size >= 100) append("\n\n仅显示前 100 个文件。")
+            append("\n\n使用 `/ws_send <文件名>` 发送文件。")
+        }
+    }
+
+    private fun localWorkspaceSendText(sessionId: String, rawPath: String): String {
+        if (rawPath.isBlank()) return "格式：`/ws_send <文件名>`"
+        val root = localWorkspaceRoot(sessionId)
+            ?: return "无法打开当前会话工作区。"
+        val relativeInput = rawPath
+            .trim()
+            .removeSurrounding("\"")
+            .removeSurrounding("'")
+            .replace('\\', '/')
+        val target = runCatching { File(root, relativeInput).canonicalFile }.getOrNull()
+            ?: return "文件路径无效：`$relativeInput`"
+        val isInside = target.path == root.path ||
+            target.path.startsWith(root.path + File.separator)
+        if (!isInside || !target.isFile) {
+            return "工作区中找不到文件：`$relativeInput`"
+        }
+        val relative = target.relativeTo(root).invariantSeparatorsPath
+        return "[File: $relative]"
+    }
+
+    private fun localWorkspaceRoot(sessionId: String): File? =
+        appContext?.filesDir
+            ?.let { filesDir -> LocalWorkspaceStorage.resolve(filesDir, sessionId) }
+            ?.canonicalFile
+
+    private inline fun localCommandResult(block: () -> String): String =
+        runCatching(block).getOrElse { error ->
+            error.message ?: "命令执行失败。"
+        }
+
+    private fun localFortuneText(sessionId: String): String {
+        val today = java.time.LocalDate.now()
+        val seed = sessionId.hashCode().toLong() * 31L + today.toEpochDay()
+        val score = java.util.Random(seed).nextInt(101)
+        val label = when (score) {
+            in 90..100 -> "大吉"
+            in 75..89 -> "吉"
+            in 55..74 -> "小吉"
+            in 35..54 -> "平"
+            in 15..34 -> "小凶"
+            else -> "凶"
+        }
+        return "🔮 **${today} 今日运势：$label**\n\n幸运指数：**$score / 100**"
+    }
+
+    private fun formatLocalFileSize(bytes: Long): String = when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 ->
+            String.format(Locale.ROOT, "%.1f KB", bytes / 1024.0)
+        bytes < 1024L * 1024L * 1024L ->
+            String.format(Locale.ROOT, "%.1f MB", bytes / (1024.0 * 1024.0))
+        else ->
+            String.format(Locale.ROOT, "%.1f GB", bytes / (1024.0 * 1024.0 * 1024.0))
     }
 
     // ==================== 独立 Token 用量存储（与会话生命周期解耦）====================
@@ -1080,7 +1382,7 @@ class LocalRepository(
                 return@flow
             }
         val character = session.characterId?.let { characterDao.getById(it) }
-        val history = messageDao.listBySession(sessionId)
+        val history = listAiContextMessages(sessionId)
             .filter { it.role != "system" }
             .dropLast(1)  // 最后一条是刚保存的用户消息，会在 prompt 中单独处理
         val worldBookEntries = loadWorldBookEntries(session.characterId)
@@ -1267,8 +1569,14 @@ class LocalRepository(
             val reply = addAssistantMessage(
                 sessionId = sessionId,
                 content = "已开启 YOLO 模式：本会话内命令无需授权即可执行，高风险黑名单命令仍会被阻止。",
-                model = activeModel.model
+                model = LOCAL_COMMAND_MODEL
             )
+            emit(RealtimeEvent.AiResponse(reply))
+            return@flow
+        }
+
+        LocalSlashCommands.parse(userMessage)?.let { command ->
+            val reply = executeLocalSlashCommand(session, activeModel, command)
             emit(RealtimeEvent.AiResponse(reply))
             return@flow
         }
@@ -1446,7 +1754,7 @@ class LocalRepository(
                     }
 
                     // 收集最近用户消息（仅用于了解用户身份）
-                    val recentMessages = messageDao.listBySession(sessionId)
+                    val recentMessages = listAiContextMessages(sessionId)
                         .filter { it.role == "user" }
                         .takeLast(5)
                         .map { it.content }
@@ -1540,7 +1848,7 @@ class LocalRepository(
             ) {
                 try {
                     val latestSession = sessionDao.getById(sessionId)
-                    val latestMessages = messageDao.listBySession(sessionId)
+                    val latestMessages = listAiContextMessages(sessionId)
                     if (latestSession != null && latestMessages.isNotEmpty()) {
                         val charName = character?.name ?: latestSession.characterName ?: ""
                         val charDesc = character?.description ?: ""
@@ -1634,7 +1942,7 @@ class LocalRepository(
                         aiClient, { aiModelDao.getActive() },
                         onTokenUsage = ::recordPlotTokenUsage
                     )
-                    val recentHistory = messageDao.listBySession(sessionId)
+                    val recentHistory = listAiContextMessages(sessionId)
                         .takeLast(6)
                         .filter { it.role != "system" }
                         .map { mapOf("role" to it.role, "content" to it.content) }
@@ -1917,7 +2225,7 @@ class LocalRepository(
         if (!generationController.isStopped && lastContext?.finalContent?.isNotBlank() == true) {
             runCatching {
                 val latestSession = sessionDao.getById(session.id) ?: return@runCatching
-                val latestMessages = messageDao.listBySession(session.id)
+                val latestMessages = listAiContextMessages(session.id)
                 val newName = sessionNameGenerator.tryAutoName(
                     session = latestSession,
                     messages = latestMessages,
@@ -1967,7 +2275,7 @@ class LocalRepository(
                 }
 
             // 取最近 assistant 回复 + 历史
-            val recentMsgs = messageDao.listBySession(sessionId)
+            val recentMsgs = listAiContextMessages(sessionId)
                 .filter { it.role != "system" }
                 .takeLast(6)
             val lastAssistant = recentMsgs.lastOrNull { it.role == "assistant" }
@@ -2065,7 +2373,7 @@ class LocalRepository(
         activeModel: LocalAiModelEntity,
         keepRecent: Int = 10
     ): Boolean = withContext(Dispatchers.IO) {
-        val messages = messageDao.listBySession(sessionId)
+        val messages = listAiContextMessages(sessionId)
         if (messages.size <= keepRecent + 2) return@withContext true  // 不需要压缩
 
         val toCompress = messages.dropLast(keepRecent)
@@ -3008,7 +3316,7 @@ $charSection$topicSection
      * 最近一条助手消息的 input+output 已覆盖此前完整 prompt，不能再把各轮 input 重复求和。
      */
     suspend fun sessionContextTokenUsage(sessionId: String): Long = withContext(Dispatchers.IO) {
-        val messages = messageDao.listBySession(sessionId)
+        val messages = listAiContextMessages(sessionId)
             .filter { it.role != "system" }
             .map {
                 LocalContextTokenMessage(

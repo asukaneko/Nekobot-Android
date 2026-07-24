@@ -494,6 +494,7 @@
     <string name="chat_media_html_load_failed">HTML 加载失败: %1$s</string>
     <string name="chat_media_download">下载</string>
     <string name="chat_media_click_to_download">点击下载文件</string>
+    <string name="chat_media_click_to_preview">点击预览文件</string>
     <string name="chat_media_empty_response">空响应</string>
     <string name="chat_media_pdf_no_content">无法读取 PDF 内容</string>
     <string name="chat_media_pdf_render_failed">PDF 渲染失败</string>

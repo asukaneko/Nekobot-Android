@@ -489,6 +489,7 @@
     <string name="chat_media_html_load_failed">HTML 読み込み失敗: %1$s</string>
     <string name="chat_media_download">ダウンロード</string>
     <string name="chat_media_click_to_download">タップしてファイルをダウンロード</string>
+    <string name="chat_media_click_to_preview">タップしてファイルをプレビュー</string>
     <string name="chat_media_empty_response">空の応答</string>
     <string name="chat_media_pdf_no_content">PDF 内容を読み込めません</string>
     <string name="chat_media_pdf_render_failed">PDF レンダリングに失敗しました</string>

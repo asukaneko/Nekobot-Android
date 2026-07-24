@@ -145,6 +145,7 @@ import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.local.ChatInputLayoutMode
 import com.nekobot.app.data.local.VISION_FAILURE_MARKER
+import com.nekobot.app.data.local.isLocalCommandMessage
 import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.UpdateSessionRequest
@@ -822,6 +823,14 @@ fun ChatScreen(
                                     onRegenerate = { viewModel.regenerate() },
                                     onFork = { msg.id?.let { mid -> viewModel.forkFromMessage(mid) { onOpenChat(it) } } },
                                     onCopy = { msg.displayContent },
+                                    onDelete = if (
+                                        ServiceContainer.prefs.isLocalMode &&
+                                        msg.isLocalCommandMessage()
+                                    ) {
+                                        { deletingMessage = msg }
+                                    } else {
+                                        null
+                                    },
                                     sessionId = sessionId,
                                     selectionMode = selectionMode,
                                     isSelected = msg.id != null && msg.id in selectedIds,
@@ -1494,12 +1503,14 @@ private fun MessageBubble(
     onRegenerate: () -> Unit = {},
     onFork: () -> Unit = {},
     onCopy: () -> String = { "" },
+    onDelete: (() -> Unit)? = null,
     sessionId: String = "",
     selectionMode: Boolean = false,
     isSelected: Boolean = false,
     onToggleSelection: () -> Unit = {}
 ) {
     val isUser = message.isUser
+    val isLocalCommand = message.isLocalCommandMessage()
     // 用户气泡基色：若设置了主题色覆盖则跟随主题，否则使用默认紫色
     val userBubble = ServiceContainer.prefs.themeColorOverride?.let { parseHexColor(it) }
         ?: if (isSystemInDarkTheme()) BubbleUser else BubbleUserLight
@@ -1705,23 +1716,35 @@ private fun MessageBubble(
                 // 用户气泡：复制按钮放最右边；AI 气泡：三个操作按钮放最右边
                 if (!selectionMode) {
                     if (isUser) {
-                        IconActionButton(
-                            icon = Icons.Filled.ContentCopy,
-                            description = stringResource(R.string.common_copy),
-                            onClick = {
-                                val text = onCopy()
-                                clipboard.setText(AnnotatedString(text))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconActionButton(
+                                icon = Icons.Filled.ContentCopy,
+                                description = stringResource(R.string.common_copy),
+                                onClick = {
+                                    val text = onCopy()
+                                    clipboard.setText(AnnotatedString(text))
+                                }
+                            )
+                            onDelete?.let { delete ->
+                                Spacer(Modifier.width(4.dp))
+                                IconActionButton(
+                                    icon = Icons.Filled.Delete,
+                                    description = stringResource(R.string.common_delete),
+                                    onClick = delete
+                                )
                             }
-                        )
+                        }
                     } else {
                         BubbleActions(
                             isUser = isUser,
+                            showGenerationActions = !isLocalCommand,
                             onRegenerate = onRegenerate,
                             onFork = onFork,
                             onCopy = {
                                 val text = onCopy()
                                 clipboard.setText(AnnotatedString(text))
-                            }
+                            },
+                            onDelete = onDelete
                         )
                     }
                 }
@@ -1743,15 +1766,17 @@ private fun MessageBubble(
 @Composable
 private fun BubbleActions(
     isUser: Boolean,
+    showGenerationActions: Boolean = true,
     onRegenerate: () -> Unit,
     onFork: () -> Unit,
-    onCopy: () -> Unit
+    onCopy: () -> Unit,
+    onDelete: (() -> Unit)? = null
 ) {
     Row(
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (!isUser) {
+        if (!isUser && showGenerationActions) {
             // 重新生成
             IconActionButton(icon = Icons.Filled.Refresh, description = stringResource(R.string.chat_regenerate), onClick = onRegenerate)
             Spacer(Modifier.width(4.dp))
@@ -1761,6 +1786,14 @@ private fun BubbleActions(
         }
         // 复制
         IconActionButton(icon = Icons.Filled.ContentCopy, description = stringResource(R.string.common_copy), onClick = onCopy)
+        onDelete?.let { delete ->
+            Spacer(Modifier.width(4.dp))
+            IconActionButton(
+                icon = Icons.Filled.Delete,
+                description = stringResource(R.string.common_delete),
+                onClick = delete
+            )
+        }
     }
 }
 

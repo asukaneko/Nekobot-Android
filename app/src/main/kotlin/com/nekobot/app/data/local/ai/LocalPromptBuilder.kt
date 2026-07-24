@@ -2,6 +2,7 @@ package com.nekobot.app.data.local.ai
 
 import com.google.gson.Gson
 import com.google.gson.JsonParser
+import com.nekobot.app.data.local.isLocalCommandMessage
 import com.nekobot.app.data.local.db.LocalCharacterEntity
 import com.nekobot.app.data.local.db.LocalMessageEntity
 import com.nekobot.app.data.local.db.LocalSessionEntity
@@ -57,7 +58,7 @@ object LocalPromptBuilder {
         }
 
         // 3. 历史消息
-        history.forEach { msg ->
+        history.filterNot { it.isLocalCommandMessage() }.forEach { msg ->
             val role = when (msg.role.lowercase()) {
                 "user", "human" -> "user"
                 "assistant", "ai" -> "assistant"
