@@ -156,6 +156,7 @@ import com.nekobot.app.data.remote.ExecConfirmationRequest
 import com.nekobot.app.data.remote.ExecAuthorization
 import com.nekobot.app.data.remote.RealtimeEvent
 import com.nekobot.app.data.remote.SocketState
+import com.nekobot.app.data.remote.targetSessionId
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.ui.BaseViewModel
@@ -379,6 +380,7 @@ fun ChatScreen(
                 androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
                     viewModel.setChatVisible(true)
                     viewModel.refreshSession()
+                    viewModel.activateRealtimeSession()
                 }
                 androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> viewModel.setChatVisible(false)
                 else -> {}
@@ -2869,6 +2871,60 @@ internal fun finalizeStreamEndMessages(
 }
 
 /**
+ * 合并 Socket `new_message`：
+ * - WebUI 发出的用户消息直接追加到安卓当前会话；
+ * - 安卓自身发送的消息用服务端正式 id 替换乐观消息；
+ * - AI 消息移除流式占位并按 id 去重。
+ */
+internal fun mergeRealtimeNewMessage(
+    current: List<Message>,
+    incoming: Message,
+    isSending: Boolean,
+    streamingId: String = ChatViewModel.STREAMING_ID,
+    fallbackPrefix: String = ChatViewModel.STREAM_FALLBACK_PREFIX
+): List<Message> {
+    val incomingId = incoming.id
+    if (!incomingId.isNullOrBlank()) {
+        val existingIndex = current.indexOfFirst { it.id == incomingId }
+        if (existingIndex >= 0) {
+            val existing = current[existingIndex]
+            return current.toMutableList().apply {
+                this[existingIndex] = incoming.copy(
+                    thinkingCards = incoming.thinkingCards ?: existing.thinkingCards,
+                    audioUrl = incoming.audioUrl ?: existing.audioUrl
+                )
+            }
+        }
+    }
+
+    if (incoming.isUser) {
+        val optimisticIndex = if (isSending) {
+            current.indexOfLast {
+                it.isUser &&
+                    it.id.isNullOrBlank() &&
+                    it.content == incoming.content
+            }
+        } else {
+            -1
+        }
+        if (optimisticIndex >= 0) {
+            val optimistic = current[optimisticIndex]
+            return current.toMutableList().apply {
+                this[optimisticIndex] = incoming.copy(
+                    thinkingCards = incoming.thinkingCards ?: optimistic.thinkingCards
+                )
+            }
+        }
+        return current + incoming
+    }
+
+    return current.filter {
+        it.id != streamingId &&
+            !(it.id?.startsWith(fallbackPrefix) == true && it.content == incoming.content)
+    } + incoming
+}
+
+/**
  * 把时间戳/时间字符串精简到「分钟」级，尽量短以节省气泡下方空间。
  * 支持毫秒时间戳、ISO 字符串、已格式化字符串三种输入。
  * 例：2026-07-10T14:30:45.123 → "14:30"；2026-07-10 14:30 → "14:30"；14:30:45 → "14:30"
@@ -3552,6 +3608,13 @@ class ChatViewModel : BaseViewModel() {
         isChatVisible = visible
     }
 
+    /** 返回已存在的聊天页时重新把全局 Socket 切换到当前会话 room。 */
+    fun activateRealtimeSession() {
+        if (!isLocalMode && currentSessionId.isNotBlank()) {
+            connectSocket(currentSessionId)
+        }
+    }
+
     /** 初始化：加载会话信息与消息列表；服务器模式额外连接 Socket.IO。 */
     fun init(sessionId: String) {
         if (sessionId == currentSessionId && _session.value != null) return
@@ -3610,6 +3673,13 @@ class ChatViewModel : BaseViewModel() {
 
     /** 处理 Socket.IO 推送的实时事件。 */
     private fun handleRealtimeEvent(event: RealtimeEvent) {
+        if (!isLocalMode && event.targetSessionId() != currentSessionId) {
+            android.util.Log.d(
+                "NekoSocket",
+                "Ignore event for ${event.targetSessionId()} while current=$currentSessionId"
+            )
+            return
+        }
         if (
             generationStopRequested && (
                 event is RealtimeEvent.StreamStart ||
@@ -3725,15 +3795,14 @@ class ChatViewModel : BaseViewModel() {
                 val msg = event.message
                 // 过滤进度卡片（thinking_card），不展示在聊天列表
                 if (msg.isThinkingCard) return
-                // 只处理 assistant 消息（用户消息已乐观更新）
+                _messages.value = mergeRealtimeNewMessage(
+                    current = _messages.value,
+                    incoming = msg,
+                    isSending = _sending.value,
+                    streamingId = streamingId
+                )
                 if (!msg.isUser) {
                     _sending.value = false
-                    // 移除流式占位，追加新消息（去重）
-                    _messages.value = (_messages.value.filter {
-                        it.id != streamingId &&
-                            it.id != msg.id &&
-                            !(it.id?.startsWith(STREAM_FALLBACK_PREFIX) == true && it.content == msg.content)
-                    }) + msg
                     scheduleTtsForMessage(msg)
                 }
             }
@@ -3765,9 +3834,11 @@ class ChatViewModel : BaseViewModel() {
                 }
             }
             is RealtimeEvent.ThinkingCardUpdate -> {
-                // agent 模式进度卡片更新：挂到父用户消息上（本地 ProgressReporter 或远程 thinking_card 消息）
-                applyThinkingCardUpdate(event.card)
-                _sending.value = !event.card.isComplete
+                // thinking_card 只属于 Agent 会话；角色/群聊即使误收到也不能渲染。
+                if (_session.value?.sessionMode.equals("agent", ignoreCase = true)) {
+                    applyThinkingCardUpdate(event.card)
+                    _sending.value = !event.card.isComplete
+                }
             }
             is RealtimeEvent.HookNotificationEvent -> {
                 // Hook 触发通知：仅处理当前会话的通知（与远程模式 conversationId 路由一致）

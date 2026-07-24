@@ -30,6 +30,7 @@ class SocketMessageParserTest {
         assertEquals("assistant-1", message?.id)
         assertEquals("assistant", message?.role)
         assertEquals("工具处理完成后的最终回复", message?.content)
+        assertEquals("session-1", message?.sessionId)
     }
 
     @Test
@@ -47,6 +48,43 @@ class SocketMessageParserTest {
         assertNotNull(message)
         assertEquals("assistant-2", message?.id)
         assertEquals("直接消息", message?.content)
+    }
+
+    @Test
+    fun parseRealtimeMessageEnvelope_keepsDirectWebUiSessionId() {
+        val payload = """
+            {
+              "id": "user-web-1",
+              "role": "user",
+              "content": "从 WebUI 发出",
+              "session_id": "session-web"
+            }
+        """.trimIndent()
+
+        val envelope = parseRealtimeMessageEnvelope(gson, payload)
+
+        assertNotNull(envelope)
+        assertEquals("session-web", envelope?.sessionId)
+        assertEquals("session-web", envelope?.message?.sessionId)
+        assertEquals("user", envelope?.message?.role)
+    }
+
+    @Test
+    fun targetSessionId_routesEveryRemoteChatEventToItsRoom() {
+        val message = com.nekobot.app.data.model.Message(
+            id = "assistant-1",
+            role = "assistant",
+            sessionId = "session-a"
+        )
+
+        assertEquals(
+            "session-a",
+            RealtimeEvent.NewMessage(message).targetSessionId()
+        )
+        assertEquals(
+            "session-b",
+            RealtimeEvent.StreamChunk("片段", "session-b").targetSessionId()
+        )
     }
 
     @Test

@@ -23,27 +23,52 @@ import org.json.JSONObject
  * `new_message` 直接发送消息对象，而 `ai_response` 使用
  * `{"session_id": "...", "message": {...}}` 包装；两种格式都需要兼容。
  */
-internal fun parseRealtimeMessagePayload(gson: Gson, raw: Any?): Message? {
+internal data class RealtimeMessagePayload(
+    val sessionId: String?,
+    val message: Message
+)
+
+internal fun parseRealtimeMessageEnvelope(
+    gson: Gson,
+    raw: Any?,
+    fallbackSessionId: String? = null
+): RealtimeMessagePayload? {
     if (raw == null) return null
     val rawText = raw.toString()
     return try {
         val root = JsonParser.parseString(rawText)
-        val message = if (root.isJsonObject) {
-            root.asJsonObject.get("message")
+        val rootObject = root.takeIf { it.isJsonObject }?.asJsonObject
+        val messageElement = if (rootObject != null) {
+            rootObject.get("message")
                 ?.takeUnless { it.isJsonNull }
                 ?: root
         } else {
             root
         }
-        when {
-            message.isJsonObject -> gson.fromJson(message, Message::class.java)
-            message.isJsonPrimitive -> Message(content = message.asString)
-            else -> Message(content = message.toString())
+        val message = when {
+            messageElement.isJsonObject -> gson.fromJson(messageElement, Message::class.java)
+            messageElement.isJsonPrimitive -> Message(content = messageElement.asString)
+            else -> Message(content = messageElement.toString())
         }
+        val sessionId = rootObject.stringOrNull("session_id")
+            ?: rootObject.stringOrNull("conversation_id")
+            ?: rootObject.stringOrNull("sessionId")
+            ?: message.sessionId
+            ?: fallbackSessionId
+        RealtimeMessagePayload(sessionId, message.copy(sessionId = sessionId))
     } catch (_: Exception) {
-        Message(content = rawText)
+        RealtimeMessagePayload(fallbackSessionId, Message(content = rawText, sessionId = fallbackSessionId))
     }
 }
+
+internal fun parseRealtimeMessagePayload(gson: Gson, raw: Any?): Message? =
+    parseRealtimeMessageEnvelope(gson, raw)?.message
+
+private fun JsonObject?.stringOrNull(name: String): String? = this
+    ?.get(name)
+    ?.takeUnless { it.isJsonNull }
+    ?.let { runCatching { it.asString }.getOrNull() }
+    ?.takeIf { it.isNotBlank() }
 
 /** AI 请求执行非白名单命令时的授权信息。 */
 data class ExecConfirmationRequest(
@@ -134,21 +159,30 @@ enum class SocketState { Disconnected, Connecting, Connected, Error }
  */
 sealed class RealtimeEvent {
     /** 新消息推送（完整 AI 回复或用户消息回显） */
-    data class NewMessage(val message: Message) : RealtimeEvent()
+    data class NewMessage(
+        val message: Message,
+        val sessionId: String? = message.sessionId
+    ) : RealtimeEvent()
     /** AI 流式开始 */
     data class StreamStart(val sessionId: String?) : RealtimeEvent()
     /** AI 流式分片 */
-    data class StreamChunk(val chunk: String) : RealtimeEvent()
+    data class StreamChunk(val chunk: String, val sessionId: String? = null) : RealtimeEvent()
     /** AI 流式结束（通常已生成完整消息，可刷新列表） */
     data class StreamEnd(val sessionId: String?) : RealtimeEvent()
     /** 非流式完整 AI 响应 */
-    data class AiResponse(val message: Message?) : RealtimeEvent()
+    data class AiResponse(
+        val message: Message?,
+        val sessionId: String? = message?.sessionId
+    ) : RealtimeEvent()
     /** 消息被过滤 */
-    data class Filtered(val message: String?) : RealtimeEvent()
+    data class Filtered(val message: String?, val sessionId: String? = null) : RealtimeEvent()
     /** 剧情选项推送（AI 回复完成后服务端推送新选项） */
-    data class PlotChoices(val choices: com.google.gson.JsonElement) : RealtimeEvent()
+    data class PlotChoices(
+        val choices: com.google.gson.JsonElement,
+        val sessionId: String? = null
+    ) : RealtimeEvent()
     /** 错误 */
-    data class Error(val message: String) : RealtimeEvent()
+    data class Error(val message: String, val sessionId: String? = null) : RealtimeEvent()
     /** 本地模式 AI 流式结束时的 token 用量（input/output/total） */
     data class Usage(val inputTokens: Int, val outputTokens: Int, val model: String? = null) : RealtimeEvent()
     /** AI 请求执行非白名单命令，等待用户授权。 */
@@ -160,7 +194,10 @@ sealed class RealtimeEvent {
      * - 远程模式：服务端通过 new_message 事件推送 type=thinking_card 的 Message，转换后发出
      * - 本地模式：LocalPipelineCallbacks 的 ProgressReporter 回调直接构造发出
      */
-    data class ThinkingCardUpdate(val card: com.nekobot.app.data.model.ThinkingCard) : RealtimeEvent()
+    data class ThinkingCardUpdate(
+        val card: com.nekobot.app.data.model.ThinkingCard,
+        val sessionId: String? = null
+    ) : RealtimeEvent()
     /**
      * Hook 触发通知（成就式弹窗）。
      * - 远程模式：服务端通过 `hook_notification` Socket.IO 事件推送
@@ -172,6 +209,24 @@ sealed class RealtimeEvent {
      * UI 收到后刷新当前会话显示的标题。
      */
     data class SessionRenamed(val sessionId: String, val newName: String) : RealtimeEvent()
+}
+
+/** 返回事件所属会话；远程聊天使用它做严格隔离，避免全局 SharedFlow 串到其他页面。 */
+fun RealtimeEvent.targetSessionId(): String? = when (this) {
+    is RealtimeEvent.NewMessage -> sessionId
+    is RealtimeEvent.StreamStart -> sessionId
+    is RealtimeEvent.StreamChunk -> sessionId
+    is RealtimeEvent.StreamEnd -> sessionId
+    is RealtimeEvent.AiResponse -> sessionId
+    is RealtimeEvent.Filtered -> sessionId
+    is RealtimeEvent.PlotChoices -> sessionId
+    is RealtimeEvent.Error -> sessionId
+    is RealtimeEvent.ExecConfirmationRequired -> request.sessionId
+    is RealtimeEvent.ExecConfirmationResolved -> sessionId
+    is RealtimeEvent.ThinkingCardUpdate -> sessionId
+    is RealtimeEvent.HookNotificationEvent -> notification.conversationId
+    is RealtimeEvent.SessionRenamed -> sessionId
+    is RealtimeEvent.Usage -> null
 }
 
 /**
@@ -191,6 +246,7 @@ class SocketManager(private val prefs: PrefsManager) {
     val events: SharedFlow<RealtimeEvent> = _events.asSharedFlow()
 
     /** 当前已 join 的会话 id */
+    @Volatile
     private var joinedSessionId: String? = null
 
     private val baseUrl: String get() = prefs.serverUrl
@@ -263,20 +319,28 @@ class SocketManager(private val prefs: PrefsManager) {
         s.on("hook_notification") { args -> handleHookNotification(args) }
         // 通用错误
         s.on("error") { args ->
-            val msg = args.firstOrNull()?.toString() ?: "Socket 错误"
-            _events.tryEmit(RealtimeEvent.Error(msg))
+            val raw = args.firstOrNull()
+            val msg = extractMessageText(raw) ?: "Socket 错误"
+            val sessionId = extractSessionId(raw) ?: joinedSessionId
+            _events.tryEmit(RealtimeEvent.Error(msg, sessionId))
         }
     }
 
     /** 加入会话 room，接收该会话的实时消息推送。 */
     fun joinSession(sessionId: String) {
-        joinedSessionId = sessionId
         val s = socket
+        val previousSessionId = joinedSessionId
+        joinedSessionId = sessionId
         if (s == null || !s.connected()) {
             // 未连接则先连接，connect 成功后会自动 join
             android.util.Log.w("NekoSocket", "joinSession called but socket not connected, will connect first")
             connect()
             return
+        }
+        if (!previousSessionId.isNullOrBlank() && previousSessionId != sessionId) {
+            android.util.Log.i("NekoSocket", "Leaving previous room: $previousSessionId")
+            // 后端 leave_session 无参数，并根据当前 Socket SID 找到已登记的 room。
+            s.emit("leave_session")
         }
         android.util.Log.i("NekoSocket", "Joining room: $sessionId")
         s.emit("join_session", JSONObject(mapOf("session_id" to sessionId)))
@@ -284,7 +348,8 @@ class SocketManager(private val prefs: PrefsManager) {
 
     /** 离开会话 room。 */
     fun leaveSession(sessionId: String) {
-        if (joinedSessionId == sessionId) joinedSessionId = null
+        if (joinedSessionId != sessionId) return
+        joinedSessionId = null
         // 服务端根据当前 Socket SID 查找 room，leave_session 处理器不接收参数。
         socket?.emit("leave_session")
     }
@@ -330,12 +395,13 @@ class SocketManager(private val prefs: PrefsManager) {
 
     // ============== 事件解析 ==============
 
-    private fun parseMessage(raw: Any?): Message? {
-        return parseRealtimeMessagePayload(gson, raw)
-    }
-
     private fun handleNewMessage(args: Array<Any>) {
-        val msg = parseMessage(args.firstOrNull()) ?: return
+        val payload = parseRealtimeMessageEnvelope(
+            gson,
+            args.firstOrNull(),
+            fallbackSessionId = joinedSessionId
+        ) ?: return
+        val msg = payload.message
         // 服务端推送的 thinking_card 消息单独路由到 ThinkingCardUpdate 事件，
         // 避免被当作普通 NewMessage 渲染到聊天列表
         if (msg.isThinkingCard) {
@@ -348,41 +414,50 @@ class SocketManager(private val prefs: PrefsManager) {
                 timestamp = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
                 parentMessageId = msg.parentMessageId
             )
-            _events.tryEmit(RealtimeEvent.ThinkingCardUpdate(card))
+            _events.tryEmit(RealtimeEvent.ThinkingCardUpdate(card, payload.sessionId))
             return
         }
-        _events.tryEmit(RealtimeEvent.NewMessage(msg))
+        _events.tryEmit(RealtimeEvent.NewMessage(msg, payload.sessionId))
     }
 
     private fun handleAiResponse(args: Array<Any>) {
-        val msg = parseMessage(args.firstOrNull())
-        _events.tryEmit(RealtimeEvent.AiResponse(msg))
+        val payload = parseRealtimeMessageEnvelope(
+            gson,
+            args.firstOrNull(),
+            fallbackSessionId = joinedSessionId
+        )
+        _events.tryEmit(RealtimeEvent.AiResponse(payload?.message, payload?.sessionId ?: joinedSessionId))
     }
 
     private fun handleStreamStart(args: Array<Any>) {
-        val sid = extractSessionId(args.firstOrNull())
+        val sid = extractSessionId(args.firstOrNull()) ?: joinedSessionId
         _events.tryEmit(RealtimeEvent.StreamStart(sid))
     }
 
     private fun handleStreamChunk(args: Array<Any>) {
-        val chunk = extractChunk(args.firstOrNull()) ?: return
-        _events.tryEmit(RealtimeEvent.StreamChunk(chunk))
+        val raw = args.firstOrNull()
+        val chunk = extractChunk(raw) ?: return
+        val sid = extractSessionId(raw) ?: joinedSessionId
+        _events.tryEmit(RealtimeEvent.StreamChunk(chunk, sid))
     }
 
     private fun handleStreamEnd(args: Array<Any>) {
-        val sid = extractSessionId(args.firstOrNull())
+        val sid = extractSessionId(args.firstOrNull()) ?: joinedSessionId
         _events.tryEmit(RealtimeEvent.StreamEnd(sid))
     }
 
     private fun handleFiltered(args: Array<Any>) {
-        val msg = args.firstOrNull()?.toString()
-        _events.tryEmit(RealtimeEvent.Filtered(msg))
+        val raw = args.firstOrNull()
+        val msg = extractMessageText(raw)
+        val sid = extractSessionId(raw) ?: joinedSessionId
+        _events.tryEmit(RealtimeEvent.Filtered(msg, sid))
     }
 
     private fun handlePlotChoices(args: Array<Any>) {
         val raw = args.firstOrNull() ?: return
         val el = try { JsonParser.parseString(raw.toString()) } catch (_: Exception) { return }
-        _events.tryEmit(RealtimeEvent.PlotChoices(el))
+        val sid = extractSessionId(raw) ?: joinedSessionId
+        _events.tryEmit(RealtimeEvent.PlotChoices(el, sid))
     }
 
     private fun handleExecConfirmationRequest(args: Array<Any>) {
@@ -434,11 +509,40 @@ class SocketManager(private val prefs: PrefsManager) {
     private fun extractSessionId(raw: Any?): String? {
         if (raw == null) return null
         return try {
-            val obj = JSONObject(raw.toString())
-            val sid = obj.optString("session_id", "")
-            if (sid.isNotEmpty()) sid else obj.optString("sessionId", "").ifEmpty { null }
-        } catch (e: Exception) {
+            val root = JsonParser.parseString(raw.toString())
+            if (!root.isJsonObject) return null
+            val obj = root.asJsonObject
+            obj.stringOrNull("session_id")
+                ?: obj.stringOrNull("conversation_id")
+                ?: obj.stringOrNull("sessionId")
+                ?: obj.get("message")
+                    ?.takeIf { it.isJsonObject }
+                    ?.asJsonObject
+                    .let { message ->
+                        message.stringOrNull("session_id")
+                            ?: message.stringOrNull("conversation_id")
+                            ?: message.stringOrNull("sessionId")
+                    }
+        } catch (_: Exception) {
             null
+        }
+    }
+
+    private fun extractMessageText(raw: Any?): String? {
+        if (raw == null) return null
+        return try {
+            val root = JsonParser.parseString(raw.toString())
+            if (root.isJsonObject) {
+                root.asJsonObject.stringOrNull("message")
+                    ?: root.asJsonObject.stringOrNull("error")
+                    ?: raw.toString()
+            } else if (root.isJsonPrimitive) {
+                root.asString
+            } else {
+                raw.toString()
+            }
+        } catch (_: Exception) {
+            raw.toString()
         }
     }
 

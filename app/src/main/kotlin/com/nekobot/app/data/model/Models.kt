@@ -235,7 +235,9 @@ data class Message(
      * thinking_card（通常一个），记录 AI 在生成回复过程中的思考/工具调用/检索等步骤。
      * UI 在用户气泡与 AI 气泡之间渲染。
      */
-    @SerializedName("thinking_cards") val thinkingCards: List<ThinkingCard>? = null
+    @SerializedName("thinking_cards") val thinkingCards: List<ThinkingCard>? = null,
+    @SerializedName(value = "session_id", alternate = ["conversation_id", "sessionId"])
+    val sessionId: String? = null
 ) {
     val isUser: Boolean
         get() = role.equals("user", ignoreCase = true) || role.equals("human", ignoreCase = true)
