@@ -62,6 +62,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -95,6 +96,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -837,8 +839,8 @@ fun ChatScreen(
                                     onToggleSelection = { msg.id?.let { viewModel.toggleSelection(it) } }
                                 )
                             }
-                            // Agent 模式：在用户气泡下方渲染持久化的进度卡片（磨砂玻璃风格）
-                            if (msg.isUser && session?.sessionMode == "agent" && !msg.thinkingCards.isNullOrEmpty()) {
+                            // Agent 与本地耗时命令：在用户气泡下方渲染持久化进度卡片。
+                            if (msg.isUser && !msg.thinkingCards.isNullOrEmpty()) {
                                 Spacer(Modifier.height(6.dp))
                                 msg.thinkingCards.forEach { card ->
                                     ProgressCard(
@@ -1835,13 +1837,23 @@ private fun ProgressCard(
     card: com.nekobot.app.data.model.ThinkingCard,
     onStepClick: (com.nekobot.app.data.model.ThinkingStep) -> Unit = {}
 ) {
-    var expanded by remember(card.id) { mutableStateOf(false) }
+    // Agent 过程默认折叠；本地命令默认展开，便于直接观察下载阶段。
+    var expanded by remember(card.id) { mutableStateOf(!card.isAgent) }
+    val progress = card.progress?.coerceIn(0, 100)
+    val hasError = card.steps.any { it.status.equals("error", ignoreCase = true) }
+    val statusColor = if (hasError) {
+        MaterialTheme.colorScheme.error
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
 
     GlassCard(
         modifier = Modifier.fillMaxWidth(),
         cornerRadius = 14,
         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-        borderColor = if (card.isComplete) {
+        borderColor = if (hasError) {
+            MaterialTheme.colorScheme.error.copy(alpha = 0.48f)
+        } else if (card.isComplete) {
             MaterialTheme.colorScheme.primary.copy(alpha = 0.32f)
         } else {
             MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
@@ -1855,11 +1867,18 @@ private fun ProgressCard(
                 .clickable { expanded = !expanded },
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (card.isComplete) {
+            if (hasError) {
+                Icon(
+                    imageVector = Icons.Filled.Error,
+                    contentDescription = null,
+                    tint = statusColor,
+                    modifier = Modifier.size(18.dp)
+                )
+            } else if (card.isComplete) {
                 Icon(
                     imageVector = Icons.Filled.CheckCircle,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = statusColor,
                     modifier = Modifier.size(18.dp)
                 )
             } else {
@@ -1880,6 +1899,15 @@ private fun ProgressCard(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
+            if (progress != null) {
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "$progress%",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = statusColor
+                )
+            }
             if (card.steps.isNotEmpty()) {
                 Icon(
                     imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
@@ -1888,6 +1916,19 @@ private fun ProgressCard(
                     modifier = Modifier.size(18.dp)
                 )
             }
+        }
+
+        if (progress != null) {
+            Spacer(Modifier.height(8.dp))
+            LinearProgressIndicator(
+                progress = { progress / 100f },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(5.dp)
+                    .clip(RoundedCornerShape(3.dp)),
+                color = statusColor,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
         }
 
         // 步骤列表（可折叠）
@@ -3208,6 +3249,38 @@ internal fun buildChatMessageContent(
 }
 
 /**
+ * 将实时进度卡片挂到父用户消息。
+ *
+ * 本地发送先插入没有数据库 id 的乐观用户消息，因此按 parentMessageId 找不到时，
+ * 回退到最后一条用户消息；同一卡片的后续百分比更新会原位替换。
+ */
+internal fun attachThinkingCardToMessages(
+    messages: List<Message>,
+    card: com.nekobot.app.data.model.ThinkingCard
+): List<Message> {
+    val parentIndex = card.parentMessageId?.let { parentId ->
+        messages.indexOfFirst { it.id == parentId && it.isUser }
+    } ?: -1
+    val targetIndex = if (parentIndex >= 0) {
+        parentIndex
+    } else {
+        messages.indexOfLast { it.isUser }
+    }
+    if (targetIndex < 0) return messages
+
+    val parent = messages[targetIndex]
+    val existing = parent.thinkingCards.orEmpty()
+    val updated = if (existing.any { it.id == card.id }) {
+        existing.map { if (it.id == card.id) card else it }
+    } else {
+        existing + card
+    }
+    return messages.toMutableList().apply {
+        set(targetIndex, parent.copy(thinkingCards = updated))
+    }
+}
+
+/**
  * 对话页 ViewModel：管理消息、会话信息与发送状态。
  *
  * 服务器模式：通过 Socket.IO 接收 AI 的流式回复与消息推送。
@@ -3306,21 +3379,7 @@ class ChatViewModel : BaseViewModel() {
      * - StreamEnd 时 loadMessages 会用持久化数据覆盖，保证最终一致
      */
     private fun applyThinkingCardUpdate(card: com.nekobot.app.data.model.ThinkingCard) {
-        val current = _messages.value
-        val parentIdx = card.parentMessageId?.let { pid ->
-            current.indexOfFirst { it.id == pid && it.isUser }
-        } ?: -1
-        val targetIdx = if (parentIdx >= 0) parentIdx else current.indexOfLast { it.isUser }
-        if (targetIdx < 0) return
-        val parent = current[targetIdx]
-        val existing = parent.thinkingCards ?: emptyList()
-        val updated = if (existing.any { it.id == card.id }) {
-            existing.map { if (it.id == card.id) card else it }
-        } else {
-            existing + card
-        }
-        val newParent = parent.copy(thinkingCards = updated)
-        _messages.value = current.toMutableList().apply { set(targetIdx, newParent) }
+        _messages.value = attachThinkingCardToMessages(_messages.value, card)
     }
 
     // 多选模式状态

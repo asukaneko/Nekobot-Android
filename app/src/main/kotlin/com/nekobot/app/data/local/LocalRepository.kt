@@ -68,6 +68,7 @@ import com.nekobot.app.data.model.SkillRequest
 import com.nekobot.app.data.model.TaskItem
 import com.nekobot.app.data.model.TaskRequest
 import com.nekobot.app.data.model.ThinkingCard
+import com.nekobot.app.data.model.ThinkingStep
 import com.nekobot.app.data.model.TokenRankings
 import com.nekobot.app.data.model.TokenStats
 import com.nekobot.app.data.model.Tool
@@ -81,12 +82,14 @@ import androidx.room.withTransaction
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
@@ -102,6 +105,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipInputStream
 
 /**
@@ -918,8 +922,21 @@ class LocalRepository(
     private suspend fun executeLocalSlashCommand(
         session: LocalSessionEntity,
         activeModel: LocalAiModelEntity,
-        command: LocalParsedCommand
+        command: LocalParsedCommand,
+        parentMessageId: String,
+        onProgress: suspend (ThinkingCard) -> Unit = {}
     ): Message {
+        val progressReporter = when (command.action) {
+            LocalCommandAction.JM_RANK,
+            LocalCommandAction.JM_DOWNLOAD -> LocalCommandProgressReporter(
+                parentMessageId = parentMessageId,
+                onUpdate = { card ->
+                    updateMessageThinkingCards(parentMessageId, listOf(card))
+                    onProgress(card)
+                }
+            )
+            else -> null
+        }
         val content = when (command.action) {
             LocalCommandAction.HELP -> LocalSlashCommands.helpText()
             LocalCommandAction.LOCAL_STATUS -> localStatusText(session, activeModel)
@@ -954,8 +971,10 @@ class LocalRepository(
                 "SHA-256：\n\n`$digest`"
             }
             LocalCommandAction.FORTUNE -> localFortuneText(session.id)
-            LocalCommandAction.JM_RANK -> localJmRankingText(session.id, command.args)
-            LocalCommandAction.JM_DOWNLOAD -> localJmDownloadPdfText(session.id, command.args)
+            LocalCommandAction.JM_RANK ->
+                localJmRankingText(session.id, command.args, progressReporter)
+            LocalCommandAction.JM_DOWNLOAD ->
+                localJmDownloadPdfText(session.id, command.args, progressReporter)
             LocalCommandAction.PYTHON_RUNTIME_REQUIRED ->
                 LocalSlashCommands.pythonRuntimeMessage(command.name)
             LocalCommandAction.REMOTE_RUNTIME_REQUIRED ->
@@ -1183,26 +1202,134 @@ class LocalRepository(
             error.message ?: "命令执行失败。"
         }
 
-    private suspend fun localJmRankingText(sessionId: String, rawPeriod: String): String {
-        val period = runCatching {
+    private suspend fun localJmRankingText(
+        sessionId: String,
+        rawPeriod: String,
+        progressReporter: LocalCommandProgressReporter?
+    ): String {
+        val period = try {
             parseLocalJmRankingPeriod(rawPeriod)
-        }.getOrElse { error ->
-            return error.message ?: "格式：`/jmrank [周排行|月排行]`"
+        } catch (error: Exception) {
+            val message = error.message ?: "格式：`/jmrank [周排行|月排行]`"
+            progressReporter?.update(
+                content = "JM 排行参数错误",
+                progress = 0,
+                steps = listOf(
+                    ThinkingStep(type = "done", name = "参数校验失败", status = "error", detail = message)
+                ),
+                isComplete = true,
+                force = true
+            )
+            return message
         }
-        return runCatching {
+        val currentProgress = AtomicInteger(0)
+
+        suspend fun report(
+            content: String,
+            progress: Int,
+            steps: List<ThinkingStep>,
+            isComplete: Boolean = false,
+            force: Boolean = false
+        ) {
+            currentProgress.set(progress.coerceIn(0, 100))
+            progressReporter?.update(content, progress, steps, isComplete, force)
+        }
+
+        report(
+            content = "获取 JM ${period.displayName}",
+            progress = 0,
+            steps = listOf(
+                ThinkingStep(
+                    type = "knowledge",
+                    name = "获取排行榜数据",
+                    status = "running",
+                    detail = period.displayName
+                )
+            ),
+            force = true
+        )
+
+        return try {
             val entries = withContext(Dispatchers.IO) {
                 localJmRankingClient.fetchRanking(period)
             }
+            report(
+                content = "处理 JM ${period.displayName}",
+                progress = 12,
+                steps = listOf(
+                    ThinkingStep(
+                        type = "knowledge",
+                        name = "获取排行榜数据",
+                        status = "done",
+                        detail = "${entries.size} 条"
+                    ),
+                    ThinkingStep(
+                        type = "image",
+                        name = "下载高清封面",
+                        status = "running",
+                        detail = "0/${entries.size}"
+                    )
+                ),
+                force = true
+            )
             val semaphore = Semaphore(6)
+            val completedCovers = AtomicInteger(0)
+            val successfulCovers = AtomicInteger(0)
             val covers = coroutineScope {
                 entries.map { entry ->
                     async(Dispatchers.IO) {
-                        semaphore.withPermit {
-                            entry.id to localJmRankingClient.fetchCoverDataUrl(entry.id)
+                        val cover = semaphore.withPermit {
+                            localJmRankingClient.fetchCoverDataUrl(entry.id)
                         }
+                        if (!cover.isNullOrBlank()) successfulCovers.incrementAndGet()
+                        val completed = completedCovers.incrementAndGet()
+                        val progress = progressBetween(12, 90, completed, entries.size)
+                        report(
+                            content = "下载 JM 排行封面",
+                            progress = progress,
+                            steps = listOf(
+                                ThinkingStep(
+                                    type = "knowledge",
+                                    name = "获取排行榜数据",
+                                    status = "done",
+                                    detail = "${entries.size} 条"
+                                ),
+                                ThinkingStep(
+                                    type = "image",
+                                    name = "下载高清封面",
+                                    status = if (completed == entries.size) "done" else "running",
+                                    detail = "$completed/${entries.size}，成功 ${successfulCovers.get()} 张"
+                                )
+                            )
+                        )
+                        entry.id to cover
                     }
                 }.awaitAll().toMap()
             }
+            report(
+                content = "生成 JM 排行文件",
+                progress = 94,
+                steps = listOf(
+                    ThinkingStep(
+                        type = "knowledge",
+                        name = "获取排行榜数据",
+                        status = "done",
+                        detail = "${entries.size} 条"
+                    ),
+                    ThinkingStep(
+                        type = "image",
+                        name = "下载高清封面",
+                        status = "done",
+                        detail = "成功 ${successfulCovers.get()}/${entries.size} 张"
+                    ),
+                    ThinkingStep(
+                        type = "file",
+                        name = "生成排行榜 HTML",
+                        status = "running"
+                    )
+                ),
+                force = true
+            )
             val html = buildLocalJmRankingHtml(period, entries, covers)
             val root = localWorkspaceRoot(sessionId)
                 ?: error("无法打开当前会话工作区。")
@@ -1216,38 +1343,163 @@ class LocalRepository(
                 File(rankDir, fileName).writeText(html, Charsets.UTF_8)
             }
             val coverCount = covers.values.count { !it.isNullOrBlank() }
+            report(
+                content = "JM ${period.displayName}已生成",
+                progress = 100,
+                steps = listOf(
+                    ThinkingStep(
+                        type = "knowledge",
+                        name = "获取排行榜数据",
+                        status = "done",
+                        detail = "${entries.size} 条"
+                    ),
+                    ThinkingStep(
+                        type = "image",
+                        name = "下载高清封面",
+                        status = "done",
+                        detail = "成功 $coverCount/${entries.size} 张"
+                    ),
+                    ThinkingStep(
+                        type = "file",
+                        name = "生成排行榜 HTML",
+                        status = "done",
+                        detail = "rank/$fileName"
+                    )
+                ),
+                isComplete = true,
+                force = true
+            )
             "已生成 JM ${period.displayName}：${entries.size} 条，成功获取 $coverCount 张封面。" +
                 "\n\n[File: rank/$fileName]"
-        }.getOrElse { error ->
-            error.message ?: "获取 JM ${period.displayName}失败，请稍后重试。"
+        } catch (error: CancellationException) {
+            withContext(NonCancellable) {
+                progressReporter?.update(
+                    content = "JM ${period.displayName}已取消",
+                    progress = currentProgress.get(),
+                    steps = listOf(
+                        ThinkingStep(type = "done", name = "任务已取消", status = "error")
+                    ),
+                    isComplete = true,
+                    force = true
+                )
+            }
+            throw error
+        } catch (error: Exception) {
+            val message = error.message ?: "获取 JM ${period.displayName}失败，请稍后重试。"
+            progressReporter?.update(
+                content = "JM ${period.displayName}获取失败",
+                progress = currentProgress.get(),
+                steps = listOf(
+                    ThinkingStep(type = "done", name = "任务失败", status = "error", detail = message)
+                ),
+                isComplete = true,
+                force = true
+            )
+            message
         }
     }
 
-    private suspend fun localJmDownloadPdfText(sessionId: String, rawArgs: String): String {
-        val request = runCatching {
+    private suspend fun localJmDownloadPdfText(
+        sessionId: String,
+        rawArgs: String,
+        progressReporter: LocalCommandProgressReporter?
+    ): String {
+        val request = try {
             parseLocalJmDownloadRequest(rawArgs)
-        }.getOrElse { error ->
-            return error.message ?: "格式：`/jm <漫画ID> [--force]`"
+        } catch (error: Exception) {
+            val message = error.message ?: "格式：`/jm <漫画ID> [--force]`"
+            progressReporter?.update(
+                content = "JM 下载参数错误",
+                progress = 0,
+                steps = listOf(
+                    ThinkingStep(type = "done", name = "参数校验失败", status = "error", detail = message)
+                ),
+                isComplete = true,
+                force = true
+            )
+            return message
         }
-        val root = localWorkspaceRoot(sessionId)
-            ?: return "无法打开当前会话工作区。"
-        val downloadDir = File(root, "downloads")
-        if (!downloadDir.exists() && !downloadDir.mkdirs()) {
-            return "无法创建当前会话的下载目录。"
+        val currentProgress = AtomicInteger(0)
+
+        suspend fun report(
+            content: String,
+            progress: Int,
+            steps: List<ThinkingStep>,
+            isComplete: Boolean = false,
+            force: Boolean = false
+        ) {
+            currentProgress.set(progress.coerceIn(0, 100))
+            progressReporter?.update(content, progress, steps, isComplete, force)
         }
+
+        report(
+            content = "准备下载 JM${request.albumId}",
+            progress = 0,
+            steps = listOf(
+                ThinkingStep(type = "knowledge", name = "获取漫画信息", status = "running")
+            ),
+            force = true
+        )
 
         var partialFile: File? = null
         return try {
+            val root = localWorkspaceRoot(sessionId)
+                ?: error("无法打开当前会话工作区。")
+            val downloadDir = File(root, "downloads")
+            if (!downloadDir.exists() && !downloadDir.mkdirs()) {
+                error("无法创建当前会话的下载目录。")
+            }
             val album = withContext(Dispatchers.IO) {
                 localJmRankingClient.fetchAlbum(request.albumId)
             }
+            report(
+                content = "读取《${album.title}》章节",
+                progress = 6,
+                steps = listOf(
+                    ThinkingStep(
+                        type = "knowledge",
+                        name = "获取漫画信息",
+                        status = "done",
+                        detail = "${album.chapters.size} 章"
+                    ),
+                    ThinkingStep(
+                        type = "knowledge",
+                        name = "读取章节页数",
+                        status = "running",
+                        detail = "0/${album.chapters.size}"
+                    )
+                ),
+                force = true
+            )
             val semaphore = Semaphore(JM_CHAPTER_FETCH_CONCURRENCY)
+            val completedChapters = AtomicInteger(0)
             val photos = coroutineScope {
                 album.chapters.map { chapter ->
                     async(Dispatchers.IO) {
-                        semaphore.withPermit {
+                        val photo = semaphore.withPermit {
                             localJmRankingClient.fetchPhoto(album, chapter)
                         }
+                        val completed = completedChapters.incrementAndGet()
+                        val progress = progressBetween(6, 15, completed, album.chapters.size)
+                        report(
+                            content = "读取《${album.title}》章节",
+                            progress = progress,
+                            steps = listOf(
+                                ThinkingStep(
+                                    type = "knowledge",
+                                    name = "获取漫画信息",
+                                    status = "done",
+                                    detail = "${album.chapters.size} 章"
+                                ),
+                                ThinkingStep(
+                                    type = "knowledge",
+                                    name = "读取章节页数",
+                                    status = if (completed == album.chapters.size) "done" else "running",
+                                    detail = "$completed/${album.chapters.size}"
+                                )
+                            )
+                        )
+                        photo
                     }
                 }.awaitAll()
             }
@@ -1269,9 +1521,27 @@ class LocalRepository(
             if (availableBytes < estimatedBytes) {
                 error(
                     "存储空间可能不足：预计至少需要 ${formatLocalFileSize(estimatedBytes)}，" +
-                        "当前可用 ${formatLocalFileSize(availableBytes)}。"
+                    "当前可用 ${formatLocalFileSize(availableBytes)}。"
                 )
             }
+            report(
+                content = "准备下载《${album.title}》",
+                progress = 16,
+                steps = listOf(
+                    ThinkingStep(
+                        type = "knowledge",
+                        name = "漫画与章节信息",
+                        status = "done",
+                        detail = "${photos.size} 章、$totalPages 页"
+                    ),
+                    ThinkingStep(
+                        type = "image",
+                        name = "准备图片解码",
+                        status = "running"
+                    )
+                ),
+                force = true
+            )
 
             val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
             val fileName = "JM${album.id}-$timestamp.pdf"
@@ -1281,8 +1551,34 @@ class LocalRepository(
             val scrambleId = withContext(Dispatchers.IO) {
                 localJmRankingClient.fetchScrambleId(album, photos.first().id)
             }
+            report(
+                content = "下载《${album.title}》",
+                progress = 18,
+                steps = listOf(
+                    ThinkingStep(
+                        type = "knowledge",
+                        name = "漫画与章节信息",
+                        status = "done",
+                        detail = "${photos.size} 章、$totalPages 页"
+                    ),
+                    ThinkingStep(
+                        type = "image",
+                        name = "下载并解码图片",
+                        status = "running",
+                        detail = "0/$totalPages 页"
+                    ),
+                    ThinkingStep(
+                        type = "file",
+                        name = "写入 PDF",
+                        status = "running",
+                        detail = "0/$totalPages 页"
+                    )
+                ),
+                force = true
+            )
 
             withContext(Dispatchers.IO) {
+                var completedPages = 0
                 LocalImagePdfWriter(tempFile).use { writer ->
                     photos.forEach { photo ->
                         photo.imageFiles.forEach { imageFile ->
@@ -1310,24 +1606,117 @@ class LocalRepository(
                                 pixelWidth = image.width,
                                 pixelHeight = image.height
                             )
+                            completedPages += 1
+                            val progress = progressBetween(18, 96, completedPages, totalPages)
+                            report(
+                                content = "下载《${album.title}》",
+                                progress = progress,
+                                steps = listOf(
+                                    ThinkingStep(
+                                        type = "knowledge",
+                                        name = "漫画与章节信息",
+                                        status = "done",
+                                        detail = "${photos.size} 章、$totalPages 页"
+                                    ),
+                                    ThinkingStep(
+                                        type = "image",
+                                        name = "下载并解码图片",
+                                        status = if (completedPages == totalPages) "done" else "running",
+                                        detail = "$completedPages/$totalPages 页 · ${photo.title}"
+                                    ),
+                                    ThinkingStep(
+                                        type = "file",
+                                        name = "写入 PDF",
+                                        status = if (completedPages == totalPages) "done" else "running",
+                                        detail = "$completedPages/$totalPages 页"
+                                    )
+                                )
+                            )
                         }
                     }
                     writer.finish()
                 }
             }
+            report(
+                content = "保存《${album.title}》PDF",
+                progress = 98,
+                steps = listOf(
+                    ThinkingStep(
+                        type = "image",
+                        name = "下载并解码图片",
+                        status = "done",
+                        detail = "$totalPages/$totalPages 页"
+                    ),
+                    ThinkingStep(
+                        type = "file",
+                        name = "保存 PDF 文件",
+                        status = "running"
+                    )
+                ),
+                force = true
+            )
             if (!tempFile.renameTo(finalFile)) {
                 error("PDF 已生成，但无法从临时文件保存为最终文件。")
             }
             partialFile = null
+            report(
+                content = "《${album.title}》下载完成",
+                progress = 100,
+                steps = listOf(
+                    ThinkingStep(
+                        type = "knowledge",
+                        name = "漫画与章节信息",
+                        status = "done",
+                        detail = "${photos.size} 章、$totalPages 页"
+                    ),
+                    ThinkingStep(
+                        type = "image",
+                        name = "下载并解码图片",
+                        status = "done",
+                        detail = "$totalPages 页"
+                    ),
+                    ThinkingStep(
+                        type = "file",
+                        name = "PDF 已保存",
+                        status = "done",
+                        detail = "downloads/$fileName · ${formatLocalFileSize(finalFile.length())}"
+                    )
+                ),
+                isComplete = true,
+                force = true
+            )
             "已下载《${album.title}》：${photos.size} 章、$totalPages 页，" +
                 "PDF ${formatLocalFileSize(finalFile.length())}。" +
                 "\n\n[File: downloads/$fileName]"
         } catch (error: CancellationException) {
-            partialFile?.takeIf { it.exists() }?.delete()
+            withContext(NonCancellable) {
+                withContext(Dispatchers.IO) {
+                    partialFile?.takeIf { it.exists() }?.delete()
+                }
+                progressReporter?.update(
+                    content = "JM${request.albumId} 下载已取消",
+                    progress = currentProgress.get(),
+                    steps = listOf(
+                        ThinkingStep(type = "done", name = "任务已取消", status = "error")
+                    ),
+                    isComplete = true,
+                    force = true
+                )
+            }
             throw error
         } catch (error: Exception) {
             partialFile?.takeIf { it.exists() }?.delete()
-            error.message ?: "下载 JM${request.albumId} 失败，请稍后重试。"
+            val message = error.message ?: "下载 JM${request.albumId} 失败，请稍后重试。"
+            progressReporter?.update(
+                content = "JM${request.albumId} 下载失败",
+                progress = currentProgress.get(),
+                steps = listOf(
+                    ThinkingStep(type = "done", name = "任务失败", status = "error", detail = message)
+                ),
+                isComplete = true,
+                force = true
+            )
+            message
         }
     }
 
@@ -1735,8 +2124,33 @@ class LocalRepository(
         }
 
         LocalSlashCommands.parse(userMessage)?.let { command ->
-            val reply = executeLocalSlashCommand(session, activeModel, command)
-            emit(RealtimeEvent.AiResponse(reply))
+            if (
+                command.action == LocalCommandAction.JM_RANK ||
+                command.action == LocalCommandAction.JM_DOWNLOAD
+            ) {
+                // Room 持久化不会在命令执行期间自动刷新 ChatViewModel。
+                // 用 channelFlow 把并发封面/章节任务的卡片安全地实时推给聊天界面。
+                channelFlow {
+                    val reply = executeLocalSlashCommand(
+                        session = session,
+                        activeModel = activeModel,
+                        command = command,
+                        parentMessageId = parentMessageId,
+                        onProgress = { card ->
+                            send(RealtimeEvent.ThinkingCardUpdate(card))
+                        }
+                    )
+                    send(RealtimeEvent.AiResponse(reply))
+                }.collect { event -> emit(event) }
+            } else {
+                val reply = executeLocalSlashCommand(
+                    session = session,
+                    activeModel = activeModel,
+                    command = command,
+                    parentMessageId = parentMessageId
+                )
+                emit(RealtimeEvent.AiResponse(reply))
+            }
             return@flow
         }
 
