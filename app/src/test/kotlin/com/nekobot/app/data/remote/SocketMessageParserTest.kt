@@ -85,6 +85,21 @@ class SocketMessageParserTest {
             "session-b",
             RealtimeEvent.StreamChunk("片段", "session-b").targetSessionId()
         )
+        assertEquals(
+            "session-c",
+            RealtimeEvent.ReplyPostProcessed("session-c", listOf("回复")).targetSessionId()
+        )
+    }
+
+    @Test
+    fun parseSessionRenamedPayload_readsRemoteAutoTitleEvent() {
+        val renamed = parseSessionRenamedPayload(
+            """{"session_id":"session-1","name":"雨夜咖啡馆"}"""
+        )
+
+        assertNotNull(renamed)
+        assertEquals("session-1", renamed?.sessionId)
+        assertEquals("雨夜咖啡馆", renamed?.newName)
     }
 
     @Test

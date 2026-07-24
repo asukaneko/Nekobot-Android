@@ -2008,6 +2008,34 @@ class LocalRepository(
                 else -> emit(event)
             }
         }
+
+        // 无角色普通会话走旧聊天链路，也必须执行与 Pipeline 相同的标题后处理。
+        // 此前该路径只保存回复并发出 StreamEnd，开启 TTS 后又改为等待 ReplyPostProcessed，
+        // 结果既不会自动命名，也永远不会启动本轮 TTS。
+        if (fullContent.isNotBlank()) {
+            try {
+                val latestSession = sessionDao.getById(sessionId)
+                val latestMessages = listAiContextMessages(sessionId)
+                if (latestSession != null && latestMessages.isNotEmpty()) {
+                    val newName = sessionNameGenerator.tryAutoName(
+                        session = latestSession,
+                        messages = latestMessages
+                    )
+                    if (newName != null) {
+                        sessionDao.updateName(sessionId, newName, nowIso())
+                        emit(RealtimeEvent.SessionRenamed(sessionId, newName))
+                    }
+                }
+            } catch (e: Exception) {
+                LocalLogger.w(TAG, "普通会话自动命名失败（不影响主流程）: ${e.message}", e)
+            }
+        }
+        emit(
+            RealtimeEvent.ReplyPostProcessed(
+                sessionId,
+                listOf(fullContent.toString()).filter(String::isNotBlank)
+            )
+        )
     }.flowOn(Dispatchers.IO)
 
     /**
@@ -2446,6 +2474,13 @@ class LocalRepository(
                     com.nekobot.app.data.local.LocalLogger.w(TAG, "会话自动命名失败（不影响主流程）: ${e.message}", e)
                 }
             }
+            // TTS 必须等标题总结尝试结束后再启动，避免两个模型请求并发争用导致标题丢失。
+            emit(
+                RealtimeEvent.ReplyPostProcessed(
+                    sessionId,
+                    listOf(ctx.finalContent).filter(String::isNotBlank)
+                )
+            )
 
             // 剧情模式的每轮回复必须真正落入故事图；此前这里只生成了悬空选项，
             // 导致故事地图始终为空或无法形成边。
@@ -2648,6 +2683,7 @@ class LocalRepository(
 
         var lastCompletedSpeaker: com.nekobot.app.data.local.ai.LocalGroupParticipant? = null
         var lastContext: com.nekobot.app.data.local.ai.PipelineContext? = null
+        val completedResponseContents = mutableListOf<String>()
         val roundResponses = mutableListOf<com.nekobot.app.data.local.ai.LocalGroupRoundResponse>()
         val scheduledSpeakers = speakers.toMutableList()
         val initialSpeakerCount = speakers.size
@@ -2780,6 +2816,7 @@ class LocalRepository(
             }
             lastCompletedSpeaker = speaker
             lastContext = ctx
+            ctx.finalContent.takeIf(String::isNotBlank)?.let(completedResponseContents::add)
             index++
         }
 
@@ -2816,6 +2853,12 @@ class LocalRepository(
                 LocalLogger.w(TAG, "群聊会话自动命名失败（不影响主流程）: ${error.message}", error)
             }
         }
+        emit(
+            RealtimeEvent.ReplyPostProcessed(
+                session.id,
+                completedResponseContents
+            )
+        )
     }
 
     /** 提交本地 Agent 命令授权结果。 */

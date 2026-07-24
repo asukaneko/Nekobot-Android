@@ -125,6 +125,13 @@ class PrefsManager(context: Context) {
 
     val isLocalMode: Boolean get() = appMode.isLocal
 
+    /** 隐私锁：应用每次重新进入前必须通过系统生物识别。 */
+    var appLockEnabled: Boolean
+        get() = prefs.getBoolean(KEY_APP_LOCK_ENABLED, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_APP_LOCK_ENABLED, value).apply()
+        }
+
     /** 聊天底部输入栏的全局布局偏好。 */
     var chatInputLayoutMode: ChatInputLayoutMode
         get() = ChatInputLayoutMode.fromStorage(prefs.getString(KEY_CHAT_INPUT_LAYOUT, null))
@@ -351,6 +358,7 @@ class PrefsManager(context: Context) {
         private const val KEY_USERNAME = "username"
         private const val KEY_APP_MODE = "app_mode"
         private const val KEY_LOGIN_RECORDS = "login_records"
+        private const val KEY_APP_LOCK_ENABLED = "app_lock_enabled"
         private const val KEY_CHAT_INPUT_LAYOUT = "chat_input_layout"
         private const val KEY_STATS_DASHBOARD_ORDER = "stats_dashboard_widget_order"
         private const val KEY_STATS_DASHBOARD_HIDDEN = "stats_dashboard_hidden_widgets"

@@ -1,9 +1,12 @@
 package com.nekobot.app.ui.screens.settings
 
 import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +37,7 @@ import androidx.compose.material.icons.filled.ImportExport
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Memory
@@ -73,6 +77,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.biometric.BiometricManager
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonElement
 import com.google.gson.JsonParser
@@ -345,6 +352,78 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
     var serverUrlInput by remember(serverUrl) { mutableStateOf(serverUrl) }
     var settingsInput by remember(settingsJson) { mutableStateOf(settingsJson) }
     var showLanguagePicker by remember { mutableStateOf(false) }
+    val appLockState = remember { mutableStateOf(ServiceContainer.prefs.appLockEnabled) }
+    var appLockEnabled by appLockState
+    val pendingAppLockState = remember { mutableStateOf<Boolean?>(null) }
+    val activity = remember(context) { context.findFragmentActivity() }
+    val appLockPrompt = remember(activity) {
+        activity?.let { host ->
+            BiometricPrompt(
+                host,
+                ContextCompat.getMainExecutor(host),
+                object : BiometricPrompt.AuthenticationCallback() {
+                    override fun onAuthenticationSucceeded(
+                        result: BiometricPrompt.AuthenticationResult
+                    ) {
+                        val enabled = pendingAppLockState.value ?: return
+                        ServiceContainer.prefs.appLockEnabled = enabled
+                        appLockState.value = enabled
+                        pendingAppLockState.value = null
+                        Toast.makeText(
+                            context,
+                            context.getString(
+                                if (enabled) {
+                                    R.string.settings_app_lock_enabled
+                                } else {
+                                    R.string.settings_app_lock_disabled
+                                }
+                            ),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+
+                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                        pendingAppLockState.value = null
+                        Toast.makeText(context, errString, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            )
+        }
+    }
+
+    fun requestAppLockChange(enabled: Boolean) {
+        if (enabled == appLockState.value || pendingAppLockState.value != null) return
+        val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG
+        val available = activity != null &&
+            BiometricManager.from(context).canAuthenticate(authenticators) ==
+            BiometricManager.BIOMETRIC_SUCCESS
+        if (!available || appLockPrompt == null) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.settings_app_lock_unavailable),
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        pendingAppLockState.value = enabled
+        appLockPrompt.authenticate(
+            BiometricPrompt.PromptInfo.Builder()
+                .setTitle(context.getString(R.string.settings_app_lock_auth_title))
+                .setSubtitle(
+                    context.getString(
+                        if (enabled) {
+                            R.string.settings_app_lock_enable_auth_desc
+                        } else {
+                            R.string.settings_app_lock_disable_auth_desc
+                        }
+                    )
+                )
+                .setAllowedAuthenticators(authenticators)
+                .setNegativeButtonText(context.getString(R.string.common_cancel))
+                .build()
+        )
+    }
 
     LaunchedEffect(toast) {
         if (toast != null) {
@@ -514,6 +593,15 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         SectionHeader(title = stringResource(R.string.settings_advanced))
                         Spacer(Modifier.height(12.dp))
+                        SettingSwitchRow(
+                            icon = Icons.Filled.Fingerprint,
+                            iconColor = MaterialTheme.colorScheme.primary,
+                            title = stringResource(R.string.settings_app_lock),
+                            subtitle = stringResource(R.string.settings_app_lock_desc),
+                            checked = appLockEnabled,
+                            enabled = pendingAppLockState.value == null,
+                            onCheckedChange = ::requestAppLockChange
+                        )
                         SettingNavRow(
                             icon = Icons.Filled.Tune,
                             iconColor = MaterialTheme.colorScheme.primary,
@@ -544,6 +632,15 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         SectionHeader(title = stringResource(R.string.settings_advanced))
                         Spacer(Modifier.height(12.dp))
+                        SettingSwitchRow(
+                            icon = Icons.Filled.Fingerprint,
+                            iconColor = MaterialTheme.colorScheme.primary,
+                            title = stringResource(R.string.settings_app_lock),
+                            subtitle = stringResource(R.string.settings_app_lock_desc),
+                            checked = appLockEnabled,
+                            enabled = pendingAppLockState.value == null,
+                            onCheckedChange = ::requestAppLockChange
+                        )
                         SettingNavRow(
                             icon = Icons.Filled.Build,
                             iconColor = MaterialTheme.colorScheme.tertiary,
@@ -885,6 +982,55 @@ private fun SettingNavRow(
         }
         Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+/** 通用设置开关行：图标 + 标题 + 副标题 + 开关。 */
+@Composable
+private fun SettingSwitchRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconColor: Color,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    enabled: Boolean = true,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(
+            checked = checked,
+            enabled = enabled,
+            onCheckedChange = onCheckedChange
+        )
+    }
+}
+
+private fun Context.findFragmentActivity(): FragmentActivity? = when (this) {
+    is FragmentActivity -> this
+    is ContextWrapper -> baseContext.findFragmentActivity()
+    else -> null
 }
 
 /** 关于页面的导航行：与 [SettingNavRow] 等价，但右箭头前可显示更紧凑的副标题。 */

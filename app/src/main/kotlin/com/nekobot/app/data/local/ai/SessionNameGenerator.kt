@@ -31,7 +31,12 @@ class SessionNameGenerator(
         /** 已自动命名后，每多少条新消息触发重新命名 */
         private const val RE_NAME_INTERVAL = 10
         /** 默认名称前缀（用于检测是否需要首次命名） */
-        private val DEFAULT_NAME_PREFIXES = listOf("新会话", "新对话", "Web 会话")
+        private val DEFAULT_NAME_PREFIXES = listOf(
+            "新会话", "新对话", "Web 会话", "Agent 会话", "群聊",
+            "New session", "New conversation", "Web session", "Agent chat", "Group chat",
+            "新しい会話", "新規会話", "エージェント会話", "グループ会話",
+            "새 대화", "새 세션", "에이전트 대화", "그룹 대화"
+        )
         /** 默认名称后缀（用于检测是否需要首次命名） */
         private val DEFAULT_NAME_SUFFIXES = listOf("的对话")
     }
@@ -180,6 +185,15 @@ class SessionNameGenerator(
         name = name.trim('`', '*', '_', '#', ' ', '\t', '\r', '\n', '"', '\'',
             '[', ']', '(', ')', '{', '}', '<', '>', ':', '：', '-', '—',
             ',', '，', '.', '。', '!', '！', '?', '？')
+        // 与原仓库 server.py 保持一致：模型偶尔无视“15 字以内”的提示，
+        // 仍应截断为可用标题，不能直接丢弃导致会话一直叫“新会话”。
+        if (name.length > 15) {
+            name = name.take(15).trimEnd(
+                '`', '*', '_', '#', ' ', '\t', '\r', '\n', '"', '\'',
+                '[', ']', '(', ')', '{', '}', '<', '>', ':', '：', '-', '—',
+                ',', '，', '.', '。', '!', '！', '?', '？'
+            )
+        }
         return name.ifBlank { null }
     }
 }

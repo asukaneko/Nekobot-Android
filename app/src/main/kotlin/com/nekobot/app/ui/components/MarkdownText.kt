@@ -67,68 +67,30 @@ fun MarkdownText(
     processParens: Boolean = true
 ) {
     if (text.isBlank()) return
-    // 预处理：内心独白、括号斜体、删除线占位（仅在 chatMode 下生效）
+    // 预处理保留为兼容入口；区块和行内语义直接解析原文，不再注入可泄漏的占位字符。
     val preprocessed = remember(text, chatMode, processParens) { preprocessMarkdown(text, chatMode, processParens) }
-    val blocks = remember(preprocessed) { parseBlocks(preprocessed) }
+    val blocks = remember(preprocessed, chatMode) { parseBlocks(preprocessed, chatMode) }
 
     Column(modifier = modifier) {
-        blocks.forEach { block -> RenderBlock(block, color, style) }
+        blocks.forEach { block ->
+            RenderBlock(
+                block = block,
+                color = color,
+                style = style,
+                styleParentheses = chatMode && processParens
+            )
+        }
     }
 }
 
 // ==================== 预处理 ====================
 
-/** 删除线占位符（禁用删除线渲染） */
-private const val TILDE_PLACEHOLDER = "\u0001TILDE\u0001"
-/** 内心独白占位符标记 */
-private const val INNER_OPEN = "\u0002INNER:"
-private const val INNER_CLOSE = "\u0003"
 /**
- * 全角括号斜体占位符标记。
- *
- * 与普通 `*text*` 斜体区分开，便于在 parseInline 中应用更醒目的差异化样式
- * （斜体 + 降透明度 + 浅色背景），避免与正文混在一起。
+ * 保留旧入口以兼容调用方。Markdown 现在直接解析原文，不再插入控制字符或私有区字符，
+ * 从根源上避免 `PAREN`、方框或自定义字体图标泄漏到最终回复。
  */
-private const val PAREN_ITALIC_OPEN = "\u0004PAREN:"
-private const val PAREN_ITALIC_CLOSE = "\u0005"
-
-/**
- * 预处理 Markdown 文本（仅在 chatMode = true 时执行）：
- * 1. 将 ~~text~~ 中的 ~~ 替换为占位符（禁用删除线）
- * 2. 将 `（内心：...）` 或 `(内心：...)` 转为内心独白占位符
- * 3. 将全角括号 `（非内心内容）` 转为斜体 *内容*
- *
- * chatMode = false 时直接返回原文，使用标准 Markdown 渲染（保留 `~~`、`（...）` 原样）。
- */
-fun preprocessMarkdown(text: String, chatMode: Boolean = false, processParens: Boolean = true): String {
-    if (!chatMode) return text
-    var result = text
-    // 1. 禁用删除线：把 ~~ 替换为占位符
-    result = result.replace("~~", TILDE_PLACEHOLDER)
-
-    // 2. 内心独白：匹配 `（内心：...）` 或 `(内心：...)` 或 `（心里：...）`
-    val innerRegex = Regex("[（(](?:内心|心里|心想|内白)[：:].*?[）)]", RegexOption.DOT_MATCHES_ALL)
-    result = innerRegex.replace(result) { m ->
-        // 提取冒号后的内容
-        val content = m.value.substringAfter("：").substringAfter(":").removeSuffix("）").removeSuffix(")")
-        "$INNER_OPEN$content$INNER_CLOSE"
-    }
-
-    // 3. 全角括号内容斜体：剩余的 `（...）` 转为占位符段
-    // 仅处理短括号内容（避免误伤长文本）
-    // 用户发送的气泡不处理括号（保留原始括号字符）
-    // 使用 PAREN_ITALIC_OPEN/CLOSE 占位符而非 *...*，便于在 parseInline 中应用
-    // 差异化样式（斜体 + 降透明度 + 浅色背景），与普通 *text* 斜体区分开
-    if (processParens) {
-        val parenRegex = Regex("[（(]([^（）()]{1,50})[）)]")
-        result = parenRegex.replace(result) { m ->
-            val content = m.groupValues[1]
-            "$PAREN_ITALIC_OPEN$content$PAREN_ITALIC_CLOSE"
-        }
-    }
-
-    return result
-}
+@Suppress("UNUSED_PARAMETER")
+fun preprocessMarkdown(text: String, chatMode: Boolean = false, processParens: Boolean = true): String = text
 
 // ==================== 区块解析 ====================
 
@@ -147,7 +109,7 @@ sealed class MdBlock {
 /**
  * 将文本解析为区块列表。
  */
-fun parseBlocks(text: String): List<MdBlock> {
+fun parseBlocks(text: String, chatMode: Boolean = false): List<MdBlock> {
     val blocks = mutableListOf<MdBlock>()
     val lines = text.split("\n")
     var i = 0
@@ -270,10 +232,9 @@ fun parseBlocks(text: String): List<MdBlock> {
             continue
         }
 
-        // 内心独白占位符（可能内联在同一行，需保留占位符前后的文本）
-        if (line.contains(INNER_OPEN)) {
+        // 聊天模式直接从原文识别内心独白，避免使用任何可能显示出来的中间占位符。
+        if (chatMode) {
             val segments = splitInnerSegments(line)
-            // 仅在确实解析到至少一个完整的内心独白段时按分段处理
             if (segments.any { it.first == SEG_INNER }) {
                 segments.forEach { (type, content) ->
                     if (type == SEG_INNER) {
@@ -285,7 +246,6 @@ fun parseBlocks(text: String): List<MdBlock> {
                 i++
                 continue
             }
-            // 未找到完整 INNER_CLOSE：保留原文，按段落处理
         }
 
         // 普通段落（连续非空行合并）
@@ -318,35 +278,29 @@ private const val SEG_TEXT = 0
 private const val SEG_INNER = 1
 
 /**
- * 将一行文本按内心独白占位符切分为交替的「普通文本」与「内心独白」段。
- * 保留占位符前、后及多个占位符之间的文本，避免折叠块吃掉前后内容。
- * 未配对到 INNER_CLOSE 的残余 INNER_OPEN 原样作为文本返回。
+ * 将一行原文切分为交替的「普通文本」与「内心独白」段。
+ * 行内代码中的相同文字不参与识别，代码内容始终保持原样。
  */
 private fun splitInnerSegments(line: String): List<Pair<Int, String>> {
     val result = mutableListOf<Pair<Int, String>>()
+    val innerRegex = Regex("[（(](?:内心|心里|心想|内白)[：:]([^（）()]*?)[）)]")
+    val matches = innerRegex.findAll(line)
+        .filterNot { match -> line.take(match.range.first).count { it == '`' } % 2 == 1 }
+        .toList()
+    if (matches.isEmpty()) return listOf(SEG_TEXT to line)
+
     var pos = 0
-    while (pos <= line.length) {
-        val start = line.indexOf(INNER_OPEN, pos)
-        if (start < 0) {
-            val rest = line.substring(pos)
-            if (rest.isNotEmpty()) result.add(SEG_TEXT to rest)
-            break
-        }
-        // 占位符之前的文本
+    matches.forEach { match ->
+        val start = match.range.first
         if (start > pos) {
             val before = line.substring(pos, start)
             if (before.isNotEmpty()) result.add(SEG_TEXT to before)
         }
-        val end = line.indexOf(INNER_CLOSE, start + INNER_OPEN.length)
-        if (end < 0) {
-            // 未闭合：保留占位符原文，作为普通文本处理
-            val rest = line.substring(start)
-            if (rest.isNotEmpty()) result.add(SEG_TEXT to rest)
-            break
-        }
-        val content = line.substring(start + INNER_OPEN.length, end)
-        result.add(SEG_INNER to content)
-        pos = end + INNER_CLOSE.length
+        result.add(SEG_INNER to match.groupValues[1])
+        pos = match.range.last + 1
+    }
+    if (pos < line.length) {
+        result.add(SEG_TEXT to line.substring(pos))
     }
     return result
 }
@@ -354,11 +308,16 @@ private fun splitInnerSegments(line: String): List<Pair<Int, String>> {
 // ==================== 区块渲染 ====================
 
 @Composable
-private fun RenderBlock(block: MdBlock, color: androidx.compose.ui.graphics.Color, style: androidx.compose.ui.text.TextStyle) {
+private fun RenderBlock(
+    block: MdBlock,
+    color: androidx.compose.ui.graphics.Color,
+    style: androidx.compose.ui.text.TextStyle,
+    styleParentheses: Boolean
+) {
     when (block) {
         is MdBlock.CodeBlock -> CodeBlockRenderer(block)
         is MdBlock.Header -> Text(
-            text = parseInline(block.content, color, style),
+            text = parseInline(block.content, color, style, styleParentheses),
             style = when (block.level) {
                 1 -> style.copy(fontSize = (style.fontSize.value * 1.8).sp, fontWeight = FontWeight.Bold)
                 2 -> style.copy(fontSize = (style.fontSize.value * 1.5).sp, fontWeight = FontWeight.Bold)
@@ -368,7 +327,7 @@ private fun RenderBlock(block: MdBlock, color: androidx.compose.ui.graphics.Colo
                 else -> style.copy(fontWeight = FontWeight.SemiBold)
             }
         )
-        is MdBlock.ListItem -> ListRenderer(block, color, style)
+        is MdBlock.ListItem -> ListRenderer(block, color, style, styleParentheses)
         is MdBlock.Blockquote -> Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -376,7 +335,7 @@ private fun RenderBlock(block: MdBlock, color: androidx.compose.ui.graphics.Colo
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
                 .padding(8.dp)
         ) {
-            Text(text = parseInline(block.content, color, style), style = style)
+            Text(text = parseInline(block.content, color, style, styleParentheses), style = style)
         }
         is MdBlock.Table -> TableRenderer(block, color, style)
         is MdBlock.HorizontalRule -> Box(
@@ -388,7 +347,7 @@ private fun RenderBlock(block: MdBlock, color: androidx.compose.ui.graphics.Colo
         )
         is MdBlock.InnerMonologue -> InnerMonologueRenderer(block, color, style)
         is MdBlock.Paragraph -> Text(
-            text = parseInline(block.content, color, style),
+            text = parseInline(block.content, color, style, styleParentheses),
             style = style,
             color = color
         )
@@ -438,7 +397,12 @@ private fun CodeBlockRenderer(block: MdBlock.CodeBlock) {
 }
 
 @Composable
-private fun ListRenderer(block: MdBlock.ListItem, color: androidx.compose.ui.graphics.Color, style: androidx.compose.ui.text.TextStyle) {
+private fun ListRenderer(
+    block: MdBlock.ListItem,
+    color: androidx.compose.ui.graphics.Color,
+    style: androidx.compose.ui.text.TextStyle,
+    styleParentheses: Boolean
+) {
     Column(modifier = Modifier.fillMaxWidth()) {
         block.items.forEachIndexed { idx, item ->
             Row(modifier = Modifier.padding(vertical = 1.dp)) {
@@ -448,7 +412,7 @@ private fun ListRenderer(block: MdBlock.ListItem, color: androidx.compose.ui.gra
                     color = color
                 )
                 Text(
-                    text = parseInline(item, color, style),
+                    text = parseInline(item, color, style, styleParentheses),
                     style = style,
                     color = color,
                     modifier = Modifier.weight(1f)
@@ -615,36 +579,18 @@ private fun InnerMonologueRenderer(block: MdBlock.InnerMonologue, color: android
 
 /**
  * 解析行内格式：粗体 **text**、斜体 *text*、行内代码 `code`、链接 [text](url)。
- * 删除线已被禁用（~~ 替换为占位符）。
+ * 删除线已被禁用，`~~` 会按原文显示。
  */
-fun parseInline(text: String, baseColor: androidx.compose.ui.graphics.Color, baseStyle: androidx.compose.ui.text.TextStyle): AnnotatedString {
+@Suppress("UNUSED_PARAMETER")
+fun parseInline(
+    text: String,
+    baseColor: androidx.compose.ui.graphics.Color,
+    baseStyle: androidx.compose.ui.text.TextStyle,
+    styleParentheses: Boolean = false
+): AnnotatedString {
     return buildAnnotatedString {
         var i = 0
         while (i < text.length) {
-            // 恢复删除线占位符为 ~~
-            if (text.startsWith(TILDE_PLACEHOLDER, i)) {
-                append("~~")
-                i += TILDE_PLACEHOLDER.length
-                continue
-            }
-            // 全角括号斜体段（来自 （...） 预处理）
-            // 与普通 *text* 斜体区分：italic + 降透明度，视觉上更醒目（无背景，避免过深）
-            if (text.startsWith(PAREN_ITALIC_OPEN, i)) {
-                val end = text.indexOf(PAREN_ITALIC_CLOSE, i + PAREN_ITALIC_OPEN.length)
-                if (end > 0) {
-                    val content = text.substring(i + PAREN_ITALIC_OPEN.length, end)
-                    withStyle(SpanStyle(
-                        fontStyle = FontStyle.Italic,
-                        color = baseColor.copy(alpha = 0.62f)
-                    )) {
-                        append("（")
-                        append(content)
-                        append("）")
-                    }
-                    i = end + PAREN_ITALIC_CLOSE.length
-                    continue
-                }
-            }
             // 粗体 **text**
             if (text.startsWith("**", i)) {
                 val end = text.indexOf("**", i + 2)
@@ -676,6 +622,30 @@ fun parseInline(text: String, baseColor: androidx.compose.ui.graphics.Color, bas
                     }
                     i = end + 1
                     continue
+                }
+            }
+            // 聊天气泡中的普通括号旁白直接从原文识别并着色，不再注入 PAREN/私有区占位符。
+            // 行内代码已在上方整体消费，因此代码里的括号不会被改写。
+            if (styleParentheses && (text[i] == '（' || text[i] == '(')) {
+                val close = if (text[i] == '（') '）' else ')'
+                val end = text.indexOf(close, i + 1)
+                if (end > i + 1 && end - i - 1 <= 50) {
+                    val content = text.substring(i + 1, end)
+                    val isSimple = content.none { it == '（' || it == '）' || it == '(' || it == ')' }
+                    val isInnerMonologue = Regex("^(?:内心|心里|心想|内白)[：:]")
+                        .containsMatchIn(content)
+                    if (isSimple && !isInnerMonologue) {
+                        withStyle(
+                            SpanStyle(
+                                fontStyle = FontStyle.Italic,
+                                color = baseColor.copy(alpha = 0.62f)
+                            )
+                        ) {
+                            append(text.substring(i, end + 1))
+                        }
+                        i = end + 1
+                        continue
+                    }
                 }
             }
             // 链接 [text](url)

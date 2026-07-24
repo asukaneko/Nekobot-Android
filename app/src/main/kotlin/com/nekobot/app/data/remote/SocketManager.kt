@@ -151,6 +151,25 @@ internal fun parseExecConfirmationPayload(raw: Any?): ExecConfirmationRequest? {
     }
 }
 
+/** 解析服务端 `session_renamed` 事件，兼容 name/new_name 两种标题字段。 */
+internal fun parseSessionRenamedPayload(raw: Any?): RealtimeEvent.SessionRenamed? {
+    if (raw == null) return null
+    return try {
+        val root = JsonParser.parseString(raw.toString())
+        if (!root.isJsonObject) return null
+        val obj = root.asJsonObject
+        val sessionId = obj.stringOrNull("session_id")
+            ?: obj.stringOrNull("conversation_id")
+            ?: return null
+        val newName = obj.stringOrNull("name")
+            ?: obj.stringOrNull("new_name")
+            ?: return null
+        RealtimeEvent.SessionRenamed(sessionId, newName)
+    } catch (_: Exception) {
+        null
+    }
+}
+
 /** Socket.IO 连接状态 */
 enum class SocketState { Disconnected, Connecting, Connected, Error }
 
@@ -205,10 +224,12 @@ sealed class RealtimeEvent {
      */
     data class HookNotificationEvent(val notification: HookNotification) : RealtimeEvent()
     /**
-     * 会话已自动重命名（本地模式 SessionNameGenerator 触发）。
+     * 会话已自动重命名（本地 SessionNameGenerator 或远程 session_renamed 触发）。
      * UI 收到后刷新当前会话显示的标题。
      */
     data class SessionRenamed(val sessionId: String, val newName: String) : RealtimeEvent()
+    /** 本地标题总结后处理已结束；TTS 必须等到此事件后才能启动，避免争用模型请求。 */
+    data class ReplyPostProcessed(val sessionId: String, val contents: List<String>) : RealtimeEvent()
 }
 
 /** 返回事件所属会话；远程聊天使用它做严格隔离，避免全局 SharedFlow 串到其他页面。 */
@@ -226,6 +247,7 @@ fun RealtimeEvent.targetSessionId(): String? = when (this) {
     is RealtimeEvent.ThinkingCardUpdate -> sessionId
     is RealtimeEvent.HookNotificationEvent -> notification.conversationId
     is RealtimeEvent.SessionRenamed -> sessionId
+    is RealtimeEvent.ReplyPostProcessed -> sessionId
     is RealtimeEvent.Usage -> null
 }
 
@@ -317,6 +339,8 @@ class SocketManager(private val prefs: PrefsManager) {
         s.on("exec_confirm_result") { args -> handleExecConfirmationResult(args) }
         // Hook 触发通知（聊天界面成就式弹窗）
         s.on("hook_notification") { args -> handleHookNotification(args) }
+        // 会话标题自动总结完成
+        s.on("session_renamed") { args -> handleSessionRenamed(args) }
         // 通用错误
         s.on("error") { args ->
             val raw = args.firstOrNull()
@@ -444,6 +468,10 @@ class SocketManager(private val prefs: PrefsManager) {
     private fun handleStreamEnd(args: Array<Any>) {
         val sid = extractSessionId(args.firstOrNull()) ?: joinedSessionId
         _events.tryEmit(RealtimeEvent.StreamEnd(sid))
+    }
+
+    private fun handleSessionRenamed(args: Array<Any>) {
+        parseSessionRenamedPayload(args.firstOrNull())?.let(_events::tryEmit)
     }
 
     private fun handleFiltered(args: Array<Any>) {
