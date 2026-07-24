@@ -79,7 +79,7 @@ interface ApiService {
     suspend fun updateMessage(
         @Path("id") id: String,
         @Path("messageId") messageId: String,
-        @Body body: SendMessageRequest
+        @Body body: UpdateMessageRequest
     ): Response<Message>
 
     @DELETE("api/sessions/{id}/messages/{messageId}")
@@ -600,6 +600,9 @@ interface ApiService {
 
     @POST("api/tts/preview")
     suspend fun ttsPreview(@Body body: TtsPreviewRequest): Response<TtsPreviewResponse>
+
+    @POST("api/tts/synthesize")
+    suspend fun synthesizeTts(@Body body: TtsPreviewRequest): Response<TtsPreviewResponse>
 
     @Multipart
     @POST("api/tts/upload-voice")

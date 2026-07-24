@@ -150,6 +150,7 @@ import com.nekobot.app.data.local.VISION_FAILURE_MARKER
 import com.nekobot.app.data.local.isLocalCommandMessage
 import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.Session
+import com.nekobot.app.data.model.TtsPreviewRequest
 import com.nekobot.app.data.model.UpdateSessionRequest
 import com.nekobot.app.data.remote.ExecConfirmationRequest
 import com.nekobot.app.data.remote.ExecAuthorization
@@ -196,6 +197,7 @@ fun ChatScreen(
 ) {
     val viewModel: ChatViewModel = viewModel()
     val messages by viewModel.messages.collectAsState()
+    val ttsStates by viewModel.ttsStates.collectAsState()
     val session by viewModel.session.collectAsState()
     val groupCharacters by viewModel.groupCharacters.collectAsState()
     val sending by viewModel.sending.collectAsState()
@@ -374,7 +376,10 @@ fun ChatScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             when (event) {
-                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> viewModel.setChatVisible(true)
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
+                    viewModel.setChatVisible(true)
+                    viewModel.refreshSession()
+                }
                 androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> viewModel.setChatVisible(false)
                 else -> {}
             }
@@ -813,6 +818,7 @@ fun ChatScreen(
                                 }
                                 MessageBubble(
                                     message = msg,
+                                    ttsState = msg.id?.let { ttsStates[it] },
                                     portraitUrl = groupIdentity.portraitUrl ?: session?.portraitUrl,
                                     senderName = groupIdentity.name,
                                     showAiAvatar = session?.sessionMode != "agent",
@@ -823,6 +829,7 @@ fun ChatScreen(
                                         }
                                     },
                                     onRegenerate = { viewModel.regenerate() },
+                                    onRegenerateTts = { viewModel.regenerateMessageTts(msg) },
                                     onFork = { msg.id?.let { mid -> viewModel.forkFromMessage(mid) { onOpenChat(it) } } },
                                     onCopy = { msg.displayContent },
                                     onDelete = if (
@@ -1497,12 +1504,14 @@ private fun MessageSearchDialog(
 @Composable
 private fun MessageBubble(
     message: Message,
+    ttsState: MessageTtsUiState? = null,
     portraitUrl: String? = null,
     senderName: String? = null,
     showAiAvatar: Boolean = true,
     fillAiWidth: Boolean = false,
     onLongClick: () -> Unit,
     onRegenerate: () -> Unit = {},
+    onRegenerateTts: () -> Unit = {},
     onFork: () -> Unit = {},
     onCopy: () -> String = { "" },
     onDelete: (() -> Unit)? = null,
@@ -1548,7 +1557,7 @@ private fun MessageBubble(
     // 是否包含多媒体内容（图片/视频/音频/txt/html）或音频 URL，决定气泡最大宽度
     val hasMultimedia = parsedSegments.any { segs -> segs.any { it.type != SegmentType.TEXT } }
     val hasAudioUrl = !message.audioUrl.isNullOrBlank()
-    val maxBubbleWidth = if (hasMultimedia || hasAudioUrl) 360.dp else 280.dp
+    val maxBubbleWidth = if (hasMultimedia || hasAudioUrl || ttsState != null) 360.dp else 280.dp
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -1690,11 +1699,24 @@ private fun MessageBubble(
                 TypingDots(modifier = Modifier.padding(start = 6.dp))
             }
 
+            if (!isUser && ttsState != null && ttsState.status != MessageTtsStatus.Ready) {
+                Spacer(Modifier.height(6.dp))
+                TtsGenerationBar(
+                    state = ttsState,
+                    onRetry = onRegenerateTts,
+                    modifier = Modifier.widthIn(max = 280.dp)
+                )
+            }
+
             // 如果有音频 URL，追加音频播放器
             if (hasAudioUrl) {
                 val resolvedAudioUrl = resolveAvatarUrl(message.audioUrl) ?: message.audioUrl!!
                 Spacer(Modifier.height(6.dp))
-                AudioRenderer(url = resolvedAudioUrl, modifier = Modifier.widthIn(max = 280.dp))
+                AudioRenderer(
+                    url = resolvedAudioUrl,
+                    onRegenerate = onRegenerateTts,
+                    modifier = Modifier.widthIn(max = 280.dp)
+                )
             }
 
             // 元信息：时间（精简到分钟）/ token 数 + 操作按钮，AI 气泡合并到同一行
@@ -3280,6 +3302,106 @@ internal fun attachThinkingCardToMessages(
     }
 }
 
+@Composable
+private fun TtsGenerationBar(
+    state: MessageTtsUiState,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    GlassCard(
+        modifier = modifier,
+        cornerRadius = 12,
+        containerColor = when (state.status) {
+            MessageTtsStatus.Error -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f)
+            else -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+        }
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (state.status == MessageTtsStatus.Generating) {
+                val transition = rememberInfiniteTransition(label = "tts_generating")
+                Row(
+                    modifier = Modifier.height(22.dp),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    repeat(7) { index ->
+                        val scale by transition.animateFloat(
+                            initialValue = 0.25f,
+                            targetValue = 1f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(420, easing = LinearEasing),
+                                repeatMode = RepeatMode.Reverse,
+                                initialStartOffset = StartOffset(index * 70)
+                            ),
+                            label = "tts_wave_$index"
+                        )
+                        Box(
+                            modifier = Modifier
+                                .width(3.dp)
+                                .height((5f + scale * 15f).dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                    }
+                }
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "语音生成中…",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+            } else {
+                Icon(
+                    Icons.Filled.Error,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "语音生成失败",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    state.error?.takeIf { it.isNotBlank() }?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                IconButton(onClick = onRetry, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        Icons.Filled.Refresh,
+                        contentDescription = "重新生成语音",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 与原仓库消息 TTS 相同的纯文本清洗：移除 Markdown 标记与代码，再限制为 2000 字。
+ */
+internal fun prepareTtsText(raw: String): String = raw
+    .replace(Regex("```[\\s\\S]*?```"), "")
+    .replace(Regex("`[^`]*`"), "")
+    .replace(Regex("[#*_~>|\\-\\[\\]()!]"), "")
+    .replace(Regex("\\n{2,}"), "\n")
+    .trim()
+    .take(2000)
+
 /**
  * 对话页 ViewModel：管理消息、会话信息与发送状态。
  *
@@ -3317,6 +3439,14 @@ class ChatViewModel : BaseViewModel() {
         .flatMapLatest { it }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     private val _messages: MutableStateFlow<List<Message>> get() = runtime.messages
+
+    val ttsStates: StateFlow<Map<String, MessageTtsUiState>> = _runtime
+        .map { it.ttsStates }
+        .distinctUntilChanged()
+        .flatMapLatest { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+    private val _ttsStates: MutableStateFlow<Map<String, MessageTtsUiState>>
+        get() = runtime.ttsStates
 
     private val _session = MutableStateFlow<Session?>(null)
     val session: StateFlow<Session?> = _session.asStateFlow()
@@ -3530,13 +3660,8 @@ class ChatViewModel : BaseViewModel() {
                 )
                 // 刷新列表获取服务端持久化的真实消息（含 id/token 等）
                 loadMessages()
-                // 本地模式：会话 TTS 启用时，为刚生成的助手消息合成语音（延迟等待 loadMessages 完成）
-                if (isLocalMode) {
-                    ServiceContainer.applicationScope.launch {
-                        kotlinx.coroutines.delay(800)
-                        synthesizeTtsForLastAssistant()
-                    }
-                }
+                // 两种模式统一在回复落库后触发消息级 TTS；轮询用于等待真实消息 id。
+                scheduleTtsForLatestAssistant(finalContent)
                 // 检查是否需要发送通知（用户不在聊天界面时）
                 trySendNotification(streamingContent.toString())
                 // 如果剧情模式开启，显示骨架并加载新剧情选项
@@ -3578,6 +3703,7 @@ class ChatViewModel : BaseViewModel() {
                             (msg.id == null || it.id != msg.id) &&
                             !(it.id?.startsWith(STREAM_FALLBACK_PREFIX) == true && it.content == msg.content)
                     }) + msg
+                    scheduleTtsForMessage(msg)
                     // 通知检查
                     trySendNotification(msg.content.orEmpty())
                 } else {
@@ -3608,6 +3734,7 @@ class ChatViewModel : BaseViewModel() {
                             it.id != msg.id &&
                             !(it.id?.startsWith(STREAM_FALLBACK_PREFIX) == true && it.content == msg.content)
                     }) + msg
+                    scheduleTtsForMessage(msg)
                 }
             }
             is RealtimeEvent.Filtered -> {
@@ -3790,13 +3917,19 @@ class ChatViewModel : BaseViewModel() {
                     val mergedCard = if (existing?.thinkingCards != null && withCards.thinkingCards == null) {
                         withCards.copy(thinkingCards = existing.thinkingCards)
                     } else withCards
-                    // 兜底：按 user 消息内容+时间戳匹配（乐观消息无 id，被服务器消息替换时保留 thinking_cards）
-                    if (mergedCard.thinkingCards == null && mergedCard.isUser) {
-                        val key = mergedCard.content to mergedCard.timestamp
-                        byUserContent[key]?.thinkingCards?.let { tc ->
-                            mergedCard.copy(thinkingCards = tc)
-                        } ?: mergedCard
+                    val mergedAudio = if (
+                        mergedCard.audioUrl.isNullOrBlank() &&
+                        !existing?.audioUrl.isNullOrBlank()
+                    ) {
+                        mergedCard.copy(audioUrl = existing?.audioUrl)
                     } else mergedCard
+                    // 兜底：按 user 消息内容+时间戳匹配（乐观消息无 id，被服务器消息替换时保留 thinking_cards）
+                    if (mergedAudio.thinkingCards == null && mergedAudio.isUser) {
+                        val key = mergedAudio.content to mergedAudio.timestamp
+                        byUserContent[key]?.thinkingCards?.let { tc ->
+                            mergedAudio.copy(thinkingCards = tc)
+                        } ?: mergedAudio
+                    } else mergedAudio
                 }
 
                 // 保留 current 中 fresh 没有的 assistant 消息（刚生成的回复可能因 Room 异步竞态未被 fresh 包含）
@@ -3813,39 +3946,317 @@ class ChatViewModel : BaseViewModel() {
                             msg.content in freshAssistantContents)
                 }
 
-                _messages.value = if (orphanAssistants.isEmpty()) merged else merged + orphanAssistants
+                val nextMessages = if (orphanAssistants.isEmpty()) merged else merged + orphanAssistants
+                _messages.value = nextMessages
+                val nextTtsStates = _ttsStates.value.toMutableMap()
+                nextMessages.forEach { msg ->
+                    val messageId = msg.id
+                    if (!messageId.isNullOrBlank() && !msg.audioUrl.isNullOrBlank()) {
+                        nextTtsStates[messageId] = MessageTtsUiState(MessageTtsStatus.Ready)
+                    }
+                }
+                _ttsStates.value = nextTtsStates
             }
         )
     }
 
+    private data class ActiveTtsConfig(
+        val modelId: String?,
+        val voice: String,
+        val speed: Float,
+        val pitch: Float,
+        val volume: Float
+    )
+
+    private fun activeTtsConfig(session: Session? = _session.value): ActiveTtsConfig? {
+        val config = session?.ttsConfig
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject
+            ?: return null
+        val enabled = runCatching {
+            config.get("enabled")?.takeIf { !it.isJsonNull }?.asBoolean
+        }.getOrNull() == true
+        if (!enabled) return null
+
+        fun stringValue(name: String): String? = runCatching {
+            config.get(name)?.takeIf { !it.isJsonNull }?.asString?.trim()
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+
+        fun floatValue(name: String): Float = runCatching {
+            config.get(name)?.takeIf { !it.isJsonNull }?.asFloat
+        }.getOrNull()?.takeIf { it > 0f } ?: 1f
+
+        return ActiveTtsConfig(
+            modelId = stringValue("model_id"),
+            voice = stringValue("voice").orEmpty(),
+            speed = floatValue("speed"),
+            pitch = floatValue("pitch"),
+            volume = floatValue("volume")
+        )
+    }
+
     /**
-     * 本地模式：会话 TTS 启用时，为最后一条助手消息合成语音并注入 audioUrl。
-     * 在 StreamEnd 后调用（loadMessages 完成后），audioUrl 为缓存 URI（file://），
-     * 由 MessageBubble 的 AudioRenderer 播放。不持久化到数据库（瞬态）。
+     * 每次回复结束都从真实仓库读取最新会话配置。
+     *
+     * 聊天 ViewModel 会在进入会话详情页时保留，若只读 [_session]，返回聊天页后的第一条回复
+     * 仍会使用切换 TTS 前的旧快照，造成开关延迟一轮生效。
      */
-    fun synthesizeTtsForLastAssistant() {
-        if (!isLocalMode) return
-        val session = _session.value ?: return
-        val ttsConfig = session.ttsConfig?.takeIf { it.isJsonObject }?.asJsonObject ?: return
-        if (ttsConfig.get("enabled")?.takeIf { !it.isJsonNull }?.asBoolean != true) return
-        val voice = ttsConfig.get("voice")?.takeIf { !it.isJsonNull }?.asString ?: "alloy"
-        val lastAssistant = _messages.value.lastOrNull { !it.isUser } ?: return
-        val content = lastAssistant.displayContent.trim()
-        if (content.isBlank()) return
-        ServiceContainer.applicationScope.launch {
-            try {
-                when (val res = unified.synthesizeAudio(content, voice)) {
-                    is Resource.Success -> {
-                        val audioUri = res.data.cacheUri
-                        _messages.value = _messages.value.map { msg ->
-                            if (msg.id == lastAssistant.id) msg.copy(audioUrl = audioUri) else msg
-                        }
-                    }
-                    is Resource.Error -> { /* TTS 失败不阻断聊天，静默忽略 */ }
-                    is Resource.Loading -> {}
-                }
-            } catch (_: Exception) { /* 瞬态 TTS，失败不提示 */ }
+    private suspend fun resolveLatestTtsConfig(sessionId: String): ActiveTtsConfig? {
+        val latest = when (val result = unified.getSession(sessionId)) {
+            is Resource.Success -> result.data
+            else -> null
         }
+        if (latest != null) {
+            if (currentSessionId == sessionId) _session.value = latest
+            return activeTtsConfig(latest)
+        }
+        return activeTtsConfig()
+    }
+
+    private fun updateTtsState(
+        target: ChatSessionState,
+        messageId: String,
+        state: MessageTtsUiState?
+    ) {
+        val next = target.ttsStates.value.toMutableMap()
+        if (state == null) next.remove(messageId) else next[messageId] = state
+        target.ttsStates.value = next
+    }
+
+    private fun isPersistedAssistantMessage(message: Message): Boolean {
+        val id = message.id
+        return !message.isUser &&
+            !message.isThinkingCard &&
+            !message.content.isNullOrBlank() &&
+            !id.isNullOrBlank() &&
+            id != streamingId &&
+            !id.startsWith(STREAM_FALLBACK_PREFIX)
+    }
+
+    /**
+     * Socket/本地流结束时真实消息 id 可能尚未回到 UI，因此短暂轮询持久层；
+     * 找到对应助手消息后再启动 TTS，避免把音频挂到临时占位消息上。
+     */
+    private fun scheduleTtsForLatestAssistant(
+        finalContent: String? = null,
+        excludedMessageIds: Set<String> = emptySet()
+    ) {
+        val target = runtime
+        val sessionId = currentSessionId
+        if (sessionId.isBlank()) return
+        val expectedContent = finalContent?.trim().orEmpty()
+
+        fun findCandidate(messages: List<Message>): Message? {
+            val eligible = messages.filter {
+                isPersistedAssistantMessage(it) && it.id !in excludedMessageIds
+            }
+            return if (expectedContent.isNotBlank()) {
+                eligible.lastOrNull { it.displayContent.trim() == expectedContent }
+            } else {
+                eligible.lastOrNull()
+            }
+        }
+
+        val lookupKey = "_tts_lookup_"
+        if (target.ttsJobs[lookupKey]?.isActive == true) return
+        val lookupJob = ServiceContainer.applicationScope.launch(
+            start = kotlinx.coroutines.CoroutineStart.LAZY
+        ) {
+            val config = resolveLatestTtsConfig(sessionId) ?: return@launch
+            findCandidate(target.messages.value)?.let {
+                startMessageTts(target, sessionId, it, config)
+                return@launch
+            }
+            repeat(20) {
+                val candidate = when (val result = unified.listMessages(sessionId)) {
+                    is Resource.Success -> findCandidate(result.data)
+                    else -> null
+                }
+                if (candidate != null) {
+                    val existing = target.messages.value.firstOrNull { it.id == candidate.id }
+                    val mergedCandidate = candidate.copy(
+                        audioUrl = candidate.audioUrl ?: existing?.audioUrl,
+                        thinkingCards = candidate.thinkingCards ?: existing?.thinkingCards
+                    )
+                    target.messages.value = target.messages.value
+                        .filterNot { existing ->
+                            existing.id?.startsWith(STREAM_FALLBACK_PREFIX) == true &&
+                                existing.content == candidate.content
+                        }
+                        .let { current ->
+                            if (current.any { it.id == candidate.id }) {
+                                current.map { if (it.id == candidate.id) mergedCandidate else it }
+                            } else {
+                                current + mergedCandidate
+                            }
+                        }
+                    startMessageTts(target, sessionId, mergedCandidate, config)
+                    return@launch
+                }
+                kotlinx.coroutines.delay(250)
+            }
+        }
+        target.ttsJobs[lookupKey] = lookupJob
+        lookupJob.invokeOnCompletion { target.ttsJobs.remove(lookupKey, lookupJob) }
+        lookupJob.start()
+    }
+
+    private fun scheduleTtsForMessage(message: Message?) {
+        if (message == null) return
+        if (!isPersistedAssistantMessage(message)) {
+            scheduleTtsForLatestAssistant(message.content)
+            return
+        }
+        val target = runtime
+        val sessionId = currentSessionId
+        val messageId = message.id ?: return
+        if (!message.audioUrl.isNullOrBlank()) {
+            updateTtsState(target, messageId, MessageTtsUiState(MessageTtsStatus.Ready))
+            return
+        }
+        if (
+            target.ttsStates.value[messageId] != null ||
+            target.ttsJobs[messageId]?.isActive == true
+        ) return
+
+        val prepareKey = "_tts_prepare_$messageId"
+        if (target.ttsJobs[prepareKey]?.isActive == true) return
+        val prepareJob = ServiceContainer.applicationScope.launch(
+            start = kotlinx.coroutines.CoroutineStart.LAZY
+        ) {
+            val config = resolveLatestTtsConfig(sessionId) ?: return@launch
+            startMessageTts(target, sessionId, message, config)
+        }
+        target.ttsJobs[prepareKey] = prepareJob
+        prepareJob.invokeOnCompletion { target.ttsJobs.remove(prepareKey, prepareJob) }
+        prepareJob.start()
+    }
+
+    private fun startMessageTts(
+        target: ChatSessionState,
+        sessionId: String,
+        message: Message,
+        config: ActiveTtsConfig,
+        force: Boolean = false
+    ) {
+        val messageId = message.id ?: return
+        val text = prepareTtsText(message.displayContent)
+        if (text.isBlank() || sessionId.isBlank()) return
+
+        if (!force) {
+            if (!message.audioUrl.isNullOrBlank()) {
+                updateTtsState(target, messageId, MessageTtsUiState(MessageTtsStatus.Ready))
+                return
+            }
+            if (target.ttsStates.value[messageId] != null) return
+        }
+        if (target.ttsJobs[messageId]?.isActive == true) return
+
+        updateTtsState(target, messageId, MessageTtsUiState(MessageTtsStatus.Generating))
+        if (force) {
+            target.messages.value = target.messages.value.map {
+                if (it.id == messageId) it.copy(audioUrl = null) else it
+            }
+        }
+
+        val localMode = isLocalMode
+        val ttsJob = ServiceContainer.applicationScope.launch(
+            start = kotlinx.coroutines.CoroutineStart.LAZY
+        ) {
+            try {
+                val audioUrl = if (localMode) {
+                    when (
+                        val result = unified.synthesizeAudio(
+                            text = text,
+                            voice = config.voice.takeIf { it.isNotBlank() },
+                            speed = config.speed,
+                            pitch = config.pitch,
+                            volume = config.volume,
+                            modelId = config.modelId
+                        )
+                    ) {
+                        is Resource.Success -> result.data.cacheUri
+                        is Resource.Error -> throw IllegalStateException(result.message)
+                        is Resource.Loading -> throw IllegalStateException("TTS 合成未完成")
+                    }
+                } else {
+                    when (
+                        val result = unified.synthesizeRemoteTts(
+                            TtsPreviewRequest(
+                                text = text,
+                                modelId = config.modelId,
+                                voice = config.voice,
+                                speed = config.speed,
+                                pitch = config.pitch,
+                                volume = config.volume
+                            )
+                        )
+                    ) {
+                        is Resource.Success -> {
+                            val response = result.data
+                            if (response.success != true || response.audioUrl.isNullOrBlank()) {
+                                throw IllegalStateException(response.message ?: "TTS 服务未返回音频")
+                            }
+                            response.audioUrl
+                        }
+                        is Resource.Error -> throw IllegalStateException(result.message)
+                        is Resource.Loading -> throw IllegalStateException("TTS 合成未完成")
+                    }
+                }
+
+                target.messages.value = target.messages.value.map {
+                    if (it.id == messageId) it.copy(audioUrl = audioUrl) else it
+                }
+                updateTtsState(target, messageId, MessageTtsUiState(MessageTtsStatus.Ready))
+
+                when (val saved = unified.updateMessageAudioUrl(sessionId, messageId, audioUrl)) {
+                    is Resource.Error -> android.util.Log.w(
+                        "ChatTts",
+                        "音频已生成，但保存到消息失败: ${saved.message}"
+                    )
+                    else -> Unit
+                }
+            } catch (e: Exception) {
+                updateTtsState(
+                    target,
+                    messageId,
+                    MessageTtsUiState(
+                        status = MessageTtsStatus.Error,
+                        error = e.message ?: "TTS 合成失败"
+                    )
+                )
+            }
+        }
+        target.ttsJobs[messageId] = ttsJob
+        ttsJob.invokeOnCompletion { target.ttsJobs.remove(messageId, ttsJob) }
+        ttsJob.start()
+    }
+
+    /** 手动重试当前消息的 TTS，并立即切回“生成中”动画。 */
+    fun regenerateMessageTts(message: Message) {
+        if (!isPersistedAssistantMessage(message)) return
+        val target = runtime
+        val sessionId = currentSessionId
+        val messageId = message.id ?: return
+        val prepareKey = "_tts_regenerate_$messageId"
+        if (target.ttsJobs[prepareKey]?.isActive == true) return
+        val prepareJob = ServiceContainer.applicationScope.launch(
+            start = kotlinx.coroutines.CoroutineStart.LAZY
+        ) {
+            val config = resolveLatestTtsConfig(sessionId)
+            if (config == null) {
+                updateTtsState(
+                    target,
+                    messageId,
+                    MessageTtsUiState(MessageTtsStatus.Error, "当前会话未开启 TTS")
+                )
+                return@launch
+            }
+            startMessageTts(target, sessionId, message, config, force = true)
+        }
+        target.ttsJobs[prepareKey] = prepareJob
+        prepareJob.invokeOnCompletion { target.ttsJobs.remove(prepareKey, prepareJob) }
+        prepareJob.start()
     }
 
     /**
@@ -3943,6 +4354,10 @@ class ChatViewModel : BaseViewModel() {
         content: String,
         attachments: List<Map<String, Any>> = emptyList()
     ) {
+        val previousAssistantIds = _messages.value
+            .filterNot { it.isUser }
+            .mapNotNull { it.id }
+            .toSet()
         // 创建流式占位消息，显示骨架动画（等待第一个 chunk）
         streamingContent.setLength(0)
         val placeholder = Message(
@@ -3963,6 +4378,7 @@ class ChatViewModel : BaseViewModel() {
                     // 再次延迟刷新确保拉到回复
                     kotlinx.coroutines.delay(2000)
                     loadMessages()
+                    scheduleTtsForLatestAssistant(excludedMessageIds = previousAssistantIds)
                 }
             },
             onError = {

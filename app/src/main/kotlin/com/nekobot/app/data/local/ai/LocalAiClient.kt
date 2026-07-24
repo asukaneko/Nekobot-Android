@@ -19,7 +19,10 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.BufferedReader
+import java.io.ByteArrayOutputStream
 import java.io.InputStreamReader
+import java.util.Base64
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -181,6 +184,22 @@ class LocalAiClient(
      * 捕获 [FailoverHttpException] 等异常，转换为 [LocalAiResult]。
      */
     suspend fun testModel(model: LocalAiModelEntity): LocalAiResult {
+        if (model.purpose == "tts") {
+            return try {
+                val audio = synthesizeSpeech(model, "你好")
+                if (audio.isEmpty()) {
+                    LocalAiResult("", error = "TTS 未返回音频")
+                } else {
+                    LocalAiResult("TTS 连接成功，返回 ${audio.size} 字节音频")
+                }
+            } catch (e: FailoverHttpException) {
+                LocalAiResult("", error = e.message ?: "HTTP ${e.statusCode}", statusCode = e.statusCode)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                LocalAiResult("", error = e.message ?: "TTS 请求异常")
+            }
+        }
         val testMessages = listOf(
             mapOf("role" to "user", "content" to "说一句“你好”，不超过 10 个字。")
         )
@@ -192,6 +211,55 @@ class LocalAiClient(
             throw e
         } catch (e: Exception) {
             LocalAiResult("", error = e.message ?: "请求异常")
+        }
+    }
+
+    /**
+     * 从 OpenAI 兼容端点获取模型列表，供本地模式模型编辑器使用。
+     * 兼容 {"data":[{"id":"..."}]}、{"models":[...]} 和字符串数组。
+     */
+    suspend fun fetchAvailableModels(
+        baseUrl: String,
+        apiKey: String,
+        appendBaseUrlPath: Boolean
+    ): List<String> {
+        val base = baseUrl.trimEnd('/')
+        val url = when {
+            base.endsWith("/models") -> base
+            base.contains("/chat/completions") -> base.replace("/chat/completions", "/models")
+            base.contains("/responses") -> base.replace("/responses", "/models")
+            !appendBaseUrlPath -> "$base/models"
+            base.endsWith("/v1") -> "$base/models"
+            else -> "$base/v1/models"
+        }
+        val request = Request.Builder()
+            .url(url)
+            .get()
+            .header("Authorization", "Bearer $apiKey")
+            .header("api-key", apiKey)
+            .build()
+        client.newCall(request).execute().use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw FailoverHttpException(response.code, "HTTP ${response.code}: ${raw.take(500)}")
+            }
+            val root = JsonParser.parseString(raw)
+            val array = when {
+                root.isJsonArray -> root.asJsonArray
+                root.isJsonObject && root.asJsonObject.has("data") ->
+                    root.asJsonObject.getAsJsonArray("data")
+                root.isJsonObject && root.asJsonObject.has("models") ->
+                    root.asJsonObject.getAsJsonArray("models")
+                else -> return emptyList()
+            }
+            return array.mapNotNull { item ->
+                when {
+                    item.isJsonPrimitive -> item.asString
+                    item.isJsonObject -> item.asJsonObject.get("id")?.takeIf { !it.isJsonNull }?.asString
+                        ?: item.asJsonObject.get("name")?.takeIf { !it.isJsonNull }?.asString
+                    else -> null
+                }
+            }.distinct().sorted()
         }
     }
 
@@ -470,45 +538,274 @@ class LocalAiClient(
 
     /**
      * TTS 语音合成（purpose = tts）。
-     * 调用 OpenAI 兼容 /audio/speech 端点，返回音频字节。
-     * 语音格式：mp3。非 2xx 抛出 [FailoverHttpException]。
+     * 与原仓库一致，按 tts_provider 路由 OpenAI 兼容、小米 MiMo 或豆包 TTS。
      */
     suspend fun synthesizeSpeech(
         model: LocalAiModelEntity,
         text: String,
-        voice: String = "alloy",
-        speed: Float = 1.0f
+        voice: String? = null,
+        speed: Float? = null,
+        pitch: Float? = null,
+        volume: Float? = null
     ): ByteArray {
-        val url = resolveAudioUrl(model.baseUrl, model.appendBaseUrlPath, "audio/speech")
-        val payload = mapOf(
-            "model" to model.model,
-            "input" to text,
-            "voice" to voice,
-            "speed" to speed,
-            "response_format" to "mp3"
-        )
-        val body = gson.toJson(payload).toRequestBody(JSON_TYPE)
-        val req = Request.Builder().url(url).post(body)
-            .header("Authorization", "Bearer ${model.apiKey}")
-            .header("Content-Type", "application/json")
-            .build()
-        return try {
-            client.newCall(req).awaitResponse().use { resp ->
-                if (!resp.isSuccessful) {
-                    val err = resp.body?.string().orEmpty().take(500)
-                    throw FailoverHttpException(resp.code, "HTTP ${resp.code}: $err")
-                }
-                resp.body?.bytes() ?: throw FailoverHttpException(resp.code, "TTS 响应体为空")
-            }
-        } catch (e: FailoverHttpException) {
-            throw e
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.e("LocalAiClient", "synthesizeSpeech failed: ${e.message}")
-            throw e
+        val provider = model.ttsProvider.ifBlank {
+            model.provider?.takeIf { it.isNotBlank() } ?: model.protocol
+        }.lowercase()
+        return when (provider) {
+            "xiaomi", "mimo" -> synthesizeSpeechXiaomi(model, text, voice)
+            "doubao", "volcengine", "bytedance" ->
+                synthesizeSpeechDoubao(model, text, voice, speed, volume)
+            else -> synthesizeSpeechOpenAi(model, text, voice, speed, pitch, volume)
         }
     }
+
+    private suspend fun synthesizeSpeechOpenAi(
+        model: LocalAiModelEntity,
+        text: String,
+        voiceOverride: String?,
+        speedOverride: Float?,
+        pitchOverride: Float?,
+        volumeOverride: Float?
+    ): ByteArray {
+        val url = model.ttsUrl.takeIf { it.isNotBlank() }
+            ?: resolveAudioUrl(model.baseUrl, model.appendBaseUrlPath, "audio/speech")
+        val ttsModel = model.ttsModel.ifBlank { model.model.ifBlank { "gpt-4o-mini-tts" } }
+        val voice = voiceOverride?.takeIf { it.isNotBlank() }
+            ?: model.ttsVoice.takeIf { it.isNotBlank() && it != "default" }
+            ?: "alloy"
+        val speed = speedOverride ?: model.ttsSpeed
+        val pitch = pitchOverride ?: model.ttsPitch
+        val volume = volumeOverride ?: model.ttsVolume
+        val format = model.ttsFormat.ifBlank { "mp3" }
+        val variables = mapOf(
+            "model" to ttsModel,
+            "voice" to voice,
+            "text" to text,
+            "speed" to speed,
+            "pitch" to pitch,
+            "volume" to volume,
+            "response_format" to format
+        )
+        val requestJson = if (model.ttsBodyTemplate.isNotBlank()) {
+            renderTtsTemplate(model.ttsBodyTemplate, variables)
+        } else {
+            val payload = linkedMapOf<String, Any>(
+                "model" to ttsModel,
+                "input" to text,
+                "voice" to voice,
+                "speed" to speed,
+                "response_format" to format
+            )
+            if (pitch != 1.0f) payload["pitch"] = pitch
+            if (volume != 1.0f) payload["volume"] = volume
+            gson.toJson(payload)
+        }
+        val builder = Request.Builder()
+            .url(url)
+            .post(requestJson.toRequestBody(JSON_TYPE))
+            .header("Authorization", "Bearer ${model.apiKey}")
+            .header("Content-Type", "application/json")
+        parseTtsHeaders(model.ttsHeaders).forEach { (name, value) -> builder.header(name, value) }
+        return executeTtsRequest(builder.build(), "OpenAI")
+    }
+
+    private suspend fun synthesizeSpeechXiaomi(
+        model: LocalAiModelEntity,
+        text: String,
+        voiceOverride: String?
+    ): ByteArray {
+        val url = model.ttsUrl.takeIf { it.isNotBlank() }
+            ?: resolveChatCompletionsUrl(model.baseUrl, model.appendBaseUrlPath)
+        val voice = model.ttsRefAudio.takeIf { it.isNotBlank() }
+            ?: voiceOverride?.takeIf { it.isNotBlank() }
+            ?: model.ttsVoice.takeIf { it.isNotBlank() && it != "default" }
+            ?: "mimo_default"
+        val messages = buildList<Map<String, String>> {
+            if (model.ttsUser.isNotBlank()) {
+                add(mapOf("role" to "user", "content" to model.ttsUser))
+            }
+            add(mapOf("role" to "assistant", "content" to text))
+        }
+        val payload = mapOf(
+            "model" to model.ttsModel.ifBlank { model.model.ifBlank { "mimo-v2.5-tts" } },
+            "messages" to messages,
+            "audio" to mapOf(
+                "format" to model.ttsFormat.ifBlank { "mp3" },
+                "voice" to voice
+            )
+        )
+        val request = Request.Builder()
+            .url(url)
+            .post(gson.toJson(payload).toRequestBody(JSON_TYPE))
+            .header("api-key", model.apiKey)
+            .header("Content-Type", "application/json")
+            .build()
+        return client.newCall(request).awaitResponse().use { response ->
+            val responseBytes = response.body?.bytes() ?: ByteArray(0)
+            if (!response.isSuccessful) {
+                throw FailoverHttpException(
+                    response.code,
+                    "小米 TTS HTTP ${response.code}: ${responseBytes.toString(Charsets.UTF_8).take(500)}"
+                )
+            }
+            if (isAudioContentType(response.header("Content-Type"))) return@use responseBytes
+            val root = runCatching {
+                JsonParser.parseString(responseBytes.toString(Charsets.UTF_8)).asJsonObject
+            }.getOrNull() ?: throw FailoverHttpException(response.code, "小米 TTS 未返回音频数据")
+            val audio = root.getAsJsonArray("choices")
+                ?.firstOrNull()
+                ?.asJsonObject
+                ?.getAsJsonObject("message")
+                ?.get("audio")
+                ?: throw FailoverHttpException(response.code, "小米 TTS 响应缺少 choices[0].message.audio")
+            when {
+                audio.isJsonPrimitive -> decodeAudioBase64(audio.asString)
+                audio.isJsonObject -> {
+                    val obj = audio.asJsonObject
+                    val audioUrl = obj.get("url")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                    val audioData = obj.get("data")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                    when {
+                        audioUrl.isNotBlank() -> downloadAudio(audioUrl)
+                        audioData.isNotBlank() -> decodeAudioBase64(audioData)
+                        else -> throw FailoverHttpException(response.code, "小米 TTS 音频字段为空")
+                    }
+                }
+                else -> throw FailoverHttpException(response.code, "小米 TTS 音频字段格式不受支持")
+            }
+        }
+    }
+
+    private suspend fun synthesizeSpeechDoubao(
+        model: LocalAiModelEntity,
+        text: String,
+        voiceOverride: String?,
+        speedOverride: Float?,
+        volumeOverride: Float?
+    ): ByteArray {
+        val voice = voiceOverride?.takeIf { it.isNotBlank() }
+            ?: model.ttsVoice.takeIf { it.isNotBlank() && it != "default" }
+            ?: "zh_female_shuangkuaisisi_moon_bigtts"
+        val speed = speedOverride ?: model.ttsSpeed
+        val volume = volumeOverride ?: model.ttsVolume
+        val payload = mapOf(
+            "user" to mapOf("uid" to "neko_bot"),
+            "req_params" to mapOf(
+                "text" to text,
+                "speaker" to voice,
+                "audio_params" to mapOf(
+                    "format" to model.ttsFormat.ifBlank { "mp3" },
+                    "sample_rate" to 24000,
+                    "speech_rate" to speed.toInt(),
+                    "loudness_rate" to volume.toInt()
+                ),
+                "additions" to mapOf(
+                    "disable_markdown_filter" to true,
+                    "disable_emoji_filter" to true,
+                    "explicit_language" to "zh-cn"
+                )
+            )
+        )
+        val request = Request.Builder()
+            .url(model.ttsUrl.ifBlank { "https://openspeech.bytedance.com/api/v3/tts/unidirectional" })
+            .post(gson.toJson(payload).toRequestBody(JSON_TYPE))
+            .header("X-Api-Key", model.apiKey)
+            .header("X-Api-Resource-Id", model.ttsResourceId.ifBlank { "seed-tts-2.0" })
+            .header("X-Api-Request-Id", UUID.randomUUID().toString())
+            .header("Content-Type", "application/json")
+            .build()
+        return client.newCall(request).awaitResponse().use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw FailoverHttpException(response.code, "豆包 TTS HTTP ${response.code}: ${raw.take(500)}")
+            }
+            val output = ByteArrayOutputStream()
+            raw.lineSequence().filter { it.isNotBlank() }.forEach { line ->
+                val chunk = runCatching {
+                    JsonParser.parseString(line.removePrefix("data:").trim()).asJsonObject
+                }.getOrNull() ?: return@forEach
+                val code = chunk.get("code")?.asInt ?: -1
+                when {
+                    code == 0 -> chunk.get("data")
+                        ?.takeIf { !it.isJsonNull }
+                        ?.asString
+                        ?.let { output.write(decodeAudioBase64(it)) }
+                    code == 20000000 -> Unit
+                    else -> throw FailoverHttpException(
+                        response.code,
+                        "豆包 TTS 错误 code=$code: ${chunk.get("message")?.asString.orEmpty()}"
+                    )
+                }
+            }
+            output.toByteArray().takeIf { it.isNotEmpty() }
+                ?: throw FailoverHttpException(response.code, "豆包 TTS 未返回音频数据")
+        }
+    }
+
+    private suspend fun executeTtsRequest(request: Request, provider: String): ByteArray =
+        client.newCall(request).awaitResponse().use { response ->
+            val responseBytes = response.body?.bytes() ?: ByteArray(0)
+            if (!response.isSuccessful) {
+                throw FailoverHttpException(
+                    response.code,
+                    "$provider TTS HTTP ${response.code}: ${responseBytes.toString(Charsets.UTF_8).take(500)}"
+                )
+            }
+            if (isAudioContentType(response.header("Content-Type"))) return@use responseBytes
+            val json = runCatching {
+                JsonParser.parseString(responseBytes.toString(Charsets.UTF_8)).asJsonObject
+            }.getOrNull() ?: throw FailoverHttpException(
+                response.code,
+                "$provider TTS 未返回音频: ${responseBytes.toString(Charsets.UTF_8).take(200)}"
+            )
+            val audioUrl = listOf("audio_url", "url")
+                .firstNotNullOfOrNull { key -> json.get(key)?.takeIf { !it.isJsonNull }?.asString }
+            val audioData = listOf("audio", "data")
+                .firstNotNullOfOrNull { key -> json.get(key)?.takeIf { it.isJsonPrimitive }?.asString }
+            when {
+                !audioUrl.isNullOrBlank() -> downloadAudio(audioUrl)
+                !audioData.isNullOrBlank() -> decodeAudioBase64(audioData)
+                else -> throw FailoverHttpException(response.code, "$provider TTS 响应缺少音频数据")
+            }
+        }
+
+    private suspend fun downloadAudio(url: String): ByteArray {
+        val request = Request.Builder().url(url).get().build()
+        return client.newCall(request).awaitResponse().use { response ->
+            val bytes = response.body?.bytes() ?: ByteArray(0)
+            if (!response.isSuccessful || bytes.isEmpty()) {
+                throw FailoverHttpException(response.code, "下载 TTS 音频失败: HTTP ${response.code}")
+            }
+            bytes
+        }
+    }
+
+    private fun decodeAudioBase64(value: String): ByteArray {
+        val payload = value.substringAfter("base64,", value).trim()
+        return try {
+            Base64.getDecoder().decode(payload)
+        } catch (error: IllegalArgumentException) {
+            throw IllegalStateException("TTS 返回的音频 Base64 无效", error)
+        }
+    }
+
+    private fun isAudioContentType(contentType: String?): Boolean {
+        val value = contentType.orEmpty().lowercase()
+        return value.contains("audio") || value.contains("octet-stream")
+    }
+
+    private fun parseTtsHeaders(raw: String): Map<String, String> {
+        if (raw.isBlank()) return emptyMap()
+        return runCatching {
+            JsonParser.parseString(raw).asJsonObject.entrySet().associate { (key, value) ->
+                key to value.asString
+            }
+        }.getOrDefault(emptyMap())
+    }
+
+    private fun renderTtsTemplate(template: String, values: Map<String, Any>): String =
+        Regex("""\{\{(\w+)}}""").replace(template) { match ->
+            values[match.groupValues[1]]?.toString() ?: match.value
+        }
 
     /**
      * STT 语音识别（purpose = stt）。

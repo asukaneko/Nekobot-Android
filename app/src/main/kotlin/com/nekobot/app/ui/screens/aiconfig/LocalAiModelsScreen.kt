@@ -65,6 +65,7 @@ import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalLogger
 import com.nekobot.app.data.local.ai.LocalProtocols
 import com.nekobot.app.data.local.db.LocalAiModelEntity
+import com.nekobot.app.data.model.ApiKey
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
@@ -97,8 +98,15 @@ class LocalAiModelsViewModel : BaseViewModel() {
     private val _activeModel = MutableStateFlow<LocalAiModelEntity?>(null)
     val activeModel: StateFlow<LocalAiModelEntity?> = _activeModel.asStateFlow()
 
+    private val _availableModels = MutableStateFlow<List<String>>(emptyList())
+    val availableModels: StateFlow<List<String>> = _availableModels.asStateFlow()
+
+    private val _apiKeys = MutableStateFlow<List<ApiKey>>(emptyList())
+    val apiKeys: StateFlow<List<ApiKey>> = _apiKeys.asStateFlow()
+
     init {
         observeModels()
+        loadApiKeys()
     }
 
     private fun observeModels() {
@@ -152,6 +160,40 @@ class LocalAiModelsViewModel : BaseViewModel() {
             }
         }
     }
+
+    private fun loadApiKeys() {
+        viewModelScope.launch {
+            runCatching { ServiceContainer.localRepository.listApiKeys() }
+                .onSuccess { _apiKeys.value = it }
+        }
+    }
+
+    fun resolveApiKey(id: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            ServiceContainer.localRepository.getApiKey(id)?.key?.let(onResult)
+        }
+    }
+
+    fun fetchModels(baseUrl: String, apiKey: String, appendBaseUrlPath: Boolean) {
+        viewModelScope.launch {
+            setLoading(true)
+            try {
+                _availableModels.value =
+                    ServiceContainer.localRepository.fetchAvailableModels(
+                        baseUrl,
+                        apiKey,
+                        appendBaseUrlPath
+                    )
+                if (_availableModels.value.isEmpty()) {
+                    showToast("未获取到可用模型")
+                }
+            } catch (e: Exception) {
+                showError(e.message ?: "获取模型列表失败")
+            } finally {
+                setLoading(false)
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -160,6 +202,8 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
     val vm: LocalAiModelsViewModel = viewModel()
     val models by vm.models.collectAsState()
     val activeModel by vm.activeModel.collectAsState()
+    val availableModels by vm.availableModels.collectAsState()
+    val apiKeys by vm.apiKeys.collectAsState()
     val loading by vm.loading.collectAsState()
     val toast by vm.toast.collectAsState()
     val context = LocalContext.current
@@ -257,14 +301,26 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
 
     // 编辑/新建对话框
     if (showEditDialog) {
-        LocalAiModelEditDialog(
-            model = editingModel,
+        val protocolOptions = remember {
+            LocalProtocols.names().map { ProtocolOption(it, it) }
+        }
+        AiModelEditorDialog(
+            initial = editingModel.toEditorState(protocolOptions),
+            isEditing = editingModel != null,
+            protocols = protocolOptions,
+            purposes = listOf("chat", "vision", "video", "tts", "stt", "embedding", "image_generation"),
+            availableModels = availableModels,
+            savedApiKeys = apiKeys,
+            onResolveApiKey = vm::resolveApiKey,
+            onFetchModels = { baseUrl, apiKey, _, appendBaseUrlPath ->
+                vm.fetchModels(baseUrl, apiKey, appendBaseUrlPath)
+            },
             onDismiss = {
                 showEditDialog = false
                 editingModel = null
             },
-            onSave = { model ->
-                vm.saveModel(model)
+            onConfirm = { state ->
+                vm.saveModel(state.toLocalEntity(editingModel))
                 showEditDialog = false
                 editingModel = null
             }

@@ -1012,9 +1012,34 @@ class UnifiedRepository(
 
     // ---- TTS 试验场 ----
     suspend fun listTtsVoices(): Resource<List<TtsVoice>> =
-        if (isLocal) localNotSupported("TTS 试验场") else remote.listTtsVoices()
+        if (isLocal) {
+            try {
+                Resource.Success(local.listLocalTtsVoices())
+            } catch (e: Exception) {
+                Resource.Error(e.message ?: "本地 TTS 音色加载失败")
+            }
+        } else {
+            remote.listTtsVoices()
+        }
     suspend fun ttsPreview(req: TtsPreviewRequest): Resource<TtsPreviewResponse> =
         if (isLocal) localNotSupported("TTS 试验场") else remote.ttsPreview(req)
+    suspend fun synthesizeRemoteTts(req: TtsPreviewRequest): Resource<TtsPreviewResponse> =
+        if (isLocal) localNotSupported("远程 TTS") else remote.synthesizeTts(req)
+    suspend fun updateMessageAudioUrl(
+        sessionId: String,
+        messageId: String,
+        audioUrl: String
+    ): Resource<Unit> =
+        if (isLocal) {
+            try {
+                local.updateMessageAudioUrl(messageId, audioUrl)
+                Resource.Success(Unit)
+            } catch (e: Exception) {
+                Resource.Error(e.message ?: "保存消息音频失败")
+            }
+        } else {
+            remote.updateMessageAudio(sessionId, messageId, audioUrl).map { }
+        }
     suspend fun uploadTtsVoice(file: okhttp3.MultipartBody.Part, customName: okhttp3.RequestBody, text: okhttp3.RequestBody): Resource<TtsVoice> =
         if (isLocal) localNotSupported("TTS 试验场") else remote.uploadTtsVoice(file, customName, text)
 
@@ -1417,11 +1442,23 @@ class UnifiedRepository(
      */
     suspend fun synthesizeAudio(
         text: String,
-        voice: String = "alloy",
-        speed: Float = 1.0f
+        voice: String? = null,
+        speed: Float? = null,
+        pitch: Float? = null,
+        volume: Float? = null,
+        modelId: String? = null
     ): Resource<com.nekobot.app.data.local.LocalAudioResult> = if (isLocal) {
         try {
-            Resource.Success(local.synthesizeAudio(text, voice, speed))
+            Resource.Success(
+                local.synthesizeAudio(
+                    text = text,
+                    voice = voice,
+                    speed = speed,
+                    pitch = pitch,
+                    volume = volume,
+                    modelId = modelId
+                )
+            )
         } catch (e: Exception) {
             Resource.Error(e.message ?: "本地 TTS 合成失败")
         }

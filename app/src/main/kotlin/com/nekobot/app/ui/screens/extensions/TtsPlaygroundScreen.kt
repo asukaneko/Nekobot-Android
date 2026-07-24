@@ -104,7 +104,15 @@ class TtsPlaygroundViewModel : BaseViewModel() {
         _localAudio.value = null
         if (isLocalMode) {
             launchResult(
-                block = { unified.synthesizeAudio(text, voice, speed) },
+                block = {
+                    unified.synthesizeAudio(
+                        text = text,
+                        voice = voice,
+                        speed = speed,
+                        pitch = pitch,
+                        volume = volume
+                    )
+                },
                 onSuccess = { res -> _localAudio.value = res },
                 onError = { msg -> showToast(msg) }
             )

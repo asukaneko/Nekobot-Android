@@ -8,12 +8,14 @@ import android.os.ParcelFileDescriptor
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.VideoView
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,11 +39,11 @@ import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -54,7 +56,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
@@ -312,96 +319,221 @@ fun VideoRenderer(url: String, modifier: Modifier = Modifier) {
     }
 }
 
-/** 音频渲染器：自定义播放器 UI（播放/暂停 + 进度条 + 时长）。 */
+/** 紧凑语音气泡：圆形播放键、可点按跳转的波形进度、时长与重新生成入口。 */
 @Composable
-fun AudioRenderer(url: String, modifier: Modifier = Modifier) {
-    var isPlaying by remember { mutableStateOf(false) }
-    var currentPosition by remember { mutableStateOf(0) }
-    var duration by remember { mutableStateOf(0) }
-    var prepared by remember { mutableStateOf(false) }
+fun AudioRenderer(
+    url: String,
+    onRegenerate: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    var isPlaying by remember(url) { mutableStateOf(false) }
+    var currentPosition by remember(url) { mutableStateOf(0) }
+    var duration by remember(url) { mutableStateOf(0) }
+    var prepared by remember(url) { mutableStateOf(false) }
+    var loadFailed by remember(url) { mutableStateOf(false) }
     val pauseDesc = stringResource(R.string.chat_media_pause)
     val playDesc = stringResource(R.string.chat_media_play)
+    val authToken = ServiceContainer.prefs.token
+    val context = LocalContext.current
 
-    val mediaPlayer = remember(url) {
-        MediaPlayer().apply {
-            try {
-                setDataSource(url)
-                setOnPreparedListener { mp ->
-                    duration = mp.duration
-                    prepared = true
-                }
-                setOnCompletionListener {
-                    isPlaying = false
-                    currentPosition = 0
-                }
-                prepareAsync()
-            } catch (_: Exception) {
+    val mediaPlayer = remember(url) { MediaPlayer() }
+
+    LaunchedEffect(mediaPlayer, url, authToken) {
+        try {
+            val headers = authToken
+                ?.takeIf { it.isNotBlank() && url.startsWith("http", ignoreCase = true) }
+                ?.let { mapOf("Authorization" to "Bearer $it") }
+                .orEmpty()
+            if (headers.isEmpty()) {
+                mediaPlayer.setDataSource(url)
+            } else {
+                mediaPlayer.setDataSource(context, Uri.parse(url), headers)
             }
+            mediaPlayer.setOnPreparedListener { mp ->
+                duration = mp.duration.coerceAtLeast(0)
+                prepared = true
+                loadFailed = false
+            }
+            mediaPlayer.setOnCompletionListener {
+                isPlaying = false
+                currentPosition = 0
+                runCatching { it.seekTo(0) }
+            }
+            mediaPlayer.setOnErrorListener { _, _, _ ->
+                isPlaying = false
+                prepared = false
+                loadFailed = true
+                true
+            }
+            mediaPlayer.prepareAsync()
+        } catch (_: Exception) {
+            prepared = false
+            loadFailed = true
         }
     }
 
-    DisposableEffect(url) {
+    DisposableEffect(mediaPlayer) {
         onDispose { mediaPlayer.release() }
     }
 
-    // 播放中每秒更新进度
-    LaunchedEffect(isPlaying) {
+    // 更细的刷新间隔让波形进度平滑，同时不会触发重型布局。
+    LaunchedEffect(isPlaying, mediaPlayer) {
         while (isPlaying) {
-            delay(1000)
+            delay(250)
             try {
                 currentPosition = mediaPlayer.currentPosition
             } catch (_: Exception) {
+                isPlaying = false
             }
         }
     }
 
-    GlassCard(modifier = modifier, cornerRadius = 12) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = {
-                try {
-                    if (isPlaying) {
-                        mediaPlayer.pause()
-                        isPlaying = false
-                    } else {
-                        if (!prepared) {
-                            mediaPlayer.prepareAsync()
-                        }
-                        mediaPlayer.start()
-                        isPlaying = true
-                    }
-                } catch (_: Exception) {
-                }
-            }) {
-                Icon(
-                    if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = if (isPlaying) pauseDesc else playDesc,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            // 进度条：用 0f..1f 的比例
-            val progress = if (duration > 0) (currentPosition.toFloat() / duration).coerceIn(0f, 1f) else 0f
-            Slider(
-                value = progress,
-                onValueChange = { v ->
+    val progress = if (duration > 0) {
+        (currentPosition.toFloat() / duration).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    val waveBars = remember(url) {
+        List(30) { index ->
+            val primary = kotlin.math.abs(kotlin.math.sin(index * 0.83)).toFloat()
+            val secondary = kotlin.math.abs(kotlin.math.cos(index * 0.37)).toFloat()
+            (0.24f + primary * 0.46f + secondary * 0.24f).coerceAtMost(1f)
+        }
+    }
+    val activeWaveColor = MaterialTheme.colorScheme.primary
+    val inactiveWaveColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.24f)
+
+    GlassCard(
+        modifier = modifier,
+        cornerRadius = 18,
+        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.34f),
+        borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 9.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = {
                     try {
-                        if (duration > 0) {
-                            val newPos = (v * duration).toInt()
-                            mediaPlayer.seekTo(newPos)
-                            currentPosition = newPos
+                        if (isPlaying) {
+                            mediaPlayer.pause()
+                            isPlaying = false
+                        } else if (prepared) {
+                            mediaPlayer.start()
+                            isPlaying = true
                         }
                     } catch (_: Exception) {
+                        isPlaying = false
+                        loadFailed = true
                     }
                 },
-                valueRange = 0f..1f,
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = "${formatTime(currentPosition)} / ${formatTime(duration)}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+                enabled = prepared && !loadFailed,
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (loadFailed) {
+                            MaterialTheme.colorScheme.errorContainer
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        }
+                    )
+            ) {
+                if (!prepared && !loadFailed) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                } else {
+                    Icon(
+                        if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = if (isPlaying) pauseDesc else playDesc,
+                        tint = if (loadFailed) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onPrimary
+                        },
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (loadFailed) "语音加载失败" else "语音",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (loadFailed) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = if (duration > 0) {
+                            "${formatTime(currentPosition)} / ${formatTime(duration)}"
+                        } else {
+                            "--:--"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (onRegenerate != null) {
+                        Spacer(Modifier.width(2.dp))
+                        IconButton(
+                            onClick = onRegenerate,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.Refresh,
+                                contentDescription = "重新生成语音",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(24.dp)
+                        .pointerInput(duration, prepared) {
+                            detectTapGestures { offset ->
+                                if (prepared && duration > 0 && size.width > 0) {
+                                    val ratio = (offset.x / size.width).coerceIn(0f, 1f)
+                                    val newPosition = (duration * ratio).toInt()
+                                    runCatching { mediaPlayer.seekTo(newPosition) }
+                                    currentPosition = newPosition
+                                }
+                            }
+                        }
+                ) {
+                    val gap = 2.dp.toPx()
+                    val barWidth = ((size.width - gap * (waveBars.size - 1)) / waveBars.size)
+                        .coerceAtLeast(1.dp.toPx())
+                    waveBars.forEachIndexed { index, heightRatio ->
+                        val barHeight = (size.height * heightRatio).coerceAtLeast(3.dp.toPx())
+                        val x = index * (barWidth + gap)
+                        val y = (size.height - barHeight) / 2f
+                        val played = (index + 1f) / waveBars.size <= progress
+                        drawRoundRect(
+                            color = if (played) activeWaveColor else inactiveWaveColor,
+                            topLeft = Offset(x, y),
+                            size = Size(barWidth, barHeight),
+                            cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
+                        )
+                    }
+                }
+            }
         }
     }
 }

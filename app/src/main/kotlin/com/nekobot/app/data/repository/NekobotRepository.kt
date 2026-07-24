@@ -120,6 +120,14 @@ class NekobotRepository(
     suspend fun listMessages(id: String): Resource<List<Message>> = safeCall { api.listMessages(id) }
     suspend fun addMessage(id: String, content: String): Resource<Message> =
         safeCall { api.addMessage(id, SendMessageRequest(content = content)) }
+    suspend fun updateMessageAudio(id: String, messageId: String, audioUrl: String): Resource<Message> =
+        safeCall {
+            api.updateMessage(
+                id,
+                messageId,
+                UpdateMessageRequest(audioUrl = audioUrl)
+            )
+        }
     suspend fun deleteMessage(id: String, messageId: String): Resource<Unit> = safeCall { api.deleteMessage(id, messageId) }.map { }
     suspend fun clearMessages(id: String): Resource<Unit> = safeCall { api.clearMessages(id) }.map { }
 
@@ -799,6 +807,8 @@ class NekobotRepository(
     suspend fun listTtsVoices(): Resource<List<TtsVoice>> =
         safeCall { api.listTtsVoices() }.mapData { it.voices }
     suspend fun ttsPreview(req: TtsPreviewRequest): Resource<TtsPreviewResponse> = safeCall { api.ttsPreview(req) }
+    suspend fun synthesizeTts(req: TtsPreviewRequest): Resource<TtsPreviewResponse> =
+        safeCall { api.synthesizeTts(req) }
     /**
      * 上传自定义音色。后端返回 `{"success": true, "voice_id": ..., "name": ...}`，
      * 不含完整 TtsVoice 字段，故构造一个仅含 id/name 的对象返回。

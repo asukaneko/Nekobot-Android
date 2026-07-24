@@ -313,11 +313,17 @@ object NbotConfigImporter {
         asList(configs.get("ai_models")).forEach { obj ->
             val id = obj.str("id") ?: UUID.randomUUID().toString()
             val purpose = obj.str("purpose") ?: "chat"
+            val sourceProtocol = obj.str("provider_type") ?: obj.str("protocol").orEmpty()
+            val localProtocol = if (sourceProtocol.contains("anthropic", ignoreCase = true)) {
+                "anthropic_messages"
+            } else {
+                "openai_chat"
+            }
             db.aiModelDao().upsert(
                 LocalAiModelEntity(
                     id = id,
                     name = obj.str("name") ?: "未命名",
-                    protocol = obj.str("protocol") ?: "openai_chat",
+                    protocol = localProtocol,
                     provider = obj.str("provider"),
                     apiKey = obj.str("api_key") ?: "",
                     baseUrl = obj.str("base_url") ?: "",
@@ -328,9 +334,34 @@ object NbotConfigImporter {
                     active = false,
                     temperature = obj.floatOrNull("temperature"),
                     maxTokens = obj.intOrNull("max_tokens"),
+                    maxContextLength = obj.intOrNull("max_context_length"),
                     topP = obj.floatOrNull("top_p"),
                     appendBaseUrlPath = obj.bool("append_base_url_path", true),
+                    supportsTools = obj.bool("supports_tools", true),
+                    supportsReasoning = obj.bool("supports_reasoning", true),
                     supportsStream = obj.bool("supports_stream", true),
+                    ttsProvider = obj.str("tts_provider") ?: "openai",
+                    ttsUrl = obj.str("tts_url") ?: "",
+                    ttsModel = obj.str("tts_model") ?: "",
+                    ttsVoice = obj.str("tts_voice") ?: "default",
+                    ttsSpeed = obj.floatOrNull("tts_speed") ?: 1f,
+                    ttsPitch = obj.floatOrNull("tts_pitch") ?: 1f,
+                    ttsVolume = obj.floatOrNull("tts_volume") ?: 1f,
+                    ttsFormat = obj.str("tts_format") ?: "mp3",
+                    ttsUploadUrl = obj.str("tts_upload_url") ?: "",
+                    ttsHeaders = obj.str("tts_headers") ?: "",
+                    ttsBodyTemplate = obj.str("tts_body_template") ?: "",
+                    ttsResourceId = obj.str("tts_resource_id") ?: "",
+                    ttsRefAudio = obj.str("tts_ref_audio") ?: "",
+                    ttsUser = obj.str("tts_user") ?: "",
+                    language = obj.str("stt_language") ?: obj.str("language") ?: "zh",
+                    sttProvider = obj.str("stt_provider") ?: "",
+                    sttUrl = obj.str("stt_url") ?: "",
+                    sttModel = obj.str("stt_model") ?: "",
+                    sttHeaders = obj.str("stt_headers") ?: "",
+                    dimensions = obj.intOrNull("dimensions") ?: 1536,
+                    size = obj.str("size") ?: "1024x1024",
+                    promptTemplate = obj.str("prompt_template") ?: "",
                     createdAt = obj.str("created_at") ?: now,
                     tokenLimitDaily = obj.longOrNull("token_limit_daily") ?: 0L,
                     tokenLimitWeekly = obj.longOrNull("token_limit_weekly") ?: 0L,
@@ -524,6 +555,7 @@ object NbotConfigImporter {
                         model = model,
                         inputTokens = if (inputTokens >= 0) inputTokens else null,
                         outputTokens = if (outputTokens >= 0) outputTokens else null,
+                        audioUrl = msg.str("audio_url"),
                         createdAt = msg.str("timestamp") ?: msg.str("created_at") ?: now
                     )
                 )

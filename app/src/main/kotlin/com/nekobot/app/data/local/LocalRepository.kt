@@ -73,6 +73,7 @@ import com.nekobot.app.data.model.TokenRankings
 import com.nekobot.app.data.model.TokenStats
 import com.nekobot.app.data.model.Tool
 import com.nekobot.app.data.model.ToolRequest
+import com.nekobot.app.data.model.TtsVoice
 import com.nekobot.app.data.model.Workflow
 import com.nekobot.app.data.model.WorkflowRequest
 import com.nekobot.app.data.model.WorldBook
@@ -550,6 +551,7 @@ class LocalRepository(
                     model = m.str("model"),
                     inputTokens = m.intVal("input_tokens", "inputTokens"),
                     outputTokens = m.intVal("output_tokens", "outputTokens"),
+                    audioUrl = m.str("audio_url", "audioUrl"),
                     createdAt = createdAt,
                     thinkingCards = thinkingCardsEl?.takeIf { !it.isJsonNull }?.toString()
                 )
@@ -1136,7 +1138,8 @@ class LocalRepository(
             else -> return "格式：`/tts [on|off]`"
         }
         config.addProperty("enabled", enabled)
-        if (!config.has("voice")) config.addProperty("voice", "alloy")
+        // 留空时由所选 TTS 模型使用自己的默认音色，避免小米/豆包误用 OpenAI 的 alloy。
+        if (!config.has("voice")) config.addProperty("voice", "")
         updateSession(session.id, ttsConfig = config.toString())
 
         if (!enabled) return "已关闭当前会话的 TTS。"
@@ -3481,6 +3484,15 @@ $charSection$topicSection
 
     suspend fun testModel(model: LocalAiModelEntity): LocalAiResult = aiClient.testModel(model)
 
+    suspend fun fetchAvailableModels(
+        baseUrl: String,
+        apiKey: String,
+        appendBaseUrlPath: Boolean
+    ): List<String> =
+        withContext(Dispatchers.IO) {
+            aiClient.fetchAvailableModels(baseUrl, apiKey, appendBaseUrlPath)
+        }
+
     /**
      * 本地 STT 语音识别：通过故障转移队列调用 purpose=stt 模型，将音频字节数组转为文字。
      *
@@ -3539,32 +3551,106 @@ $charSection$topicSection
      */
     suspend fun synthesizeAudio(
         text: String,
-        voice: String = "alloy",
-        speed: Float = 1.0f
+        voice: String? = null,
+        speed: Float? = null,
+        pitch: Float? = null,
+        volume: Float? = null,
+        modelId: String? = null
     ): LocalAudioResult = withContext(Dispatchers.IO) {
-        val queue = queueFor("tts")
+        val defaultQueue = queueFor("tts")
+        val requested = modelId
+            ?.takeIf { it.isNotBlank() }
+            ?.let { aiModelDao.getById(it) }
+            ?.takeIf { it.enabled && it.purpose == "tts" }
+        val queue = if (requested == null) {
+            defaultQueue
+        } else {
+            listOf(requested) + defaultQueue.filterNot { it.id == requested.id }
+        }
         if (queue.isEmpty()) {
             throw IllegalStateException("未配置 TTS 模型，请在 AI 配置中心启用 purpose=tts 的模型")
         }
         val exec = try {
             failoverCoordinator.execute(queue, "tts") { model ->
-                aiClient.synthesizeSpeech(model, text, voice, speed)
+                aiClient.synthesizeSpeech(model, text, voice, speed, pitch, volume)
             }
         } catch (e: FailoverAllFailedException) {
             throw IllegalStateException(e.message ?: "TTS 全部模型失败")
         }
-        val cacheDir = appContext?.cacheDir
-            ?: throw IllegalStateException("应用上下文未初始化，无法缓存 TTS 音频")
-        val cacheFile = File(cacheDir, "tts/${UUID.randomUUID()}.mp3").apply {
+        val filesDir = appContext?.filesDir
+            ?: throw IllegalStateException("应用上下文未初始化，无法保存 TTS 音频")
+        val format = exec.model.ttsFormat.lowercase().takeIf { it in setOf("mp3", "wav", "opus", "flac", "ogg") }
+            ?: "mp3"
+        val cacheFile = File(filesDir, "tts/${UUID.randomUUID()}.$format").apply {
             parentFile?.mkdirs()
             writeBytes(exec.value)
         }
         LocalAudioResult(
             cacheUri = android.net.Uri.fromFile(cacheFile).toString(),
-            mimeType = "audio/mpeg",
+            mimeType = when (format) {
+                "mp3" -> "audio/mpeg"
+                else -> "audio/$format"
+            },
             usedModelId = exec.model.id,
             usedModelName = exec.model.name
         )
+    }
+
+    suspend fun updateMessageAudioUrl(messageId: String, audioUrl: String?) =
+        withContext(Dispatchers.IO) {
+            messageDao.updateAudioUrl(messageId, audioUrl)
+        }
+
+    /** 根据当前 TTS 模型提供商返回与原仓库一致的内置音色。 */
+    suspend fun listLocalTtsVoices(): List<TtsVoice> = withContext(Dispatchers.IO) {
+        val active = aiModelDao.getActiveByPurpose("tts")
+            ?: aiModelDao.listByPurpose("tts").firstOrNull()
+            ?: return@withContext emptyList()
+        val provider = active.ttsProvider.ifBlank {
+            active.provider?.takeIf { it.isNotBlank() } ?: active.protocol
+        }.lowercase()
+        when (provider) {
+            "xiaomi", "mimo" -> listOf(
+                "mimo_default" to "MiMo 默认",
+                "冰糖" to "冰糖",
+                "茉莉" to "茉莉",
+                "苏打" to "苏打",
+                "白桦" to "白桦",
+                "Mia" to "Mia",
+                "Chloe" to "Chloe",
+                "Milo" to "Milo",
+                "Dean" to "Dean"
+            )
+            "doubao", "volcengine", "bytedance" -> listOf(
+                "zh_female_shuangkuaisisi_moon_bigtts" to "爽快思思",
+                "zh_male_bvlazysheep" to "懒羊羊",
+                "zh_male_ahu_conversation_wvae_bigtts" to "阿虎",
+                "zh_female_vv_uranus_bigtts" to "VV",
+                "zh_female_cancan_mars_bigtts" to "灿灿",
+                "zh_male_chongchong_mars_bigtts" to "冲冲",
+                "zh_female_dandan_mars_bigtts" to "丹丹",
+                "zh_male_haoyu_mars_bigtts" to "浩宇",
+                "zh_female_wanwan_mars_bigtts" to "婉婉",
+                "zh_male_yunxi_mars_bigtts" to "云希"
+            )
+            else -> listOf(
+                "alloy" to "Alloy",
+                "echo" to "Echo",
+                "fable" to "Fable",
+                "onyx" to "Onyx",
+                "nova" to "Nova",
+                "shimmer" to "Shimmer",
+                "coral" to "Coral",
+                "verse" to "Verse",
+                "ballad" to "Ballad",
+                "ash" to "Ash",
+                "sage" to "Sage",
+                "marin" to "Marin",
+                "cedar" to "Cedar"
+            )
+        }.map { (id, name) ->
+            TtsVoice(id = id, name = name, provider = provider)
+        }
     }
 
     /**
@@ -4270,6 +4356,7 @@ $charSection$topicSection
         sender = sender,
         timestamp = timestamp,
         model = model,
+        audioUrl = audioUrl,
         inputTokens = inputTokens,
         outputTokens = outputTokens,
         // 合并 input+output 作为总 token 数，供 UI 统计使用

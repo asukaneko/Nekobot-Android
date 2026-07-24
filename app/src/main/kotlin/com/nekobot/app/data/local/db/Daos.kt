@@ -109,6 +109,9 @@ interface MessageDao {
     @Query("UPDATE local_messages SET thinking_cards = :json WHERE id = :id")
     suspend fun updateThinkingCards(id: String, json: String?)
 
+    @Query("UPDATE local_messages SET audio_url = :audioUrl WHERE id = :id")
+    suspend fun updateAudioUrl(id: String, audioUrl: String?)
+
     @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND created_at < :createdAt ORDER BY created_at ASC")
     suspend fun listBefore(sessionId: String, createdAt: String): List<LocalMessageEntity>
 

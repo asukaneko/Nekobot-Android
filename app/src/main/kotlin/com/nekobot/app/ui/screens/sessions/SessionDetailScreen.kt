@@ -153,6 +153,8 @@ class SessionDetailViewModel : BaseViewModel() {
     /** 可用 AI 模型列表（用于 TTS 模型选择） */
     private val _aiModels = MutableStateFlow<List<Pair<String, String>>>(emptyList())
     val aiModels: StateFlow<List<Pair<String, String>>> = _aiModels.asStateFlow()
+    private val _ttsModelProviders = MutableStateFlow<Map<String, String>>(emptyMap())
+    val ttsModelProviders: StateFlow<Map<String, String>> = _ttsModelProviders.asStateFlow()
 
     /** 自定义提示词列表（可编辑，每项含 order/title/content） */
     private val _customPrompts = MutableStateFlow<List<CustomPromptItem>>(emptyList())
@@ -228,13 +230,37 @@ class SessionDetailViewModel : BaseViewModel() {
             try {
                 if (isLocalMode) {
                     val models = com.nekobot.app.ServiceContainer.localRepository.listAiModels()
-                    _aiModels.value = models.map { it.id to it.name }
+                    _aiModels.value = models
+                        .filter { it.purpose == "tts" && it.enabled }
+                        .map { it.id to it.name }
+                    _ttsModelProviders.value = models
+                        .filter { it.purpose == "tts" && it.enabled }
+                        .associate { model ->
+                            model.id to model.ttsProvider.ifBlank {
+                                model.provider?.takeIf { it.isNotBlank() } ?: model.protocol
+                            }
+                        }
                 } else {
                     when (val r = repo.listAiModels()) {
                         is Resource.Success -> {
-                            _aiModels.value = (r.data ?: emptyList()).mapNotNull { m ->
+                            val models = (r.data ?: emptyList())
+                                .filter { it.purpose == "tts" && it.enabled != false }
+                            _aiModels.value = models
+                                .mapNotNull { m ->
                                 m.id?.let { it to (m.name ?: m.model ?: it) }
                             }
+                            _ttsModelProviders.value = models
+                                .mapNotNull { model ->
+                                    model.id?.let { id ->
+                                        id to (
+                                            model.ttsProvider?.takeIf { it.isNotBlank() }
+                                                ?: model.provider
+                                                ?: model.protocol
+                                                ?: "openai"
+                                            )
+                                    }
+                                }
+                                .toMap()
                         }
                         else -> {}
                     }
@@ -734,6 +760,7 @@ fun SessionDetailScreen(
     val publicShareExpiresAt by vm.publicShareExpiresAt.collectAsState()
     val isLoadingPublic by vm.isLoadingPublic.collectAsState()
     val aiModels by vm.aiModels.collectAsState()
+    val ttsModelProviders by vm.ttsModelProviders.collectAsState()
     val customPrompts by vm.customPrompts.collectAsState()
     val promptStackDebug by vm.promptStackDebug.collectAsState()
     val composedSystemPrompt by vm.composedSystemPrompt.collectAsState()
@@ -1347,6 +1374,7 @@ fun SessionDetailScreen(
                                 Spacer(Modifier.height(4.dp))
                                 TtsVoiceSelector(
                                     voice = ttsVoice,
+                                    provider = ttsModelProviders[ttsModelId].orEmpty(),
                                     onChange = { vm.ttsVoice.value = it }
                                 )
                             }
@@ -2265,9 +2293,23 @@ private fun TtsModelSelector(
 @Composable
 private fun TtsVoiceSelector(
     voice: String,
+    provider: String,
     onChange: (String) -> Unit
 ) {
-    val commonVoices = listOf("alloy", "echo", "fable", "onyx", "nova", "shimmer", "coral", "verse", "ballad", "ash", "sage")
+    val commonVoices = when (provider.lowercase()) {
+        "xiaomi", "mimo" -> listOf("mimo_default", "冰糖", "茉莉", "苏打", "白桦", "Mia", "Chloe", "Milo", "Dean")
+        "doubao", "volcengine", "bytedance" -> listOf(
+            "zh_female_shuangkuaisisi_moon_bigtts",
+            "zh_male_bvlazysheep",
+            "zh_male_ahu_conversation_wvae_bigtts",
+            "zh_female_vv_uranus_bigtts",
+            "zh_female_cancan_mars_bigtts",
+            "zh_male_haoyu_mars_bigtts",
+            "zh_female_wanwan_mars_bigtts",
+            "zh_male_yunxi_mars_bigtts"
+        )
+        else -> listOf("alloy", "echo", "fable", "onyx", "nova", "shimmer", "coral", "verse", "ballad", "ash", "sage")
+    }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         commonVoices.forEach { v ->
             FilterChip(

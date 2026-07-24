@@ -307,6 +307,15 @@ data class SendMessageRequest(
     val sender: String? = null
 )
 
+/** 更新单条消息；所有字段可选，TTS 仅提交 audio_url，不会改写正文。 */
+data class UpdateMessageRequest(
+    val role: String? = null,
+    val content: String? = null,
+    val sender: String? = null,
+    @SerializedName("audio_url") val audioUrl: String? = null,
+    @SerializedName("truncate_after") val truncateAfter: Boolean? = null
+)
+
 // ==================== 完整角色卡（CharacterPreset）====================
 /**
  * 完整角色卡数据模型，对应后端 `/api/personality/custom-presets` 完整数据源
@@ -490,15 +499,49 @@ data class AiModel(
     @SerializedName(value = "id", alternate = ["model_id", "_id"])
     val id: String? = null,
     val name: String? = null,
+    @SerializedName(value = "provider_type", alternate = ["protocol"])
     val protocol: String? = null,
     val provider: String? = null,
     @SerializedName("api_key") val apiKey: String? = null,
     @SerializedName("base_url") val baseUrl: String? = null,
+    @SerializedName("append_base_url_path") val appendBaseUrlPath: Boolean? = null,
     @SerializedName(value = "model", alternate = ["model_name"])
     val model: String? = null,
     val enabled: Boolean? = null,
     val purpose: String? = null,
     val priority: Int? = null,
+    val temperature: Double? = null,
+    @SerializedName("max_tokens") val maxTokens: Int? = null,
+    @SerializedName("max_context_length") val maxContextLength: Int? = null,
+    @SerializedName("top_p") val topP: Double? = null,
+    @SerializedName("input_price") val inputPrice: Double? = null,
+    @SerializedName("output_price") val outputPrice: Double? = null,
+    @SerializedName("supports_tools") val supportsTools: Boolean? = null,
+    @SerializedName("supports_reasoning") val supportsReasoning: Boolean? = null,
+    @SerializedName("supports_stream") val supportsStream: Boolean? = null,
+    @SerializedName("tts_provider") val ttsProvider: String? = null,
+    @SerializedName("tts_url") val ttsUrl: String? = null,
+    @SerializedName("tts_model") val ttsModel: String? = null,
+    @SerializedName("tts_voice") val ttsVoice: String? = null,
+    @SerializedName("tts_speed") val ttsSpeed: Float? = null,
+    @SerializedName("tts_pitch") val ttsPitch: Float? = null,
+    @SerializedName("tts_volume") val ttsVolume: Float? = null,
+    @SerializedName("tts_format") val ttsFormat: String? = null,
+    @SerializedName("tts_upload_url") val ttsUploadUrl: String? = null,
+    @SerializedName("tts_headers") val ttsHeaders: String? = null,
+    @SerializedName("tts_body_template") val ttsBodyTemplate: String? = null,
+    @SerializedName("tts_resource_id") val ttsResourceId: String? = null,
+    @SerializedName("tts_ref_audio") val ttsRefAudio: String? = null,
+    @SerializedName("tts_user") val ttsUser: String? = null,
+    val language: String? = null,
+    @SerializedName("stt_provider") val sttProvider: String? = null,
+    @SerializedName("stt_url") val sttUrl: String? = null,
+    @SerializedName("stt_model") val sttModel: String? = null,
+    @SerializedName("stt_language") val sttLanguage: String? = null,
+    @SerializedName("stt_headers") val sttHeaders: String? = null,
+    val dimensions: Int? = null,
+    val size: String? = null,
+    @SerializedName("prompt_template") val promptTemplate: String? = null,
     val type: String? = null,
     val active: Boolean? = null
 ) {
@@ -507,20 +550,54 @@ data class AiModel(
 
 data class AiModelRequest(
     val name: String,
-    val protocol: String? = null,
+    @SerializedName("provider_type") val protocol: String? = null,
     val provider: String? = null,
     @SerializedName("api_key") val apiKey: String? = null,
     @SerializedName("base_url") val baseUrl: String? = null,
+    @SerializedName("append_base_url_path") val appendBaseUrlPath: Boolean? = null,
     val model: String? = null,
     val enabled: Boolean? = null,
     val purpose: String? = null,
-    val priority: Int? = null
+    val priority: Int? = null,
+    val temperature: Double? = null,
+    @SerializedName("max_tokens") val maxTokens: Int? = null,
+    @SerializedName("max_context_length") val maxContextLength: Int? = null,
+    @SerializedName("top_p") val topP: Double? = null,
+    @SerializedName("input_price") val inputPrice: Double? = null,
+    @SerializedName("output_price") val outputPrice: Double? = null,
+    @SerializedName("supports_tools") val supportsTools: Boolean? = null,
+    @SerializedName("supports_reasoning") val supportsReasoning: Boolean? = null,
+    @SerializedName("supports_stream") val supportsStream: Boolean? = null,
+    @SerializedName("tts_provider") val ttsProvider: String? = null,
+    @SerializedName("tts_url") val ttsUrl: String? = null,
+    @SerializedName("tts_model") val ttsModel: String? = null,
+    @SerializedName("tts_voice") val ttsVoice: String? = null,
+    @SerializedName("tts_speed") val ttsSpeed: Float? = null,
+    @SerializedName("tts_pitch") val ttsPitch: Float? = null,
+    @SerializedName("tts_volume") val ttsVolume: Float? = null,
+    @SerializedName("tts_format") val ttsFormat: String? = null,
+    @SerializedName("tts_upload_url") val ttsUploadUrl: String? = null,
+    @SerializedName("tts_headers") val ttsHeaders: String? = null,
+    @SerializedName("tts_body_template") val ttsBodyTemplate: String? = null,
+    @SerializedName("tts_resource_id") val ttsResourceId: String? = null,
+    @SerializedName("tts_ref_audio") val ttsRefAudio: String? = null,
+    @SerializedName("tts_user") val ttsUser: String? = null,
+    val language: String? = null,
+    @SerializedName("stt_provider") val sttProvider: String? = null,
+    @SerializedName("stt_url") val sttUrl: String? = null,
+    @SerializedName("stt_model") val sttModel: String? = null,
+    @SerializedName("stt_language") val sttLanguage: String? = null,
+    @SerializedName("stt_headers") val sttHeaders: String? = null,
+    val dimensions: Int? = null,
+    val size: String? = null,
+    @SerializedName("prompt_template") val promptTemplate: String? = null
 )
 
 data class FetchModelsRequest(
     @SerializedName("base_url") val baseUrl: String,
     @SerializedName("api_key") val apiKey: String? = null,
-    val protocol: String? = null
+    @SerializedName("provider_type") val protocol: String? = null,
+    @SerializedName("append_base_url_path") val appendBaseUrlPath: Boolean = true
 )
 
 /** 远端 API 返回的单个模型信息（id + 显示名） */

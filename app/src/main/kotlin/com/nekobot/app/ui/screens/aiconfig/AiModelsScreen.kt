@@ -63,6 +63,7 @@ import com.google.gson.JsonElement
 import com.nekobot.app.R
 import com.nekobot.app.data.model.AiModel
 import com.nekobot.app.data.model.AiModelRequest
+import com.nekobot.app.data.model.ApiKey
 import com.nekobot.app.data.model.FetchModelsRequest
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.EmptyState
@@ -103,6 +104,9 @@ class AiModelsViewModel : BaseViewModel() {
     private val _availableModels = MutableStateFlow<List<String>>(emptyList())
     val availableModels: StateFlow<List<String>> = _availableModels.asStateFlow()
 
+    private val _apiKeys = MutableStateFlow<List<ApiKey>>(emptyList())
+    val apiKeys: StateFlow<List<ApiKey>> = _apiKeys.asStateFlow()
+
     private val _testResult = MutableStateFlow<String?>(null)
     val testResult: StateFlow<String?> = _testResult.asStateFlow()
 
@@ -117,6 +121,7 @@ class AiModelsViewModel : BaseViewModel() {
         )
         loadProtocols()
         loadPurposes()
+        loadApiKeys()
     }
 
     fun loadProtocols() {
@@ -196,8 +201,13 @@ class AiModelsViewModel : BaseViewModel() {
         )
     }
 
-    fun fetchModels(baseUrl: String, apiKey: String?, protocol: String?) {
-        val req = FetchModelsRequest(baseUrl = baseUrl, apiKey = apiKey, protocol = protocol)
+    fun fetchModels(baseUrl: String, apiKey: String?, protocol: String?, appendBaseUrlPath: Boolean) {
+        val req = FetchModelsRequest(
+            baseUrl = baseUrl,
+            apiKey = apiKey,
+            protocol = protocol,
+            appendBaseUrlPath = appendBaseUrlPath
+        )
         launchResult(
             block = { repo.fetchModels(req) },
             onSuccess = { res ->
@@ -208,6 +218,21 @@ class AiModelsViewModel : BaseViewModel() {
                     showError(res.message ?: string(R.string.aimodels_fetch_failed))
                 }
             }
+        )
+    }
+
+    private fun loadApiKeys() {
+        launchResult(
+            block = { repo.listApiKeys() },
+            onSuccess = { _apiKeys.value = it },
+            onError = { _apiKeys.value = emptyList() }
+        )
+    }
+
+    fun resolveApiKey(id: String, onResult: (String) -> Unit) {
+        launchResult(
+            block = { repo.getApiKey(id) },
+            onSuccess = { key -> key.key?.let(onResult) }
         )
     }
 
@@ -284,6 +309,7 @@ fun AiModelsScreen(onBack: () -> Unit) {
     val protocols by vm.protocols.collectAsState()
     val purposes by vm.purposes.collectAsState()
     val availableModels by vm.availableModels.collectAsState()
+    val apiKeys by vm.apiKeys.collectAsState()
     val loading by vm.loading.collectAsState()
     val error by vm.error.collectAsState()
     val toast by vm.toast.collectAsState()
@@ -372,15 +398,19 @@ fun AiModelsScreen(onBack: () -> Unit) {
 
     // 新建/编辑表单弹窗
     if (showForm) {
-        AiModelFormDialog(
-            initial = editingModel,
+        AiModelEditorDialog(
+            initial = editingModel.toEditorState(protocols),
+            isEditing = editingModel != null,
             protocols = protocols,
             purposes = purposes,
             availableModels = availableModels,
-            onFetchModels = { baseUrl, apiKey, protocol ->
-                vm.fetchModels(baseUrl, apiKey, protocol)
+            savedApiKeys = apiKeys,
+            onResolveApiKey = vm::resolveApiKey,
+            onFetchModels = { baseUrl, apiKey, protocol, appendBaseUrlPath ->
+                vm.fetchModels(baseUrl, apiKey, protocol, appendBaseUrlPath)
             },
-            onConfirm = { req ->
+            onConfirm = { state ->
+                val req = state.toRequest()
                 editingModel?.id?.let { id -> vm.update(id, req) } ?: vm.create(req)
                 showForm = false
                 editingModel = null

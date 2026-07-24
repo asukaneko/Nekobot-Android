@@ -10,6 +10,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.ConcurrentHashMap
 
+enum class MessageTtsStatus { Generating, Ready, Error }
+
+data class MessageTtsUiState(
+    val status: MessageTtsStatus,
+    val error: String? = null
+)
+
 /**
  * 单个会话的跨 ViewModel 共享运行时状态。
  *
@@ -29,6 +36,7 @@ class ChatSessionState(val sessionId: String) {
     val plotChoices = MutableStateFlow<List<PlotChoice>>(emptyList())
     val plotChoicesLoading = MutableStateFlow(false)
     val hookNotifications = MutableStateFlow<List<HookNotification>>(emptyList())
+    val ttsStates = MutableStateFlow<Map<String, MessageTtsUiState>>(emptyMap())
 
     // ============ 流式生成的临时可变状态 ============
     /** 流式生成中的临时消息内容累加器 */
@@ -49,6 +57,7 @@ class ChatSessionState(val sessionId: String) {
     /** 本地模式流式聊天收集 Job */
     @Volatile
     var localChatJob: Job? = null
+    val ttsJobs = ConcurrentHashMap<String, Job>()
 
     /** 引用计数：ChatViewModel.init 时 +1，onCleared 时 -1；为 0 且无活跃 Job 时可被清理 */
     @Volatile
@@ -63,7 +72,9 @@ class ChatSessionState(val sessionId: String) {
 
     /** 是否还有活跃的后台 Job */
     fun hasActiveJobs(): Boolean =
-        localChatJob?.isActive == true || eventsJob?.isActive == true
+        localChatJob?.isActive == true ||
+            eventsJob?.isActive == true ||
+            ttsJobs.values.any { it.isActive }
 }
 
 /**
@@ -109,6 +120,7 @@ object ChatSessionManager {
         sessions.values.forEach { state ->
             state.localChatJob?.cancel()
             state.eventsJob?.cancel()
+            state.ttsJobs.values.forEach { it.cancel() }
         }
         sessions.clear()
     }

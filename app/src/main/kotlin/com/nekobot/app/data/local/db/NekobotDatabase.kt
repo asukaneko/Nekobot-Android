@@ -35,7 +35,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalApiKeyEntity::class,
         LocalMessageFavoriteEntity::class
     ],
-    version = 19,
+    version = 21,
     exportSchema = false
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -460,6 +460,46 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v19 → v20：补齐本地 AI 模型的用途专属配置字段，与原仓库模型配置结构保持一致。
+         */
+        private val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN max_context_length INTEGER")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN supports_tools INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN supports_reasoning INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN tts_provider TEXT NOT NULL DEFAULT 'openai'")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN tts_url TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN tts_model TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN tts_voice TEXT NOT NULL DEFAULT 'default'")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN tts_speed REAL NOT NULL DEFAULT 1.0")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN tts_pitch REAL NOT NULL DEFAULT 1.0")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN tts_volume REAL NOT NULL DEFAULT 1.0")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN tts_format TEXT NOT NULL DEFAULT 'mp3'")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN tts_upload_url TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN tts_headers TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN tts_body_template TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN tts_resource_id TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN tts_ref_audio TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN tts_user TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN language TEXT NOT NULL DEFAULT 'zh'")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN stt_provider TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN stt_url TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN stt_model TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN stt_headers TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN dimensions INTEGER NOT NULL DEFAULT 1536")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN size TEXT NOT NULL DEFAULT '1024x1024'")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN prompt_template TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        /** v20 → v21：本地消息持久化 TTS 音频路径。 */
+        private val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_messages ADD COLUMN audio_url TEXT")
+            }
+        }
+
         fun get(context: Context): NekobotDatabase =
             get(context, com.nekobot.app.data.local.PrefsManager.DEFAULT_DB_NAME)
 
@@ -472,7 +512,7 @@ abstract class NekobotDatabase : RoomDatabase() {
                 NekobotDatabase::class.java,
                 dbName
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21)
                 // 仅当迁移脚本未覆盖的未来版本变更时才回退到破坏性迁移（保护现有数据）
                 .fallbackToDestructiveMigration()
                 .build()
