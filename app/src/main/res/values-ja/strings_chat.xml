@@ -497,6 +497,9 @@
     <string name="chat_media_pdf_page_render_failed">ページ %1$d のレンダリングに失敗しました</string>
     <string name="chat_media_pdf_page_load_failed">ページ %1$d の読み込み失敗: %2$s</string>
     <string name="chat_media_pdf_page">PDF ページ %1$d</string>
+    <string name="chat_media_pdf_previous_page">前のページ</string>
+    <string name="chat_media_pdf_next_page">次のページ</string>
+    <string name="chat_media_open_file_failed">このファイルを開けるアプリがありません</string>
     <string name="chat_media_image_preview">画像プレビュー</string>
     <string name="chat_media_read_failed">読み込みに失敗しました</string>
     <string name="chat_media_unsupported_preview">このファイル形式はプレビューに対応していません</string>

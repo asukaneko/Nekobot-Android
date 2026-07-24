@@ -3,6 +3,7 @@ package com.nekobot.app.ui.screens.chat
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -47,6 +48,7 @@ import java.io.File
 import java.io.FileOutputStream
 
 /** 工作区文件项 */
+@Immutable
 data class WorkspaceFile(
     val name: String,
     val type: String,        // "file" | "directory"
@@ -66,21 +68,51 @@ class WorkspaceViewModel : BaseViewModel() {
     private val _uploading = MutableStateFlow(false)
     val uploading: StateFlow<Boolean> = _uploading.asStateFlow()
 
+    private val _currentPath = MutableStateFlow("")
+    val currentPath: StateFlow<String> = _currentPath.asStateFlow()
+
     private var sessionId: String = ""
 
     fun init(id: String) {
         if (id == sessionId && _files.value.isNotEmpty()) return
         sessionId = id
-        load()
+        load("")
     }
 
-    fun load() {
+    fun load(path: String = _currentPath.value) {
         if (sessionId.isBlank()) return
+        val normalizedPath = normalizeWorkspaceBrowserPath(path)
+        if (_currentPath.value != normalizedPath) {
+            _files.value = emptyList()
+        }
+        _currentPath.value = normalizedPath
         launchResult(
-            block = { unified.listWorkspaceFiles(sessionId, null) },
-            onSuccess = { elem -> _files.value = parseFiles(elem) },
-            onError = { _files.value = emptyList() }
+            block = {
+                unified.listWorkspaceFiles(
+                    sessionId,
+                    normalizedPath.ifBlank { null }
+                )
+            },
+            onSuccess = { elem ->
+                if (_currentPath.value == normalizedPath) {
+                    _files.value = parseFiles(elem)
+                }
+            },
+            onError = {
+                if (_currentPath.value == normalizedPath) {
+                    _files.value = emptyList()
+                }
+            }
         )
+    }
+
+    fun openDirectory(path: String) = load(path)
+
+    fun navigateUp(): Boolean {
+        val current = _currentPath.value
+        if (current.isBlank()) return false
+        load(parentWorkspaceBrowserPath(current))
+        return true
     }
 
     /** 上传 Uri 指向的文件到工作区 */
@@ -99,7 +131,7 @@ class WorkspaceViewModel : BaseViewModel() {
                 when (val res = unified.uploadWorkspaceFile(sessionId, part)) {
                     is Resource.Success -> {
                         showToast(string(R.string.workspace_uploaded, name))
-                        load()
+                        load("")
                         onDone()
                     }
                     is Resource.Error -> showError(res.message)
@@ -114,30 +146,29 @@ class WorkspaceViewModel : BaseViewModel() {
     }
 
     /** 删除工作区文件 */
-    fun delete(filename: String) {
+    fun delete(workspacePath: String) {
         if (sessionId.isBlank()) return
         launchResult(
-            block = { unified.deleteWorkspaceFile(sessionId, filename) },
+            block = { unified.deleteWorkspaceFile(sessionId, workspacePath) },
             onSuccess = { load() }
         )
     }
 
     /** 下载工作区文件到应用缓存目录，返回本地 File。 */
-    suspend fun download(context: Context, filename: String): File? = withContext(Dispatchers.IO) {
+    suspend fun download(context: Context, workspacePath: String): File? = withContext(Dispatchers.IO) {
         if (sessionId.isBlank()) return@withContext null
         try {
             // 本地模式：直接复制本地工作区文件
-            val localFile = unified.downloadWorkspaceFileLocal(sessionId, filename)
+            val localFile = unified.downloadWorkspaceFileLocal(sessionId, workspacePath)
+            val target = workspacePreviewCacheFile(context, workspacePath)
             if (localFile != null && localFile.exists()) {
-                val target = File(context.cacheDir, "workspace_$filename")
                 localFile.copyTo(target, overwrite = true)
                 return@withContext target
             }
             // 远程模式：走 retrofit Response
-            val resp = unified.downloadWorkspaceFile(sessionId, filename)
+            val resp = unified.downloadWorkspaceFile(sessionId, workspacePath)
             if (resp != null && resp.isSuccessful) {
                 val body = resp.body() ?: return@withContext null
-                val target = File(context.cacheDir, "workspace_$filename")
                 FileOutputStream(target).use { body.byteStream().copyTo(it) }
                 target
             } else null
@@ -205,7 +236,29 @@ class WorkspaceViewModel : BaseViewModel() {
             else -> "application/octet-stream"
         }
     }
+
+    private fun workspacePreviewCacheFile(context: Context, workspacePath: String): File {
+        val safeName = File(workspacePath).name.ifBlank { "workspace_file" }
+        val pathHash = workspacePath.hashCode().toUInt().toString(16)
+        val directory = File(context.cacheDir, "workspace_previews/$pathHash").apply { mkdirs() }
+        return File(directory, safeName)
+    }
 }
+
+internal fun normalizeWorkspaceBrowserPath(path: String): String {
+    val parts = mutableListOf<String>()
+    path.replace('\\', '/').split('/').forEach { part ->
+        when (part) {
+            "", "." -> Unit
+            ".." -> if (parts.isNotEmpty()) parts.removeAt(parts.lastIndex)
+            else -> parts += part
+        }
+    }
+    return parts.joinToString("/")
+}
+
+internal fun parentWorkspaceBrowserPath(path: String): String =
+    normalizeWorkspaceBrowserPath(path).substringBeforeLast('/', "")
 
 /**
  * 工作区浏览器页：列出会话工作区文件，支持上传/删除/下载。
@@ -222,6 +275,7 @@ fun WorkspaceScreen(
     val error by viewModel.error.collectAsState()
     val toast by viewModel.toast.collectAsState()
     val uploading by viewModel.uploading.collectAsState()
+    val currentPath by viewModel.currentPath.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -239,6 +293,9 @@ fun WorkspaceScreen(
     LaunchedEffect(error) {
         if (error != null) { snackbarHost.showSnackbar(error!!); viewModel.clearError() }
     }
+    BackHandler(enabled = currentPath.isNotBlank()) {
+        viewModel.navigateUp()
+    }
 
     // 文件选择器：选取要上传的文件
     val pickFile = rememberLauncherForActivityResult(
@@ -251,9 +308,24 @@ fun WorkspaceScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.workspace_title), color = MaterialTheme.colorScheme.onSurface) },
+                title = {
+                    Text(
+                        text = if (currentPath.isBlank()) {
+                            stringResource(R.string.workspace_title)
+                        } else {
+                            "${stringResource(R.string.workspace_title)} / $currentPath"
+                        },
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(
+                        onClick = {
+                            if (!viewModel.navigateUp()) onBack()
+                        }
+                    ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
@@ -294,14 +366,15 @@ fun WorkspaceScreen(
                         items(files, key = { it.path }) { f ->
                             WorkspaceFileItem(
                                 file = f,
-                                downloading = downloading == f.name,
-                                previewLoading = previewLoading && previewFileName == f.name,
+                                downloading = downloading == f.path,
+                                previewLoading = previewLoading && previewFileName == f.path,
+                                onOpenDirectory = { viewModel.openDirectory(f.path) },
                                 onDelete = { deletingFile = f },
                                 onDownload = {
                                     if (downloading == null) {
-                                        downloading = f.name
+                                        downloading = f.path
                                         scope.launch {
-                                            val saved = viewModel.download(context, f.name)
+                                            val saved = viewModel.download(context, f.path)
                                             downloading = null
                                             if (saved != null) {
                                                 snackbarHost.showSnackbar(context.getString(R.string.workspace_downloaded_to, saved.name))
@@ -313,13 +386,18 @@ fun WorkspaceScreen(
                                 },
                                 onPreview = {
                                     if (!previewLoading && previewFile == null) {
-                                        previewFileName = f.name
+                                        previewFileName = f.path
                                         previewLoading = true
                                         scope.launch {
-                                            val saved = viewModel.download(context, f.name)
+                                            val saved = viewModel.download(context, f.path)
                                             previewLoading = false
                                             if (saved != null) {
-                                                previewFile = saved
+                                                if (isPdfWorkspaceFile(f.name, f.mimeType)) {
+                                                    openLocalWorkspaceFile(context, saved)
+                                                    previewFileName = ""
+                                                } else {
+                                                    previewFile = saved
+                                                }
                                             } else {
                                                 snackbarHost.showSnackbar(context.getString(R.string.workspace_preview_load_failed))
                                             }
@@ -344,7 +422,7 @@ fun WorkspaceScreen(
             onConfirm = {
                 val f = deletingFile!!
                 deletingFile = null
-                viewModel.delete(f.name)
+                viewModel.delete(f.path)
             }
         )
     }
@@ -353,7 +431,7 @@ fun WorkspaceScreen(
     val pf = previewFile
     if (pf != null) {
         FilePreviewDialog(
-            fileName = previewFileName,
+            fileName = File(previewFileName).name,
             file = pf,
             onDismiss = {
                 previewFile = null
@@ -368,12 +446,20 @@ private fun WorkspaceFileItem(
     file: WorkspaceFile,
     downloading: Boolean,
     previewLoading: Boolean,
+    onOpenDirectory: () -> Unit,
     onDelete: () -> Unit,
     onDownload: () -> Unit,
     onPreview: () -> Unit
 ) {
     GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 14) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = !previewLoading) {
+                    if (file.isDirectory) onOpenDirectory() else onPreview()
+                }
+        ) {
             Icon(
                 if (file.isDirectory) Icons.Filled.Folder else Icons.Filled.InsertDriveFile,
                 contentDescription = null,
@@ -382,9 +468,7 @@ private fun WorkspaceFileItem(
             )
             Spacer(Modifier.width(12.dp))
             Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable(enabled = !file.isDirectory && !previewLoading) { onPreview() }
+                modifier = Modifier.weight(1f)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(

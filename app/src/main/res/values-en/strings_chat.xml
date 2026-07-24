@@ -496,6 +496,9 @@
     <string name="chat_media_pdf_page_render_failed">Page %1$d render failed</string>
     <string name="chat_media_pdf_page_load_failed">Page %1$d load failed: %2$s</string>
     <string name="chat_media_pdf_page">PDF page %1$d</string>
+    <string name="chat_media_pdf_previous_page">Previous page</string>
+    <string name="chat_media_pdf_next_page">Next page</string>
+    <string name="chat_media_open_file_failed">No app can open this file</string>
     <string name="chat_media_image_preview">Image preview</string>
     <string name="chat_media_read_failed">Read failed</string>
     <string name="chat_media_unsupported_preview">This file type is not supported for preview</string>

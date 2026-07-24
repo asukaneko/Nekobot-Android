@@ -34,14 +34,17 @@ class LocalSlashCommandsTest {
     }
 
     @Test
-    fun pythonCommandsAreInterceptedInsteadOfSentToAi() {
+    fun jmDownloadAndRankingAreHandledNatively() {
         val jm = LocalSlashCommands.parse("/jm 123456")
         assertTrue(jm?.known == true)
-        assertEquals(LocalCommandAction.PYTHON_RUNTIME_REQUIRED, jm?.action)
+        assertEquals(LocalCommandAction.JM_DOWNLOAD, jm?.action)
         assertEquals("123456", jm?.args)
 
         val rank = LocalSlashCommands.parse("/jmrank 周排行")
-        assertEquals(LocalCommandAction.PYTHON_RUNTIME_REQUIRED, rank?.action)
+        assertEquals(LocalCommandAction.JM_RANK, rank?.action)
+
+        val search = LocalSlashCommands.parse("/jm_search 测试")
+        assertEquals(LocalCommandAction.PYTHON_RUNTIME_REQUIRED, search?.action)
     }
 
     @Test
@@ -71,7 +74,8 @@ class LocalSlashCommandsTest {
         assertTrue(help.contains("/calc"))
         assertTrue(help.contains("/export"))
         assertTrue(help.contains("/note"))
+        assertTrue(help.contains("/jmrank"))
+        assertTrue(help.contains("/jm <漫画ID>"))
         assertTrue(help.contains("/yolo"))
-        assertFalse(help.contains("/jm <漫画ID>"))
     }
 }

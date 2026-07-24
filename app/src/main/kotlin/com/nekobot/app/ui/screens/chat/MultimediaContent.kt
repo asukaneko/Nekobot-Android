@@ -8,6 +8,7 @@ import android.os.ParcelFileDescriptor
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.VideoView
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -23,14 +24,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
@@ -56,6 +57,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -67,12 +70,19 @@ import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalWorkspaceStorage
 import com.nekobot.app.ui.components.GlassCard
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import java.io.File
+import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 /** 多媒体内容段类型 */
 enum class SegmentType { TEXT, IMAGE, VIDEO, AUDIO, TXT, HTML, FILE }
@@ -657,6 +667,10 @@ fun RenderContentSegments(
 /** 获取文件扩展名（小写，不含点） */
 private fun fileExt(name: String): String = name.substringAfterLast('.', "").lowercase()
 
+internal fun isPdfWorkspaceFile(fileName: String, mimeType: String = ""): Boolean =
+    mimeType.equals("application/pdf", ignoreCase = true) ||
+        fileExt(fileName) == "pdf"
+
 /** 用户图片附件需要脱离文字气泡单独渲染。 */
 internal fun ContentSegment.isImageContent(): Boolean =
     type == SegmentType.IMAGE ||
@@ -725,7 +739,10 @@ fun FileCardRenderer(fileName: String, sessionId: String, modifier: Modifier = M
                 fileName = fileName,
                 modifier = modifier,
                 onClick = {
-                    if (previewType == FilePreviewType.UNSUPPORTED) {
+                    if (
+                        previewType == FilePreviewType.UNSUPPORTED ||
+                        isPdfWorkspaceFile(fileName)
+                    ) {
                         openLocalWorkspaceFile(context, localFile)
                     } else {
                         showLocalPreview = true
@@ -835,7 +852,7 @@ private fun LocalWorkspaceFileCard(
     }
 }
 
-private fun openLocalWorkspaceFile(context: android.content.Context, file: File) {
+internal fun openLocalWorkspaceFile(context: android.content.Context, file: File): Boolean =
     runCatching {
         val uri = androidx.core.content.FileProvider.getUriForFile(
             context,
@@ -854,8 +871,15 @@ private fun openLocalWorkspaceFile(context: android.content.Context, file: File)
             )
         }
         context.startActivity(intent)
+        true
+    }.getOrElse {
+        android.widget.Toast.makeText(
+            context,
+            context.getString(R.string.chat_media_open_file_failed),
+            android.widget.Toast.LENGTH_SHORT
+        ).show()
+        false
     }
-}
 
 /** 不支持直接预览的文件卡片：显示文件名 + 下载按钮 */
 @Composable
@@ -978,23 +1002,33 @@ private fun formatTime(ms: Int): String {
 }
 
 /**
- * PDF 渲染器：使用系统 [PdfRenderer] 按需渲染各页为 Bitmap 并滚动展示。
+ * PDF 渲染器：使用系统 [PdfRenderer] 单页渲染，并通过上一页/下一页切换。
  * 入参为本地 [File]（已下载到缓存目录）。
- * 每页独立加载，避免一次性渲染所有页导致 OOM。
+ * 任意时刻只保留一张展示 Bitmap，避免漫画 PDF 的多页大图同时占用内存。
  */
 @Composable
 fun PdfRendererFromFile(file: File, modifier: Modifier = Modifier) {
     var pageCount by remember(file) { mutableStateOf(0) }
+    var currentPage by remember(file) { mutableStateOf(0) }
     var loading by remember(file) { mutableStateOf(true) }
     var error by remember(file) { mutableStateOf<String?>(null) }
     val pdfNoContent = stringResource(R.string.chat_media_pdf_no_content)
     val pdfRenderFailed = stringResource(R.string.chat_media_pdf_render_failed)
     val pdfLoadFailedFmt = stringResource(R.string.chat_media_pdf_load_failed)
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val renderWidth = remember(configuration.screenWidthDp, density.density) {
+        ((configuration.screenWidthDp - 16).coerceAtLeast(240) * density.density)
+            .roundToInt()
+            .coerceIn(320, MAX_PDF_RENDER_WIDTH)
+    }
+    val renderSemaphore = remember(file) { Semaphore(1) }
 
     LaunchedEffect(file) {
         loading = true
         error = null
         pageCount = 0
+        currentPage = 0
         try {
             pageCount = withContext(Dispatchers.IO) {
                 if (!file.exists()) return@withContext 0
@@ -1003,6 +1037,8 @@ fun PdfRendererFromFile(file: File, modifier: Modifier = Modifier) {
                 }
             }
             if (pageCount == 0) error = pdfNoContent
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             error = e.message ?: pdfRenderFailed
         } finally {
@@ -1022,13 +1058,51 @@ fun PdfRendererFromFile(file: File, modifier: Modifier = Modifier) {
             error != null -> Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
                 Text(text = pdfLoadFailedFmt.format(error), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
             }
-            else -> LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(pageCount) { idx ->
-                    PdfPageBitmap(file = file, pageIndex = idx)
+            else -> {
+                PdfPageBitmap(
+                    file = file,
+                    pageIndex = currentPage,
+                    targetWidth = renderWidth,
+                    renderSemaphore = renderSemaphore,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(bottom = 64.dp)
+                )
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(8.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f))
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        enabled = currentPage > 0,
+                        onClick = { currentPage = (currentPage - 1).coerceAtLeast(0) }
+                    ) {
+                        Icon(
+                            Icons.Filled.ChevronLeft,
+                            contentDescription = stringResource(R.string.chat_media_pdf_previous_page)
+                        )
+                    }
+                    Text(
+                        text = "${currentPage + 1} / $pageCount",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                    IconButton(
+                        enabled = currentPage < pageCount - 1,
+                        onClick = {
+                            currentPage = (currentPage + 1).coerceAtMost(pageCount - 1)
+                        }
+                    ) {
+                        Icon(
+                            Icons.Filled.ChevronRight,
+                            contentDescription = stringResource(R.string.chat_media_pdf_next_page)
+                        )
+                    }
                 }
             }
         }
@@ -1037,7 +1111,13 @@ fun PdfRendererFromFile(file: File, modifier: Modifier = Modifier) {
 
 /** 单页 PDF 渲染：按需加载，加载失败显示该页错误而不影响其他页。 */
 @Composable
-private fun PdfPageBitmap(file: File, pageIndex: Int) {
+private fun PdfPageBitmap(
+    file: File,
+    pageIndex: Int,
+    targetWidth: Int,
+    renderSemaphore: Semaphore,
+    modifier: Modifier = Modifier
+) {
     var bmp by remember(file, pageIndex) { mutableStateOf<Bitmap?>(null) }
     var loading by remember(file, pageIndex) { mutableStateOf(true) }
     var error by remember(file, pageIndex) { mutableStateOf<String?>(null) }
@@ -1045,40 +1125,63 @@ private fun PdfPageBitmap(file: File, pageIndex: Int) {
     val pageLoadFailedFmt = stringResource(R.string.chat_media_pdf_page_load_failed, pageIndex + 1)
     val pageDesc = stringResource(R.string.chat_media_pdf_page, pageIndex + 1)
 
-    LaunchedEffect(file, pageIndex) {
+    LaunchedEffect(file, pageIndex, targetWidth) {
         loading = true
         error = null
         bmp = null
+        var renderedBitmap: Bitmap? = null
         try {
-            bmp = withContext(Dispatchers.IO) {
-                ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
-                    PdfRenderer(pfd).use { renderer ->
-                        val page = renderer.openPage(pageIndex)
-                        try {
-                            // 按宽度 1080 像素等比缩放渲染
-                            val targetWidth = 1080
-                            val scale = targetWidth.toFloat() / page.width.toFloat()
-                            val targetHeight = (page.height * scale).toInt()
-                            val b = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
-                            page.render(b, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                            b
-                        } finally {
-                            page.close()
+            renderedBitmap = withContext(Dispatchers.IO) {
+                renderSemaphore.withPermit {
+                    ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+                        PdfRenderer(pfd).use { renderer ->
+                            val page = renderer.openPage(pageIndex)
+                            try {
+                                val renderSize = calculatePdfRenderSize(
+                                    pageWidth = page.width,
+                                    pageHeight = page.height,
+                                    targetWidth = targetWidth,
+                                    maxPixels = MAX_PDF_RENDER_PIXELS
+                                )
+                                val bitmap = Bitmap.createBitmap(
+                                    renderSize.width,
+                                    renderSize.height,
+                                    Bitmap.Config.ARGB_8888
+                                )
+                                try {
+                                    page.render(
+                                        bitmap,
+                                        null,
+                                        null,
+                                        PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY
+                                    )
+                                    bitmap
+                                } catch (error: Throwable) {
+                                    bitmap.recycle()
+                                    throw error
+                                }
+                            } finally {
+                                page.close()
+                            }
                         }
                     }
                 }
             }
+            currentCoroutineContext().ensureActive()
+            bmp = renderedBitmap
+            renderedBitmap = null
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             error = e.message ?: pageRenderFailed
         } finally {
+            renderedBitmap?.takeUnless { it.isRecycled }?.recycle()
             loading = false
         }
     }
 
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 120.dp),
+        modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
         val b = bmp
@@ -1093,17 +1196,50 @@ private fun PdfPageBitmap(file: File, pageIndex: Int) {
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(8.dp)
             )
-            b != null -> AsyncImage(
-                model = b.asImageBitmap(),
-                contentDescription = pageDesc,
-                contentScale = ContentScale.FillWidth,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-                    .clip(RoundedCornerShape(6.dp))
-            )
+            b != null -> {
+                val imageBitmap = remember(b) { b.asImageBitmap() }
+                Image(
+                    bitmap = imageBitmap,
+                    contentDescription = pageDesc,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 8.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                )
+            }
         }
     }
+}
+
+private const val MAX_PDF_RENDER_WIDTH = 640
+private const val MAX_PDF_RENDER_PIXELS = 1_200_000
+
+internal data class PdfRenderSize(
+    val width: Int,
+    val height: Int
+)
+
+internal fun calculatePdfRenderSize(
+    pageWidth: Int,
+    pageHeight: Int,
+    targetWidth: Int,
+    maxPixels: Int
+): PdfRenderSize {
+    val safePageWidth = pageWidth.coerceAtLeast(1)
+    val safePageHeight = pageHeight.coerceAtLeast(1)
+    val safeTargetWidth = targetWidth.coerceAtLeast(1)
+    val safeMaxPixels = maxPixels.coerceAtLeast(1)
+    val widthScale = safeTargetWidth.toDouble() / safePageWidth.toDouble()
+    val pixelScale = sqrt(
+        safeMaxPixels.toDouble() /
+            (safePageWidth.toDouble() * safePageHeight.toDouble())
+    )
+    val scale = minOf(widthScale, pixelScale)
+    return PdfRenderSize(
+        width = (safePageWidth * scale).toInt().coerceAtLeast(1),
+        height = (safePageHeight * scale).toInt().coerceAtLeast(1)
+    )
 }
 
 /**

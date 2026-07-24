@@ -1,5 +1,6 @@
 package com.nekobot.app.data.local
 
+import android.os.StatFs
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonArray
@@ -77,13 +78,20 @@ import com.nekobot.app.data.model.WorldBook
 import com.nekobot.app.data.model.WorldBookEntry
 import com.nekobot.app.data.remote.RealtimeEvent
 import androidx.room.withTransaction
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -125,6 +133,7 @@ class LocalRepository(
     private val localSkillStorage = appContext?.filesDir
         ?.let { LocalSkillStorage(File(it, "skills")) }
     private val skillPackageDownloader = SkillPackageDownloader()
+    private val localJmRankingClient by lazy { LocalJmRankingClient() }
 
     // ==================== 故障转移协调器（持久化健康状态 + token 限额）====================
 
@@ -945,6 +954,8 @@ class LocalRepository(
                 "SHA-256：\n\n`$digest`"
             }
             LocalCommandAction.FORTUNE -> localFortuneText(session.id)
+            LocalCommandAction.JM_RANK -> localJmRankingText(session.id, command.args)
+            LocalCommandAction.JM_DOWNLOAD -> localJmDownloadPdfText(session.id, command.args)
             LocalCommandAction.PYTHON_RUNTIME_REQUIRED ->
                 LocalSlashCommands.pythonRuntimeMessage(command.name)
             LocalCommandAction.REMOTE_RUNTIME_REQUIRED ->
@@ -1171,6 +1182,154 @@ class LocalRepository(
         runCatching(block).getOrElse { error ->
             error.message ?: "命令执行失败。"
         }
+
+    private suspend fun localJmRankingText(sessionId: String, rawPeriod: String): String {
+        val period = runCatching {
+            parseLocalJmRankingPeriod(rawPeriod)
+        }.getOrElse { error ->
+            return error.message ?: "格式：`/jmrank [周排行|月排行]`"
+        }
+        return runCatching {
+            val entries = withContext(Dispatchers.IO) {
+                localJmRankingClient.fetchRanking(period)
+            }
+            val semaphore = Semaphore(6)
+            val covers = coroutineScope {
+                entries.map { entry ->
+                    async(Dispatchers.IO) {
+                        semaphore.withPermit {
+                            entry.id to localJmRankingClient.fetchCoverDataUrl(entry.id)
+                        }
+                    }
+                }.awaitAll().toMap()
+            }
+            val html = buildLocalJmRankingHtml(period, entries, covers)
+            val root = localWorkspaceRoot(sessionId)
+                ?: error("无法打开当前会话工作区。")
+            val rankDir = File(root, "rank")
+            if (!rankDir.exists() && !rankDir.mkdirs()) {
+                error("无法创建排行榜目录。")
+            }
+            val periodName = period.name.lowercase(Locale.ROOT)
+            val fileName = "jm-$periodName-${System.currentTimeMillis()}.html"
+            withContext(Dispatchers.IO) {
+                File(rankDir, fileName).writeText(html, Charsets.UTF_8)
+            }
+            val coverCount = covers.values.count { !it.isNullOrBlank() }
+            "已生成 JM ${period.displayName}：${entries.size} 条，成功获取 $coverCount 张封面。" +
+                "\n\n[File: rank/$fileName]"
+        }.getOrElse { error ->
+            error.message ?: "获取 JM ${period.displayName}失败，请稍后重试。"
+        }
+    }
+
+    private suspend fun localJmDownloadPdfText(sessionId: String, rawArgs: String): String {
+        val request = runCatching {
+            parseLocalJmDownloadRequest(rawArgs)
+        }.getOrElse { error ->
+            return error.message ?: "格式：`/jm <漫画ID> [--force]`"
+        }
+        val root = localWorkspaceRoot(sessionId)
+            ?: return "无法打开当前会话工作区。"
+        val downloadDir = File(root, "downloads")
+        if (!downloadDir.exists() && !downloadDir.mkdirs()) {
+            return "无法创建当前会话的下载目录。"
+        }
+
+        var partialFile: File? = null
+        return try {
+            val album = withContext(Dispatchers.IO) {
+                localJmRankingClient.fetchAlbum(request.albumId)
+            }
+            val semaphore = Semaphore(JM_CHAPTER_FETCH_CONCURRENCY)
+            val photos = coroutineScope {
+                album.chapters.map { chapter ->
+                    async(Dispatchers.IO) {
+                        semaphore.withPermit {
+                            localJmRankingClient.fetchPhoto(album, chapter)
+                        }
+                    }
+                }.awaitAll()
+            }
+            val totalPages = photos.sumOf { it.imageFiles.size }
+            if (totalPages <= 0) {
+                error("JM${album.id} 没有可下载的图片。")
+            }
+            if (totalPages > JM_DEFAULT_MAX_PAGES && !request.force) {
+                error(
+                    "JM${album.id} 共 $totalPages 页，超过本地单次下载保护上限 " +
+                        "$JM_DEFAULT_MAX_PAGES 页。确认存储空间充足后使用 " +
+                        "`/jm ${album.id} --force`。"
+                )
+            }
+
+            val estimatedBytes =
+                totalPages.toLong() * JM_ESTIMATED_BYTES_PER_PAGE + JM_REQUIRED_FREE_RESERVE
+            val availableBytes = StatFs(downloadDir.absolutePath).availableBytes
+            if (availableBytes < estimatedBytes) {
+                error(
+                    "存储空间可能不足：预计至少需要 ${formatLocalFileSize(estimatedBytes)}，" +
+                        "当前可用 ${formatLocalFileSize(availableBytes)}。"
+                )
+            }
+
+            val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
+            val fileName = "JM${album.id}-$timestamp.pdf"
+            val finalFile = File(downloadDir, fileName)
+            val tempFile = File(downloadDir, "$fileName.part")
+            partialFile = tempFile
+            val scrambleId = withContext(Dispatchers.IO) {
+                localJmRankingClient.fetchScrambleId(album, photos.first().id)
+            }
+
+            withContext(Dispatchers.IO) {
+                LocalImagePdfWriter(tempFile).use { writer ->
+                    photos.forEach { photo ->
+                        photo.imageFiles.forEach { imageFile ->
+                            currentCoroutineContext().ensureActive()
+                            if (
+                                writer.pageCount > 0 &&
+                                writer.pageCount % JM_FREE_SPACE_CHECK_INTERVAL == 0
+                            ) {
+                                val remaining = StatFs(downloadDir.absolutePath).availableBytes
+                                if (remaining < JM_MINIMUM_REMAINING_BYTES) {
+                                    error(
+                                        "下载已停止：设备剩余空间低于 " +
+                                            formatLocalFileSize(JM_MINIMUM_REMAINING_BYTES)
+                                    )
+                                }
+                            }
+                            val image = localJmRankingClient.fetchPageJpeg(
+                                album = album,
+                                photoId = photo.id,
+                                imageFile = imageFile,
+                                scrambleId = scrambleId
+                            )
+                            writer.addJpegPage(
+                                jpegBytes = image.jpegBytes,
+                                pixelWidth = image.width,
+                                pixelHeight = image.height
+                            )
+                        }
+                    }
+                    writer.finish()
+                }
+            }
+            if (!tempFile.renameTo(finalFile)) {
+                error("PDF 已生成，但无法从临时文件保存为最终文件。")
+            }
+            partialFile = null
+            "已下载《${album.title}》：${photos.size} 章、$totalPages 页，" +
+                "PDF ${formatLocalFileSize(finalFile.length())}。" +
+                "\n\n[File: downloads/$fileName]"
+        } catch (error: CancellationException) {
+            partialFile?.takeIf { it.exists() }?.delete()
+            throw error
+        } catch (error: Exception) {
+            partialFile?.takeIf { it.exists() }?.delete()
+            error.message ?: "下载 JM${request.albumId} 失败，请稍后重试。"
+        }
+    }
 
     private fun localFortuneText(sessionId: String): String {
         val today = java.time.LocalDate.now()
@@ -3626,6 +3785,12 @@ $charSection$topicSection
 
     companion object {
         private const val TAG = "LocalRepository"
+        private const val JM_CHAPTER_FETCH_CONCURRENCY = 6
+        private const val JM_DEFAULT_MAX_PAGES = 1_200
+        private const val JM_FREE_SPACE_CHECK_INTERVAL = 20
+        private const val JM_ESTIMATED_BYTES_PER_PAGE = 650L * 1024L
+        private const val JM_REQUIRED_FREE_RESERVE = 128L * 1024L * 1024L
+        private const val JM_MINIMUM_REMAINING_BYTES = 96L * 1024L * 1024L
 
         /** 静态时间戳工具（供 LocalPipelineCallbacks 等外部类使用） */
         fun nowIsoStatic(): String =
@@ -5373,16 +5538,19 @@ $charSection$topicSection
     }
 
     suspend fun listWorkspaceFiles(sessionId: String, path: String?): JsonElement = withContext(Dispatchers.IO) {
-        val dir = workspaceDir(sessionId) ?: return@withContext JsonArray()
-        val target = if (path.isNullOrBlank()) dir else java.io.File(dir, path)
+        val dir = workspaceDir(sessionId)?.canonicalFile ?: return@withContext JsonArray()
+        val target = resolveWorkspaceEntry(dir, path, allowRoot = true)
+            ?.takeIf { it.isDirectory }
+            ?: return@withContext JsonArray()
         val arr = JsonArray()
-        if (!target.exists()) return@withContext arr
-        target.listFiles()?.forEach { f ->
+        target.listFiles()
+            ?.sortedWith(compareByDescending<java.io.File> { it.isDirectory }.thenBy { it.name.lowercase() })
+            ?.forEach { f ->
             JsonObject().also { o ->
                 o.addProperty("name", f.name)
                 o.addProperty("type", if (f.isDirectory) "directory" else "file")
                 o.addProperty("size", f.length())
-                o.addProperty("path", f.relativeTo(dir).path)
+                o.addProperty("path", f.relativeTo(dir).invariantSeparatorsPath)
                 o.addProperty("mime_type", guessMime(f.name))
             }.also { arr.add(it) }
         }
@@ -5407,11 +5575,15 @@ $charSection$topicSection
     }
 
     suspend fun deleteWorkspaceFile(sessionId: String, filename: String): JsonElement = withContext(Dispatchers.IO) {
-        val dir = workspaceDir(sessionId) ?: return@withContext JsonObject().apply {
+        val dir = workspaceDir(sessionId)?.canonicalFile ?: return@withContext JsonObject().apply {
             addProperty("success", false)
             addProperty("message", "工作区目录不可用")
         }
-        val file = java.io.File(dir, filename)
+        val file = resolveWorkspaceEntry(dir, filename, allowRoot = false)
+            ?: return@withContext JsonObject().apply {
+                addProperty("success", false)
+                addProperty("message", "文件路径无效")
+            }
         val ok = if (file.exists()) file.deleteRecursively() else false
         JsonObject().apply {
             addProperty("success", ok)
@@ -5420,9 +5592,27 @@ $charSection$topicSection
     }
 
     suspend fun downloadWorkspaceFile(sessionId: String, filename: String): java.io.File? = withContext(Dispatchers.IO) {
-        val dir = workspaceDir(sessionId) ?: return@withContext null
-        val file = java.io.File(dir, filename)
+        val dir = workspaceDir(sessionId)?.canonicalFile ?: return@withContext null
+        val file = resolveWorkspaceEntry(dir, filename, allowRoot = false)
+            ?: return@withContext null
         if (file.exists() && file.isFile) file else null
+    }
+
+    private fun resolveWorkspaceEntry(
+        root: java.io.File,
+        relativePath: String?,
+        allowRoot: Boolean
+    ): java.io.File? {
+        val normalized = relativePath
+            .orEmpty()
+            .trim()
+            .replace('\\', '/')
+            .trim('/')
+        if (normalized.isBlank()) return root.takeIf { allowRoot }
+        val target = runCatching { java.io.File(root, normalized).canonicalFile }.getOrNull()
+            ?: return null
+        val isInside = target.path.startsWith(root.path + java.io.File.separator)
+        return target.takeIf { isInside }
     }
 
     private fun guessMime(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {

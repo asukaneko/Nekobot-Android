@@ -502,6 +502,9 @@
     <string name="chat_media_pdf_page_render_failed">第 %1$d 页渲染失败</string>
     <string name="chat_media_pdf_page_load_failed">第 %1$d 页加载失败: %2$s</string>
     <string name="chat_media_pdf_page">PDF 第 %1$d 页</string>
+    <string name="chat_media_pdf_previous_page">上一页</string>
+    <string name="chat_media_pdf_next_page">下一页</string>
+    <string name="chat_media_open_file_failed">没有可打开此文件的应用</string>
     <string name="chat_media_image_preview">图片预览</string>
     <string name="chat_media_read_failed">读取失败</string>
     <string name="chat_media_unsupported_preview">该文件类型暂不支持预览</string>

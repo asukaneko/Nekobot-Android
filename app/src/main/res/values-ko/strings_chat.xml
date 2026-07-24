@@ -497,6 +497,9 @@
     <string name="chat_media_pdf_page_render_failed">%1$d페이지 렌더링 실패</string>
     <string name="chat_media_pdf_page_load_failed">%1$d페이지 불러오기 실패: %2$s</string>
     <string name="chat_media_pdf_page">PDF %1$d페이지</string>
+    <string name="chat_media_pdf_previous_page">이전 페이지</string>
+    <string name="chat_media_pdf_next_page">다음 페이지</string>
+    <string name="chat_media_open_file_failed">이 파일을 열 수 있는 앱이 없습니다</string>
     <string name="chat_media_image_preview">이미지 미리보기</string>
     <string name="chat_media_read_failed">읽기 실패</string>
     <string name="chat_media_unsupported_preview">이 파일 형식은 미리보기를 지원하지 않아요</string>

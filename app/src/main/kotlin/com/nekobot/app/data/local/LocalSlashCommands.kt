@@ -134,8 +134,20 @@ internal object LocalSlashCommands {
             action = LocalCommandAction.FORTUNE
         ),
         LocalCommandSpec(
+            aliases = listOf("/jmrank"),
+            usage = "/jmrank [周排行|月排行]",
+            description = "生成带封面和详情链接的 JM 周榜或月榜 HTML",
+            action = LocalCommandAction.JM_RANK
+        ),
+        LocalCommandSpec(
+            aliases = listOf("/jm"),
+            usage = "/jm <漫画ID> [--force]",
+            description = "下载漫画并保存为当前会话工作区 PDF",
+            action = LocalCommandAction.JM_DOWNLOAD
+        ),
+        LocalCommandSpec(
             aliases = listOf(
-                "/jm", "/jmrank", "/jm_search", "/jm_tag", "/jm_clear",
+                "/jm_search", "/jm_tag", "/jm_clear",
                 "/get_fav", "/add_fav", "/list_fav", "/del_fav",
                 "/add_black_list", "/abl", "/del_black_list", "/dbl",
                 "/list_black_list", "/lbl"
@@ -207,7 +219,7 @@ internal object LocalSlashCommands {
     fun pythonRuntimeMessage(commandName: String): String = buildString {
         appendLine("`$commandName` 暂不能在纯本地模式执行。")
         appendLine()
-        appendLine("这组命令依赖 NekoBot 的 Python 运行时；其中 JM 下载还依赖 `jmcomic`、`curl-cffi`、图片处理与 PDF 生成链路。")
+        appendLine("这组高级搜索、收藏或黑名单命令仍依赖 NekoBot 的 Python 运行时。")
         appendLine("Android APK 不会在运行时安装这些包，也不会把命令伪装成普通 AI 对话。")
         appendLine()
         append("请切换到服务器模式执行该命令；其他本地可用命令可输入 `/help` 查看。")
@@ -244,6 +256,8 @@ internal enum class LocalCommandAction(val isNative: Boolean) {
     PASSWORD(true),
     HASH(true),
     FORTUNE(true),
+    JM_RANK(true),
+    JM_DOWNLOAD(true),
     PYTHON_RUNTIME_REQUIRED(false),
     REMOTE_RUNTIME_REQUIRED(false),
     UNKNOWN(false)
