@@ -216,8 +216,11 @@ class LocalMemoryService(
     private val memoryDao: MemoryDao,
     private val aiClient: LocalAiClient? = null,
     private val aiModelProvider: (suspend () -> com.nekobot.app.data.local.db.LocalAiModelEntity?)? = null,
-    /** 二级 LLM 调用 token 记账回调：(source, model, inputTokens, outputTokens) */
-    private val onTokenUsage: ((String, String, Int, Int) -> Unit)? = null
+    /**
+     * 二级 LLM 调用 token 记账回调
+     * 参数：source, model（配置名）, actualModel（实际模型标识，用于排行榜聚合）, inputTokens, outputTokens
+     */
+    private val onTokenUsage: ((String, String, String, Int, Int) -> Unit)? = null
 ) : MemoryService {
 
     companion object {

@@ -43,6 +43,8 @@ data class ToolLoopResult(
     val usage: Map<String, Any> = emptyMap(),
     val modelId: String = "",
     val modelName: String = "",
+    /** 实际模型标识（如 gpt-4o），用于排行榜按模型聚合 */
+    val modelActualName: String = "",
     val failoverEvents: List<Map<String, Any>> = emptyList()
 )
 
@@ -320,6 +322,7 @@ fun runToolCallLoop(
     val usageTotal = mutableMapOf<String, Any>()
     var currentModelId = ""
     var currentModelName = ""
+    var currentModelActualName = ""
     val allFailoverEvents = mutableListOf<Map<String, Any>>()
 
     fun result(
@@ -337,6 +340,7 @@ fun runToolCallLoop(
         usage = usageTotal.toMap(),
         modelId = currentModelId,
         modelName = currentModelName,
+        modelActualName = currentModelActualName,
         failoverEvents = allFailoverEvents.toList()
     )
 
@@ -364,6 +368,7 @@ fun runToolCallLoop(
         // 提取模型追踪信息
         (response["_model_id"] as? String)?.let { currentModelId = it }
         (response["_model_name"] as? String)?.let { currentModelName = it }
+        (response["_model_actual_name"] as? String)?.let { currentModelActualName = it }
         @Suppress("UNCHECKED_CAST")
         (response["_failover_events"] as? List<Map<String, Any>>)?.let { allFailoverEvents.addAll(it) }
 

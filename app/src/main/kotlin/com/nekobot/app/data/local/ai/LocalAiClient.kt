@@ -37,7 +37,10 @@ data class LocalAiResult(
     val error: String? = null,
     val statusCode: Int = 0,
     val usedModelId: String? = null,
+    /** 用户为该模型配置的名称（LocalAiModelEntity.name），用于 Token 记录展示 */
     val usedModelName: String? = null,
+    /** 实际请求的模型标识（LocalAiModelEntity.model，如 gpt-4o），用于模型排行榜按模型聚合 */
+    val usedModelActualName: String? = null,
     val toolCalls: List<Map<String, Any>> = emptyList(),
     val finishReason: String = "",
     val thinkingContent: String = ""
@@ -130,7 +133,7 @@ class LocalAiClient(
                     if (data == "[DONE]") break
                     // 尝试解析 usage（OpenAI 在最后 chunk、Anthropic 在 message_delta）
                     protocol.parseStreamUsage(data)?.let { (input, output, _) ->
-                        emit(RealtimeEvent.Usage(input, output, runtimeModel.model))
+                        emit(RealtimeEvent.Usage(input, output, runtimeModel.model, runtimeModel.name))
                     }
                     protocol.parseStreamError(data)?.let { message ->
                         emit(RealtimeEvent.Error(message))
@@ -211,6 +214,7 @@ class LocalAiClient(
                     usage = parsed.usage,
                     usedModelId = runtimeModel.id,
                     usedModelName = runtimeModel.name,
+                    usedModelActualName = runtimeModel.model,
                     toolCalls = parsed.toolCalls,
                     finishReason = parsed.finishReason,
                     thinkingContent = parsed.thinkingContent
@@ -290,6 +294,7 @@ class LocalAiClient(
                 usage = parsed?.usage?.takeIf(Map<*, *>::isNotEmpty) ?: usage,
                 usedModelId = model.id,
                 usedModelName = model.name,
+                usedModelActualName = model.model,
                 toolCalls = parsed?.toolCalls.orEmpty(),
                 finishReason = parsed?.finishReason.orEmpty(),
                 thinkingContent = parsed?.thinkingContent.orEmpty()
@@ -445,7 +450,7 @@ class LocalAiClient(
             try {
                 val result = chatOnce(model, messages, extra, requestTag)
                 failover.recordSuccess(model.id)
-                return result.copy(usedModelId = model.id, usedModelName = model.name)
+                return result.copy(usedModelId = model.id, usedModelName = model.name, usedModelActualName = model.model)
             } catch (e: FailoverHttpException) {
                 failover.recordFailure(model.id, e.statusCode)
                 Log.w("LocalAiClient", "模型 ${model.name} 调用失败 (HTTP ${e.statusCode})，尝试下一个: ${e.message?.take(120)}")
@@ -562,7 +567,7 @@ class LocalAiClient(
                 // 成功完成
                 failover.recordSuccess(model.id)
                 if (inputTokens != null || outputTokens != null) {
-                    emit(RealtimeEvent.Usage(inputTokens ?: 0, outputTokens ?: 0, model.model))
+                    emit(RealtimeEvent.Usage(inputTokens ?: 0, outputTokens ?: 0, model.model, model.name))
                 }
                 emit(RealtimeEvent.StreamEnd(null))
                 return@flow
@@ -621,6 +626,7 @@ class LocalAiClient(
                     usage = parsed.usage,
                     usedModelId = model.id,
                     usedModelName = model.name,
+                    usedModelActualName = model.model,
                     finishReason = parsed.finishReason,
                     thinkingContent = parsed.thinkingContent
                 )
@@ -1024,7 +1030,8 @@ class LocalAiClient(
                 LocalAiResult(
                     text,
                     usedModelId = model.id,
-                    usedModelName = model.name
+                    usedModelName = model.name,
+                    usedModelActualName = model.model
                 )
             }
         } catch (e: FailoverHttpException) {

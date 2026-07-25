@@ -444,7 +444,7 @@ private val STYLE_PRESETS = mapOf(
 class PlotChoiceGenerator(
     private val aiClient: LocalAiClient,
     private val aiModelProvider: (suspend () -> com.nekobot.app.data.local.db.LocalAiModelEntity?)? = null,
-    private val onTokenUsage: ((model: String, inputTokens: Int, outputTokens: Int) -> Unit)? = null
+    private val onTokenUsage: ((model: String, actualModel: String, inputTokens: Int, outputTokens: Int) -> Unit)? = null
 ) {
     companion object {
         private const val TAG = "PlotChoiceGenerator"
@@ -510,7 +510,7 @@ class PlotChoiceGenerator(
                             ?: (result.usage["completion_tokens"] as? Int)
                             ?: 0
                         if (input > 0 || output > 0) {
-                            onTokenUsage.invoke(model.model, input, output)
+                            onTokenUsage.invoke(model.name, model.model, input, output)
                         }
                     } catch (_: Exception) { }
                 }

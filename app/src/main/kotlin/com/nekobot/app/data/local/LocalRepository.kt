@@ -201,7 +201,7 @@ class LocalRepository(
     private var currentSessionId: String = ""
 
     /** 二级 LLM 调用（state/memory）token 记账回调 */
-    private fun recordSecondaryTokenUsage(source: String, model: String, input: Int, output: Int) {
+    private fun recordSecondaryTokenUsage(source: String, model: String, actualModel: String, input: Int, output: Int) {
         if (input == 0 && output == 0) return
         // source 映射到 purpose：state → utility，memory → memory
         val purpose = when (source) {
@@ -212,6 +212,7 @@ class LocalRepository(
         appendTokenUsageRecord(
             sessionId = currentSessionId,
             model = model,
+            actualModel = actualModel,
             inputTokens = input,
             outputTokens = output,
             timestamp = nowIsoTimestamp(),
@@ -221,11 +222,12 @@ class LocalRepository(
     }
 
     /** 剧情选项生成 token 记账回调 */
-    private fun recordPlotTokenUsage(model: String, input: Int, output: Int) {
+    private fun recordPlotTokenUsage(model: String, actualModel: String, input: Int, output: Int) {
         if (input == 0 && output == 0) return
         appendTokenUsageRecord(
             sessionId = currentSessionId,
             model = model,
+            actualModel = actualModel,
             inputTokens = input,
             outputTokens = output,
             timestamp = nowIsoTimestamp(),
@@ -874,6 +876,7 @@ class LocalRepository(
         inputTokens: Int? = null,
         outputTokens: Int? = null,
         model: String? = null,
+        actualModel: String? = null,
         usageEstimated: Boolean = false,
         durationMs: Double? = null,
         ttftMs: Double? = null
@@ -907,6 +910,7 @@ class LocalRepository(
                 sessionId = sessionId,
                 messageId = msg.id,
                 model = model ?: "",
+                actualModel = actualModel ?: "",
                 inputTokens = inputTokens ?: 0,
                 outputTokens = outputTokens ?: 0,
                 timestamp = now,
@@ -1764,13 +1768,16 @@ class LocalRepository(
 
     /**
      * 追加一条 token 用量记录到 SharedPreferences JSON 数组。
+     * @param model 用户配置的模型名称（LocalAiModelEntity.name），用于 Token 记录展示
+     * @param actualModel 实际请求的模型标识（LocalAiModelEntity.model，如 gpt-4o），
+     *                    用于排行榜按模型聚合（相同模型名、不同提供商可合并）。为空时回退到 [model]。
      * @param source 用量来源：chat（主对话）/ state（状态评估）/ memory（记忆抽取）/ plot（剧情）
      * @param purpose 用途标签（与 TokenStatsManager 常量对齐）：chat/utility/memory/plot 等
      * @param durationMs 完成耗时（毫秒），主对话路径从 AIPipeline 透传
      * @param ttftMs 首字延迟（毫秒），主对话路径从 AIPipeline 透传
      */
     private fun appendTokenUsageRecord(
-        sessionId: String, model: String,
+        sessionId: String, model: String, actualModel: String = "",
         inputTokens: Int, outputTokens: Int, timestamp: String,
         source: String = "chat",
         purpose: String = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_CHAT,
@@ -1794,6 +1801,8 @@ class LocalRepository(
                     messageId?.let { addProperty("message_id", it) }
                     addProperty("session_id", sessionId)
                     addProperty("model", model)
+                    // 实际模型标识，用于排行榜按模型聚合（相同模型名、不同提供商可合并）
+                    if (actualModel.isNotBlank()) addProperty("actual_model", actualModel)
                     addProperty("input_tokens", inputTokens)
                     addProperty("output_tokens", outputTokens)
                     addProperty("total_tokens", inputTokens + outputTokens)
@@ -1966,6 +1975,7 @@ class LocalRepository(
         var inputTokens: Int? = null
         var outputTokens: Int? = null
         var modelName: String? = null
+        var modelDisplayName: String? = null
         val streamStartNano = System.nanoTime()
         var firstChunkNano: Long? = null
         aiClient.chatStreamWithFailover(queue, messages, extra).collect { event ->
@@ -1978,6 +1988,7 @@ class LocalRepository(
                     inputTokens = event.inputTokens
                     outputTokens = event.outputTokens
                     modelName = event.model
+                    modelDisplayName = event.modelDisplayName
                     emit(event)
                 }
                 is RealtimeEvent.Error -> emit(event)
@@ -2000,7 +2011,10 @@ class LocalRepository(
                             content,
                             usage.inputTokens,
                             usage.outputTokens,
-                            modelName ?: activeModel.model,
+                            // 显示名优先用配置名；为空时回退到 activeModel.name
+                            modelDisplayName ?: activeModel.name,
+                            // 实际模型标识（用于排行榜聚合），回退到 activeModel.model
+                            actualModel = modelName ?: activeModel.model,
                             usageEstimated = usage.estimated,
                             durationMs = durationMs,
                             ttftMs = ttftMs ?: durationMs
@@ -2237,9 +2251,9 @@ class LocalRepository(
         val callbacks = com.nekobot.app.data.local.ai.LocalPipelineCallbacks(
             db, aiClient, activeModel, session, character, worldBookEntries, runtime, identity,
             parentMessageId = parentMessageId,
-            onTokenRecorded = { sid, messageId, model, input, output, ts, purpose, estimated, durationMs, ttftMs ->
+            onTokenRecorded = { sid, messageId, model, actualModel, input, output, ts, purpose, estimated, durationMs, ttftMs ->
                 appendTokenUsageRecord(
-                    sid, model, input, output, ts,
+                    sid, model, actualModel, input, output, ts,
                     purpose = purpose,
                     estimated = estimated,
                     messageId = messageId,
@@ -2380,10 +2394,11 @@ class LocalRepository(
                         profileText = profileText,
                         circadianState = circadianState,
                         recentMessages = recentMessages
-                    ) { input, output, model ->
+                    ) { input, output, model, actualModel ->
                         appendTokenUsageRecord(
                             sessionId = sessionId,
                             model = model,
+                            actualModel = actualModel,
                             inputTokens = input,
                             outputTokens = output,
                             timestamp = nowIsoTimestamp(),
@@ -2716,9 +2731,9 @@ class LocalRepository(
                     channel = "local"
                 ),
                 parentMessageId = parentMessageId,
-                onTokenRecorded = { sid, messageId, model, input, output, ts, purpose, estimated, durationMs, ttftMs ->
+                onTokenRecorded = { sid, messageId, model, actualModel, input, output, ts, purpose, estimated, durationMs, ttftMs ->
                     appendTokenUsageRecord(
-                        sid, model, input, output, ts,
+                        sid, model, actualModel, input, output, ts,
                         purpose = purpose,
                         estimated = estimated,
                         messageId = messageId,
@@ -3234,7 +3249,8 @@ class LocalRepository(
             val output = usage["completion_tokens"] ?: usage["output_tokens"] ?: 0
             appendTokenUsageRecord(
                 sessionId = currentSessionId,
-                model = activeModel.model,
+                model = activeModel.name,
+                actualModel = activeModel.model,
                 inputTokens = input,
                 outputTokens = output,
                 timestamp = nowIsoTimestamp(),
@@ -3320,7 +3336,8 @@ class LocalRepository(
                 val output = usage["completion_tokens"] ?: usage["output_tokens"] ?: 0
                 appendTokenUsageRecord(
                     sessionId = currentSessionId,
-                    model = activeModel.model,
+                    model = activeModel.name,
+                    actualModel = activeModel.model,
                     inputTokens = input,
                     outputTokens = output,
                     timestamp = nowIsoTimestamp(),
@@ -3572,7 +3589,8 @@ $charSection$topicSection
             if (input > 0 || output > 0) {
                 appendTokenUsageRecord(
                     sessionId = currentSessionId,
-                    model = exec.model.model,
+                    model = exec.model.name,
+                    actualModel = exec.model.model,
                     inputTokens = input,
                     outputTokens = output,
                     timestamp = nowIso(),
@@ -3865,7 +3883,8 @@ $charSection$topicSection
                 if (input > 0 || output > 0) {
                     appendTokenUsageRecord(
                         sessionId = currentSessionId,
-                        model = exec.model.model,
+                        model = exec.model.name,
+                        actualModel = exec.model.model,
                         inputTokens = input,
                         outputTokens = output,
                         timestamp = nowIso(),
@@ -4039,7 +4058,13 @@ $charSection$topicSection
         val usageRecords = records.filterNot { it.isInheritedTokenUsage() }
 
         // 模型与用途排行只统计实际调用，避免 fork 历史重复增加全局消耗。
-        val modelsRank = usageRecords.groupBy { it.get("model")?.asString ?: "未知" }
+        // 模型排行按 actual_model 分组（相同模型名、不同提供商可合并），
+        // 旧记录无 actual_model 时回退到 model 字段。
+        val modelsRank = usageRecords.groupBy { rec ->
+            rec.get("actual_model")?.takeIf { it.isJsonPrimitive && !it.asString.isNullOrBlank() }?.asString
+                ?: rec.get("model")?.asString
+                ?: "未知"
+        }
             .map { (model, recs) ->
                 val input = recs.sumOf { it.get("input_tokens")?.asLong ?: 0 }
                 val output = recs.sumOf { it.get("output_tokens")?.asLong ?: 0 }
@@ -5076,7 +5101,8 @@ $charSection$topicSection
             val output = usage["completion_tokens"] ?: usage["output_tokens"] ?: 0
             appendTokenUsageRecord(
                 sessionId = currentSessionId,
-                model = activeModel.model,
+                model = activeModel.name,
+                actualModel = activeModel.model,
                 inputTokens = input,
                 outputTokens = output,
                 timestamp = nowIsoTimestamp(),

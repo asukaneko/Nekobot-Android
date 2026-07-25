@@ -105,6 +105,8 @@ class TokenStatsManager {
         val timestamp: String,
         val date: String,
         val model: String,
+        /** 实际模型标识（用于排行榜按模型聚合，相同模型不同提供商可合并） */
+        val actualModel: String = "",
         val sessionId: String,
         val channelType: String,
         val userId: String,
@@ -120,12 +122,17 @@ class TokenStatsManager {
 
     /**
      * 记录一次 AI 调用的 token 用量。
+     *
+     * @param model 用户配置的模型名称（LocalAiModelEntity.name），用于 Token 记录展示
+     * @param actualModel 实际请求的模型标识（LocalAiModelEntity.model，如 gpt-4o），
+     *                    用于模型排行榜按模型聚合（相同模型名、不同提供商可合并）。为空时回退到 [model]。
      */
     fun recordUsage(
         promptTokens: Int,
         completionTokens: Int,
         totalTokens: Int = promptTokens + completionTokens,
         model: String = "",
+        actualModel: String = "",
         sessionId: String = "",
         channelType: String = "local",
         userId: String = "",
@@ -135,8 +142,10 @@ class TokenStatsManager {
         ttftMs: Double? = null
     ) {
         if (promptTokens < 0 || completionTokens < 0) return
-        val (inputPrice, outputPrice) = MODEL_PRICING[model] ?: (0.0 to 0.0)
-        val cost = estimateCost(model, promptTokens, completionTokens, inputPrice, outputPrice)
+        // 排行榜聚合键：优先使用实际模型名，为空时回退到配置名
+        val rankingKey = actualModel.ifBlank { model }
+        val (inputPrice, outputPrice) = MODEL_PRICING[rankingKey] ?: (0.0 to 0.0)
+        val cost = estimateCost(rankingKey, promptTokens, completionTokens, inputPrice, outputPrice)
         val now = LocalDateTime.now()
         val nowDate = now.toLocalDate().toString()
         val nowMonth = now.toLocalDate().format(DateTimeFormatter.ofPattern("yyyy-MM"))
@@ -186,8 +195,8 @@ class TokenStatsManager {
             sessStats.totalTokens += totalTokens
             sessStats.messageCount += 1
 
-            // models 维度
-            val modelStats = models.getOrPut(model) { ModelStats() }
+            // models 维度（按实际模型名聚合，便于相同模型不同提供商合并）
+            val modelStats = models.getOrPut(rankingKey) { ModelStats() }
             modelStats.inputTokens += promptTokens
             modelStats.outputTokens += completionTokens
             modelStats.totalTokens += totalTokens
@@ -202,6 +211,7 @@ class TokenStatsManager {
                 timestamp = now.toString(),
                 date = nowDate,
                 model = model,
+                actualModel = actualModel,
                 sessionId = sessionId,
                 channelType = channelType,
                 userId = userId,
@@ -262,7 +272,7 @@ class TokenStatsManager {
                 "recent_records" to filteredRecords.takeLast(100).reversed(),
                 "records" to filteredRecords,
                 "sessions" to sessions.filterKeys { sid -> filteredRecords.any { it.sessionId == sid } },
-                "models" to models.filterKeys { m -> filteredRecords.any { it.model == m } },
+                "models" to models.filterKeys { m -> filteredRecords.any { (it.actualModel.ifBlank { it.model }) == m } },
                 "users" to users.filterKeys { uid -> filteredRecords.any { it.userId == uid } },
                 "purposes" to purposesLabeled
             )

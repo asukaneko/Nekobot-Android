@@ -131,6 +131,7 @@ object LifeSimulator {
      * @param circadianState 昼夜状态（来自 TimeContext.buildCircadianState）
      * @param recentMessages 最近用户消息列表（用于参考信息）
      * @param onTokenRecorded token 用量回调
+     *        参数：input, output, model（配置名）, actualModel（实际模型标识，用于排行榜聚合）
      * @return 生成的活动标签（如"在厨房煮咖啡"），空字符串表示生成失败
      */
     suspend fun generateAndPersist(
@@ -143,7 +144,7 @@ object LifeSimulator {
         profileText: String,
         circadianState: Map<String, Any>,
         recentMessages: List<String>,
-        onTokenRecorded: (input: Int, output: Int, model: String) -> Unit = { _, _, _ -> }
+        onTokenRecorded: (input: Int, output: Int, model: String, actualModel: String) -> Unit = { _, _, _, _ -> }
     ): String {
         if (characterId.isBlank() || conversationId.isBlank()) return ""
 
@@ -213,7 +214,7 @@ object LifeSimulator {
             if (usage.isNotEmpty()) {
                 val input = (usage["prompt_tokens"] ?: usage["input_tokens"] ?: 0) as Int
                 val output = (usage["completion_tokens"] ?: usage["output_tokens"] ?: 0) as Int
-                onTokenRecorded(input, output, activeModel.model)
+                onTokenRecorded(input, output, activeModel.name, activeModel.model)
             }
 
             LocalLogger.i(TAG, "life_sim 生成成功 | char=$characterId | conv=$conversationId | activity=$activity | contentLen=${content.length}")

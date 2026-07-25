@@ -44,7 +44,7 @@ internal class LocalPipelineCallbacks(
     private val characterIdentity: CharacterIdentity? = null,
     /** 父用户消息 id；agent 模式进度卡片关联用，UI 在用户气泡下方渲染 */
     private val parentMessageId: String? = null,
-    private val onTokenRecorded: ((sessionId: String, messageId: String, model: String, inputTokens: Int, outputTokens: Int, timestamp: String, purpose: String, estimated: Boolean, durationMs: Double?, ttftMs: Double?) -> Unit)? = null,
+    private val onTokenRecorded: ((sessionId: String, messageId: String, model: String, actualModel: String, inputTokens: Int, outputTokens: Int, timestamp: String, purpose: String, estimated: Boolean, durationMs: Double?, ttftMs: Double?) -> Unit)? = null,
     /** 进度卡片更新回调；本地模式用于持久化到父用户消息 */
     private val onThinkingCardUpdate: ((card: ThinkingCard) -> Unit)? = null,
     /** 当前会话的本地 Agent 工作区。 */
@@ -304,7 +304,8 @@ internal class LocalPipelineCallbacks(
                 "estimated" to resolvedUsage.estimated
             )
         }
-        val modelName = (ctx.metadata["model_name"] as? String) ?: activeModel.model
+        val modelName = (ctx.metadata["model_name"] as? String) ?: activeModel.name
+        val actualModelName = (ctx.metadata["model_actual_name"] as? String) ?: activeModel.model
         val senderName = if (session.sessionMode.equals("group", ignoreCase = true)) {
             (ctx.metadata["group_speaker_name"] as? String)
                 ?.takeIf { it.isNotBlank() }
@@ -346,6 +347,7 @@ internal class LocalPipelineCallbacks(
                     promptTokens = inputTokens ?: 0,
                     completionTokens = outputTokens ?: 0,
                     model = modelName,
+                    actualModel = actualModelName,
                     sessionId = session.id,
                     userId = "local-user",
                     purpose = TokenStatsManager.PURPOSE_CHAT,
@@ -361,6 +363,7 @@ internal class LocalPipelineCallbacks(
                     session.id,
                     messageId,
                     modelName,
+                    actualModelName,
                     inputTokens ?: 0,
                     outputTokens ?: 0,
                     com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
@@ -401,7 +404,8 @@ internal class LocalPipelineCallbacks(
                         // 保留工具调用等结构化响应，并补充实际使用的模型。
                         exec.value.copy(
                             usedModelId = exec.model.id,
-                            usedModelName = exec.model.name
+                            usedModelName = exec.model.name,
+                            usedModelActualName = exec.model.model
                         )
                     } catch (e: FailoverAllFailedException) {
                         LocalAiResult("", error = e.message ?: "所有模型均失败")
@@ -434,6 +438,7 @@ internal class LocalPipelineCallbacks(
                 })
                 put("_model_id", result.usedModelId ?: activeModel.id)
                 put("_model_name", result.usedModelName ?: activeModel.name)
+                put("_model_actual_name", result.usedModelActualName ?: activeModel.model)
                 if (result.toolCalls.isNotEmpty()) put("tool_calls", result.toolCalls)
                 if (result.thinkingContent.isNotBlank()) {
                     put("thinking_content", result.thinkingContent)
@@ -464,7 +469,8 @@ internal class LocalPipelineCallbacks(
                         }
                         exec.value.copy(
                             usedModelId = exec.model.id,
-                            usedModelName = exec.model.name
+                            usedModelName = exec.model.name,
+                            usedModelActualName = exec.model.model
                         )
                     } catch (e: FailoverAllFailedException) {
                         LocalAiResult("", error = e.message ?: "所有模型均失败")
@@ -494,6 +500,7 @@ internal class LocalPipelineCallbacks(
                 put("usage", result.usage)
                 put("_model_id", result.usedModelId ?: activeModel.id)
                 put("_model_name", result.usedModelName ?: activeModel.name)
+                put("_model_actual_name", result.usedModelActualName ?: activeModel.model)
             })
         }
     }

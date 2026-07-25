@@ -655,6 +655,7 @@ class AIPipeline {
             // 提取模型追踪信息
             if (loopResult.modelId.isNotEmpty()) ctx.metadata["model_id"] = loopResult.modelId
             if (loopResult.modelName.isNotEmpty()) ctx.metadata["model_name"] = loopResult.modelName
+            if (loopResult.modelActualName.isNotEmpty()) ctx.metadata["model_actual_name"] = loopResult.modelActualName
             if (loopResult.failoverEvents.isNotEmpty()) ctx.metadata["failover_events"] = loopResult.failoverEvents
 
             if (loopResult.stopped) {
@@ -961,10 +962,11 @@ class AIPipeline {
     // 辅助方法
     // ------------------------------------------------------------------
 
-    /** 从模型响应中提取追踪信息（model_id / model_name / failover_events） */
+    /** 从模型响应中提取追踪信息（model_id / model_name / model_actual_name / failover_events） */
     private fun extractModelTrace(ctx: PipelineContext, response: Map<String, Any>) {
         (response["_model_id"] as? String)?.let { ctx.metadata["model_id"] = it }
         (response["_model_name"] as? String)?.let { ctx.metadata["model_name"] = it }
+        (response["_model_actual_name"] as? String)?.let { ctx.metadata["model_actual_name"] = it }
         @Suppress("UNCHECKED_CAST")
         (response["_failover_events"] as? List<Map<String, Any>>)?.let { ctx.metadata["failover_events"] = it }
     }

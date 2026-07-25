@@ -14,8 +14,11 @@ import java.time.Instant
 class AutoState(
     private val aiClient: LocalAiClient,
     private val aiModelProvider: (suspend () -> LocalAiModelEntity?)? = null,
-    /** 二级 LLM 调用 token 记账回调：(source, model, inputTokens, outputTokens) */
-    private val onTokenUsage: ((String, String, Int, Int) -> Unit)? = null
+    /**
+     * 二级 LLM 调用 token 记账回调
+     * 参数：source, model（配置名）, actualModel（实际模型标识，用于排行榜聚合）, inputTokens, outputTokens
+     */
+    private val onTokenUsage: ((String, String, String, Int, Int) -> Unit)? = null
 ) {
     companion object {
         private const val TAG = "AutoState"
@@ -181,7 +184,7 @@ class AutoState(
         // 记账二级 LLM 调用 token（与主对话区分，source=state）
         if (result.usage.isNotEmpty()) {
             onTokenUsage?.invoke(
-                "state", model.model,
+                "state", model.name, model.model,
                 result.usage["prompt"] ?: 0,
                 result.usage["completion"] ?: 0
             )

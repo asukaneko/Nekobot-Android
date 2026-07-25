@@ -202,8 +202,17 @@ sealed class RealtimeEvent {
     ) : RealtimeEvent()
     /** 错误 */
     data class Error(val message: String, val sessionId: String? = null) : RealtimeEvent()
-    /** 本地模式 AI 流式结束时的 token 用量（input/output/total） */
-    data class Usage(val inputTokens: Int, val outputTokens: Int, val model: String? = null) : RealtimeEvent()
+    /**
+     * 本地模式 AI 流式结束时的 token 用量（input/output/total）
+     * @param model 实际请求的模型标识（LocalAiModelEntity.model，如 gpt-4o）
+     * @param modelDisplayName 用户配置的模型名称（LocalAiModelEntity.name），用于 Token 记录展示
+     */
+    data class Usage(
+        val inputTokens: Int,
+        val outputTokens: Int,
+        val model: String? = null,
+        val modelDisplayName: String? = null
+    ) : RealtimeEvent()
     /** AI 请求执行非白名单命令，等待用户授权。 */
     data class ExecConfirmationRequired(val request: ExecConfirmationRequest) : RealtimeEvent()
     /** 命令授权结果已由服务端接收。 */

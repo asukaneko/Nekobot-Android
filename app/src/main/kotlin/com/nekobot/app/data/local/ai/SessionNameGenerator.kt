@@ -17,12 +17,13 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * @param aiClient 本地 AI 客户端
  * @param aiModelProvider 提供命名用 AI 模型（与 chat 共用 active 模型）
- * @param onTokenUsage 二级 LLM token 记账回调 (source, model, inputTokens, outputTokens)
+ * @param onTokenUsage 二级 LLM token 记账回调
+ *        参数：source, model（配置名）, actualModel（实际模型标识，用于排行榜聚合）, inputTokens, outputTokens
  */
 class SessionNameGenerator(
     private val aiClient: LocalAiClient,
     private val aiModelProvider: (suspend () -> LocalAiModelEntity?)? = null,
-    private val onTokenUsage: ((String, String, Int, Int) -> Unit)? = null
+    private val onTokenUsage: ((String, String, String, Int, Int) -> Unit)? = null
 ) {
     companion object {
         private const val TAG = "SessionNameGen"
@@ -161,7 +162,7 @@ class SessionNameGenerator(
         // 记账二级 LLM 调用 token（source=session_name）
         if (result.usage.isNotEmpty()) {
             onTokenUsage?.invoke(
-                "session_name", model.model,
+                "session_name", model.name, model.model,
                 result.usage["prompt"] ?: 0,
                 result.usage["completion"] ?: 0
             )
