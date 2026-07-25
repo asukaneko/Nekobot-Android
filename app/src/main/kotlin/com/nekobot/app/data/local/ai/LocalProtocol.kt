@@ -21,6 +21,8 @@ data class LocalModelResponse(
 
 interface LocalProtocol {
     val name: String
+    val requiresStreaming: Boolean
+        get() = false
 
     fun resolveUrl(baseUrl: String, model: String, appendBaseUrlPath: Boolean): String
 
@@ -49,6 +51,10 @@ interface LocalProtocol {
      */
     fun parseStreamUsage(chunkJson: String): Triple<Int, Int, Int>?
 
+    fun parseStreamFinalResponse(chunkJson: String): LocalModelResponse? = null
+
+    fun parseStreamError(chunkJson: String): String? = null
+
     /**
      * 解析非流式响应 JSON。
      * @return 统一模型响应，包含 content / toolCalls / finishReason / usage
@@ -60,6 +66,7 @@ interface LocalProtocol {
 object LocalProtocols {
     private val registry: Map<String, LocalProtocol> = mapOf(
         OpenAIChatProtocol.name to OpenAIChatProtocol,
+        OpenAIResponsesProtocol.name to OpenAIResponsesProtocol,
         AnthropicMessagesProtocol.name to AnthropicMessagesProtocol
     )
 

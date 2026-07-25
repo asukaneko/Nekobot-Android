@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -110,6 +111,13 @@ fun AiConfigCenterScreen(
                             title = stringResource(R.string.aiconfig_local_ai_models),
                             subtitle = stringResource(R.string.aiconfig_local_ai_models_subtitle)
                         ) { onNavigate("local_ai_models") }
+                    }
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        ConfigCenterEntry(
+                            icon = Icons.Filled.AccountCircle,
+                            title = "AI 账号",
+                            subtitle = "通过 OAuth 或 API Key 连接并同步模型到本地 AI"
+                        ) { onNavigate("oauth_accounts") }
                     }
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         ConfigCenterEntry(

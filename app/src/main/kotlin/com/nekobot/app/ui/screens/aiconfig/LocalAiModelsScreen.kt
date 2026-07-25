@@ -668,7 +668,8 @@ private fun LocalAiModelEditDialog(
                     maxTokens = maxTokens.toIntOrNull(),
                     topP = topP.toFloatOrNull(),
                     appendBaseUrlPath = appendPath,
-                    createdAt = model?.createdAt ?: now
+                    createdAt = model?.createdAt ?: now,
+                    oauthAccountId = model?.oauthAccountId
                 )
                 onSave(entity)
             }

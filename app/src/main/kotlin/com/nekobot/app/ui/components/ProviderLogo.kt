@@ -33,6 +33,8 @@ private const val ASSET_PREFIX = "file:///android_asset/providers/"
 /** provider 字段（小写）→ Logo 文件名，与 nbot Web 端 getProviderLogoSvg 的映射保持一致 */
 private val PROVIDER_LOGO_MAP = mapOf(
     "openai" to "openai.svg",
+    "opencode" to "opencode.svg",
+    "opencode-go" to "opencode-go.svg",
     "azure" to "openai.svg",
     "siliconflow" to "openai.svg",
     "anthropic" to "claude.svg",
@@ -58,6 +60,8 @@ private val PROVIDER_LOGO_MAP = mapOf(
 /** baseUrl 包含的关键字 → Logo 文件名（provider 字段缺失时兜底） */
 private val BASE_URL_HINTS = listOf(
     "openai.com" to "openai.svg",
+    "opencode.ai/zen/go" to "opencode-go.svg",
+    "opencode.ai" to "opencode.svg",
     "deepseek" to "deepseek.svg",
     "anthropic" to "claude.svg",
     "googleapis" to "gemini.svg",

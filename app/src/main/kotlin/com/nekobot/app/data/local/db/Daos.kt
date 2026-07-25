@@ -257,6 +257,33 @@ interface AiModelDao {
 
     @Query("DELETE FROM local_ai_models WHERE id = :id")
     suspend fun deleteById(id: String)
+
+    @Query("SELECT * FROM local_ai_models WHERE oauth_account_id = :accountId ORDER BY priority ASC, created_at ASC")
+    suspend fun listByOAuthAccount(accountId: String): List<LocalAiModelEntity>
+
+    @Query("DELETE FROM local_ai_models WHERE oauth_account_id = :accountId")
+    suspend fun deleteByOAuthAccount(accountId: String)
+}
+
+@Dao
+interface OAuthAccountDao {
+    @Query("SELECT * FROM local_oauth_accounts ORDER BY created_at ASC")
+    fun observeAll(): Flow<List<LocalOAuthAccountEntity>>
+
+    @Query("SELECT * FROM local_oauth_accounts ORDER BY created_at ASC")
+    suspend fun listAll(): List<LocalOAuthAccountEntity>
+
+    @Query("SELECT * FROM local_oauth_accounts WHERE id = :id LIMIT 1")
+    suspend fun getById(id: String): LocalOAuthAccountEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(account: LocalOAuthAccountEntity)
+
+    @Query("UPDATE local_oauth_accounts SET status = :status, updated_at = :updatedAt WHERE id = :id")
+    suspend fun updateStatus(id: String, status: String, updatedAt: String)
+
+    @Query("DELETE FROM local_oauth_accounts WHERE id = :id")
+    suspend fun deleteById(id: String)
 }
 
 /**

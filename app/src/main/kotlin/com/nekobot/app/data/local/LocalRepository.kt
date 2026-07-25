@@ -30,6 +30,7 @@ import com.nekobot.app.data.local.ai.relationshipStateFromInitial
 import com.nekobot.app.data.local.ai.resolveLocalTokenUsage
 import com.nekobot.app.data.local.ai.sessionRelationshipTargetId
 import com.nekobot.app.data.local.db.LocalAiModelEntity
+import com.nekobot.app.data.local.oauth.LocalOAuthManager
 import com.nekobot.app.data.repository.SessionImportResult
 import com.nekobot.app.data.local.db.LocalApiKeyEntity
 import com.nekobot.app.data.local.db.LocalFailoverHealthEntity
@@ -131,6 +132,7 @@ class LocalRepository(
     private val characterDao = db.characterDao()
     private val worldBookDao = db.worldBookDao()
     private val aiModelDao = db.aiModelDao()
+    val oauthManager = LocalOAuthManager(db.oauthAccountDao(), aiModelDao)
     private val failoverHealthDao = db.failoverHealthDao()
     private val localExecAuthorizationManager =
         com.nekobot.app.data.local.ai.LocalExecAuthorizationManager()
@@ -167,6 +169,7 @@ class LocalRepository(
             .sortedWith(compareBy(LocalAiModelEntity::priority, LocalAiModelEntity::createdAt))
 
     init {
+        aiClient.setOAuthCredentialResolver(oauthManager::resolveCredential)
         val savedGraph = appContext
             ?.getSharedPreferences("plot_graph", android.content.Context.MODE_PRIVATE)
             ?.getString("graph", null)

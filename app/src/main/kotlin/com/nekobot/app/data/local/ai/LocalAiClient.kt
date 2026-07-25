@@ -4,6 +4,7 @@ import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.nekobot.app.data.local.db.LocalAiModelEntity
+import com.nekobot.app.data.local.oauth.OAuthRuntimeCredential
 import com.nekobot.app.data.remote.RealtimeEvent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -60,6 +61,13 @@ class LocalAiClient(
     private val client: OkHttpClient = defaultClient
 ) {
     private val gson = Gson()
+    private var oauthCredentialResolver: (suspend (String) -> OAuthRuntimeCredential)? = null
+
+    fun setOAuthCredentialResolver(
+        resolver: suspend (String) -> OAuthRuntimeCredential
+    ) {
+        oauthCredentialResolver = resolver
+    }
 
     /**
      * 流式聊天。推送顺序：
@@ -71,20 +79,32 @@ class LocalAiClient(
         messages: List<Map<String, Any>>,
         extra: Map<String, Any?> = emptyMap()
     ): Flow<RealtimeEvent> = flow {
-        val protocol = LocalProtocols.get(model.protocol)
-        val url = protocol.resolveUrl(model.baseUrl, model.model, model.appendBaseUrlPath)
-        val headers = protocol.buildHeaders(model.apiKey, stream = true)
-        val payload = protocol.buildPayload(model.model, messages, stream = true, extra = extra)
-        val body = gson.toJson(payload).toRequestBody(JSON_TYPE)
-
-        val reqBuilder = Request.Builder().url(url).post(body)
-        headers.forEach { (k, v) -> reqBuilder.header(k, v) }
-
         emit(RealtimeEvent.StreamStart(null))
 
         val fullContent = StringBuilder()
         var response: Response? = null
         try {
+            val (runtimeModel, credential) = resolveRuntimeModel(model)
+            val protocol = LocalProtocols.get(runtimeModel.protocol)
+            val url = protocol.resolveUrl(
+                runtimeModel.baseUrl,
+                runtimeModel.model,
+                runtimeModel.appendBaseUrlPath
+            )
+            val headers = mergeRuntimeHeaders(
+                protocol.buildHeaders(runtimeModel.apiKey, stream = true),
+                credential
+            )
+            val payload = protocol.buildPayload(
+                runtimeModel.model,
+                messages,
+                stream = true,
+                extra = normalizeProtocolExtra(runtimeModel, extra)
+            )
+            val body = gson.toJson(payload).toRequestBody(JSON_TYPE)
+            val reqBuilder = Request.Builder().url(url).post(body)
+            headers.forEach { (k, v) -> reqBuilder.header(k, v) }
+
             response = client.newCall(reqBuilder.build()).execute()
             if (!response.isSuccessful) {
                 val errBody = response.body?.string().orEmpty().take(500)
@@ -110,7 +130,12 @@ class LocalAiClient(
                     if (data == "[DONE]") break
                     // 尝试解析 usage（OpenAI 在最后 chunk、Anthropic 在 message_delta）
                     protocol.parseStreamUsage(data)?.let { (input, output, _) ->
-                        emit(RealtimeEvent.Usage(input, output, model.model))
+                        emit(RealtimeEvent.Usage(input, output, runtimeModel.model))
+                    }
+                    protocol.parseStreamError(data)?.let { message ->
+                        emit(RealtimeEvent.Error(message))
+                        emit(RealtimeEvent.StreamEnd(null))
+                        return@flow
                     }
                     val chunk = protocol.parseStreamChunk(data) ?: continue
                     if (chunk.isNotEmpty()) {
@@ -139,10 +164,32 @@ class LocalAiClient(
         extra: Map<String, Any?> = emptyMap(),
         requestTag: String? = null
     ): LocalAiResult {
-        val protocol = LocalProtocols.get(model.protocol)
-        val url = protocol.resolveUrl(model.baseUrl, model.model, model.appendBaseUrlPath)
-        val headers = protocol.buildHeaders(model.apiKey, stream = false)
-        val payload = protocol.buildPayload(model.model, messages, stream = false, extra = extra)
+        val (runtimeModel, credential) = resolveRuntimeModel(model)
+        val protocol = LocalProtocols.get(runtimeModel.protocol)
+        if (protocol.requiresStreaming) {
+            return chatOnceViaStream(
+                model = runtimeModel,
+                credential = credential,
+                messages = messages,
+                extra = extra,
+                requestTag = requestTag
+            )
+        }
+        val url = protocol.resolveUrl(
+            runtimeModel.baseUrl,
+            runtimeModel.model,
+            runtimeModel.appendBaseUrlPath
+        )
+        val headers = mergeRuntimeHeaders(
+            protocol.buildHeaders(runtimeModel.apiKey, stream = false),
+            credential
+        )
+        val payload = protocol.buildPayload(
+            runtimeModel.model,
+            messages,
+            stream = false,
+            extra = normalizeProtocolExtra(runtimeModel, extra)
+        )
         val body = gson.toJson(payload).toRequestBody(JSON_TYPE)
 
         val reqBuilder = Request.Builder().url(url).post(body)
@@ -162,8 +209,8 @@ class LocalAiClient(
                 LocalAiResult(
                     content = parsed.content,
                     usage = parsed.usage,
-                    usedModelId = model.id,
-                    usedModelName = model.name,
+                    usedModelId = runtimeModel.id,
+                    usedModelName = runtimeModel.name,
                     toolCalls = parsed.toolCalls,
                     finishReason = parsed.finishReason,
                     thinkingContent = parsed.thinkingContent
@@ -176,6 +223,111 @@ class LocalAiClient(
         } catch (e: Exception) {
             Log.e("LocalAiClient", "chatOnce failed: ${e.message}")
             throw e
+        }
+    }
+
+    private suspend fun chatOnceViaStream(
+        model: LocalAiModelEntity,
+        credential: OAuthRuntimeCredential?,
+        messages: List<Map<String, Any>>,
+        extra: Map<String, Any?>,
+        requestTag: String?
+    ): LocalAiResult {
+        val protocol = LocalProtocols.get(model.protocol)
+        val url = protocol.resolveUrl(model.baseUrl, model.model, model.appendBaseUrlPath)
+        val headers = mergeRuntimeHeaders(
+            protocol.buildHeaders(model.apiKey, stream = true),
+            credential
+        )
+        val payload = protocol.buildPayload(
+            model.model,
+            messages,
+            stream = true,
+            extra = normalizeProtocolExtra(model, extra)
+        )
+        val request = Request.Builder()
+            .url(url)
+            .post(gson.toJson(payload).toRequestBody(JSON_TYPE))
+            .apply {
+                headers.forEach { (name, value) -> header(name, value) }
+                requestTag?.let { tag(String::class.java, it) }
+            }
+            .build()
+
+        return client.newCall(request).awaitResponse().use { response ->
+            if (!response.isSuccessful) {
+                val errorBody = response.body?.string().orEmpty().take(500)
+                throw FailoverHttpException(response.code, "HTTP ${response.code}: $errorBody")
+            }
+            val content = StringBuilder()
+            var usage = emptyMap<String, Int>()
+            var terminal: LocalModelResponse? = null
+            val source = response.body?.byteStream()
+                ?: throw IllegalStateException("响应体为空")
+            BufferedReader(InputStreamReader(source, Charsets.UTF_8)).use { reader ->
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    if (!line.startsWith("data:")) continue
+                    val data = line.removePrefix("data:").trim()
+                    if (data.isEmpty() || data == "[DONE]") continue
+                    protocol.parseStreamUsage(data)?.let { (input, output, total) ->
+                        usage = mapOf(
+                            "prompt" to input,
+                            "completion" to output,
+                            "total" to total
+                        )
+                    }
+                    protocol.parseStreamError(data)?.let {
+                        throw IllegalStateException(it)
+                    }
+                    protocol.parseStreamFinalResponse(data)?.let { terminal = it }
+                    protocol.parseStreamChunk(data)?.let(content::append)
+                }
+            }
+            val parsed = terminal
+            LocalAiResult(
+                content = parsed?.content?.takeIf(String::isNotEmpty) ?: content.toString(),
+                usage = parsed?.usage?.takeIf(Map<*, *>::isNotEmpty) ?: usage,
+                usedModelId = model.id,
+                usedModelName = model.name,
+                toolCalls = parsed?.toolCalls.orEmpty(),
+                finishReason = parsed?.finishReason.orEmpty(),
+                thinkingContent = parsed?.thinkingContent.orEmpty()
+            )
+        }
+    }
+
+    private suspend fun resolveRuntimeModel(
+        model: LocalAiModelEntity
+    ): Pair<LocalAiModelEntity, OAuthRuntimeCredential?> {
+        val accountId = model.oauthAccountId ?: return model to null
+        val resolver = oauthCredentialResolver
+            ?: error("OAuth 凭据解析器未初始化")
+        val credential = resolver(accountId)
+        return model.copy(apiKey = credential.accessToken) to credential
+    }
+
+    private fun mergeRuntimeHeaders(
+        protocolHeaders: Map<String, String>,
+        credential: OAuthRuntimeCredential?
+    ): Map<String, String> {
+        if (credential == null) return protocolHeaders
+        return protocolHeaders.toMutableMap().apply {
+            credential.removeHeaders.forEach(::remove)
+            putAll(credential.extraHeaders)
+        }
+    }
+
+    private fun normalizeProtocolExtra(
+        model: LocalAiModelEntity,
+        extra: Map<String, Any?>
+    ): Map<String, Any?> {
+        val isCodexSubscription = model.provider == "openai-codex" ||
+            model.baseUrl.contains("chatgpt.com/backend-api/codex")
+        return if (isCodexSubscription && model.protocol == OpenAIResponsesProtocol.name) {
+            extra - setOf("temperature", "max_tokens", "top_p")
+        } else {
+            extra
         }
     }
 

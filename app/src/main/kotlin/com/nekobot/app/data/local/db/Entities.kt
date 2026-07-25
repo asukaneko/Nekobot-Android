@@ -183,7 +183,10 @@ data class LocalWorldBookEntryEntity(
  * protocol 取值："openai_chat" / "anthropic_messages"。
  * active 表示当前是否为激活模型（本地模式仅使用 active=true 的一个）。
  */
-@Entity(tableName = "local_ai_models")
+@Entity(
+    tableName = "local_ai_models",
+    indices = [Index(value = ["oauth_account_id"])]
+)
 data class LocalAiModelEntity(
     @PrimaryKey val id: String,
     val name: String,
@@ -231,7 +234,31 @@ data class LocalAiModelEntity(
     @ColumnInfo(name = "token_limit_weekly") val tokenLimitWeekly: Long = 0,
     @ColumnInfo(name = "failover_timeout") val failoverTimeout: Int = 0,
     @ColumnInfo(name = "input_price") val inputPrice: Double? = null,
-    @ColumnInfo(name = "output_price") val outputPrice: Double? = null
+    @ColumnInfo(name = "output_price") val outputPrice: Double? = null,
+    /** OAuth 模型只保存账号引用；真实 access/refresh token 由 Keystore 加密账号仓库管理。 */
+    @ColumnInfo(name = "oauth_account_id") val oauthAccountId: String? = null
+)
+
+/**
+ * 本地 OAuth 提供商账号。
+ *
+ * encryptedCredentials 只包含 Android Keystore AES-GCM 密文，不保存明文 token。
+ * metadataJson 仅保存非敏感展示信息（邮箱、区域、模型缓存等）。
+ */
+@Entity(
+    tableName = "local_oauth_accounts",
+    indices = [Index(value = ["provider"])]
+)
+data class LocalOAuthAccountEntity(
+    @PrimaryKey val id: String,
+    val provider: String,
+    val label: String,
+    @ColumnInfo(name = "encrypted_credentials") val encryptedCredentials: String,
+    @ColumnInfo(name = "metadata_json") val metadataJson: String = "{}",
+    val status: String = "connected",
+    @ColumnInfo(name = "expires_at") val expiresAt: Long? = null,
+    @ColumnInfo(name = "created_at") val createdAt: String,
+    @ColumnInfo(name = "updated_at") val updatedAt: String
 )
 
 /**

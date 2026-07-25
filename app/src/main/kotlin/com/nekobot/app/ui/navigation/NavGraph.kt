@@ -35,6 +35,7 @@ import com.nekobot.app.ui.screens.aiconfig.AiConfigScreen
 import com.nekobot.app.ui.screens.aiconfig.AiModelsScreen
 import com.nekobot.app.ui.screens.aiconfig.FailoverQueueScreen
 import com.nekobot.app.ui.screens.aiconfig.LocalAiModelsScreen
+import com.nekobot.app.ui.screens.aiconfig.OAuthAccountsScreen
 import com.nekobot.app.ui.screens.characters.CharacterDetailScreen
 import com.nekobot.app.ui.screens.characters.CharacterViewScreen
 import com.nekobot.app.ui.screens.characters.CharactersScreen
@@ -351,6 +352,9 @@ fun NekobotNavGraph() {
             }
             composable(Routes.LOCAL_AI_MODELS) {
                 LocalAiModelsScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.OAUTH_ACCOUNTS) {
+                OAuthAccountsScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.MEMORY) {
                 MemoryScreen(onBack = { navController.popBackStack() })

@@ -33,9 +33,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalToolEntity::class,
         LocalMcpServerEntity::class,
         LocalApiKeyEntity::class,
-        LocalMessageFavoriteEntity::class
+        LocalMessageFavoriteEntity::class,
+        LocalOAuthAccountEntity::class
     ],
-    version = 21,
+    version = 22,
     exportSchema = false
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -57,6 +58,7 @@ abstract class NekobotDatabase : RoomDatabase() {
     abstract fun toolDao(): ToolDao
     abstract fun mcpServerDao(): McpServerDao
     abstract fun apiKeyDao(): ApiKeyDao
+    abstract fun oauthAccountDao(): OAuthAccountDao
     abstract fun messageFavoriteDao(): MessageFavoriteDao
 
     /**
@@ -500,6 +502,36 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        /** v21 → v22：新增 OAuth 账号表，并让本地模型引用 OAuth 账号。 */
+        private val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN oauth_account_id TEXT")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_oauth_accounts (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        provider TEXT NOT NULL,
+                        label TEXT NOT NULL,
+                        encrypted_credentials TEXT NOT NULL,
+                        metadata_json TEXT NOT NULL DEFAULT '{}',
+                        status TEXT NOT NULL DEFAULT 'connected',
+                        expires_at INTEGER,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_local_oauth_accounts_provider " +
+                        "ON local_oauth_accounts(provider)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_local_ai_models_oauth_account_id " +
+                        "ON local_ai_models(oauth_account_id)"
+                )
+            }
+        }
+
         fun get(context: Context): NekobotDatabase =
             get(context, com.nekobot.app.data.local.PrefsManager.DEFAULT_DB_NAME)
 
@@ -512,7 +544,7 @@ abstract class NekobotDatabase : RoomDatabase() {
                 NekobotDatabase::class.java,
                 dbName
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22)
                 // 仅当迁移脚本未覆盖的未来版本变更时才回退到破坏性迁移（保护现有数据）
                 .fallbackToDestructiveMigration()
                 .build()
