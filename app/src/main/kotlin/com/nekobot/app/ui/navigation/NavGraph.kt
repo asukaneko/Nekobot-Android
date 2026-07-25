@@ -200,6 +200,9 @@ fun NekobotNavGraph() {
                             },
                             onOpenStoryGraph = { id ->
                                 navController.navigate(Routes.storyGraph(id))
+                            },
+                            onNavigate = { route ->
+                                navController.navigate(route)
                             }
                         )
 

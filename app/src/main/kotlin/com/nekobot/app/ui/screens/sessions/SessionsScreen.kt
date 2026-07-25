@@ -93,6 +93,7 @@ import com.nekobot.app.data.model.UpdateSessionRequest
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.EmptyState
+import com.nekobot.app.ui.navigation.Routes
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.NekoDialog
@@ -147,7 +148,8 @@ data class ChannelOption(val label: String, val value: String?)
 fun SessionsScreen(
     onOpenChat: (String) -> Unit,
     onOpenDetail: (String) -> Unit = onOpenChat,
-    onOpenStoryGraph: (String) -> Unit = onOpenChat
+    onOpenStoryGraph: (String) -> Unit = onOpenChat,
+    onNavigate: (String) -> Unit = {}
 ) {
     val viewModel: SessionsViewModel = viewModel()
     val sessionRows by viewModel.displayedSessionRows.collectAsState()
@@ -303,7 +305,16 @@ fun SessionsScreen(
                         characterRankingMode = mode
                         ServiceContainer.prefs.statsCharacterRankingMode = mode.name
                     },
-                    onCustomize = { showDashboardLayout = true }
+                    onCustomize = { showDashboardLayout = true },
+                    onOpenChat = onOpenChat,
+                    onQuickAction = { action ->
+                        when (action) {
+                            DashboardQuickAction.NEW_SESSION -> showCreate = true
+                            DashboardQuickAction.AI_CONFIG -> onNavigate(Routes.AI_CONFIG_CENTER)
+                            DashboardQuickAction.WORLD_BOOKS -> onNavigate(Routes.WORLD_BOOKS)
+                            DashboardQuickAction.SETTINGS -> onNavigate(Routes.SETTINGS)
+                        }
+                    }
                 )
             } else {
                 Column(modifier = Modifier.fillMaxSize()) {

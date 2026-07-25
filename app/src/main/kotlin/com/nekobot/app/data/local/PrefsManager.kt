@@ -165,14 +165,46 @@ class PrefsManager(context: Context) {
         }
 
     var statsDashboardHiddenWidgets: Set<String>
-        get() = prefs.getStringSet(KEY_STATS_DASHBOARD_HIDDEN, emptySet())
-            .orEmpty()
-            .filterTo(linkedSetOf()) { it in DEFAULT_STATS_DASHBOARD_WIDGET_ORDER }
+        get() {
+            val savedHidden = prefs.getStringSet(KEY_STATS_DASHBOARD_HIDDEN, null)
+            val savedVersion = prefs.getInt(KEY_STATS_DASHBOARD_HIDDEN_VERSION, 0)
+            val validWidgets = DEFAULT_STATS_DASHBOARD_WIDGET_ORDER.toSet()
+
+            // 新用户：按默认隐藏列表初始化
+            if (savedHidden == null) {
+                val initialHidden = DEFAULT_HIDDEN_WIDGETS.filter { it in validWidgets }.toSet()
+                prefs.edit()
+                    .putStringSet(KEY_STATS_DASHBOARD_HIDDEN, initialHidden)
+                    .putInt(KEY_STATS_DASHBOARD_HIDDEN_VERSION, STATS_DASHBOARD_WIDGET_VERSION)
+                    .apply()
+                return initialHidden
+            }
+
+            val hidden = savedHidden.filterTo(linkedSetOf()) { it in validWidgets }
+
+            // 老用户升级：将新增的小组件自动加入隐藏列表
+            if (savedVersion < STATS_DASHBOARD_WIDGET_VERSION) {
+                val newWidgets = (savedVersion + 1..STATS_DASHBOARD_WIDGET_VERSION)
+                    .flatMap { WIDGETS_ADDED_IN_VERSION[it].orEmpty() }
+                    .filter { it in validWidgets }
+                hidden.addAll(newWidgets)
+                prefs.edit()
+                    .putStringSet(KEY_STATS_DASHBOARD_HIDDEN, hidden)
+                    .putInt(KEY_STATS_DASHBOARD_HIDDEN_VERSION, STATS_DASHBOARD_WIDGET_VERSION)
+                    .apply()
+            }
+
+            return hidden
+        }
         set(value) {
-            prefs.edit().putStringSet(
-                KEY_STATS_DASHBOARD_HIDDEN,
-                value.filterTo(linkedSetOf()) { it in DEFAULT_STATS_DASHBOARD_WIDGET_ORDER }
-            ).apply()
+            val validWidgets = DEFAULT_STATS_DASHBOARD_WIDGET_ORDER.toSet()
+            prefs.edit()
+                .putStringSet(
+                    KEY_STATS_DASHBOARD_HIDDEN,
+                    value.filterTo(linkedSetOf()) { it in validWidgets }
+                )
+                .putInt(KEY_STATS_DASHBOARD_HIDDEN_VERSION, STATS_DASHBOARD_WIDGET_VERSION)
+                .apply()
         }
 
     /** 高频角色组件排序：SESSIONS / TOKENS。 */
@@ -362,6 +394,7 @@ class PrefsManager(context: Context) {
         private const val KEY_CHAT_INPUT_LAYOUT = "chat_input_layout"
         private const val KEY_STATS_DASHBOARD_ORDER = "stats_dashboard_widget_order"
         private const val KEY_STATS_DASHBOARD_HIDDEN = "stats_dashboard_hidden_widgets"
+        private const val KEY_STATS_DASHBOARD_HIDDEN_VERSION = "stats_dashboard_hidden_version"
         private const val KEY_STATS_CHARACTER_RANKING_MODE = "stats_character_ranking_mode"
         private const val KEY_CHARACTER_VIEW_MODE = "character_view_mode"
         private const val DEFAULT_SERVER = "http://localhost:5000"
@@ -394,8 +427,31 @@ class PrefsManager(context: Context) {
             "trend",
             "session_ranking",
             "model_ranking",
-            "channels"
+            "channels",
+            "recent_sessions",
+            "token_ratio",
+            "week_comparison",
+            "quick_actions"
         )
+
+        /**
+         * 负一屏小组件版本号。
+         * 每次新增小组件时递增，并在 [WIDGETS_ADDED_IN_VERSION] 中登记，
+         * 使老用户升级后新组件默认隐藏，新用户按 [DEFAULT_HIDDEN_WIDGETS] 默认隐藏。
+         */
+        const val STATS_DASHBOARD_WIDGET_VERSION = 1
+
+        /**
+         * 每个版本新增的小组件 ID。用于 hidden 状态迁移。
+         */
+        val WIDGETS_ADDED_IN_VERSION = mapOf(
+            1 to listOf("recent_sessions", "token_ratio", "week_comparison", "quick_actions")
+        )
+
+        /**
+         * 默认隐藏的小组件。新用户首次读取时使用。
+         */
+        val DEFAULT_HIDDEN_WIDGETS = WIDGETS_ADDED_IN_VERSION.values.flatten().toSet()
 
         private val LEGACY_DEFAULT_STATS_DASHBOARD_WIDGET_ORDER = listOf(
             "banner",

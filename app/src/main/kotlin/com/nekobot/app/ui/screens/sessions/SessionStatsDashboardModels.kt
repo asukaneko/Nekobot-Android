@@ -11,6 +11,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
+import kotlin.math.roundToInt
 
 internal enum class CharacterRankingMode {
     SESSIONS,
@@ -51,6 +52,44 @@ data class DashboardCharacterItem(
 )
 
 @Immutable
+data class DashboardRecentSession(
+    val id: String,
+    val name: String,
+    val portraitUrl: String?,
+    val updatedAt: String?
+)
+
+@Immutable
+data class DashboardTokenRatio(
+    val input: Long,
+    val output: Long
+) {
+    val total: Long get() = input + output
+    val inputRatio: Float get() = if (total > 0) input.toFloat() / total else 0f
+    val outputRatio: Float get() = if (total > 0) output.toFloat() / total else 0f
+}
+
+@Immutable
+data class DashboardWeekComparison(
+    val thisWeekSessions: Int,
+    val lastWeekSessions: Int,
+    val thisWeekMessages: Long,
+    val lastWeekMessages: Long,
+    val thisWeekTokens: Long,
+    val lastWeekTokens: Long
+) {
+    fun sessionChangePercent(): Int = percentChange(lastWeekSessions, thisWeekSessions)
+    fun messageChangePercent(): Int = percentChange(lastWeekMessages.toInt(), thisWeekMessages.toInt())
+    fun tokenChangePercent(): Int = percentChange(lastWeekTokens.toInt(), thisWeekTokens.toInt())
+
+    private fun percentChange(old: Int, new: Int): Int = when {
+        old == 0 && new == 0 -> 0
+        old == 0 -> 100
+        else -> ((new - old) * 100f / old).roundToInt()
+    }
+}
+
+@Immutable
 data class SessionStatsDashboardData(
     val totalSessions: Int = 0,
     val totalMessages: Long = 0,
@@ -64,7 +103,10 @@ data class SessionStatsDashboardData(
     val sessionRanking: List<DashboardRankItem> = emptyList(),
     val modelRanking: List<DashboardRankItem> = emptyList(),
     val frequentCharacters: List<DashboardCharacterItem> = emptyList(),
-    val channels: List<DashboardChannelItem> = emptyList()
+    val channels: List<DashboardChannelItem> = emptyList(),
+    val recentSessions: List<DashboardRecentSession> = emptyList(),
+    val tokenRatio: DashboardTokenRatio? = null,
+    val weekComparison: DashboardWeekComparison? = null
 )
 
 internal fun sortDashboardCharacters(
@@ -222,6 +264,89 @@ internal fun buildSessionStatsDashboardData(
         .sortedByDescending { it.value }
         .map { DashboardChannelItem(it.key, it.value) }
 
+    // 最近会话：按更新时间倒序取前 5 个
+    val recentSessions = visibleSessions
+        .sortedByDescending { parseDashboardDate(it.updatedAt ?: it.createdAt)?.atStartOfDay()?.toEpochSecond(java.time.ZoneId.systemDefault().rules.getOffset(java.time.LocalDateTime.now())) ?: 0L }
+        .take(5)
+        .map { session ->
+            DashboardRecentSession(
+                id = session.id.orEmpty(),
+                name = session.displayName,
+                portraitUrl = session.portraitUrl ?: session.characterAvatar ?: session.senderAvatar,
+                updatedAt = session.updatedAt ?: session.createdAt
+            )
+        }
+
+    // Token 输入/输出比：优先用今日汇总，否则按 records 聚合
+    val tokenRatio = when {
+        stats?.todayInput != null || stats?.todayOutput != null -> {
+            DashboardTokenRatio(
+                input = stats.todayInput ?: 0L,
+                output = stats.todayOutput ?: 0L
+            )
+        }
+        records.isNotEmpty() -> {
+            var inputSum = 0L
+            var outputSum = 0L
+            records.forEach { element ->
+                inputSum += element.dashboardLong("input", "input_tokens") ?: 0L
+                outputSum += element.dashboardLong("output", "output_tokens") ?: 0L
+            }
+            if (inputSum > 0L || outputSum > 0L) DashboardTokenRatio(inputSum, outputSum) else null
+        }
+        else -> null
+    }
+
+    // 本周 vs 上周：按会话更新时间落在近 14 天内统计
+    val thisWeekStart = today.minusDays(6)
+    val lastWeekStart = today.minusDays(13)
+    val lastWeekEnd = today.minusDays(7)
+    var thisWeekSessions = 0
+    var lastWeekSessions = 0
+    var thisWeekMessages = 0L
+    var lastWeekMessages = 0L
+    var thisWeekTokens = 0L
+    var lastWeekTokens = 0L
+    visibleSessions.forEach { session ->
+        val date = parseDashboardDate(session.updatedAt ?: session.createdAt) ?: return@forEach
+        val sessionId = session.id.orEmpty()
+        val tokens = sessionTokensFromRanking[sessionId]
+            ?: sessionTokensFromRecords[sessionId]
+            ?: 0L
+        val messages = (session.messageCount ?: 0).toLong()
+        when {
+            !date.isBefore(thisWeekStart) && !date.isAfter(today) -> {
+                thisWeekSessions++
+                thisWeekMessages += messages
+                thisWeekTokens += tokens
+            }
+            !date.isBefore(lastWeekStart) && !date.isAfter(lastWeekEnd) -> {
+                lastWeekSessions++
+                lastWeekMessages += messages
+                lastWeekTokens += tokens
+            }
+        }
+    }
+    // 若 records 有日期维度，也用 records 补齐 token 统计（会话更新时间与 token 记录日期可能不同）
+    records.forEach { element ->
+        val date = dashboardRecordDate(element) ?: return@forEach
+        val input = element.dashboardLong("input", "input_tokens") ?: 0L
+        val output = element.dashboardLong("output", "output_tokens") ?: 0L
+        val tokens = element.dashboardLong("total", "total_tokens", "tokens") ?: (input + output)
+        when {
+            !date.isBefore(thisWeekStart) && !date.isAfter(today) -> thisWeekTokens += tokens
+            !date.isBefore(lastWeekStart) && !date.isAfter(lastWeekEnd) -> lastWeekTokens += tokens
+        }
+    }
+    val weekComparison = DashboardWeekComparison(
+        thisWeekSessions = thisWeekSessions,
+        lastWeekSessions = lastWeekSessions,
+        thisWeekMessages = thisWeekMessages,
+        lastWeekMessages = lastWeekMessages,
+        thisWeekTokens = thisWeekTokens,
+        lastWeekTokens = lastWeekTokens
+    )
+
     return SessionStatsDashboardData(
         totalSessions = visibleSessions.size,
         totalMessages = visibleSessions.sumOf { (it.messageCount ?: 0).toLong() },
@@ -239,7 +364,10 @@ internal fun buildSessionStatsDashboardData(
         sessionRanking = sessionRanking,
         modelRanking = modelRanking,
         frequentCharacters = frequentCharacters,
-        channels = channels
+        channels = channels,
+        recentSessions = recentSessions,
+        tokenRatio = tokenRatio,
+        weekComparison = weekComparison
     )
 }
 

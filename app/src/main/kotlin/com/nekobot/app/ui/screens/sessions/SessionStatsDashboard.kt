@@ -2,10 +2,13 @@ package com.nekobot.app.ui.screens.sessions
 
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,9 +26,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AutoGraph
@@ -37,7 +43,13 @@ import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.RecentActors
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.TrendingDown
+import androidx.compose.material.icons.filled.TrendingFlat
+import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -65,6 +77,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -93,6 +107,8 @@ internal fun SessionStatsDashboard(
     characterRankingMode: CharacterRankingMode,
     onCharacterRankingModeChange: (CharacterRankingMode) -> Unit,
     onCustomize: () -> Unit,
+    onOpenChat: (String) -> Unit = {},
+    onQuickAction: (DashboardQuickAction) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val visibleWidgets = remember(widgetOrder, hiddenWidgets) {
@@ -132,6 +148,13 @@ internal fun SessionStatsDashboard(
                         valueIsTokens = true
                     )
                     "channels" -> DashboardChannels(data.channels, data.totalSessions)
+                    "recent_sessions" -> DashboardRecentSessions(
+                        sessions = data.recentSessions,
+                        onOpenChat = onOpenChat
+                    )
+                    "token_ratio" -> DashboardTokenRatio(data.tokenRatio)
+                    "week_comparison" -> DashboardWeekComparison(data.weekComparison)
+                    "quick_actions" -> DashboardQuickActions(onAction = onQuickAction)
                 }
             }
             if (visibleWidgets.isEmpty()) {
@@ -1026,7 +1049,11 @@ private fun dashboardWidgetDescriptors(): Map<String, Pair<String, ImageVector>>
     "trend" to (stringResource(R.string.stats_trend_title) to Icons.Filled.AutoGraph),
     "session_ranking" to (stringResource(R.string.stats_session_ranking_title) to Icons.Filled.EmojiEvents),
     "model_ranking" to (stringResource(R.string.stats_model_ranking_title) to Icons.Filled.Memory),
-    "channels" to (stringResource(R.string.stats_channels_title) to Icons.Filled.ViewModule)
+    "channels" to (stringResource(R.string.stats_channels_title) to Icons.Filled.ViewModule),
+    "recent_sessions" to (stringResource(R.string.stats_recent_sessions_title) to Icons.Filled.ChatBubble),
+    "token_ratio" to (stringResource(R.string.stats_token_ratio_title) to Icons.Filled.Memory),
+    "week_comparison" to (stringResource(R.string.stats_week_comparison_title) to Icons.Filled.AutoGraph),
+    "quick_actions" to (stringResource(R.string.stats_quick_actions_title) to Icons.Filled.DashboardCustomize)
 )
 
 internal fun formatCompactNumber(value: Long): String = when {
@@ -1034,4 +1061,354 @@ internal fun formatCompactNumber(value: Long): String = when {
     value >= 1_000_000L -> String.format(Locale.US, "%.1fM", value / 1_000_000.0)
     value >= 1_000L -> String.format(Locale.US, "%.1fK", value / 1_000.0)
     else -> value.toString()
+}
+
+/** 快捷操作类型。 */
+internal enum class DashboardQuickAction {
+    NEW_SESSION,
+    AI_CONFIG,
+    WORLD_BOOKS,
+    SETTINGS
+}
+
+@Composable
+private fun DashboardRecentSessions(
+    sessions: List<DashboardRecentSession>,
+    onOpenChat: (String) -> Unit
+) {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        DashboardWidgetHeader(stringResource(R.string.stats_recent_sessions_title), Icons.Filled.ChatBubble)
+        Spacer(Modifier.height(12.dp))
+        if (sessions.isEmpty()) {
+            DashboardEmptyData()
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                sessions.forEach { session ->
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .width(72.dp)
+                            .clickable { onOpenChat(session.id) }
+                    ) {
+                        val portrait = resolveAvatarUrl(session.portraitUrl)
+                        Box(
+                            modifier = Modifier
+                                .size(58.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            if (portrait != null) {
+                                AsyncImage(
+                                    model = portrait,
+                                    contentDescription = session.name,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            Brush.linearGradient(
+                                                listOf(
+                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.72f),
+                                                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.50f)
+                                                )
+                                            )
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Filled.ChatBubble,
+                                        contentDescription = null,
+                                        tint = Color.White.copy(alpha = 0.88f),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            session.name,
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DashboardTokenRatio(ratio: DashboardTokenRatio?) {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        DashboardWidgetHeader(stringResource(R.string.stats_token_ratio_title), Icons.Filled.Memory)
+        Spacer(Modifier.height(12.dp))
+        if (ratio == null || ratio.total <= 0L) {
+            DashboardEmptyData()
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.size(110.dp), contentAlignment = Alignment.Center) {
+                    val primary = MaterialTheme.colorScheme.primary
+                    val secondary = MaterialTheme.colorScheme.secondary
+                    val background = MaterialTheme.colorScheme.surfaceVariant
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val strokeWidth = size.width * 0.12f
+                        val radius = (size.width - strokeWidth) / 2
+                        val center = this.center
+                        drawArc(
+                            color = background,
+                            startAngle = -90f,
+                            sweepAngle = 360f,
+                            useCenter = false,
+                            style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                            size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2),
+                            topLeft = androidx.compose.ui.geometry.Offset(
+                                center.x - radius,
+                                center.y - radius
+                            )
+                        )
+                        val inputSweep = 360f * ratio.inputRatio
+                        drawArc(
+                            color = primary,
+                            startAngle = -90f,
+                            sweepAngle = inputSweep,
+                            useCenter = false,
+                            style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                            size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2),
+                            topLeft = androidx.compose.ui.geometry.Offset(
+                                center.x - radius,
+                                center.y - radius
+                            )
+                        )
+                        val outputStart = -90f + inputSweep + 2f
+                        val outputSweep = (360f * ratio.outputRatio - 2f).coerceAtLeast(0f)
+                        if (outputSweep > 0f) {
+                            drawArc(
+                                color = secondary,
+                                startAngle = outputStart,
+                                sweepAngle = outputSweep,
+                                useCenter = false,
+                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                                size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2),
+                                topLeft = androidx.compose.ui.geometry.Offset(
+                                    center.x - radius,
+                                    center.y - radius
+                                )
+                            )
+                        }
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            formatCompactNumber(ratio.total),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            stringResource(R.string.stats_token_ratio_total),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Spacer(Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    TokenRatioLegendItem(
+                        color = MaterialTheme.colorScheme.primary,
+                        label = stringResource(R.string.stats_token_ratio_input),
+                        value = formatCompactNumber(ratio.input),
+                        ratio = ratio.inputRatio
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    TokenRatioLegendItem(
+                        color = MaterialTheme.colorScheme.secondary,
+                        label = stringResource(R.string.stats_token_ratio_output),
+                        value = formatCompactNumber(ratio.output),
+                        ratio = ratio.outputRatio
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TokenRatioLegendItem(
+    color: Color,
+    label: String,
+    value: String,
+    ratio: Float
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(color)
+        )
+        Spacer(Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        }
+        Text(
+            "${(ratio * 100).toInt()}%",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun DashboardWeekComparison(comparison: DashboardWeekComparison?) {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        DashboardWidgetHeader(stringResource(R.string.stats_week_comparison_title), Icons.Filled.AutoGraph)
+        Spacer(Modifier.height(12.dp))
+        if (comparison == null || (comparison.thisWeekTokens == 0L && comparison.lastWeekTokens == 0L)) {
+            DashboardEmptyData()
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ComparisonRow(
+                    label = stringResource(R.string.stats_week_sessions),
+                    thisValue = comparison.thisWeekSessions.toString(),
+                    lastValue = stringResource(R.string.stats_week_last_value, comparison.lastWeekSessions),
+                    changePercent = comparison.sessionChangePercent()
+                )
+                ComparisonRow(
+                    label = stringResource(R.string.stats_week_messages),
+                    thisValue = formatCompactNumber(comparison.thisWeekMessages),
+                    lastValue = stringResource(R.string.stats_week_last_value, formatCompactNumber(comparison.lastWeekMessages)),
+                    changePercent = comparison.messageChangePercent()
+                )
+                ComparisonRow(
+                    label = stringResource(R.string.stats_week_tokens),
+                    thisValue = formatCompactNumber(comparison.thisWeekTokens),
+                    lastValue = stringResource(R.string.stats_week_last_value, formatCompactNumber(comparison.lastWeekTokens)),
+                    changePercent = comparison.tokenChangePercent()
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComparisonRow(
+    label: String,
+    thisValue: String,
+    lastValue: String,
+    changePercent: Int
+) {
+    val isUp = changePercent > 0
+    val isFlat = changePercent == 0
+    val icon = when {
+        isFlat -> Icons.Filled.TrendingFlat
+        isUp -> Icons.Filled.TrendingUp
+        else -> Icons.Filled.TrendingDown
+    }
+    val tint = when {
+        isFlat -> MaterialTheme.colorScheme.onSurfaceVariant
+        isUp -> Color(0xFF4CAF50)
+        else -> MaterialTheme.colorScheme.error
+    }
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            Column(horizontalAlignment = Alignment.End) {
+                Text(thisValue, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(lastValue, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.width(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(2.dp))
+                Text(
+                    "${kotlin.math.abs(changePercent)}%",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = tint,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DashboardQuickActions(onAction: (DashboardQuickAction) -> Unit) {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        DashboardWidgetHeader(stringResource(R.string.stats_quick_actions_title), Icons.Filled.DashboardCustomize)
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            QuickActionButton(
+                icon = Icons.Filled.Add,
+                label = stringResource(R.string.stats_quick_action_new_session),
+                modifier = Modifier.weight(1f),
+                onClick = { onAction(DashboardQuickAction.NEW_SESSION) }
+            )
+            QuickActionButton(
+                icon = Icons.Filled.SmartToy,
+                label = stringResource(R.string.stats_quick_action_ai_config),
+                modifier = Modifier.weight(1f),
+                onClick = { onAction(DashboardQuickAction.AI_CONFIG) }
+            )
+            QuickActionButton(
+                icon = Icons.Filled.MenuBook,
+                label = stringResource(R.string.stats_quick_action_world_books),
+                modifier = Modifier.weight(1f),
+                onClick = { onAction(DashboardQuickAction.WORLD_BOOKS) }
+            )
+            QuickActionButton(
+                icon = Icons.Filled.Settings,
+                label = stringResource(R.string.stats_quick_action_settings),
+                modifier = Modifier.weight(1f),
+                onClick = { onAction(DashboardQuickAction.SETTINGS) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickActionButton(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.height(6.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
 }
