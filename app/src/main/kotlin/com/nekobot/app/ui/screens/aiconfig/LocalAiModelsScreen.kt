@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
@@ -32,9 +34,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -74,7 +78,6 @@ import com.nekobot.app.ui.components.ModelCardFrame
 import com.nekobot.app.ui.components.ModelCardMenuButton
 import com.nekobot.app.ui.components.ModelEndpointRow
 import com.nekobot.app.ui.components.ModelInfoChip
-import com.nekobot.app.ui.components.ModelStatusBadge
 import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.components.ProviderLogo
 import com.nekobot.app.ui.components.SectionHeader
@@ -529,21 +532,15 @@ private fun ModelCard(
             )
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = model.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    if (isActive) {
-                        Spacer(Modifier.width(8.dp))
-                        ModelStatusBadge(text = stringResource(R.string.localai_current_model))
-                    }
-                }
+                Text(
+                    text = model.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = model.model,
@@ -554,6 +551,15 @@ private fun ModelCard(
                 )
             }
             Spacer(Modifier.width(10.dp))
+            if (isActive) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = stringResource(R.string.localai_current_model),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+            }
             Box {
                 ModelCardMenuButton(
                     contentDescription = stringResource(R.string.localai_more),
@@ -604,18 +610,53 @@ private fun ModelCard(
 
         ModelCardDivider(modifier = Modifier.padding(vertical = 10.dp))
 
-        // 操作区保持轻量；当前模型不再重复展示一个禁用按钮。
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = onTest) {
-                Text(stringResource(R.string.aiconfig_test))
+        // 底部操作区：紧凑等分按钮栏，避免左侧大面积留白，视觉上更协调。
+        if (isActive) {
+            OutlinedButton(
+                onClick = onTest,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(34.dp),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.aiconfig_test),
+                    style = MaterialTheme.typography.labelMedium
+                )
             }
-            if (!isActive) {
-                TextButton(onClick = onSetActive) {
-                    Text(stringResource(R.string.localai_set_current))
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = onTest,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(34.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.aiconfig_test),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+                FilledTonalButton(
+                    onClick = onSetActive,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(34.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.localai_set_current),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             }
         }
