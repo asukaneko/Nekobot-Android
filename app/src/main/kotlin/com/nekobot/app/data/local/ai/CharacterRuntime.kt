@@ -313,16 +313,24 @@ class CharacterRuntime(
         stateRepo?.let { repo ->
             repo.get(identity.characterId, identity.scopeId)?.let { return it }
         }
-        // 创建初始状态
+        // 创建初始状态：优先读取角色卡 initial_state 中的 mood/mood_intensity/energy
         // lastActiveAt 留空：首次对话时 real_time.continuity 会判定为 first_contact，
         // 与原仓库 build_current_real_time_context(previous_turn_time="") 行为一致。
         val now = Instant.now().toString()
+        val init = profile.initialState
+        val mood = (init["mood"] as? String)?.takeIf { it.isNotBlank() } ?: "平静"
+        val moodIntensity = (init["mood_intensity"] as? Number)?.toFloat()
+            ?: init["mood_intensity"]?.toString()?.toFloatOrNull()
+            ?: 0.5f
+        val energy = (init["energy"] as? Number)?.toInt()
+            ?: init["energy"]?.toString()?.toIntOrNull()
+            ?: 70
         return CharacterState(
             characterId = identity.characterId,
             scopeId = identity.scopeId,
-            mood = "平静",
-            moodIntensity = 0.5f,
-            energy = 70,
+            mood = mood,
+            moodIntensity = moodIntensity.coerceIn(0f, 1f),
+            energy = energy.coerceIn(0, 100),
             lastActiveAt = "",
             updatedAt = now
         )

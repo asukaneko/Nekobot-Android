@@ -508,7 +508,7 @@ private fun TableRenderer(block: MdBlock.Table, color: androidx.compose.ui.graph
     }
 }
 
-/** 表格单元格：固定宽度 width + fillMaxHeight 统一行高 + 居中文本 */
+/** 表格单元格：固定宽度 width + fillMaxHeight 统一行高 + 居中文本 + 行内格式（粗体/斜体/代码） */
 @Composable
 private fun androidx.compose.foundation.layout.RowScope.TableCell(
     text: String,
@@ -526,7 +526,7 @@ private fun androidx.compose.foundation.layout.RowScope.TableCell(
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = text,
+            text = parseInline(text, color, style),
             style = style,
             color = color,
             textAlign = TextAlign.Center

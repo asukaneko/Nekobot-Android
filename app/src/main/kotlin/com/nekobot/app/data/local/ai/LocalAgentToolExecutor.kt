@@ -4,8 +4,10 @@ import com.google.gson.Gson
 import com.nekobot.app.data.local.db.BuiltinTools
 import com.nekobot.app.data.remote.ExecAuthorization
 import com.nekobot.app.data.remote.ExecConfirmationRequest
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.net.URI
 import java.net.URLEncoder
@@ -203,10 +205,140 @@ internal class LocalAgentToolExecutor(
     private fun searchWeb(args: Map<String, Any>): Map<String, Any> {
         val query = args.string("query")
         if (query.isBlank()) return failure("搜索词不能为空")
+        // 优先使用 Exa MCP（匿名搜索，无需 API Key）；失败时回退到搜狗搜索
+        val exaResult = runCatching { searchWebViaExa(query) }
+        val result = exaResult.getOrNull()
+        if (result != null && (result["success"] as? Boolean) == true) return result
+        // Exa 失败时回退到搜狗，并在 content 中附加失败提示
+        val fallback = searchWebViaSogou(query)
+        val hint = exaResult.exceptionOrNull()?.message?.take(200) ?: (result?.get("error") as? String)
+        if (hint != null) {
+            val merged = fallback.toMutableMap()
+            merged["content"] = "（Exa 搜索失败，已回退到搜狗：$hint）\n\n" + fallback["content"]
+            return merged
+        }
+        return fallback
+    }
+
+    /** 通过 Exa MCP Streamable HTTP 端点调用 web_search_exa 工具（匿名搜索，无需 API Key）。 */
+    private fun searchWebViaExa(query: String): Map<String, Any> {
+        val baseUrl = "https://mcp.exa.ai/mcp"
+        val jsonMediaType = "application/json".toMediaType()
+
+        // 1. Initialize 请求，建立 MCP 会话
+        val initPayload = """
+            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"nekobot-android","version":"1.0"}}}
+        """.trimIndent().toRequestBody(jsonMediaType)
+        val initRequest = Request.Builder()
+            .url(baseUrl)
+            .post(initPayload)
+            .header("Accept", "application/json, text/event-stream")
+            .header("Content-Type", "application/json")
+            .build()
+        var sessionId: String? = null
+        val initResult = withHttpResponse(initRequest) { response ->
+            // 从响应头获取 Mcp-Session-Id（若存在）
+            sessionId = response.header("Mcp-Session-Id")
+            parseMcpResponse(response.body?.string().orEmpty())
+        }
+        val initError = initResult?.get("error")
+        if (initError != null) {
+            return failure("Exa MCP 初始化失败: $initError")
+        }
+
+        // 2. 发送 initialized 通知（按规范需要，但即使省略通常仍可工作）
+        runCatching {
+            val notifPayload = """
+                {"jsonrpc":"2.0","method":"notifications/initialized"}
+            """.trimIndent().toRequestBody(jsonMediaType)
+            val notifRequest = Request.Builder()
+                .url(baseUrl)
+                .post(notifPayload)
+                .header("Accept", "application/json, text/event-stream")
+                .header("Content-Type", "application/json")
+                .apply { sessionId?.let { header("Mcp-Session-Id", it) } }
+                .build()
+            withHttpResponse(notifRequest) { /* 忽略响应 */ }
+        }
+
+        // 3. 调用 web_search_exa 工具
+        val callPayload = gson.toJson(mapOf(
+            "jsonrpc" to "2.0",
+            "id" to 2,
+            "method" to "tools/call",
+            "params" to mapOf(
+                "name" to "web_search_exa",
+                "arguments" to mapOf(
+                    "query" to query,
+                    "numResults" to 5
+                )
+            )
+        ))
+        val callRequest = Request.Builder()
+            .url(baseUrl)
+            .post(callPayload.toRequestBody(jsonMediaType))
+            .header("Accept", "application/json, text/event-stream")
+            .header("Content-Type", "application/json")
+            .apply { sessionId?.let { header("Mcp-Session-Id", it) } }
+            .build()
+        val callResult = withHttpResponse(callRequest) { response ->
+            parseMcpResponse(response.body?.string().orEmpty())
+        } ?: return failure("Exa MCP 响应解析失败")
+
+        val callError = callResult.get("error")
+        if (callError != null) {
+            return failure("Exa MCP 工具调用失败: $callError")
+        }
+
+        @Suppress("UNCHECKED_CAST")
+        val resultObj = callResult["result"] as? Map<String, Any>
+            ?: return failure("Exa MCP 返回结果格式异常")
+        @Suppress("UNCHECKED_CAST")
+        val contentList = resultObj["content"] as? List<Map<String, Any>>
+            ?: return failure("Exa MCP 返回内容为空")
+
+        // 提取文本内容
+        val text = contentList.joinToString("\n\n") { item ->
+            (item["text"] as? String).orEmpty()
+        }.take(12000)
+
+        return success(
+            "query" to query,
+            "source" to "exa",
+            "content" to text,
+            "result_count" to contentList.size
+        )
+    }
+
+    /** 解析 MCP 响应（支持纯 JSON 和 SSE event stream 两种格式）。 */
+    private fun parseMcpResponse(raw: String): Map<String, Any>? {
+        if (raw.isBlank()) return null
+        // 尝试直接解析为 JSON
+        runCatching {
+            val parsed = gson.fromJson(raw, Map::class.java) as? Map<String, Any>
+            if (parsed != null) return parsed
+        }
+        // 尝试解析 SSE 格式：每行 "data: {...}"
+        val dataLines = raw.split("\n")
+            .mapNotNull { line ->
+                val trimmed = line.trim()
+                if (trimmed.startsWith("data:")) trimmed.substring(5).trim().takeIf { it.isNotEmpty() }
+                else null
+            }
+        for (line in dataLines) {
+            runCatching {
+                val parsed = gson.fromJson(line, Map::class.java) as? Map<String, Any>
+                if (parsed != null) return parsed
+            }
+        }
+        return null
+    }
+
+    private fun searchWebViaSogou(query: String): Map<String, Any> {
         val encoded = URLEncoder.encode(query, StandardCharsets.UTF_8.name())
         val url = "https://www.sogou.com/web?query=$encoded"
         val text = stripMarkup(fetchText(url)).take(12000)
-        return success("query" to query, "source_url" to url, "content" to text)
+        return success("query" to query, "source_url" to url, "source" to "sogou", "content" to text)
     }
 
     private fun searchNews(args: Map<String, Any>): Map<String, Any> {

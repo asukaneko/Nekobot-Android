@@ -107,9 +107,12 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
                 "description / personality / scenario / first_message / system_prompt / greeting / " +
                 "basic_info / example_dialogues / response_format / tags / alternate_greetings / rules " +
                 "/ initial_relationship（好感/信任/熟悉/依赖/安全感/嫉妒 0-100）" +
+                "/ initial_state（心情/情绪强度/精力）" +
                 "全部填齐，避免分多次调用浪费 token。tags / alternate_greetings / rules 必须是字符串数组。" +
                 "initial_relationship 必须传 JSON 对象，6 个整数字段，缺失字段会回退到默认值" +
-                "（affection=50 / trust=50 / familiarity=30 / dependency=30 / security=50 / jealousy=0）。",
+                "（affection=50 / trust=50 / familiarity=30 / dependency=30 / security=50 / jealousy=0）。" +
+                "initial_state 为 JSON 对象，可设 mood（字符串，如\"开心\"/\"愤怒\"/\"平静\"，默认\"平静\"）、" +
+                "mood_intensity（0-1 浮点，默认 0.5）、energy（0-100 整数，默认 70）。",
             params(
                 mapOf(
                     "name" to str("角色名（必填）"),
@@ -136,6 +139,15 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
                             "security" to mapOf("type" to "integer", "description" to "安全感，默认 50"),
                             "jealousy" to mapOf("type" to "integer", "description" to "嫉妒，默认 0")
                         )
+                    ),
+                    "initial_state" to mapOf(
+                        "type" to "object",
+                        "description" to "初始状态数值（心情/精力，与关系值分开存储）",
+                        "properties" to mapOf(
+                            "mood" to mapOf("type" to "string", "description" to "初始心情，如\"开心\"/\"愤怒\"/\"平静\"，默认\"平静\""),
+                            "mood_intensity" to mapOf("type" to "number", "description" to "情绪强度 0-1，默认 0.5"),
+                            "energy" to mapOf("type" to "integer", "description" to "精力 0-100，默认 70")
+                        )
                     )
                 ),
                 listOf("name")
@@ -144,7 +156,8 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
         definition(
             "db_update_character",
             "修改指定角色卡的可变字段。仅传入需要修改的字段；tags/alternate_greetings/rules 必须是字符串数组，传入时整体覆盖原有值。" +
-                "initial_relationship 字段仅在显式传入时覆盖该角色对 local-user 的关系六维初始值。",
+                "initial_relationship 字段仅在显式传入时覆盖该角色对 local-user 的关系六维初始值。" +
+                "initial_state 字段仅在显式传入时覆盖角色卡初始状态数值（心情/精力）。",
             params(
                 mapOf(
                     "character_id" to str("角色卡 ID（必填）"),
@@ -171,6 +184,15 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
                             "dependency" to mapOf("type" to "integer"),
                             "security" to mapOf("type" to "integer"),
                             "jealousy" to mapOf("type" to "integer")
+                        )
+                    ),
+                    "initial_state" to mapOf(
+                        "type" to "object",
+                        "description" to "初始状态数值（心情/精力），显式传入时整体覆盖原有 initial_state",
+                        "properties" to mapOf(
+                            "mood" to mapOf("type" to "string", "description" to "初始心情，如\"开心\"/\"愤怒\"/\"平静\""),
+                            "mood_intensity" to mapOf("type" to "number", "description" to "情绪强度 0-1"),
+                            "energy" to mapOf("type" to "integer", "description" to "精力 0-100")
                         )
                     )
                 ),
@@ -668,6 +690,21 @@ internal class LocalDbToolExecutor(
     private suspend fun createCharacter(args: Map<String, Any>): Map<String, Any> {
         val name = args.string("name").ifBlank { return failure("name 不能为空") }
         val now = nowIso()
+        // 调试日志：记录 AI 传入的 initial_relationship / initial_state 原始值
+        com.nekobot.app.data.local.LocalLogger.i(
+            "LocalDbTool",
+            "createCharacter args: initial_relationship=${args["initial_relationship"]}, " +
+                "initial_state=${args["initial_state"]}, " +
+                "initial_affection=${args["initial_affection"]}, " +
+                "initial_trust=${args["initial_trust"]}"
+        )
+        // 合并 initial_relationship 与 initial_state 到角色卡的 state JSON 字段
+        // （normalizeInitialState 会在加载角色卡时统一解析 mood/energy/六维关系）
+        val initialStateJson = buildInitialStateJson(args)
+        com.nekobot.app.data.local.LocalLogger.i(
+            "LocalDbTool",
+            "createCharacter state JSON: $initialStateJson"
+        )
         val entity = LocalCharacterEntity(
             id = UUID.randomUUID().toString(),
             name = name,
@@ -681,6 +718,7 @@ internal class LocalDbToolExecutor(
             responseFormat = args.string("response_format").ifBlank { null },
             rules = args.stringList("rules")?.let { gson.toJson(it) },
             tags = args.stringList("tags")?.let { gson.toJson(it) },
+            state = initialStateJson,
             systemPrompt = args.string("system_prompt").ifBlank { null },
             greeting = args.string("greeting").ifBlank { null },
             createdAt = now,
@@ -711,10 +749,12 @@ internal class LocalDbToolExecutor(
                 )
             )
         }
+        val initialState = args.stateMap("initial_state")
         return success(
             "character" to entity.toDetail(),
             "character_id" to entity.id,
-            "initial_relationship_applied" to (initialRel != null)
+            "initial_relationship_applied" to (initialRel != null),
+            "initial_state_applied" to (initialState != null)
         )
     }
 
@@ -722,6 +762,18 @@ internal class LocalDbToolExecutor(
         val id = args.string("character_id").ifBlank { return failure("character_id 不能为空") }
         val existing = db.characterDao().getById(id) ?: return failure("角色卡不存在: $id")
         val now = nowIso()
+        // 调试日志：记录 AI 传入的 initial_relationship / initial_state 原始值
+        com.nekobot.app.data.local.LocalLogger.i(
+            "LocalDbTool",
+            "updateCharacter args: initial_relationship=${args["initial_relationship"]}, " +
+                "initial_state=${args["initial_state"]}, existing.state=${existing.state}"
+        )
+        // 合并 initial_state 到原有 state JSON（仅当显式传入 initial_state 或 initial_relationship 时）
+        val newStateJson = mergeExistingStateJson(existing.state, args)
+        com.nekobot.app.data.local.LocalLogger.i(
+            "LocalDbTool",
+            "updateCharacter merged state JSON: $newStateJson"
+        )
         val updated = existing.copy(
             name = args.string("name").ifBlank { existing.name },
             description = args.optString("description", existing.description),
@@ -734,6 +786,7 @@ internal class LocalDbToolExecutor(
             responseFormat = args.optString("response_format", existing.responseFormat),
             rules = args.stringList("rules")?.let { gson.toJson(it) } ?: existing.rules,
             tags = args.stringList("tags")?.let { gson.toJson(it) } ?: existing.tags,
+            state = newStateJson,
             systemPrompt = args.optString("system_prompt", existing.systemPrompt),
             greeting = args.optString("greeting", existing.greeting),
             updatedAt = now
@@ -772,9 +825,11 @@ internal class LocalDbToolExecutor(
             )
             relationshipApplied = true
         }
+        val initialState = args.stateMap("initial_state")
         return success(
             "character" to updated.toDetail(),
-            "initial_relationship_applied" to relationshipApplied
+            "initial_relationship_applied" to relationshipApplied,
+            "initial_state_applied" to (initialState != null)
         )
     }
 
@@ -1440,6 +1495,75 @@ internal class LocalDbToolExecutor(
             this@relationshipMap["initial_jealousy"]?.let { put("jealousy", it) }
         }
         return flat.takeIf { it.isNotEmpty() }
+    }
+
+    /**
+     * 提取 initial_state 字段 Map（mood/mood_intensity/energy）。
+     * 返回 null 表示未传该参数；返回非空 Map 表示传了（可能为部分字段）。
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun Map<String, Any>.stateMap(key: String): Map<String, Any>? {
+        val raw = this[key] ?: return null
+        if (raw is Map<*, *>) return (raw as Map<String, Any>).takeIf { it.isNotEmpty() }
+        return null
+    }
+
+    /**
+     * 构建 createCharacter 用的 state JSON：合并 initial_relationship 与 initial_state 到一个对象。
+     * 与 normalizeInitialState 的解析逻辑保持兼容（affection/trust/.../mood/mood_intensity/energy 都在同一层）。
+     * 返回 null 表示两者都未传；返回字符串表示合并后的 JSON。
+     */
+    private fun buildInitialStateJson(args: Map<String, Any>): String? {
+        val rel = args.relationshipMap("initial_relationship")
+        val state = args.stateMap("initial_state")
+        if (rel == null && state == null) return null
+        val merged = mutableMapOf<String, Any>()
+        rel?.forEach { (k, v) -> merged[k] = v }
+        state?.forEach { (k, v) -> merged[k] = v }
+        // 标准化 mood_intensity 为 Float、energy 为 Int，避免 JSON 数字精度问题
+        merged["mood_intensity"]?.let {
+            val f = (it as? Number)?.toFloat() ?: it.toString().toFloatOrNull()
+            if (f != null) merged["mood_intensity"] = f
+        }
+        merged["energy"]?.let {
+            val i = (it as? Number)?.toInt() ?: it.toString().toIntOrNull()
+            if (i != null) merged["energy"] = i
+        }
+        return gson.toJson(merged)
+    }
+
+    /**
+     * 合并 initial_state / initial_relationship 到 existing state JSON。
+     * 仅当 args 显式传入 initial_state 或 initial_relationship 时才覆盖；否则保持 existing 不变。
+     */
+    private fun mergeExistingStateJson(existingJson: String?, args: Map<String, Any>): String? {
+        val rel = args.relationshipMap("initial_relationship")
+        val state = args.stateMap("initial_state")
+        if (rel == null && state == null) return existingJson
+        // 解析 existing JSON 为 Map
+        val existing: MutableMap<String, Any> = if (existingJson.isNullOrBlank()) {
+            mutableMapOf()
+        } else {
+            try {
+                val type = object : com.google.gson.reflect.TypeToken<Map<String, Any>>() {}.type
+                @Suppress("UNCHECKED_CAST")
+                (gson.fromJson(existingJson, type) as? Map<String, Any>)?.toMutableMap() ?: mutableMapOf()
+            } catch (e: Exception) {
+                mutableMapOf()
+            }
+        }
+        rel?.forEach { (k, v) -> existing[k] = v }
+        state?.forEach { (k, v) -> existing[k] = v }
+        // 标准化数字类型
+        existing["mood_intensity"]?.let {
+            val f = (it as? Number)?.toFloat() ?: it.toString().toFloatOrNull()
+            if (f != null) existing["mood_intensity"] = f
+        }
+        existing["energy"]?.let {
+            val i = (it as? Number)?.toInt() ?: it.toString().toIntOrNull()
+            if (i != null) existing["energy"] = i
+        }
+        return gson.toJson(existing)
     }
 
     /** 从六维关系 Map 中读取整数字段并裁剪到 [min, max] 区间。 */

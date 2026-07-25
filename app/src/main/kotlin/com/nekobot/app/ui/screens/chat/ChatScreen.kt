@@ -2597,7 +2597,7 @@ private fun DateSeparatorChip(label: String) {
     }
 }
 
-/** 提取消息时间所属的日期键（yyyy-MM-dd），无法解析返回 null。 */
+/** 提取消息时间所属的日期键（yyyy-MM-dd，按手机时区），无法解析返回 null。 */
 private fun dayKey(raw: String?): String? {
     if (raw.isNullOrBlank()) return null
     val s = raw.trim()
@@ -2609,7 +2609,13 @@ private fun dayKey(raw: String?): String? {
                 java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
                     .format(java.util.Date(ms))
             }
-            // ISO 或 “日期 时间” 格式：取前 10 位日期
+            // ISO 8601 带时区标识（Z 或 +HH:MM[:SS]）：按手机时区转换日期
+            s.contains('T') && (s.endsWith('Z') || s.contains(Regex("[+\\-]\\d{2}:?\\d{2}"))) -> {
+                val instant = parseIsoInstant(s) ?: return null
+                java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+                    .format(java.util.Date(instant.toEpochMilli()))
+            }
+            // ISO 或 “日期 时间” 格式（无时区标识）：取前 10 位日期（视为本地时区）
             s.length >= 10 && s.substring(0, 10).matches(Regex("\\d{4}-\\d{2}-\\d{2}")) ->
                 s.substring(0, 10)
             else -> null
@@ -2926,27 +2932,32 @@ internal fun mergeRealtimeNewMessage(
 
 /**
  * 把时间戳/时间字符串精简到「分钟」级，尽量短以节省气泡下方空间。
- * 支持毫秒时间戳、ISO 字符串、已格式化字符串三种输入。
- * 例：2026-07-10T14:30:45.123 → "14:30"；2026-07-10 14:30 → "14:30"；14:30:45 → "14:30"
+ * 支持毫秒时间戳、ISO 8601（含时区 Z/+HH:MM）、已格式化字符串三种输入。
+ * 自动按手机时区显示：例 2026-07-10T06:30:45.123Z（UTC）在 UTC+8 设备上 → "14:30"
  */
 internal fun compactTime(raw: String?): String? {
     if (raw.isNullOrBlank()) return null
     val s = raw.trim()
     return try {
         when {
-            // 纯数字时间戳（毫秒）
+            // 纯数字时间戳（秒/毫秒）
             s.matches(Regex("^\\d{10,13}$")) -> {
                 val ms = if (s.length == 10) s.toLong() * 1000 else s.toLong()
-                val instant = java.util.Date(ms)
                 java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-                    .format(instant)
+                    .format(java.util.Date(ms))
             }
-            // ISO 或带 T 的时间：提取 HH:mm
+            // ISO 8601 带时区标识（Z 或 +HH:MM[:SS]）：按手机时区转换
+            s.contains('T') && (s.endsWith('Z') || s.contains(Regex("[+\\-]\\d{2}:?\\d{2}"))) -> {
+                val instant = parseIsoInstant(s) ?: return null
+                java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                    .format(java.util.Date(instant.toEpochMilli()))
+            }
+            // ISO 或带 T 的时间（无时区标识）：直接提取 HH:mm（视为本地时区）
             s.contains('T') -> {
                 val timePart = s.substringAfter('T').take(5)
                 if (timePart.matches(Regex("\\d{2}:\\d{2}"))) timePart else null
             }
-            // 含空格分隔日期时间：取时间部分前 5 位
+            // 含空格分隔日期时间：取时间部分前 5 位（视为本地时区）
             s.contains(' ') -> {
                 val timePart = s.substringAfter(' ').take(5)
                 if (timePart.matches(Regex("\\d{2}:\\d{2}"))) timePart else null
@@ -2957,6 +2968,26 @@ internal fun compactTime(raw: String?): String? {
         }
     } catch (e: Exception) {
         null
+    }
+}
+
+/** 解析 ISO 8601 字符串为 java.time.Instant，支持 Z 后缀与 ±HH:MM[:SS] 偏移。 */
+private fun parseIsoInstant(s: String): java.time.Instant? {
+    return try {
+        // Instant.parse 仅支持 Z 后缀；偏移格式用 OffsetDateTime 解析
+        if (s.endsWith('Z')) {
+            java.time.Instant.parse(s)
+        } else {
+            // 尝试解析带偏移的 ISO 字符串
+            java.time.OffsetDateTime.parse(s).toInstant()
+        }
+    } catch (_: Exception) {
+        // 兜底：尝试 LocalDateTime + 系统默认时区（虽然此分支理论上不应触达）
+        try {
+            java.time.LocalDateTime.parse(s).atZone(java.time.ZoneId.systemDefault()).toInstant()
+        } catch (_: Exception) {
+            null
+        }
     }
 }
 
