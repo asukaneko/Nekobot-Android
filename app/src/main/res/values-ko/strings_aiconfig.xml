@@ -4,14 +4,24 @@
     <string name="aiconfig_center_title">AI 설정 센터</string>
     <string name="aiconfig_section_local_ai">로컬 AI</string>
     <string name="aiconfig_section_models_config">모델 및 설정</string>
-    <string name="aiconfig_title">AI 설정</string>
-    <string name="aiconfig_local_ai_models">로컬 AI 모델</string>
-    <string name="aiconfig_local_ai_models_subtitle">로컬 추론 모델과 매개변수를 관리해요</string>
-    <string name="aiconfig_sync_active_params_subtitle">활성 모델의 생성 매개변수를 조회하고 동기화해요</string>
-    <string name="aiconfig_configure_params_subtitle">모델 용도와 생성 매개변수를 설정해요</string>
-    <string name="aiconfig_api_key_management">API Key 관리</string>
-    <string name="aiconfig_manage_local_keys_subtitle">로컬에 저장된 API Key를 관리해요</string>
-    <string name="aiconfig_manage_keys_subtitle">각 모델의 API Key를 관리해요</string>
+    <string name="aiconfig_section_security_advanced">보안 및 고급</string>
+    <string name="aiconfig_title">생성 매개변수</string>
+    <string name="aiconfig_local_ai_models">로컬 모델</string>
+    <string name="aiconfig_local_ai_models_subtitle">설치된 추론 모델을 관리해요</string>
+    <string name="aiconfig_sync_active_params_subtitle">온도, 컨텍스트, 출력 길이</string>
+    <string name="aiconfig_configure_params_subtitle">온도, 컨텍스트, 출력 길이</string>
+    <string name="aiconfig_api_key_management">API 키</string>
+    <string name="aiconfig_manage_local_keys_subtitle">기기에 저장된 액세스 키를 관리해요</string>
+    <string name="aiconfig_manage_keys_subtitle">기기에 저장된 액세스 키를 관리해요</string>
+    <string name="aiconfig_account_title">모델 계정</string>
+    <string name="aiconfig_account_subtitle">모델 서비스 제공자 연결</string>
+    <!-- 항목 우측 상태 텍스트 -->
+    <string name="aiconfig_status_count_models">%1$d개</string>
+    <string name="aiconfig_status_count_keys">%1$d개</string>
+    <string name="aiconfig_status_count_priority">%1$d항목</string>
+    <string name="aiconfig_status_connected">연결 %1$d개</string>
+    <string name="aiconfig_status_not_connected">연결 안 됨</string>
+    <string name="aiconfig_status_default">기본</string>
 
     <!-- ==================== AI 설정 화면 ==================== -->
     <string name="aiconfig_saved">저장했어요</string>
@@ -60,9 +70,9 @@
     <string name="aimodels_no_options">옵션 없음</string>
 
     <!-- ==================== 장애 조치 큐 ==================== -->
-    <string name="failover_queue_title">장애 조치 큐</string>
-    <string name="failover_local_priority_subtitle">용도별 로컬 모델 우선순위를 조회해요</string>
-    <string name="failover_health_subtitle">모델 상태를 조회하고 폴백 순서를 조정해요</string>
+    <string name="failover_queue_title">모델 우선순위</string>
+    <string name="failover_local_priority_subtitle">자동 전환 순서를 설정해요</string>
+    <string name="failover_health_subtitle">자동 전환 순서를 설정해요</string>
     <string name="failover_refresh">새로고침</string>
     <string name="failover_reset_all_health">모든 상태 초기화</string>
     <string name="failover_empty_title">이 용도로 사용 가능한 모델이 없어요</string>

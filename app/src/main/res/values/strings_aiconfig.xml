@@ -4,14 +4,24 @@
     <string name="aiconfig_center_title">AI 配置中心</string>
     <string name="aiconfig_section_local_ai">本地 AI</string>
     <string name="aiconfig_section_models_config">模型与配置</string>
-    <string name="aiconfig_title">AI 配置</string>
-    <string name="aiconfig_local_ai_models">本地 AI 模型</string>
-    <string name="aiconfig_local_ai_models_subtitle">管理本地推理模型与参数</string>
-    <string name="aiconfig_sync_active_params_subtitle">查看并同步当前激活模型的生成参数</string>
-    <string name="aiconfig_configure_params_subtitle">配置模型用途与生成参数</string>
-    <string name="aiconfig_api_key_management">API Key 管理</string>
-    <string name="aiconfig_manage_local_keys_subtitle">管理本地保存的 API 密钥</string>
-    <string name="aiconfig_manage_keys_subtitle">管理各模型的 API 密钥</string>
+    <string name="aiconfig_section_security_advanced">安全与高级</string>
+    <string name="aiconfig_title">生成参数</string>
+    <string name="aiconfig_local_ai_models">本地模型</string>
+    <string name="aiconfig_local_ai_models_subtitle">管理已安装的推理模型</string>
+    <string name="aiconfig_sync_active_params_subtitle">温度、上下文和输出长度</string>
+    <string name="aiconfig_configure_params_subtitle">温度、上下文和输出长度</string>
+    <string name="aiconfig_api_key_management">API 密钥</string>
+    <string name="aiconfig_manage_local_keys_subtitle">管理本机保存的访问密钥</string>
+    <string name="aiconfig_manage_keys_subtitle">管理本机保存的访问密钥</string>
+    <string name="aiconfig_account_title">模型账户</string>
+    <string name="aiconfig_account_subtitle">连接模型服务提供商</string>
+    <!-- 入口右侧的状态文案 -->
+    <string name="aiconfig_status_count_models">%1$d 个</string>
+    <string name="aiconfig_status_count_keys">%1$d 个</string>
+    <string name="aiconfig_status_count_priority">%1$d 项</string>
+    <string name="aiconfig_status_connected">已连接 %1$d 个</string>
+    <string name="aiconfig_status_not_connected">未连接</string>
+    <string name="aiconfig_status_default">默认</string>
 
     <!-- ==================== AI 配置页 ==================== -->
     <string name="aiconfig_saved">保存成功</string>
@@ -60,9 +70,9 @@
     <string name="aimodels_no_options">暂无选项</string>
 
     <!-- ==================== 故障转移队列 ==================== -->
-    <string name="failover_queue_title">故障转移队列</string>
-    <string name="failover_local_priority_subtitle">按用途查看本地模型优先级顺序</string>
-    <string name="failover_health_subtitle">查看模型健康状态并调整回退顺序</string>
+    <string name="failover_queue_title">模型优先级</string>
+    <string name="failover_local_priority_subtitle">设置自动切换顺序</string>
+    <string name="failover_health_subtitle">设置自动切换顺序</string>
     <string name="failover_refresh">刷新</string>
     <string name="failover_reset_all_health">重置全部健康状态</string>
     <string name="failover_empty_title">该用途暂无可用模型</string>

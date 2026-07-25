@@ -4,14 +4,24 @@
     <string name="aiconfig_center_title">AI Config Center</string>
     <string name="aiconfig_section_local_ai">Local AI</string>
     <string name="aiconfig_section_models_config">Models &amp; Config</string>
-    <string name="aiconfig_title">AI Config</string>
-    <string name="aiconfig_local_ai_models">Local AI Models</string>
-    <string name="aiconfig_local_ai_models_subtitle">Manage local inference models and parameters</string>
-    <string name="aiconfig_sync_active_params_subtitle">View and sync generation params of the active model</string>
-    <string name="aiconfig_configure_params_subtitle">Configure model purpose and generation params</string>
-    <string name="aiconfig_api_key_management">API Key Management</string>
-    <string name="aiconfig_manage_local_keys_subtitle">Manage locally saved API keys</string>
-    <string name="aiconfig_manage_keys_subtitle">Manage API keys for each model</string>
+    <string name="aiconfig_section_security_advanced">Security &amp; Advanced</string>
+    <string name="aiconfig_title">Generation Params</string>
+    <string name="aiconfig_local_ai_models">Local Models</string>
+    <string name="aiconfig_local_ai_models_subtitle">Manage installed inference models</string>
+    <string name="aiconfig_sync_active_params_subtitle">Temperature, context and output length</string>
+    <string name="aiconfig_configure_params_subtitle">Temperature, context and output length</string>
+    <string name="aiconfig_api_key_management">API Keys</string>
+    <string name="aiconfig_manage_local_keys_subtitle">Manage access keys stored on this device</string>
+    <string name="aiconfig_manage_keys_subtitle">Manage access keys stored on this device</string>
+    <string name="aiconfig_account_title">Model Accounts</string>
+    <string name="aiconfig_account_subtitle">Connect model service providers</string>
+    <!-- Entry status text -->
+    <string name="aiconfig_status_count_models">%1$d</string>
+    <string name="aiconfig_status_count_keys">%1$d</string>
+    <string name="aiconfig_status_count_priority">%1$d</string>
+    <string name="aiconfig_status_connected">Connected: %1$d</string>
+    <string name="aiconfig_status_not_connected">Not connected</string>
+    <string name="aiconfig_status_default">Default</string>
 
     <!-- ==================== AI Config Screen ==================== -->
     <string name="aiconfig_saved">Saved successfully</string>
@@ -60,9 +70,9 @@
     <string name="aimodels_no_options">No options</string>
 
     <!-- ==================== Failover Queue ==================== -->
-    <string name="failover_queue_title">Failover Queue</string>
-    <string name="failover_local_priority_subtitle">View local model priority order by purpose</string>
-    <string name="failover_health_subtitle">View model health and adjust fallback order</string>
+    <string name="failover_queue_title">Model Priority</string>
+    <string name="failover_local_priority_subtitle">Set auto-switch order</string>
+    <string name="failover_health_subtitle">Set auto-switch order</string>
     <string name="failover_refresh">Refresh</string>
     <string name="failover_reset_all_health">Reset all health status</string>
     <string name="failover_empty_title">No available models for this purpose</string>

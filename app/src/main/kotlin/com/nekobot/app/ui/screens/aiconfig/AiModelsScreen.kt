@@ -229,6 +229,9 @@ class AiModelsViewModel : BaseViewModel() {
         )
     }
 
+    /** 从 ApiKeysScreen 等页面返回时刷新已保存 Key 列表，确保编辑对话框中下拉菜单可用。 */
+    fun refreshApiKeys() = loadApiKeys()
+
     fun resolveApiKey(id: String, onResult: (String) -> Unit) {
         launchResult(
             block = { repo.getApiKey(id) },
@@ -325,6 +328,18 @@ fun AiModelsScreen(onBack: () -> Unit) {
             Toast.makeText(context, toast, Toast.LENGTH_SHORT).show()
             vm.clearToast()
         }
+    }
+
+    // 从 ApiKeysScreen 等页面返回时刷新已保存 Key 列表，确保编辑对话框中下拉菜单可用
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                vm.refreshApiKeys()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Scaffold(
