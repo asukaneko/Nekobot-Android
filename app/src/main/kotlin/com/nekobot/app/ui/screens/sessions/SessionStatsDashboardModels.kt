@@ -60,6 +60,45 @@ data class DashboardRecentSession(
 )
 
 @Immutable
+data class DashboardTodayCharacter(
+    val id: String,
+    val name: String,
+    val description: String?,
+    val portraitUrl: String?
+)
+
+@Immutable
+data class DashboardWebDavStatus(
+    val enabled: Boolean,
+    val configured: Boolean,
+    val url: String?,
+    val lastBackupAt: String?,
+    val lastSyncAt: String?,
+    val lastError: String?,
+    val remoteFileSize: Long?,
+    val remoteModifiedAt: String?
+)
+
+@Immutable
+data class DashboardLogEntry(
+    val time: String,
+    val level: String,
+    val tag: String,
+    val message: String
+)
+
+@Immutable
+data class DashboardAchievement(
+    val id: String,
+    val current: Long,
+    val target: Long,
+    val unlockedAt: Long?
+) {
+    val progress: Float get() = if (target > 0) (current.toFloat() / target).coerceIn(0f, 1f) else 0f
+    val isUnlocked: Boolean get() = unlockedAt != null
+}
+
+@Immutable
 data class DashboardTokenRatio(
     val input: Long,
     val output: Long
@@ -106,7 +145,11 @@ data class SessionStatsDashboardData(
     val channels: List<DashboardChannelItem> = emptyList(),
     val recentSessions: List<DashboardRecentSession> = emptyList(),
     val tokenRatio: DashboardTokenRatio? = null,
-    val weekComparison: DashboardWeekComparison? = null
+    val weekComparison: DashboardWeekComparison? = null,
+    val todayCharacters: List<DashboardTodayCharacter> = emptyList(),
+    val webDavStatus: DashboardWebDavStatus? = null,
+    val localLogPreview: List<DashboardLogEntry> = emptyList(),
+    val achievements: List<DashboardAchievement> = emptyList()
 )
 
 internal fun sortDashboardCharacters(
@@ -128,7 +171,9 @@ internal fun buildSessionStatsDashboardData(
     stats: TokenStats?,
     rankings: TokenRankings?,
     characters: List<CharacterPreset> = emptyList(),
-    today: LocalDate = LocalDate.now()
+    today: LocalDate = LocalDate.now(),
+    webDavStatus: DashboardWebDavStatus? = null,
+    localLogPreview: List<DashboardLogEntry> = emptyList()
 ): SessionStatsDashboardData {
     val visibleSessions = sessions.filter { it.isArchive != true }
     val activityByDate = linkedMapOf<LocalDate, Long>()
@@ -347,9 +392,44 @@ internal fun buildSessionStatsDashboardData(
         lastWeekTokens = lastWeekTokens
     )
 
+    // 今日角色：随机抽取 3 个已有角色卡；若不足则全部展示
+    val todayCharacters = characters
+        .shuffled(java.util.Random(System.currentTimeMillis()))
+        .take(3)
+        .map { char ->
+            DashboardTodayCharacter(
+                id = char.id.orEmpty(),
+                name = char.displayName,
+                description = char.description?.takeIf { it.isNotBlank() }
+                    ?: char.personality?.takeIf { it.isNotBlank() }
+                    ?: char.basicInfo?.takeIf { it.isNotBlank() },
+                portraitUrl = char.portrait ?: char.avatar
+            )
+        }
+
+    // 成就进度：基于当前全局统计数据计算并触发解锁
+    val totalMessages = visibleSessions.sumOf { (it.messageCount ?: 0).toLong() }
+    val totalTokensForAchievements = stats?.totalDisplay ?: 0L
+    val maxAffection = characters.maxOfOrNull { char ->
+        char.state?.get("affection")?.takeIf { it.isJsonPrimitive }?.asInt ?: 0
+    } ?: 0
+    val achievementSnapshots = com.nekobot.app.data.local.AchievementManager.getSnapshots(
+        totalTokens = totalTokensForAchievements,
+        totalMessages = totalMessages,
+        totalSessions = visibleSessions.size,
+        maxAffection = maxAffection
+    ).map { snapshot ->
+        DashboardAchievement(
+            id = snapshot.id,
+            current = snapshot.current,
+            target = snapshot.target,
+            unlockedAt = snapshot.unlockedAt
+        )
+    }
+
     return SessionStatsDashboardData(
         totalSessions = visibleSessions.size,
-        totalMessages = visibleSessions.sumOf { (it.messageCount ?: 0).toLong() },
+        totalMessages = totalMessages,
         activeSessions = visibleSessions.count { session ->
             parseDashboardDate(session.updatedAt ?: session.createdAt)?.let {
                 !it.isBefore(today.minusDays(6)) && !it.isAfter(today)
@@ -367,7 +447,11 @@ internal fun buildSessionStatsDashboardData(
         channels = channels,
         recentSessions = recentSessions,
         tokenRatio = tokenRatio,
-        weekComparison = weekComparison
+        weekComparison = weekComparison,
+        todayCharacters = todayCharacters,
+        webDavStatus = webDavStatus,
+        localLogPreview = localLogPreview,
+        achievements = achievementSnapshots
     )
 }
 

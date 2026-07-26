@@ -49,6 +49,12 @@
     <string name="stats_quick_action_ai_config">AI 설정</string>
     <string name="stats_quick_action_world_books">월드북</string>
     <string name="stats_quick_action_settings">설정</string>
+    <string name="stats_character_discovery_title">캐릭터 발견</string>
+    <string name="stats_character_discovery_today">오늘의 캐릭터</string>
+    <string name="stats_character_discovery_random">랜덤</string>
+    <string name="stats_random_character_seeds">따뜻한 힐러|부드럽고 귀 기울이는 파트너. 오후 햇살처럼 적절한 말로 위로해준다.|따뜻함,경청,힐링;;츤데레|겉으로는 차갑고 말이 거칠지만 마음은 따뜻하고, 친해지면 어색하고 귀여운 모습이 드러난다.|츤데레,반전,귀여움;;신비한 모험가|이세계에서 온 여행자. 견문이 넓고 신비로운 어조로 기이한 이야기와 탐험담을 좋아한다.|모험,신비,박식;;검은 속내 현자|두뇌 회전이 빠르고 사람의 마음을 꿰뚫으며, 중요한 순간에 정확한 조언을 건다.|검은속내,현자,전략;;에너지 넘치는 용동계|에너지가 넘치고 낙관적이며 직설적. 응원과 동행으로 주변을 앞으로 이끈다.|에너지,욱동,솔직</string>
+    <string name="character_discovery_generating_title">AI 캐릭터 생성 중</string>
+    <string name="character_discovery_generating_msg">선택한 분위기로 캐릭터 카드를 생성하고 대화를 만드는 중입니다. 잠시만 기다려 주세요…</string>
     <string name="stats_empty_data">아직 데이터가 부족합니다</string>
     <string name="stats_all_widgets_hidden">모든 통계 위젯이 숨겨졌습니다</string>
     <string name="stats_layout_title">통계 레이아웃</string>
@@ -56,4 +62,22 @@
     <string name="stats_move_up">위로</string>
     <string name="stats_move_down">아래로</string>
     <string name="stats_reset_layout">기본값</string>
+    <string name="stats_webdav_status_title">WebDAV 백업</string>
+    <string name="stats_webdav_local_mode">로컬 모드에서는 사용 안 함</string>
+    <string name="stats_webdav_error">동기화 오류</string>
+    <string name="stats_webdav_active">동기화 중</string>
+    <string name="stats_webdav_configured">설정됨</string>
+    <string name="stats_webdav_not_configured">미설정</string>
+    <string name="stats_local_log_preview_title">로컬 로그</string>
+    <string name="stats_achievements_title">업적</string>
+    <string name="stats_random_generate_ideas">AI 아이디어 생성</string>
+    <string name="stats_achievement_progress">%1$s / %2$s</string>
+    <string name="achievement_token_1000">Token 입문</string>
+    <string name="achievement_token_10000">Token 숙련</string>
+    <string name="achievement_token_100000">Token 마스터</string>
+    <string name="achievement_messages_100">수다쟁이 초보</string>
+    <string name="achievement_messages_1000">수다쟁이 달인</string>
+    <string name="achievement_sessions_10">대화 시작</string>
+    <string name="achievement_sessions_50">대화 전문가</string>
+    <string name="achievement_first_affection_100">마음이 통함</string>
 </resources>

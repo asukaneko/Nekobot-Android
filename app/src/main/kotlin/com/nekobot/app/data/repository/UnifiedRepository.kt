@@ -24,6 +24,7 @@ import com.nekobot.app.data.model.ChannelPreset
 import com.nekobot.app.data.model.ChannelRequest
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.model.ConfigExportRequest
+import com.nekobot.app.data.model.RandomCharacterIdea
 import com.nekobot.app.data.model.CreateSessionRequest
 import com.nekobot.app.data.model.Hook
 import com.nekobot.app.data.model.HookExecutionLog
@@ -405,6 +406,19 @@ class UnifiedRepository(
                 Resource.Error(e.message ?: "AI 生成失败")
             }
         } else remote.aiGenerateCharacter(description)
+
+    /**
+     * 使用 AI 随机生成角色灵感条目（标题 + 描述 + 标签）。
+     * 本地模式直接调用 LLM；远程模式当前无对应接口，返回空列表由 UI 回退到内置种子。
+     */
+    suspend fun generateRandomCharacterIdeas(): Resource<List<RandomCharacterIdea>> =
+        if (isLocal) {
+            try {
+                Resource.Success(local.aiGenerateRandomCharacterIdeas())
+            } catch (e: Exception) {
+                Resource.Error(e.message ?: "AI 生成失败")
+            }
+        } else Resource.Success(emptyList())
 
     // ==================== 世界书 ====================
 

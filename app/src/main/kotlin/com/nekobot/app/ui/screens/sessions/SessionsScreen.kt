@@ -85,6 +85,7 @@ import com.nekobot.app.R
 import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.model.CreateSessionRequest
+import com.nekobot.app.data.model.RandomCharacterIdea
 import com.nekobot.app.data.model.RELATIONSHIP_STATE_SOURCE_INHERIT
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.TokenRankings
@@ -219,6 +220,8 @@ fun SessionsScreen(
     var deleting by remember { mutableStateOf<SessionListRow?>(null) }
     var showSearchPanel by remember { mutableStateOf(false) }
     var showDashboardLayout by remember { mutableStateOf(false) }
+    var showGeneratingCharacter by remember { mutableStateOf(false) }
+    var randomCharacterIdeas by remember { mutableStateOf(emptyList<RandomCharacterIdea>()) }
     var dashboardWidgetOrder by remember {
         mutableStateOf(ServiceContainer.prefs.statsDashboardWidgetOrder)
     }
@@ -314,6 +317,30 @@ fun SessionsScreen(
                             DashboardQuickAction.WORLD_BOOKS -> onNavigate(Routes.WORLD_BOOKS)
                             DashboardQuickAction.SETTINGS -> onNavigate(Routes.SETTINGS)
                         }
+                    },
+                    onCharacterSelected = { character ->
+                        viewModel.createSessionForCharacter(
+                            characterId = character.id,
+                            characterName = character.name,
+                            onSuccess = onOpenChat
+                        )
+                    },
+                    randomCharacterIdeas = randomCharacterIdeas,
+                    onGenerateIdeas = {
+                        viewModel.generateRandomCharacterIdeas { ideas ->
+                            randomCharacterIdeas = ideas
+                        }
+                    },
+                    onGenerateCharacter = { idea ->
+                        showGeneratingCharacter = true
+                        viewModel.aiGenerateCharacterAndCreateSession(
+                            description = idea.description,
+                            onSuccess = { sessionId ->
+                                showGeneratingCharacter = false
+                                onOpenChat(sessionId)
+                            },
+                            onError = { showGeneratingCharacter = false }
+                        )
                     }
                 )
             } else {
@@ -477,6 +504,18 @@ fun SessionsScreen(
                 ServiceContainer.prefs.statsDashboardHiddenWidgets = hidden
                 showDashboardLayout = false
             }
+        )
+    }
+
+    // AI 生成角色并创建会话中提示
+    if (showGeneratingCharacter) {
+        NekoDialog(
+            onDismiss = { /* 生成中不可关闭 */ },
+            title = stringResource(R.string.character_discovery_generating_title),
+            message = stringResource(R.string.character_discovery_generating_msg),
+            confirmText = stringResource(R.string.character_got_it),
+            onConfirm = { showGeneratingCharacter = false },
+            cancelText = null
         )
     }
 
@@ -1665,6 +1704,8 @@ class SessionsViewModel : BaseViewModel() {
     private val _dashboardRankings = MutableStateFlow<TokenRankings?>(null)
     private val _dashboardLoading = MutableStateFlow(false)
     private val _characters = MutableStateFlow<List<CharacterPreset>>(emptyList())
+    private val _webDavStatus = MutableStateFlow<DashboardWebDavStatus?>(null)
+    private val _localLogPreview = MutableStateFlow<List<DashboardLogEntry>>(emptyList())
     val characters: StateFlow<List<CharacterPreset>> = _characters.asStateFlow()
     val dashboardLoading: StateFlow<Boolean> = _dashboardLoading.asStateFlow()
 
@@ -1672,9 +1713,19 @@ class SessionsViewModel : BaseViewModel() {
         _sessions,
         _dashboardTokenStats,
         _dashboardRankings,
-        _characters
-    ) { sessions, stats, rankings, characters ->
-        buildSessionStatsDashboardData(sessions, stats, rankings, characters)
+        _characters,
+        _webDavStatus,
+        _localLogPreview
+    ) { values ->
+        @Suppress("UNCHECKED_CAST")
+        buildSessionStatsDashboardData(
+            sessions = values[0] as List<Session>,
+            stats = values[1] as TokenStats?,
+            rankings = values[2] as TokenRankings?,
+            characters = values[3] as List<CharacterPreset>,
+            webDavStatus = values[4] as DashboardWebDavStatus?,
+            localLogPreview = values[5] as List<DashboardLogEntry>
+        )
     }
         .flowOn(Dispatchers.Default)
         .stateIn(
@@ -1814,11 +1865,58 @@ class SessionsViewModel : BaseViewModel() {
                 if (rankingsResult is Resource.Success) {
                     _dashboardRankings.value = rankingsResult.data
                 }
+                loadWebDavStatus()
+                loadLocalLogPreview()
             } catch (_: Exception) {
                 // 会话统计可独立工作，Token 接口失败不阻断负一屏。
             } finally {
                 _dashboardLoading.value = false
             }
+        }
+    }
+
+    /** 加载 WebDAV 备份状态（仅服务器模式）。 */
+    private suspend fun loadWebDavStatus() {
+        if (ServiceContainer.prefs.appMode == AppMode.LOCAL) {
+            _webDavStatus.value = null
+            return
+        }
+        try {
+            val configResult = unified.getWebDavConfig()
+            val infoResult = unified.webDavInfo()
+            val config = (configResult as? Resource.Success)?.data
+            val info = (infoResult as? Resource.Success)?.data?.asJsonObject
+            _webDavStatus.value = DashboardWebDavStatus(
+                enabled = config?.enabled == true,
+                configured = !config?.url.isNullOrBlank(),
+                url = config?.url,
+                lastBackupAt = config?.lastBackupAt,
+                lastSyncAt = config?.lastSyncAt,
+                lastError = config?.lastError,
+                remoteFileSize = info?.get("file_size")?.asLong ?: config?.lastFileSize,
+                remoteModifiedAt = info?.get("last_modified")?.asString ?: config?.lastModified
+            )
+        } catch (_: Exception) {
+            _webDavStatus.value = null
+        }
+    }
+
+    /** 加载本地日志速览（最近 5 条）。 */
+    private suspend fun loadLocalLogPreview() {
+        try {
+            val records = withContext(Dispatchers.IO) {
+                com.nekobot.app.data.local.LocalLogger.listLogs()
+            }
+            _localLogPreview.value = records.take(5).map { record ->
+                DashboardLogEntry(
+                    time = record.time,
+                    level = record.level,
+                    tag = record.tag,
+                    message = record.message
+                )
+            }
+        } catch (_: Exception) {
+            _localLogPreview.value = emptyList()
         }
     }
 
@@ -1903,6 +2001,96 @@ class SessionsViewModel : BaseViewModel() {
                 showToast(string(R.string.sessions_created_toast))
                 loadSessions()
                 onSuccess()
+            }
+        )
+    }
+
+    /** 为指定角色一键创建会话，成功后回调 sessionId。 */
+    fun createSessionForCharacter(characterId: String, characterName: String, onSuccess: (String) -> Unit) {
+        launchResult(
+            block = {
+                val req = CreateSessionRequest(
+                    name = characterName,
+                    sessionMode = "character",
+                    characterId = characterId,
+                    userId = ServiceContainer.prefs.username.takeIf { it.isNotBlank() }
+                )
+                unified.createSession(req)
+            },
+            onSuccess = { session ->
+                session?.id?.let { id ->
+                    showToast(string(R.string.sessions_created_toast))
+                    loadSessions()
+                    onSuccess(id)
+                }
+            }
+        )
+    }
+
+    /**
+     * AI 根据描述生成角色卡并持久化，然后自动为其创建会话，成功后回调 sessionId。
+     */
+    fun aiGenerateCharacterAndCreateSession(
+        description: String,
+        onSuccess: (String) -> Unit,
+        onError: (String) -> Unit = {}
+    ) {
+        launchResult(
+            block = { unified.aiGenerateCharacter(description) },
+            onSuccess = { preset ->
+                preset ?: run {
+                    showToast(string(R.string.character_ai_generate_failed))
+                    onError(string(R.string.character_ai_generate_failed))
+                    return@launchResult
+                }
+                // 保存生成的角色卡
+                launchResult(
+                    block = {
+                        val json = ServiceContainer.gson.toJsonTree(preset)
+                        unified.createCharacter(json)
+                    },
+                    onSuccess = { saved ->
+                        saved?.id?.let { characterId ->
+                            showToast(string(R.string.character_ai_generated, saved.displayName))
+                            // 自动创建会话
+                            createSessionForCharacter(
+                                characterId = characterId,
+                                characterName = saved.displayName,
+                                onSuccess = onSuccess
+                            )
+                        } ?: run {
+                            showToast(string(R.string.character_ai_generate_failed))
+                            onError(string(R.string.character_ai_generate_failed))
+                        }
+                    },
+                    onError = { msg ->
+                        showToast(string(R.string.character_ai_generate_failed, msg ?: ""))
+                        onError(msg ?: string(R.string.character_ai_generate_failed))
+                    }
+                )
+            },
+            onError = { msg ->
+                showToast(string(R.string.character_ai_generate_failed, msg ?: ""))
+                onError(msg ?: string(R.string.character_ai_generate_failed))
+            }
+        )
+    }
+
+    /**
+     * 使用 AI 随机生成 3 个角色灵感条目。本地模式直接调用 LLM；远程模式回退到内置种子。
+     */
+    fun generateRandomCharacterIdeas(onResult: (List<RandomCharacterIdea>) -> Unit) {
+        launchResult(
+            block = { unified.generateRandomCharacterIdeas() },
+            onSuccess = { ideas ->
+                if (!ideas.isNullOrEmpty()) {
+                    onResult(ideas)
+                } else {
+                    showToast(string(R.string.character_ai_generate_failed, "无可用模型"))
+                }
+            },
+            onError = { msg ->
+                showToast(string(R.string.character_ai_generate_failed, msg ?: ""))
             }
         )
     }

@@ -53,6 +53,7 @@ import com.nekobot.app.data.model.ApiResult
 import com.nekobot.app.data.model.AiModel
 import com.nekobot.app.data.model.BindCharacterRequest
 import com.nekobot.app.data.model.CharacterPreset
+import com.nekobot.app.data.model.RandomCharacterIdea
 import com.nekobot.app.data.model.CreateSessionRequest
 import com.nekobot.app.data.model.Hook
 import com.nekobot.app.data.model.HookExecutionLog
@@ -337,6 +338,14 @@ class LocalRepository(
             groupConfig = req.groupConfig?.takeIf { isGroup }?.toString()
         )
         sessionDao.upsert(entity)
+
+        // 成就触发：会话数量
+        kotlin.runCatching {
+            AchievementManager.reportProgress(
+                AchievementManager.Target.Metric.SESSIONS,
+                sessionDao.count().toLong()
+            )
+        }
 
         if (character != null && req.sessionMode.equals("character", ignoreCase = true)) {
             initializeSessionRelationship(
@@ -865,6 +874,15 @@ class LocalRepository(
                     count = messageDao.countBySession(sessionId),
                     updatedAt = now
                 )
+            }
+            // 成就触发：用户消息数
+            if (role.equals("user", ignoreCase = true)) {
+                kotlin.runCatching {
+                    AchievementManager.reportProgress(
+                        AchievementManager.Target.Metric.MESSAGES,
+                        messageDao.countUserMessages().toLong()
+                    )
+                }
             }
             msg.toMessage()
         }
@@ -1825,6 +1843,13 @@ class LocalRepository(
                 if (!editor.commit()) {
                     tokenUsageReconciled = false
                     LocalLogger.w("LocalRepo", "Token 用量记录写入失败，稍后将从消息记录恢复")
+                }
+                // 成就触发：累计 token 消耗
+                kotlin.runCatching {
+                    val total = arr.sumOf { el ->
+                        (el as? JsonObject)?.get("total_tokens")?.takeIf { !it.isJsonNull }?.asLong ?: 0L
+                    }
+                    AchievementManager.reportProgress(AchievementManager.Target.Metric.TOKENS, total)
                 }
             } catch (e: Exception) {
                 tokenUsageReconciled = false
@@ -3283,6 +3308,58 @@ class LocalRepository(
     }
 
     /**
+     * AI 随机生成角色灵感条目（标题 + 描述 + 标签）。
+     * 使用当前激活的本地 AI 模型，生成 3 个互不重复、风格差异明显的角色灵感。
+     * @return 生成的角色灵感列表
+     */
+    suspend fun aiGenerateRandomCharacterIdeas(): List<RandomCharacterIdea> = withContext(Dispatchers.IO) {
+        val activeModel = aiModelDao.getActive()
+            ?: throw IllegalStateException("未配置激活的 AI 模型")
+        val systemPrompt = buildRandomCharacterIdeasSystemPrompt()
+        val messages = listOf(
+            mapOf("role" to "system", "content" to systemPrompt),
+            mapOf("role" to "user", "content" to "请随机生成 3 个角色灵感，要求风格差异明显、有创意，每个灵感都要包含标题、简短描述和 2-4 个标签。只返回 JSON，不要任何额外说明。")
+        )
+        val result = aiClient.chatOnce(activeModel, messages)
+        if (result.error != null) throw IllegalStateException(result.error)
+        // 记账
+        val usage = result.usage
+        if (usage.isNotEmpty()) {
+            val input = usage["prompt_tokens"] ?: usage["input_tokens"] ?: 0
+            val output = usage["completion_tokens"] ?: usage["output_tokens"] ?: 0
+            appendTokenUsageRecord(
+                sessionId = currentSessionId,
+                model = activeModel.name,
+                actualModel = activeModel.model,
+                inputTokens = input,
+                outputTokens = output,
+                timestamp = nowIsoTimestamp(),
+                source = "web",
+                purpose = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_UTILITY
+            )
+        }
+        val content = stripMarkdownCodeFence(result.content)
+        val parsed = JsonParser.parseString(content).asJsonObject
+        val arr = parsed.get("ideas")?.takeIf { it.isJsonArray }?.asJsonArray
+            ?: throw IllegalStateException("AI 未生成有效角色灵感")
+        val ideas = mutableListOf<RandomCharacterIdea>()
+        for (el in arr) {
+            if (!el.isJsonObject) continue
+            val o = el.asJsonObject
+            val title = o.get("title")?.takeIf { !it.isJsonNull }?.asString?.trim().orEmpty()
+            val description = o.get("description")?.takeIf { !it.isJsonNull }?.asString?.trim().orEmpty()
+            if (title.isBlank() || description.isBlank()) continue
+            val tags = o.get("tags")?.takeIf { it.isJsonArray }?.asJsonArray
+                ?.mapNotNull { it.takeIf { !it.isJsonNull && it.isJsonPrimitive }?.asString?.trim() }
+                ?.filter { it.isNotBlank() }
+                ?: emptyList()
+            ideas.add(RandomCharacterIdea(title, description, tags))
+        }
+        if (ideas.isEmpty()) throw IllegalStateException("AI 返回的角色灵感为空")
+        ideas
+    }
+
+    /**
      * AI 批量生成世界书条目：使用当前激活的本地 AI 模型生成 5-10 个条目并立即持久化。
      * @return 生成的条目列表（已写入数据库）
      */
@@ -3429,6 +3506,28 @@ class LocalRepository(
    - security（安全感）：根据角色在关系中的初始安全感设置（0-100）
    - mood（心情）：根据角色当前心情设置
 10. 所有字段都用中文填写"""
+
+    /** 随机角色灵感 AI 生成的 system prompt */
+    private fun buildRandomCharacterIdeasSystemPrompt(): String = """你是一个角色创作灵感助手。请随机生成 3 个风格迥异、有创意的角色灵感条目。
+
+你必须严格按照以下 JSON 格式返回，不要包含任何额外文字说明：
+
+{
+    "ideas": [
+        {
+            "title": "角色灵感标题（4-10 字，有吸引力）",
+            "description": "角色核心特点的简短描述（20-40 字，突出个性与场景感）",
+            "tags": ["标签1", "标签2", "标签3"]
+        }
+    ]
+}
+
+要求：
+1. 3 个灵感风格差异明显（如治愈系、傲娇系、神秘系、冒险系、腹黑系、元气系等）
+2. title 简洁有辨识度
+3. description 要有画面感，让用户一眼想聊
+4. tags 2-4 个，准确概括角色标签
+5. 所有内容用中文填写"""
 
     /** 世界书 AI 生成的 system prompt（与后端 world_book.py 一致） */
     private fun buildWorldBookSystemPrompt(charInfos: List<String>, topic: String?): String {

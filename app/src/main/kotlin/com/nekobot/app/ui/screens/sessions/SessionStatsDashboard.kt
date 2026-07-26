@@ -34,23 +34,34 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.RecentActors
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.Token
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.TrendingFlat
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.ViewModule
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -58,6 +69,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -90,7 +105,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import coil.compose.AsyncImage
 import com.nekobot.app.R
+import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.PrefsManager
+import com.nekobot.app.data.model.RandomCharacterIdea
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.resolveAvatarUrl
 import java.time.format.DateTimeFormatter
@@ -109,6 +126,10 @@ internal fun SessionStatsDashboard(
     onCustomize: () -> Unit,
     onOpenChat: (String) -> Unit = {},
     onQuickAction: (DashboardQuickAction) -> Unit = {},
+    onCharacterSelected: (DashboardTodayCharacter) -> Unit = {},
+    randomCharacterIdeas: List<RandomCharacterIdea> = emptyList(),
+    onGenerateIdeas: () -> Unit = {},
+    onGenerateCharacter: (RandomCharacterIdea) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val visibleWidgets = remember(widgetOrder, hiddenWidgets) {
@@ -155,6 +176,16 @@ internal fun SessionStatsDashboard(
                     "token_ratio" -> DashboardTokenRatio(data.tokenRatio)
                     "week_comparison" -> DashboardWeekComparison(data.weekComparison)
                     "quick_actions" -> DashboardQuickActions(onAction = onQuickAction)
+                    "character_discovery" -> DashboardCharacterDiscovery(
+                        todayCharacters = data.todayCharacters,
+                        randomCharacterIdeas = randomCharacterIdeas,
+                        onCharacterSelected = onCharacterSelected,
+                        onGenerateIdeas = onGenerateIdeas,
+                        onGenerateCharacter = onGenerateCharacter
+                    )
+                    "webdav_status" -> DashboardWebDavStatusCard(data.webDavStatus)
+                    "local_log_preview" -> DashboardLocalLogPreviewCard(data.localLogPreview)
+                    "achievements" -> DashboardAchievementsCard(data.achievements)
                 }
             }
             if (visibleWidgets.isEmpty()) {
@@ -1053,7 +1084,11 @@ private fun dashboardWidgetDescriptors(): Map<String, Pair<String, ImageVector>>
     "recent_sessions" to (stringResource(R.string.stats_recent_sessions_title) to Icons.Filled.ChatBubble),
     "token_ratio" to (stringResource(R.string.stats_token_ratio_title) to Icons.Filled.Memory),
     "week_comparison" to (stringResource(R.string.stats_week_comparison_title) to Icons.Filled.AutoGraph),
-    "quick_actions" to (stringResource(R.string.stats_quick_actions_title) to Icons.Filled.DashboardCustomize)
+    "quick_actions" to (stringResource(R.string.stats_quick_actions_title) to Icons.Filled.DashboardCustomize),
+    "character_discovery" to (stringResource(R.string.stats_character_discovery_title) to Icons.Filled.Face),
+    "webdav_status" to (stringResource(R.string.stats_webdav_status_title) to Icons.Filled.CloudSync),
+    "local_log_preview" to (stringResource(R.string.stats_local_log_preview_title) to Icons.Filled.BugReport),
+    "achievements" to (stringResource(R.string.stats_achievements_title) to Icons.Filled.EmojiEvents)
 )
 
 internal fun formatCompactNumber(value: Long): String = when {
@@ -1410,5 +1445,595 @@ private fun QuickActionButton(
                 overflow = TextOverflow.Ellipsis
             )
         }
+    }
+}
+
+/** 解析内置随机角色种子（格式：标题|描述|标签1,标签2）。 */
+private fun parseRandomCharacterSeeds(raw: String): List<RandomCharacterIdea> {
+    return raw.split(";;").mapNotNull { entry ->
+        val parts = entry.split("|", limit = 3)
+        if (parts.size < 2) return@mapNotNull null
+        RandomCharacterIdea(
+            title = parts[0].trim(),
+            description = parts[1].trim(),
+            tags = parts.getOrNull(2)?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
+        )
+    }
+}
+
+@Composable
+private fun DashboardCharacterDiscovery(
+    todayCharacters: List<DashboardTodayCharacter>,
+    randomCharacterIdeas: List<RandomCharacterIdea>,
+    onCharacterSelected: (DashboardTodayCharacter) -> Unit,
+    onGenerateIdeas: () -> Unit,
+    onGenerateCharacter: (RandomCharacterIdea) -> Unit
+) {
+    var selectedTab by remember { mutableIntStateOf(0) }
+    val tabs = listOf(
+        stringResource(R.string.stats_character_discovery_today),
+        stringResource(R.string.stats_character_discovery_random)
+    )
+    val fallbackSeeds = parseRandomCharacterSeeds(stringResource(R.string.stats_random_character_seeds))
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        DashboardWidgetHeader(stringResource(R.string.stats_character_discovery_title), Icons.Filled.Face)
+        Spacer(Modifier.height(8.dp))
+        TabRow(
+            selectedTabIndex = selectedTab,
+            modifier = Modifier.fillMaxWidth(),
+            containerColor = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.primary,
+            indicator = { tabPositions ->
+                if (selectedTab < tabPositions.size) {
+                    TabRowDefaults.SecondaryIndicator(
+                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            },
+            divider = {}
+        ) {
+            tabs.forEachIndexed { index, title ->
+                Tab(
+                    selected = selectedTab == index,
+                    onClick = { selectedTab = index },
+                    text = {
+                        Text(
+                            title,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                )
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        when (selectedTab) {
+            0 -> TodayCharacterPanel(
+                characters = todayCharacters,
+                onCharacterSelected = onCharacterSelected
+            )
+            else -> RandomCharacterPanel(
+                ideas = randomCharacterIdeas.takeIf { it.isNotEmpty() } ?: fallbackSeeds,
+                isAiGenerated = randomCharacterIdeas.isNotEmpty(),
+                onGenerateIdeas = onGenerateIdeas,
+                onGenerateCharacter = onGenerateCharacter
+            )
+        }
+    }
+}
+
+@Composable
+private fun TodayCharacterPanel(
+    characters: List<DashboardTodayCharacter>,
+    onCharacterSelected: (DashboardTodayCharacter) -> Unit
+) {
+    if (characters.isEmpty()) {
+        DashboardEmptyData()
+    } else {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            characters.forEach { character ->
+                Surface(
+                    onClick = { onCharacterSelected(character) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val portrait = resolveAvatarUrl(character.portraitUrl)
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            if (portrait != null) {
+                                AsyncImage(
+                                    model = portrait,
+                                    contentDescription = character.name,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            Brush.linearGradient(
+                                                listOf(
+                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.72f),
+                                                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.50f)
+                                                )
+                                            )
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Face,
+                                        contentDescription = null,
+                                        tint = Color.White.copy(alpha = 0.88f),
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                character.name,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            character.description?.let {
+                                Text(
+                                    it,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowForwardIos,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RandomCharacterPanel(
+    ideas: List<RandomCharacterIdea>,
+    isAiGenerated: Boolean,
+    onGenerateIdeas: () -> Unit,
+    onGenerateCharacter: (RandomCharacterIdea) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (!isAiGenerated) {
+            Surface(
+                onClick = onGenerateIdeas,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        Icons.Filled.AutoAwesome,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        stringResource(R.string.stats_random_generate_ideas),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+        ideas.forEach { idea ->
+            Surface(
+                onClick = { onGenerateCharacter(idea) },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                                        MaterialTheme.colorScheme.secondary.copy(alpha = 0.10f)
+                                    )
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.AutoAwesome,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            idea.title,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            idea.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (idea.tags.isNotEmpty()) {
+                            Spacer(Modifier.height(4.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                idea.tags.take(3).forEach { tag ->
+                                    Text(
+                                        tag,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier
+                                            .background(
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                                                RoundedCornerShape(6.dp)
+                                            )
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForwardIos,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DashboardWebDavStatusCard(status: com.nekobot.app.ui.screens.sessions.DashboardWebDavStatus?) {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        DashboardWidgetHeader(stringResource(R.string.stats_webdav_status_title), Icons.Filled.CloudSync)
+        Spacer(Modifier.height(12.dp))
+        if (status == null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.Schedule,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    stringResource(R.string.stats_webdav_local_mode),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        } else {
+            val statusColor = when {
+                status.lastError != null -> MaterialTheme.colorScheme.error
+                status.enabled && status.configured -> Color(0xFF4CAF50)
+                status.configured -> MaterialTheme.colorScheme.primary
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            val statusIcon = when {
+                status.lastError != null -> Icons.Filled.WarningAmber
+                status.enabled && status.configured -> Icons.Filled.CheckCircle
+                status.configured -> Icons.Filled.Schedule
+                else -> Icons.Filled.Error
+            }
+            val statusText = when {
+                status.lastError != null -> stringResource(R.string.stats_webdav_error)
+                status.enabled && status.configured -> stringResource(R.string.stats_webdav_active)
+                status.configured -> stringResource(R.string.stats_webdav_configured)
+                else -> stringResource(R.string.stats_webdav_not_configured)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    statusIcon,
+                    contentDescription = null,
+                    tint = statusColor,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    statusText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = statusColor
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                WebDavInfoRow(
+                    label = stringResource(R.string.webdav_file_size),
+                    value = formatFileSize(status.remoteFileSize)
+                )
+                WebDavInfoRow(
+                    label = stringResource(R.string.webdav_last_backup),
+                    value = status.lastBackupAt ?: stringResource(R.string.webdav_never_backup)
+                )
+                WebDavInfoRow(
+                    label = stringResource(R.string.webdav_last_sync),
+                    value = status.lastSyncAt ?: stringResource(R.string.webdav_never_sync)
+                )
+                status.lastError?.let { error ->
+                    Text(
+                        stringResource(R.string.webdav_recent_error, error),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WebDavInfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+@Composable
+private fun DashboardLocalLogPreviewCard(logs: List<DashboardLogEntry>) {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        DashboardWidgetHeader(stringResource(R.string.stats_local_log_preview_title), Icons.Filled.BugReport)
+        Spacer(Modifier.height(12.dp))
+        if (logs.isEmpty()) {
+            DashboardEmptyData()
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                logs.forEach { log ->
+                    val levelColor = when (log.level.lowercase()) {
+                        "error" -> MaterialTheme.colorScheme.error
+                        "warning" -> Color(0xFFFFA726)
+                        "debug" -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(levelColor)
+                                .padding(top = 6.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    log.time,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    log.tag,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            Text(
+                                log.message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DashboardAchievementsCard(achievements: List<DashboardAchievement>) {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        DashboardWidgetHeader(stringResource(R.string.stats_achievements_title), Icons.Filled.EmojiEvents)
+        Spacer(Modifier.height(12.dp))
+        if (achievements.isEmpty()) {
+            DashboardEmptyData()
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                achievements.forEach { achievement ->
+                    AchievementItem(achievement)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AchievementItem(achievement: DashboardAchievement) {
+    val icon = achievementIcon(achievement.id)
+    val tint = if (achievement.isUnlocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    val title = achievementTitle(achievement.id)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = if (achievement.isUnlocked) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = if (achievement.isUnlocked) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+                }
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = tint,
+                    modifier = Modifier.padding(8.dp).size(22.dp)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (achievement.isUnlocked) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    stringResource(
+                        R.string.stats_achievement_progress,
+                        formatCompactNumber(achievement.current),
+                        formatCompactNumber(achievement.target)
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (achievement.isUnlocked) {
+                Icon(
+                    Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .padding(4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        progress = { achievement.progress },
+                        modifier = Modifier.fillMaxSize(),
+                        strokeWidth = 3.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                    Text(
+                        "${(achievement.progress * 100).toInt()}%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun achievementTitle(id: String): String = when (id) {
+    com.nekobot.app.data.local.AchievementManager.Id.TOKEN_1000 -> stringResource(R.string.achievement_token_1000)
+    com.nekobot.app.data.local.AchievementManager.Id.TOKEN_10000 -> stringResource(R.string.achievement_token_10000)
+    com.nekobot.app.data.local.AchievementManager.Id.TOKEN_100000 -> stringResource(R.string.achievement_token_100000)
+    com.nekobot.app.data.local.AchievementManager.Id.MESSAGES_100 -> stringResource(R.string.achievement_messages_100)
+    com.nekobot.app.data.local.AchievementManager.Id.MESSAGES_1000 -> stringResource(R.string.achievement_messages_1000)
+    com.nekobot.app.data.local.AchievementManager.Id.SESSIONS_10 -> stringResource(R.string.achievement_sessions_10)
+    com.nekobot.app.data.local.AchievementManager.Id.SESSIONS_50 -> stringResource(R.string.achievement_sessions_50)
+    com.nekobot.app.data.local.AchievementManager.Id.FIRST_AFFECTION_100 -> stringResource(R.string.achievement_first_affection_100)
+    else -> id
+}
+
+private fun achievementIcon(id: String): ImageVector = when (id) {
+    com.nekobot.app.data.local.AchievementManager.Id.TOKEN_1000,
+    com.nekobot.app.data.local.AchievementManager.Id.TOKEN_10000,
+    com.nekobot.app.data.local.AchievementManager.Id.TOKEN_100000 -> Icons.Filled.Token
+    com.nekobot.app.data.local.AchievementManager.Id.MESSAGES_100,
+    com.nekobot.app.data.local.AchievementManager.Id.MESSAGES_1000 -> Icons.Filled.Chat
+    com.nekobot.app.data.local.AchievementManager.Id.SESSIONS_10,
+    com.nekobot.app.data.local.AchievementManager.Id.SESSIONS_50 -> Icons.Filled.Groups
+    com.nekobot.app.data.local.AchievementManager.Id.FIRST_AFFECTION_100 -> Icons.Filled.Favorite
+    else -> Icons.Filled.EmojiEvents
+}
+
+/** 格式化文件大小为人类可读字符串 */
+private fun formatFileSize(bytes: Long?): String {
+    if (bytes == null || bytes <= 0) return ServiceContainer.getString(R.string.common_unknown)
+    val kb = bytes / 1024.0
+    val mb = kb / 1024.0
+    val gb = mb / 1024.0
+    return when {
+        gb >= 1 -> String.format("%.2f GB", gb)
+        mb >= 1 -> String.format("%.2f MB", mb)
+        kb >= 1 -> String.format("%.2f KB", kb)
+        else -> "$bytes B"
     }
 }

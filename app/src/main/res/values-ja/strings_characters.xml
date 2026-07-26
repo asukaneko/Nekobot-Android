@@ -20,6 +20,7 @@
     <string name="character_deleted">キャラクターを削除しました</string>
     <string name="character_imported">キャラクターをインポートしました: %1$s</string>
     <string name="character_ai_generated">AI 生成キャラクター: %1$s</string>
+    <string name="character_ai_generate_failed">キャラクター生成に失敗: %1$s</string>
     <string name="character_ai_generate_card">キャラクターカードを生成</string>
     <string name="character_description_label">キャラクター説明</string>
     <string name="character_ai_placeholder">例：異世界から来たエルフの弓使い、外見は冷淡ですが内面は優しく、口は悪いけれど月光の下でハチミツ茶を飲むのが好き…</string>

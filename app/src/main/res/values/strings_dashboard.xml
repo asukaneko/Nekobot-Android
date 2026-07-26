@@ -49,6 +49,12 @@
     <string name="stats_quick_action_ai_config">AI 配置</string>
     <string name="stats_quick_action_world_books">世界书</string>
     <string name="stats_quick_action_settings">设置</string>
+    <string name="stats_character_discovery_title">角色发现</string>
+    <string name="stats_character_discovery_today">今日角色</string>
+    <string name="stats_character_discovery_random">随机角色</string>
+    <string name="stats_random_character_seeds">温柔治愈系|一位性格温柔、善于倾听的伙伴，总能用恰到好处的话语安抚情绪，像午后阳光一样让人放松。|温柔,倾听,治愈;;傲娇反差萌|外表冷淡、嘴硬心软的角色，初期爱答不理，熟悉之后会露出笨拙又可爱的真实一面。|傲娇,反差,可爱;;神秘冒险家|来自异世界的旅行家，见多识广、说话带着几分神秘，喜欢分享奇闻轶事和探险经历。|冒险,神秘,博学;;腹黑智者|思维缜密、善于洞察人心，说话总是半真半假，却在关键时刻给出最精准的建议。|腹黑,智者,谋略;;元气运动系|充满活力的运动健将，乐观直率，喜欢用鼓励和陪伴带动身边的人一起向前。|元气,运动,直率</string>
+    <string name="character_discovery_generating_title">AI 生成角色中</string>
+    <string name="character_discovery_generating_msg">正在根据选定风格生成角色卡并创建会话，请稍候……</string>
     <string name="stats_empty_data">暂无足够数据</string>
     <string name="stats_all_widgets_hidden">所有统计组件都已隐藏</string>
     <string name="stats_layout_title">自定义统计布局</string>
@@ -56,4 +62,22 @@
     <string name="stats_move_up">上移</string>
     <string name="stats_move_down">下移</string>
     <string name="stats_reset_layout">恢复默认</string>
+    <string name="stats_webdav_status_title">WebDAV 备份</string>
+    <string name="stats_webdav_local_mode">本地模式未启用</string>
+    <string name="stats_webdav_error">同步异常</string>
+    <string name="stats_webdav_active">同步中</string>
+    <string name="stats_webdav_configured">已配置</string>
+    <string name="stats_webdav_not_configured">未配置</string>
+    <string name="stats_local_log_preview_title">本地日志</string>
+    <string name="stats_achievements_title">成就</string>
+    <string name="stats_random_generate_ideas">AI 生成灵感</string>
+    <string name="stats_achievement_progress">%1$s / %2$s</string>
+    <string name="achievement_token_1000">Token 入门</string>
+    <string name="achievement_token_10000">Token 进阶</string>
+    <string name="achievement_token_100000">Token 大师</string>
+    <string name="achievement_messages_100">话痨新手</string>
+    <string name="achievement_messages_1000">话痨达人</string>
+    <string name="achievement_sessions_10">会话起步</string>
+    <string name="achievement_sessions_50">会话专家</string>
+    <string name="achievement_first_affection_100">心意相通</string>
 </resources>

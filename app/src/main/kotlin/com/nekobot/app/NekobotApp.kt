@@ -95,6 +95,8 @@ object ServiceContainer {
         socket = SocketManager(prefs)
         // 初始化本地日志记录器
         com.nekobot.app.data.local.LocalLogger.init(app)
+        // 初始化成就系统
+        com.nekobot.app.data.local.AchievementManager.init(app)
         // 初始化带语言配置的上下文（ViewModel 通过此上下文获取本地化字符串）
         localizedContext = LocaleHelper.wrap(appContext!!)
         // 初始化全局状态

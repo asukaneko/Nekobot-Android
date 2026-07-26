@@ -20,6 +20,7 @@
     <string name="character_deleted">已删除角色</string>
     <string name="character_imported">已导入角色：%1$s</string>
     <string name="character_ai_generated">AI 已生成角色：%1$s</string>
+    <string name="character_ai_generate_failed">AI 生成角色失败：%1$s</string>
     <string name="character_ai_generate_card">生成角色卡</string>
     <string name="character_description_label">角色描述</string>
     <string name="character_ai_placeholder">例如：一个来自异世界的精灵弓箭手，外表高冷但内心温柔，擅长吐槽，喜欢在月光下喝蜂蜜茶……</string>

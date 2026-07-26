@@ -20,6 +20,7 @@
     <string name="character_deleted">캐릭터가 삭제되었어요</string>
     <string name="character_imported">캐릭터를 가져왔어요: %1$s</string>
     <string name="character_ai_generated">AI 생성 캐릭터: %1$s</string>
+    <string name="character_ai_generate_failed">캐릭터 생성 실패: %1$s</string>
     <string name="character_ai_generate_card">캐릭터 카드 생성</string>
     <string name="character_description_label">캐릭터 설명</string>
     <string name="character_ai_placeholder">예: 이세계에서 온 엘프 궁수, 겉으로는 차갑지만 속은 다정하고, 말은 날카로워도 달빛 아래 꿀차 마시기를 좋아해요…</string>

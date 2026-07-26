@@ -431,7 +431,11 @@ class PrefsManager(context: Context) {
             "recent_sessions",
             "token_ratio",
             "week_comparison",
-            "quick_actions"
+            "quick_actions",
+            "character_discovery",
+            "webdav_status",
+            "local_log_preview",
+            "achievements"
         )
 
         /**
@@ -439,13 +443,15 @@ class PrefsManager(context: Context) {
          * 每次新增小组件时递增，并在 [WIDGETS_ADDED_IN_VERSION] 中登记，
          * 使老用户升级后新组件默认隐藏，新用户按 [DEFAULT_HIDDEN_WIDGETS] 默认隐藏。
          */
-        const val STATS_DASHBOARD_WIDGET_VERSION = 1
+        const val STATS_DASHBOARD_WIDGET_VERSION = 3
 
         /**
          * 每个版本新增的小组件 ID。用于 hidden 状态迁移。
          */
         val WIDGETS_ADDED_IN_VERSION = mapOf(
-            1 to listOf("recent_sessions", "token_ratio", "week_comparison", "quick_actions")
+            1 to listOf("recent_sessions", "token_ratio", "week_comparison", "quick_actions"),
+            2 to listOf("character_discovery"),
+            3 to listOf("webdav_status", "local_log_preview", "achievements")
         )
 
         /**

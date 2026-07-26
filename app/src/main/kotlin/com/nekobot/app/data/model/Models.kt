@@ -1412,3 +1412,14 @@ data class SttTranscribeResponse(
     val language: String? = null,
     val provider: String? = null
 )
+
+// ==================== 负一屏角色发现 ====================
+/**
+ * AI 随机生成的角色灵感条目。
+ * 在数据层定义，避免 data 模块反向依赖 UI 层。
+ */
+data class RandomCharacterIdea(
+    val title: String,
+    val description: String,
+    val tags: List<String> = emptyList()
+)

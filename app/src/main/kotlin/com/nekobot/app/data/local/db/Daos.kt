@@ -17,6 +17,9 @@ interface SessionDao {
     @Query("SELECT * FROM local_sessions ORDER BY updated_at DESC")
     suspend fun listAll(): List<LocalSessionEntity>
 
+    @Query("SELECT COUNT(*) FROM local_sessions")
+    suspend fun count(): Int
+
     @Query("SELECT * FROM local_sessions WHERE id = :id")
     suspend fun getById(id: String): LocalSessionEntity?
 
@@ -89,6 +92,9 @@ interface MessageDao {
 
     @Query("SELECT COUNT(*) FROM local_messages WHERE session_id = :sessionId")
     suspend fun countBySession(sessionId: String): Int
+
+    @Query("SELECT COUNT(*) FROM local_messages WHERE role = 'user'")
+    suspend fun countUserMessages(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(message: LocalMessageEntity)

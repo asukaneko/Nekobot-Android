@@ -49,6 +49,12 @@
     <string name="stats_quick_action_ai_config">AI 設定</string>
     <string name="stats_quick_action_world_books">世界書</string>
     <string name="stats_quick_action_settings">設定</string>
+    <string name="stats_character_discovery_title">キャラクター発見</string>
+    <string name="stats_character_discovery_today">今日のキャラ</string>
+    <string name="stats_character_discovery_random">ランダム</string>
+    <string name="stats_random_character_seeds">癒し系|優しくて耳を傾けるパートナー。午後の日差しのように、ほどよい言葉で安らげてくれる。|優しい,傾聴,癒し;;ツンデレ|外面は冷たく口が悪いが、本当は心が優しく、仲良くなるとぎこちない可愛さが出る。|ツンデレ,ギャップ,可愛い;;謎の冒険家|異世界から来た旅人。博識で物腰が神秘的で、奇談や探検の話を好む。|冒険,神秘,博識;;腹黒賢者|頭の回転が速く人の心を見抜き、半分ウソを交えながら重要な局面で的確な助言をする。|腹黒,賢者,策略;;元気な運動系|エネルギッシュで楽観的、ストレートな性格。励ましと伴走で周りを前に進ませる。|元気,スポーツ,率直</string>
+    <string name="character_discovery_generating_title">AI 生成中</string>
+    <string name="character_discovery_generating_msg">選択した雰囲気からキャラクターカードを生成し、会話を作成しています。しばらくお待ちください…</string>
     <string name="stats_empty_data">データがまだありません</string>
     <string name="stats_all_widgets_hidden">すべての統計ウィジェットが非表示です</string>
     <string name="stats_layout_title">統計レイアウト</string>
@@ -56,4 +62,22 @@
     <string name="stats_move_up">上へ</string>
     <string name="stats_move_down">下へ</string>
     <string name="stats_reset_layout">初期状態</string>
+    <string name="stats_webdav_status_title">WebDAV バックアップ</string>
+    <string name="stats_webdav_local_mode">ローカルモードでは未使用</string>
+    <string name="stats_webdav_error">同期エラー</string>
+    <string name="stats_webdav_active">同期中</string>
+    <string name="stats_webdav_configured">設定済み</string>
+    <string name="stats_webdav_not_configured">未設定</string>
+    <string name="stats_local_log_preview_title">ローカルログ</string>
+    <string name="stats_achievements_title">実績</string>
+    <string name="stats_random_generate_ideas">AI で着想生成</string>
+    <string name="stats_achievement_progress">%1$s / %2$s</string>
+    <string name="achievement_token_1000">Token 入門</string>
+    <string name="achievement_token_10000">Token 熟練</string>
+    <string name="achievement_token_100000">Token マスター</string>
+    <string name="achievement_messages_100">おしゃべり初心者</string>
+    <string name="achievement_messages_1000">おしゃべり達人</string>
+    <string name="achievement_sessions_10">会話スタート</string>
+    <string name="achievement_sessions_50">会話のプロ</string>
+    <string name="achievement_first_affection_100">心が通じた</string>
 </resources>

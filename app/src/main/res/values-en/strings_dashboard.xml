@@ -49,6 +49,12 @@
     <string name="stats_quick_action_ai_config">AI config</string>
     <string name="stats_quick_action_world_books">World books</string>
     <string name="stats_quick_action_settings">Settings</string>
+    <string name="stats_character_discovery_title">Character discovery</string>
+    <string name="stats_character_discovery_today">Today</string>
+    <string name="stats_character_discovery_random">Random</string>
+    <string name="stats_random_character_seeds">Gentle Healer|A warm and attentive companion who always knows the right words to soothe, like afternoon sunlight.|gentle,listener,healing;;Tsundere Contrast|Cool on the outside but soft-hearted inside, standoffish at first, adorably awkward once close.|tsundere,contrast,cute;;Mysterious Adventurer|A traveler from another world, well-traveled and mysterious, fond of sharing odd tales and expeditions.|adventure,mystery,learned;;Scheming Sage|Sharp-minded and perceptive, speaks in half-truths, yet gives the most precise advice when it counts.|schemer,sage,strategy;;Energetic Athlete|Full of energy and optimism, straightforward and always encouraging others forward.|energetic,sporty,frank</string>
+    <string name="character_discovery_generating_title">AI generating character</string>
+    <string name="character_discovery_generating_msg">Generating a character card from the selected style and creating a chat. Please wait…</string>
     <string name="stats_empty_data">Not enough data yet</string>
     <string name="stats_all_widgets_hidden">All insight widgets are hidden</string>
     <string name="stats_layout_title">Customize insights</string>
@@ -56,4 +62,22 @@
     <string name="stats_move_up">Move up</string>
     <string name="stats_move_down">Move down</string>
     <string name="stats_reset_layout">Reset</string>
+    <string name="stats_webdav_status_title">WebDAV Backup</string>
+    <string name="stats_webdav_local_mode">Local mode only</string>
+    <string name="stats_webdav_error">Sync error</string>
+    <string name="stats_webdav_active">Active</string>
+    <string name="stats_webdav_configured">Configured</string>
+    <string name="stats_webdav_not_configured">Not configured</string>
+    <string name="stats_local_log_preview_title">Local logs</string>
+    <string name="stats_achievements_title">Achievements</string>
+    <string name="stats_random_generate_ideas">AI generate ideas</string>
+    <string name="stats_achievement_progress">%1$s / %2$s</string>
+    <string name="achievement_token_1000">Token Starter</string>
+    <string name="achievement_token_10000">Token Adept</string>
+    <string name="achievement_token_100000">Token Master</string>
+    <string name="achievement_messages_100">Chatty Beginner</string>
+    <string name="achievement_messages_1000">Chatty Master</string>
+    <string name="achievement_sessions_10">Session Starter</string>
+    <string name="achievement_sessions_50">Session Expert</string>
+    <string name="achievement_first_affection_100">Heart Bond</string>
 </resources>

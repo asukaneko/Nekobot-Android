@@ -296,6 +296,13 @@ class CharacterRuntime(
 
         repo.save(updated)
         com.nekobot.app.data.local.LocalLogger.i(TAG, "审查关系增量已回写: $deltas → affection=${updated.affection} trust=${updated.trust}")
+        // 成就触发：首个角色好感度达到 100
+        if (updated.affection >= 100) {
+            com.nekobot.app.data.local.AchievementManager.reportProgress(
+                com.nekobot.app.data.local.AchievementManager.Target.Metric.AFFECTION,
+                100
+            )
+        }
         return true
     }
 
