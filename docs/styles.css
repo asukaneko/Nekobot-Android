@@ -290,6 +290,80 @@ code {
 .section-head h2 { font-size: clamp(26px, 3.4vw, 36px); font-weight: 800; margin: 16px 0 10px; letter-spacing: .5px; }
 .section-head p { color: var(--text-2); font-size: 15.5px; }
 
+/* ============ 真实界面截图 ============ */
+.screenshot-section { max-width: 1240px; }
+.screenshot-gallery {
+  display: flex;
+  gap: 18px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-color: #F1B5C8 transparent;
+  scrollbar-width: thin;
+  padding: 8px 8px 22px;
+}
+.screenshot-gallery::-webkit-scrollbar { height: 8px; }
+.screenshot-gallery::-webkit-scrollbar-track { background: transparent; }
+.screenshot-gallery::-webkit-scrollbar-thumb {
+  background: #F1B5C8;
+  border-radius: 999px;
+}
+.screenshot-card {
+  flex: 0 0 clamp(220px, 22vw, 260px);
+  scroll-snap-align: start;
+  margin: 0;
+}
+.screenshot-frame {
+  aspect-ratio: 1440 / 2928;
+  overflow: hidden;
+  border-radius: 26px;
+  border: 1px solid rgba(66, 60, 79, .12);
+  background: #F7F6FB;
+  box-shadow: 0 16px 38px rgba(58, 48, 75, .12);
+  transition: transform .35s var(--ease-spring), box-shadow .35s;
+}
+.screenshot-card:hover .screenshot-frame {
+  transform: translateY(-6px);
+  box-shadow: 0 22px 48px rgba(58, 48, 75, .17);
+}
+.screenshot-frame img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+.screenshot-card figcaption {
+  display: grid;
+  gap: 3px;
+  padding: 14px 6px 0;
+}
+.screenshot-card figcaption b { font-size: 15px; }
+.screenshot-card figcaption span {
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.screenshot-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  max-width: 760px;
+  margin: 22px auto 0;
+  padding: 14px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, .72);
+  color: var(--text-2);
+  font-size: 13.5px;
+}
+.screenshot-note a {
+  flex-shrink: 0;
+  color: var(--primary-deep);
+  font-weight: 700;
+}
+.screenshot-note a:hover { text-decoration: underline; }
+
 /* ============ 特性网格 ============ */
 .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
 .feature-card {
@@ -786,6 +860,14 @@ code {
   .phone { width: 250px; height: 510px; }
   .float-chip { display: none; }
   .section { padding-top: 64px; }
+  .screenshot-section { padding-inline: 12px; }
+  .screenshot-gallery { gap: 14px; padding-inline: 4px; }
+  .screenshot-card { flex-basis: min(72vw, 260px); }
+  .screenshot-note {
+    align-items: flex-start;
+    flex-direction: column;
+    margin-inline: 4px;
+  }
   .footer-inner { grid-template-columns: 1fr; gap: 22px; }
   .to-top { right: 16px; bottom: 16px; }
 }

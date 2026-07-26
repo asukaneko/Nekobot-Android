@@ -15,11 +15,48 @@
 [![License](https://img.shields.io/badge/license-GPL--3.0-f78fb3?style=flat-square&labelColor=2b2b3a)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/asukaneko/Nekobot-Android?style=flat-square&color=f78fb3&labelColor=2b2b3a&logo=github)](https://github.com/asukaneko/Nekobot-Android/stargazers)
 
-[功能特性](#-功能特性) · [下载安装](#-下载安装) · [双模式](#-双模式架构) · [从源码构建](#-从源码构建) · [更新日志](changelog.md) · [官方网站](https://asukaneko.github.io/Nekobot-Android/)
+[应用截图](#-应用截图) · [功能特性](#-功能特性) · [下载安装](#-下载安装) · [双模式](#-双模式架构) · [从源码构建](#-从源码构建) · [更新日志](changelog.md) · [官方网站](https://asukaneko.github.io/Nekobot-Android/)
 
 </div>
 
 ---
+
+## 📱 应用截图
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/assets/screenshots/sessions.jpg" alt="会话列表" /><br /><sub>会话管理</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/chat.jpg" alt="角色聊天" /><br /><sub>沉浸式聊天</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/characters.jpg" alt="角色卡列表" /><br /><sub>角色卡</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/assets/screenshots/dashboard-widget.jpg" alt="负一屏数据概览" /><br /><sub>负一屏数据概览</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/achievements.jpg" alt="成就系统" /><br /><sub>成就系统</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/state-history-overview.jpg" alt="角色状态历程" /><br /><sub>关系状态历程</sub></td>
+  </tr>
+</table>
+
+<details>
+<summary><b>查看更多界面</b></summary>
+
+<br />
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/assets/screenshots/worldbooks.jpg" alt="世界书" /><br /><sub>世界书</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/memories.jpg" alt="角色记忆" /><br /><sub>角色记忆</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/usage.jpg" alt="Token 用量统计" /><br /><sub>Token 用量</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/assets/screenshots/state-history-trend.jpg" alt="角色状态趋势" /><br /><sub>状态趋势与差分</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/more.jpg" alt="更多功能" /><br /><sub>更多功能</sub></td>
+    <td></td>
+  </tr>
+</table>
+
+</details>
+
+> 截图中的人物与对话均为虚构演示内容。可下载 [README 本地演示数据包](docs/assets/nekobot_readme_demo_data.zip)，在「更多 → 数据库管理」中导入并复现。
 
 ## ✨ 功能特性
 

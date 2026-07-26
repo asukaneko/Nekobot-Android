@@ -34,7 +34,7 @@
   });
 
   /* ---------- 3. 滚动高亮当前导航（Scroll Spy） ---------- */
-  const sections = ['features', 'modes', 'showcase', 'advanced', 'download', 'changelog', 'faq']
+  const sections = ['screenshots', 'features', 'modes', 'advanced', 'download', 'changelog', 'faq']
     .map((id) => document.getElementById(id))
     .filter(Boolean);
   const linkMap = new Map(
@@ -150,7 +150,28 @@
     });
   });
 
-  /* ---------- 7. 回到顶部 ---------- */
+  /* ---------- 7. 截图画廊：纵向滚轮转换为横向滚动 ---------- */
+  const screenshotGallery = $('.screenshot-gallery');
+  if (screenshotGallery) {
+    screenshotGallery.addEventListener('wheel', (event) => {
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+
+      const maxScrollLeft = screenshotGallery.scrollWidth - screenshotGallery.clientWidth;
+      const canScrollLeft = event.deltaY < 0 && screenshotGallery.scrollLeft > 0;
+      const canScrollRight = event.deltaY > 0 && screenshotGallery.scrollLeft < maxScrollLeft;
+      if (!canScrollLeft && !canScrollRight) return;
+
+      const unit = event.deltaMode === 1
+        ? 32
+        : event.deltaMode === 2
+          ? screenshotGallery.clientWidth
+          : 1;
+      event.preventDefault();
+      screenshotGallery.scrollLeft += event.deltaY * unit;
+    }, { passive: false });
+  }
+
+  /* ---------- 8. 回到顶部 ---------- */
   toTop.addEventListener('click', () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
