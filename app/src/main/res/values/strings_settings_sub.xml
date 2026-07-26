@@ -132,6 +132,8 @@
     <string name="webdav_server_only">此功能仅服务器模式可用</string>
     <string name="webdav_config_title">WebDAV 配置</string>
     <string name="webdav_config_subtitle">配置服务器地址与认证信息</string>
+    <string name="webdav_enabled">启用 WebDAV 备份</string>
+    <string name="webdav_enabled_desc">允许当前配置参与备份与同步状态展示</string>
     <string name="webdav_url">WebDAV 地址</string>
     <string name="webdav_username">用户名</string>
     <string name="webdav_password">密码</string>
@@ -160,6 +162,8 @@
     <string name="webdav_sync_pull_subtitle">从 WebDAV 恢复配置到本地</string>
     <string name="webdav_pull_portraits">同时拉取立绘图片文件</string>
     <string name="webdav_sync_pull_button">同步拉取</string>
+    <string name="webdav_sync_confirm_title">从 WebDAV 恢复本地数据</string>
+    <string name="webdav_sync_confirm_message">远程备份将覆盖当前本地数据库、Token 用量和成就记录。恢复前会保留临时回滚副本，确定继续吗？</string>
     <!-- ViewModel 提示 -->
     <string name="webdav_config_saved">配置已保存</string>
     <string name="webdav_connection_success">连接成功</string>

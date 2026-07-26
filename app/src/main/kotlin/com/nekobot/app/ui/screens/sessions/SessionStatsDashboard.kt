@@ -1754,19 +1754,19 @@ private fun DashboardWebDavStatusCard(status: com.nekobot.app.ui.screens.session
             }
         } else {
             val statusColor = when {
-                status.lastError != null -> MaterialTheme.colorScheme.error
+                !status.lastError.isNullOrBlank() -> MaterialTheme.colorScheme.error
                 status.enabled && status.configured -> Color(0xFF4CAF50)
                 status.configured -> MaterialTheme.colorScheme.primary
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             }
             val statusIcon = when {
-                status.lastError != null -> Icons.Filled.WarningAmber
+                !status.lastError.isNullOrBlank() -> Icons.Filled.WarningAmber
                 status.enabled && status.configured -> Icons.Filled.CheckCircle
                 status.configured -> Icons.Filled.Schedule
                 else -> Icons.Filled.Error
             }
             val statusText = when {
-                status.lastError != null -> stringResource(R.string.stats_webdav_error)
+                !status.lastError.isNullOrBlank() -> stringResource(R.string.stats_webdav_error)
                 status.enabled && status.configured -> stringResource(R.string.stats_webdav_active)
                 status.configured -> stringResource(R.string.stats_webdav_configured)
                 else -> stringResource(R.string.stats_webdav_not_configured)
@@ -1800,7 +1800,7 @@ private fun DashboardWebDavStatusCard(status: com.nekobot.app.ui.screens.session
                     label = stringResource(R.string.webdav_last_sync),
                     value = status.lastSyncAt ?: stringResource(R.string.webdav_never_sync)
                 )
-                status.lastError?.let { error ->
+                status.lastError?.takeIf { it.isNotBlank() }?.let { error ->
                     Text(
                         stringResource(R.string.webdav_recent_error, error),
                         style = MaterialTheme.typography.bodySmall,

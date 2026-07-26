@@ -132,6 +132,8 @@
     <string name="webdav_server_only">이 기능은 서버 모드에서만 사용할 수 있어요</string>
     <string name="webdav_config_title">WebDAV 설정</string>
     <string name="webdav_config_subtitle">서버 주소와 자격 증명 설정</string>
+    <string name="webdav_enabled">WebDAV 백업 사용</string>
+    <string name="webdav_enabled_desc">이 설정을 백업 및 동기화 상태에 사용합니다</string>
     <string name="webdav_url">WebDAV 주소</string>
     <string name="webdav_username">사용자 이름</string>
     <string name="webdav_password">비밀번호</string>
@@ -160,6 +162,8 @@
     <string name="webdav_sync_pull_subtitle">WebDAV에서 로컬로 설정 복원</string>
     <string name="webdav_pull_portraits">초상화 이미지 파일도 함께 풀</string>
     <string name="webdav_sync_pull_button">동기화 풀</string>
+    <string name="webdav_sync_confirm_title">WebDAV에서 로컬 데이터 복원</string>
+    <string name="webdav_sync_confirm_message">원격 백업이 현재 로컬 데이터베이스, 토큰 사용량 및 업적 기록을 대체합니다. 복원 중에는 임시 롤백 복사본을 유지합니다. 계속할까요?</string>
     <!-- ViewModel 토스트 -->
     <string name="webdav_config_saved">설정이 저장되었어요</string>
     <string name="webdav_connection_success">연결 성공</string>

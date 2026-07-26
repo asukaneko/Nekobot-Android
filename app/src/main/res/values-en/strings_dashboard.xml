@@ -63,7 +63,7 @@
     <string name="stats_move_down">Move down</string>
     <string name="stats_reset_layout">Reset</string>
     <string name="stats_webdav_status_title">WebDAV Backup</string>
-    <string name="stats_webdav_local_mode">Local mode only</string>
+    <string name="stats_webdav_local_mode">Status unavailable</string>
     <string name="stats_webdav_error">Sync error</string>
     <string name="stats_webdav_active">Active</string>
     <string name="stats_webdav_configured">Configured</string>

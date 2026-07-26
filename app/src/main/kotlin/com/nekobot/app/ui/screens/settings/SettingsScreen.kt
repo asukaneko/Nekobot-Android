@@ -647,6 +647,12 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                             title = stringResource(R.string.settings_data_maintenance),
                             subtitle = stringResource(R.string.settings_data_maintenance_desc)
                         ) { onNavigate("data_maintenance") }
+                        SettingNavRow(
+                            icon = Icons.Filled.CloudUpload,
+                            iconColor = MaterialTheme.colorScheme.primary,
+                            title = stringResource(R.string.settings_webdav_backup),
+                            subtitle = stringResource(R.string.settings_webdav_backup_desc)
+                        ) { onNavigate("webdav_backup") }
                     }
                 }
 

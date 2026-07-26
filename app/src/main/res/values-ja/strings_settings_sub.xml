@@ -132,6 +132,8 @@
     <string name="webdav_server_only">この機能はサーバーモードでのみ使用できます</string>
     <string name="webdav_config_title">WebDAV 設定</string>
     <string name="webdav_config_subtitle">サーバーアドレスと認証情報を設定</string>
+    <string name="webdav_enabled">WebDAV バックアップを有効化</string>
+    <string name="webdav_enabled_desc">この設定をバックアップと同期状態に使用します</string>
     <string name="webdav_url">WebDAV アドレス</string>
     <string name="webdav_username">ユーザー名</string>
     <string name="webdav_password">パスワード</string>
@@ -160,6 +162,8 @@
     <string name="webdav_sync_pull_subtitle">WebDAV からローカルへ設定を復元</string>
     <string name="webdav_pull_portraits">立絵画像ファイルもプル</string>
     <string name="webdav_sync_pull_button">同期プル</string>
+    <string name="webdav_sync_confirm_title">WebDAV からローカルデータを復元</string>
+    <string name="webdav_sync_confirm_message">リモートバックアップで現在のローカルデータベース、トークン使用量、実績記録を置き換えます。復元中は一時的なロールバックコピーを保持します。続行しますか？</string>
     <!-- ViewModel トースト -->
     <string name="webdav_config_saved">設定を保存しました</string>
     <string name="webdav_connection_success">接続成功</string>

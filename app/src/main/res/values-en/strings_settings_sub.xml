@@ -132,6 +132,8 @@
     <string name="webdav_server_only">This feature is only available in server mode</string>
     <string name="webdav_config_title">WebDAV config</string>
     <string name="webdav_config_subtitle">Configure server address and credentials</string>
+    <string name="webdav_enabled">Enable WebDAV backup</string>
+    <string name="webdav_enabled_desc">Use this configuration for backup and sync status</string>
     <string name="webdav_url">WebDAV address</string>
     <string name="webdav_username">Username</string>
     <string name="webdav_password">Password</string>
@@ -160,6 +162,8 @@
     <string name="webdav_sync_pull_subtitle">Restore config from WebDAV to local</string>
     <string name="webdav_pull_portraits">Also pull portrait image files</string>
     <string name="webdav_sync_pull_button">Sync pull</string>
+    <string name="webdav_sync_confirm_title">Restore local data from WebDAV</string>
+    <string name="webdav_sync_confirm_message">The remote backup will replace the current local database, token usage, and achievements. A temporary rollback copy will be kept during restoration. Continue?</string>
     <!-- ViewModel toasts -->
     <string name="webdav_config_saved">Config saved</string>
     <string name="webdav_connection_success">Connection successful</string>

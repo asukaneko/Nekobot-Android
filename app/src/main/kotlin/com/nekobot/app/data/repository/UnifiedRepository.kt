@@ -7,6 +7,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalRepository
+import com.nekobot.app.data.local.LocalWebDavBackupManager
 import com.nekobot.app.data.local.NbotConfigImporter
 import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.local.SkillPackageDownloader
@@ -115,6 +116,12 @@ class UnifiedRepository(
     private val gson = Gson()
     private val isLocal: Boolean get() = prefs.isLocalMode
     private val skillPackageDownloader = SkillPackageDownloader()
+    private val localWebDav by lazy {
+        LocalWebDavBackupManager(
+            requireNotNull(appContext) { "本地 WebDAV 备份需要应用上下文" },
+            prefs
+        )
+    }
 
     // ==================== 认证 ====================
 
@@ -1412,17 +1419,52 @@ class UnifiedRepository(
 
     // ==================== WebDAV 备份 ====================
     suspend fun getWebDavConfig(): Resource<WebDavConfig> =
-        if (isLocal) localNotSupported("WebDAV 备份") else remote.getWebDavConfig()
+        if (isLocal) {
+            runCatching { Resource.Success(localWebDav.getConfig()) }
+                .getOrElse { Resource.Error(it.message ?: "读取 WebDAV 配置失败") }
+        } else {
+            remote.getWebDavConfig()
+        }
+
     suspend fun saveWebDavConfig(config: WebDavConfig): Resource<JsonElement> =
-        if (isLocal) localNotSupported("WebDAV 备份") else remote.saveWebDavConfig(config)
+        if (isLocal) {
+            runCatching { Resource.Success<JsonElement>(localWebDav.saveConfig(config)) }
+                .getOrElse { Resource.Error(it.message ?: "保存 WebDAV 配置失败") }
+        } else {
+            remote.saveWebDavConfig(config)
+        }
+
     suspend fun testWebDav(req: WebDavTestRequest): Resource<JsonElement> =
-        if (isLocal) localNotSupported("WebDAV 备份") else remote.testWebDav(req)
+        if (isLocal) {
+            runCatching { Resource.Success<JsonElement>(localWebDav.testConnection(req)) }
+                .getOrElse { Resource.Error(it.message ?: "WebDAV 连接测试失败") }
+        } else {
+            remote.testWebDav(req)
+        }
+
     suspend fun webDavInfo(): Resource<JsonElement> =
-        if (isLocal) localNotSupported("WebDAV 备份") else remote.webDavInfo()
+        if (isLocal) {
+            runCatching { Resource.Success<JsonElement>(localWebDav.remoteInfo()) }
+                .getOrElse { Resource.Error(it.message ?: "查询 WebDAV 信息失败") }
+        } else {
+            remote.webDavInfo()
+        }
+
     suspend fun webDavBackup(req: WebDavBackupRequest): Resource<JsonElement> =
-        if (isLocal) localNotSupported("WebDAV 备份") else remote.webDavBackup(req)
+        if (isLocal) {
+            runCatching { Resource.Success<JsonElement>(localWebDav.backup(req)) }
+                .getOrElse { Resource.Error(it.message ?: "WebDAV 备份失败") }
+        } else {
+            remote.webDavBackup(req)
+        }
+
     suspend fun webDavSync(req: WebDavBackupRequest): Resource<JsonElement> =
-        if (isLocal) localNotSupported("WebDAV 备份") else remote.webDavSync(req)
+        if (isLocal) {
+            runCatching { Resource.Success<JsonElement>(localWebDav.sync(req)) }
+                .getOrElse { Resource.Error(it.message ?: "WebDAV 恢复失败") }
+        } else {
+            remote.webDavSync(req)
+        }
 
     // ==================== 配置迁移 ====================
     suspend fun exportConfig(req: ConfigExportRequest): retrofit2.Response<okhttp3.ResponseBody> =

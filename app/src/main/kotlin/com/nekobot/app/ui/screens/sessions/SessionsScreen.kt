@@ -1901,26 +1901,33 @@ class SessionsViewModel : BaseViewModel() {
         }
     }
 
-    /** 加载 WebDAV 备份状态（仅服务器模式）。 */
+    /** 加载 WebDAV 备份状态；本地与服务器模式共用同一张状态卡。 */
     private suspend fun loadWebDavStatus() {
-        if (ServiceContainer.prefs.appMode == AppMode.LOCAL) {
-            _webDavStatus.value = null
-            return
-        }
         try {
             val configResult = unified.getWebDavConfig()
             val infoResult = unified.webDavInfo()
             val config = (configResult as? Resource.Success)?.data
             val info = (infoResult as? Resource.Success)?.data?.asJsonObject
+            val remoteFileSize = info?.get("file_size")
+                ?.takeUnless { it.isJsonNull }
+                ?.asLong
+                ?: info?.get("size")
+                    ?.takeUnless { it.isJsonNull }
+                    ?.asLong
+                ?: config?.lastFileSize
             _webDavStatus.value = DashboardWebDavStatus(
                 enabled = config?.enabled == true,
                 configured = !config?.url.isNullOrBlank(),
                 url = config?.url,
-                lastBackupAt = config?.lastBackupAt,
-                lastSyncAt = config?.lastSyncAt,
-                lastError = config?.lastError,
-                remoteFileSize = info?.get("file_size")?.asLong ?: config?.lastFileSize,
-                remoteModifiedAt = info?.get("last_modified")?.asString ?: config?.lastModified
+                lastBackupAt = config?.lastBackupAt?.takeIf { it.isNotBlank() },
+                lastSyncAt = config?.lastSyncAt?.takeIf { it.isNotBlank() },
+                lastError = config?.lastError?.takeIf { it.isNotBlank() },
+                remoteFileSize = remoteFileSize,
+                remoteModifiedAt = info?.get("last_modified")
+                    ?.takeUnless { it.isJsonNull }
+                    ?.asString
+                    ?.takeIf { it.isNotBlank() }
+                    ?: config?.lastModified?.takeIf { it.isNotBlank() }
             )
         } catch (_: Exception) {
             _webDavStatus.value = null

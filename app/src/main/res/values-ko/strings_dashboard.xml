@@ -63,9 +63,9 @@
     <string name="stats_move_down">아래로</string>
     <string name="stats_reset_layout">기본값</string>
     <string name="stats_webdav_status_title">WebDAV 백업</string>
-    <string name="stats_webdav_local_mode">로컬 모드에서는 사용 안 함</string>
+    <string name="stats_webdav_local_mode">상태를 확인할 수 없음</string>
     <string name="stats_webdav_error">동기화 오류</string>
-    <string name="stats_webdav_active">동기화 중</string>
+    <string name="stats_webdav_active">사용 중</string>
     <string name="stats_webdav_configured">설정됨</string>
     <string name="stats_webdav_not_configured">미설정</string>
     <string name="stats_local_log_preview_title">로컬 로그</string>

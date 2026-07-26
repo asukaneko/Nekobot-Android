@@ -63,9 +63,9 @@
     <string name="stats_move_down">下へ</string>
     <string name="stats_reset_layout">初期状態</string>
     <string name="stats_webdav_status_title">WebDAV バックアップ</string>
-    <string name="stats_webdav_local_mode">ローカルモードでは未使用</string>
+    <string name="stats_webdav_local_mode">状態を取得できません</string>
     <string name="stats_webdav_error">同期エラー</string>
-    <string name="stats_webdav_active">同期中</string>
+    <string name="stats_webdav_active">有効</string>
     <string name="stats_webdav_configured">設定済み</string>
     <string name="stats_webdav_not_configured">未設定</string>
     <string name="stats_local_log_preview_title">ローカルログ</string>

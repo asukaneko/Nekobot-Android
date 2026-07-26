@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.WifiFind
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,6 +32,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -51,7 +53,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonObject
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
-import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.data.model.WebDavBackupRequest
 import com.nekobot.app.data.model.WebDavConfig
 import com.nekobot.app.data.model.WebDavTestRequest
@@ -79,17 +80,21 @@ class WebDavBackupViewModel : BaseViewModel() {
     val testResult: StateFlow<String?> = _testResult.asStateFlow()
 
     init {
-        if (ServiceContainer.prefs.appMode != AppMode.LOCAL) {
-            loadConfig()
-            loadInfo()
-        }
+        loadConfig()
     }
 
     /** 加载 WebDAV 配置 */
     fun loadConfig() {
         launchResult(
             block = { unified.getWebDavConfig() },
-            onSuccess = { _config.value = it }
+            onSuccess = {
+                _config.value = it
+                if (!it.url.isNullOrBlank()) {
+                    loadInfo()
+                } else {
+                    _remoteInfo.value = null
+                }
+            }
         )
     }
 
@@ -104,12 +109,17 @@ class WebDavBackupViewModel : BaseViewModel() {
     }
 
     /** 保存 WebDAV 配置 */
-    fun saveConfig(url: String, username: String, password: String, encryptionPassword: String) {
-        val current = _config.value
+    fun saveConfig(
+        enabled: Boolean,
+        url: String,
+        username: String,
+        password: String,
+        encryptionPassword: String
+    ) {
         val cfg = WebDavConfig(
-            enabled = current?.enabled,
-            url = url.ifBlank { null },
-            username = username.ifBlank { null },
+            enabled = enabled,
+            url = url.trim(),
+            username = username.trim(),
             password = password.ifBlank { null },
             encryptionPassword = encryptionPassword.ifBlank { null }
         )
@@ -133,11 +143,14 @@ class WebDavBackupViewModel : BaseViewModel() {
             block = { unified.testWebDav(req) },
             onSuccess = { elem ->
                 val obj = elem?.asJsonObject
-                val success = obj?.get("success")?.asBoolean ?: false
+                val success = obj?.get("success")?.asBoolean == true &&
+                    obj.get("ok")?.asBoolean != false
                 _testResult.value = if (success) {
                     string(R.string.webdav_connection_success)
                 } else {
-                    obj?.get("error")?.asString ?: string(R.string.webdav_connection_failed)
+                    obj?.get("error")?.asString
+                        ?: obj?.get("message")?.asString
+                        ?: string(R.string.webdav_connection_failed)
                 }
             }
         )
@@ -210,7 +223,6 @@ private fun formatFileSize(bytes: Long?): String {
 @Composable
 fun WebDavBackupScreen(onBack: () -> Unit) {
     val vm: WebDavBackupViewModel = viewModel()
-    val appMode by ServiceContainer.appModeFlow.collectAsState()
     val config by vm.config.collectAsState()
     val remoteInfo by vm.remoteInfo.collectAsState()
     val testResult by vm.testResult.collectAsState()
@@ -224,12 +236,14 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
     var usernameInput by remember(config) { mutableStateOf(config?.username.orEmpty()) }
     var passwordInput by remember { mutableStateOf("") }
     var encryptionPasswordInput by remember { mutableStateOf("") }
+    var enabledInput by remember(config) { mutableStateOf(config?.enabled == true) }
 
     // 备份/同步选项
     var backupPassword by remember { mutableStateOf("") }
     var backupIncludePortraits by remember { mutableStateOf(false) }
     var syncPassword by remember { mutableStateOf("") }
     var syncIncludePortraits by remember { mutableStateOf(false) }
+    var showSyncConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(toast) {
         if (toast != null) {
@@ -264,25 +278,13 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (appMode == AppMode.LOCAL) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = stringResource(R.string.webdav_server_only),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
                     error?.let {
                         ErrorBanner(message = it, onRetry = { vm.clearError() })
                     }
@@ -291,6 +293,29 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         SectionHeader(title = stringResource(R.string.webdav_config_title), subtitle = stringResource(R.string.webdav_config_subtitle))
                         Spacer(Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    stringResource(R.string.webdav_enabled),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    stringResource(R.string.webdav_enabled_desc),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = enabledInput,
+                                onCheckedChange = { enabledInput = it }
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
 
                         OutlinedTextField(
                             value = urlInput,
@@ -337,7 +362,13 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                         ) {
                             Button(
                                 onClick = {
-                                    vm.saveConfig(urlInput, usernameInput, passwordInput, encryptionPasswordInput)
+                                    vm.saveConfig(
+                                        enabledInput,
+                                        urlInput,
+                                        usernameInput,
+                                        passwordInput,
+                                        encryptionPasswordInput
+                                    )
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                                 modifier = Modifier.weight(1f)
@@ -374,7 +405,13 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                         val lastBackup = config?.lastBackupAt
                         val lastSync = config?.lastSyncAt
                         val lastError = config?.lastError
-                        val fileSize = remoteInfo?.get("file_size")?.asLong ?: config?.lastFileSize
+                        val fileSize = remoteInfo?.get("file_size")
+                            ?.takeUnless { it.isJsonNull }
+                            ?.asLong
+                            ?: remoteInfo?.get("size")
+                                ?.takeUnless { it.isJsonNull }
+                                ?.asLong
+                            ?: config?.lastFileSize
                         val lastModified = remoteInfo?.get("last_modified")?.asString ?: config?.lastModified
                         val resolvedUrl = remoteInfo?.get("resolved_file_url")?.asString ?: config?.resolvedFileUrl
 
@@ -493,7 +530,7 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                         Spacer(Modifier.height(12.dp))
 
                         Button(
-                            onClick = { vm.sync(syncPassword, syncIncludePortraits) },
+                            onClick = { showSyncConfirm = true },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -502,11 +539,36 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                             Text(stringResource(R.string.webdav_sync_pull_button), color = MaterialTheme.colorScheme.onPrimary)
                         }
                     }
-                }
             }
 
             LoadingOverlay(visible = loading)
         }
+    }
+
+    if (showSyncConfirm) {
+        AlertDialog(
+            onDismissRequest = { showSyncConfirm = false },
+            title = { Text(stringResource(R.string.webdav_sync_confirm_title)) },
+            text = { Text(stringResource(R.string.webdav_sync_confirm_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showSyncConfirm = false
+                        vm.sync(syncPassword, syncIncludePortraits)
+                    }
+                ) {
+                    Text(
+                        stringResource(R.string.webdav_sync_pull_button),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSyncConfirm = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
     }
 }
 

@@ -63,9 +63,9 @@
     <string name="stats_move_down">下移</string>
     <string name="stats_reset_layout">恢复默认</string>
     <string name="stats_webdav_status_title">WebDAV 备份</string>
-    <string name="stats_webdav_local_mode">本地模式未启用</string>
+    <string name="stats_webdav_local_mode">状态暂不可用</string>
     <string name="stats_webdav_error">同步异常</string>
-    <string name="stats_webdav_active">同步中</string>
+    <string name="stats_webdav_active">已启用</string>
     <string name="stats_webdav_configured">已配置</string>
     <string name="stats_webdav_not_configured">未配置</string>
     <string name="stats_local_log_preview_title">本地日志</string>
