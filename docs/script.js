@@ -187,9 +187,9 @@
 
   /* ---------- 11. 从 GitHub Releases 拉取更新日志 ---------- */
   const FALLBACK_RELEASES = [
+    { tag_name: 'v0.4.0', published_at: '2026-07-26', body: '- 本地模式 WebDAV 备份与恢复功能\n- 成就系统，多层级徽章、范围隔离与解锁动效\n- 仪表盘组件与小组件（最近会话、Token 构成、快捷操作等）\n- OAuth 账号登录与 OpenAI Responses API 协议支持' },
     { tag_name: 'v0.3.10', published_at: '2026-07-24', body: '- 重构 TTS 语音合成系统，多提供商支持与消息级音频持久化\n- 基于会话 ID 的实时事件隔离与多会话支持\n- 隐私锁功能，重构 Markdown 渲染\n- 角色卡初始状态（initial_state）与 Exa MCP 搜索' },
     { tag_name: 'v0.3.9', published_at: '2026-07-23', body: '- 本地模式斜杠命令系统\n- 本地 JM 漫画排行与下载功能\n- 本地耗时命令实时进度报告' },
-    { tag_name: 'v0.3.8', published_at: '2026-07-22', body: '- 关于页面、开源许可证与隐私声明\n- 本地模式记录首字时间（TTFT）与完成时间\n- 会话导入功能（支持本地与远程导出格式）\n- 跨 ViewModel 共享的会话运行时状态管理\n- IPv6 服务器地址规范化支持' },
   ];
   function renderReleases(releases) {
     const container = $('#changelogList');
