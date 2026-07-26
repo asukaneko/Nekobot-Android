@@ -297,7 +297,7 @@ code {
   gap: 18px;
   overflow-x: auto;
   overscroll-behavior-inline: contain;
-  scroll-snap-type: x mandatory;
+  scroll-snap-type: x proximity;
   scrollbar-color: #F1B5C8 transparent;
   scrollbar-width: thin;
   padding: 8px 8px 22px;

@@ -156,18 +156,22 @@
     screenshotGallery.addEventListener('wheel', (event) => {
       if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
 
-      const maxScrollLeft = screenshotGallery.scrollWidth - screenshotGallery.clientWidth;
-      const canScrollLeft = event.deltaY < 0 && screenshotGallery.scrollLeft > 0;
-      const canScrollRight = event.deltaY > 0 && screenshotGallery.scrollLeft < maxScrollLeft;
-      if (!canScrollLeft && !canScrollRight) return;
-
       const unit = event.deltaMode === 1
         ? 32
         : event.deltaMode === 2
           ? screenshotGallery.clientWidth
           : 1;
+      const distance = event.deltaY * unit;
+      const maxScrollLeft = screenshotGallery.scrollWidth - screenshotGallery.clientWidth;
+      const canScrollLeft = distance < 0 && screenshotGallery.scrollLeft > 1;
+      const canScrollRight = distance > 0 && screenshotGallery.scrollLeft < maxScrollLeft - 1;
+      if (!canScrollLeft && !canScrollRight) return;
+
       event.preventDefault();
-      screenshotGallery.scrollLeft += event.deltaY * unit;
+      screenshotGallery.scrollBy({
+        left: distance,
+        behavior: 'auto',
+      });
     }, { passive: false });
   }
 
