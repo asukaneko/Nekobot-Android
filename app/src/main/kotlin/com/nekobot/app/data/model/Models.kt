@@ -236,6 +236,13 @@ data class Message(
      * UI 在用户气泡与 AI 气泡之间渲染。
      */
     @SerializedName("thinking_cards") val thinkingCards: List<ThinkingCard>? = null,
+    /**
+     * Agent 助手消息关联的完整工具调用历史。
+     *
+     * 本地模式用它在后续轮次恢复 assistant/tool 消息；普通聊天消息为 null。
+     */
+    @SerializedName("tool_call_history")
+    val toolCallHistory: List<Map<String, Any>>? = null,
     @SerializedName(value = "session_id", alternate = ["conversation_id", "sessionId"])
     val sessionId: String? = null
 ) {

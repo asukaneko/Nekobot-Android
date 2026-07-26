@@ -101,7 +101,9 @@ data class LocalMessageEntity(
     @ColumnInfo(name = "audio_url") val audioUrl: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: String,
     /** 该用户消息关联的进度卡片 JSON（ThinkingCard 列表序列化），agent 模式持久化 */
-    @ColumnInfo(name = "thinking_cards") val thinkingCards: String? = null
+    @ColumnInfo(name = "thinking_cards") val thinkingCards: String? = null,
+    /** 该助手消息当前轮产生的完整 assistant/tool 调用历史 JSON，供后续轮次恢复 */
+    @ColumnInfo(name = "tool_call_history") val toolCallHistory: String? = null
 )
 
 /**

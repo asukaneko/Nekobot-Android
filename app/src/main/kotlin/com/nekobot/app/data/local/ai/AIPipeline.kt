@@ -658,9 +658,15 @@ class AIPipeline {
             if (loopResult.modelActualName.isNotEmpty()) ctx.metadata["model_actual_name"] = loopResult.modelActualName
             if (loopResult.failoverEvents.isNotEmpty()) ctx.metadata["failover_events"] = loopResult.failoverEvents
 
+            // 只保存当前轮新增的 assistant/tool 消息。既有上下文已在数据库中，
+            // 若再次写入会造成工具历史跨轮重复嵌套。
+            ctx.toolTrace = extractCurrentTurnToolCallHistory(
+                loopResult.toolMessages,
+                executionResult.preparedMessages.size
+            )
+
             if (loopResult.stopped) {
                 ctx.stoppedPrematurely = true
-                ctx.toolTrace = extractToolCallHistory(loopResult.toolMessages)
                 ctx.finalContent = "【生成已停止 - 工具调用记录已保存，回复「继续」可继续执行】"
                 return
             }

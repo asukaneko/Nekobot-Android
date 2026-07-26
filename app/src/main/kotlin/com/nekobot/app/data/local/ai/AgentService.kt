@@ -11,6 +11,8 @@ import java.util.UUID
  */
 
 private val agentGson = Gson()
+private val toolCallHistoryType =
+    object : TypeToken<List<Map<String, Any>>>() {}.type
 
 // ============================================================================
 // 异常类型
@@ -176,7 +178,7 @@ fun expandHiddenToolHistory(messages: List<Map<String, Any>>): List<Map<String, 
     val expanded = mutableListOf<Map<String, Any>>()
     for (message in messages.map { it.toMutableMap() }) {
         val hidden = message.remove("tool_call_history")
-        expanded.add(message.toMap())
+        val restored = mutableListOf<Map<String, Any>>()
         @Suppress("UNCHECKED_CAST")
         if (hidden is List<*>) {
             for (hiddenMsg in hidden) {
@@ -184,9 +186,13 @@ fun expandHiddenToolHistory(messages: List<Map<String, Any>>): List<Map<String, 
                 val role = hiddenMsg["role"] as? String ?: ""
                 if (role !in listOf("assistant", "tool")) continue
                 @Suppress("UNCHECKED_CAST")
-                expanded.add((hiddenMsg as Map<String, Any>).toMap())
+                restored.add((hiddenMsg as Map<String, Any>).toMap())
             }
         }
+        // tool_call_history 记录的是生成这条公开助手回复之前的模型/工具交互，
+        // 必须按真实时间顺序放在公开回复前，避免出现“最终回复之后又调用工具”的错序上下文。
+        expanded.addAll(restored)
+        expanded.add(message.toMap())
     }
     return expanded
 }
@@ -213,9 +219,44 @@ fun applyToolCallHistory(messages: List<Map<String, Any>>, toolCallHistory: List
     return messages + toolCallHistory.map { it.toMap() }
 }
 
+/** 将持久化的工具调用历史 JSON 恢复为模型可直接使用的 assistant/tool 消息。 */
+fun decodeToolCallHistory(json: String?): List<Map<String, Any>> {
+    if (json.isNullOrBlank()) return emptyList()
+    return runCatching {
+        agentGson.fromJson<List<Map<String, Any>>>(json, toolCallHistoryType)
+            .orEmpty()
+            .filter { it["role"] in listOf("assistant", "tool") }
+            .map { it.toMap() }
+    }.getOrDefault(emptyList())
+}
+
+/** 将本轮工具调用历史序列化，供后续轮次自动恢复。 */
+fun encodeToolCallHistory(history: List<Map<String, Any>>?): String? {
+    val normalized = history.orEmpty()
+        .filter { it["role"] in listOf("assistant", "tool") }
+        .map { it.toMap() }
+    return normalized.takeIf { it.isNotEmpty() }?.let(agentGson::toJson)
+}
+
 /** 提取工具调用历史（role 为 assistant 或 tool 的消息） */
 fun extractToolCallHistory(messages: List<Map<String, Any>>): List<Map<String, Any>> {
     return messages.filter { it["role"] in listOf("assistant", "tool") }.map { it.toMap() }
+}
+
+/**
+ * 只提取本轮新产生的工具调用历史。
+ *
+ * [initialMessageCount] 之前的消息属于既有上下文，不能再次保存到当前回复中，
+ * 否则每轮都会重复嵌套全部历史并导致上下文指数膨胀。
+ */
+fun extractCurrentTurnToolCallHistory(
+    messages: List<Map<String, Any>>,
+    initialMessageCount: Int
+): List<Map<String, Any>> {
+    return messages
+        .drop(initialMessageCount.coerceIn(0, messages.size))
+        .filter { it["role"] in listOf("assistant", "tool") }
+        .map { it.toMap() }
 }
 
 // ============================================================================

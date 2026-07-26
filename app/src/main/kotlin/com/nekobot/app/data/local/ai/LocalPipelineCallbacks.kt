@@ -168,26 +168,19 @@ internal class LocalPipelineCallbacks(
             // 角色执行时，最后一条已经是前一名角色回复，会被错误删掉并重复注入用户消息。
             .filterNot { it.id == parentMessageId }
 
+        val contextHistory = if (session.sessionMode.equals("agent", ignoreCase = true)) {
+            addLegacyAgentContextFallback(history)
+        } else {
+            history
+        }
+
         // 无角色的 Agent 会话沿用旧聊天流程的提示词/世界书组装规则，
         // 仅将执行入口切换到 Pipeline，以便获得进度卡片事件。
         if (character == null) {
-            // Agent 模式下，把每条用户消息关联的 thinking_cards 渲染为文本块
-            // 追加到该用户消息末尾，让 AI 能看到之前 agent 做过的步骤（修复"继续"场景失忆）。
-            val isAgentMode = session.sessionMode.equals("agent", ignoreCase = true)
-            val enhancedHistory = if (isAgentMode) {
-                history.map { msg ->
-                    if (msg.role != "user") return@map msg
-                    val cardsBlock = renderThinkingCardsForContext(msg.thinkingCards)
-                    if (cardsBlock.isBlank()) return@map msg
-                    msg.copy(content = msg.content + cardsBlock)
-                }
-            } else {
-                history
-            }
             return LocalPromptBuilder.build(
                 session = session,
                 character = null,
-                history = enhancedHistory,
+                history = contextHistory,
                 userInput = ctx.chatRequest.content,
                 worldBookEntries = worldBookEntries
             )
@@ -196,31 +189,54 @@ internal class LocalPipelineCallbacks(
         val messages = mutableListOf<Map<String, Any>>()
 
         // 历史消息
-        for (msg in history) {
-            // Agent 模式：把用户消息关联的 thinking_cards 渲染为文本块追加到末尾，
-            // 让 AI 知道上一轮 agent 做了哪些工具调用与思考（修复"继续"场景下 AI 失忆）。
-            val content = if (msg.role == "user" &&
-                session.sessionMode.equals("agent", ignoreCase = true)) {
-                val cardsBlock = renderThinkingCardsForContext(msg.thinkingCards)
-                if (cardsBlock.isBlank()) msg.content else msg.content + cardsBlock
+        for (msg in contextHistory) {
+            val historyContent = if (session.sessionMode.equals("group", ignoreCase = true)) {
+                LocalGroupChat.annotateHistoryContent(msg.role, msg.content, msg.sender)
             } else {
                 msg.content
             }
-            val historyContent = if (session.sessionMode.equals("group", ignoreCase = true)) {
-                LocalGroupChat.annotateHistoryContent(msg.role, content, msg.sender)
-            } else {
-                content
-            }
-            messages.add(mapOf(
-                "role" to msg.role,
-                "content" to historyContent
-            ))
+            messages.add(buildMap {
+                put("role", msg.role)
+                put("content", historyContent)
+                if (msg.role.equals("assistant", ignoreCase = true)) {
+                    decodeToolCallHistory(msg.toolCallHistory)
+                        .takeIf { it.isNotEmpty() }
+                        ?.let { toolHistory ->
+                            put("tool_call_history", toolHistory)
+                            put("can_continue", true)
+                        }
+                }
+            })
         }
 
         // 当前用户消息
         messages.add(mapOf("role" to "user", "content" to ctx.chatRequest.content))
 
         return messages
+    }
+
+    /**
+     * 旧版本只把 Agent 工具结果保存在用户消息的 thinking_cards 中。
+     * 新版本优先恢复助手消息上的完整 tool_call_history；仅对没有完整历史的旧轮次
+     * 使用进度卡片摘要兜底，避免同一工具结果被重复注入。
+     */
+    private fun addLegacyAgentContextFallback(
+        history: List<LocalMessageEntity>
+    ): List<LocalMessageEntity> {
+        return history.mapIndexed { index, message ->
+            if (!message.role.equals("user", ignoreCase = true)) return@mapIndexed message
+            val hasStoredToolHistory = history
+                .drop(index + 1)
+                .takeWhile { !it.role.equals("user", ignoreCase = true) }
+                .any {
+                    it.role.equals("assistant", ignoreCase = true) &&
+                        decodeToolCallHistory(it.toolCallHistory).isNotEmpty()
+                }
+            if (hasStoredToolHistory) return@mapIndexed message
+
+            val cardsBlock = renderThinkingCardsForContext(message.thinkingCards)
+            if (cardsBlock.isBlank()) message else message.copy(content = message.content + cardsBlock)
+        }
     }
 
     /**
@@ -239,7 +255,10 @@ internal class LocalPipelineCallbacks(
      *
      * @return 文本块（含前置换行）；无 thinking_cards 或解析失败时返回空串。
      */
-    private fun renderThinkingCardsForContext(thinkingCardsJson: String?): String {
+    private fun renderThinkingCardsForContext(
+        thinkingCardsJson: String?,
+        maxChars: Int = 12_000
+    ): String {
         if (thinkingCardsJson.isNullOrBlank()) return ""
         return try {
             @Suppress("UNCHECKED_CAST")
@@ -247,11 +266,18 @@ internal class LocalPipelineCallbacks(
                 ?: return ""
             if (cards.isEmpty()) return ""
             val sb = StringBuilder()
-            sb.append("\n\n[上一轮 Agent 进度]")
+            fun appendBounded(text: String) {
+                val remaining = maxChars - sb.length
+                if (remaining > 0) sb.append(text.take(remaining))
+            }
+
+            appendBounded("\n\n[历史 Agent 执行记录（旧格式兜底）]")
             for (card in cards) {
+                if (sb.length >= maxChars) break
                 @Suppress("UNCHECKED_CAST")
                 val steps = (card["steps"] as? List<Map<String, Any>>).orEmpty()
                 for (step in steps) {
+                    if (sb.length >= maxChars) break
                     val type = (step["type"] as? String).orEmpty()
                     val name = (step["name"] as? String).orEmpty()
                     val status = (step["status"] as? String).orEmpty()
@@ -272,12 +298,37 @@ internal class LocalPipelineCallbacks(
                         "error" -> "✗"
                         else -> ""
                     }
-                    sb.append("\n- ").append(label).append(": ").append(name)
-                    if (statusMark.isNotEmpty()) sb.append(" [").append(statusMark).append("]")
+                    appendBounded("\n- $label: $name")
+                    if (statusMark.isNotEmpty()) appendBounded(" [$statusMark]")
+                    @Suppress("UNCHECKED_CAST")
+                    val arguments = step["arguments"] as? Map<String, Any>
+                    if (!arguments.isNullOrEmpty()) {
+                        appendBounded("\n  参数: ${gson.toJson(arguments).take(1_000)}")
+                    }
+                    @Suppress("UNCHECKED_CAST")
+                    val fullResult = step["full_result"] as? Map<String, Any>
+                    if (!fullResult.isNullOrEmpty()) {
+                        val path = (fullResult["path"] as? String)
+                            ?: (fullResult["absolute_path"] as? String)
+                        if (!path.isNullOrBlank()) appendBounded("\n  文件: $path")
+                        val fileContent = fullResult["content"] as? String
+                        if (!fileContent.isNullOrBlank()) {
+                            appendBounded("\n  读取内容:\n")
+                            appendBounded(fileContent)
+                            if (fullResult["truncated"] == true) {
+                                appendBounded("\n  [读取结果已截断，可按上述路径继续分片读取]")
+                            }
+                        } else {
+                            appendBounded("\n  结果: ${gson.toJson(fullResult).take(2_000)}")
+                        }
+                    }
                     if (detail.isNotBlank()) {
-                        sb.append("（").append(detail.take(160)).append("）")
+                        appendBounded("\n  摘要: ${detail.take(240)}")
                     }
                 }
+            }
+            if (sb.length >= maxChars) {
+                sb.append("\n[历史执行记录达到上下文预算；需要细节时请重新读取对应文件]")
             }
             sb.toString()
         } catch (e: Exception) {
@@ -288,6 +339,10 @@ internal class LocalPipelineCallbacks(
     override fun saveAssistantMessage(ctx: PipelineContext, message: Map<String, Any>) {
         val content = (message["content"] as? String) ?: ""
         if (content.isBlank()) return
+        @Suppress("UNCHECKED_CAST")
+        val toolCallHistoryJson = encodeToolCallHistory(
+            message["tool_call_history"] as? List<Map<String, Any>>
+        )
 
         val resolvedUsage = if (ctx.error == null) {
             resolveLocalTokenUsage(ctx.usage, ctx.messages, content)
@@ -328,7 +383,8 @@ internal class LocalPipelineCallbacks(
                 inputTokens = inputTokens,
                 outputTokens = outputTokens,
                 model = modelName,
-                createdAt = com.nekobot.app.data.local.LocalRepository.nowIsoStatic()
+                createdAt = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
+                toolCallHistory = toolCallHistoryJson
             ))
 
             // 更新会话元信息

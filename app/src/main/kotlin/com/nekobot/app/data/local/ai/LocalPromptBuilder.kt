@@ -64,7 +64,18 @@ object LocalPromptBuilder {
                 "assistant", "ai" -> "assistant"
                 else -> return@forEach  // 跳过 system/工具消息
             }
-            messages.add(mapOf("role" to role, "content" to msg.content))
+            messages.add(buildMap {
+                put("role", role)
+                put("content", msg.content)
+                if (role == "assistant") {
+                    decodeToolCallHistory(msg.toolCallHistory)
+                        .takeIf { it.isNotEmpty() }
+                        ?.let { history ->
+                            put("tool_call_history", history)
+                            put("can_continue", true)
+                        }
+                }
+            })
         }
 
         // 4. 当前用户输入

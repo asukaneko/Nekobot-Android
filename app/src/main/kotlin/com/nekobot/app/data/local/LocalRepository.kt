@@ -553,6 +553,7 @@ class LocalRepository(
                 ?: System.currentTimeMillis().toString()
             val createdAt = m.str("created_at", "createdAt") ?: now
             val thinkingCardsEl = m.get("thinking_cards") ?: m.get("thinkingCards")
+            val toolCallHistoryEl = m.get("tool_call_history") ?: m.get("toolCallHistory")
 
             result.add(
                 LocalMessageEntity(
@@ -567,7 +568,8 @@ class LocalRepository(
                     outputTokens = m.intVal("output_tokens", "outputTokens"),
                     audioUrl = m.str("audio_url", "audioUrl"),
                     createdAt = createdAt,
-                    thinkingCards = thinkingCardsEl?.takeIf { !it.isJsonNull }?.toString()
+                    thinkingCards = thinkingCardsEl?.takeIf { !it.isJsonNull }?.toString(),
+                    toolCallHistory = toolCallHistoryEl?.takeIf { !it.isJsonNull }?.toString()
                 )
             )
         }
@@ -4544,7 +4546,9 @@ $charSection$topicSection
                 val type = object : TypeToken<List<ThinkingCard>>() {}.type
                 gson.fromJson<List<ThinkingCard>>(it, type)
             }.getOrNull()
-        }
+        },
+        toolCallHistory = com.nekobot.app.data.local.ai.decodeToolCallHistory(toolCallHistory)
+            .takeIf { it.isNotEmpty() }
     )
 
     /** 持久化指定用户消息关联的进度卡片列表（agent 模式）。 */
