@@ -173,7 +173,8 @@ internal fun buildSessionStatsDashboardData(
     characters: List<CharacterPreset> = emptyList(),
     today: LocalDate = LocalDate.now(),
     webDavStatus: DashboardWebDavStatus? = null,
-    localLogPreview: List<DashboardLogEntry> = emptyList()
+    localLogPreview: List<DashboardLogEntry> = emptyList(),
+    highAffectionCharacterCount: Int? = null
 ): SessionStatsDashboardData {
     val visibleSessions = sessions.filter { it.isArchive != true }
     val activityByDate = linkedMapOf<LocalDate, Long>()
@@ -410,14 +411,20 @@ internal fun buildSessionStatsDashboardData(
     // 成就进度：基于当前全局统计数据计算并触发解锁
     val totalMessages = visibleSessions.sumOf { (it.messageCount ?: 0).toLong() }
     val totalTokensForAchievements = stats?.totalDisplay ?: 0L
-    val maxAffection = characters.maxOfOrNull { char ->
-        char.state?.get("affection")?.takeIf { it.isJsonPrimitive }?.asInt ?: 0
-    } ?: 0
+    val resolvedHighAffectionCharacterCount = highAffectionCharacterCount
+        ?: characters.count { char ->
+            char.state
+                ?.get("affection")
+                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }
+                ?.asInt
+                ?.let { it >= 90 }
+                ?: false
+        }
     val achievementSnapshots = com.nekobot.app.data.local.AchievementManager.getSnapshots(
         totalTokens = totalTokensForAchievements,
         totalMessages = totalMessages,
         totalSessions = visibleSessions.size,
-        maxAffection = maxAffection
+        highAffectionCharacterCount = resolvedHighAffectionCharacterCount
     ).map { snapshot ->
         DashboardAchievement(
             id = snapshot.id,

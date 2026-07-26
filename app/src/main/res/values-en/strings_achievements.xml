@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="extensions_achievements">Achievements</string>
+    <string name="extensions_achievements_desc">View progress, badges, and unlock history</string>
+
+    <string name="achievements_title">Achievements</string>
+    <string name="achievements_refresh">Refresh achievement progress</string>
+    <string name="achievements_overview_title">Badge Collection</string>
+    <string name="achievements_overview_subtitle">Remember every meeting, message, and spark of inspiration</string>
+    <string name="achievements_completion">Overall completion %1$d%%</string>
+    <string name="achievements_filter_all">All</string>
+    <string name="achievements_filter_unlocked">Unlocked</string>
+    <string name="achievements_filter_in_progress">In progress</string>
+    <string name="achievements_category_all">All categories</string>
+    <string name="achievements_filter_empty">No achievements match this filter yet</string>
+    <string name="achievements_unlocked">Unlocked</string>
+    <string name="achievements_unlocked_at">Unlocked %1$s</string>
+    <string name="achievements_unknown">Unknown achievement</string>
+    <string name="achievements_dashboard_summary">%1$d / %2$d unlocked</string>
+    <string name="achievements_dashboard_more">View all achievements in Extensions</string>
+
+    <string name="achievement_category_tokens">Tokens</string>
+    <string name="achievement_category_messages">Messages</string>
+    <string name="achievement_category_sessions">Sessions</string>
+    <string name="achievement_category_affection">Bond</string>
+
+    <string name="achievement_tier_bronze">Bronze</string>
+    <string name="achievement_tier_silver">Silver</string>
+    <string name="achievement_tier_gold">Gold</string>
+    <string name="achievement_tier_platinum">Platinum</string>
+    <string name="achievement_tier_diamond">Diamond</string>
+
+    <string name="achievement_requirement_tokens">Use %1$s tokens in total</string>
+    <string name="achievement_requirement_messages">Send %1$s messages in total</string>
+    <string name="achievement_requirement_sessions">Create %1$s sessions in total</string>
+    <string name="achievement_requirement_high_affection_characters">Have %1$s characters at 90 affection or higher</string>
+
+    <string name="achievement_token_1000000">Starlit Reasoning</string>
+    <string name="achievement_token_10000000">Infinite Mind</string>
+    <string name="achievement_messages_10">First Confidant</string>
+    <string name="achievement_messages_5000">Midnight Companion</string>
+    <string name="achievement_messages_10000">A Myriad Words</string>
+    <string name="achievement_sessions_1">Curtain Up</string>
+    <string name="achievement_sessions_100">A Hundred Tales</string>
+    <string name="achievement_sessions_500">Worlds on Stage</string>
+    <string name="achievement_high_affection_characters_3">Three Heartbeats</string>
+    <string name="achievement_high_affection_characters_5">Garden of Hearts</string>
+    <string name="achievement_high_affection_characters_10">Bond Constellation</string>
+    <string name="achievement_high_affection_characters_20">Hearts United</string>
+
+    <string name="achievement_unlocked_title">Achievement Unlocked</string>
+    <string name="achievement_unlocked_continue">Claim Badge</string>
+</resources>

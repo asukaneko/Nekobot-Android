@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="extensions_achievements">実績コレクション</string>
+    <string name="extensions_achievements_desc">進捗、バッジ、解除履歴を確認</string>
+
+    <string name="achievements_title">実績</string>
+    <string name="achievements_refresh">実績の進捗を更新</string>
+    <string name="achievements_overview_title">バッジコレクション</string>
+    <string name="achievements_overview_subtitle">出会い、会話、ひらめきのすべてを記録</string>
+    <string name="achievements_completion">総達成率 %1$d%%</string>
+    <string name="achievements_filter_all">すべて</string>
+    <string name="achievements_filter_unlocked">解除済み</string>
+    <string name="achievements_filter_in_progress">進行中</string>
+    <string name="achievements_category_all">すべてのカテゴリ</string>
+    <string name="achievements_filter_empty">この条件に一致する実績はまだありません</string>
+    <string name="achievements_unlocked">解除済み</string>
+    <string name="achievements_unlocked_at">%1$s に解除</string>
+    <string name="achievements_unknown">不明な実績</string>
+    <string name="achievements_dashboard_summary">%1$d / %2$d 解除済み</string>
+    <string name="achievements_dashboard_more">拡張機能ですべての実績を表示</string>
+
+    <string name="achievement_category_tokens">トークン</string>
+    <string name="achievement_category_messages">メッセージ</string>
+    <string name="achievement_category_sessions">セッション</string>
+    <string name="achievement_category_affection">絆</string>
+
+    <string name="achievement_tier_bronze">ブロンズ</string>
+    <string name="achievement_tier_silver">シルバー</string>
+    <string name="achievement_tier_gold">ゴールド</string>
+    <string name="achievement_tier_platinum">プラチナ</string>
+    <string name="achievement_tier_diamond">ダイヤモンド</string>
+
+    <string name="achievement_requirement_tokens">累計 %1$s トークンを使用</string>
+    <string name="achievement_requirement_messages">累計 %1$s 件のメッセージを送信</string>
+    <string name="achievement_requirement_sessions">累計 %1$s 件のセッションを作成</string>
+    <string name="achievement_requirement_high_affection_characters">好感度90以上のキャラクターを%1$s人獲得</string>
+
+    <string name="achievement_token_1000000">星海の推論</string>
+    <string name="achievement_token_10000000">無限の知性</string>
+    <string name="achievement_messages_10">はじめての打ち明け話</string>
+    <string name="achievement_messages_5000">夜更けの親友</string>
+    <string name="achievement_messages_10000">万の言葉</string>
+    <string name="achievement_sessions_1">物語の幕開け</string>
+    <string name="achievement_sessions_100">百の物語</string>
+    <string name="achievement_sessions_500">万象の劇場</string>
+    <string name="achievement_high_affection_characters_3">三つの鼓動</string>
+    <string name="achievement_high_affection_characters_5">心の庭園</string>
+    <string name="achievement_high_affection_characters_10">絆の星座</string>
+    <string name="achievement_high_affection_characters_20">心をひとつに</string>
+
+    <string name="achievement_unlocked_title">実績を解除しました</string>
+    <string name="achievement_unlocked_continue">バッジを受け取る</string>
+</resources>

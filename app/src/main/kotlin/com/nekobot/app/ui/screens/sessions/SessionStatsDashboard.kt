@@ -39,7 +39,6 @@ import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudSync
@@ -48,7 +47,6 @@ import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.MenuBook
@@ -56,7 +54,6 @@ import androidx.compose.material.icons.filled.RecentActors
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
-import androidx.compose.material.icons.filled.Token
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.TrendingFlat
 import androidx.compose.material.icons.filled.TrendingUp
@@ -109,6 +106,8 @@ import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.model.RandomCharacterIdea
 import com.nekobot.app.ui.components.GlassCard
+import com.nekobot.app.ui.components.AchievementBadge
+import com.nekobot.app.ui.components.achievementTitle
 import com.nekobot.app.ui.components.resolveAvatarUrl
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -1899,14 +1898,53 @@ private fun DashboardLocalLogPreviewCard(logs: List<DashboardLogEntry>) {
 @Composable
 private fun DashboardAchievementsCard(achievements: List<DashboardAchievement>) {
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        DashboardWidgetHeader(stringResource(R.string.stats_achievements_title), Icons.Filled.EmojiEvents)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            DashboardWidgetHeader(
+                stringResource(R.string.stats_achievements_title),
+                Icons.Filled.EmojiEvents,
+                Modifier.weight(1f)
+            )
+            Text(
+                stringResource(
+                    R.string.achievements_dashboard_summary,
+                    achievements.count(DashboardAchievement::isUnlocked),
+                    achievements.size
+                ),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
         Spacer(Modifier.height(12.dp))
         if (achievements.isEmpty()) {
             DashboardEmptyData()
         } else {
+            val recentlyUnlocked = achievements
+                .filter(DashboardAchievement::isUnlocked)
+                .sortedByDescending { it.unlockedAt ?: 0L }
+                .take(2)
+            val closestLocked = achievements
+                .filterNot(DashboardAchievement::isUnlocked)
+                .sortedByDescending(DashboardAchievement::progress)
+                .take(6 - recentlyUnlocked.size)
+            val featured = recentlyUnlocked + closestLocked
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                achievements.forEach { achievement ->
+                featured.forEach { achievement ->
                     AchievementItem(achievement)
+                }
+                if (achievements.size > featured.size) {
+                    Text(
+                        stringResource(R.string.achievements_dashboard_more),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 2.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
                 }
             }
         }
@@ -1915,8 +1953,6 @@ private fun DashboardAchievementsCard(achievements: List<DashboardAchievement>) 
 
 @Composable
 private fun AchievementItem(achievement: DashboardAchievement) {
-    val icon = achievementIcon(achievement.id)
-    val tint = if (achievement.isUnlocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     val title = achievementTitle(achievement.id)
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -1933,21 +1969,11 @@ private fun AchievementItem(achievement: DashboardAchievement) {
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = if (achievement.isUnlocked) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
-                }
-            ) {
-                Icon(
-                    icon,
-                    contentDescription = null,
-                    tint = tint,
-                    modifier = Modifier.padding(8.dp).size(22.dp)
-                )
-            }
+            AchievementBadge(
+                achievementId = achievement.id,
+                unlocked = achievement.isUnlocked,
+                modifier = Modifier.size(42.dp)
+            )
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -1997,31 +2023,6 @@ private fun AchievementItem(achievement: DashboardAchievement) {
             }
         }
     }
-}
-
-@Composable
-private fun achievementTitle(id: String): String = when (id) {
-    com.nekobot.app.data.local.AchievementManager.Id.TOKEN_1000 -> stringResource(R.string.achievement_token_1000)
-    com.nekobot.app.data.local.AchievementManager.Id.TOKEN_10000 -> stringResource(R.string.achievement_token_10000)
-    com.nekobot.app.data.local.AchievementManager.Id.TOKEN_100000 -> stringResource(R.string.achievement_token_100000)
-    com.nekobot.app.data.local.AchievementManager.Id.MESSAGES_100 -> stringResource(R.string.achievement_messages_100)
-    com.nekobot.app.data.local.AchievementManager.Id.MESSAGES_1000 -> stringResource(R.string.achievement_messages_1000)
-    com.nekobot.app.data.local.AchievementManager.Id.SESSIONS_10 -> stringResource(R.string.achievement_sessions_10)
-    com.nekobot.app.data.local.AchievementManager.Id.SESSIONS_50 -> stringResource(R.string.achievement_sessions_50)
-    com.nekobot.app.data.local.AchievementManager.Id.FIRST_AFFECTION_100 -> stringResource(R.string.achievement_first_affection_100)
-    else -> id
-}
-
-private fun achievementIcon(id: String): ImageVector = when (id) {
-    com.nekobot.app.data.local.AchievementManager.Id.TOKEN_1000,
-    com.nekobot.app.data.local.AchievementManager.Id.TOKEN_10000,
-    com.nekobot.app.data.local.AchievementManager.Id.TOKEN_100000 -> Icons.Filled.Token
-    com.nekobot.app.data.local.AchievementManager.Id.MESSAGES_100,
-    com.nekobot.app.data.local.AchievementManager.Id.MESSAGES_1000 -> Icons.Filled.Chat
-    com.nekobot.app.data.local.AchievementManager.Id.SESSIONS_10,
-    com.nekobot.app.data.local.AchievementManager.Id.SESSIONS_50 -> Icons.Filled.Groups
-    com.nekobot.app.data.local.AchievementManager.Id.FIRST_AFFECTION_100 -> Icons.Filled.Favorite
-    else -> Icons.Filled.EmojiEvents
 }
 
 /** 格式化文件大小为人类可读字符串 */

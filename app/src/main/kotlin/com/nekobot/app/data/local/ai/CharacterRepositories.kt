@@ -21,6 +21,7 @@ interface CharacterStateRepository {
 interface RelationshipRepository {
     suspend fun get(characterId: String, targetId: String): RelationshipState?
     suspend fun save(relationship: RelationshipState)
+    suspend fun countCharactersAtOrAboveAffection(threshold: Int): Int
 }
 
 /** 状态历史快照仓库：每轮追加一条，记录状态随时间的演变 */

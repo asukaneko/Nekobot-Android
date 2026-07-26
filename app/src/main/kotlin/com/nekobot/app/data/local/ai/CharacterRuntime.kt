@@ -223,6 +223,14 @@ class CharacterRuntime(
             }
         }
 
+        relationshipRepo?.let { repo ->
+            val highAffectionCharacterCount = repo.countCharactersAtOrAboveAffection(90)
+            com.nekobot.app.data.local.AchievementManager.reportProgress(
+                com.nekobot.app.data.local.AchievementManager.Target.Metric.HIGH_AFFECTION_CHARACTERS,
+                highAffectionCharacterCount.toLong()
+            )
+        }
+
         // 写入状态历史快照（供「状态历程」界面呈现随时间演变，并保留本轮对话原文供底部回放）
         if (snapshotRepo != null) {
             try {
@@ -296,13 +304,12 @@ class CharacterRuntime(
 
         repo.save(updated)
         com.nekobot.app.data.local.LocalLogger.i(TAG, "审查关系增量已回写: $deltas → affection=${updated.affection} trust=${updated.trust}")
-        // 成就触发：首个角色好感度达到 100
-        if (updated.affection >= 100) {
-            com.nekobot.app.data.local.AchievementManager.reportProgress(
-                com.nekobot.app.data.local.AchievementManager.Target.Metric.AFFECTION,
-                100
-            )
-        }
+        // 成就触发：统计好感度达到 90 的不同角色数量。
+        val highAffectionCharacterCount = repo.countCharactersAtOrAboveAffection(90)
+        com.nekobot.app.data.local.AchievementManager.reportProgress(
+            com.nekobot.app.data.local.AchievementManager.Target.Metric.HIGH_AFFECTION_CHARACTERS,
+            highAffectionCharacterCount.toLong()
+        )
         return true
     }
 

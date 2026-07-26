@@ -151,6 +151,18 @@ class LocalRelationshipRepository(
         )
         relationshipDao.upsert(entity)
     }
+
+    override suspend fun countCharactersAtOrAboveAffection(threshold: Int): Int =
+        relationshipDao.listAll()
+            .asSequence()
+            .mapNotNull { entity ->
+                runCatching { RelationshipState.fromJson(entity.dataJson) }.getOrNull()
+                    ?.takeIf { it.affection >= threshold }
+                    ?.let { entity.characterId }
+            }
+            .filter(String::isNotBlank)
+            .distinct()
+            .count()
 }
 
 // ============================================================================

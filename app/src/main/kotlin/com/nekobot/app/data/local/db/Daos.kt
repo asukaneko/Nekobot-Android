@@ -335,6 +335,9 @@ interface RelationshipDao {
     @Query("SELECT * FROM local_relationship_states WHERE character_id = :characterId AND target_id != :excludedTargetId ORDER BY updated_at DESC LIMIT 1")
     suspend fun getLatestForCharacter(characterId: String, excludedTargetId: String): LocalRelationshipStateEntity?
 
+    @Query("SELECT * FROM local_relationship_states")
+    suspend fun listAll(): List<LocalRelationshipStateEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(relationship: LocalRelationshipStateEntity)
 

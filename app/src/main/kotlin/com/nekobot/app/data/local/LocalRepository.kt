@@ -3167,6 +3167,12 @@ class LocalRepository(
         characterDao.listAll().map { it.toCharacterPreset() }
     }
 
+    suspend fun countHighAffectionCharacters(threshold: Int = 90): Int =
+        withContext(Dispatchers.IO) {
+            LocalRelationshipRepository(db.relationshipDao())
+                .countCharactersAtOrAboveAffection(threshold)
+        }
+
     fun observeCharacters(): Flow<List<LocalCharacterEntity>> = characterDao.observeAll()
 
     suspend fun getCharacter(id: String): CharacterPreset? = withContext(Dispatchers.IO) {

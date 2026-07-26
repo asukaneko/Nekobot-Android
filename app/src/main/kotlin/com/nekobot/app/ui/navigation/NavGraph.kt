@@ -77,6 +77,8 @@ import com.nekobot.app.ui.screens.extensions.TtsPlaygroundScreen
 import com.nekobot.app.ui.screens.extensions.ImageGenerationPlaygroundScreen
 import com.nekobot.app.ui.screens.extensions.LoginTokensScreen
 import com.nekobot.app.ui.screens.extensions.ApiKeysScreen
+import com.nekobot.app.ui.screens.extensions.AchievementsScreen
+import com.nekobot.app.ui.components.AchievementUnlockHost
 import kotlinx.coroutines.launch
 
 private val mainRoutes = setOf(
@@ -416,6 +418,9 @@ fun NekobotNavGraph() {
                     onNavigate = { route -> navController.navigate(route) }
                 )
             }
+            composable(Routes.ACHIEVEMENTS) {
+                AchievementsScreen(onBack = { navController.popBackStack() })
+            }
             composable(Routes.HOOKS) {
                 HooksScreen(onBack = { navController.popBackStack() })
             }
@@ -527,5 +532,6 @@ fun NekobotNavGraph() {
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
+        AchievementUnlockHost()
     }
 }

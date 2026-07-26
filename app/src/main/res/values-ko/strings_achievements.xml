@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="extensions_achievements">업적 컬렉션</string>
+    <string name="extensions_achievements_desc">진행도, 배지, 해금 기록 보기</string>
+
+    <string name="achievements_title">업적</string>
+    <string name="achievements_refresh">업적 진행도 새로고침</string>
+    <string name="achievements_overview_title">배지 컬렉션</string>
+    <string name="achievements_overview_subtitle">모든 만남과 대화, 영감의 순간을 기록합니다</string>
+    <string name="achievements_completion">전체 달성률 %1$d%%</string>
+    <string name="achievements_filter_all">전체</string>
+    <string name="achievements_filter_unlocked">해금됨</string>
+    <string name="achievements_filter_in_progress">진행 중</string>
+    <string name="achievements_category_all">전체 분류</string>
+    <string name="achievements_filter_empty">이 조건에 맞는 업적이 아직 없습니다</string>
+    <string name="achievements_unlocked">해금됨</string>
+    <string name="achievements_unlocked_at">%1$s 해금</string>
+    <string name="achievements_unknown">알 수 없는 업적</string>
+    <string name="achievements_dashboard_summary">%1$d / %2$d 해금</string>
+    <string name="achievements_dashboard_more">확장 기능에서 모든 업적 보기</string>
+
+    <string name="achievement_category_tokens">토큰</string>
+    <string name="achievement_category_messages">메시지</string>
+    <string name="achievement_category_sessions">세션</string>
+    <string name="achievement_category_affection">유대</string>
+
+    <string name="achievement_tier_bronze">브론즈</string>
+    <string name="achievement_tier_silver">실버</string>
+    <string name="achievement_tier_gold">골드</string>
+    <string name="achievement_tier_platinum">플래티넘</string>
+    <string name="achievement_tier_diamond">다이아몬드</string>
+
+    <string name="achievement_requirement_tokens">누적 %1$s 토큰 사용</string>
+    <string name="achievement_requirement_messages">누적 %1$s개 메시지 전송</string>
+    <string name="achievement_requirement_sessions">누적 %1$s개 세션 생성</string>
+    <string name="achievement_requirement_high_affection_characters">호감도 90 이상 캐릭터 %1$s명 달성</string>
+
+    <string name="achievement_token_1000000">별빛 추론</string>
+    <string name="achievement_token_10000000">무한한 지성</string>
+    <string name="achievement_messages_10">첫 속마음</string>
+    <string name="achievement_messages_5000">한밤의 벗</string>
+    <string name="achievement_messages_10000">만 마디의 시</string>
+    <string name="achievement_sessions_1">이야기의 시작</string>
+    <string name="achievement_sessions_100">백 가지 이야기</string>
+    <string name="achievement_sessions_500">만상의 무대</string>
+    <string name="achievement_high_affection_characters_3">세 개의 심장</string>
+    <string name="achievement_high_affection_characters_5">마음의 정원</string>
+    <string name="achievement_high_affection_characters_10">인연의 별자리</string>
+    <string name="achievement_high_affection_characters_20">마음 하나로</string>
+
+    <string name="achievement_unlocked_title">업적 해금</string>
+    <string name="achievement_unlocked_continue">배지 받기</string>
+</resources>

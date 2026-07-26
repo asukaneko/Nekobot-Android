@@ -363,6 +363,26 @@ class UnifiedRepository(
     suspend fun listCharacters(): Resource<List<CharacterPreset>> =
         if (isLocal) Resource.Success(local.listCharacters()) else remote.listCharacters()
 
+    suspend fun countHighAffectionCharacters(threshold: Int = 90): Resource<Int> =
+        if (isLocal) {
+            Resource.Success(local.countHighAffectionCharacters(threshold))
+        } else {
+            when (val result = remote.listCharacters()) {
+                is Resource.Success -> Resource.Success(
+                    result.data.count { character ->
+                        character.state
+                            ?.get("affection")
+                            ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }
+                            ?.asInt
+                            ?.let { it >= threshold }
+                            ?: false
+                    }
+                )
+                is Resource.Error -> Resource.Error(result.message)
+                is Resource.Loading -> Resource.Loading
+            }
+        }
+
     suspend fun getCharacter(id: String): Resource<CharacterPreset> =
         if (isLocal) {
             local.getCharacter(id)?.let { Resource.Success(it) } ?: Resource.Error("角色不存在")

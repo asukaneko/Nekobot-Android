@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PlayCircle
@@ -64,6 +65,7 @@ import com.nekobot.app.ui.navigation.Routes
 fun ExtensionsScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
     val isLocalMode = com.nekobot.app.ServiceContainer.prefs.isLocalMode
     val allItems = listOf(
+        ExtensionItem(stringResource(R.string.extensions_achievements), stringResource(R.string.extensions_achievements_desc), Icons.Filled.EmojiEvents, Routes.ACHIEVEMENTS),
         ExtensionItem(stringResource(R.string.extensions_hook_manage), stringResource(R.string.extensions_hook_desc), Icons.Filled.Extension, Routes.HOOKS),
         ExtensionItem(stringResource(R.string.extensions_task_center), stringResource(R.string.extensions_task_center_desc), Icons.Filled.Schedule, Routes.TASK_CENTER),
         ExtensionItem(stringResource(R.string.extensions_workflows), stringResource(R.string.extensions_workflows_desc), Icons.Filled.AppRegistration, Routes.WORKFLOWS),
@@ -80,7 +82,7 @@ fun ExtensionsScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
     )
     // 本地模式仅展示本地已实现的模块（含 TTS/图片生成实验室）
     val localSupportedRoutes = setOf(
-        Routes.HOOKS, Routes.TASK_CENTER, Routes.WORKFLOWS,
+        Routes.ACHIEVEMENTS, Routes.HOOKS, Routes.TASK_CENTER, Routes.WORKFLOWS,
         Routes.SKILLS, Routes.TOOLS, Routes.MCP_SERVERS, Routes.API_KEYS,
         Routes.TTS_PLAYGROUND, Routes.IMAGE_GENERATION_PLAYGROUND
     )

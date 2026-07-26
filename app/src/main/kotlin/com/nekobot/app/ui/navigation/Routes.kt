@@ -68,6 +68,7 @@ object Routes {
 
     // 扩展功能聚合页 + 12 个模块（仅远程模式）
     const val EXTENSIONS = "extensions"
+    const val ACHIEVEMENTS = "achievements"
     const val HOOKS = "hooks"
     const val TASK_CENTER = "task_center"
     const val WORKFLOWS = "workflows"

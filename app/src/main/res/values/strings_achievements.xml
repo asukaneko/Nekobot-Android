@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="extensions_achievements">成就收藏</string>
+    <string name="extensions_achievements_desc">查看进度、徽章与解锁记录</string>
+
+    <string name="achievements_title">成就</string>
+    <string name="achievements_refresh">刷新成就进度</string>
+    <string name="achievements_overview_title">成就收藏</string>
+    <string name="achievements_overview_subtitle">记录每一次相遇、对话与灵感</string>
+    <string name="achievements_completion">总完成度 %1$d%%</string>
+    <string name="achievements_filter_all">全部</string>
+    <string name="achievements_filter_unlocked">已解锁</string>
+    <string name="achievements_filter_in_progress">进行中</string>
+    <string name="achievements_category_all">全部类别</string>
+    <string name="achievements_filter_empty">当前筛选下还没有成就</string>
+    <string name="achievements_unlocked">已解锁</string>
+    <string name="achievements_unlocked_at">%1$s 解锁</string>
+    <string name="achievements_unknown">未知成就</string>
+    <string name="achievements_dashboard_summary">已解锁 %1$d / %2$d</string>
+    <string name="achievements_dashboard_more">在扩展功能中查看全部成就</string>
+
+    <string name="achievement_category_tokens">Token</string>
+    <string name="achievement_category_messages">消息</string>
+    <string name="achievement_category_sessions">会话</string>
+    <string name="achievement_category_affection">羁绊</string>
+
+    <string name="achievement_tier_bronze">青铜</string>
+    <string name="achievement_tier_silver">白银</string>
+    <string name="achievement_tier_gold">黄金</string>
+    <string name="achievement_tier_platinum">铂金</string>
+    <string name="achievement_tier_diamond">钻石</string>
+
+    <string name="achievement_requirement_tokens">累计使用 %1$s Token</string>
+    <string name="achievement_requirement_messages">累计发送 %1$s 条消息</string>
+    <string name="achievement_requirement_sessions">累计创建 %1$s 个会话</string>
+    <string name="achievement_requirement_high_affection_characters">拥有 %1$s 个好感度达到 90 的角色</string>
+
+    <string name="achievement_token_1000000">星海推演</string>
+    <string name="achievement_token_10000000">无尽心智</string>
+    <string name="achievement_messages_10">初次倾诉</string>
+    <string name="achievement_messages_5000">长夜知己</string>
+    <string name="achievement_messages_10000">万语成诗</string>
+    <string name="achievement_sessions_1">故事开场</string>
+    <string name="achievement_sessions_100">百幕人生</string>
+    <string name="achievement_sessions_500">万象剧场</string>
+    <string name="achievement_high_affection_characters_3">三重心声</string>
+    <string name="achievement_high_affection_characters_5">心之花园</string>
+    <string name="achievement_high_affection_characters_10">羁绊星群</string>
+    <string name="achievement_high_affection_characters_20">众心相连</string>
+
+    <string name="achievement_unlocked_title">成就已解锁</string>
+    <string name="achievement_unlocked_continue">收下徽章</string>
+</resources>

@@ -202,9 +202,9 @@ fun SessionsScreen(
 
     // 模式切换时自动刷新会话列表
     val appMode by ServiceContainer.appModeFlow.collectAsState()
-    LaunchedEffect(appMode) {
-        viewModel.loadAll()
-        viewModel.loadDashboardMetrics()
+    val dataSourceRevision by ServiceContainer.dataSourceRevision.collectAsState()
+    LaunchedEffect(appMode, dataSourceRevision) {
+        viewModel.reloadForDataSource()
     }
 
     // 角色卡立绘/头像变更后自动刷新会话列表，使会话头像跟随角色卡更新
@@ -1702,6 +1702,7 @@ class SessionsViewModel : BaseViewModel() {
     private val _sessions = MutableStateFlow<List<Session>>(emptyList())
     private val _dashboardTokenStats = MutableStateFlow<TokenStats?>(null)
     private val _dashboardRankings = MutableStateFlow<TokenRankings?>(null)
+    private val _dashboardHighAffectionCharacterCount = MutableStateFlow(0)
     private val _dashboardLoading = MutableStateFlow(false)
     private val _characters = MutableStateFlow<List<CharacterPreset>>(emptyList())
     private val _webDavStatus = MutableStateFlow<DashboardWebDavStatus?>(null)
@@ -1715,7 +1716,8 @@ class SessionsViewModel : BaseViewModel() {
         _dashboardRankings,
         _characters,
         _webDavStatus,
-        _localLogPreview
+        _localLogPreview,
+        _dashboardHighAffectionCharacterCount
     ) { values ->
         @Suppress("UNCHECKED_CAST")
         buildSessionStatsDashboardData(
@@ -1724,7 +1726,8 @@ class SessionsViewModel : BaseViewModel() {
             rankings = values[2] as TokenRankings?,
             characters = values[3] as List<CharacterPreset>,
             webDavStatus = values[4] as DashboardWebDavStatus?,
-            localLogPreview = values[5] as List<DashboardLogEntry>
+            localLogPreview = values[5] as List<DashboardLogEntry>,
+            highAffectionCharacterCount = values[6] as Int
         )
     }
         .flowOn(Dispatchers.Default)
@@ -1849,21 +1852,44 @@ class SessionsViewModel : BaseViewModel() {
         loadCharacters()
     }
 
+    /** 数据库 Profile / 运行模式切换时先清空旧快照，再从新数据源完整加载。 */
+    fun reloadForDataSource() {
+        _sessions.value = emptyList()
+        _characters.value = emptyList()
+        _dashboardTokenStats.value = null
+        _dashboardRankings.value = null
+        _dashboardHighAffectionCharacterCount.value = 0
+        _webDavStatus.value = null
+        _localLogPreview.value = emptyList()
+        loadAll()
+        loadDashboardMetrics()
+    }
+
     /** 独立加载负一屏 Token 总览与排行榜；失败时仍展示会话派生统计。 */
     fun loadDashboardMetrics() {
         viewModelScope.launch {
             _dashboardLoading.value = true
             try {
-                val (statsResult, rankingsResult) = coroutineScope {
+                val (statsResult, rankingsResult, highAffectionCountResult) = coroutineScope {
                     val statsRequest = async { unified.tokenStats(dateRange = "total") }
                     val rankingsRequest = async { unified.tokenRankings() }
-                    statsRequest.await() to rankingsRequest.await()
+                    val highAffectionCountRequest = async {
+                        unified.countHighAffectionCharacters(threshold = 90)
+                    }
+                    Triple(
+                        statsRequest.await(),
+                        rankingsRequest.await(),
+                        highAffectionCountRequest.await()
+                    )
                 }
                 if (statsResult is Resource.Success) {
                     _dashboardTokenStats.value = statsResult.data
                 }
                 if (rankingsResult is Resource.Success) {
                     _dashboardRankings.value = rankingsResult.data
+                }
+                if (highAffectionCountResult is Resource.Success) {
+                    _dashboardHighAffectionCharacterCount.value = highAffectionCountResult.data
                 }
                 loadWebDavStatus()
                 loadLocalLogPreview()

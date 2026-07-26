@@ -61,6 +61,10 @@ object ServiceContainer {
     private val _appModeFlow = MutableStateFlow(AppMode.SERVER)
     val appModeFlow: StateFlow<AppMode> = _appModeFlow.asStateFlow()
 
+    /** 数据源代次：本地数据库 Profile 切换时递增，驱动现有页面重新加载。 */
+    private val _dataSourceRevision = MutableStateFlow(0L)
+    val dataSourceRevision: StateFlow<Long> = _dataSourceRevision.asStateFlow()
+
     /** 全局登录态流：登录/登出/token 失效时自动刷新路由 */
     private val _loginStateFlow = MutableStateFlow(false)
     val loginStateFlow: StateFlow<Boolean> = _loginStateFlow.asStateFlow()
@@ -95,8 +99,8 @@ object ServiceContainer {
         socket = SocketManager(prefs)
         // 初始化本地日志记录器
         com.nekobot.app.data.local.LocalLogger.init(app)
-        // 初始化成就系统
-        com.nekobot.app.data.local.AchievementManager.init(app)
+        // 初始化成就系统；本地模式按数据库 Profile 隔离解锁记录。
+        com.nekobot.app.data.local.AchievementManager.init(app, achievementScopeId())
         // 初始化带语言配置的上下文（ViewModel 通过此上下文获取本地化字符串）
         localizedContext = LocaleHelper.wrap(appContext!!)
         // 初始化全局状态
@@ -119,22 +123,32 @@ object ServiceContainer {
     /** 切换本地 db profile：重建 LocalRepository/UnifiedRepository，广播全局刷新。 */
     fun switchLocalDb(profileName: String) {
         appContext?.let { ctx ->
+            prefs.activeDbName = profileName
             localRepository.close()
             NekobotDatabase.switchProfile(ctx, profileName)
             val db = NekobotDatabase.get(ctx, profileName)
             localRepository = LocalRepository(db, LocalAiClient(), ctx)
             unified = UnifiedRepository(prefs, repository, localRepository, ctx)
-            // 触发模式流刷新，所有观察页自动重载
-            _appModeFlow.value = prefs.appMode
+            com.nekobot.app.data.local.AchievementManager.switchScope(achievementScopeId())
+            _dataSourceRevision.value += 1L
         }
     }
 
     /** 切换运行模式并广播 */
     fun switchAppMode(mode: AppMode) {
         prefs.appMode = mode
+        com.nekobot.app.data.local.AchievementManager.switchScope(achievementScopeId())
         _appModeFlow.value = mode
+        _dataSourceRevision.value += 1L
         _loginStateFlow.value = prefs.isLoggedIn
     }
+
+    private fun achievementScopeId(): String =
+        if (prefs.isLocalMode) {
+            "local:${prefs.activeDbName}"
+        } else {
+            "server"
+        }
 
     /** 广播登录状态变化（登录成功 / 登出 / token 失效）。
      *  本地模式恒为已登录，不接受 false（避免本地模式被强制跳转登录页）。 */
