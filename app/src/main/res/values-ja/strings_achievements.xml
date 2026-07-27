@@ -5,6 +5,8 @@
 
     <string name="achievements_title">実績</string>
     <string name="achievements_refresh">実績の進捗を更新</string>
+    <string name="achievements_view_grid">2列カードに切り替え</string>
+    <string name="achievements_view_standard">標準カードに切り替え</string>
     <string name="achievements_overview_title">バッジコレクション</string>
     <string name="achievements_overview_subtitle">出会い、会話、ひらめきのすべてを記録</string>
     <string name="achievements_completion">総達成率 %1$d%%</string>
@@ -50,10 +52,10 @@
 
     <string name="achievement_unlocked_title">実績を解除しました</string>
     <string name="achievement_unlocked_continue">バッジを受け取る</string>
-    <string name="achievement_category_characters">キャラクター</string>
+    <string name="achievement_category_characters">キャラクター収集</string>
     <string name="achievement_category_world_books">ワールドブック</string>
     <string name="achievement_category_favorite_sessions">お気に入り</string>
-    <string name="achievement_requirement_characters">キャラクターを %1$s 人集める</string>
+    <string name="achievement_requirement_characters">キャラクターを %1$s 人所持する</string>
     <string name="achievement_requirement_world_books">ワールドブックを %1$s 冊作成する</string>
     <string name="achievement_requirement_favorite_sessions">セッションを %1$s 件お気に入りにする</string>
     <string name="achievement_characters_1">はじめまして</string>

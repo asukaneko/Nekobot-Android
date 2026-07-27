@@ -5,6 +5,8 @@
 
     <string name="achievements_title">업적</string>
     <string name="achievements_refresh">업적 진행도 새로고침</string>
+    <string name="achievements_view_grid">2열 카드로 전환</string>
+    <string name="achievements_view_standard">기본 카드로 전환</string>
     <string name="achievements_overview_title">배지 컬렉션</string>
     <string name="achievements_overview_subtitle">모든 만남과 대화, 영감의 순간을 기록합니다</string>
     <string name="achievements_completion">전체 달성률 %1$d%%</string>
@@ -50,10 +52,10 @@
 
     <string name="achievement_unlocked_title">업적 해금</string>
     <string name="achievement_unlocked_continue">배지 받기</string>
-    <string name="achievement_category_characters">캐릭터</string>
+    <string name="achievement_category_characters">캐릭터 수집</string>
     <string name="achievement_category_world_books">월드북</string>
     <string name="achievement_category_favorite_sessions">즐겨찾기</string>
-    <string name="achievement_requirement_characters">캐릭터 %1$s명 모으기</string>
+    <string name="achievement_requirement_characters">캐릭터 %1$s명 보유하기</string>
     <string name="achievement_requirement_world_books">월드북 %1$s권 만들기</string>
     <string name="achievement_requirement_favorite_sessions">세션 %1$s개 즐겨찾기</string>
     <string name="achievement_characters_1">새로운 친구</string>

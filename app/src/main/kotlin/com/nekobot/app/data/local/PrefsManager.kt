@@ -224,6 +224,14 @@ class PrefsManager(context: Context) {
             prefs.edit().putString(KEY_CHARACTER_VIEW_MODE, value).apply()
         }
 
+    /** 成就收藏视图模式：STANDARD / GRID_2X2，持久化用户选择。 */
+    var achievementViewMode: String
+        get() = prefs.getString(KEY_ACHIEVEMENT_VIEW_MODE, "STANDARD") ?: "STANDARD"
+        set(value) {
+            val normalized = if (value == "GRID_2X2") "GRID_2X2" else "STANDARD"
+            prefs.edit().putString(KEY_ACHIEVEMENT_VIEW_MODE, normalized).apply()
+        }
+
     /** 字体类型：system / serif / monospace / rounded / custom */
     var fontFamily: String
         get() = prefs.getString(KEY_FONT_FAMILY, FONT_FAMILY_SYSTEM) ?: FONT_FAMILY_SYSTEM
@@ -397,6 +405,7 @@ class PrefsManager(context: Context) {
         private const val KEY_STATS_DASHBOARD_HIDDEN_VERSION = "stats_dashboard_hidden_version"
         private const val KEY_STATS_CHARACTER_RANKING_MODE = "stats_character_ranking_mode"
         private const val KEY_CHARACTER_VIEW_MODE = "character_view_mode"
+        private const val KEY_ACHIEVEMENT_VIEW_MODE = "achievement_view_mode"
         private const val DEFAULT_SERVER = "http://localhost:5000"
 
         // 样式相关 KEY

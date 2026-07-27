@@ -20,7 +20,7 @@ interface SessionDao {
     @Query("SELECT COUNT(*) FROM local_sessions")
     suspend fun count(): Int
 
-    @Query("SELECT COUNT(*) FROM local_sessions WHERE favorite = 1")
+    @Query("SELECT COUNT(*) FROM local_sessions WHERE favorite = 1 AND archived = 0")
     suspend fun countFavorites(): Int
 
     @Query("SELECT * FROM local_sessions WHERE id = :id")

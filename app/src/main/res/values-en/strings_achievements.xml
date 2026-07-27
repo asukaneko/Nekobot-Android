@@ -5,6 +5,8 @@
 
     <string name="achievements_title">Achievements</string>
     <string name="achievements_refresh">Refresh achievement progress</string>
+    <string name="achievements_view_grid">Switch to two-column cards</string>
+    <string name="achievements_view_standard">Switch to standard cards</string>
     <string name="achievements_overview_title">Badge Collection</string>
     <string name="achievements_overview_subtitle">Remember every meeting, message, and spark of inspiration</string>
     <string name="achievements_completion">Overall completion %1$d%%</string>
@@ -23,7 +25,7 @@
     <string name="achievement_category_messages">Messages</string>
     <string name="achievement_category_sessions">Sessions</string>
     <string name="achievement_category_affection">Bond</string>
-    <string name="achievement_category_characters">Characters</string>
+    <string name="achievement_category_characters">Character Collection</string>
     <string name="achievement_category_world_books">World Books</string>
     <string name="achievement_category_favorite_sessions">Favorites</string>
 
@@ -37,7 +39,7 @@
     <string name="achievement_requirement_messages">Send %1$s messages in total</string>
     <string name="achievement_requirement_sessions">Create %1$s sessions in total</string>
     <string name="achievement_requirement_high_affection_characters">Have %1$s characters at 90 affection or higher</string>
-    <string name="achievement_requirement_characters">Collect %1$s characters</string>
+    <string name="achievement_requirement_characters">Have %1$s characters</string>
     <string name="achievement_requirement_world_books">Create %1$s world books</string>
     <string name="achievement_requirement_favorite_sessions">Favorite %1$s sessions</string>
 

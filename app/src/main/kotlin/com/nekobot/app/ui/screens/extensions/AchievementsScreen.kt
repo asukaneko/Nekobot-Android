@@ -21,6 +21,8 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Refresh
@@ -48,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -78,6 +81,11 @@ private enum class AchievementStatusFilter {
     ALL, UNLOCKED, IN_PROGRESS
 }
 
+private enum class AchievementViewMode {
+    STANDARD,
+    GRID_2X2
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AchievementsScreen(
@@ -92,6 +100,13 @@ fun AchievementsScreen(
     val gridState = rememberLazyGridState()
     var statusFilter by remember { mutableStateOf(AchievementStatusFilter.ALL) }
     var metricFilter by remember { mutableStateOf<AchievementManager.Target.Metric?>(null) }
+    var viewMode by remember {
+        mutableStateOf(
+            runCatching {
+                AchievementViewMode.valueOf(ServiceContainer.prefs.achievementViewMode)
+            }.getOrDefault(AchievementViewMode.STANDARD)
+        )
+    }
 
     LaunchedEffect(appMode, dataSourceRevision) {
         viewModel.refresh()
@@ -129,6 +144,32 @@ fun AchievementsScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = {
+                            val newMode = if (viewMode == AchievementViewMode.STANDARD) {
+                                AchievementViewMode.GRID_2X2
+                            } else {
+                                AchievementViewMode.STANDARD
+                            }
+                            viewMode = newMode
+                            ServiceContainer.prefs.achievementViewMode = newMode.name
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (viewMode == AchievementViewMode.STANDARD) {
+                                Icons.Filled.Apps
+                            } else {
+                                Icons.AutoMirrored.Filled.ViewList
+                            },
+                            contentDescription = stringResource(
+                                if (viewMode == AchievementViewMode.STANDARD) {
+                                    R.string.achievements_view_grid
+                                } else {
+                                    R.string.achievements_view_standard
+                                }
+                            )
+                        )
+                    }
                     IconButton(onClick = viewModel::refresh, enabled = !loading) {
                         if (loading) {
                             CircularProgressIndicator(
@@ -150,7 +191,11 @@ fun AchievementsScreen(
         }
     ) { padding ->
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(168.dp),
+            columns = if (viewMode == AchievementViewMode.GRID_2X2) {
+                GridCells.Fixed(2)
+            } else {
+                GridCells.Adaptive(168.dp)
+            },
             state = gridState,
             modifier = Modifier
                 .fillMaxSize()
@@ -188,7 +233,10 @@ fun AchievementsScreen(
                 }
             } else {
                 items(visibleAchievements, key = { it.id }) { snapshot ->
-                    AchievementGridCard(snapshot)
+                    AchievementGridCard(
+                        snapshot = snapshot,
+                        compact = viewMode == AchievementViewMode.GRID_2X2
+                    )
                 }
             }
         }
@@ -314,7 +362,10 @@ private fun AchievementFilters(
 }
 
 @Composable
-private fun AchievementGridCard(snapshot: AchievementManager.Snapshot) {
+private fun AchievementGridCard(
+    snapshot: AchievementManager.Snapshot,
+    compact: Boolean
+) {
     val target = AchievementManager.targetFor(snapshot.id) ?: return
     val tierColor = achievementTierColor(target.tier)
     val numberFormat = NumberFormat.getIntegerInstance()
@@ -322,8 +373,10 @@ private fun AchievementGridCard(snapshot: AchievementManager.Snapshot) {
     GlassCard(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 292.dp),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp),
+            .heightIn(min = if (compact) 258.dp else 292.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            if (compact) 10.dp else 14.dp
+        ),
         containerColor = if (snapshot.isUnlocked) {
             tierColor.copy(alpha = 0.08f)
         } else {
@@ -350,16 +403,22 @@ private fun AchievementGridCard(snapshot: AchievementManager.Snapshot) {
             achievementId = snapshot.id,
             unlocked = snapshot.isUnlocked,
             modifier = Modifier
-                .size(96.dp)
+                .size(if (compact) 80.dp else 96.dp)
                 .align(Alignment.CenterHorizontally)
         )
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
         Text(
             achievementTitle(snapshot.id),
             modifier = Modifier.fillMaxWidth(),
-            style = MaterialTheme.typography.titleMedium,
+            style = if (compact) {
+                MaterialTheme.typography.titleSmall
+            } else {
+                MaterialTheme.typography.titleMedium
+            },
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
             color = if (snapshot.isUnlocked) {
                 MaterialTheme.colorScheme.onSurface
             } else {
@@ -373,9 +432,11 @@ private fun AchievementGridCard(snapshot: AchievementManager.Snapshot) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
-            minLines = 2
+            minLines = 2,
+            maxLines = if (compact) 3 else Int.MAX_VALUE,
+            overflow = TextOverflow.Ellipsis
         )
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
         LinearProgressIndicator(
             progress = { snapshot.progress },
             modifier = Modifier
@@ -391,8 +452,13 @@ private fun AchievementGridCard(snapshot: AchievementManager.Snapshot) {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                "${numberFormat.format(snapshot.current.coerceAtMost(snapshot.target))} / " +
-                    numberFormat.format(snapshot.target),
+                if (compact) {
+                    "${formatCompactAchievementValue(snapshot.current.coerceAtMost(snapshot.target))} / " +
+                        formatCompactAchievementValue(snapshot.target)
+                } else {
+                    "${numberFormat.format(snapshot.current.coerceAtMost(snapshot.target))} / " +
+                        numberFormat.format(snapshot.target)
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -405,7 +471,7 @@ private fun AchievementGridCard(snapshot: AchievementManager.Snapshot) {
                 )
             }
         }
-        snapshot.unlockedAt?.let { timestamp ->
+        if (!compact) snapshot.unlockedAt?.let { timestamp ->
             Spacer(Modifier.height(5.dp))
             Text(
                 stringResource(
@@ -418,6 +484,14 @@ private fun AchievementGridCard(snapshot: AchievementManager.Snapshot) {
             )
         }
     }
+}
+
+private fun formatCompactAchievementValue(value: Long): String = when {
+    value >= 1_000_000L && value % 1_000_000L == 0L -> "${value / 1_000_000L}M"
+    value >= 1_000_000L -> "${value / 100_000L / 10.0}M"
+    value >= 1_000L && value % 1_000L == 0L -> "${value / 1_000L}K"
+    value >= 1_000L -> "${value / 100L / 10.0}K"
+    else -> value.toString()
 }
 
 class AchievementsViewModel : BaseViewModel() {

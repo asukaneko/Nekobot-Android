@@ -5,6 +5,8 @@
 
     <string name="achievements_title">成就</string>
     <string name="achievements_refresh">刷新成就进度</string>
+    <string name="achievements_view_grid">切换为双列卡片</string>
+    <string name="achievements_view_standard">切换为标准卡片</string>
     <string name="achievements_overview_title">成就收藏</string>
     <string name="achievements_overview_subtitle">记录每一次相遇、对话与灵感</string>
     <string name="achievements_completion">总完成度 %1$d%%</string>
@@ -23,7 +25,7 @@
     <string name="achievement_category_messages">消息</string>
     <string name="achievement_category_sessions">会话</string>
     <string name="achievement_category_affection">羁绊</string>
-    <string name="achievement_category_characters">角色</string>
+    <string name="achievement_category_characters">角色收集</string>
     <string name="achievement_category_world_books">世界书</string>
     <string name="achievement_category_favorite_sessions">珍藏</string>
 
@@ -37,7 +39,7 @@
     <string name="achievement_requirement_messages">累计发送 %1$s 条消息</string>
     <string name="achievement_requirement_sessions">累计创建 %1$s 个会话</string>
     <string name="achievement_requirement_high_affection_characters">拥有 %1$s 个好感度达到 90 以上的角色</string>
-    <string name="achievement_requirement_characters">收藏 %1$s 个角色</string>
+    <string name="achievement_requirement_characters">拥有 %1$s 个角色</string>
     <string name="achievement_requirement_world_books">创建 %1$s 本世界书</string>
     <string name="achievement_requirement_favorite_sessions">珍藏 %1$s 个会话</string>
 
