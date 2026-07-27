@@ -321,8 +321,11 @@ class UnifiedRepository(
 
     suspend fun compressContext(id: String): Resource<JsonElement> {
         if (!isLocal) return remote.compressContext(id)
-        val model = local.getActiveModel() ?: return Resource.Error("未配置 AI 模型")
-        val ok = local.compressContext(id, model)
+        val ok = try {
+            local.compressContext(id)
+        } catch (e: Exception) {
+            return Resource.Error(e.message ?: "压缩失败")
+        }
         return if (ok) {
             // 读取 archive_session_id 回写响应，供 ChatScreen 写回 session 状态
             val archiveId = local.getSession(id)?.archiveSessionId

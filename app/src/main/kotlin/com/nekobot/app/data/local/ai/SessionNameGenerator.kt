@@ -23,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap
 class SessionNameGenerator(
     private val aiClient: LocalAiClient,
     private val aiModelProvider: (suspend () -> LocalAiModelEntity?)? = null,
+    private val failoverExecutor: LocalChatFailoverExecutor? = null,
     private val onTokenUsage: ((String, String, String, Int, Int) -> Unit)? = null
 ) {
     companion object {
@@ -122,7 +123,8 @@ class SessionNameGenerator(
         characterDescription: String,
         isUpdate: Boolean
     ): String? {
-        val model = aiModelProvider?.invoke() ?: return null
+        val fallbackModel = if (failoverExecutor == null) aiModelProvider?.invoke() else null
+        if (failoverExecutor == null && fallbackModel == null) return null
 
         val roleContext = if (characterName.isNotBlank()) {
             val desc = characterDescription.take(100)
@@ -158,11 +160,13 @@ class SessionNameGenerator(
             mapOf("role" to "user", "content" to "请为以下对话生成标题：\n\n$conversationText")
         )
 
-        val result = aiClient.chatOnce(model, promptMessages)
+        val execution = failoverExecutor?.execute(promptMessages)
+        val result = execution?.value ?: aiClient.chatOnce(fallbackModel!!, promptMessages)
+        val usedModel = execution?.model ?: fallbackModel!!
         // 记账二级 LLM 调用 token（source=session_name）
         if (result.usage.isNotEmpty()) {
             onTokenUsage?.invoke(
-                "session_name", model.name, model.model,
+                "session_name", usedModel.name, usedModel.model,
                 result.usage["prompt"] ?: 0,
                 result.usage["completion"] ?: 0
             )

@@ -444,6 +444,7 @@ private val STYLE_PRESETS = mapOf(
 class PlotChoiceGenerator(
     private val aiClient: LocalAiClient,
     private val aiModelProvider: (suspend () -> com.nekobot.app.data.local.db.LocalAiModelEntity?)? = null,
+    private val failoverExecutor: LocalChatFailoverExecutor? = null,
     private val onTokenUsage: ((model: String, actualModel: String, inputTokens: Int, outputTokens: Int) -> Unit)? = null
 ) {
     companion object {
@@ -472,7 +473,8 @@ class PlotChoiceGenerator(
     ): List<Map<String, String>> {
         if (responseText.isBlank()) return DEFAULT_CHOICES
 
-        val model = aiModelProvider?.invoke() ?: return DEFAULT_CHOICES
+        val fallbackModel = if (failoverExecutor == null) aiModelProvider?.invoke() else null
+        if (failoverExecutor == null && fallbackModel == null) return DEFAULT_CHOICES
 
         val systemPrompt = buildSystemPrompt(style, outline)
         val userPrompt = buildUserPrompt(responseText, recentHistory, turnContext, sessionContext, outline)
@@ -486,7 +488,9 @@ class PlotChoiceGenerator(
         var lastError: String? = null
         repeat(MAX_LLM_RETRIES) { attempt ->
             try {
-                val result = aiClient.chatOnce(model, messages)
+                val execution = failoverExecutor?.execute(messages)
+                val result = execution?.value ?: aiClient.chatOnce(fallbackModel!!, messages)
+                val usedModel = execution?.model ?: fallbackModel!!
                 if (result.error != null) {
                     lastError = "LLM 错误: ${result.error}"
                     com.nekobot.app.data.local.LocalLogger.w(TAG, "剧情选项 LLM 第 ${attempt + 1}/$MAX_LLM_RETRIES 次失败: ${result.error}")
@@ -510,7 +514,7 @@ class PlotChoiceGenerator(
                             ?: (result.usage["completion_tokens"] as? Int)
                             ?: 0
                         if (input > 0 || output > 0) {
-                            onTokenUsage.invoke(model.name, model.model, input, output)
+                            onTokenUsage.invoke(usedModel.name, usedModel.model, input, output)
                         }
                     } catch (_: Exception) { }
                 }

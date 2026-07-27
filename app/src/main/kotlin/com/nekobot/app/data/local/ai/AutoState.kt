@@ -14,6 +14,7 @@ import java.time.Instant
 class AutoState(
     private val aiClient: LocalAiClient,
     private val aiModelProvider: (suspend () -> LocalAiModelEntity?)? = null,
+    private val failoverExecutor: LocalChatFailoverExecutor? = null,
     /**
      * 二级 LLM 调用 token 记账回调
      * 参数：source, model（配置名）, actualModel（实际模型标识，用于排行榜聚合）, inputTokens, outputTokens
@@ -158,12 +159,11 @@ class AutoState(
         state: CharacterState,
         relationship: RelationshipState
     ): Map<String, Any> {
-        val model = aiModelProvider?.invoke() ?: run {
+        val fallbackModel = if (failoverExecutor == null) aiModelProvider?.invoke() else null
+        if (failoverExecutor == null && fallbackModel == null) {
             com.nekobot.app.data.local.LocalLogger.w(TAG, "callStateModel: 无可用激活模型（aiModelProvider 返回 null）")
             return emptyMap()
         }
-
-        com.nekobot.app.data.local.LocalLogger.i(TAG, "callStateModel: 开始调用 LLM 状态评估 | 模型=${model.name}(${model.model}) | 轮次=${turns.size}")
 
         val currentSnapshot = mapOf(
             "mood" to state.mood,
@@ -180,11 +180,17 @@ class AutoState(
             mapOf("role" to "user", "content" to userPrompt)
         )
 
-        val result = aiClient.chatOnce(model, messages)
+        val execution = failoverExecutor?.execute(messages)
+        val result = execution?.value ?: aiClient.chatOnce(fallbackModel!!, messages)
+        val usedModel = execution?.model ?: fallbackModel!!
+        com.nekobot.app.data.local.LocalLogger.i(
+            TAG,
+            "callStateModel: 完成 LLM 状态评估 | 模型=${usedModel.name}(${usedModel.model}) | 轮次=${turns.size}"
+        )
         // 记账二级 LLM 调用 token（与主对话区分，source=state）
         if (result.usage.isNotEmpty()) {
             onTokenUsage?.invoke(
-                "state", model.name, model.model,
+                "state", usedModel.name, usedModel.model,
                 result.usage["prompt"] ?: 0,
                 result.usage["completion"] ?: 0
             )

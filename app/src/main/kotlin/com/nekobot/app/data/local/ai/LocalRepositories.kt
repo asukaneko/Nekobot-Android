@@ -228,6 +228,7 @@ class LocalMemoryService(
     private val memoryDao: MemoryDao,
     private val aiClient: LocalAiClient? = null,
     private val aiModelProvider: (suspend () -> com.nekobot.app.data.local.db.LocalAiModelEntity?)? = null,
+    private val failoverExecutor: LocalChatFailoverExecutor? = null,
     /**
      * 二级 LLM 调用 token 记账回调
      * 参数：source, model（配置名）, actualModel（实际模型标识，用于排行榜聚合）, inputTokens, outputTokens
@@ -244,7 +245,15 @@ class LocalMemoryService(
      * 仅当 aiClient 存在时可用；search 路径不依赖它。
      */
     private val autoMemory: AutoMemory? by lazy {
-        aiClient?.let { AutoMemory(memoryDao, it, aiModelProvider, onTokenUsage) }
+        aiClient?.let {
+            AutoMemory(
+                memoryDao = memoryDao,
+                aiClient = it,
+                aiModelProvider = aiModelProvider,
+                failoverExecutor = failoverExecutor,
+                onTokenUsage = onTokenUsage
+            )
+        }
     }
 
     override suspend fun search(identity: CharacterIdentity, content: String, limit: Int): List<CharacterMemory> {

@@ -10,11 +10,14 @@ import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import com.nekobot.app.data.local.ai.FailoverAllFailedException
 import com.nekobot.app.data.local.ai.FailoverCoordinator
+import com.nekobot.app.data.local.ai.FailoverExecution
 import com.nekobot.app.data.local.ai.FailoverHealthStore
+import com.nekobot.app.data.local.ai.FailoverHttpException
 import com.nekobot.app.data.local.ai.FailoverUsage
 import com.nekobot.app.data.local.ai.FailoverUsageReader
 import com.nekobot.app.data.local.ai.LocalAiClient
 import com.nekobot.app.data.local.ai.LocalAiResult
+import com.nekobot.app.data.local.ai.LocalChatFailoverExecutor
 import com.nekobot.app.data.local.ai.LocalContextTokenMessage
 import com.nekobot.app.data.local.ai.LocalGenerationController
 import com.nekobot.app.data.local.ai.LocalMcpRuntime
@@ -169,6 +172,65 @@ class LocalRepository(
         aiModelDao.listByPurpose(purpose)
             .sortedWith(compareBy(LocalAiModelEntity::priority, LocalAiModelEntity::createdAt))
 
+    /**
+     * 所有本地非流式文本生成任务的统一入口。
+     *
+     * 使用 purpose=chat 的完整故障转移队列，而不是单独读取 active 模型。这样角色卡、
+     * 世界书、工作流、自动记忆等辅助任务也会遵守冷却、token 限额和超时策略。
+     */
+    private suspend fun executeChatOnceViaQueue(
+        messages: List<Map<String, Any>>,
+        extra: Map<String, Any?> = emptyMap(),
+        requestTag: String? = null
+    ): FailoverExecution<LocalAiResult> {
+        val queue = queueFor("chat")
+        if (queue.isEmpty()) {
+            throw IllegalStateException("未配置可用的聊天模型，请在故障转移队列中启用 purpose=chat 的模型")
+        }
+        val execution = failoverCoordinator.execute(queue, "chat") { model ->
+            val result = aiClient.chatOnce(model, messages, extra, requestTag)
+            result.error?.let { error ->
+                throw FailoverHttpException(result.statusCode, error)
+            }
+            result
+        }
+        return execution.copy(
+            value = execution.value.copy(
+                usedModelId = execution.model.id,
+                usedModelName = execution.model.name,
+                usedModelActualName = execution.model.model
+            )
+        )
+    }
+
+    /** 提供给自动状态、记忆、剧情选项等后台辅助任务的同一故障转移执行器。 */
+    private val chatFailoverExecutor: LocalChatFailoverExecutor by lazy {
+        LocalChatFailoverExecutor { messages -> executeChatOnceViaQueue(messages) }
+    }
+
+    /** 记录通过故障转移实际成功模型产生的 token 用量。 */
+    private fun recordFailoverTokenUsage(
+        execution: FailoverExecution<LocalAiResult>,
+        source: String,
+        purpose: String
+    ) {
+        val usage = execution.value.usage
+        if (usage.isEmpty()) return
+        val input = usage["prompt_tokens"] ?: usage["input_tokens"] ?: usage["prompt"] ?: 0
+        val output = usage["completion_tokens"] ?: usage["output_tokens"] ?: usage["completion"] ?: 0
+        if (input <= 0 && output <= 0) return
+        appendTokenUsageRecord(
+            sessionId = currentSessionId,
+            model = execution.model.name,
+            actualModel = execution.model.model,
+            inputTokens = input,
+            outputTokens = output,
+            timestamp = nowIsoTimestamp(),
+            source = source,
+            purpose = purpose
+        )
+    }
+
     init {
         aiClient.setOAuthCredentialResolver(oauthManager::resolveCredential)
         val savedGraph = appContext
@@ -242,16 +304,19 @@ class LocalRepository(
     /** AutoState 必须跨轮次保持 turnCounters，否则永远达不到触发阈值 */
     private val autoState by lazy {
         com.nekobot.app.data.local.ai.AutoState(
-            aiClient,
-            { aiModelDao.getActive() },
+            aiClient = aiClient,
+            aiModelProvider = { aiModelDao.getActive() },
+            failoverExecutor = chatFailoverExecutor,
             onTokenUsage = ::recordSecondaryTokenUsage
         )
     }
     /** LocalMemoryService 同理，turnCounters 需跨轮次保持 */
     private val memoryService by lazy {
         com.nekobot.app.data.local.ai.LocalMemoryService(
-            db.memoryDao(), aiClient,
-            { aiModelDao.getActive() },
+            memoryDao = db.memoryDao(),
+            aiClient = aiClient,
+            aiModelProvider = { aiModelDao.getActive() },
+            failoverExecutor = chatFailoverExecutor,
             onTokenUsage = ::recordSecondaryTokenUsage
         )
     }
@@ -292,8 +357,9 @@ class LocalRepository(
     /** 本地模式会话自动命名器（跨会话保持 autoNamed/lastRenameCount 状态） */
     val sessionNameGenerator by lazy {
         com.nekobot.app.data.local.ai.SessionNameGenerator(
-            aiClient,
-            { aiModelDao.getActive() },
+            aiClient = aiClient,
+            aiModelProvider = { aiModelDao.getActive() },
+            failoverExecutor = chatFailoverExecutor,
             onTokenUsage = ::recordSecondaryTokenUsage
         )
     }
@@ -2414,6 +2480,7 @@ class LocalRepository(
                     val activity = com.nekobot.app.data.local.ai.LifeSimulator.generateAndPersist(
                         aiClient = aiClient,
                         activeModel = activeModel,
+                        failoverExecutor = chatFailoverExecutor,
                         memoryDao = db.memoryDao(),
                         characterId = character.id,
                         conversationId = sessionId,
@@ -2595,7 +2662,9 @@ class LocalRepository(
             if (!generationController.isStopped && session.plotMode) {
                 try {
                     val plotGen = com.nekobot.app.data.local.ai.PlotChoiceGenerator(
-                        aiClient, { aiModelDao.getActive() },
+                        aiClient = aiClient,
+                        aiModelProvider = { aiModelDao.getActive() },
+                        failoverExecutor = chatFailoverExecutor,
                         onTokenUsage = ::recordPlotTokenUsage
                     )
                     val recentHistory = listAiContextMessages(sessionId)
@@ -2932,12 +3001,6 @@ class LocalRepository(
                 emit(RealtimeEvent.Error("未开启剧情模式"))
                 return@flow
             }
-            val activeModel = aiModelDao.getActive()
-                ?: run {
-                    emit(RealtimeEvent.Error("未配置激活的 AI 模型"))
-                    return@flow
-                }
-
             // 取最近 assistant 回复 + 历史
             val recentMsgs = listAiContextMessages(sessionId)
                 .filter { it.role != "system" }
@@ -2950,7 +3013,9 @@ class LocalRepository(
             val recentHistory = recentMsgs.map { mapOf("role" to it.role, "content" to it.content) }
 
             val plotGen = com.nekobot.app.data.local.ai.PlotChoiceGenerator(
-                aiClient, { aiModelDao.getActive() },
+                aiClient = aiClient,
+                aiModelProvider = { aiModelDao.getActive() },
+                failoverExecutor = chatFailoverExecutor,
                 onTokenUsage = ::recordPlotTokenUsage
             )
             val choices = plotGen.generate(
@@ -3034,7 +3099,6 @@ class LocalRepository(
      */
     suspend fun compressContext(
         sessionId: String,
-        activeModel: LocalAiModelEntity,
         keepRecent: Int = 10
     ): Boolean = withContext(Dispatchers.IO) {
         val messages = listAiContextMessages(sessionId)
@@ -3060,7 +3124,13 @@ class LocalRepository(
             mapOf("role" to "user", "content" to dialogText)
         )
 
-        val result: LocalAiResult = aiClient.chatOnce(activeModel, reqMessages)
+        val execution = executeChatOnceViaQueue(reqMessages)
+        val result = execution.value
+        recordFailoverTokenUsage(
+            execution = execution,
+            source = "compression",
+            purpose = TokenStatsManager.PURPOSE_UTILITY
+        )
         if (result.error != null || result.content.isBlank()) {
             return@withContext false
         }
@@ -3262,35 +3332,18 @@ class LocalRepository(
     // ==================== AI 生成（本地模式）====================
 
     /**
-     * AI 生成角色卡：使用当前激活的本地 AI 模型，按后端相同的 system prompt 生成。
+     * AI 生成角色卡：使用 chat 故障转移队列，按后端相同的 system prompt 生成。
      * @return 生成的 CharacterPreset（未持久化，由调用方决定 createCharacter 保存）
      */
     suspend fun aiGenerateCharacter(description: String): CharacterPreset = withContext(Dispatchers.IO) {
-        val activeModel = aiModelDao.getActive()
-            ?: throw IllegalStateException("未配置激活的 AI 模型")
         val systemPrompt = buildCharacterSystemPrompt()
         val messages = listOf(
             mapOf("role" to "system", "content" to systemPrompt),
             mapOf("role" to "user", "content" to "请根据以下描述创建角色卡：\n\n${description.trim()}")
         )
-        val result = aiClient.chatOnce(activeModel, messages)
-        if (result.error != null) throw IllegalStateException(result.error)
-        // 记账
-        val usage = result.usage
-        if (usage.isNotEmpty()) {
-            val input = usage["prompt_tokens"] ?: usage["input_tokens"] ?: 0
-            val output = usage["completion_tokens"] ?: usage["output_tokens"] ?: 0
-            appendTokenUsageRecord(
-                sessionId = currentSessionId,
-                model = activeModel.name,
-                actualModel = activeModel.model,
-                inputTokens = input,
-                outputTokens = output,
-                timestamp = nowIsoTimestamp(),
-                source = "web",
-                purpose = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_UTILITY
-            )
-        }
+        val execution = executeChatOnceViaQueue(messages)
+        val result = execution.value
+        recordFailoverTokenUsage(execution, "web", TokenStatsManager.PURPOSE_UTILITY)
         val content = stripMarkdownCodeFence(result.content)
         val obj = JsonParser.parseString(content).asJsonObject
         // 填充默认值，与后端保持一致
@@ -3317,35 +3370,18 @@ class LocalRepository(
 
     /**
      * AI 随机生成角色灵感条目（标题 + 描述 + 标签）。
-     * 使用当前激活的本地 AI 模型，生成 3 个互不重复、风格差异明显的角色灵感。
+     * 使用 chat 故障转移队列，生成 3 个互不重复、风格差异明显的角色灵感。
      * @return 生成的角色灵感列表
      */
     suspend fun aiGenerateRandomCharacterIdeas(): List<RandomCharacterIdea> = withContext(Dispatchers.IO) {
-        val activeModel = aiModelDao.getActive()
-            ?: throw IllegalStateException("未配置激活的 AI 模型")
         val systemPrompt = buildRandomCharacterIdeasSystemPrompt()
         val messages = listOf(
             mapOf("role" to "system", "content" to systemPrompt),
             mapOf("role" to "user", "content" to "请随机生成 3 个角色灵感，要求风格差异明显、有创意，每个灵感都要包含标题、简短描述和 2-4 个标签。只返回 JSON，不要任何额外说明。")
         )
-        val result = aiClient.chatOnce(activeModel, messages)
-        if (result.error != null) throw IllegalStateException(result.error)
-        // 记账
-        val usage = result.usage
-        if (usage.isNotEmpty()) {
-            val input = usage["prompt_tokens"] ?: usage["input_tokens"] ?: 0
-            val output = usage["completion_tokens"] ?: usage["output_tokens"] ?: 0
-            appendTokenUsageRecord(
-                sessionId = currentSessionId,
-                model = activeModel.name,
-                actualModel = activeModel.model,
-                inputTokens = input,
-                outputTokens = output,
-                timestamp = nowIsoTimestamp(),
-                source = "web",
-                purpose = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_UTILITY
-            )
-        }
+        val execution = executeChatOnceViaQueue(messages)
+        val result = execution.value
+        recordFailoverTokenUsage(execution, "web", TokenStatsManager.PURPOSE_UTILITY)
         val content = stripMarkdownCodeFence(result.content)
         val parsed = JsonParser.parseString(content).asJsonObject
         val arr = parsed.get("ideas")?.takeIf { it.isJsonArray }?.asJsonArray
@@ -3368,13 +3404,11 @@ class LocalRepository(
     }
 
     /**
-     * AI 批量生成世界书条目：使用当前激活的本地 AI 模型生成 5-10 个条目并立即持久化。
+     * AI 批量生成世界书条目：使用 chat 故障转移队列生成 5-10 个条目并立即持久化。
      * @return 生成的条目列表（已写入数据库）
      */
     suspend fun aiGenerateWorldBookEntries(bookId: String, topic: String?): List<WorldBookEntry> =
         withContext(Dispatchers.IO) {
-            val activeModel = aiModelDao.getActive()
-                ?: throw IllegalStateException("未配置激活的 AI 模型")
             val book = worldBookDao.getById(bookId)
                 ?: throw IllegalStateException("世界书不存在")
             // 收集绑定角色的信息
@@ -3412,24 +3446,9 @@ class LocalRepository(
                 mapOf("role" to "system", "content" to systemPrompt),
                 mapOf("role" to "user", "content" to userMsg)
             )
-            val result = aiClient.chatOnce(activeModel, messages)
-            if (result.error != null) throw IllegalStateException(result.error)
-            // 记账
-            val usage = result.usage
-            if (usage.isNotEmpty()) {
-                val input = usage["prompt_tokens"] ?: usage["input_tokens"] ?: 0
-                val output = usage["completion_tokens"] ?: usage["output_tokens"] ?: 0
-                appendTokenUsageRecord(
-                    sessionId = currentSessionId,
-                    model = activeModel.name,
-                    actualModel = activeModel.model,
-                    inputTokens = input,
-                    outputTokens = output,
-                    timestamp = nowIsoTimestamp(),
-                    source = "web",
-                    purpose = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_UTILITY
-                )
-            }
+            val execution = executeChatOnceViaQueue(messages)
+            val result = execution.value
+            recordFailoverTokenUsage(execution, "web", TokenStatsManager.PURPOSE_UTILITY)
             val content = stripMarkdownCodeFence(result.content)
             val parsed = JsonParser.parseString(content).asJsonObject
             val arr = parsed.get("entries")?.takeIf { it.isJsonArray }?.asJsonArray
@@ -5190,35 +5209,18 @@ $charSection$topicSection
     }
 
     /**
-     * AI 生成工作流：使用当前激活的本地 AI 模型，根据用户描述生成 [WorkflowRequest]。
+     * AI 生成工作流：使用 chat 故障转移队列，根据用户描述生成 [WorkflowRequest]。
      * 返回的请求由调用方决定是否调用 [createWorkflow] 持久化。
      */
     suspend fun aiGenerateWorkflow(description: String): WorkflowRequest = withContext(Dispatchers.IO) {
-        val activeModel = aiModelDao.getActive()
-            ?: throw IllegalStateException("未配置激活的 AI 模型")
         val systemPrompt = buildWorkflowSystemPrompt()
         val messages = listOf(
             mapOf("role" to "system", "content" to systemPrompt),
             mapOf("role" to "user", "content" to "请根据以下描述生成工作流配置：\n\n${description.trim()}")
         )
-        val result = aiClient.chatOnce(activeModel, messages)
-        if (result.error != null) throw IllegalStateException(result.error)
-        // 记账
-        val usage = result.usage
-        if (usage.isNotEmpty()) {
-            val input = usage["prompt_tokens"] ?: usage["input_tokens"] ?: 0
-            val output = usage["completion_tokens"] ?: usage["output_tokens"] ?: 0
-            appendTokenUsageRecord(
-                sessionId = currentSessionId,
-                model = activeModel.name,
-                actualModel = activeModel.model,
-                inputTokens = input,
-                outputTokens = output,
-                timestamp = nowIsoTimestamp(),
-                source = "web",
-                purpose = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_UTILITY
-            )
-        }
+        val execution = executeChatOnceViaQueue(messages)
+        val result = execution.value
+        recordFailoverTokenUsage(execution, "web", TokenStatsManager.PURPOSE_UTILITY)
         val content = stripMarkdownCodeFence(result.content)
         val obj = JsonParser.parseString(content).asJsonObject
         val name = obj.get("name")?.takeIf { !it.isJsonNull }?.asString

@@ -26,6 +26,7 @@ class AutoMemory(
     private val memoryDao: MemoryDao,
     private val aiClient: LocalAiClient,
     private val aiModelProvider: (suspend () -> LocalAiModelEntity?)? = null,
+    private val failoverExecutor: LocalChatFailoverExecutor? = null,
     /**
      * 二级 LLM 调用 token 记账回调
      * 参数：source, model（配置名）, actualModel（实际模型标识，用于排行榜聚合）, inputTokens, outputTokens
@@ -359,7 +360,8 @@ class AutoMemory(
         characterId: String,
         sessionId: String
     ): List<Map<String, Any>> {
-        val model = aiModelProvider?.invoke() ?: run {
+        val fallbackModel = if (failoverExecutor == null) aiModelProvider?.invoke() else null
+        if (failoverExecutor == null && fallbackModel == null) {
             LocalLogger.w(TAG, "记忆抽取跳过：未配置激活的 AI 模型（aiModelProvider 返回 null）")
             return emptyList()
         }
@@ -375,17 +377,19 @@ class AutoMemory(
             mapOf("role" to "user", "content" to userPrompt)
         )
 
-        LocalLogger.i(TAG, "调用记忆抽取 LLM: model=${model.model} turns=${turns.size} existing=${existingMemories.size}")
+        LocalLogger.i(TAG, "调用记忆抽取 LLM: turns=${turns.size} existing=${existingMemories.size}")
 
         // 3 次重试
         var lastError: String? = null
         repeat(MAX_LLM_RETRIES) { attempt ->
             try {
-                val result = aiClient.chatOnce(model, messages)
+                val execution = failoverExecutor?.execute(messages)
+                val result = execution?.value ?: aiClient.chatOnce(fallbackModel!!, messages)
+                val usedModel = execution?.model ?: fallbackModel!!
                 // 记账二级 LLM 调用 token（与主对话区分，source=memory）
                 if (result.usage.isNotEmpty()) {
                     onTokenUsage?.invoke(
-                        "memory", model.name, model.model,
+                        "memory", usedModel.name, usedModel.model,
                         result.usage["prompt"] ?: 0,
                         result.usage["completion"] ?: 0
                     )

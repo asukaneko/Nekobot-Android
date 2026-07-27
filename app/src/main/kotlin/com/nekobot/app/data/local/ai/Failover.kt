@@ -118,6 +118,16 @@ data class FailoverExecution<T>(
     val attempts: List<String>
 )
 
+/**
+ * 本地非流式聊天调用的统一故障转移入口。
+ *
+ * 角色生成、世界书生成、自动记忆等辅助 LLM 任务都通过该接口复用 chat 队列，
+ * 避免各功能自行读取单个 active 模型而绕过健康状态、限额和超时策略。
+ */
+fun interface LocalChatFailoverExecutor {
+    suspend fun execute(messages: List<Map<String, Any>>): FailoverExecution<LocalAiResult>
+}
+
 /** 单次失败记录 */
 data class FailoverFailure(
     val modelId: String,

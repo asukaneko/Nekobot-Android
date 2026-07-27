@@ -137,6 +137,7 @@ object LifeSimulator {
     suspend fun generateAndPersist(
         aiClient: LocalAiClient,
         activeModel: LocalAiModelEntity,
+        failoverExecutor: LocalChatFailoverExecutor? = null,
         memoryDao: MemoryDao,
         characterId: String,
         conversationId: String,
@@ -160,7 +161,9 @@ object LifeSimulator {
 
             // 构建 prompt 并调用 LLM
             val messages = buildLifeSimPrompt(profileText, circadianText, timelineText, recentText, phase)
-            val result = aiClient.chatOnce(activeModel, messages)
+            val execution = failoverExecutor?.execute(messages)
+            val result = execution?.value ?: aiClient.chatOnce(activeModel, messages)
+            val usedModel = execution?.model ?: activeModel
             if (result.error != null) {
                 LocalLogger.w(TAG, "life_sim 生成失败: ${result.error}")
                 return ""
@@ -214,7 +217,7 @@ object LifeSimulator {
             if (usage.isNotEmpty()) {
                 val input = (usage["prompt_tokens"] ?: usage["input_tokens"] ?: 0) as Int
                 val output = (usage["completion_tokens"] ?: usage["output_tokens"] ?: 0) as Int
-                onTokenRecorded(input, output, activeModel.name, activeModel.model)
+                onTokenRecorded(input, output, usedModel.name, usedModel.model)
             }
 
             LocalLogger.i(TAG, "life_sim 生成成功 | char=$characterId | conv=$conversationId | activity=$activity | contentLen=${content.length}")
