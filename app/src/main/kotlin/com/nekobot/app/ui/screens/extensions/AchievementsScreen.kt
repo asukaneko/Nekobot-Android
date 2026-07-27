@@ -422,36 +422,50 @@ private fun AchievementGridCard(snapshot: AchievementManager.Snapshot) {
 
 class AchievementsViewModel : BaseViewModel() {
     private var refreshVersion = 0L
-    private val _snapshots = MutableStateFlow(
+    private val emptySnapshots
+        get() =
         AchievementManager.getSnapshots(
             totalTokens = 0,
             totalMessages = 0,
             totalSessions = 0,
             highAffectionCharacterCount = 0
         )
-    )
+    private val _snapshots = MutableStateFlow(emptySnapshots)
     val snapshots: StateFlow<List<AchievementManager.Snapshot>> = _snapshots.asStateFlow()
 
     fun refresh() {
         val requestVersion = ++refreshVersion
+        _snapshots.value = emptySnapshots
         viewModelScope.launch {
             setLoading(true)
             clearError()
             try {
-                val (sessionsResult, tokenStatsResult, highAffectionCountResult) = coroutineScope {
+                val results = coroutineScope {
                     val sessions = async { unified.listSessions() }
                     val tokenStats = async { unified.tokenStats(dateRange = "total") }
                     val highAffectionCount = async {
                         unified.countHighAffectionCharacters(threshold = 90)
                     }
-                    Triple(sessions.await(), tokenStats.await(), highAffectionCount.await())
+                    val characters = async { unified.listCharacters() }
+                    val worldBooks = async { unified.listWorldBooks() }
+                    AchievementLoadResults(
+                        sessions = sessions.await(),
+                        tokenStats = tokenStats.await(),
+                        highAffectionCount = highAffectionCount.await(),
+                        characters = characters.await(),
+                        worldBooks = worldBooks.await()
+                    )
                 }
 
-                val sessions = (sessionsResult as? Resource.Success)?.data.orEmpty()
+                val sessions = (results.sessions as? Resource.Success)?.data.orEmpty()
                     .filterNot { it.isArchive == true }
-                val tokenStats = (tokenStatsResult as? Resource.Success)?.data
+                val tokenStats = (results.tokenStats as? Resource.Success)?.data
                 val highAffectionCharacterCount =
-                    (highAffectionCountResult as? Resource.Success)?.data ?: 0
+                    (results.highAffectionCount as? Resource.Success)?.data ?: 0
+                val characterCount =
+                    (results.characters as? Resource.Success)?.data.orEmpty().size
+                val worldBookCount =
+                    (results.worldBooks as? Resource.Success)?.data.orEmpty().size
 
                 val totalMessages = sessions.sumOf { (it.messageCount ?: 0).toLong() }
 
@@ -460,7 +474,10 @@ class AchievementsViewModel : BaseViewModel() {
                     totalTokens = tokenStats?.totalDisplay ?: 0L,
                     totalMessages = totalMessages,
                     totalSessions = sessions.size,
-                    highAffectionCharacterCount = highAffectionCharacterCount
+                    highAffectionCharacterCount = highAffectionCharacterCount,
+                    characterCount = characterCount,
+                    worldBookCount = worldBookCount,
+                    favoriteSessionCount = sessions.count { it.favorite == true }
                 )
             } catch (error: Exception) {
                 if (requestVersion == refreshVersion) {
@@ -474,3 +491,11 @@ class AchievementsViewModel : BaseViewModel() {
         }
     }
 }
+
+private data class AchievementLoadResults(
+    val sessions: Resource<List<com.nekobot.app.data.model.Session>>,
+    val tokenStats: Resource<com.nekobot.app.data.model.TokenStats>,
+    val highAffectionCount: Resource<Int>,
+    val characters: Resource<List<com.nekobot.app.data.model.CharacterPreset>>,
+    val worldBooks: Resource<List<com.nekobot.app.data.model.WorldBook>>
+)

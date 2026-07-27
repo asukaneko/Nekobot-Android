@@ -30,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.nekobot.app.R
+import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.AchievementManager
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -59,12 +61,25 @@ fun AchievementUnlockHost() {
     val eventQueue = remember { Channel<AchievementManager.UnlockEvent>(Channel.UNLIMITED) }
     val dismissSignals = remember { Channel<Unit>(Channel.CONFLATED) }
     var currentEvent by remember { mutableStateOf<AchievementManager.UnlockEvent?>(null) }
+    val dataSourceRevision by ServiceContainer.dataSourceRevision.collectAsState()
 
     LaunchedEffect(Unit) {
-        AchievementManager.unlockEvents.collect(eventQueue::send)
+        AchievementManager.unlockEvents.collect { event ->
+            if (AchievementManager.isScopeCurrent(event.scopeId)) {
+                eventQueue.send(event)
+            }
+        }
+    }
+    LaunchedEffect(dataSourceRevision) {
+        while (eventQueue.tryReceive().isSuccess) {
+            // 数据库或模式切换后丢弃旧数据源尚未展示的弹窗。
+        }
+        currentEvent = null
+        dismissSignals.trySend(Unit)
     }
     LaunchedEffect(Unit) {
         for (event in eventQueue) {
+            if (!AchievementManager.isScopeCurrent(event.scopeId)) continue
             while (dismissSignals.tryReceive().isSuccess) {
                 // 清除上一个弹窗遗留的关闭信号。
             }

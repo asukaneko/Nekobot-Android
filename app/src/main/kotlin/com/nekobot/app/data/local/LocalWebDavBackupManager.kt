@@ -425,7 +425,7 @@ class LocalWebDavBackupManager(
             val achievementPrefs =
                 appContext.getSharedPreferences(ACHIEVEMENT_PREF_NAME, Context.MODE_PRIVATE)
             val achievement = JsonObject().apply {
-                val key = "$ACHIEVEMENT_UNLOCKED_KEY_PREFIX$profileName"
+                val key = AchievementManager.storageKeyForScope("local:$profileName")
                 addProperty("storage_key", key)
                 addProperty("value", achievementPrefs.getString(key, "").orEmpty())
             }
@@ -486,6 +486,12 @@ class LocalWebDavBackupManager(
                 staging.delete()
             }
 
+            appContext.getSharedPreferences(
+                "token_usage_$dbName",
+                Context.MODE_PRIVATE
+            ).edit().clear().commit()
+            AchievementManager.clearScope("local:$profileName")
+
             entries[ENTRY_TOKEN_USAGE]?.let { raw ->
                 val tokenPrefs =
                     appContext.getSharedPreferences("token_usage_$dbName", Context.MODE_PRIVATE)
@@ -497,7 +503,7 @@ class LocalWebDavBackupManager(
 
             entries[ENTRY_ACHIEVEMENTS]?.let { raw ->
                 val obj = JsonParser.parseString(String(raw, Charsets.UTF_8)).asJsonObject
-                val key = "$ACHIEVEMENT_UNLOCKED_KEY_PREFIX$profileName"
+                val key = AchievementManager.storageKeyForScope("local:$profileName")
                 val value = obj.get("value")?.asString.orEmpty()
                 appContext.getSharedPreferences(
                     ACHIEVEMENT_PREF_NAME,
@@ -829,7 +835,6 @@ class LocalWebDavBackupManager(
         const val ENTRY_ACHIEVEMENTS = "achievements.json"
         const val ENTRY_PORTRAITS_PREFIX = "portraits/"
         const val ACHIEVEMENT_PREF_NAME = "nekobot_achievements"
-        const val ACHIEVEMENT_UNLOCKED_KEY_PREFIX = "unlocked::local:"
         const val MAX_ARCHIVE_ENTRIES = 5_000
         const val MAX_ARCHIVE_SIZE = 1024L * 1024L * 1024L
 

@@ -136,6 +136,7 @@ class LocalRepository(
     private val characterDao = db.characterDao()
     private val worldBookDao = db.worldBookDao()
     private val aiModelDao = db.aiModelDao()
+    private val achievementScopeId = "local:${db.dbName.removeSuffix(".db")}"
     val oauthManager = LocalOAuthManager(db.oauthAccountDao(), aiModelDao)
     private val failoverHealthDao = db.failoverHealthDao()
     private val localExecAuthorizationManager =
@@ -329,8 +330,23 @@ class LocalRepository(
         val memFS = com.nekobot.app.data.local.ai.MemoryFS(db.memoryDao())
         val snapshotRepo = com.nekobot.app.data.local.ai.LocalStateSnapshotRepository(db.stateSnapshotDao())
         com.nekobot.app.data.local.ai.CharacterRuntime(
-            profileRepo, stateRepo, relRepo, memoryService, worldBookStore, autoState, memFS, snapshotRepo
+            profileRepo,
+            stateRepo,
+            relRepo,
+            memoryService,
+            worldBookStore,
+            autoState,
+            memFS,
+            snapshotRepo,
+            ::reportAchievementProgress
         )
+    }
+
+    private fun reportAchievementProgress(
+        metric: AchievementManager.Target.Metric,
+        currentValue: Long
+    ) {
+        AchievementManager.reportProgress(metric, currentValue, achievementScopeId)
     }
 
     /** 本地模式 Hook 执行引擎（跨会话保持 once_per_conversation 状态） */
@@ -407,7 +423,7 @@ class LocalRepository(
 
         // 成就触发：会话数量
         kotlin.runCatching {
-            AchievementManager.reportProgress(
+            reportAchievementProgress(
                 AchievementManager.Target.Metric.SESSIONS,
                 sessionDao.count().toLong()
             )
@@ -787,6 +803,12 @@ class LocalRepository(
                 updatedAt = nowIso()
             )
         }
+        if (favorite != null) {
+            reportAchievementProgress(
+                AchievementManager.Target.Metric.FAVORITE_SESSIONS,
+                sessionDao.countFavorites().toLong()
+            )
+        }
         android.util.Log.d("LocalRepo", "updateSession: updated.isPublic=${updated.isPublic}, updated.ttsConfig=${updated.ttsConfig}, updated.shareConfig=${updated.shareConfig}")
     }
 
@@ -946,7 +968,7 @@ class LocalRepository(
             // 成就触发：用户消息数
             if (role.equals("user", ignoreCase = true)) {
                 kotlin.runCatching {
-                    AchievementManager.reportProgress(
+                    reportAchievementProgress(
                         AchievementManager.Target.Metric.MESSAGES,
                         messageDao.countUserMessages().toLong()
                     )
@@ -1917,7 +1939,7 @@ class LocalRepository(
                     val total = arr.sumOf { el ->
                         (el as? JsonObject)?.get("total_tokens")?.takeIf { !it.isJsonNull }?.asLong ?: 0L
                     }
-                    AchievementManager.reportProgress(AchievementManager.Target.Metric.TOKENS, total)
+                    reportAchievementProgress(AchievementManager.Target.Metric.TOKENS, total)
                 }
             } catch (e: Exception) {
                 tokenUsageReconciled = false
@@ -3265,6 +3287,10 @@ class LocalRepository(
                     characterAvatar = entity.avatar
                 )
             }
+            reportAchievementProgress(
+                AchievementManager.Target.Metric.CHARACTERS,
+                characterDao.count().toLong()
+            )
             entity.toCharacterPreset()
         }
 
@@ -3297,6 +3323,10 @@ class LocalRepository(
         if (existingEntries.isNotEmpty()) {
             worldBookDao.upsertEntries(existingEntries)
         }
+        reportAchievementProgress(
+            AchievementManager.Target.Metric.WORLD_BOOKS,
+            worldBookDao.count().toLong()
+        )
         entity.toWorldBook()
     }
 

@@ -147,6 +147,7 @@ class DbProfileViewModel : ViewModel() {
             val ctx = ServiceContainer.appContext
             if (ctx != null) {
                 NekobotDatabase.deleteProfileFile(ctx, profileName)
+                clearProfileSidecarData(ctx, profileName)
                 // 清理导入的立绘目录
                 runCatching {
                     java.io.File(ctx.cacheDir, "portraits/$profileName").deleteRecursively()
@@ -342,6 +343,7 @@ class DbProfileViewModel : ViewModel() {
                 }
                 // 关闭并清空目标 profile（若已存在）
                 NekobotDatabase.deleteProfileFile(ctx, profileName)
+                clearProfileSidecarData(ctx, profileName)
                 Thread.sleep(100)
                 // 写入新的 db 文件
                 val mainDbName = "$profileName.db"
@@ -474,6 +476,16 @@ class DbProfileViewModel : ViewModel() {
 
     private fun displayName(name: String): String =
         _profiles.value.firstOrNull { it.name == name }?.displayName ?: name
+
+    /** 数据库被删除或同名替换时，同步清理独立于 Room 文件的统计与成就数据。 */
+    private fun clearProfileSidecarData(context: Context, profileName: String) {
+        val normalizedName = profileName.removeSuffix(".db")
+        context.getSharedPreferences(
+            "token_usage_$normalizedName.db",
+            Context.MODE_PRIVATE
+        ).edit().clear().commit()
+        com.nekobot.app.data.local.AchievementManager.clearScope("local:$normalizedName")
+    }
 
     /** 显示名 → db 文件名（仅保留字母数字下划线，避免文件名非法字符）。 */
     private fun sanitizeProfileName(raw: String): String {

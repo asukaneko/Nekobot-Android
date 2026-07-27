@@ -23,6 +23,9 @@
     <string name="achievement_category_messages">消息</string>
     <string name="achievement_category_sessions">会话</string>
     <string name="achievement_category_affection">羁绊</string>
+    <string name="achievement_category_characters">角色</string>
+    <string name="achievement_category_world_books">世界书</string>
+    <string name="achievement_category_favorite_sessions">珍藏</string>
 
     <string name="achievement_tier_bronze">青铜</string>
     <string name="achievement_tier_silver">白银</string>
@@ -33,7 +36,10 @@
     <string name="achievement_requirement_tokens">累计使用 %1$s Token</string>
     <string name="achievement_requirement_messages">累计发送 %1$s 条消息</string>
     <string name="achievement_requirement_sessions">累计创建 %1$s 个会话</string>
-    <string name="achievement_requirement_high_affection_characters">拥有 %1$s 个好感度达到 90 的角色</string>
+    <string name="achievement_requirement_high_affection_characters">拥有 %1$s 个好感度达到 90 以上的角色</string>
+    <string name="achievement_requirement_characters">收藏 %1$s 个角色</string>
+    <string name="achievement_requirement_world_books">创建 %1$s 本世界书</string>
+    <string name="achievement_requirement_favorite_sessions">珍藏 %1$s 个会话</string>
 
     <string name="achievement_token_1000000">星海推演</string>
     <string name="achievement_token_10000000">无尽心智</string>
@@ -47,6 +53,21 @@
     <string name="achievement_high_affection_characters_5">心之花园</string>
     <string name="achievement_high_affection_characters_10">羁绊星群</string>
     <string name="achievement_high_affection_characters_20">众心相连</string>
+    <string name="achievement_characters_1">初见新友</string>
+    <string name="achievement_characters_3">小小同伴团</string>
+    <string name="achievement_characters_10">猫爪茶会</string>
+    <string name="achievement_characters_30">百态相逢</string>
+    <string name="achievement_characters_100">星光名册</string>
+    <string name="achievement_world_books_1">世界第一页</string>
+    <string name="achievement_world_books_3">灵感书架</string>
+    <string name="achievement_world_books_10">设定收藏家</string>
+    <string name="achievement_world_books_30">万象图书馆</string>
+    <string name="achievement_world_books_100">世界编织者</string>
+    <string name="achievement_favorite_sessions_1">珍藏初语</string>
+    <string name="achievement_favorite_sessions_5">口袋回忆</string>
+    <string name="achievement_favorite_sessions_20">心选片段</string>
+    <string name="achievement_favorite_sessions_50">回忆满匣</string>
+    <string name="achievement_favorite_sessions_100">时光典藏</string>
 
     <string name="achievement_unlocked_title">成就已解锁</string>
     <string name="achievement_unlocked_continue">收下徽章</string>

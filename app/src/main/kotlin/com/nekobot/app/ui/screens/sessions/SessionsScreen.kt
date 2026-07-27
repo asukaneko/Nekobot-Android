@@ -91,6 +91,7 @@ import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.TokenRankings
 import com.nekobot.app.data.model.TokenStats
 import com.nekobot.app.data.model.UpdateSessionRequest
+import com.nekobot.app.data.model.WorldBook
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.EmptyState
@@ -139,6 +140,13 @@ enum class SessionFilter(val labelResId: Int) {
 
 /** 频道筛选项：value 为 null 表示全部频道。 */
 data class ChannelOption(val label: String, val value: String?)
+
+private data class DashboardMetricsLoadResults(
+    val stats: Resource<TokenStats>,
+    val rankings: Resource<TokenRankings>,
+    val highAffectionCount: Resource<Int>,
+    val worldBooks: Resource<List<WorldBook>>
+)
 
 /**
  * 会话列表页：展示所有会话，支持新建、重命名、删除、收藏 / 置顶切换、筛选、搜索。
@@ -1703,7 +1711,9 @@ class SessionsViewModel : BaseViewModel() {
     private val _dashboardTokenStats = MutableStateFlow<TokenStats?>(null)
     private val _dashboardRankings = MutableStateFlow<TokenRankings?>(null)
     private val _dashboardHighAffectionCharacterCount = MutableStateFlow(0)
+    private val _dashboardWorldBookCount = MutableStateFlow(0)
     private val _dashboardLoading = MutableStateFlow(false)
+    private var dataSourceVersion = 0L
     private val _characters = MutableStateFlow<List<CharacterPreset>>(emptyList())
     private val _webDavStatus = MutableStateFlow<DashboardWebDavStatus?>(null)
     private val _localLogPreview = MutableStateFlow<List<DashboardLogEntry>>(emptyList())
@@ -1717,7 +1727,8 @@ class SessionsViewModel : BaseViewModel() {
         _characters,
         _webDavStatus,
         _localLogPreview,
-        _dashboardHighAffectionCharacterCount
+        _dashboardHighAffectionCharacterCount,
+        _dashboardWorldBookCount
     ) { values ->
         @Suppress("UNCHECKED_CAST")
         buildSessionStatsDashboardData(
@@ -1727,7 +1738,8 @@ class SessionsViewModel : BaseViewModel() {
             characters = values[3] as List<CharacterPreset>,
             webDavStatus = values[4] as DashboardWebDavStatus?,
             localLogPreview = values[5] as List<DashboardLogEntry>,
-            highAffectionCharacterCount = values[6] as Int
+            highAffectionCharacterCount = values[6] as Int,
+            worldBookCount = values[7] as Int
         )
     }
         .flowOn(Dispatchers.Default)
@@ -1847,56 +1859,72 @@ class SessionsViewModel : BaseViewModel() {
     }
 
     /** 加载会话 + 角色列表。 */
-    fun loadAll() {
-        loadSessions()
-        loadCharacters()
+    fun loadAll(expectedDataSourceVersion: Long? = null) {
+        loadSessions(expectedDataSourceVersion)
+        loadCharacters(expectedDataSourceVersion)
     }
 
     /** 数据库 Profile / 运行模式切换时先清空旧快照，再从新数据源完整加载。 */
     fun reloadForDataSource() {
+        val version = ++dataSourceVersion
         _sessions.value = emptyList()
         _characters.value = emptyList()
         _dashboardTokenStats.value = null
         _dashboardRankings.value = null
         _dashboardHighAffectionCharacterCount.value = 0
+        _dashboardWorldBookCount.value = 0
         _webDavStatus.value = null
         _localLogPreview.value = emptyList()
-        loadAll()
-        loadDashboardMetrics()
+        loadAll(version)
+        loadDashboardMetrics(version)
     }
 
     /** 独立加载负一屏 Token 总览与排行榜；失败时仍展示会话派生统计。 */
-    fun loadDashboardMetrics() {
+    fun loadDashboardMetrics(expectedDataSourceVersion: Long? = null) {
         viewModelScope.launch {
             _dashboardLoading.value = true
             try {
-                val (statsResult, rankingsResult, highAffectionCountResult) = coroutineScope {
+                val results = coroutineScope {
                     val statsRequest = async { unified.tokenStats(dateRange = "total") }
                     val rankingsRequest = async { unified.tokenRankings() }
                     val highAffectionCountRequest = async {
                         unified.countHighAffectionCharacters(threshold = 90)
                     }
-                    Triple(
-                        statsRequest.await(),
-                        rankingsRequest.await(),
-                        highAffectionCountRequest.await()
+                    val worldBooksRequest = async { unified.listWorldBooks() }
+                    DashboardMetricsLoadResults(
+                        stats = statsRequest.await(),
+                        rankings = rankingsRequest.await(),
+                        highAffectionCount = highAffectionCountRequest.await(),
+                        worldBooks = worldBooksRequest.await()
                     )
                 }
-                if (statsResult is Resource.Success) {
-                    _dashboardTokenStats.value = statsResult.data
+                if (
+                    expectedDataSourceVersion != null &&
+                    expectedDataSourceVersion != dataSourceVersion
+                ) return@launch
+                if (results.stats is Resource.Success) {
+                    _dashboardTokenStats.value = results.stats.data
                 }
-                if (rankingsResult is Resource.Success) {
-                    _dashboardRankings.value = rankingsResult.data
+                if (results.rankings is Resource.Success) {
+                    _dashboardRankings.value = results.rankings.data
                 }
-                if (highAffectionCountResult is Resource.Success) {
-                    _dashboardHighAffectionCharacterCount.value = highAffectionCountResult.data
+                if (results.highAffectionCount is Resource.Success) {
+                    _dashboardHighAffectionCharacterCount.value = results.highAffectionCount.data
+                }
+                if (results.worldBooks is Resource.Success) {
+                    _dashboardWorldBookCount.value = results.worldBooks.data.size
                 }
                 loadWebDavStatus()
                 loadLocalLogPreview()
             } catch (_: Exception) {
                 // 会话统计可独立工作，Token 接口失败不阻断负一屏。
             } finally {
-                _dashboardLoading.value = false
+                if (
+                    expectedDataSourceVersion == null ||
+                    expectedDataSourceVersion == dataSourceVersion
+                ) {
+                    _dashboardLoading.value = false
+                }
             }
         }
     }
@@ -1954,10 +1982,17 @@ class SessionsViewModel : BaseViewModel() {
     }
 
     /** 加载会话列表。 */
-    fun loadSessions() {
+    fun loadSessions(expectedDataSourceVersion: Long? = null) {
         launchResult(
             block = { unified.listSessions() },
-            onSuccess = { _sessions.value = it ?: emptyList() }
+            onSuccess = {
+                if (
+                    expectedDataSourceVersion == null ||
+                    expectedDataSourceVersion == dataSourceVersion
+                ) {
+                    _sessions.value = it ?: emptyList()
+                }
+            }
         )
     }
 
@@ -2017,11 +2052,16 @@ class SessionsViewModel : BaseViewModel() {
     }
 
     /** 加载角色列表（供新建会话下拉菜单使用）。 */
-    fun loadCharacters() {
+    fun loadCharacters(expectedDataSourceVersion: Long? = null) {
         launchResult(
             block = { unified.listCharacters() },
             onSuccess = { list ->
-                _characters.value = list ?: emptyList()
+                if (
+                    expectedDataSourceVersion == null ||
+                    expectedDataSourceVersion == dataSourceVersion
+                ) {
+                    _characters.value = list ?: emptyList()
+                }
             }
         )
     }

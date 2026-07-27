@@ -50,4 +50,25 @@
 
     <string name="achievement_unlocked_title">업적 해금</string>
     <string name="achievement_unlocked_continue">배지 받기</string>
+    <string name="achievement_category_characters">캐릭터</string>
+    <string name="achievement_category_world_books">월드북</string>
+    <string name="achievement_category_favorite_sessions">즐겨찾기</string>
+    <string name="achievement_requirement_characters">캐릭터 %1$s명 모으기</string>
+    <string name="achievement_requirement_world_books">월드북 %1$s권 만들기</string>
+    <string name="achievement_requirement_favorite_sessions">세션 %1$s개 즐겨찾기</string>
+    <string name="achievement_characters_1">새로운 친구</string>
+    <string name="achievement_characters_3">작은 친구 모임</string>
+    <string name="achievement_characters_10">발바닥 티 파티</string>
+    <string name="achievement_characters_30">수많은 만남</string>
+    <string name="achievement_characters_100">별빛 명단</string>
+    <string name="achievement_world_books_1">세계의 첫 페이지</string>
+    <string name="achievement_world_books_3">영감의 책장</string>
+    <string name="achievement_world_books_10">설정 수집가</string>
+    <string name="achievement_world_books_30">만상 도서관</string>
+    <string name="achievement_world_books_100">세계의 직조자</string>
+    <string name="achievement_favorite_sessions_1">첫 번째 보물</string>
+    <string name="achievement_favorite_sessions_5">주머니 속 추억</string>
+    <string name="achievement_favorite_sessions_20">마음에 든 순간</string>
+    <string name="achievement_favorite_sessions_50">추억 상자</string>
+    <string name="achievement_favorite_sessions_100">시간의 보물</string>
 </resources>

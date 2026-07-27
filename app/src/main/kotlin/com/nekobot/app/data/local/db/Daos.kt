@@ -20,6 +20,9 @@ interface SessionDao {
     @Query("SELECT COUNT(*) FROM local_sessions")
     suspend fun count(): Int
 
+    @Query("SELECT COUNT(*) FROM local_sessions WHERE favorite = 1")
+    suspend fun countFavorites(): Int
+
     @Query("SELECT * FROM local_sessions WHERE id = :id")
     suspend fun getById(id: String): LocalSessionEntity?
 
@@ -155,6 +158,9 @@ interface CharacterDao {
     @Query("SELECT * FROM local_characters ORDER BY updated_at DESC")
     suspend fun listAll(): List<LocalCharacterEntity>
 
+    @Query("SELECT COUNT(*) FROM local_characters")
+    suspend fun count(): Int
+
     @Query("SELECT * FROM local_characters WHERE id = :id")
     suspend fun getById(id: String): LocalCharacterEntity?
 
@@ -179,6 +185,9 @@ interface WorldBookDao {
 
     @Query("SELECT * FROM local_world_books ORDER BY updated_at DESC")
     suspend fun listAll(): List<LocalWorldBookEntity>
+
+    @Query("SELECT COUNT(*) FROM local_world_books")
+    suspend fun count(): Int
 
     @Query("SELECT * FROM local_world_books WHERE id = :id")
     suspend fun getById(id: String): LocalWorldBookEntity?

@@ -50,4 +50,25 @@
 
     <string name="achievement_unlocked_title">実績を解除しました</string>
     <string name="achievement_unlocked_continue">バッジを受け取る</string>
+    <string name="achievement_category_characters">キャラクター</string>
+    <string name="achievement_category_world_books">ワールドブック</string>
+    <string name="achievement_category_favorite_sessions">お気に入り</string>
+    <string name="achievement_requirement_characters">キャラクターを %1$s 人集める</string>
+    <string name="achievement_requirement_world_books">ワールドブックを %1$s 冊作成する</string>
+    <string name="achievement_requirement_favorite_sessions">セッションを %1$s 件お気に入りにする</string>
+    <string name="achievement_characters_1">はじめまして</string>
+    <string name="achievement_characters_3">小さな仲間たち</string>
+    <string name="achievement_characters_10">肉球ティーパーティー</string>
+    <string name="achievement_characters_30">百色の出会い</string>
+    <string name="achievement_characters_100">星明かりの名簿</string>
+    <string name="achievement_world_books_1">世界の最初のページ</string>
+    <string name="achievement_world_books_3">ひらめきの本棚</string>
+    <string name="achievement_world_books_10">設定コレクター</string>
+    <string name="achievement_world_books_30">万象図書館</string>
+    <string name="achievement_world_books_100">世界の織り手</string>
+    <string name="achievement_favorite_sessions_1">最初の宝物</string>
+    <string name="achievement_favorite_sessions_5">ポケットの思い出</string>
+    <string name="achievement_favorite_sessions_20">お気に入りの瞬間</string>
+    <string name="achievement_favorite_sessions_50">思い出の小箱</string>
+    <string name="achievement_favorite_sessions_100">時の宝物</string>
 </resources>

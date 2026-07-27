@@ -1,6 +1,7 @@
 package com.nekobot.app.ui.components
 
 import androidx.annotation.StringRes
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -33,22 +34,31 @@ fun AchievementBadge(
     modifier: Modifier = Modifier.size(72.dp)
 ) {
     val context = LocalContext.current
-    val atlas = ImageBitmap.imageResource(context.resources, R.drawable.achievement_badges_atlas)
     val target = AchievementManager.targetFor(achievementId)
-    val categoryIndex = when (target?.metric) {
+    val metric = target?.metric ?: AchievementManager.Target.Metric.TOKENS
+    val tierColor = achievementTierColor(target?.tier)
+    val atlasMetricIndex = when (metric) {
         AchievementManager.Target.Metric.TOKENS -> 0
         AchievementManager.Target.Metric.MESSAGES -> 1
         AchievementManager.Target.Metric.SESSIONS -> 2
         AchievementManager.Target.Metric.HIGH_AFFECTION_CHARACTERS -> 3
-        null -> 0
+        else -> null
     }
-    val tileWidth = atlas.width / 2
-    val tileHeight = atlas.height / 2
-    val sourceOffset = IntOffset(
-        x = (categoryIndex % 2) * tileWidth,
-        y = (categoryIndex / 2) * tileHeight
-    )
-    val tierColor = achievementTierColor(target?.tier)
+    val image = if (atlasMetricIndex != null) {
+        ImageBitmap.imageResource(context.resources, R.drawable.achievement_badges_atlas)
+    } else {
+        ImageBitmap.imageResource(context.resources, achievementBadgeDrawable(metric))
+    }
+    val sourceWidth = if (atlasMetricIndex != null) image.width / 2 else image.width
+    val sourceHeight = if (atlasMetricIndex != null) image.height / 2 else image.height
+    val sourceOffset = if (atlasMetricIndex != null) {
+        IntOffset(
+            x = (atlasMetricIndex % 2) * sourceWidth,
+            y = (atlasMetricIndex / 2) * sourceHeight
+        )
+    } else {
+        IntOffset.Zero
+    }
 
     Box(
         modifier = modifier
@@ -63,9 +73,9 @@ fun AchievementBadge(
                 .clip(CircleShape)
         ) {
             drawImage(
-                image = atlas,
+                image = image,
                 srcOffset = sourceOffset,
-                srcSize = IntSize(tileWidth, tileHeight),
+                srcSize = IntSize(sourceWidth, sourceHeight),
                 dstSize = IntSize(size.width.toInt(), size.height.toInt()),
                 alpha = if (unlocked) 1f else 0.34f
             )
@@ -78,11 +88,18 @@ fun AchievementBadge(
                 imageVector = Icons.Filled.Lock,
                 contentDescription = null,
                 tint = Color.White.copy(alpha = 0.86f),
-                modifier = Modifier
-                    .fillMaxSize(0.34f)
+                modifier = Modifier.fillMaxSize(0.34f)
             )
         }
     }
+}
+
+@DrawableRes
+private fun achievementBadgeDrawable(metric: AchievementManager.Target.Metric): Int = when (metric) {
+    AchievementManager.Target.Metric.CHARACTERS -> R.drawable.achievement_badge_characters
+    AchievementManager.Target.Metric.WORLD_BOOKS -> R.drawable.achievement_badge_world_books
+    AchievementManager.Target.Metric.FAVORITE_SESSIONS -> R.drawable.achievement_badge_favorite_sessions
+    else -> R.drawable.achievement_badges_atlas
 }
 
 fun achievementTierColor(tier: AchievementManager.Target.Tier?): Color = when (tier) {
@@ -111,11 +128,26 @@ fun achievementTitleRes(id: String): Int = when (id) {
     AchievementManager.Id.SESSIONS_50 -> R.string.achievement_sessions_50
     AchievementManager.Id.SESSIONS_100 -> R.string.achievement_sessions_100
     AchievementManager.Id.SESSIONS_500 -> R.string.achievement_sessions_500
-    AchievementManager.Id.FIRST_AFFECTION_100 -> R.string.achievement_first_affection_100
+    AchievementManager.Id.HIGH_AFFECTION_CHARACTERS_1 -> R.string.achievement_first_affection_100
     AchievementManager.Id.HIGH_AFFECTION_CHARACTERS_3 -> R.string.achievement_high_affection_characters_3
     AchievementManager.Id.HIGH_AFFECTION_CHARACTERS_5 -> R.string.achievement_high_affection_characters_5
     AchievementManager.Id.HIGH_AFFECTION_CHARACTERS_10 -> R.string.achievement_high_affection_characters_10
     AchievementManager.Id.HIGH_AFFECTION_CHARACTERS_20 -> R.string.achievement_high_affection_characters_20
+    AchievementManager.Id.CHARACTERS_1 -> R.string.achievement_characters_1
+    AchievementManager.Id.CHARACTERS_3 -> R.string.achievement_characters_3
+    AchievementManager.Id.CHARACTERS_10 -> R.string.achievement_characters_10
+    AchievementManager.Id.CHARACTERS_30 -> R.string.achievement_characters_30
+    AchievementManager.Id.CHARACTERS_100 -> R.string.achievement_characters_100
+    AchievementManager.Id.WORLD_BOOKS_1 -> R.string.achievement_world_books_1
+    AchievementManager.Id.WORLD_BOOKS_3 -> R.string.achievement_world_books_3
+    AchievementManager.Id.WORLD_BOOKS_10 -> R.string.achievement_world_books_10
+    AchievementManager.Id.WORLD_BOOKS_30 -> R.string.achievement_world_books_30
+    AchievementManager.Id.WORLD_BOOKS_100 -> R.string.achievement_world_books_100
+    AchievementManager.Id.FAVORITE_SESSIONS_1 -> R.string.achievement_favorite_sessions_1
+    AchievementManager.Id.FAVORITE_SESSIONS_5 -> R.string.achievement_favorite_sessions_5
+    AchievementManager.Id.FAVORITE_SESSIONS_20 -> R.string.achievement_favorite_sessions_20
+    AchievementManager.Id.FAVORITE_SESSIONS_50 -> R.string.achievement_favorite_sessions_50
+    AchievementManager.Id.FAVORITE_SESSIONS_100 -> R.string.achievement_favorite_sessions_100
     else -> R.string.achievements_unknown
 }
 
@@ -134,6 +166,12 @@ fun achievementDescription(target: AchievementManager.Target): String {
             stringResource(R.string.achievement_requirement_sessions, formattedTarget)
         AchievementManager.Target.Metric.HIGH_AFFECTION_CHARACTERS ->
             stringResource(R.string.achievement_requirement_high_affection_characters, formattedTarget)
+        AchievementManager.Target.Metric.CHARACTERS ->
+            stringResource(R.string.achievement_requirement_characters, formattedTarget)
+        AchievementManager.Target.Metric.WORLD_BOOKS ->
+            stringResource(R.string.achievement_requirement_world_books, formattedTarget)
+        AchievementManager.Target.Metric.FAVORITE_SESSIONS ->
+            stringResource(R.string.achievement_requirement_favorite_sessions, formattedTarget)
     }
 }
 
@@ -155,5 +193,8 @@ fun achievementCategoryLabel(metric: AchievementManager.Target.Metric): String =
         AchievementManager.Target.Metric.MESSAGES -> R.string.achievement_category_messages
         AchievementManager.Target.Metric.SESSIONS -> R.string.achievement_category_sessions
         AchievementManager.Target.Metric.HIGH_AFFECTION_CHARACTERS -> R.string.achievement_category_affection
+        AchievementManager.Target.Metric.CHARACTERS -> R.string.achievement_category_characters
+        AchievementManager.Target.Metric.WORLD_BOOKS -> R.string.achievement_category_world_books
+        AchievementManager.Target.Metric.FAVORITE_SESSIONS -> R.string.achievement_category_favorite_sessions
     }
 )

@@ -23,6 +23,9 @@
     <string name="achievement_category_messages">Messages</string>
     <string name="achievement_category_sessions">Sessions</string>
     <string name="achievement_category_affection">Bond</string>
+    <string name="achievement_category_characters">Characters</string>
+    <string name="achievement_category_world_books">World Books</string>
+    <string name="achievement_category_favorite_sessions">Favorites</string>
 
     <string name="achievement_tier_bronze">Bronze</string>
     <string name="achievement_tier_silver">Silver</string>
@@ -34,6 +37,9 @@
     <string name="achievement_requirement_messages">Send %1$s messages in total</string>
     <string name="achievement_requirement_sessions">Create %1$s sessions in total</string>
     <string name="achievement_requirement_high_affection_characters">Have %1$s characters at 90 affection or higher</string>
+    <string name="achievement_requirement_characters">Collect %1$s characters</string>
+    <string name="achievement_requirement_world_books">Create %1$s world books</string>
+    <string name="achievement_requirement_favorite_sessions">Favorite %1$s sessions</string>
 
     <string name="achievement_token_1000000">Starlit Reasoning</string>
     <string name="achievement_token_10000000">Infinite Mind</string>
@@ -47,6 +53,21 @@
     <string name="achievement_high_affection_characters_5">Garden of Hearts</string>
     <string name="achievement_high_affection_characters_10">Bond Constellation</string>
     <string name="achievement_high_affection_characters_20">Hearts United</string>
+    <string name="achievement_characters_1">A New Friend</string>
+    <string name="achievement_characters_3">Tiny Companion Club</string>
+    <string name="achievement_characters_10">Pawprint Tea Party</string>
+    <string name="achievement_characters_30">Many Meetings</string>
+    <string name="achievement_characters_100">Starlit Roster</string>
+    <string name="achievement_world_books_1">The First Page</string>
+    <string name="achievement_world_books_3">Shelf of Ideas</string>
+    <string name="achievement_world_books_10">Lore Collector</string>
+    <string name="achievement_world_books_30">Library of Worlds</string>
+    <string name="achievement_world_books_100">World Weaver</string>
+    <string name="achievement_favorite_sessions_1">First Keepsake</string>
+    <string name="achievement_favorite_sessions_5">Pocket Memories</string>
+    <string name="achievement_favorite_sessions_20">Favorite Moments</string>
+    <string name="achievement_favorite_sessions_50">Memory Box</string>
+    <string name="achievement_favorite_sessions_100">Treasured Time</string>
 
     <string name="achievement_unlocked_title">Achievement Unlocked</string>
     <string name="achievement_unlocked_continue">Claim Badge</string>

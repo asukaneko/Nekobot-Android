@@ -25,12 +25,17 @@ object AchievementManager {
     private const val PREF_NAME = "nekobot_achievements"
     private const val KEY_UNLOCKED = "unlocked"
     private const val KEY_LEGACY_MIGRATED_SCOPE = "legacy_migrated_scope"
+    private const val KEY_SCOPED_UNLOCKED_PREFIX = "unlocked::"
+    private const val KEY_SCOPED_UNLOCKED_V2_PREFIX = "unlocked_v2::"
+    private const val DEFAULT_LOCAL_SCOPE = "local:${PrefsManager.DEFAULT_DB_NAME}"
 
     private val lock = ReentrantLock()
 
     private var prefs: SharedPreferences? = null
     @Volatile
     private var unlockedStorageKey: String = KEY_UNLOCKED
+    @Volatile
+    private var currentScopeId: String = "default"
 
     private val unlockEventChannel = Channel<UnlockEvent>(Channel.UNLIMITED)
     val unlockEvents: Flow<UnlockEvent> = unlockEventChannel.receiveAsFlow()
@@ -52,11 +57,28 @@ object AchievementManager {
         const val SESSIONS_50 = "sessions_50"
         const val SESSIONS_100 = "sessions_100"
         const val SESSIONS_500 = "sessions_500"
-        const val FIRST_AFFECTION_100 = "first_affection_100"
+        const val HIGH_AFFECTION_CHARACTERS_1 = "first_affection_100"
+        @Deprecated("使用 HIGH_AFFECTION_CHARACTERS_1；保留旧 ID 仅为兼容已持久化数据")
+        const val FIRST_AFFECTION_100 = HIGH_AFFECTION_CHARACTERS_1
         const val HIGH_AFFECTION_CHARACTERS_3 = "high_affection_characters_3"
         const val HIGH_AFFECTION_CHARACTERS_5 = "high_affection_characters_5"
         const val HIGH_AFFECTION_CHARACTERS_10 = "high_affection_characters_10"
         const val HIGH_AFFECTION_CHARACTERS_20 = "high_affection_characters_20"
+        const val CHARACTERS_1 = "characters_1"
+        const val CHARACTERS_3 = "characters_3"
+        const val CHARACTERS_10 = "characters_10"
+        const val CHARACTERS_30 = "characters_30"
+        const val CHARACTERS_100 = "characters_100"
+        const val WORLD_BOOKS_1 = "world_books_1"
+        const val WORLD_BOOKS_3 = "world_books_3"
+        const val WORLD_BOOKS_10 = "world_books_10"
+        const val WORLD_BOOKS_30 = "world_books_30"
+        const val WORLD_BOOKS_100 = "world_books_100"
+        const val FAVORITE_SESSIONS_1 = "favorite_sessions_1"
+        const val FAVORITE_SESSIONS_5 = "favorite_sessions_5"
+        const val FAVORITE_SESSIONS_20 = "favorite_sessions_20"
+        const val FAVORITE_SESSIONS_50 = "favorite_sessions_50"
+        const val FAVORITE_SESSIONS_100 = "favorite_sessions_100"
     }
 
     /** 成就目标配置。 */
@@ -67,7 +89,13 @@ object AchievementManager {
         val tier: Tier
     ) {
         enum class Metric {
-            TOKENS, MESSAGES, SESSIONS, HIGH_AFFECTION_CHARACTERS
+            TOKENS,
+            MESSAGES,
+            SESSIONS,
+            HIGH_AFFECTION_CHARACTERS,
+            CHARACTERS,
+            WORLD_BOOKS,
+            FAVORITE_SESSIONS
         }
 
         enum class Tier {
@@ -91,11 +119,26 @@ object AchievementManager {
         Target(Id.SESSIONS_50, 50, Target.Metric.SESSIONS, Target.Tier.GOLD),
         Target(Id.SESSIONS_100, 100, Target.Metric.SESSIONS, Target.Tier.PLATINUM),
         Target(Id.SESSIONS_500, 500, Target.Metric.SESSIONS, Target.Tier.DIAMOND),
-        Target(Id.FIRST_AFFECTION_100, 1, Target.Metric.HIGH_AFFECTION_CHARACTERS, Target.Tier.BRONZE),
+        Target(Id.HIGH_AFFECTION_CHARACTERS_1, 1, Target.Metric.HIGH_AFFECTION_CHARACTERS, Target.Tier.BRONZE),
         Target(Id.HIGH_AFFECTION_CHARACTERS_3, 3, Target.Metric.HIGH_AFFECTION_CHARACTERS, Target.Tier.SILVER),
         Target(Id.HIGH_AFFECTION_CHARACTERS_5, 5, Target.Metric.HIGH_AFFECTION_CHARACTERS, Target.Tier.GOLD),
         Target(Id.HIGH_AFFECTION_CHARACTERS_10, 10, Target.Metric.HIGH_AFFECTION_CHARACTERS, Target.Tier.PLATINUM),
-        Target(Id.HIGH_AFFECTION_CHARACTERS_20, 20, Target.Metric.HIGH_AFFECTION_CHARACTERS, Target.Tier.DIAMOND)
+        Target(Id.HIGH_AFFECTION_CHARACTERS_20, 20, Target.Metric.HIGH_AFFECTION_CHARACTERS, Target.Tier.DIAMOND),
+        Target(Id.CHARACTERS_1, 1, Target.Metric.CHARACTERS, Target.Tier.BRONZE),
+        Target(Id.CHARACTERS_3, 3, Target.Metric.CHARACTERS, Target.Tier.SILVER),
+        Target(Id.CHARACTERS_10, 10, Target.Metric.CHARACTERS, Target.Tier.GOLD),
+        Target(Id.CHARACTERS_30, 30, Target.Metric.CHARACTERS, Target.Tier.PLATINUM),
+        Target(Id.CHARACTERS_100, 100, Target.Metric.CHARACTERS, Target.Tier.DIAMOND),
+        Target(Id.WORLD_BOOKS_1, 1, Target.Metric.WORLD_BOOKS, Target.Tier.BRONZE),
+        Target(Id.WORLD_BOOKS_3, 3, Target.Metric.WORLD_BOOKS, Target.Tier.SILVER),
+        Target(Id.WORLD_BOOKS_10, 10, Target.Metric.WORLD_BOOKS, Target.Tier.GOLD),
+        Target(Id.WORLD_BOOKS_30, 30, Target.Metric.WORLD_BOOKS, Target.Tier.PLATINUM),
+        Target(Id.WORLD_BOOKS_100, 100, Target.Metric.WORLD_BOOKS, Target.Tier.DIAMOND),
+        Target(Id.FAVORITE_SESSIONS_1, 1, Target.Metric.FAVORITE_SESSIONS, Target.Tier.BRONZE),
+        Target(Id.FAVORITE_SESSIONS_5, 5, Target.Metric.FAVORITE_SESSIONS, Target.Tier.SILVER),
+        Target(Id.FAVORITE_SESSIONS_20, 20, Target.Metric.FAVORITE_SESSIONS, Target.Tier.GOLD),
+        Target(Id.FAVORITE_SESSIONS_50, 50, Target.Metric.FAVORITE_SESSIONS, Target.Tier.PLATINUM),
+        Target(Id.FAVORITE_SESSIONS_100, 100, Target.Metric.FAVORITE_SESSIONS, Target.Tier.DIAMOND)
     )
 
     data class UnlockEvent(
@@ -103,7 +146,8 @@ object AchievementManager {
         val target: Long,
         val metric: Target.Metric,
         val tier: Target.Tier,
-        val unlockedAt: Long
+        val unlockedAt: Long,
+        val scopeId: String
     )
 
     /** 成就快照，用于 UI 展示。 */
@@ -131,18 +175,24 @@ object AchievementManager {
     fun switchScope(scopeId: String) {
         val sp = prefs ?: return
         val normalizedScope = scopeId.trim().ifEmpty { "default" }
-        val nextStorageKey = "$KEY_UNLOCKED::$normalizedScope"
+        val nextStorageKey = storageKeyForScope(normalizedScope)
         lock.lock()
         try {
-            if (!sp.contains(nextStorageKey) && !sp.contains(KEY_LEGACY_MIGRATED_SCOPE)) {
-                sp.getString(KEY_UNLOCKED, null)?.let { legacy ->
-                    sp.edit()
-                        .putString(nextStorageKey, legacy)
-                        .putString(KEY_LEGACY_MIGRATED_SCOPE, normalizedScope)
-                        .apply()
-                }
+            if (!sp.contains(nextStorageKey)) {
+                val previousScopedKey = "$KEY_SCOPED_UNLOCKED_PREFIX$normalizedScope"
+                val legacyMigratedScope = sp.getString(KEY_LEGACY_MIGRATED_SCOPE, null)
+                val migratedValue = resolveV2MigrationValue(
+                    scopeId = normalizedScope,
+                    previousScopedValue = sp.getString(previousScopedKey, null),
+                    legacyGlobalValue = sp.getString(KEY_UNLOCKED, null),
+                    legacyMigratedScope = legacyMigratedScope
+                )
+                sp.edit()
+                    .putString(nextStorageKey, migratedValue ?: "{}")
+                    .apply()
             }
             unlockedStorageKey = nextStorageKey
+            currentScopeId = normalizedScope
             while (unlockEventChannel.tryReceive().isSuccess) {
                 // 数据源切换后不再展示上一作用域尚未消费的解锁弹窗。
             }
@@ -155,10 +205,14 @@ object AchievementManager {
      * 报告事件进度。在关键行为处调用，立即解锁已达成成就。
      * 数值传入当前累计值即可，内部会判断是否已解锁并持久化。
      */
-    fun reportProgress(metric: Target.Metric, currentValue: Long) {
+    fun reportProgress(
+        metric: Target.Metric,
+        currentValue: Long,
+        expectedScopeId: String? = null
+    ) {
         val ids = targets.filter { it.metric == metric && currentValue >= it.target }.map { it.id }
         if (ids.isNotEmpty()) {
-            unlockAll(ids)
+            unlockAll(ids, expectedScopeId)
         }
     }
 
@@ -170,7 +224,10 @@ object AchievementManager {
         totalTokens: Long,
         totalMessages: Long,
         totalSessions: Int,
-        highAffectionCharacterCount: Int
+        highAffectionCharacterCount: Int,
+        characterCount: Int = 0,
+        worldBookCount: Int = 0,
+        favoriteSessionCount: Int = 0
     ): List<Snapshot> {
         // 先补齐可能未记录的解锁
         reportProgress(Target.Metric.TOKENS, totalTokens)
@@ -180,6 +237,9 @@ object AchievementManager {
             Target.Metric.HIGH_AFFECTION_CHARACTERS,
             highAffectionCharacterCount.toLong()
         )
+        reportProgress(Target.Metric.CHARACTERS, characterCount.toLong())
+        reportProgress(Target.Metric.WORLD_BOOKS, worldBookCount.toLong())
+        reportProgress(Target.Metric.FAVORITE_SESSIONS, favoriteSessionCount.toLong())
 
         val unlocked = readUnlockedMap()
         return targets.map { target ->
@@ -188,6 +248,9 @@ object AchievementManager {
                 Target.Metric.MESSAGES -> totalMessages
                 Target.Metric.SESSIONS -> totalSessions.toLong()
                 Target.Metric.HIGH_AFFECTION_CHARACTERS -> highAffectionCharacterCount.toLong()
+                Target.Metric.CHARACTERS -> characterCount.toLong()
+                Target.Metric.WORLD_BOOKS -> worldBookCount.toLong()
+                Target.Metric.FAVORITE_SESSIONS -> favoriteSessionCount.toLong()
             }
             Snapshot(
                 id = target.id,
@@ -215,11 +278,60 @@ object AchievementManager {
 
     fun targetFor(id: String): Target? = targets.firstOrNull { it.id == id }
 
-    private fun unlockAll(ids: List<String>) {
+    fun isScopeCurrent(scopeId: String): Boolean = currentScopeId == scopeId
+
+    /** 与数据库备份共用的稳定存储键；Profile 名必须与数据库切换时使用的名称一致。 */
+    fun storageKeyForScope(scopeId: String): String {
+        val normalizedScope = scopeId.trim().ifEmpty { "default" }
+        return "$KEY_SCOPED_UNLOCKED_V2_PREFIX$normalizedScope"
+    }
+
+    internal fun resolveV2MigrationValue(
+        scopeId: String,
+        previousScopedValue: String?,
+        legacyGlobalValue: String?,
+        legacyMigratedScope: String?
+    ): String? {
+        val isPollutedNonDefaultLocalScope =
+            scopeId.startsWith("local:") &&
+                scopeId != DEFAULT_LOCAL_SCOPE &&
+                legacyMigratedScope == scopeId
+        return when {
+            previousScopedValue != null && !isPollutedNonDefaultLocalScope ->
+                previousScopedValue
+            scopeId == DEFAULT_LOCAL_SCOPE || scopeId == "server" ->
+                previousScopedValue ?: legacyGlobalValue
+            else -> null
+        }
+    }
+
+    /** 清除被替换/删除数据库的解锁记录，避免同名 Profile 复用旧成就。 */
+    fun clearScope(scopeId: String) {
+        val sp = prefs ?: return
+        val normalizedScope = scopeId.trim().ifEmpty { "default" }
+        lock.lock()
+        try {
+            sp.edit()
+                .remove(storageKeyForScope(normalizedScope))
+                .remove("$KEY_SCOPED_UNLOCKED_PREFIX$normalizedScope")
+                .apply()
+            if (currentScopeId == normalizedScope) {
+                unlockedStorageKey = storageKeyForScope(normalizedScope)
+                while (unlockEventChannel.tryReceive().isSuccess) {
+                    // 被替换数据库的未展示解锁事件也必须一并丢弃。
+                }
+            }
+        } finally {
+            lock.unlock()
+        }
+    }
+
+    private fun unlockAll(ids: List<String>, expectedScopeId: String? = null) {
         val sp = prefs ?: return
         val events = mutableListOf<UnlockEvent>()
         lock.lock()
         try {
+            if (expectedScopeId != null && expectedScopeId != currentScopeId) return
             val map = readUnlockedMap().toMutableMap()
             var changed = false
             val now = System.currentTimeMillis()
@@ -233,7 +345,8 @@ object AchievementManager {
                         target = target.target,
                         metric = target.metric,
                         tier = target.tier,
-                        unlockedAt = now
+                        unlockedAt = now,
+                        scopeId = currentScopeId
                     )
                 }
             }

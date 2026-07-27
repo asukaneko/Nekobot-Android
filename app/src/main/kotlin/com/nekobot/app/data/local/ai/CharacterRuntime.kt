@@ -27,7 +27,11 @@ class CharacterRuntime(
     private val worldBookStore: WorldBookStore? = null,
     private val autoState: AutoState? = null,
     private val memoryFS: MemoryFS? = null,
-    private val snapshotRepo: StateSnapshotRepository? = null
+    private val snapshotRepo: StateSnapshotRepository? = null,
+    private val onAchievementProgress: ((
+        com.nekobot.app.data.local.AchievementManager.Target.Metric,
+        Long
+    ) -> Unit)? = null
 ) {
 
     companion object {
@@ -225,7 +229,7 @@ class CharacterRuntime(
 
         relationshipRepo?.let { repo ->
             val highAffectionCharacterCount = repo.countCharactersAtOrAboveAffection(90)
-            com.nekobot.app.data.local.AchievementManager.reportProgress(
+            onAchievementProgress?.invoke(
                 com.nekobot.app.data.local.AchievementManager.Target.Metric.HIGH_AFFECTION_CHARACTERS,
                 highAffectionCharacterCount.toLong()
             )
@@ -306,7 +310,7 @@ class CharacterRuntime(
         com.nekobot.app.data.local.LocalLogger.i(TAG, "审查关系增量已回写: $deltas → affection=${updated.affection} trust=${updated.trust}")
         // 成就触发：统计好感度达到 90 的不同角色数量。
         val highAffectionCharacterCount = repo.countCharactersAtOrAboveAffection(90)
-        com.nekobot.app.data.local.AchievementManager.reportProgress(
+        onAchievementProgress?.invoke(
             com.nekobot.app.data.local.AchievementManager.Target.Metric.HIGH_AFFECTION_CHARACTERS,
             highAffectionCharacterCount.toLong()
         )

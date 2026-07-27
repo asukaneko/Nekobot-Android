@@ -128,6 +128,7 @@ object NbotConfigImporter {
             // 同步清空目标 profile 的 token 用量记录（SharedPreferences 与 db 文件独立存储）
             val tokenPrefs = context.getSharedPreferences("token_usage_${profileName}.db", android.content.Context.MODE_PRIVATE)
             tokenPrefs.edit().clear().apply()
+            AchievementManager.clearScope("local:${profileName.removeSuffix(".db")}")
             // 创建空 db 并写入数据
             val db = NekobotDatabase.get(context, profileName)
             val importedCount = applyBundleToDb(db, bundleJson)
