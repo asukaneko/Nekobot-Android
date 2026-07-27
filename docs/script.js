@@ -212,9 +212,9 @@
 
   /* ---------- 11. 从 GitHub Releases 拉取更新日志 ---------- */
   const FALLBACK_RELEASES = [
+    { tag_name: 'v0.4.2', published_at: '2026-07-27', body: '- 集成 Alpine Linux 沙盒，Agent 隔离命令执行环境\n- Agent 会话级原生浏览器工具（browser_use）\n- 成就存储升级至 V3，作用域感知的成就追踪\n- 本地 AI 模型独立代理支持' },
     { tag_name: 'v0.4.1', published_at: '2026-07-27', body: '- 角色、世界书、珍藏会话三大成就体系及作用域隔离机制\n- 成就收藏双列卡片视图切换\n- LocalChatFailoverExecutor 统一非流式 LLM 故障转移\n- 修复 Agent 模式"继续"场景上下文失忆' },
     { tag_name: 'v0.4.0', published_at: '2026-07-26', body: '- 本地模式 WebDAV 备份与恢复功能\n- 成就系统，多层级徽章、范围隔离与解锁动效\n- 仪表盘组件与小组件（最近会话、Token 构成、快捷操作等）\n- OAuth 账号登录与 OpenAI Responses API 协议支持' },
-    { tag_name: 'v0.3.10', published_at: '2026-07-24', body: '- 重构 TTS 语音合成系统，多提供商支持与消息级音频持久化\n- 基于会话 ID 的实时事件隔离与多会话支持\n- 隐私锁功能，重构 Markdown 渲染\n- 角色卡初始状态（initial_state）与 Exa MCP 搜索' },
   ];
   function renderReleases(releases) {
     const container = $('#changelogList');
