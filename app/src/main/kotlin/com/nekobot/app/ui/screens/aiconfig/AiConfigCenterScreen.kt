@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -64,6 +65,7 @@ private data class AiConfigStatus(
     val modelCount: Int = 0,
     val connectedAccountCount: Int = 0,
     val apiKeyCount: Int = 0,
+    val proxyModelCount: Int = 0,
     val enabledModelCount: Int = 0,
     val activeModelName: String? = null,
 )
@@ -102,6 +104,7 @@ fun AiConfigCenterScreen(
             modelCount = models.size,
             connectedAccountCount = accounts.count { it.status == "connected" },
             apiKeyCount = keys.size,
+            proxyModelCount = models.count { it.proxyUrl.isNotBlank() },
             enabledModelCount = models.count { it.enabled },
             activeModelName = activeModel?.name,
         )
@@ -233,6 +236,18 @@ fun AiConfigCenterScreen(
                         stringResource(R.string.aiconfig_status_count_keys, status.apiKeyCount)
                     else ""
                 ) { onNavigate("api_keys") }
+                if (isLocalMode) {
+                    RowDivider()
+                    ConfigRow(
+                        icon = Icons.Filled.Public,
+                        title = stringResource(R.string.model_proxy_title),
+                        subtitle = stringResource(R.string.model_proxy_subtitle),
+                        status = stringResource(
+                            R.string.model_proxy_status_count,
+                            status.proxyModelCount
+                        )
+                    ) { onNavigate("model_proxy") }
+                }
             }
 
             Spacer(Modifier.height(24.dp))

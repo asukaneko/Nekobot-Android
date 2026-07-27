@@ -37,6 +37,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.nekobot.app.data.local.ai.LocalProtocols
+import com.nekobot.app.data.local.ai.parseModelProxyUrl
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.model.AiModel
 import com.nekobot.app.data.model.AiModelRequest
@@ -59,6 +60,7 @@ data class AiModelEditorState(
     val provider: String = "openai",
     val protocol: String = "openai_compatible",
     val apiKey: String = "",
+    val proxyUrl: String = "",
     val baseUrl: String = "",
     val appendBaseUrlPath: Boolean = true,
     val model: String = "gpt-5.5",
@@ -154,12 +156,14 @@ fun AiModelEditorDialog(
     purposes: List<String>,
     availableModels: List<String>,
     savedApiKeys: List<ApiKey>,
+    showProxyConfig: Boolean = false,
     onResolveApiKey: (String, (String) -> Unit) -> Unit,
     onFetchModels: (
         baseUrl: String,
         apiKey: String,
         protocol: String,
-        appendBaseUrlPath: Boolean
+        appendBaseUrlPath: Boolean,
+        proxyUrl: String
     ) -> Unit,
     onConfirm: (AiModelEditorState) -> Unit,
     onDismiss: () -> Unit
@@ -198,12 +202,18 @@ fun AiModelEditorDialog(
         title = if (isEditing) "编辑 AI 模型" else "新建 AI 模型",
         confirmText = "保存",
         onConfirm = {
+            val proxyError = if (showProxyConfig && state.proxyUrl.isNotBlank()) {
+                runCatching { parseModelProxyUrl(state.proxyUrl) }.exceptionOrNull()?.message
+            } else {
+                null
+            }
             validationError = when {
                 state.name.isBlank() -> "请填写配置名称"
                 state.baseUrl.isBlank() -> "请填写 Base URL"
                 state.model.isBlank() -> "请填写模型名称"
                 state.apiKey.isBlank() && !(state.purpose == "stt" && state.sttProvider == "local") ->
                     "请填写或选择 API Key"
+                proxyError != null -> proxyError
                 else -> null
             }
             if (validationError == null) onConfirm(state)
@@ -257,6 +267,18 @@ fun AiModelEditorDialog(
                 password = true,
                 placeholder = "输入 API Key"
             ) { state = state.copy(apiKey = it) }
+            if (showProxyConfig) {
+                EditorTextField(
+                    label = "代理链接（可选）",
+                    value = state.proxyUrl,
+                    placeholder = "http://127.0.0.1:7890"
+                ) { state = state.copy(proxyUrl = it) }
+                Text(
+                    text = "留空时该模型直连；支持 HTTP 和 SOCKS5 代理",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             if (savedApiKeys.isNotEmpty()) {
                 EditorDropdownField(
                     label = "选择已保存的 Key",
@@ -307,7 +329,8 @@ fun AiModelEditorDialog(
                             state.baseUrl,
                             state.apiKey,
                             state.protocol,
-                            state.appendBaseUrlPath
+                            state.appendBaseUrlPath,
+                            state.proxyUrl
                         )
                     }
                 ) {
@@ -729,6 +752,7 @@ fun LocalAiModelEntity?.toEditorState(protocols: List<ProtocolOption>): AiModelE
         provider = model.provider ?: "openai",
         protocol = model.protocol,
         apiKey = model.apiKey,
+        proxyUrl = model.proxyUrl,
         baseUrl = model.baseUrl,
         appendBaseUrlPath = model.appendBaseUrlPath,
         model = model.model,
@@ -821,6 +845,7 @@ fun AiModelEditorState.toLocalEntity(existing: LocalAiModelEntity?): LocalAiMode
         protocol = protocol,
         provider = provider,
         apiKey = apiKey.trim(),
+        proxyUrl = proxyUrl.trim(),
         baseUrl = baseUrl.trim(),
         model = model.trim(),
         enabled = enabled,
@@ -862,6 +887,7 @@ fun AiModelEditorState.toLocalEntity(existing: LocalAiModelEntity?): LocalAiMode
         tokenLimitWeekly = existing?.tokenLimitWeekly ?: 0,
         failoverTimeout = existing?.failoverTimeout ?: 0,
         inputPrice = inputPrice.toDoubleOrNull(),
-        outputPrice = outputPrice.toDoubleOrNull()
+        outputPrice = outputPrice.toDoubleOrNull(),
+        oauthAccountId = existing?.oauthAccountId
     )
 }

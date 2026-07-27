@@ -195,6 +195,7 @@ data class LocalAiModelEntity(
     val protocol: String,                      // openai_chat / anthropic_messages
     val provider: String? = null,
     @ColumnInfo(name = "api_key") val apiKey: String,
+    @ColumnInfo(name = "proxy_url") val proxyUrl: String = "",
     @ColumnInfo(name = "base_url") val baseUrl: String,
     val model: String,
     val enabled: Boolean = true,

@@ -40,6 +40,7 @@ object Routes {
     const val AI_MODELS = "ai_models"
     const val AI_FAILOVER = "ai_failover"
     const val LOCAL_AI_MODELS = "local_ai_models"
+    const val MODEL_PROXY = "model_proxy"
     const val OAUTH_ACCOUNTS = "oauth_accounts"
     const val SETTINGS = "settings"
     const val SYSTEM_SETTINGS = "system_settings"

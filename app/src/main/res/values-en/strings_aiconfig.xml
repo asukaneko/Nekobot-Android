@@ -15,6 +15,19 @@
     <string name="aiconfig_manage_keys_subtitle">Manage access keys stored on this device</string>
     <string name="aiconfig_account_title">Model Accounts</string>
     <string name="aiconfig_account_subtitle">Connect model service providers</string>
+    <string name="model_proxy_title">Model Proxy</string>
+    <string name="model_proxy_subtitle">Route selected local models through a proxy</string>
+    <string name="model_proxy_status_count">%1$d</string>
+    <string name="model_proxy_description">When enabled, chat, vision, speech, model-list and image-generation requests for that model use its proxy. Other models connect directly.</string>
+    <string name="model_proxy_empty">No local models. Add a model first.</string>
+    <string name="model_proxy_enable">Use proxy</string>
+    <string name="model_proxy_url">Proxy URL</string>
+    <string name="model_proxy_url_hint">http://127.0.0.1:7890 or socks5://127.0.0.1:1080</string>
+    <string name="model_proxy_direct">Direct</string>
+    <string name="model_proxy_enabled">Proxied</string>
+    <string name="model_proxy_save">Save proxy settings</string>
+    <string name="model_proxy_saved">Proxy settings saved</string>
+    <string name="model_proxy_url_required">Enter a proxy URL for “%1$s”</string>
     <!-- Entry status text -->
     <string name="aiconfig_status_count_models">%1$d</string>
     <string name="aiconfig_status_count_keys">%1$d</string>

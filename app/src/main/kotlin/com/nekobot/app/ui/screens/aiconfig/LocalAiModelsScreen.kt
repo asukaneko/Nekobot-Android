@@ -180,7 +180,12 @@ class LocalAiModelsViewModel : BaseViewModel() {
         }
     }
 
-    fun fetchModels(baseUrl: String, apiKey: String, appendBaseUrlPath: Boolean) {
+    fun fetchModels(
+        baseUrl: String,
+        apiKey: String,
+        appendBaseUrlPath: Boolean,
+        proxyUrl: String
+    ) {
         viewModelScope.launch {
             setLoading(true)
             try {
@@ -188,7 +193,8 @@ class LocalAiModelsViewModel : BaseViewModel() {
                     ServiceContainer.localRepository.fetchAvailableModels(
                         baseUrl,
                         apiKey,
-                        appendBaseUrlPath
+                        appendBaseUrlPath,
+                        proxyUrl
                     )
                 if (_availableModels.value.isEmpty()) {
                     showToast("未获取到可用模型")
@@ -329,9 +335,10 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
             purposes = listOf("chat", "vision", "video", "tts", "stt", "embedding", "image_generation"),
             availableModels = availableModels,
             savedApiKeys = apiKeys,
+            showProxyConfig = true,
             onResolveApiKey = vm::resolveApiKey,
-            onFetchModels = { baseUrl, apiKey, _, appendBaseUrlPath ->
-                vm.fetchModels(baseUrl, apiKey, appendBaseUrlPath)
+            onFetchModels = { baseUrl, apiKey, _, appendBaseUrlPath, proxyUrl ->
+                vm.fetchModels(baseUrl, apiKey, appendBaseUrlPath, proxyUrl)
             },
             onDismiss = {
                 showEditDialog = false
@@ -596,6 +603,9 @@ private fun ModelCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             ModelInfoChip(text = model.protocol)
+            if (model.proxyUrl.isNotBlank()) {
+                ModelInfoChip(text = "代理")
+            }
             ModelInfoChip(
                 text = purposeLabel,
                 accent = true,

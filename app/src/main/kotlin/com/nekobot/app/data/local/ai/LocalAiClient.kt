@@ -24,6 +24,7 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStreamReader
 import java.util.Base64
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -64,6 +65,7 @@ class LocalAiClient(
     private val client: OkHttpClient = defaultClient
 ) {
     private val gson = Gson()
+    private val proxyClients = ConcurrentHashMap<String, OkHttpClient>()
     private var oauthCredentialResolver: (suspend (String) -> OAuthRuntimeCredential)? = null
 
     fun setOAuthCredentialResolver(
@@ -108,7 +110,7 @@ class LocalAiClient(
             val reqBuilder = Request.Builder().url(url).post(body)
             headers.forEach { (k, v) -> reqBuilder.header(k, v) }
 
-            response = client.newCall(reqBuilder.build()).execute()
+            response = clientFor(runtimeModel).newCall(reqBuilder.build()).execute()
             if (!response.isSuccessful) {
                 val errBody = response.body?.string().orEmpty().take(500)
                 emit(RealtimeEvent.Error("HTTP ${response.code}: $errBody"))
@@ -200,7 +202,7 @@ class LocalAiClient(
         requestTag?.let { reqBuilder.tag(String::class.java, it) }
 
         return try {
-            client.newCall(reqBuilder.build()).awaitResponse().use { resp ->
+            clientFor(runtimeModel).newCall(reqBuilder.build()).awaitResponse().use { resp ->
                 if (!resp.isSuccessful) {
                     val errBody = resp.body?.string().orEmpty().take(500)
                     throw FailoverHttpException(resp.code, "HTTP ${resp.code}: $errBody")
@@ -258,7 +260,7 @@ class LocalAiClient(
             }
             .build()
 
-        return client.newCall(request).awaitResponse().use { response ->
+        return clientFor(model).newCall(request).awaitResponse().use { response ->
             if (!response.isSuccessful) {
                 val errorBody = response.body?.string().orEmpty().take(500)
                 throw FailoverHttpException(response.code, "HTTP ${response.code}: $errorBody")
@@ -378,7 +380,8 @@ class LocalAiClient(
     suspend fun fetchAvailableModels(
         baseUrl: String,
         apiKey: String,
-        appendBaseUrlPath: Boolean
+        appendBaseUrlPath: Boolean,
+        proxyUrl: String = ""
     ): List<String> {
         val base = baseUrl.trimEnd('/')
         val url = when {
@@ -395,7 +398,7 @@ class LocalAiClient(
             .header("Authorization", "Bearer $apiKey")
             .header("api-key", apiKey)
             .build()
-        client.newCall(request).execute().use { response ->
+        clientFor(proxyUrl).newCall(request).execute().use { response ->
             val raw = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw FailoverHttpException(response.code, "HTTP ${response.code}: ${raw.take(500)}")
@@ -523,7 +526,7 @@ class LocalAiClient(
 
             var response: Response? = null
             try {
-                response = client.newCall(reqBuilder.build()).execute()
+                response = clientFor(model).newCall(reqBuilder.build()).execute()
                 if (!response.isSuccessful) {
                     val errBody = response.body?.string().orEmpty().take(500)
                     httpCode = response.code
@@ -607,7 +610,7 @@ class LocalAiClient(
         requestTag?.let { reqBuilder.tag(String::class.java, it) }
 
         return try {
-            client.newCall(reqBuilder.build()).awaitResponse().use { resp ->
+            clientFor(model).newCall(reqBuilder.build()).awaitResponse().use { resp ->
                 if (!resp.isSuccessful) {
                     val err = resp.body?.string().orEmpty().take(500)
                     throw FailoverHttpException(resp.code, "HTTP ${resp.code}: $err")
@@ -764,7 +767,7 @@ class LocalAiClient(
             .header("Authorization", "Bearer ${model.apiKey}")
             .header("Content-Type", "application/json")
         parseTtsHeaders(model.ttsHeaders).forEach { (name, value) -> builder.header(name, value) }
-        return executeTtsRequest(builder.build(), "OpenAI")
+        return executeTtsRequest(model, builder.build(), "OpenAI")
     }
 
     private suspend fun synthesizeSpeechXiaomi(
@@ -798,7 +801,7 @@ class LocalAiClient(
             .header("api-key", model.apiKey)
             .header("Content-Type", "application/json")
             .build()
-        return client.newCall(request).awaitResponse().use { response ->
+        return clientFor(model).newCall(request).awaitResponse().use { response ->
             val responseBytes = response.body?.bytes() ?: ByteArray(0)
             if (!response.isSuccessful) {
                 throw FailoverHttpException(
@@ -823,7 +826,7 @@ class LocalAiClient(
                     val audioUrl = obj.get("url")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
                     val audioData = obj.get("data")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
                     when {
-                        audioUrl.isNotBlank() -> downloadAudio(audioUrl)
+                        audioUrl.isNotBlank() -> downloadAudio(model, audioUrl)
                         audioData.isNotBlank() -> decodeAudioBase64(audioData)
                         else -> throw FailoverHttpException(response.code, "小米 TTS 音频字段为空")
                     }
@@ -871,7 +874,7 @@ class LocalAiClient(
             .header("X-Api-Request-Id", UUID.randomUUID().toString())
             .header("Content-Type", "application/json")
             .build()
-        return client.newCall(request).awaitResponse().use { response ->
+        return clientFor(model).newCall(request).awaitResponse().use { response ->
             val raw = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw FailoverHttpException(response.code, "豆包 TTS HTTP ${response.code}: ${raw.take(500)}")
@@ -899,8 +902,12 @@ class LocalAiClient(
         }
     }
 
-    private suspend fun executeTtsRequest(request: Request, provider: String): ByteArray =
-        client.newCall(request).awaitResponse().use { response ->
+    private suspend fun executeTtsRequest(
+        model: LocalAiModelEntity,
+        request: Request,
+        provider: String
+    ): ByteArray =
+        clientFor(model).newCall(request).awaitResponse().use { response ->
             val responseBytes = response.body?.bytes() ?: ByteArray(0)
             if (!response.isSuccessful) {
                 throw FailoverHttpException(
@@ -920,15 +927,15 @@ class LocalAiClient(
             val audioData = listOf("audio", "data")
                 .firstNotNullOfOrNull { key -> json.get(key)?.takeIf { it.isJsonPrimitive }?.asString }
             when {
-                !audioUrl.isNullOrBlank() -> downloadAudio(audioUrl)
+                !audioUrl.isNullOrBlank() -> downloadAudio(model, audioUrl)
                 !audioData.isNullOrBlank() -> decodeAudioBase64(audioData)
                 else -> throw FailoverHttpException(response.code, "$provider TTS 响应缺少音频数据")
             }
         }
 
-    private suspend fun downloadAudio(url: String): ByteArray {
+    private suspend fun downloadAudio(model: LocalAiModelEntity, url: String): ByteArray {
         val request = Request.Builder().url(url).get().build()
-        return client.newCall(request).awaitResponse().use { response ->
+        return clientFor(model).newCall(request).awaitResponse().use { response ->
             val bytes = response.body?.bytes() ?: ByteArray(0)
             if (!response.isSuccessful || bytes.isEmpty()) {
                 throw FailoverHttpException(response.code, "下载 TTS 音频失败: HTTP ${response.code}")
@@ -1012,7 +1019,7 @@ class LocalAiClient(
             .header("Authorization", "Bearer ${model.apiKey}")
             .build()
         return try {
-            client.newCall(req).awaitResponse().use { resp ->
+            clientFor(model).newCall(req).awaitResponse().use { resp ->
                 if (!resp.isSuccessful) {
                     val err = resp.body?.string().orEmpty().take(500)
                     Log.e("LocalAiClient", "STT(openai) 失败: HTTP ${resp.code} url=$url resp=$err")
@@ -1109,7 +1116,7 @@ class LocalAiClient(
             .header("Content-Type", "application/json")
             .build()
         return try {
-            client.newCall(req).awaitResponse().use { resp ->
+            clientFor(model).newCall(req).awaitResponse().use { resp ->
                 if (!resp.isSuccessful) {
                     val err = resp.body?.string().orEmpty().take(500)
                     Log.e("LocalAiClient", "STT(xiaomi) 失败: HTTP ${resp.code} url=$url resp=$err")
@@ -1169,15 +1176,38 @@ class LocalAiClient(
         prompt: String,
         size: String = "1024x1024",
         n: Int = 1
-    ): List<GeneratedImage> = generateImage(
-        baseUrl = model.baseUrl,
-        apiKey = model.apiKey,
-        modelName = model.model,
-        prompt = prompt,
-        size = size,
-        n = n,
-        appendBaseUrlPath = model.appendBaseUrlPath
-    )
+    ): List<GeneratedImage> {
+        val images = generateImage(
+            baseUrl = model.baseUrl,
+            apiKey = model.apiKey,
+            modelName = model.model,
+            prompt = prompt,
+            size = size,
+            n = n,
+            appendBaseUrlPath = model.appendBaseUrlPath,
+            proxyUrl = model.proxyUrl
+        )
+        return images.map { image ->
+            val url = image.url
+            if (image.bytes != null || url.isNullOrBlank()) {
+                image
+            } else {
+                val bytes = runCatching {
+                    val request = Request.Builder().url(url).get().build()
+                    clientFor(model).newCall(request).awaitResponse().use { response ->
+                        if (!response.isSuccessful) {
+                            throw FailoverHttpException(
+                                response.code,
+                                "下载生成图片失败: HTTP ${response.code}"
+                            )
+                        }
+                        response.body?.bytes()
+                    }
+                }.getOrNull()
+                image.copy(bytes = bytes)
+            }
+        }
+    }
 
     /**
      * 图片生成（基本参数重载）：供远程模式直接调用，无需构造 [LocalAiModelEntity]。
@@ -1190,7 +1220,8 @@ class LocalAiClient(
         prompt: String,
         size: String = "1024x1024",
         n: Int = 1,
-        appendBaseUrlPath: Boolean = true
+        appendBaseUrlPath: Boolean = true,
+        proxyUrl: String = ""
     ): List<GeneratedImage> {
         val url = resolveImageUrl(baseUrl, appendBaseUrlPath)
         val payload = mapOf(
@@ -1205,7 +1236,7 @@ class LocalAiClient(
             .header("Content-Type", "application/json")
             .build()
         return try {
-            client.newCall(req).awaitResponse().use { resp ->
+            clientFor(proxyUrl).newCall(req).awaitResponse().use { resp ->
                 if (!resp.isSuccessful) {
                     val err = resp.body?.string().orEmpty().take(500)
                     throw FailoverHttpException(resp.code, "HTTP ${resp.code}: $err")
@@ -1231,6 +1262,17 @@ class LocalAiClient(
         } catch (e: Exception) {
             Log.e("LocalAiClient", "generateImage failed: ${e.message}")
             throw e
+        }
+    }
+
+    private fun clientFor(model: LocalAiModelEntity): OkHttpClient =
+        clientFor(model.proxyUrl)
+
+    private fun clientFor(proxyUrl: String): OkHttpClient {
+        val normalized = proxyUrl.trim()
+        if (normalized.isEmpty()) return client
+        return proxyClients.getOrPut(normalized) {
+            client.withModelProxy(normalized)
         }
     }
 

@@ -463,6 +463,7 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
                     "protocol" to str("协议：openai_chat / anthropic_messages，默认 openai_chat"),
                     "provider" to str("供应商"),
                     "api_key" to str("API Key（必填）"),
+                    "proxy_url" to str("该模型专用的 HTTP 或 SOCKS5 代理链接（可选）"),
                     "base_url" to str("API Base URL（必填）"),
                     "model" to str("模型名（必填，如 gpt-4o-mini）"),
                     "enabled" to bool("是否启用，默认 true"),
@@ -492,6 +493,7 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
                     "protocol" to str("协议"),
                     "provider" to str("供应商"),
                     "api_key" to str("API Key"),
+                    "proxy_url" to str("该模型专用的 HTTP 或 SOCKS5 代理链接；传空字符串可恢复直连"),
                     "base_url" to str("Base URL"),
                     "model" to str("模型名"),
                     "enabled" to bool("是否启用"),
@@ -1334,12 +1336,17 @@ internal class LocalDbToolExecutor(
         val apiKey = args.string("api_key").ifBlank { return failure("api_key 不能为空") }
         val baseUrl = args.string("base_url").ifBlank { return failure("base_url 不能为空") }
         val model = args.string("model").ifBlank { return failure("model 不能为空") }
+        val proxyUrl = args.string("proxy_url")
+        runCatching { parseModelProxyUrl(proxyUrl) }.exceptionOrNull()?.let {
+            return failure(it.message ?: "代理链接格式无效")
+        }
         val entity = LocalAiModelEntity(
             id = UUID.randomUUID().toString(),
             name = name,
             protocol = args.string("protocol").ifBlank { "openai_chat" },
             provider = args.string("provider").ifBlank { null },
             apiKey = apiKey,
+            proxyUrl = proxyUrl,
             baseUrl = baseUrl,
             model = model,
             enabled = args.bool("enabled", true),
@@ -1365,11 +1372,16 @@ internal class LocalDbToolExecutor(
     private suspend fun updateAiModel(args: Map<String, Any>): Map<String, Any> {
         val id = args.string("model_id").ifBlank { return failure("model_id 不能为空") }
         val existing = db.aiModelDao().getById(id) ?: return failure("AI 模型不存在: $id")
+        val proxyUrl = args.optStringNN("proxy_url", existing.proxyUrl)
+        runCatching { parseModelProxyUrl(proxyUrl) }.exceptionOrNull()?.let {
+            return failure(it.message ?: "代理链接格式无效")
+        }
         val updated = existing.copy(
             name = args.string("name").ifBlank { existing.name },
             protocol = args.optStringNN("protocol", existing.protocol),
             provider = args.optString("provider", existing.provider),
             apiKey = args.optStringNN("api_key", existing.apiKey),
+            proxyUrl = proxyUrl,
             baseUrl = args.optStringNN("base_url", existing.baseUrl),
             model = args.optStringNN("model", existing.model),
             enabled = args.optBool("enabled", existing.enabled),
@@ -1756,6 +1768,7 @@ internal class LocalDbToolExecutor(
         "priority" to priority,
         "active" to active,
         "base_url" to baseUrl,
+        "uses_proxy" to proxyUrl.isNotBlank(),
         "created_at" to createdAt
     )
 
@@ -1765,6 +1778,7 @@ internal class LocalDbToolExecutor(
         "protocol" to protocol,
         "provider" to (provider ?: ""),
         "api_key" to apiKey,
+        "proxy_url" to proxyUrl,
         "base_url" to baseUrl,
         "model" to model,
         "enabled" to enabled,

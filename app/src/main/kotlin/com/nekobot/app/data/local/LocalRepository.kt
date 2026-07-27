@@ -3706,10 +3706,11 @@ $charSection$topicSection
     suspend fun fetchAvailableModels(
         baseUrl: String,
         apiKey: String,
-        appendBaseUrlPath: Boolean
+        appendBaseUrlPath: Boolean,
+        proxyUrl: String = ""
     ): List<String> =
         withContext(Dispatchers.IO) {
-            aiClient.fetchAvailableModels(baseUrl, apiKey, appendBaseUrlPath)
+            aiClient.fetchAvailableModels(baseUrl, apiKey, appendBaseUrlPath, proxyUrl)
         }
 
     /**

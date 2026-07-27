@@ -15,6 +15,19 @@
     <string name="aiconfig_manage_keys_subtitle">管理本机保存的访问密钥</string>
     <string name="aiconfig_account_title">模型账户</string>
     <string name="aiconfig_account_subtitle">连接模型服务提供商</string>
+    <string name="model_proxy_title">模型代理</string>
+    <string name="model_proxy_subtitle">让指定的本地模型通过代理连接</string>
+    <string name="model_proxy_status_count">%1$d 个</string>
+    <string name="model_proxy_description">开启后，该模型的聊天、视觉、语音、模型列表与图片生成请求都会通过指定代理；未开启的模型保持直连。</string>
+    <string name="model_proxy_empty">暂无本地模型，请先添加模型</string>
+    <string name="model_proxy_enable">使用代理</string>
+    <string name="model_proxy_url">代理链接</string>
+    <string name="model_proxy_url_hint">http://127.0.0.1:7890 或 socks5://127.0.0.1:1080</string>
+    <string name="model_proxy_direct">直连</string>
+    <string name="model_proxy_enabled">已代理</string>
+    <string name="model_proxy_save">保存代理设置</string>
+    <string name="model_proxy_saved">代理设置已保存</string>
+    <string name="model_proxy_url_required">请填写“%1$s”的代理链接</string>
     <!-- 入口右侧的状态文案 -->
     <string name="aiconfig_status_count_models">%1$d 个</string>
     <string name="aiconfig_status_count_keys">%1$d 个</string>

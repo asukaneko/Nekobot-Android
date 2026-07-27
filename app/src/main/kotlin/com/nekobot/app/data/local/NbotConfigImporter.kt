@@ -327,6 +327,7 @@ object NbotConfigImporter {
                     protocol = localProtocol,
                     provider = obj.str("provider"),
                     apiKey = obj.str("api_key") ?: "",
+                    proxyUrl = obj.str("proxy_url") ?: "",
                     baseUrl = obj.str("base_url") ?: "",
                     model = obj.str("model") ?: "",
                     enabled = obj.bool("enabled", true),

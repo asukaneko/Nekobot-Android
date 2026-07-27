@@ -15,6 +15,19 @@
     <string name="aiconfig_manage_keys_subtitle">기기에 저장된 액세스 키를 관리해요</string>
     <string name="aiconfig_account_title">모델 계정</string>
     <string name="aiconfig_account_subtitle">모델 서비스 제공자 연결</string>
+    <string name="model_proxy_title">모델 프록시</string>
+    <string name="model_proxy_subtitle">선택한 로컬 모델을 프록시를 통해 연결</string>
+    <string name="model_proxy_status_count">%1$d개</string>
+    <string name="model_proxy_description">활성화하면 해당 모델의 채팅, 비전, 음성, 모델 목록 및 이미지 생성 요청이 지정한 프록시를 통해 전송됩니다. 비활성화된 모델은 직접 연결됩니다.</string>
+    <string name="model_proxy_empty">로컬 모델이 없습니다. 먼저 모델을 추가하세요.</string>
+    <string name="model_proxy_enable">프록시 사용</string>
+    <string name="model_proxy_url">프록시 URL</string>
+    <string name="model_proxy_url_hint">http://127.0.0.1:7890 또는 socks5://127.0.0.1:1080</string>
+    <string name="model_proxy_direct">직접 연결</string>
+    <string name="model_proxy_enabled">프록시 사용 중</string>
+    <string name="model_proxy_save">프록시 설정 저장</string>
+    <string name="model_proxy_saved">프록시 설정을 저장했습니다</string>
+    <string name="model_proxy_url_required">“%1$s”의 프록시 URL을 입력하세요</string>
     <!-- 항목 우측 상태 텍스트 -->
     <string name="aiconfig_status_count_models">%1$d개</string>
     <string name="aiconfig_status_count_keys">%1$d개</string>

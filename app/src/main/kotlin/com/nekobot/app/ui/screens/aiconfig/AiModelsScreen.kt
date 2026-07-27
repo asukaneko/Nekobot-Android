@@ -421,7 +421,7 @@ fun AiModelsScreen(onBack: () -> Unit) {
             availableModels = availableModels,
             savedApiKeys = apiKeys,
             onResolveApiKey = vm::resolveApiKey,
-            onFetchModels = { baseUrl, apiKey, protocol, appendBaseUrlPath ->
+            onFetchModels = { baseUrl, apiKey, protocol, appendBaseUrlPath, _ ->
                 vm.fetchModels(baseUrl, apiKey, protocol, appendBaseUrlPath)
             },
             onConfirm = { state ->

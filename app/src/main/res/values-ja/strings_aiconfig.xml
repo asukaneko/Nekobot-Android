@@ -15,6 +15,19 @@
     <string name="aiconfig_manage_keys_subtitle">端末に保存されたアクセスキーを管理</string>
     <string name="aiconfig_account_title">モデルアカウント</string>
     <string name="aiconfig_account_subtitle">モデルサービスプロバイダを接続</string>
+    <string name="model_proxy_title">モデルプロキシ</string>
+    <string name="model_proxy_subtitle">選択したローカルモデルをプロキシ経由で接続</string>
+    <string name="model_proxy_status_count">%1$d 件</string>
+    <string name="model_proxy_description">有効にすると、このモデルのチャット、画像認識、音声、モデル一覧、画像生成の各リクエストが指定したプロキシを経由します。無効なモデルは直接接続します。</string>
+    <string name="model_proxy_empty">ローカルモデルがありません。先にモデルを追加してください。</string>
+    <string name="model_proxy_enable">プロキシを使用</string>
+    <string name="model_proxy_url">プロキシ URL</string>
+    <string name="model_proxy_url_hint">http://127.0.0.1:7890 または socks5://127.0.0.1:1080</string>
+    <string name="model_proxy_direct">直接接続</string>
+    <string name="model_proxy_enabled">プロキシ経由</string>
+    <string name="model_proxy_save">プロキシ設定を保存</string>
+    <string name="model_proxy_saved">プロキシ設定を保存しました</string>
+    <string name="model_proxy_url_required">「%1$s」のプロキシ URL を入力してください</string>
     <!-- 入口右側のステータス文案 -->
     <string name="aiconfig_status_count_models">%1$d 個</string>
     <string name="aiconfig_status_count_keys">%1$d 個</string>
