@@ -175,7 +175,8 @@ internal fun buildSessionStatsDashboardData(
     webDavStatus: DashboardWebDavStatus? = null,
     localLogPreview: List<DashboardLogEntry> = emptyList(),
     highAffectionCharacterCount: Int? = null,
-    worldBookCount: Int = 0
+    worldBookCount: Int = 0,
+    achievementScopeId: String? = null
 ): SessionStatsDashboardData {
     val visibleSessions = sessions.filter { it.isArchive != true }
     val activityByDate = linkedMapOf<LocalDate, Long>()
@@ -428,7 +429,8 @@ internal fun buildSessionStatsDashboardData(
         highAffectionCharacterCount = resolvedHighAffectionCharacterCount,
         characterCount = characters.size,
         worldBookCount = worldBookCount,
-        favoriteSessionCount = visibleSessions.count { it.favorite == true }
+        favoriteSessionCount = visibleSessions.count { it.favorite == true },
+        expectedScopeId = achievementScopeId
     ).map { snapshot ->
         DashboardAchievement(
             id = snapshot.id,

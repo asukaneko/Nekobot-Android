@@ -1716,6 +1716,9 @@ class SessionsViewModel : BaseViewModel() {
     private val _dashboardRankings = MutableStateFlow<TokenRankings?>(null)
     private val _dashboardHighAffectionCharacterCount = MutableStateFlow(0)
     private val _dashboardWorldBookCount = MutableStateFlow(0)
+    private val _dashboardAchievementScopeId = MutableStateFlow(
+        com.nekobot.app.data.local.AchievementManager.activeScopeId()
+    )
     private val _dashboardLoading = MutableStateFlow(false)
     private var dataSourceVersion = 0L
     private val _characters = MutableStateFlow<List<CharacterPreset>>(emptyList())
@@ -1732,7 +1735,8 @@ class SessionsViewModel : BaseViewModel() {
         _webDavStatus,
         _localLogPreview,
         _dashboardHighAffectionCharacterCount,
-        _dashboardWorldBookCount
+        _dashboardWorldBookCount,
+        _dashboardAchievementScopeId
     ) { values ->
         @Suppress("UNCHECKED_CAST")
         buildSessionStatsDashboardData(
@@ -1743,7 +1747,8 @@ class SessionsViewModel : BaseViewModel() {
             webDavStatus = values[4] as DashboardWebDavStatus?,
             localLogPreview = values[5] as List<DashboardLogEntry>,
             highAffectionCharacterCount = values[6] as Int,
-            worldBookCount = values[7] as Int
+            worldBookCount = values[7] as Int,
+            achievementScopeId = values[8] as String
         )
     }
         .flowOn(Dispatchers.Default)
@@ -1864,8 +1869,9 @@ class SessionsViewModel : BaseViewModel() {
 
     /** 加载会话 + 角色列表。 */
     fun loadAll(expectedDataSourceVersion: Long? = null) {
-        loadSessions(expectedDataSourceVersion)
-        loadCharacters(expectedDataSourceVersion)
+        val version = expectedDataSourceVersion ?: dataSourceVersion
+        loadSessions(version)
+        loadCharacters(version)
     }
 
     /** 数据库 Profile / 运行模式切换时先清空旧快照，再从新数据源完整加载。 */
@@ -1879,12 +1885,15 @@ class SessionsViewModel : BaseViewModel() {
         _dashboardWorldBookCount.value = 0
         _webDavStatus.value = null
         _localLogPreview.value = emptyList()
+        _dashboardAchievementScopeId.value =
+            com.nekobot.app.data.local.AchievementManager.activeScopeId()
         loadAll(version)
         loadDashboardMetrics(version)
     }
 
     /** 独立加载负一屏 Token 总览与排行榜；失败时仍展示会话派生统计。 */
     fun loadDashboardMetrics(expectedDataSourceVersion: Long? = null) {
+        val version = expectedDataSourceVersion ?: dataSourceVersion
         viewModelScope.launch {
             _dashboardLoading.value = true
             try {
@@ -1902,10 +1911,7 @@ class SessionsViewModel : BaseViewModel() {
                         worldBooks = worldBooksRequest.await()
                     )
                 }
-                if (
-                    expectedDataSourceVersion != null &&
-                    expectedDataSourceVersion != dataSourceVersion
-                ) return@launch
+                if (version != dataSourceVersion) return@launch
                 if (results.stats is Resource.Success) {
                     _dashboardTokenStats.value = results.stats.data
                 }
@@ -1923,10 +1929,7 @@ class SessionsViewModel : BaseViewModel() {
             } catch (_: Exception) {
                 // 会话统计可独立工作，Token 接口失败不阻断负一屏。
             } finally {
-                if (
-                    expectedDataSourceVersion == null ||
-                    expectedDataSourceVersion == dataSourceVersion
-                ) {
+                if (version == dataSourceVersion) {
                     _dashboardLoading.value = false
                 }
             }
@@ -1987,13 +1990,11 @@ class SessionsViewModel : BaseViewModel() {
 
     /** 加载会话列表。 */
     fun loadSessions(expectedDataSourceVersion: Long? = null) {
+        val version = expectedDataSourceVersion ?: dataSourceVersion
         launchResult(
             block = { unified.listSessions() },
             onSuccess = {
-                if (
-                    expectedDataSourceVersion == null ||
-                    expectedDataSourceVersion == dataSourceVersion
-                ) {
+                if (version == dataSourceVersion) {
                     _sessions.value = it ?: emptyList()
                 }
             }
@@ -2057,13 +2058,11 @@ class SessionsViewModel : BaseViewModel() {
 
     /** 加载角色列表（供新建会话下拉菜单使用）。 */
     fun loadCharacters(expectedDataSourceVersion: Long? = null) {
+        val version = expectedDataSourceVersion ?: dataSourceVersion
         launchResult(
             block = { unified.listCharacters() },
             onSuccess = { list ->
-                if (
-                    expectedDataSourceVersion == null ||
-                    expectedDataSourceVersion == dataSourceVersion
-                ) {
+                if (version == dataSourceVersion) {
                     _characters.value = list ?: emptyList()
                 }
             }

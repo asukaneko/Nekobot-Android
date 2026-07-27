@@ -75,40 +75,56 @@ class AchievementManagerTest {
     }
 
     @Test
-    fun legacyGlobalUnlocksAreNotCopiedIntoANonDefaultLocalDatabase() {
-        val migrated = AchievementManager.resolveV2MigrationValue(
-            scopeId = "local:imported_story",
-            previousScopedValue = """{"token_1000":123}""",
+    fun remoteLegacyUnlocksAreRemovedFromPollutedLocalV2Data() {
+        val migrated = AchievementManager.resolveV3MigrationValue(
+            scopeId = "local:${PrefsManager.DEFAULT_DB_NAME}",
+            previousScopedValue = null,
+            v2ScopedValue = """{"token_1000":123,"sessions_1":789}""",
             legacyGlobalValue = """{"token_1000":123}""",
-            legacyMigratedScope = "local:imported_story"
+            legacyMigratedScope = "server"
         )
 
-        assertNull(migrated)
+        assertEquals("""{"sessions_1":789}""", migrated)
     }
 
     @Test
-    fun defaultLocalAndIndependentProfilesKeepTheirOwnUnlocks() {
+    fun legacyOwnerKeepsGlobalAndScopedUnlocks() {
         assertEquals(
-            """{"messages_10":456}""",
-            AchievementManager.resolveV2MigrationValue(
-                scopeId = "local:${PrefsManager.DEFAULT_DB_NAME}",
-                previousScopedValue = null,
-                legacyGlobalValue = """{"messages_10":456}""",
-                legacyMigratedScope = "local:imported_story"
+            """{"token_1000":123,"messages_10":456,"sessions_1":789}""",
+            AchievementManager.resolveV3MigrationValue(
+                scopeId = "server",
+                previousScopedValue = """{"messages_10":456}""",
+                v2ScopedValue = """{"token_1000":123,"sessions_1":789}""",
+                legacyGlobalValue = """{"token_1000":123}""",
+                legacyMigratedScope = "server"
             )
         )
+    }
+
+    @Test
+    fun ambiguousGlobalCopiesAreRemovedButIndependentUnlocksRemain() {
         assertEquals(
-            """{"sessions_1":789}""",
-            AchievementManager.resolveV2MigrationValue(
-                scopeId = "local:second_story",
-                previousScopedValue = """{"sessions_1":789}""",
-                legacyGlobalValue = """{"messages_10":456}""",
-                legacyMigratedScope = "local:imported_story"
+            """{"messages_10":456}""",
+            AchievementManager.resolveV3MigrationValue(
+                scopeId = "local:${PrefsManager.DEFAULT_DB_NAME}",
+                previousScopedValue = null,
+                v2ScopedValue = """{"token_1000":123,"messages_10":456}""",
+                legacyGlobalValue = """{"token_1000":123}""",
+                legacyMigratedScope = null
+            )
+        )
+        assertNull(
+            AchievementManager.resolveV3MigrationValue(
+                scopeId = "local:empty",
+                previousScopedValue = null,
+                v2ScopedValue = null,
+                legacyGlobalValue = null,
+                legacyMigratedScope = null
             )
         )
         assertTrue(
             AchievementManager.storageKeyForScope("local:second_story")
-                .endsWith("local:second_story")
+                .startsWith("unlocked_v3::local:second_story")
         )
     }
 }

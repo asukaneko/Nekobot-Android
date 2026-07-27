@@ -502,13 +502,15 @@ class AchievementsViewModel : BaseViewModel() {
             totalTokens = 0,
             totalMessages = 0,
             totalSessions = 0,
-            highAffectionCharacterCount = 0
+            highAffectionCharacterCount = 0,
+            expectedScopeId = AchievementManager.activeScopeId()
         )
     private val _snapshots = MutableStateFlow(emptySnapshots)
     val snapshots: StateFlow<List<AchievementManager.Snapshot>> = _snapshots.asStateFlow()
 
     fun refresh() {
         val requestVersion = ++refreshVersion
+        val achievementScopeId = AchievementManager.activeScopeId()
         _snapshots.value = emptySnapshots
         viewModelScope.launch {
             setLoading(true)
@@ -551,7 +553,8 @@ class AchievementsViewModel : BaseViewModel() {
                     highAffectionCharacterCount = highAffectionCharacterCount,
                     characterCount = characterCount,
                     worldBookCount = worldBookCount,
-                    favoriteSessionCount = sessions.count { it.favorite == true }
+                    favoriteSessionCount = sessions.count { it.favorite == true },
+                    expectedScopeId = achievementScopeId
                 )
             } catch (error: Exception) {
                 if (requestVersion == refreshVersion) {

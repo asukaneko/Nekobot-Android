@@ -27,7 +27,7 @@ object AchievementManager {
     private const val KEY_LEGACY_MIGRATED_SCOPE = "legacy_migrated_scope"
     private const val KEY_SCOPED_UNLOCKED_PREFIX = "unlocked::"
     private const val KEY_SCOPED_UNLOCKED_V2_PREFIX = "unlocked_v2::"
-    private const val DEFAULT_LOCAL_SCOPE = "local:${PrefsManager.DEFAULT_DB_NAME}"
+    private const val KEY_SCOPED_UNLOCKED_V3_PREFIX = "unlocked_v3::"
 
     private val lock = ReentrantLock()
 
@@ -180,12 +180,13 @@ object AchievementManager {
         try {
             if (!sp.contains(nextStorageKey)) {
                 val previousScopedKey = "$KEY_SCOPED_UNLOCKED_PREFIX$normalizedScope"
-                val legacyMigratedScope = sp.getString(KEY_LEGACY_MIGRATED_SCOPE, null)
-                val migratedValue = resolveV2MigrationValue(
+                val v2ScopedKey = "$KEY_SCOPED_UNLOCKED_V2_PREFIX$normalizedScope"
+                val migratedValue = resolveV3MigrationValue(
                     scopeId = normalizedScope,
                     previousScopedValue = sp.getString(previousScopedKey, null),
+                    v2ScopedValue = sp.getString(v2ScopedKey, null),
                     legacyGlobalValue = sp.getString(KEY_UNLOCKED, null),
-                    legacyMigratedScope = legacyMigratedScope
+                    legacyMigratedScope = sp.getString(KEY_LEGACY_MIGRATED_SCOPE, null)
                 )
                 sp.edit()
                     .putString(nextStorageKey, migratedValue ?: "{}")
@@ -227,21 +228,27 @@ object AchievementManager {
         highAffectionCharacterCount: Int,
         characterCount: Int = 0,
         worldBookCount: Int = 0,
-        favoriteSessionCount: Int = 0
+        favoriteSessionCount: Int = 0,
+        expectedScopeId: String? = null
     ): List<Snapshot> {
         // 先补齐可能未记录的解锁
-        reportProgress(Target.Metric.TOKENS, totalTokens)
-        reportProgress(Target.Metric.MESSAGES, totalMessages)
-        reportProgress(Target.Metric.SESSIONS, totalSessions.toLong())
+        reportProgress(Target.Metric.TOKENS, totalTokens, expectedScopeId)
+        reportProgress(Target.Metric.MESSAGES, totalMessages, expectedScopeId)
+        reportProgress(Target.Metric.SESSIONS, totalSessions.toLong(), expectedScopeId)
         reportProgress(
             Target.Metric.HIGH_AFFECTION_CHARACTERS,
-            highAffectionCharacterCount.toLong()
+            highAffectionCharacterCount.toLong(),
+            expectedScopeId
         )
-        reportProgress(Target.Metric.CHARACTERS, characterCount.toLong())
-        reportProgress(Target.Metric.WORLD_BOOKS, worldBookCount.toLong())
-        reportProgress(Target.Metric.FAVORITE_SESSIONS, favoriteSessionCount.toLong())
+        reportProgress(Target.Metric.CHARACTERS, characterCount.toLong(), expectedScopeId)
+        reportProgress(Target.Metric.WORLD_BOOKS, worldBookCount.toLong(), expectedScopeId)
+        reportProgress(
+            Target.Metric.FAVORITE_SESSIONS,
+            favoriteSessionCount.toLong(),
+            expectedScopeId
+        )
 
-        val unlocked = readUnlockedMap()
+        val unlocked = readUnlockedMap(expectedScopeId)
         return targets.map { target ->
             val current = when (target.metric) {
                 Target.Metric.TOKENS -> totalTokens
@@ -280,29 +287,51 @@ object AchievementManager {
 
     fun isScopeCurrent(scopeId: String): Boolean = currentScopeId == scopeId
 
+    fun activeScopeId(): String = currentScopeId
+
     /** 与数据库备份共用的稳定存储键；Profile 名必须与数据库切换时使用的名称一致。 */
     fun storageKeyForScope(scopeId: String): String {
         val normalizedScope = scopeId.trim().ifEmpty { "default" }
-        return "$KEY_SCOPED_UNLOCKED_V2_PREFIX$normalizedScope"
+        return "$KEY_SCOPED_UNLOCKED_V3_PREFIX$normalizedScope"
     }
 
-    internal fun resolveV2MigrationValue(
+    /**
+     * V2 曾会把旧版全局记录同时复制到 server 与默认本地库。迁移到 V3 时，只允许旧版
+     * 标记的归属作用域继承全局记录；其他作用域会剔除 ID、时间戳完全相同的复制项。
+     */
+    internal fun resolveV3MigrationValue(
         scopeId: String,
         previousScopedValue: String?,
+        v2ScopedValue: String?,
         legacyGlobalValue: String?,
         legacyMigratedScope: String?
     ): String? {
-        val isPollutedNonDefaultLocalScope =
-            scopeId.startsWith("local:") &&
-                scopeId != DEFAULT_LOCAL_SCOPE &&
-                legacyMigratedScope == scopeId
-        return when {
-            previousScopedValue != null && !isPollutedNonDefaultLocalScope ->
-                previousScopedValue
-            scopeId == DEFAULT_LOCAL_SCOPE || scopeId == "server" ->
-                previousScopedValue ?: legacyGlobalValue
-            else -> null
+        if (
+            previousScopedValue == null &&
+            v2ScopedValue == null &&
+            legacyGlobalValue == null
+        ) {
+            return null
         }
+
+        val previousScoped = parseUnlockedMap(previousScopedValue)
+        val v2Scoped = parseUnlockedMap(v2ScopedValue)
+        val legacyGlobal = parseUnlockedMap(legacyGlobalValue)
+        val ownsLegacyGlobal = legacyMigratedScope == scopeId
+        val migrated = linkedMapOf<String, Long>()
+
+        if (ownsLegacyGlobal) {
+            migrated.putAll(legacyGlobal)
+        }
+        migrated.putAll(previousScoped)
+        v2Scoped.forEach { (id, unlockedAt) ->
+            val isCopiedFromAnotherScope =
+                !ownsLegacyGlobal && legacyGlobal[id] == unlockedAt
+            if (!isCopiedFromAnotherScope) {
+                migrated[id] = unlockedAt
+            }
+        }
+        return encodeUnlockedMap(migrated)
     }
 
     /** 清除被替换/删除数据库的解锁记录，避免同名 Profile 复用旧成就。 */
@@ -312,8 +341,9 @@ object AchievementManager {
         lock.lock()
         try {
             sp.edit()
-                .remove(storageKeyForScope(normalizedScope))
+                .putString(storageKeyForScope(normalizedScope), "{}")
                 .remove("$KEY_SCOPED_UNLOCKED_PREFIX$normalizedScope")
+                .remove("$KEY_SCOPED_UNLOCKED_V2_PREFIX$normalizedScope")
                 .apply()
             if (currentScopeId == normalizedScope) {
                 unlockedStorageKey = storageKeyForScope(normalizedScope)
@@ -351,9 +381,7 @@ object AchievementManager {
                 }
             }
             if (changed) {
-                val obj = JsonObject()
-                map.forEach { (k, v) -> obj.addProperty(k, v) }
-                sp.edit().putString(unlockedStorageKey, obj.toString()).apply()
+                sp.edit().putString(unlockedStorageKey, encodeUnlockedMap(map)).apply()
             }
         } finally {
             lock.unlock()
@@ -361,9 +389,21 @@ object AchievementManager {
         events.forEach { event -> unlockEventChannel.trySend(event) }
     }
 
-    private fun readUnlockedMap(): Map<String, Long> {
+    private fun readUnlockedMap(expectedScopeId: String? = null): Map<String, Long> {
         val sp = prefs ?: return emptyMap()
-        val raw = sp.getString(unlockedStorageKey, "{}") ?: "{}"
+        lock.lock()
+        try {
+            if (expectedScopeId != null && expectedScopeId != currentScopeId) {
+                return emptyMap()
+            }
+            return parseUnlockedMap(sp.getString(unlockedStorageKey, "{}"))
+        } finally {
+            lock.unlock()
+        }
+    }
+
+    private fun parseUnlockedMap(raw: String?): Map<String, Long> {
+        if (raw.isNullOrBlank()) return emptyMap()
         return try {
             val obj = JsonParser.parseString(raw).asJsonObject
             obj.entrySet().mapNotNull { entry ->
@@ -375,5 +415,11 @@ object AchievementManager {
         } catch (_: Exception) {
             emptyMap()
         }
+    }
+
+    private fun encodeUnlockedMap(map: Map<String, Long>): String {
+        val obj = JsonObject()
+        map.forEach { (id, unlockedAt) -> obj.addProperty(id, unlockedAt) }
+        return obj.toString()
     }
 }
