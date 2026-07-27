@@ -15,6 +15,10 @@ android {
         targetSdk = 35
         versionCode = 24
         versionName = "0.4.1"
+        ndk {
+            // 内置 Linux 沙盒与 OpenMinis Android 一致，当前使用 arm64 PRoot。
+            abiFilters += "arm64-v8a"
+        }
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -46,6 +50,10 @@ android {
         compose = true
     }
     packaging {
+        jniLibs {
+            // PRoot 需要以真实可执行文件存在于 nativeLibraryDir。
+            useLegacyPackaging = true
+        }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }

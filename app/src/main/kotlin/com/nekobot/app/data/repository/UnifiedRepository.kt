@@ -7,6 +7,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalRepository
+import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
 import com.nekobot.app.data.local.LocalWebDavBackupManager
 import com.nekobot.app.data.local.NbotConfigImporter
 import com.nekobot.app.data.local.PrefsManager
@@ -176,6 +177,27 @@ class UnifiedRepository(
 
     suspend fun deleteSession(id: String): Resource<Unit> =
         if (isLocal) { local.deleteSession(id); Resource.Success(Unit) } else remote.deleteSession(id)
+
+    suspend fun executeSandboxCommand(
+        sessionId: String,
+        command: String,
+    ): LocalSandboxCommandResult =
+        if (isLocal) {
+            local.executeSandboxCommand(sessionId, command)
+        } else {
+            LocalSandboxCommandResult(
+                command = command,
+                output = "",
+                exitCode = -1,
+                durationMs = 0L,
+                timedOut = false,
+                error = "沙箱终端目前仅在本地模式可用",
+            )
+        }
+
+    fun stopSandboxCommand(sessionId: String) {
+        if (isLocal) local.stopSandboxCommand(sessionId)
+    }
 
     /**
      * 导入会话：本地模式写入 Room；远程模式透传给后端 /api/sessions/import。

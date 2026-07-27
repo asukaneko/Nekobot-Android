@@ -1,6 +1,7 @@
 package com.nekobot.app.data.local.ai
 
 import com.google.gson.Gson
+import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.db.BuiltinTools
 import com.nekobot.app.data.remote.ExecAuthorization
 import com.nekobot.app.data.remote.ExecConfirmationRequest
@@ -371,13 +372,13 @@ internal class LocalAgentToolExecutor(
 
     private fun execCommand(args: Map<String, Any>): Map<String, Any> {
         val command = args.string("command")
-        val timeoutSeconds = args.int("timeout", 30).coerceIn(1, 120)
+        val timeoutSeconds = args.int("timeout", 30).coerceIn(1, 600)
         val policy = evaluateLocalCommand(command)
         policy.blockedReason?.let {
             return failure(it, "command" to command, "main_command" to policy.mainCommand)
         }
-        if (workspace == null) return failure("本地工作区不可用")
-        workspace.mkdirs()
+        val activeWorkspace = workspace ?: return failure("本地工作区不可用")
+        activeWorkspace.mkdirs()
 
         var authorization = "whitelist"
         if (policy.requiresAuthorization) {
@@ -403,55 +404,49 @@ internal class LocalAgentToolExecutor(
         }
         if (generationController.isStopped) return stoppedFailure()
 
-        val process = generationController.track(
-            ProcessBuilder("sh", "-c", command)
-                .directory(workspace)
-                .redirectErrorStream(true)
-                .start()
+        val context = ServiceContainer.appContext
+            ?: return failure("应用上下文不可用，无法启动 Linux 沙盒")
+        val result = runCatching {
+            LocalLinuxSandboxCoordinator.execute(
+                context = context,
+                sessionId = sessionId,
+                workspace = activeWorkspace,
+                command = command,
+                timeoutMs = TimeUnit.SECONDS.toMillis(timeoutSeconds.toLong()),
+                shouldStop = { generationController.isStopped },
+            )
+        }.getOrElse { error ->
+            return failure(
+                error.message ?: "Linux 沙盒命令执行失败",
+                "command" to command,
+                "main_command" to policy.mainCommand,
+                "environment" to "alpine-linux",
+                "working_directory" to "/workspace",
+            )
+        }
+
+        if (result.stopped || generationController.isStopped) {
+            return stoppedFailure(
+                "command" to command,
+                "main_command" to policy.mainCommand,
+                "output" to result.output,
+                "environment" to "alpine-linux",
+                "working_directory" to "/workspace",
+            )
+        }
+        return mapOf(
+            "success" to (!result.timedOut && result.exitCode == 0),
+            "command" to command,
+            "main_command" to policy.mainCommand,
+            "authorization" to authorization,
+            "environment" to "Alpine Linux 3.21.3 (PRoot, arm64-v8a)",
+            "working_directory" to "/workspace",
+            "workspace_path" to activeWorkspace.absolutePath,
+            "exit_code" to result.exitCode,
+            "timed_out" to result.timedOut,
+            "duration_ms" to result.durationMs,
+            "output" to result.output,
         )
-        val output = StringBuffer()
-        val reader = Thread {
-            process.inputStream.bufferedReader().useLines { lines ->
-                for (line in lines) {
-                    if (output.length >= 20000) break
-                    output.appendLine(line)
-                }
-            }
-        }.apply {
-            isDaemon = true
-            start()
-        }
-        return try {
-            val deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds.toLong())
-            var completed = false
-            while (!generationController.isStopped && System.nanoTime() < deadlineNanos) {
-                if (process.waitFor(100, TimeUnit.MILLISECONDS)) {
-                    completed = true
-                    break
-                }
-            }
-            if (!completed) process.destroyForcibly()
-            reader.join(1000)
-            if (generationController.isStopped) {
-                stoppedFailure(
-                    "command" to command,
-                    "main_command" to policy.mainCommand,
-                    "output" to output.toString().take(20000)
-                )
-            } else {
-                mapOf(
-                    "success" to (completed && process.exitValue() == 0),
-                    "command" to command,
-                    "main_command" to policy.mainCommand,
-                    "authorization" to authorization,
-                    "exit_code" to if (completed) process.exitValue() else -1,
-                    "timed_out" to !completed,
-                    "output" to output.toString().take(20000)
-                )
-            }
-        } finally {
-            generationController.release(process)
-        }
     }
 
     private fun downloadFile(args: Map<String, Any>): Map<String, Any> {

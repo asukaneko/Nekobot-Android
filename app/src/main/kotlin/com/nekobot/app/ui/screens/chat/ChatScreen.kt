@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -42,6 +43,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
@@ -123,12 +125,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
 import androidx.compose.runtime.collectAsState
@@ -149,6 +156,7 @@ import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.local.ChatInputLayoutMode
 import com.nekobot.app.data.local.VISION_FAILURE_MARKER
 import com.nekobot.app.data.local.isLocalCommandMessage
+import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
 import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.TtsPreviewRequest
@@ -244,6 +252,11 @@ fun ChatScreen(
     var showMyMessages by remember { mutableStateOf(false) }
     var showRestoreArchiveDialog by remember { mutableStateOf(false) }
     var showArchiveViewer by remember { mutableStateOf(false) }
+    var showSandboxTerminal by remember(sessionId) { mutableStateOf(false) }
+    var sandboxTerminalEntries by remember(sessionId) {
+        mutableStateOf<List<SandboxTerminalEntry>>(emptyList())
+    }
+    var sandboxTerminalRunning by remember(sessionId) { mutableStateOf(false) }
     // 展开状态必须高于 LazyColumn item：工具步骤更新或卡片离屏回收后仍保留用户选择。
     val progressCardExpansionOverrides = remember(sessionId) {
         mutableStateMapOf<String, Boolean>()
@@ -611,6 +624,24 @@ fun ChatScreen(
                                             session?.id?.let { onOpenStoryGraph(it) }
                                         }
                                     )
+                                    if (
+                                        session?.sessionMode.equals("agent", ignoreCase = true) &&
+                                        ServiceContainer.prefs.isLocalMode
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.chat_sandbox_terminal)) },
+                                            leadingIcon = {
+                                                Icon(
+                                                    Icons.Filled.Keyboard,
+                                                    contentDescription = null
+                                                )
+                                            },
+                                            onClick = {
+                                                menuExpanded = false
+                                                showSandboxTerminal = true
+                                            }
+                                        )
+                                    }
                                     // 仅当当前会话绑定了归档会话时显示
                                     if (!session?.archiveSessionId.isNullOrBlank()) {
                                         DropdownMenuItem(
@@ -1286,6 +1317,367 @@ fun ChatScreen(
             )
         }
     }
+
+    if (showSandboxTerminal) {
+        SandboxTerminalDialog(
+            entries = sandboxTerminalEntries,
+            running = sandboxTerminalRunning,
+            onRunCommand = { rawCommand ->
+                val command = rawCommand.trim()
+                when {
+                    command.isEmpty() -> Unit
+                    command == "clear" -> sandboxTerminalEntries = emptyList()
+                    command == "exit" -> showSandboxTerminal = false
+                    !sandboxTerminalRunning -> {
+                        val entryId = System.nanoTime()
+                        sandboxTerminalEntries = sandboxTerminalEntries + SandboxTerminalEntry(
+                            id = entryId,
+                            command = command,
+                            isRunning = true,
+                        )
+                        sandboxTerminalRunning = true
+                        viewModel.executeSandboxCommand(command) { result ->
+                            var accepted = false
+                            sandboxTerminalEntries = sandboxTerminalEntries.map { entry ->
+                                if (entry.id == entryId && entry.isRunning) {
+                                    accepted = true
+                                    entry.withResult(result)
+                                } else {
+                                    entry
+                                }
+                            }
+                            if (accepted) sandboxTerminalRunning = false
+                        }
+                    }
+                }
+            },
+            onStop = {
+                viewModel.stopSandboxCommand()
+                sandboxTerminalEntries = sandboxTerminalEntries.map { entry ->
+                    if (entry.isRunning) {
+                        entry.copy(
+                            output = "^C",
+                            exitCode = 130,
+                            isRunning = false,
+                        )
+                    } else {
+                        entry
+                    }
+                }
+                sandboxTerminalRunning = false
+            },
+            onClear = {
+                if (!sandboxTerminalRunning) sandboxTerminalEntries = emptyList()
+            },
+            onDismiss = { showSandboxTerminal = false },
+        )
+    }
+}
+
+private data class SandboxTerminalEntry(
+    val id: Long,
+    val command: String,
+    val output: String = "",
+    val error: String? = null,
+    val exitCode: Int? = null,
+    val durationMs: Long = 0L,
+    val timedOut: Boolean = false,
+    val isRunning: Boolean = false,
+) {
+    fun withResult(result: LocalSandboxCommandResult): SandboxTerminalEntry = copy(
+        output = result.output,
+        error = result.error,
+        exitCode = result.exitCode,
+        durationMs = result.durationMs,
+        timedOut = result.timedOut,
+        isRunning = false,
+    )
+}
+
+/**
+ * 当前 Agent 会话的全屏沙箱终端。
+ *
+ * 终端只负责展示和输入，命令状态由 ChatScreen 提升持有，因此关闭再打开时
+ * 本次页面生命周期内的输出仍在；底层 shell 则由会话级 coordinator 长期持有。
+ */
+@Composable
+private fun SandboxTerminalDialog(
+    entries: List<SandboxTerminalEntry>,
+    running: Boolean,
+    onRunCommand: (String) -> Unit,
+    onStop: () -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val background = Color(0xFF0B0F14)
+    val panel = Color(0xFF111820)
+    val foreground = Color(0xFFD8DEE9)
+    val muted = Color(0xFF7F8B99)
+    val prompt = Color(0xFF73D99F)
+    val errorColor = Color(0xFFFF7B72)
+    var input by remember { mutableStateOf("") }
+    val listState = rememberLazyListState()
+    val focusRequester = remember { FocusRequester() }
+
+    fun submit() {
+        val command = input.trim()
+        if (command.isBlank() || running) return
+        input = ""
+        onRunCommand(command)
+    }
+
+    LaunchedEffect(Unit) {
+        delay(120)
+        focusRequester.requestFocus()
+    }
+    LaunchedEffect(entries.size, entries.lastOrNull()?.isRunning) {
+        if (entries.isNotEmpty()) listState.animateScrollToItem(entries.lastIndex)
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
+        androidx.compose.material3.Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = background,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .imePadding()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(60.dp)
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Keyboard,
+                        contentDescription = null,
+                        tint = prompt,
+                        modifier = Modifier
+                            .padding(start = 8.dp)
+                            .size(24.dp),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.chat_sandbox_terminal_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = foreground,
+                        )
+                        Text(
+                            text = stringResource(R.string.chat_sandbox_terminal_subtitle),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = muted,
+                        )
+                    }
+                    IconButton(
+                        onClick = onClear,
+                        enabled = entries.isNotEmpty() && !running,
+                    ) {
+                        Icon(
+                            Icons.Filled.CleaningServices,
+                            contentDescription = stringResource(R.string.chat_sandbox_terminal_clear),
+                            tint = if (entries.isNotEmpty() && !running) foreground else muted,
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.common_close),
+                            tint = foreground,
+                        )
+                    }
+                }
+                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+
+                if (entries.isEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            text = "$ _",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontFamily = FontFamily.Monospace,
+                            color = prompt,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = stringResource(R.string.chat_sandbox_terminal_empty),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = muted,
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        state = listState,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(18.dp),
+                    ) {
+                        items(entries, key = SandboxTerminalEntry::id) { entry ->
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                SelectionContainer {
+                                    Text(
+                                        text = "$ ${entry.command}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = prompt,
+                                    )
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                when {
+                                    entry.isRunning -> {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(14.dp),
+                                                strokeWidth = 1.5.dp,
+                                                color = prompt,
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(
+                                                text = stringResource(R.string.chat_sandbox_terminal_running),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = muted,
+                                            )
+                                        }
+                                    }
+                                    entry.error != null -> {
+                                        SelectionContainer {
+                                            Text(
+                                                text = entry.error,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = errorColor,
+                                            )
+                                        }
+                                    }
+                                    else -> {
+                                        SelectionContainer {
+                                            Text(
+                                                text = entry.output.ifBlank {
+                                                    stringResource(R.string.chat_sandbox_terminal_no_output)
+                                                },
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = foreground,
+                                            )
+                                        }
+                                        Spacer(Modifier.height(5.dp))
+                                        Text(
+                                            text = if (entry.timedOut) {
+                                                stringResource(R.string.chat_sandbox_terminal_timeout)
+                                            } else {
+                                                stringResource(
+                                                    R.string.chat_sandbox_terminal_exit_status,
+                                                    entry.exitCode ?: -1,
+                                                    entry.durationMs,
+                                                )
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = if ((entry.exitCode ?: -1) == 0) muted else errorColor,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                androidx.compose.material3.Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = panel,
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        OutlinedTextField(
+                            value = input,
+                            onValueChange = { input = it },
+                            modifier = Modifier
+                                .weight(1f)
+                                .focusRequester(focusRequester),
+                            enabled = !running,
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                fontFamily = FontFamily.Monospace,
+                                color = foreground,
+                            ),
+                            leadingIcon = {
+                                Text(
+                                    text = "$",
+                                    fontFamily = FontFamily.Monospace,
+                                    color = prompt,
+                                )
+                            },
+                            placeholder = {
+                                Text(
+                                    text = stringResource(R.string.chat_sandbox_terminal_hint),
+                                    fontFamily = FontFamily.Monospace,
+                                    color = muted,
+                                )
+                            },
+                            keyboardOptions = KeyboardOptions(
+                                imeAction = androidx.compose.ui.text.input.ImeAction.Send
+                            ),
+                            keyboardActions = KeyboardActions(onSend = { submit() }),
+                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = prompt,
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.14f),
+                                disabledBorderColor = Color.White.copy(alpha = 0.08f),
+                                cursorColor = prompt,
+                                focusedContainerColor = background,
+                                unfocusedContainerColor = background,
+                                disabledContainerColor = background,
+                            ),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        IconButton(
+                            onClick = if (running) onStop else ::submit,
+                        ) {
+                            Icon(
+                                imageVector = if (running) {
+                                    Icons.Filled.Stop
+                                } else {
+                                    Icons.AutoMirrored.Filled.Send
+                                },
+                                contentDescription = stringResource(
+                                    if (running) {
+                                        R.string.chat_sandbox_terminal_stop
+                                    } else {
+                                        R.string.chat_sandbox_terminal_run
+                                    }
+                                ),
+                                tint = if (running) errorColor else prompt,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /** 语音录制中弹窗：显示录音时长 + 停止/取消按钮。 */
@@ -1851,6 +2243,7 @@ private fun BubbleActions(
             )
         }
     }
+
 }
 
 /** 极小图标按钮：低对比度，不抢视觉。 */
@@ -4817,6 +5210,22 @@ class ChatViewModel : BaseViewModel() {
                 else R.string.chat_stop_requested
             )
         )
+    }
+
+    /** 执行聊天页命令行输入，并在主线程返回结果以更新 Compose 状态。 */
+    fun executeSandboxCommand(
+        command: String,
+        onResult: (LocalSandboxCommandResult) -> Unit,
+    ) {
+        val sessionId = currentSessionId
+        if (sessionId.isBlank() || !isLocalMode) return
+        viewModelScope.launch {
+            onResult(unified.executeSandboxCommand(sessionId, command))
+        }
+    }
+
+    fun stopSandboxCommand() {
+        currentSessionId.takeIf(String::isNotBlank)?.let(unified::stopSandboxCommand)
     }
 
     /** 群聊气泡需要按每条消息的 sender 匹配成员角色卡头像。 */

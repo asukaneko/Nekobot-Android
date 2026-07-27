@@ -214,12 +214,12 @@ object BuiltinTools {
         ),
         BuiltinToolSpec(
             id = "exec_command",
-            name = "执行命令",
-            description = "执行系统命令（需用户确认后才会真正执行）。",
+            name = "在 Linux 沙盒执行命令",
+            description = "在共享的 Alpine Linux 沙盒中执行命令。当前会话工作区挂载为 /workspace；cwd、环境变量、已安装软件和后台进程会在同一会话后续调用中保留。不同会话使用不同 /workspace，但共享 rootfs。高风险命令仍需用户确认。",
             parametersJson = params(
                 mapOf(
-                    "command" to mapOf("type" to "string", "description" to "要执行的命令"),
-                    "timeout" to mapOf("type" to "integer", "description" to "超时秒数")
+                    "command" to mapOf("type" to "string", "description" to "要交给 Alpine /bin/sh 执行的命令"),
+                    "timeout" to mapOf("type" to "integer", "description" to "超时秒数，范围 1-600，默认 30")
                 ),
                 listOf("command")
             ),

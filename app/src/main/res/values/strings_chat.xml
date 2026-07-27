@@ -509,4 +509,16 @@
     <string name="chat_media_read_failed">读取失败</string>
     <string name="chat_media_unsupported_preview">该文件类型暂不支持预览</string>
     <string name="chat_media_file_downloaded_to">文件已下载到: %1$s</string>
+    <string name="chat_sandbox_terminal">命令行</string>
+    <string name="chat_sandbox_terminal_title">沙箱终端</string>
+    <string name="chat_sandbox_terminal_subtitle">Alpine Linux · 当前会话 /workspace</string>
+    <string name="chat_sandbox_terminal_empty">输入命令，直接操作当前 Agent 会话的沙箱</string>
+    <string name="chat_sandbox_terminal_hint">输入命令，例如 pwd 或 ls -la</string>
+    <string name="chat_sandbox_terminal_running">命令运行中…</string>
+    <string name="chat_sandbox_terminal_no_output">(无输出)</string>
+    <string name="chat_sandbox_terminal_timeout">命令已超时并终止</string>
+    <string name="chat_sandbox_terminal_exit_status">exit %1$d · %2$d ms</string>
+    <string name="chat_sandbox_terminal_clear">清空终端输出</string>
+    <string name="chat_sandbox_terminal_stop">中断命令</string>
+    <string name="chat_sandbox_terminal_run">运行命令</string>
 </resources>

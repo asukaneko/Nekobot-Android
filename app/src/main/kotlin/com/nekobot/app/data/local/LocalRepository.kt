@@ -21,6 +21,8 @@ import com.nekobot.app.data.local.ai.LocalBrowserTool
 import com.nekobot.app.data.local.ai.LocalChatFailoverExecutor
 import com.nekobot.app.data.local.ai.LocalContextTokenMessage
 import com.nekobot.app.data.local.ai.LocalGenerationController
+import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
+import com.nekobot.app.data.local.ai.LocalLinuxSandboxCoordinator
 import com.nekobot.app.data.local.ai.LocalMcpRuntime
 import com.nekobot.app.data.local.ai.LocalPersistedTokenMessage
 import com.nekobot.app.data.local.ai.LocalPromptBuilder
@@ -392,6 +394,105 @@ class LocalRepository(
 
     suspend fun getSession(id: String): Session? = withContext(Dispatchers.IO) {
         sessionDao.getById(id)?.toSession()
+    }
+
+    /**
+     * 从聊天页命令行直接操作当前 Agent 会话的 Linux 沙盒。
+     *
+     * 这是用户主动输入，不经过 AI 命令授权弹窗；仍然只运行在应用私有 PRoot rootfs，
+     * 并与 Agent 的 exec_command 复用同一个会话 shell 和 /workspace。
+     */
+    suspend fun executeSandboxCommand(
+        sessionId: String,
+        command: String,
+        timeoutSeconds: Int = 600,
+    ): LocalSandboxCommandResult = withContext(Dispatchers.IO) {
+        val normalizedCommand = command.trim()
+        if (normalizedCommand.isEmpty()) {
+            return@withContext LocalSandboxCommandResult(
+                command = command,
+                output = "",
+                exitCode = -1,
+                durationMs = 0L,
+                timedOut = false,
+                error = "命令不能为空",
+            )
+        }
+        val session = sessionDao.getById(sessionId)
+            ?: return@withContext LocalSandboxCommandResult(
+                command = normalizedCommand,
+                output = "",
+                exitCode = -1,
+                durationMs = 0L,
+                timedOut = false,
+                error = "会话不存在",
+            )
+        if (!session.sessionMode.equals("agent", ignoreCase = true)) {
+            return@withContext LocalSandboxCommandResult(
+                command = normalizedCommand,
+                output = "",
+                exitCode = -1,
+                durationMs = 0L,
+                timedOut = false,
+                error = "只有 Agent 会话可以打开沙箱终端",
+            )
+        }
+        val context = appContext
+            ?: return@withContext LocalSandboxCommandResult(
+                command = normalizedCommand,
+                output = "",
+                exitCode = -1,
+                durationMs = 0L,
+                timedOut = false,
+                error = "应用上下文不可用",
+            )
+        val workspace = LocalWorkspaceStorage.resolve(context.filesDir, sessionId)
+            ?: return@withContext LocalSandboxCommandResult(
+                command = normalizedCommand,
+                output = "",
+                exitCode = -1,
+                durationMs = 0L,
+                timedOut = false,
+                error = "会话工作区不可用",
+            )
+
+        runCatching {
+            LocalLinuxSandboxCoordinator.execute(
+                context = context,
+                sessionId = sessionId,
+                workspace = workspace,
+                command = normalizedCommand,
+                timeoutMs = java.util.concurrent.TimeUnit.SECONDS.toMillis(
+                    timeoutSeconds.coerceIn(1, 600).toLong()
+                ),
+                shouldStop = { false },
+            )
+        }.fold(
+            onSuccess = { result ->
+                LocalSandboxCommandResult(
+                    command = normalizedCommand,
+                    output = result.output,
+                    exitCode = result.exitCode,
+                    durationMs = result.durationMs,
+                    timedOut = result.timedOut,
+                )
+            },
+            onFailure = { error ->
+                LocalSandboxCommandResult(
+                    command = normalizedCommand,
+                    output = "",
+                    exitCode = -1,
+                    durationMs = 0L,
+                    timedOut = false,
+                    error = error.message ?: "沙箱命令执行失败",
+                )
+            },
+        )
+    }
+
+    /** 中断命令行界面或 Agent 当前正在运行的沙箱命令。 */
+    fun stopSandboxCommand(sessionId: String) {
+        LocalLinuxSandboxCoordinator.stopSession(sessionId)
     }
 
     suspend fun createSession(req: CreateSessionRequest): Session = withContext(Dispatchers.IO) {
@@ -819,6 +920,7 @@ class LocalRepository(
         appContext?.getSharedPreferences("plot_choices", android.content.Context.MODE_PRIVATE)
             ?.edit()?.remove(id)?.apply()
         localBrowserTools.remove(id)?.close()
+        LocalLinuxSandboxCoordinator.stopSession(id)
         sessionDao.deleteById(id)
     }
 
@@ -2238,6 +2340,7 @@ class LocalRepository(
             ?: activeGenerations.keys.toList()
         sessionIds.forEach { id ->
             activeGenerations[id]?.requestStop()
+            LocalLinuxSandboxCoordinator.stopSession(id)
             localExecAuthorizationManager.cancelSession(id)
             aiClient.cancelRequests(id)
         }
@@ -2252,6 +2355,7 @@ class LocalRepository(
         localMcpRuntime.close()
         localBrowserTools.values.forEach(LocalBrowserTool::close)
         localBrowserTools.clear()
+        LocalLinuxSandboxCoordinator.closeAll()
     }
 
     // ==================== Pipeline 驱动的聊天（角色运行时） ====================
