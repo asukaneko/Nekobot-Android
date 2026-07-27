@@ -1585,37 +1585,41 @@ private fun SessionItem(
             Spacer(Modifier.size(10.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = row.displayName,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    row.updatedAt?.let { time ->
-                        Spacer(Modifier.size(8.dp))
-                        Text(
-                            text = time,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.widthIn(max = 96.dp)
-                        )
-                    }
-                }
-                row.lastMessage?.let { preview ->
+                Text(
+                    text = row.displayName,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (row.lastMessage != null || row.updatedAt != null) {
                     Spacer(Modifier.height(3.dp))
-                    Text(
-                        text = preview,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        row.lastMessage?.let { preview ->
+                            Text(
+                                text = preview,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                        } ?: Spacer(Modifier.weight(1f))
+                        row.updatedAt?.let { time ->
+                            if (row.lastMessage != null) Spacer(Modifier.size(8.dp))
+                            Text(
+                                text = time,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
+                                maxLines = 1
+                            )
+                        }
+                    }
                 }
                 Spacer(Modifier.height(6.dp))
                 Row(

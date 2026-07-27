@@ -9,6 +9,14 @@ import org.junit.Test
 class SessionListPresentationTest {
 
     @Test
+    fun formatSessionListDate_compactsIsoTimestampWithoutTruncatingDate() {
+        assertEquals("2026-07-27", formatSessionListDate("2026-07-27T18:36:42.123+08:00"))
+        assertEquals("2026-07-27", formatSessionListDate("2026-07-27 18:36:42"))
+        assertEquals("昨天", formatSessionListDate("昨天"))
+        assertEquals(null, formatSessionListDate("  "))
+    }
+
+    @Test
     fun buildSessionOverview_excludesAutomaticArchivesAndCountsVisibleStatuses() {
         val sessions = listOf(
             Session(id = "normal"),

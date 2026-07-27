@@ -34,6 +34,21 @@ data class SessionListRow(
     val isGroupSession: Boolean = false
 )
 
+/**
+ * 列表只展示日期部分，避免完整 ISO 时间戳挤占会话标题和消息预览的空间。
+ * 无法识别的值保持原样，兼容服务端的非标准时间格式。
+ */
+internal fun formatSessionListDate(value: String?): String? {
+    val text = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val hasIsoDatePrefix = text.length >= 10 &&
+        text[4] == '-' &&
+        text[7] == '-' &&
+        text.take(4).all(Char::isDigit) &&
+        text.substring(5, 7).all(Char::isDigit) &&
+        text.substring(8, 10).all(Char::isDigit)
+    return if (hasIsoDatePrefix) text.take(10) else text
+}
+
 val QUICK_SESSION_FILTERS = listOf(
     SessionFilter.ALL,
     SessionFilter.PINNED,
@@ -122,7 +137,7 @@ fun buildSessionListRows(
             displayName = session.displayName,
             portraitUrl = rawPortraitUrl?.let(portraitUrlResolver),
             characterLabel = characterLabel,
-            updatedAt = session.updatedAt?.takeIf { it.isNotBlank() },
+            updatedAt = formatSessionListDate(session.updatedAt),
             lastMessage = session.lastMessage?.takeIf { it.isNotBlank() },
             messageCount = session.messageCount,
             pinned = session.pinned == true,
