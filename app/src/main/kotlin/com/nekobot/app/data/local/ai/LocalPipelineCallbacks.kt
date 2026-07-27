@@ -55,6 +55,8 @@ internal class LocalPipelineCallbacks(
     private val mcpToolExecutor: ((toolName: String, args: Map<String, Any>) -> Map<String, Any>)? = null,
     /** 只读 Skills 存储工具执行入口。 */
     private val skillToolExecutor: ((toolName: String, args: Map<String, Any>) -> Map<String, Any>)? = null,
+    /** 会话级原生浏览器工具执行入口。 */
+    private val browserToolExecutor: ((args: Map<String, Any>) -> Map<String, Any>)? = null,
     /** 本地数据库操作工具执行入口（角色卡/世界书/Hook/工作流/Skill/AI 模型等 CRUD）。 */
     private val dbToolExecutor: ((toolName: String, args: Map<String, Any>) -> Map<String, Any>)? = null,
     /** 故障转移队列：activeModel 优先 + 同 purpose 其他启用模型，按 priority 升序 */
@@ -848,9 +850,75 @@ internal class LocalPipelineCallbacks(
             return skillToolExecutor?.invoke(toolName, args)
                 ?: mapOf("success" to false, "error" to "Skills 存储运行时不可用")
         }
+        if (toolName == "browser_use") {
+            return executeBrowserTool(args)
+        }
         if (toolName in localDbToolIds) {
             return dbToolExecutor?.invoke(toolName, args) ?: localDbToolExecutor.execute(toolName, args)
         }
         return localToolExecutor.execute(toolName, args)
     }
+
+    /**
+     * 浏览器截图可在同一次工具调用内交给 vision 模型。
+     *
+     * 普通 screenshot 仍只保存截图；understand_screenshot 或 analyze=true 会将工作区图片
+     * 交给 understand_image，避免模型拿到路径后忘记继续调用图片理解工具。
+     */
+    private fun executeBrowserTool(args: Map<String, Any>): Map<String, Any> {
+        val browser = browserToolExecutor
+            ?: return mapOf("success" to false, "error" to "浏览器运行时不可用")
+        val browserResult = browser(args)
+        if (!browserScreenshotNeedsVision(args) || browserResult["success"] != true) {
+            return browserResult
+        }
+
+        val screenshotPath = browserResult["image_url"]?.toString()
+            ?: browserResult["screenshot_path"]?.toString()
+            ?: browserResult["screenshot_absolute_path"]?.toString()
+            ?: return browserResult.toMutableMap().apply {
+                put("success", false)
+                put("error", "浏览器截图成功，但没有返回可供图片理解的文件路径")
+            }
+        val question = browserScreenshotVisionQuestion(args)
+        val visionResult = localToolExecutor.execute(
+            "understand_image",
+            mapOf(
+                "image_url" to screenshotPath,
+                "question" to question
+            )
+        )
+
+        return browserResult.toMutableMap().apply {
+            put("action", "understand_screenshot")
+            put("vision_success", visionResult["success"] == true)
+            if (visionResult["success"] == true) {
+                val description = visionResult["description"]?.toString().orEmpty()
+                put("vision_description", description)
+                put(
+                    "content",
+                    "${browserResult["content"]?.toString().orEmpty()}\n\n图片理解结果：$description"
+                )
+            } else {
+                val error = visionResult["error"]?.toString().orEmpty()
+                    .ifBlank { "视觉模型没有返回可用结果" }
+                put("success", false)
+                put("vision_error", error)
+                put("error", "浏览器截图成功，但图片理解失败：$error")
+            }
+        }
+    }
 }
+
+internal fun browserScreenshotNeedsVision(args: Map<String, Any>): Boolean {
+    val action = args["action"]?.toString()?.trim()?.lowercase().orEmpty()
+    val analyze = args["analyze"] as? Boolean
+        ?: args["analyze"]?.toString()?.equals("true", ignoreCase = true)
+        ?: false
+    return action == "understand_screenshot" || (action == "screenshot" && analyze)
+}
+
+internal fun browserScreenshotVisionQuestion(args: Map<String, Any>): String =
+    args["question"]?.toString()?.trim().orEmpty().ifBlank {
+        "请分析当前浏览器截图，说明页面的主要视觉内容、图片、图表、布局，以及仅靠页面文本无法判断的信息。"
+    }

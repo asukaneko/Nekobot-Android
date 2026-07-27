@@ -26,10 +26,53 @@ class LocalAgentToolingTest {
 
         assertTrue("get_date_time" in names)
         assertTrue("exec_command" in names)
+        assertTrue("browser_use" in names)
         assertTrue("workspace_read_file" in names)
         assertTrue("workspace_extract_epub" in names)
         assertFalse("save_to_memory" in names)
         assertEquals(names.distinct().size, names.size)
+
+        val browserFunction = buildLocalAgentToolDefinitions()
+            .mapNotNull { it["function"] as? Map<*, *> }
+            .first { it["name"] == "browser_use" }
+        val browserParameters = browserFunction["parameters"] as Map<*, *>
+        assertTrue("action" in (browserParameters["required"] as List<*>))
+        val browserProperties = browserParameters["properties"] as Map<*, *>
+        assertTrue("selector" in browserProperties)
+        assertTrue("analyze" in browserProperties)
+        assertTrue("question" in browserProperties)
+        assertTrue("max_chars" in browserProperties)
+        assertTrue("max_results" in browserProperties)
+        val actionDescription =
+            ((browserProperties["action"] as Map<*, *>)["description"] as String)
+        assertTrue("understand_screenshot" in actionDescription)
+        assertTrue("get_html" in actionDescription)
+        assertTrue("get_links" in actionDescription)
+    }
+
+    @Test
+    fun browserScreenshotCanRequestVisionInOneToolCall() {
+        assertTrue(
+            browserScreenshotNeedsVision(
+                mapOf("action" to "understand_screenshot")
+            )
+        )
+        assertTrue(
+            browserScreenshotNeedsVision(
+                mapOf("action" to "screenshot", "analyze" to true)
+            )
+        )
+        assertFalse(
+            browserScreenshotNeedsVision(
+                mapOf("action" to "screenshot", "analyze" to false)
+            )
+        )
+        assertEquals(
+            "只说明图表趋势",
+            browserScreenshotVisionQuestion(
+                mapOf("question" to " 只说明图表趋势 ")
+            )
+        )
     }
 
     @Test

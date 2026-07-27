@@ -17,6 +17,7 @@ import com.nekobot.app.data.local.ai.FailoverUsage
 import com.nekobot.app.data.local.ai.FailoverUsageReader
 import com.nekobot.app.data.local.ai.LocalAiClient
 import com.nekobot.app.data.local.ai.LocalAiResult
+import com.nekobot.app.data.local.ai.LocalBrowserTool
 import com.nekobot.app.data.local.ai.LocalChatFailoverExecutor
 import com.nekobot.app.data.local.ai.LocalContextTokenMessage
 import com.nekobot.app.data.local.ai.LocalGenerationController
@@ -142,6 +143,7 @@ class LocalRepository(
     private val localExecAuthorizationManager =
         com.nekobot.app.data.local.ai.LocalExecAuthorizationManager()
     private val localMcpRuntime = LocalMcpRuntime()
+    private val localBrowserTools = ConcurrentHashMap<String, LocalBrowserTool>()
     private val localSkillStorage = appContext?.filesDir
         ?.let { LocalSkillStorage(File(it, "skills")) }
     private val skillPackageDownloader = SkillPackageDownloader()
@@ -816,6 +818,7 @@ class LocalRepository(
         // 先清理该会话的剧情选项缓存（不影响 token 用量）
         appContext?.getSharedPreferences("plot_choices", android.content.Context.MODE_PRIVATE)
             ?.edit()?.remove(id)?.apply()
+        localBrowserTools.remove(id)?.close()
         sessionDao.deleteById(id)
     }
 
@@ -1314,6 +1317,24 @@ class LocalRepository(
         appContext?.filesDir
             ?.let { filesDir -> LocalWorkspaceStorage.resolve(filesDir, sessionId) }
             ?.canonicalFile
+
+    private fun executeLocalBrowserTool(
+        sessionId: String,
+        args: Map<String, Any>
+    ): Map<String, Any> {
+        val context = appContext
+            ?: return mapOf("success" to false, "error" to "应用上下文未初始化，无法使用浏览器")
+        val workspaceRoot = localWorkspaceRoot(sessionId)
+            ?: return mapOf("success" to false, "error" to "无法打开当前会话工作区")
+        val browser = localBrowserTools.computeIfAbsent(sessionId) {
+            LocalBrowserTool(
+                context = context,
+                sessionId = sessionId,
+                workspaceRoot = workspaceRoot
+            )
+        }
+        return browser.execute(args)
+    }
 
     private inline fun localCommandResult(block: () -> String): String =
         runCatching(block).getOrElse { error ->
@@ -2229,6 +2250,8 @@ class LocalRepository(
     fun close() {
         stopGeneration()
         localMcpRuntime.close()
+        localBrowserTools.values.forEach(LocalBrowserTool::close)
+        localBrowserTools.clear()
     }
 
     // ==================== Pipeline 驱动的聊天（角色运行时） ====================
@@ -2387,6 +2410,7 @@ class LocalRepository(
             execAuthorizationManager = localExecAuthorizationManager,
             mcpToolExecutor = localMcpRuntime::executeByFullName,
             skillToolExecutor = ::executeLocalSkillTool,
+            browserToolExecutor = { args -> executeLocalBrowserTool(session.id, args) },
             failoverQueue = failoverQueue,
             coordinator = failoverCoordinator,
             hookExecutor = hookExecutor,

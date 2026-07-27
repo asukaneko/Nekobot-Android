@@ -109,6 +109,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -210,6 +211,19 @@ fun ChatScreen(
     val selectedIds by viewModel.selectedMessageIds.collectAsState()
     val execConfirmation by viewModel.execConfirmation.collectAsState()
     val hookNotifications by viewModel.hookNotifications.collectAsState()
+    val latestBrowserProgressCardId = remember(messages) {
+        messages.asReversed().firstNotNullOfOrNull { message ->
+            message.thinkingCards
+                ?.asReversed()
+                ?.firstOrNull { card ->
+                    card.steps.any { step ->
+                        step.name.equals("browser_use", ignoreCase = true) ||
+                            step.name?.contains("browser", ignoreCase = true) == true
+                    }
+                }
+                ?.id
+        }
+    }
 
     var input by remember(sessionId) {
         mutableStateOf(ServiceContainer.prefs.getChatInputDraft(sessionId))
@@ -230,6 +244,10 @@ fun ChatScreen(
     var showMyMessages by remember { mutableStateOf(false) }
     var showRestoreArchiveDialog by remember { mutableStateOf(false) }
     var showArchiveViewer by remember { mutableStateOf(false) }
+    // 展开状态必须高于 LazyColumn item：工具步骤更新或卡片离屏回收后仍保留用户选择。
+    val progressCardExpansionOverrides = remember(sessionId) {
+        mutableStateMapOf<String, Boolean>()
+    }
     val listState = externalListState ?: rememberLazyListState()
     val keyboard = LocalSoftwareKeyboardController.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -852,12 +870,24 @@ fun ChatScreen(
                             if (msg.isUser && !msg.thinkingCards.isNullOrEmpty()) {
                                 Spacer(Modifier.height(6.dp))
                                 msg.thinkingCards.forEach { card ->
-                                    ProgressCard(
-                                        card = card,
-                                        onStepClick = { step ->
-                                            stepDetailTarget = step
-                                        }
-                                    )
+                                    androidx.compose.runtime.key(card.id) {
+                                        ProgressCard(
+                                            card = card,
+                                            sessionId = sessionId,
+                                            expanded = resolveProgressCardExpanded(
+                                                cardId = card.id,
+                                                isAgent = card.isAgent,
+                                                expansionOverrides = progressCardExpansionOverrides
+                                            ),
+                                            showBrowserPreview = card.id == latestBrowserProgressCardId,
+                                            onExpandedChange = { expanded ->
+                                                progressCardExpansionOverrides[card.id] = expanded
+                                            },
+                                            onStepClick = { step ->
+                                                stepDetailTarget = step
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1859,10 +1889,12 @@ private fun IconActionButton(
 @Composable
 private fun ProgressCard(
     card: com.nekobot.app.data.model.ThinkingCard,
+    sessionId: String,
+    expanded: Boolean,
+    showBrowserPreview: Boolean = false,
+    onExpandedChange: (Boolean) -> Unit,
     onStepClick: (com.nekobot.app.data.model.ThinkingStep) -> Unit = {}
 ) {
-    // Agent 过程默认折叠；本地命令默认展开，便于直接观察下载阶段。
-    var expanded by remember(card.id) { mutableStateOf(!card.isAgent) }
     val progress = card.progress?.coerceIn(0, 100)
     val hasError = card.steps.any { it.status.equals("error", ignoreCase = true) }
     val statusColor = if (hasError) {
@@ -1888,7 +1920,7 @@ private fun ProgressCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { expanded = !expanded },
+                .clickable { onExpandedChange(!expanded) },
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (hasError) {
@@ -1955,6 +1987,11 @@ private fun ProgressCard(
             )
         }
 
+        if (showBrowserPreview) {
+            Spacer(Modifier.height(10.dp))
+            LocalBrowserPreview(sessionId = sessionId)
+        }
+
         // 步骤列表（可折叠）
         if (expanded && card.steps.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
@@ -1971,6 +2008,15 @@ private fun ProgressCard(
         }
     }
 }
+
+/**
+ * Agent 卡片默认折叠、本地命令卡片默认展开；一旦用户操作过，则始终以页面级覆盖值为准。
+ */
+internal fun resolveProgressCardExpanded(
+    cardId: String,
+    isAgent: Boolean,
+    expansionOverrides: Map<String, Boolean>
+): Boolean = expansionOverrides[cardId] ?: !isAgent
 
 /** 进度卡片单步渲染：Material Icon + 名称 + 状态色 + 详情摘要，含详情时可点击。 */
 @Composable

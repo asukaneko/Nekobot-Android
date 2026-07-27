@@ -21,6 +21,7 @@ internal val localExecutableToolIds = setOf(
     "search_news",
     "get_weather",
     "search_web",
+    "browser_use",
     "get_date_time",
     "http_get",
     "exec_command",

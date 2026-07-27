@@ -83,6 +83,83 @@ object BuiltinTools {
             )
         ),
         BuiltinToolSpec(
+            id = "browser_use",
+            name = "浏览器使用",
+            description = "控制会话内的原生浏览器。支持打开网页、截图、读取正文、动态 DOM 源码、页面 URL 和可交互结构，以及点击、输入、滚动、前进、后退、刷新和执行 JavaScript。查找链接或资源地址时优先使用 get_links，需要源码时使用 get_html；页面包含图片、图表或复杂视觉内容时，使用 understand_screenshot 截图并自动调用图片理解模型。需要精确操作时先调用 get_backbone。",
+            parametersJson = """
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "description": "动作：navigate、screenshot、understand_screenshot（截图后自动调用图片理解模型）、get_html（获取动态 DOM 源码）、get_links（结构化提取 URL）、click、type、get_text、get_readable、get_backbone、find_elements、get_page_info、scroll、execute_js、wait、back、forward、reload"
+                    },
+                    "url": {
+                      "type": "string",
+                      "description": "navigate 要打开的 http(s) URL；省略协议时默认使用 https"
+                    },
+                    "selector": {
+                      "type": "string",
+                      "description": "用于 click、type、get_text、get_html、get_links、find_elements 或 scroll 的 CSS 选择器"
+                    },
+                    "text": {
+                      "type": "string",
+                      "description": "type 动作要输入的文本"
+                    },
+                    "coordinate_x": {
+                      "type": "integer",
+                      "description": "click 动作的可选视口 X 坐标"
+                    },
+                    "coordinate_y": {
+                      "type": "integer",
+                      "description": "click 动作的可选视口 Y 坐标"
+                    },
+                    "direction": {
+                      "type": "string",
+                      "description": "scroll 方向：up 或 down"
+                    },
+                    "amount": {
+                      "type": "integer",
+                      "description": "scroll 像素数，默认 600"
+                    },
+                    "script": {
+                      "type": "string",
+                      "description": "execute_js 要执行的 JavaScript；需要返回值时使用 return"
+                    },
+                    "wait_ms": {
+                      "type": "integer",
+                      "description": "wait 动作等待毫秒数，范围 0-10000"
+                    },
+                    "full_page": {
+                      "type": "boolean",
+                      "description": "screenshot 或 understand_screenshot 是否尝试截取完整页面；超长页面会安全截断"
+                    },
+                    "analyze": {
+                      "type": "boolean",
+                      "description": "screenshot 为 true 时，截图后继续调用图片理解模型；等价于 understand_screenshot"
+                    },
+                    "question": {
+                      "type": "string",
+                      "description": "understand_screenshot 或 analyze=true 时向图片理解模型提出的问题"
+                    },
+                    "max_depth": {
+                      "type": "integer",
+                      "description": "get_backbone 返回页面结构时的最大元素数量，默认 80"
+                    },
+                    "max_chars": {
+                      "type": "integer",
+                      "description": "get_html 返回的最大源码字符数，默认 60000，最大 120000"
+                    },
+                    "max_results": {
+                      "type": "integer",
+                      "description": "get_links 返回的最大 URL 数量，默认 200，最大 500"
+                    }
+                  },
+                  "required": ["action"]
+                }
+            """.trimIndent()
+        ),
+        BuiltinToolSpec(
             id = "get_date_time",
             name = "获取日期时间",
             description = "获取当前的日期、时间、星期等信息。",
@@ -288,7 +365,7 @@ object BuiltinTools {
         )
     )
 
-    /** 全部内置工具列表（22 个）。 */
+    /** 全部内置工具列表。 */
     val all: List<BuiltinToolSpec> = standardTools + workspaceTools
 
     /** 判断 id 是否为内置工具。 */

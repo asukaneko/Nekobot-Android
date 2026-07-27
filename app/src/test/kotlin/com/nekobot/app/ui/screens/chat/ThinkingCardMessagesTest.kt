@@ -3,7 +3,9 @@ package com.nekobot.app.ui.screens.chat
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.model.ThinkingCard
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ThinkingCardMessagesTest {
@@ -50,5 +52,31 @@ class ThinkingCardMessagesTest {
 
         assertEquals(1, result.single().thinkingCards?.size)
         assertEquals(65, result.single().thinkingCards?.single()?.progress)
+    }
+
+    @Test
+    fun keepsAgentCardExpandedAfterNewToolUpdatesTheSameCard() {
+        val expansionOverrides = mapOf("agent-card" to true)
+
+        assertTrue(
+            resolveProgressCardExpanded(
+                cardId = "agent-card",
+                isAgent = true,
+                expansionOverrides = expansionOverrides
+            )
+        )
+    }
+
+    @Test
+    fun usesCardDefaultsUntilUserChangesExpansion() {
+        assertFalse(resolveProgressCardExpanded("agent-card", isAgent = true, emptyMap()))
+        assertTrue(resolveProgressCardExpanded("local-card", isAgent = false, emptyMap()))
+        assertFalse(
+            resolveProgressCardExpanded(
+                cardId = "local-card",
+                isAgent = false,
+                expansionOverrides = mapOf("local-card" to false)
+            )
+        )
     }
 }
