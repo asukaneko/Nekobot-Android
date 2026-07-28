@@ -6,8 +6,28 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.nio.file.Files
 
 class LocalLinuxSandboxTest {
+
+    @Test
+    fun validMutableRootfsRemainsUsableWhenLegacyMarkerDiffers() {
+        val root = Files.createTempDirectory("nekobot-rootfs-persistence").toFile()
+        try {
+            root.resolve("bin").mkdirs()
+            root.resolve("bin/sh").writeText("#!/bin/sh\n")
+            root.resolve(".nekobot-rootfs").writeText("legacy-bundled-image-revision")
+            root.resolve("root/user-data.txt").apply {
+                parentFile?.mkdirs()
+                writeText("keep me")
+            }
+
+            assertTrue(isUsableLocalRootfs(root))
+            assertEquals("keep me", root.resolve("root/user-data.txt").readText())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
 
     @Test
     fun `proot command mounts only the selected session workspace`() {

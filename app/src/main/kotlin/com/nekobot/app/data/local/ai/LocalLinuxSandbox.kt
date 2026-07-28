@@ -155,7 +155,11 @@ internal class LocalLinuxRootfsManager private constructor(
             throw IllegalStateException("PRoot 运行时不可用：${proot.absolutePath}")
         }
 
-        if (!isInstalled()) installRootfs()
+        if (!isInstalled()) {
+            installRootfs()
+        } else {
+            migrateInstallMarkerWithoutReset()
+        }
         refreshDns(rootfsDir)
 
         val tempDir = File(context.cacheDir, "nekobot-proot-tmp").apply { mkdirs() }
@@ -178,10 +182,22 @@ internal class LocalLinuxRootfsManager private constructor(
     }
 
     private fun isInstalled(): Boolean {
-        val shell = File(rootfsDir, "bin/sh")
-        return rootfsDir.isDirectory &&
-            (shell.isFile || Files.isSymbolicLink(shell.toPath())) &&
-            runCatching { markerFile.readText().trim() == ROOTFS_REVISION }.getOrDefault(false)
+        return isUsableLocalRootfs(rootfsDir)
+    }
+
+    /**
+     * 旧版本曾把基础镜像标记变化视为强制重装，这会清除用户通过 apk 安装的软件和 /root 数据。
+     * 现在标记只表示目录布局兼容级别；已有 rootfs 可运行时仅迁移标记，绝不自动重置内容。
+     */
+    private fun migrateInstallMarkerWithoutReset() {
+        val installedLayout = runCatching { markerFile.readText().trim() }.getOrDefault("")
+        if (installedLayout == ROOTFS_LAYOUT_VERSION) return
+        Log.i(
+            TAG,
+            "Preserving existing mutable rootfs and migrating layout marker " +
+                "from '${installedLayout.ifBlank { "unknown" }}' to '$ROOTFS_LAYOUT_VERSION'"
+        )
+        markerFile.writeText(ROOTFS_LAYOUT_VERSION)
     }
 
     private fun installRootfs() {
@@ -208,7 +224,7 @@ internal class LocalLinuxRootfsManager private constructor(
                 File(stagingDir, relative).mkdirs()
             }
             refreshDns(stagingDir)
-            File(stagingDir, INSTALL_MARKER).writeText(ROOTFS_REVISION)
+            File(stagingDir, INSTALL_MARKER).writeText(ROOTFS_LAYOUT_VERSION)
 
             deleteTreeWithoutFollowingLinks(rootfsDir)
             check(stagingDir.renameTo(rootfsDir)) { "无法启用已解包的 Alpine rootfs" }
@@ -261,8 +277,7 @@ internal class LocalLinuxRootfsManager private constructor(
         private const val ROOTFS_TAR = "alpine-minirootfs.tar"
         private const val ROOTFS_TAR_GZ = "alpine-minirootfs.tar.gz"
         private const val INSTALL_MARKER = ".nekobot-rootfs"
-        private const val ROOTFS_REVISION =
-            "alpine-3.21.3-arm64-5651126278f52f29"
+        private const val ROOTFS_LAYOUT_VERSION = "1"
         private const val SUPPORTED_ABI = "arm64-v8a"
         private const val PROOT_LIBRARY = "libproot.so"
         private const val PROOT_LOADER_64 = "libproot-loader.so"
@@ -278,6 +293,16 @@ internal class LocalLinuxRootfsManager private constructor(
                 instance ?: LocalLinuxRootfsManager(context.applicationContext).also { instance = it }
             }
     }
+}
+
+/**
+ * rootfs 是否具备最低可运行条件。基础 APK 版本或镜像标记变化不参与判断，
+ * 因此正常覆盖安装 APK 不会删除用户安装的软件包与 Linux 内数据。
+ */
+internal fun isUsableLocalRootfs(rootfsDir: File): Boolean {
+    val shell = File(rootfsDir, "bin/sh")
+    return rootfsDir.isDirectory &&
+        (shell.isFile || Files.isSymbolicLink(shell.toPath()))
 }
 
 /**
