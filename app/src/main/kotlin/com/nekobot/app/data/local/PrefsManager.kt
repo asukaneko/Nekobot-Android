@@ -293,6 +293,18 @@ class PrefsManager(context: Context) {
             prefs.edit().putString(KEY_LAST_NBOTCFG_PWD, value).apply()
         }
 
+    // ==================== wenku8 轻小说 Cookie ====================
+
+    /**
+     * wenku8.net 登录 Cookie，用于 `/findbook`、`/hotnovel` 等轻小说命令。
+     * 由 `/set_wenku_cookie` 命令写入；未设置时这些命令会提示先配置。
+     */
+    var wenku8Cookie: String
+        get() = prefs.getString(KEY_WENKU8_COOKIE, "") ?: ""
+        set(value) {
+            prefs.edit().putString(KEY_WENKU8_COOKIE, value).apply()
+        }
+
     // ==================== 本地 DB Profile 切换 ====================
 
     /**
@@ -481,6 +493,9 @@ class PrefsManager(context: Context) {
 
         // nbotcfg 导入密码记忆
         const val KEY_LAST_NBOTCFG_PWD = "last_nbotcfg_password"
+
+        // wenku8 轻小说 Cookie
+        const val KEY_WENKU8_COOKIE = "wenku8_cookie"
 
         /**
          * 规范化服务器地址：

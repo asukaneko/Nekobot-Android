@@ -146,6 +146,54 @@ internal object LocalSlashCommands {
             action = LocalCommandAction.JM_DOWNLOAD
         ),
         LocalCommandSpec(
+            aliases = listOf("/findbook", "/fb"),
+            usage = "/findbook <书名>",
+            description = "搜索轻小说并生成卡片网格 HTML",
+            action = LocalCommandAction.NOVEL_SEARCH
+        ),
+        LocalCommandSpec(
+            aliases = listOf("/fa"),
+            usage = "/fa <作者>",
+            description = "按作者搜索轻小说",
+            action = LocalCommandAction.NOVEL_SEARCH_AUTHOR
+        ),
+        LocalCommandSpec(
+            aliases = listOf("/select"),
+            usage = "/select <编号>",
+            description = "选择要下载的轻小说（先 /findbook 或 /fb 搜索）",
+            action = LocalCommandAction.NOVEL_SELECT
+        ),
+        LocalCommandSpec(
+            aliases = listOf("/info"),
+            usage = "/info <编号>",
+            description = "获取轻小说详情（先 /findbook 或 /fb 搜索）",
+            action = LocalCommandAction.NOVEL_INFO
+        ),
+        LocalCommandSpec(
+            aliases = listOf("/hotnovel"),
+            usage = "/hotnovel <day|month> [数量]",
+            description = "获取今日/本月热门轻小说榜单",
+            action = LocalCommandAction.NOVEL_HOT
+        ),
+        LocalCommandSpec(
+            aliases = listOf("/random_novel", "/rn"),
+            usage = "/random_novel",
+            description = "随机推荐一本轻小说",
+            action = LocalCommandAction.NOVEL_RANDOM
+        ),
+        LocalCommandSpec(
+            aliases = listOf("/novel_res"),
+            usage = "/novel_res <res值>",
+            description = "根据 wenku8 编号下载轻小说 TXT",
+            action = LocalCommandAction.NOVEL_RES
+        ),
+        LocalCommandSpec(
+            aliases = listOf("/set_wenku_cookie"),
+            usage = "/set_wenku_cookie <Cookie>",
+            description = "更新文库8的 Cookie",
+            action = LocalCommandAction.NOVEL_SET_COOKIE
+        ),
+        LocalCommandSpec(
             aliases = listOf(
                 "/jm_search", "/jm_tag", "/jm_clear",
                 "/get_fav", "/add_fav", "/list_fav", "/del_fav",
@@ -211,9 +259,7 @@ internal object LocalSlashCommands {
             .filter { it.action.isNative }
             .forEach { appendLine("• `${it.usage}` — ${it.description}") }
         appendLine()
-        appendLine("Agent 会话还支持 `/yolo`，用于在当前会话中跳过常规命令授权；高风险操作仍会阻止。")
-        appendLine()
-        append("依赖 Python、QQ Bot 或服务器插件的命令不会交给 AI 猜测执行，会提示切换到服务器模式。")
+        append("Agent 会话还支持 `/yolo`，用于在当前会话中跳过常规命令授权；高风险操作仍会阻止。")
     }.trim()
 
     fun pythonRuntimeMessage(commandName: String): String = buildString {
@@ -258,6 +304,14 @@ internal enum class LocalCommandAction(val isNative: Boolean) {
     FORTUNE(true),
     JM_RANK(true),
     JM_DOWNLOAD(true),
+    NOVEL_SEARCH(true),
+    NOVEL_SEARCH_AUTHOR(true),
+    NOVEL_SELECT(true),
+    NOVEL_INFO(true),
+    NOVEL_HOT(true),
+    NOVEL_RANDOM(true),
+    NOVEL_RES(true),
+    NOVEL_SET_COOKIE(true),
     PYTHON_RUNTIME_REQUIRED(false),
     REMOTE_RUNTIME_REQUIRED(false),
     UNKNOWN(false)

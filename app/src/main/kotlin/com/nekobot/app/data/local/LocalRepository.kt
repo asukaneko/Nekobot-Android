@@ -151,6 +151,13 @@ class LocalRepository(
         ?.let { LocalSkillStorage(File(it, "skills")) }
     private val skillPackageDownloader = SkillPackageDownloader()
     private val localJmRankingClient by lazy { LocalJmRankingClient() }
+    private val localNovelClient by lazy { LocalNovelClient() }
+    /**
+     * 轻小说搜索的会话级状态：`/findbook`、`/fa` 写入；`/select`、`/info` 读取。
+     *
+     * 与原仓库 `temp_selections[user_id]` + `api_book[user_id]` 等价，但按 sessionId 隔离。
+     */
+    private val localNovelSearchStates = ConcurrentHashMap<String, LocalNovelSearchState>()
 
     // ==================== 故障转移协调器（持久化健康状态 + token 限额）====================
 
@@ -1151,7 +1158,14 @@ class LocalRepository(
     ): Message {
         val progressReporter = when (command.action) {
             LocalCommandAction.JM_RANK,
-            LocalCommandAction.JM_DOWNLOAD -> LocalCommandProgressReporter(
+            LocalCommandAction.JM_DOWNLOAD,
+            LocalCommandAction.NOVEL_SEARCH,
+            LocalCommandAction.NOVEL_SEARCH_AUTHOR,
+            LocalCommandAction.NOVEL_HOT,
+            LocalCommandAction.NOVEL_RANDOM,
+            LocalCommandAction.NOVEL_INFO,
+            LocalCommandAction.NOVEL_SELECT,
+            LocalCommandAction.NOVEL_RES -> LocalCommandProgressReporter(
                 parentMessageId = parentMessageId,
                 onUpdate = { card ->
                     updateMessageThinkingCards(parentMessageId, listOf(card))
@@ -1198,6 +1212,22 @@ class LocalRepository(
                 localJmRankingText(session.id, command.args, progressReporter)
             LocalCommandAction.JM_DOWNLOAD ->
                 localJmDownloadPdfText(session.id, command.args, progressReporter)
+            LocalCommandAction.NOVEL_SEARCH ->
+                localNovelSearchText(session.id, command.args, progressReporter, byAuthor = false)
+            LocalCommandAction.NOVEL_SEARCH_AUTHOR ->
+                localNovelSearchText(session.id, command.args, progressReporter, byAuthor = true)
+            LocalCommandAction.NOVEL_HOT ->
+                localNovelHotText(session.id, command.args, progressReporter)
+            LocalCommandAction.NOVEL_RANDOM ->
+                localNovelRandomText(session.id, progressReporter)
+            LocalCommandAction.NOVEL_INFO ->
+                localNovelInfoText(session.id, command.args, progressReporter)
+            LocalCommandAction.NOVEL_SELECT ->
+                localNovelSelectText(session.id, command.args, progressReporter)
+            LocalCommandAction.NOVEL_RES ->
+                localNovelResText(session.id, command.args, progressReporter)
+            LocalCommandAction.NOVEL_SET_COOKIE ->
+                localNovelSetCookieText(command.args)
             LocalCommandAction.PYTHON_RUNTIME_REQUIRED ->
                 LocalSlashCommands.pythonRuntimeMessage(command.name)
             LocalCommandAction.REMOTE_RUNTIME_REQUIRED ->
@@ -1960,6 +1990,873 @@ class LocalRepository(
             )
             message
         }
+    }
+
+    // ==================== 轻小说命令（/findbook /fa /hotnovel /random_novel /info /select /novel_res /set_wenku_cookie）====================
+
+    /**
+     * 读取 wenku8 Cookie。
+     *
+     * 与 [PrefsManager.wenku8Cookie] 共用 SharedPreferences 文件与 key，
+     * 因此 `/set_wenku_cookie` 写入的值在 LocalRepository 中也能立即读到。
+     */
+    private fun readWenku8Cookie(): String =
+        appContext
+            ?.getSharedPreferences("nekobot_prefs", android.content.Context.MODE_PRIVATE)
+            ?.getString("wenku8_cookie", "") ?: ""
+
+    /** 写入 wenku8 Cookie，供 `/set_wenku_cookie` 命令使用。 */
+    private fun writeWenku8Cookie(cookie: String) {
+        appContext
+            ?.getSharedPreferences("nekobot_prefs", android.content.Context.MODE_PRIVATE)
+            ?.edit()
+            ?.putString("wenku8_cookie", cookie)
+            ?.apply()
+    }
+
+    /**
+     * `/findbook <书名>` / `/fa <作者>`：搜索 wenku8 + 番茄 API，生成卡片网格 HTML。
+     *
+     * 对齐原仓库 `handle_find_book` / `handle_find_author`：
+     * 1. wenku8 网页搜索（按书名或作者）
+     * 2. 番茄 API 搜索（仅按书名时调用）
+     * 3. 合并去重后写入会话工作区 `novel/search-*.html`
+     * 4. 把结果存入 [localNovelSearchStates] 供 `/select`、`/info` 引用
+     */
+    private suspend fun localNovelSearchText(
+        sessionId: String,
+        rawArgs: String,
+        progressReporter: LocalCommandProgressReporter?,
+        byAuthor: Boolean
+    ): String {
+        val searchTerm = rawArgs.trim()
+        if (searchTerm.isBlank()) {
+            val hint = if (byAuthor) "请输入要搜索的作者喵~" else "请输入要搜索的书名喵~"
+            progressReporter?.update(
+                content = "轻小说搜索参数为空",
+                progress = 0,
+                steps = listOf(ThinkingStep(type = "done", name = "参数错误", status = "error", detail = hint)),
+                isComplete = true,
+                force = true
+            )
+            return hint
+        }
+        val cookie = readWenku8Cookie()
+        val currentProgress = AtomicInteger(0)
+
+        suspend fun report(
+            content: String,
+            progress: Int,
+            steps: List<ThinkingStep>,
+            isComplete: Boolean = false,
+            force: Boolean = false
+        ) {
+            currentProgress.set(progress.coerceIn(0, 100))
+            progressReporter?.update(content, progress, steps, isComplete, force)
+        }
+
+        val searchType = if (byAuthor) "作者" else "书名"
+        report(
+            content = "搜索轻小说（$searchType：$searchTerm）",
+            progress = 5,
+            steps = listOf(ThinkingStep(type = "knowledge", name = "搜索 wenku8", status = "running", detail = searchTerm)),
+            force = true
+        )
+
+        return try {
+            // 1. wenku8 网页搜索
+            val webMatches = withContext(Dispatchers.IO) {
+                localNovelClient.searchBooks(
+                    searchTerm = searchTerm,
+                    searchType = if (byAuthor) "author" else "articlename",
+                    cookie = cookie
+                )
+            }
+            report(
+                content = "wenku8 搜索完成",
+                progress = 50,
+                steps = listOf(ThinkingStep(type = "knowledge", name = "搜索 wenku8", status = "done", detail = "${webMatches.size} 条")),
+                force = true
+            )
+
+            // 2. 番茄 API 搜索（仅按书名时调用，按作者时 API 无对应能力）
+            val apiMatches = if (!byAuthor) {
+                report(
+                    content = "搜索番茄小说 API",
+                    progress = 65,
+                    steps = listOf(
+                        ThinkingStep(type = "knowledge", name = "搜索 wenku8", status = "done", detail = "${webMatches.size} 条"),
+                        ThinkingStep(type = "knowledge", name = "搜索番茄 API", status = "running")
+                    ),
+                    force = true
+                )
+                withContext(Dispatchers.IO) { localNovelClient.findFromApi(searchTerm) }
+            } else {
+                emptyList()
+            }
+            report(
+                content = "生成搜索结果",
+                progress = 85,
+                steps = listOf(
+                    ThinkingStep(type = "knowledge", name = "搜索 wenku8", status = "done", detail = "${webMatches.size} 条"),
+                    ThinkingStep(type = "knowledge", name = "搜索番茄 API", status = "done", detail = "${apiMatches.size} 条"),
+                    ThinkingStep(type = "file", name = "生成 HTML", status = "running")
+                ),
+                force = true
+            )
+
+            if (webMatches.isEmpty() && apiMatches.isEmpty()) {
+                val msg = "没有找到包含 '$searchTerm' 的轻小说喵~"
+                report(
+                    content = "搜索无结果",
+                    progress = 100,
+                    steps = listOf(ThinkingStep(type = "done", name = "无结果", status = "error", detail = msg)),
+                    isComplete = true,
+                    force = true
+                )
+                return msg
+            }
+
+            // 3. 去重（以标题为唯一键）
+            val seenTitles = mutableSetOf<String>()
+            val dedupWeb = webMatches.filter { seenTitles.add(it.title) }
+            val dedupApi = apiMatches.filter { seenTitles.add(it.title) }
+
+            // 4. 保存会话级搜索状态
+            localNovelSearchStates[sessionId] = LocalNovelSearchState(dedupWeb, dedupApi)
+
+            // 5. 生成 HTML 网格并写入工作区
+            val title = if (byAuthor) {
+                "$searchTerm · 作者搜索"
+            } else {
+                "$searchTerm · 轻小说搜索"
+            }
+            val html = buildLocalNovelGridHtml(title, dedupWeb)
+            val root = localWorkspaceRoot(sessionId) ?: error("无法打开当前会话工作区。")
+            val novelDir = File(root, "novel")
+            if (!novelDir.exists() && !novelDir.mkdirs()) {
+                error("无法创建轻小说目录。")
+            }
+            val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
+            val safeName = searchTerm.replace(Regex("[^\\w\\u4e00-\\u9fa5-]"), "_").take(20)
+            val fileName = "search-${safeName}-$timestamp.html"
+            withContext(Dispatchers.IO) {
+                File(novelDir, fileName).writeText(html, Charsets.UTF_8)
+            }
+
+            val totalCount = dedupWeb.size + dedupApi.size
+            report(
+                content = "搜索完成",
+                progress = 100,
+                steps = listOf(
+                    ThinkingStep(type = "knowledge", name = "搜索 wenku8", status = "done", detail = "${dedupWeb.size} 条"),
+                    ThinkingStep(type = "knowledge", name = "搜索番茄 API", status = "done", detail = "${dedupApi.size} 条"),
+                    ThinkingStep(type = "file", name = "HTML 已生成", status = "done", detail = "novel/$fileName")
+                ),
+                isComplete = true,
+                force = true
+            )
+            "找到 $totalCount 本轻小说喵~ 点击卡片查看详情或使用 `/info 编号` 获取信息喵~" +
+                "\n\n[File: novel/$fileName]"
+        } catch (error: CancellationException) {
+            withContext(NonCancellable) {
+                progressReporter?.update(
+                    content = "轻小说搜索已取消",
+                    progress = currentProgress.get(),
+                    steps = listOf(ThinkingStep(type = "done", name = "任务已取消", status = "error")),
+                    isComplete = true,
+                    force = true
+                )
+            }
+            throw error
+        } catch (error: Exception) {
+            val message = error.message ?: "搜索轻小说失败，请稍后重试。"
+            progressReporter?.update(
+                content = "轻小说搜索失败",
+                progress = currentProgress.get(),
+                steps = listOf(ThinkingStep(type = "done", name = "任务失败", status = "error", detail = message)),
+                isComplete = true,
+                force = true
+            )
+            message
+        }
+    }
+
+    /**
+     * `/hotnovel <day|month> [数量]`：获取今日/本月热门榜单。
+     *
+     * 对齐原仓库 `handle_hotnovel`。
+     */
+    private suspend fun localNovelHotText(
+        sessionId: String,
+        rawArgs: String,
+        progressReporter: LocalCommandProgressReporter?
+    ): String {
+        val period = try {
+            val parts = rawArgs.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+            parseLocalNovelRankingPeriod(parts.firstOrNull() ?: "")
+        } catch (error: Exception) {
+            val message = error.message ?: "格式：`/hotnovel <day|month> [数量]`"
+            progressReporter?.update(
+                content = "热门榜单参数错误",
+                progress = 0,
+                steps = listOf(ThinkingStep(type = "done", name = "参数校验失败", status = "error", detail = message)),
+                isComplete = true,
+                force = true
+            )
+            return message
+        }
+        val limit = parseLocalNovelHotLimit(rawArgs)
+        val cookie = readWenku8Cookie()
+        val currentProgress = AtomicInteger(0)
+
+        suspend fun report(
+            content: String,
+            progress: Int,
+            steps: List<ThinkingStep>,
+            isComplete: Boolean = false,
+            force: Boolean = false
+        ) {
+            currentProgress.set(progress.coerceIn(0, 100))
+            progressReporter?.update(content, progress, steps, isComplete, force)
+        }
+
+        report(
+            content = "获取 ${period.displayName}",
+            progress = 5,
+            steps = listOf(ThinkingStep(type = "knowledge", name = "获取榜单数据", status = "running", detail = period.displayName)),
+            force = true
+        )
+
+        return try {
+            val entries = withContext(Dispatchers.IO) {
+                localNovelClient.fetchHotNovels(period, cookie, limit)
+            }
+            report(
+                content = "处理 ${period.displayName}",
+                progress = 70,
+                steps = listOf(ThinkingStep(type = "knowledge", name = "获取榜单数据", status = "done", detail = "${entries.size} 条")),
+                force = true
+            )
+            if (entries.isEmpty()) {
+                val msg = "没找到热门榜单喵，可能网页结构变了喵~"
+                report(
+                    content = "榜单为空",
+                    progress = 100,
+                    steps = listOf(ThinkingStep(type = "done", name = "无数据", status = "error", detail = msg)),
+                    isComplete = true,
+                    force = true
+                )
+                return msg
+            }
+
+            // 保存到会话级搜索状态（清空 API 部分，避免干扰 /select）
+            localNovelSearchStates[sessionId] = LocalNovelSearchState(entries, emptyList())
+
+            report(
+                content = "生成榜单 HTML",
+                progress = 90,
+                steps = listOf(
+                    ThinkingStep(type = "knowledge", name = "获取榜单数据", status = "done", detail = "${entries.size} 条"),
+                    ThinkingStep(type = "file", name = "生成 HTML", status = "running")
+                ),
+                force = true
+            )
+            val html = buildLocalNovelGridHtml("${period.displayName} · 轻小说排行", entries)
+            val root = localWorkspaceRoot(sessionId) ?: error("无法打开当前会话工作区。")
+            val novelDir = File(root, "novel")
+            if (!novelDir.exists() && !novelDir.mkdirs()) {
+                error("无法创建轻小说目录。")
+            }
+            val periodName = period.name.lowercase(Locale.ROOT)
+            val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
+            val fileName = "hot-$periodName-$timestamp.html"
+            withContext(Dispatchers.IO) {
+                File(novelDir, fileName).writeText(html, Charsets.UTF_8)
+            }
+            report(
+                content = "${period.displayName}已生成",
+                progress = 100,
+                steps = listOf(
+                    ThinkingStep(type = "knowledge", name = "获取榜单数据", status = "done", detail = "${entries.size} 条"),
+                    ThinkingStep(type = "file", name = "HTML 已生成", status = "done", detail = "novel/$fileName")
+                ),
+                isComplete = true,
+                force = true
+            )
+            "✨ ${period.displayName}前 ${entries.size} 名喵~ 点击卡片查看详情或使用 `/info 编号` 获取信息喵~" +
+                "\n\n[File: novel/$fileName]"
+        } catch (error: CancellationException) {
+            withContext(NonCancellable) {
+                progressReporter?.update(
+                    content = "${period.displayName}获取已取消",
+                    progress = currentProgress.get(),
+                    steps = listOf(ThinkingStep(type = "done", name = "任务已取消", status = "error")),
+                    isComplete = true,
+                    force = true
+                )
+            }
+            throw error
+        } catch (error: Exception) {
+            val message = error.message ?: "获取 ${period.displayName}失败，请稍后重试。"
+            progressReporter?.update(
+                content = "${period.displayName}获取失败",
+                progress = currentProgress.get(),
+                steps = listOf(ThinkingStep(type = "done", name = "任务失败", status = "error", detail = message)),
+                isComplete = true,
+                force = true
+            )
+            message
+        }
+    }
+
+    /**
+     * `/random_novel`：从今日热门榜单随机取一本，生成详情 HTML。
+     *
+     * 对齐原仓库 `handle_random_novel`。
+     */
+    private suspend fun localNovelRandomText(
+        sessionId: String,
+        progressReporter: LocalCommandProgressReporter?
+    ): String {
+        val cookie = readWenku8Cookie()
+        val currentProgress = AtomicInteger(0)
+
+        suspend fun report(
+            content: String,
+            progress: Int,
+            steps: List<ThinkingStep>,
+            isComplete: Boolean = false,
+            force: Boolean = false
+        ) {
+            currentProgress.set(progress.coerceIn(0, 100))
+            progressReporter?.update(content, progress, steps, isComplete, force)
+        }
+
+        report(
+            content = "随机推荐轻小说",
+            progress = 5,
+            steps = listOf(ThinkingStep(type = "knowledge", name = "获取热门榜单", status = "running")),
+            force = true
+        )
+
+        return try {
+            val book = withContext(Dispatchers.IO) {
+                localNovelClient.fetchRandomFromHot(cookie)
+            }
+            if (book == null) {
+                val msg = "获取随机小说失败喵~请稍后再试~"
+                report(
+                    content = "随机推荐失败",
+                    progress = 100,
+                    steps = listOf(ThinkingStep(type = "done", name = "无数据", status = "error", detail = msg)),
+                    isComplete = true,
+                    force = true
+                )
+                return msg
+            }
+            report(
+                content = "获取《${book.title}》详情",
+                progress = 60,
+                steps = listOf(
+                    ThinkingStep(type = "knowledge", name = "获取热门榜单", status = "done", detail = book.title),
+                    ThinkingStep(type = "knowledge", name = "获取书籍详情", status = "running")
+                ),
+                force = true
+            )
+            // 尝试获取更详细的页面信息
+            val detail = withContext(Dispatchers.IO) {
+                localNovelClient.fetchBookDetail(book.id, cookie) ?: book
+            }
+            report(
+                content = "生成《${detail.title}》详情",
+                progress = 90,
+                steps = listOf(
+                    ThinkingStep(type = "knowledge", name = "获取热门榜单", status = "done", detail = book.title),
+                    ThinkingStep(type = "knowledge", name = "获取书籍详情", status = "done"),
+                    ThinkingStep(type = "file", name = "生成 HTML", status = "running")
+                ),
+                force = true
+            )
+            val html = buildLocalNovelDetailHtml(detail)
+            val root = localWorkspaceRoot(sessionId) ?: error("无法打开当前会话工作区。")
+            val novelDir = File(root, "novel")
+            if (!novelDir.exists() && !novelDir.mkdirs()) {
+                error("无法创建轻小说目录。")
+            }
+            val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
+            val safeName = detail.title.replace(Regex("[^\\w\\u4e00-\\u9fa5-]"), "_").take(20)
+            val fileName = "random-$safeName-$timestamp.html"
+            withContext(Dispatchers.IO) {
+                File(novelDir, fileName).writeText(html, Charsets.UTF_8)
+            }
+            report(
+                content = "随机推荐完成",
+                progress = 100,
+                steps = listOf(
+                    ThinkingStep(type = "knowledge", name = "获取热门榜单", status = "done", detail = book.title),
+                    ThinkingStep(type = "knowledge", name = "获取书籍详情", status = "done"),
+                    ThinkingStep(type = "file", name = "HTML 已生成", status = "done", detail = "novel/$fileName")
+                ),
+                isComplete = true,
+                force = true
+            )
+            "抽选到了《${detail.title}》喵~\n作者：${detail.author}\n字数：${detail.wordCount}\n状态：${detail.isSerialize}\n简介：${detail.introduction}" +
+                "\n\n[File: novel/$fileName]"
+        } catch (error: CancellationException) {
+            withContext(NonCancellable) {
+                progressReporter?.update(
+                    content = "随机推荐已取消",
+                    progress = currentProgress.get(),
+                    steps = listOf(ThinkingStep(type = "done", name = "任务已取消", status = "error")),
+                    isComplete = true,
+                    force = true
+                )
+            }
+            throw error
+        } catch (error: Exception) {
+            val message = error.message ?: "获取随机小说失败，请稍后重试。"
+            progressReporter?.update(
+                content = "随机推荐失败",
+                progress = currentProgress.get(),
+                steps = listOf(ThinkingStep(type = "done", name = "任务失败", status = "error", detail = message)),
+                isComplete = true,
+                force = true
+            )
+            message
+        }
+    }
+
+    /**
+     * `/info <编号>`：获取上次搜索结果中指定编号的书籍详情。
+     *
+     * 对齐原仓库 `handle_info`：
+     * - wenku8 结果：抓取详情页 HTML
+     * - API 结果：调用番茄 API 获取详情
+     */
+    private suspend fun localNovelInfoText(
+        sessionId: String,
+        rawArgs: String,
+        progressReporter: LocalCommandProgressReporter?
+    ): String {
+        val state = localNovelSearchStates[sessionId]
+        if (state == null || state.totalSize == 0) {
+            val msg = "没有找到主人的搜索记录喵~请先使用 `/findbook` 搜索喵~"
+            progressReporter?.update(
+                content = "无搜索记录",
+                progress = 100,
+                steps = listOf(ThinkingStep(type = "done", name = "无搜索记录", status = "error", detail = msg)),
+                isComplete = true,
+                force = true
+            )
+            return msg
+        }
+        val selection = parseLocalNovelSelection(rawArgs)
+        if (selection == null) {
+            val msg = "请输入有效的编号喵~"
+            progressReporter?.update(
+                content = "编号无效",
+                progress = 100,
+                steps = listOf(ThinkingStep(type = "done", name = "编号无效", status = "error", detail = msg)),
+                isComplete = true,
+                force = true
+            )
+            return msg
+        }
+        val index = selection - 1
+        if (index < 0 || index >= state.totalSize) {
+            val msg = "编号无效喵~请选择列表中的编号喵~"
+            progressReporter?.update(
+                content = "编号越界",
+                progress = 100,
+                steps = listOf(ThinkingStep(type = "done", name = "编号越界", status = "error", detail = msg)),
+                isComplete = true,
+                force = true
+            )
+            return msg
+        }
+
+        val currentProgress = AtomicInteger(0)
+        suspend fun report(
+            content: String,
+            progress: Int,
+            steps: List<ThinkingStep>,
+            isComplete: Boolean = false,
+            force: Boolean = false
+        ) {
+            currentProgress.set(progress.coerceIn(0, 100))
+            progressReporter?.update(content, progress, steps, isComplete, force)
+        }
+
+        report(
+            content = "获取书籍详情",
+            progress = 10,
+            steps = listOf(ThinkingStep(type = "knowledge", name = "获取详情", status = "running", detail = "编号 $selection")),
+            force = true
+        )
+
+        return try {
+            val cookie = readWenku8Cookie()
+            val isWebMatch = index < state.webMatches.size
+            val book: LocalNovelBook = if (isWebMatch) {
+                val webBook = state.webMatches[index]
+                // 尝试从详情页获取更完整的信息，失败则回退到搜索结果
+                withContext(Dispatchers.IO) {
+                    localNovelClient.fetchBookDetail(webBook.id, cookie) ?: webBook
+                }
+            } else {
+                val apiIndex = index - state.webMatches.size
+                val apiBook = state.apiMatches[apiIndex]
+                withContext(Dispatchers.IO) {
+                    localNovelClient.fetchApiBookInfo(apiBook.bookId) ?: LocalNovelBook(
+                        id = apiBook.bookId,
+                        title = apiBook.title,
+                        author = "未知",
+                        pageUrl = "https://fanqienovel.com/page/${apiBook.bookId}",
+                        apiBookId = apiBook.bookId
+                    )
+                }
+            }
+            report(
+                content = "生成《${book.title}》详情",
+                progress = 85,
+                steps = listOf(
+                    ThinkingStep(type = "knowledge", name = "获取详情", status = "done", detail = book.title),
+                    ThinkingStep(type = "file", name = "生成 HTML", status = "running")
+                ),
+                force = true
+            )
+            val html = buildLocalNovelDetailHtml(book)
+            val root = localWorkspaceRoot(sessionId) ?: error("无法打开当前会话工作区。")
+            val novelDir = File(root, "novel")
+            if (!novelDir.exists() && !novelDir.mkdirs()) {
+                error("无法创建轻小说目录。")
+            }
+            val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
+            val safeName = book.title.replace(Regex("[^\\w\\u4e00-\\u9fa5-]"), "_").take(20)
+            val fileName = "info-$safeName-$timestamp.html"
+            withContext(Dispatchers.IO) {
+                File(novelDir, fileName).writeText(html, Charsets.UTF_8)
+            }
+            report(
+                content = "《${book.title}》详情已生成",
+                progress = 100,
+                steps = listOf(
+                    ThinkingStep(type = "knowledge", name = "获取详情", status = "done", detail = book.title),
+                    ThinkingStep(type = "file", name = "HTML 已生成", status = "done", detail = "novel/$fileName")
+                ),
+                isComplete = true,
+                force = true
+            )
+            "《${book.title}》的信息如下喵~\n作者：${book.author}\n分类：${book.category}\n字数：${book.wordCount}\n状态：${book.isSerialize}\n更新日期：${book.lastDate}\n简介：${book.introduction}" +
+                "\n\n[File: novel/$fileName]"
+        } catch (error: CancellationException) {
+            withContext(NonCancellable) {
+                progressReporter?.update(
+                    content = "获取详情已取消",
+                    progress = currentProgress.get(),
+                    steps = listOf(ThinkingStep(type = "done", name = "任务已取消", status = "error")),
+                    isComplete = true,
+                    force = true
+                )
+            }
+            throw error
+        } catch (error: Exception) {
+            val message = error.message ?: "获取书籍详情失败，请稍后重试。"
+            progressReporter?.update(
+                content = "获取详情失败",
+                progress = currentProgress.get(),
+                steps = listOf(ThinkingStep(type = "done", name = "任务失败", status = "error", detail = message)),
+                isComplete = true,
+                force = true
+            )
+            message
+        }
+    }
+
+    /**
+     * `/select <编号>`：选择上次搜索结果中的书籍。
+     *
+     * 对齐原仓库 `handle_select`：
+     * - wenku8 结果：下载 TXT 并保存到工作区
+     * - API 结果：下载 TXT 并保存到工作区
+     */
+    private suspend fun localNovelSelectText(
+        sessionId: String,
+        rawArgs: String,
+        progressReporter: LocalCommandProgressReporter?
+    ): String {
+        val state = localNovelSearchStates[sessionId]
+        if (state == null || state.totalSize == 0) {
+            val msg = "没有找到主人的搜索记录喵~请先使用 `/findbook` 搜索喵~"
+            progressReporter?.update(
+                content = "无搜索记录",
+                progress = 100,
+                steps = listOf(ThinkingStep(type = "done", name = "无搜索记录", status = "error", detail = msg)),
+                isComplete = true,
+                force = true
+            )
+            return msg
+        }
+        val selection = parseLocalNovelSelection(rawArgs)
+        if (selection == null) {
+            val msg = "请输入有效的编号喵~"
+            progressReporter?.update(
+                content = "编号无效",
+                progress = 100,
+                steps = listOf(ThinkingStep(type = "done", name = "编号无效", status = "error", detail = msg)),
+                isComplete = true,
+                force = true
+            )
+            return msg
+        }
+        val index = selection - 1
+        if (index < 0 || index >= state.totalSize) {
+            val msg = "编号无效喵~请选择列表中的编号喵~"
+            progressReporter?.update(
+                content = "编号越界",
+                progress = 100,
+                steps = listOf(ThinkingStep(type = "done", name = "编号越界", status = "error", detail = msg)),
+                isComplete = true,
+                force = true
+            )
+            return msg
+        }
+
+        val isWebMatch = index < state.webMatches.size
+        val currentProgress = AtomicInteger(0)
+        suspend fun report(
+            content: String,
+            progress: Int,
+            steps: List<ThinkingStep>,
+            isComplete: Boolean = false,
+            force: Boolean = false
+        ) {
+            currentProgress.set(progress.coerceIn(0, 100))
+            progressReporter?.update(content, progress, steps, isComplete, force)
+        }
+
+        return try {
+            if (isWebMatch) {
+                // wenku8 结果：下载 GBK TXT，转换为 UTF-8 后保存到工作区
+                val book = state.webMatches[index]
+                report(
+                    content = "下载《${book.title}》",
+                    progress = 20,
+                    steps = listOf(ThinkingStep(type = "file", name = "下载 TXT", status = "running", detail = book.title)),
+                    force = true
+                )
+                val bytes = withContext(Dispatchers.IO) {
+                    localNovelClient.downloadWenku8Txt(book.id, readWenku8Cookie())
+                }
+                val root = localWorkspaceRoot(sessionId) ?: error("无法打开当前会话工作区。")
+                val novelDir = File(root, "novel")
+                if (!novelDir.exists() && !novelDir.mkdirs()) {
+                    error("无法创建轻小说目录。")
+                }
+                val safeName = book.title
+                    .replace(Regex("[^\\w\\u4e00-\\u9fa5-]"), "_")
+                    .trim('_')
+                    .take(40)
+                    .ifBlank { "wenku8-${book.id}" }
+                val fileName = "$safeName.txt"
+                withContext(Dispatchers.IO) {
+                    val content = String(bytes, charset("GBK"))
+                    File(novelDir, fileName).writeText(content, Charsets.UTF_8)
+                }
+                report(
+                    content = "《${book.title}》下载完成",
+                    progress = 100,
+                    steps = listOf(
+                        ThinkingStep(
+                            type = "file",
+                            name = "TXT 已保存",
+                            status = "done",
+                            detail = "novel/$fileName"
+                        )
+                    ),
+                    isComplete = true,
+                    force = true
+                )
+                "已下载《${book.title}》-- ${book.author}喵~\n\n[File: novel/$fileName]"
+            } else {
+                // API 结果：下载 TXT
+                val apiIndex = index - state.webMatches.size
+                val apiBook = state.apiMatches[apiIndex]
+                report(
+                    content = "下载《${apiBook.title}》",
+                    progress = 20,
+                    steps = listOf(ThinkingStep(type = "file", name = "下载 TXT", status = "running", detail = apiBook.title)),
+                    force = true
+                )
+                val content = withContext(Dispatchers.IO) {
+                    localNovelClient.downloadApiBook(apiBook.bookId)
+                }
+                if (content.isNullOrBlank()) {
+                    val msg = "下载《${apiBook.title}》失败喵~请稍后再试~"
+                    report(
+                        content = "下载失败",
+                        progress = 100,
+                        steps = listOf(ThinkingStep(type = "done", name = "下载失败", status = "error", detail = msg)),
+                        isComplete = true,
+                        force = true
+                    )
+                    return msg
+                }
+                val root = localWorkspaceRoot(sessionId) ?: error("无法打开当前会话工作区。")
+                val novelDir = File(root, "novel")
+                if (!novelDir.exists() && !novelDir.mkdirs()) {
+                    error("无法创建轻小说目录。")
+                }
+                val safeName = apiBook.title.replace(Regex("[^\\w\\u4e00-\\u9fa5-]"), "_").take(40)
+                val fileName = "$safeName.txt"
+                withContext(Dispatchers.IO) {
+                    File(novelDir, fileName).writeText(content, Charsets.UTF_8)
+                }
+                report(
+                    content = "《${apiBook.title}》下载完成",
+                    progress = 100,
+                    steps = listOf(ThinkingStep(type = "file", name = "TXT 已保存", status = "done", detail = "novel/$fileName")),
+                    isComplete = true,
+                    force = true
+                )
+                "已下载《${apiBook.title}》喵~\n\n[File: novel/$fileName]"
+            }
+        } catch (error: CancellationException) {
+            withContext(NonCancellable) {
+                progressReporter?.update(
+                    content = "选择已取消",
+                    progress = currentProgress.get(),
+                    steps = listOf(ThinkingStep(type = "done", name = "任务已取消", status = "error")),
+                    isComplete = true,
+                    force = true
+                )
+            }
+            throw error
+        } catch (error: Exception) {
+            val message = error.message ?: "选择轻小说失败，请稍后重试。"
+            progressReporter?.update(
+                content = "选择失败",
+                progress = currentProgress.get(),
+                steps = listOf(ThinkingStep(type = "done", name = "任务失败", status = "error", detail = message)),
+                isComplete = true,
+                force = true
+            )
+            message
+        }
+    }
+
+    /**
+     * `/novel_res <res值>`：根据 wenku8 书 ID 下载 TXT。
+     *
+     * 对齐原仓库 `handle_novel_by_res`：直接走 wenku8 下载接口。
+     */
+    private suspend fun localNovelResText(
+        sessionId: String,
+        rawArgs: String,
+        progressReporter: LocalCommandProgressReporter?
+    ): String {
+        val resValue = parseLocalNovelRes(rawArgs)
+        if (resValue.isNullOrBlank()) {
+            val msg = "请输入要下载的 res 编号喵~例如：`/novel_res 1121`"
+            progressReporter?.update(
+                content = "参数为空",
+                progress = 100,
+                steps = listOf(ThinkingStep(type = "done", name = "参数错误", status = "error", detail = msg)),
+                isComplete = true,
+                force = true
+            )
+            return msg
+        }
+        val cookie = readWenku8Cookie()
+        val currentProgress = AtomicInteger(0)
+        suspend fun report(
+            content: String,
+            progress: Int,
+            steps: List<ThinkingStep>,
+            isComplete: Boolean = false,
+            force: Boolean = false
+        ) {
+            currentProgress.set(progress.coerceIn(0, 100))
+            progressReporter?.update(content, progress, steps, isComplete, force)
+        }
+
+        report(
+            content = "下载 res=$resValue",
+            progress = 10,
+            steps = listOf(ThinkingStep(type = "file", name = "下载 TXT", status = "running", detail = "bookId=$resValue")),
+            force = true
+        )
+
+        return try {
+            val bytes = withContext(Dispatchers.IO) {
+                localNovelClient.downloadWenku8Txt(resValue, cookie)
+            }
+            report(
+                content = "保存 TXT 文件",
+                progress = 85,
+                steps = listOf(
+                    ThinkingStep(type = "file", name = "下载 TXT", status = "done", detail = "${formatLocalFileSize(bytes.size.toLong())}"),
+                    ThinkingStep(type = "file", name = "保存文件", status = "running")
+                ),
+                force = true
+            )
+            val root = localWorkspaceRoot(sessionId) ?: error("无法打开当前会话工作区。")
+            val novelDir = File(root, "novel")
+            if (!novelDir.exists() && !novelDir.mkdirs()) {
+                error("无法创建轻小说目录。")
+            }
+            val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
+            val fileName = "wenku8-$resValue-$timestamp.txt"
+            withContext(Dispatchers.IO) {
+                File(novelDir, fileName).writeBytes(bytes)
+            }
+            report(
+                content = "下载完成",
+                progress = 100,
+                steps = listOf(
+                    ThinkingStep(type = "file", name = "下载 TXT", status = "done", detail = "${formatLocalFileSize(bytes.size.toLong())}"),
+                    ThinkingStep(type = "file", name = "TXT 已保存", status = "done", detail = "novel/$fileName")
+                ),
+                isComplete = true,
+                force = true
+            )
+            "已下载 res=$resValue 的轻小说喵~\n大小：${formatLocalFileSize(bytes.size.toLong())}" +
+                "\n\n[File: novel/$fileName]"
+        } catch (error: CancellationException) {
+            withContext(NonCancellable) {
+                progressReporter?.update(
+                    content = "下载已取消",
+                    progress = currentProgress.get(),
+                    steps = listOf(ThinkingStep(type = "done", name = "任务已取消", status = "error")),
+                    isComplete = true,
+                    force = true
+                )
+            }
+            throw error
+        } catch (error: Exception) {
+            val message = error.message ?: "下载 res=$resValue 失败，请稍后重试。"
+            progressReporter?.update(
+                content = "下载失败",
+                progress = currentProgress.get(),
+                steps = listOf(ThinkingStep(type = "done", name = "任务失败", status = "error", detail = message)),
+                isComplete = true,
+                force = true
+            )
+            message
+        }
+    }
+
+    /**
+     * `/set_wenku_cookie <Cookie>`：更新 wenku8 Cookie。
+     *
+     * 对齐原仓库 `handle_set_wenku_cookie`，但不做管理员校验（本地模式无多用户概念）。
+     */
+    private fun localNovelSetCookieText(rawArgs: String): String {
+        val cookie = rawArgs.trim()
+        if (cookie.isEmpty()) return "请输入新的 Cookie 喵~"
+        writeWenku8Cookie(cookie)
+        return "✅ Cookie 更新成功喵！现在可以尝试使用 `/hotnovel` 喵~"
     }
 
     private fun localFortuneText(sessionId: String): String {

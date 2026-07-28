@@ -77,5 +77,6 @@ class LocalSlashCommandsTest {
         assertTrue(help.contains("/jmrank"))
         assertTrue(help.contains("/jm <漫画ID>"))
         assertTrue(help.contains("/yolo"))
+        assertFalse(help.contains("依赖 Python"))
     }
 }
