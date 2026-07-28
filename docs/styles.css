@@ -292,57 +292,138 @@ code {
 
 /* ============ 真实界面截图 ============ */
 .screenshot-section { max-width: 1240px; }
-.screenshot-gallery {
-  display: flex;
-  gap: 18px;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  scroll-snap-type: x proximity;
-  scrollbar-color: #F1B5C8 transparent;
-  scrollbar-width: thin;
-  padding: 8px 8px 22px;
+.screenshot-stage {
+  display: flex; flex-direction: column; align-items: center;
 }
-.screenshot-gallery::-webkit-scrollbar { height: 8px; }
-.screenshot-gallery::-webkit-scrollbar-track { background: transparent; }
-.screenshot-gallery::-webkit-scrollbar-thumb {
-  background: #F1B5C8;
-  border-radius: 999px;
+.screenshot-device { position: relative; }
+
+/* 手机外壳（与 Hero 手机模型同款） */
+.screenshot-phone {
+  position: relative;
+  width: min(312px, 78vw);
+  background: linear-gradient(145deg, #8B8B90, #67676C);
+  border-radius: 46px;
+  padding: 6px;
+  box-shadow: 0 24px 60px rgba(58, 48, 75, .2), inset 0 0 0 1px rgba(255, 255, 255, .16);
 }
-.screenshot-card {
-  flex: 0 0 clamp(220px, 22vw, 260px);
-  scroll-snap-align: start;
-  margin: 0;
+.screenshot-island {
+  position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+  width: 29%; aspect-ratio: 88 / 26;
+  background: #1A1A1E; border-radius: 999px; z-index: 3;
 }
 .screenshot-frame {
+  position: relative;
   aspect-ratio: 1440 / 2928;
   overflow: hidden;
-  border-radius: 26px;
-  border: 1px solid rgba(66, 60, 79, .12);
+  border-radius: 40px;
   background: #F7F6FB;
-  box-shadow: 0 16px 38px rgba(58, 48, 75, .12);
-  transition: transform .35s var(--ease-spring), box-shadow .35s;
 }
-.screenshot-card:hover .screenshot-frame {
-  transform: translateY(-6px);
-  box-shadow: 0 22px 48px rgba(58, 48, 75, .17);
+/* 屏幕玻璃反光 */
+.screenshot-frame::after {
+  content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  background: linear-gradient(118deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, 0) 30%);
 }
-.screenshot-frame img {
-  width: 100%;
-  height: 100%;
+
+/* 屏幕内的滑动轨道 */
+.screenshot-gallery {
+  position: absolute; inset: 0;
+  display: flex;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.screenshot-gallery::-webkit-scrollbar { display: none; }
+.screenshot-card {
+  flex: 0 0 100%;
+  scroll-snap-align: center;
+  margin: 0;
+  cursor: zoom-in;
+}
+.screenshot-card img {
+  width: 100%; height: 100%;
+  display: block; object-fit: cover;
+}
+.screenshot-card figcaption { display: none; }
+
+/* 左右切换箭头（手机两侧） */
+.gallery-btn {
+  position: absolute; top: 50%; z-index: 4;
+  width: 48px; height: 48px; border-radius: 50%;
+  background: rgba(255, 255, 255, .94); backdrop-filter: blur(8px);
+  color: var(--text);
+  display: grid; place-items: center;
+  box-shadow: var(--shadow-md);
+  transform: translateY(-50%);
+  transition: transform .25s var(--ease-spring), opacity .25s, box-shadow .25s, color .25s;
+}
+.gallery-btn.prev { right: calc(100% + 28px); }
+.gallery-btn.next { left: calc(100% + 28px); }
+.gallery-btn:hover { transform: translateY(-50%) scale(1.1); color: var(--primary-deep); box-shadow: var(--shadow-lg); }
+.gallery-btn:disabled { opacity: 0; pointer-events: none; transform: translateY(-50%) scale(.82); }
+
+/* 当前截图标题 */
+.screenshot-caption {
+  margin-top: 26px;
+  display: grid; gap: 4px;
+  text-align: center;
+}
+.screenshot-caption b { font-size: 18px; letter-spacing: .3px; }
+.screenshot-caption span { font-size: 14px; color: var(--text-2); }
+
+/* 轮播圆点 */
+.gallery-dots { display: flex; gap: 8px; margin-top: 16px; }
+.gallery-dots button {
+  width: 8px; height: 8px; padding: 0;
+  border-radius: 999px;
+  background: #EFD4DE;
+  transition: all .3s var(--ease-spring);
+}
+.gallery-dots button:hover { background: var(--primary); }
+.gallery-dots button.active {
+  width: 24px;
+  background: linear-gradient(90deg, var(--primary), var(--primary-deep));
+}
+
+/* 截图灯箱 */
+.lightbox { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; visibility: hidden; }
+.lightbox.open { visibility: visible; }
+.lightbox-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(34, 24, 36, .88); backdrop-filter: blur(10px);
+  opacity: 0; transition: opacity .3s;
+}
+.lightbox.open .lightbox-backdrop { opacity: 1; }
+.lightbox-figure {
+  position: relative; z-index: 2; margin: 0;
+  opacity: 0; transform: scale(.92) translateY(16px);
+  transition: transform .35s var(--ease-spring), opacity .3s;
+}
+.lightbox.open .lightbox-figure { opacity: 1; transform: none; }
+.lightbox-figure img {
   display: block;
-  object-fit: cover;
+  max-height: 80vh; max-width: 88vw; width: auto; height: auto;
+  border-radius: 26px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .5);
 }
-.screenshot-card figcaption {
-  display: grid;
-  gap: 3px;
-  padding: 14px 6px 0;
+.lightbox-figure figcaption { display: grid; gap: 2px; margin-top: 14px; text-align: center; color: #fff; }
+.lightbox-figure figcaption b { font-size: 16px; letter-spacing: .3px; }
+.lightbox-figure figcaption span { font-size: 13px; opacity: .72; }
+.lightbox-close,
+.lightbox-nav {
+  position: absolute; z-index: 3;
+  width: 46px; height: 46px; border-radius: 50%;
+  background: rgba(255, 255, 255, .13); color: #fff;
+  display: grid; place-items: center;
+  transition: background .2s, transform .2s;
 }
-.screenshot-card figcaption b { font-size: 15px; }
-.screenshot-card figcaption span {
-  color: var(--text-2);
-  font-size: 12.5px;
-  line-height: 1.55;
-}
+.lightbox-close:hover, .lightbox-nav:hover { background: rgba(255, 255, 255, .28); }
+.lightbox-close { top: 20px; right: 22px; }
+.lightbox-close:hover { transform: rotate(90deg); }
+.lightbox-nav { top: 50%; transform: translateY(-50%); }
+.lightbox-nav.prev { left: max(16px, 4vw); }
+.lightbox-nav.next { right: max(16px, 4vw); }
+body.lightbox-open { overflow: hidden; }
 .screenshot-note {
   display: flex;
   align-items: center;
@@ -1225,8 +1306,10 @@ code {
   .float-chip { display: none; }
   .section { padding-top: 64px; }
   .screenshot-section { padding-inline: 12px; }
-  .screenshot-gallery { gap: 14px; padding-inline: 4px; }
-  .screenshot-card { flex-basis: min(72vw, 260px); }
+  .gallery-btn { display: none; }
+  .screenshot-caption { margin-top: 20px; padding-inline: 8px; }
+  .screenshot-caption b { font-size: 16px; }
+  .screenshot-caption span { font-size: 13px; }
   .screenshot-note {
     align-items: flex-start;
     flex-direction: column;

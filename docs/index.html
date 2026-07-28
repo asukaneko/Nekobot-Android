@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" href="assets/favicon.png" />
   <link rel="apple-touch-icon" href="assets/neko-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="stylesheet" href="styles.css?v=0.4.2-agent-icons" />
+  <link rel="stylesheet" href="styles.css?v=0.4.3-gallery" />
 </head>
 <body>
 
@@ -130,73 +130,74 @@
         <p>截图来自本地模式演示数据，左右滑动查看更多界面</p>
       </div>
 
-      <div class="screenshot-gallery reveal" aria-label="Nekobot 应用界面截图">
-        <figure class="screenshot-card">
-          <div class="screenshot-frame">
-            <img src="assets/screenshots/sessions.jpg" alt="Nekobot 会话管理页面" loading="lazy" decoding="async" />
+      <div class="screenshot-stage reveal">
+        <div class="screenshot-device">
+          <button class="gallery-btn prev" id="galleryPrev" type="button" aria-label="上一张截图">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+
+          <div class="screenshot-phone">
+            <span class="screenshot-island" aria-hidden="true"></span>
+            <div class="screenshot-frame">
+              <div class="screenshot-gallery" aria-label="Nekobot 应用界面截图">
+                <figure class="screenshot-card">
+                  <img src="assets/screenshots/sessions.jpg" alt="Nekobot 会话管理页面" loading="lazy" decoding="async" />
+                  <figcaption><b>会话管理</b><span>置顶、收藏、群聊与快速检索</span></figcaption>
+                </figure>
+                <figure class="screenshot-card">
+                  <img src="assets/screenshots/chat.jpg" alt="Nekobot 角色聊天页面" loading="lazy" decoding="async" />
+                  <figcaption><b>沉浸式聊天</b><span>流式回复、分叉与 Token 明细</span></figcaption>
+                </figure>
+                <figure class="screenshot-card">
+                  <img src="assets/screenshots/characters.jpg" alt="Nekobot 角色卡页面" loading="lazy" decoding="async" />
+                  <figcaption><b>角色卡</b><span>人物设定、标签与立绘管理</span></figcaption>
+                </figure>
+                <figure class="screenshot-card">
+                  <img src="assets/screenshots/dashboard-widget.jpg" alt="Nekobot 负一屏数据概览页面" loading="lazy" decoding="async" />
+                  <figcaption><b>负一屏概览</b><span>核心数据、快捷入口与最近动态</span></figcaption>
+                </figure>
+                <figure class="screenshot-card">
+                  <img src="assets/screenshots/achievements.jpg" alt="Nekobot 成就系统页面" loading="lazy" decoding="async" />
+                  <figcaption><b>成就系统</b><span>可爱徽章、进度追踪与解锁记录</span></figcaption>
+                </figure>
+                <figure class="screenshot-card">
+                  <img src="assets/screenshots/state-history-overview.jpg" alt="Nekobot 角色状态历程雷达图" loading="lazy" decoding="async" />
+                  <figcaption><b>状态历程</b><span>六维关系雷达图与节点回看</span></figcaption>
+                </figure>
+                <figure class="screenshot-card">
+                  <img src="assets/screenshots/state-history-trend.jpg" alt="Nekobot 角色关系趋势图" loading="lazy" decoding="async" />
+                  <figcaption><b>关系趋势</b><span>好感、信任与熟悉度变化</span></figcaption>
+                </figure>
+                <figure class="screenshot-card">
+                  <img src="assets/screenshots/memories.jpg" alt="Nekobot 角色记忆页面" loading="lazy" decoding="async" />
+                  <figcaption><b>角色记忆</b><span>摘要检索、注入与分角色管理</span></figcaption>
+                </figure>
+                <figure class="screenshot-card">
+                  <img src="assets/screenshots/worldbooks.jpg" alt="Nekobot 世界书页面" loading="lazy" decoding="async" />
+                  <figcaption><b>世界书</b><span>设定集、关键词与启用状态</span></figcaption>
+                </figure>
+                <figure class="screenshot-card">
+                  <img src="assets/screenshots/usage.jpg" alt="Nekobot Token 用量页面" loading="lazy" decoding="async" />
+                  <figcaption><b>Token 用量</b><span>拆分统计、排行与时间范围筛选</span></figcaption>
+                </figure>
+                <figure class="screenshot-card">
+                  <img src="assets/screenshots/more.jpg" alt="Nekobot 更多功能页面" loading="lazy" decoding="async" />
+                  <figcaption><b>更多功能</b><span>记忆、状态、数据库与扩展能力</span></figcaption>
+                </figure>
+              </div>
+            </div>
           </div>
-          <figcaption><b>会话管理</b><span>置顶、收藏、群聊与快速检索</span></figcaption>
-        </figure>
-        <figure class="screenshot-card">
-          <div class="screenshot-frame">
-            <img src="assets/screenshots/chat.jpg" alt="Nekobot 角色聊天页面" loading="lazy" decoding="async" />
-          </div>
-          <figcaption><b>沉浸式聊天</b><span>流式回复、分叉与 Token 明细</span></figcaption>
-        </figure>
-        <figure class="screenshot-card">
-          <div class="screenshot-frame">
-            <img src="assets/screenshots/characters.jpg" alt="Nekobot 角色卡页面" loading="lazy" decoding="async" />
-          </div>
-          <figcaption><b>角色卡</b><span>人物设定、标签与立绘管理</span></figcaption>
-        </figure>
-        <figure class="screenshot-card">
-          <div class="screenshot-frame">
-            <img src="assets/screenshots/dashboard-widget.jpg" alt="Nekobot 负一屏数据概览页面" loading="lazy" decoding="async" />
-          </div>
-          <figcaption><b>负一屏概览</b><span>核心数据、快捷入口与最近动态</span></figcaption>
-        </figure>
-        <figure class="screenshot-card">
-          <div class="screenshot-frame">
-            <img src="assets/screenshots/achievements.jpg" alt="Nekobot 成就系统页面" loading="lazy" decoding="async" />
-          </div>
-          <figcaption><b>成就系统</b><span>可爱徽章、进度追踪与解锁记录</span></figcaption>
-        </figure>
-        <figure class="screenshot-card">
-          <div class="screenshot-frame">
-            <img src="assets/screenshots/state-history-overview.jpg" alt="Nekobot 角色状态历程雷达图" loading="lazy" decoding="async" />
-          </div>
-          <figcaption><b>状态历程</b><span>六维关系雷达图与节点回看</span></figcaption>
-        </figure>
-        <figure class="screenshot-card">
-          <div class="screenshot-frame">
-            <img src="assets/screenshots/state-history-trend.jpg" alt="Nekobot 角色关系趋势图" loading="lazy" decoding="async" />
-          </div>
-          <figcaption><b>关系趋势</b><span>好感、信任与熟悉度变化</span></figcaption>
-        </figure>
-        <figure class="screenshot-card">
-          <div class="screenshot-frame">
-            <img src="assets/screenshots/memories.jpg" alt="Nekobot 角色记忆页面" loading="lazy" decoding="async" />
-          </div>
-          <figcaption><b>角色记忆</b><span>摘要检索、注入与分角色管理</span></figcaption>
-        </figure>
-        <figure class="screenshot-card">
-          <div class="screenshot-frame">
-            <img src="assets/screenshots/worldbooks.jpg" alt="Nekobot 世界书页面" loading="lazy" decoding="async" />
-          </div>
-          <figcaption><b>世界书</b><span>设定集、关键词与启用状态</span></figcaption>
-        </figure>
-        <figure class="screenshot-card">
-          <div class="screenshot-frame">
-            <img src="assets/screenshots/usage.jpg" alt="Nekobot Token 用量页面" loading="lazy" decoding="async" />
-          </div>
-          <figcaption><b>Token 用量</b><span>拆分统计、排行与时间范围筛选</span></figcaption>
-        </figure>
-        <figure class="screenshot-card">
-          <div class="screenshot-frame">
-            <img src="assets/screenshots/more.jpg" alt="Nekobot 更多功能页面" loading="lazy" decoding="async" />
-          </div>
-          <figcaption><b>更多功能</b><span>记忆、状态、数据库与扩展能力</span></figcaption>
-        </figure>
+
+          <button class="gallery-btn next" id="galleryNext" type="button" aria-label="下一张截图">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+
+        <div class="screenshot-caption">
+          <b id="shotTitle">会话管理</b>
+          <span id="shotDesc">置顶、收藏、群聊与快速检索</span>
+        </div>
+        <div class="gallery-dots" id="galleryDots" aria-label="截图切换"></div>
       </div>
 
       <div class="screenshot-note reveal">
@@ -837,6 +838,6 @@
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
   </button>
 
-  <script src="script.js?v=0.4.2-agent-icons"></script>
+  <script src="script.js?v=0.4.3-gallery"></script>
 </body>
 </html>

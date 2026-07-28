@@ -150,9 +150,10 @@
     });
   });
 
-  /* ---------- 7. 截图画廊：纵向滚轮转换为横向滚动 ---------- */
+  /* ---------- 7. 截图画廊：横向滚动 + 箭头分页 + 进度条 + 灯箱 ---------- */
   const screenshotGallery = $('.screenshot-gallery');
   if (screenshotGallery) {
+    // 纵向滚轮转换为横向滚动
     screenshotGallery.addEventListener('wheel', (event) => {
       if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
 
@@ -173,6 +174,130 @@
         behavior: 'auto',
       });
     }, { passive: false });
+
+    // 箭头按钮 + 圆点 + 标题联动
+    const prevBtn = $('#galleryPrev');
+    const nextBtn = $('#galleryNext');
+    const dotsBox = $('#galleryDots');
+    const shotTitle = $('#shotTitle');
+    const shotDesc = $('#shotDesc');
+    const shotCaption = $('.screenshot-caption');
+    const shotCards = $$('.screenshot-card', screenshotGallery);
+    let activeShot = 0;
+
+    const goTo = (i, smooth = true) => {
+      const clamped = Math.max(0, Math.min(shotCards.length - 1, i));
+      screenshotGallery.scrollTo({ left: clamped * screenshotGallery.clientWidth, behavior: smooth ? 'smooth' : 'auto' });
+    };
+
+    // 生成轮播圆点
+    const dots = shotCards.map((card, i) => {
+      const dot = document.createElement('button');
+      dot.type = 'button';
+      const capB = $('figcaption b', card);
+      dot.setAttribute('aria-label', `查看：${capB ? capB.textContent : '应用截图'}`);
+      dot.addEventListener('click', () => goTo(i));
+      if (dotsBox) dotsBox.appendChild(dot);
+      return dot;
+    });
+
+    const updateGalleryUi = () => {
+      const cw = screenshotGallery.clientWidth || 1;
+      const sl = screenshotGallery.scrollLeft;
+      const idx = Math.max(0, Math.min(shotCards.length - 1, Math.round(sl / cw)));
+      if (prevBtn) prevBtn.disabled = sl <= 1;
+      if (nextBtn) nextBtn.disabled = sl >= screenshotGallery.scrollWidth - cw - 1;
+      dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+      if (idx !== activeShot) {
+        activeShot = idx;
+        const card = shotCards[idx];
+        const capB = $('figcaption b', card);
+        const capS = $('figcaption span', card);
+        if (shotTitle) shotTitle.textContent = capB ? capB.textContent : '';
+        if (shotDesc) shotDesc.textContent = capS ? capS.textContent : '';
+        if (shotCaption && shotCaption.animate) {
+          shotCaption.animate(
+            [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],
+            { duration: 320, easing: 'ease-out' }
+          );
+        }
+      }
+    };
+    if (prevBtn) prevBtn.addEventListener('click', () => goTo(activeShot - 1));
+    if (nextBtn) nextBtn.addEventListener('click', () => goTo(activeShot + 1));
+    screenshotGallery.addEventListener('scroll', updateGalleryUi, { passive: true });
+    window.addEventListener('resize', () => { goTo(activeShot, false); updateGalleryUi(); });
+    window.addEventListener('load', updateGalleryUi);
+    updateGalleryUi();
+
+    // 灯箱预览（点击卡片放大，支持左右切换与键盘操作）
+    const lightbox = document.createElement('div');
+    lightbox.className = 'lightbox';
+    lightbox.setAttribute('role', 'dialog');
+    lightbox.setAttribute('aria-modal', 'true');
+    lightbox.setAttribute('aria-label', '截图大图预览');
+    lightbox.innerHTML = `
+      <div class="lightbox-backdrop"></div>
+      <figure class="lightbox-figure">
+        <img alt="" />
+        <figcaption><b></b><span></span></figcaption>
+      </figure>
+      <button class="lightbox-nav prev" type="button" aria-label="上一张"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+      <button class="lightbox-nav next" type="button" aria-label="下一张"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+      <button class="lightbox-close" type="button" aria-label="关闭预览"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
+    document.body.appendChild(lightbox);
+
+    const lbImg = $('.lightbox-figure img', lightbox);
+    const lbTitle = $('.lightbox-figure b', lightbox);
+    const lbDesc = $('.lightbox-figure span', lightbox);
+    let lbIndex = 0;
+
+    function syncLightbox() {
+      const card = shotCards[lbIndex];
+      if (!card) return;
+      const img = $('img', card);
+      lbImg.src = img.currentSrc || img.src;
+      lbImg.alt = img.alt;
+      const capB = $('figcaption b', card);
+      const capS = $('figcaption span', card);
+      lbTitle.textContent = capB ? capB.textContent : '';
+      lbDesc.textContent = capS ? capS.textContent : '';
+    }
+    function openLightbox(index) {
+      lbIndex = index;
+      syncLightbox();
+      lightbox.classList.add('open');
+      document.body.classList.add('lightbox-open');
+    }
+    function closeLightbox() {
+      lightbox.classList.remove('open');
+      document.body.classList.remove('lightbox-open');
+    }
+    function stepLightbox(delta) {
+      lbIndex = (lbIndex + delta + shotCards.length) % shotCards.length;
+      syncLightbox();
+    }
+
+    shotCards.forEach((card, i) => {
+      card.tabIndex = 0;
+      card.setAttribute('role', 'button');
+      const capB = $('figcaption b', card);
+      card.setAttribute('aria-label', `放大查看：${capB ? capB.textContent : '应用截图'}`);
+      card.addEventListener('click', () => openLightbox(i));
+      card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openLightbox(i); }
+      });
+    });
+    $('.lightbox-backdrop', lightbox).addEventListener('click', closeLightbox);
+    $('.lightbox-close', lightbox).addEventListener('click', closeLightbox);
+    $('.lightbox-nav.prev', lightbox).addEventListener('click', () => stepLightbox(-1));
+    $('.lightbox-nav.next', lightbox).addEventListener('click', () => stepLightbox(1));
+    document.addEventListener('keydown', (e) => {
+      if (!lightbox.classList.contains('open')) return;
+      if (e.key === 'Escape') closeLightbox();
+      else if (e.key === 'ArrowLeft') stepLightbox(-1);
+      else if (e.key === 'ArrowRight') stepLightbox(1);
+    });
   }
 
   /* ---------- 8. 回到顶部 ---------- */
