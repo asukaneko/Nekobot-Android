@@ -15,7 +15,9 @@
 [![License](https://img.shields.io/badge/license-GPL--3.0-f78fb3?style=flat-square&labelColor=2b2b3a)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/asukaneko/Nekobot-Android?style=flat-square&color=f78fb3&labelColor=2b2b3a&logo=github)](https://github.com/asukaneko/Nekobot-Android/stargazers)
 
-[应用截图](#-应用截图) · [功能特性](#-功能特性) · [下载安装](#-下载安装) · [双模式](#-双模式架构) · [从源码构建](#-从源码构建) · [更新日志](changelog.md) · [官方网站](https://asukaneko.github.io/Nekobot-Android/)
+[应用截图](#-应用截图) · [功能特性](#-功能特性) · [Agent 模式](#-agent-模式) · [下载安装](#-下载安装) · [双模式](#-双模式架构) · [从源码构建](#-从源码构建) · [更新日志](changelog.md) · [官方网站](https://asukaneko.github.io/Nekobot-Android/)
+
+**中文** | [English](./README_EN.md)
 
 </div>
 
@@ -69,6 +71,7 @@
 - **🌳 故事图** — Canvas 树状布局呈现剧情分支，支持分支选择、回滚与重生，本地持久化
 - **📈 状态历程** — 角色状态随时间变化的可视化时间线
 - **🧠 记忆管理** — 角色记忆的查看与编辑
+- **🤖 Agent 模式** — 多轮工具调用、可展开的实时进度卡片、原生浏览器、Linux 沙箱、会话终端与文件处理
 
 ### 🛠 个性化与工具
 
@@ -86,14 +89,41 @@
 - **🌙 深色玻璃拟态** — 液态玻璃底部导航栏、玻璃卡片、自定义弹窗与状态芯片
 - **🌈 自定义主题色** — 配合流式占位骨架动画，等待也优雅
 
+## 🤖 Agent 模式
+
+Agent 模式运行在本地模式中，让支持 Function Calling / Tool Use 的模型不只生成文字，还能在会话内浏览网页、操作文件、执行 Linux 命令并持续完成多步骤任务。
+
+| 能力               | 说明                                                     |
+| ---------------- | ------------------------------------------------------ |
+| **多轮工具执行**       | 模型可连续规划和调用工具；进度卡片实时显示思考、参数、结果与错误，用户展开状态不会因新工具事件而重置     |
+| **原生浏览器**        | 支持多标签页、点击、输入、滚动、前进/后退、JavaScript、视口与 User-Agent 切换     |
+| **网页读取**         | 可读取正文、动态 DOM 源码、交互骨架和结构化 URL，并支持 Cookie 登录态下的网页请求与文件下载 |
+| **浏览器预览**        | 聊天页可实时查看当前网页，支持全屏放大；AI 可截取当前页或长页面并交给视觉模型理解图片、图表和复杂布局   |
+| **Linux 沙箱**     | 内置 Alpine Linux + PRoot，支持安装软件包、运行脚本、启动后台进程和复用命令行环境    |
+| **会话终端**         | Agent 会话右上角菜单可打开全屏命令行，直接操作该会话的 `/workspace`            |
+| **文件与图片工具**      | 支持读取、写入、精确编辑、列出、解析和发送工作区文件，也可调用视觉模型理解本地图片              |
+| **Skills 与 MCP** | Agent 可读取已启用的本地 Skills，并调用已连接 MCP 服务提供的工具              |
+| **运行保护**         | 高风险命令需要确认；工具参数会在执行前修复和校验，连续重复且无进展的调用会自动停止              |
+| **后台执行**         | Agent 工作期间启用前台服务和常驻通知，降低切到后台后任务被 Android 提前终止的概率       |
+
+### 沙箱数据与会话隔离
+
+- 所有 Agent 会话共享同一套可写 Linux rootfs，因此通过 `apk add` 安装的软件和 `/root` 数据可以复用。
+- 每个 Agent 会话拥有独立的 `/workspace`，文件不会自动混入其他会话。
+- 正常覆盖安装同签名的新 APK 会保留 rootfs、已安装软件和工作区；卸载应用或清除应用数据仍会删除这些内容。
+- 后台进程可以跨同一会话的多次命令继续运行，但强制停止应用、重启手机或系统回收进程后需要重新启动。
+
+> Linux 沙箱目前仅支持 `arm64-v8a` 设备。Agent 使用的模型应支持工具调用；网页截图和本地图片理解还需要配置可用的视觉模型。
+
 ## 🔄 双模式架构
 
-|          | 🌐 服务器模式                | 📱 本地模式               |
-| -------- | ----------------------- | --------------------- |
-| **后端**   | 连接 NekoBot Web 后端       | 无需后端，直连 OpenAI 兼容 API |
-| **通信**   | REST + Socket.IO 实时流式推送 | 本地直接请求 AI API         |
-| **数据存储** | 服务器 + 本地缓存              | 全部存储于本地 Room 数据库      |
-| **适用场景** | 完整功能生态、多端同步             | 隐私优先、离线可用、自有 API Key  |
+|           | 🌐 服务器模式                | 📱 本地模式                            |
+| --------- | ----------------------- | ---------------------------------- |
+| **后端**    | 连接 NekoBot Web 后端       | 无需后端，直连 OpenAI 兼容 API              |
+| **通信**    | REST + Socket.IO 实时流式推送 | 本地直接请求 AI API                      |
+| **数据存储**  | 服务器 + 本地缓存              | Room 数据库 + 会话工作区 + 可写 Linux rootfs |
+| **Agent** | 由服务器能力决定                | 内置浏览器、Linux 沙箱、终端、Skills 与 MCP     |
+| **适用场景**  | 完整功能生态、多端同步             | 隐私优先、本地数据、自有 API Key、移动端 Agent     |
 
 ## 📦 下载安装
 
@@ -121,20 +151,31 @@
 3. 数据全部存储于本地，支持会话 / 角色 / 世界书 / 记忆等完整功能
 4. 设置页可查看本地运行日志
 
+**🤖 Agent 模式**
+
+1. 按本地模式完成模型配置，并确认聊天模型支持工具调用
+2. 在会话页新建会话时选择「Agent」
+3. 直接描述目标；AI 会按需使用浏览器、工作区、Linux、Skills 或 MCP 工具
+4. 点击进度卡片可查看每一步参数与结果；浏览器运行时可打开实时预览
+5. 点击聊天页右上角菜单中的「命令行」可直接进入当前会话沙箱
+
+> 对需要写入或修改系统状态的命令，应用会弹出授权确认。输入 `/yolo` 可为当前会话跳过普通命令确认，但高风险黑名单仍然生效，请仅在可信任务中使用。
+
 ## 🛠 技术栈
 
-| 类别   | 选型                                         |
-| ---- | ------------------------------------------ |
-| 语言   | Kotlin 2.0.21                              |
-| UI   | Jetpack Compose（BOM 2024.09.02）+ Material3 |
-| 架构   | MVVM（BaseViewModel + StateFlow）            |
-| 异步   | Kotlin Coroutines 1.9.0                    |
-| 网络   | Retrofit 2.11 + OkHttp 4.12 + Gson         |
-| 实时通信 | socket.io-client-java 2.1.0                |
-| 数据库  | Room 2.6.1（KSP 注解处理）                       |
-| 图片加载 | Coil 2.7.0（crossfade + 256MB 磁盘缓存）         |
-| 导航   | Navigation Compose 2.8.2                   |
-| 构建   | Gradle 8.11.1 + AGP 8.9.1 + KSP            |
+| 类别        | 选型                                         |
+| --------- | ------------------------------------------ |
+| 语言        | Kotlin 2.0.21                              |
+| UI        | Jetpack Compose（BOM 2024.09.02）+ Material3 |
+| 架构        | MVVM（BaseViewModel + StateFlow）            |
+| 异步        | Kotlin Coroutines 1.9.0                    |
+| 网络        | Retrofit 2.11 + OkHttp 4.12 + Gson         |
+| 实时通信      | socket.io-client-java 2.1.0                |
+| 数据库       | Room 2.6.1（KSP 注解处理）                       |
+| 图片加载      | Coil 2.7.0（crossfade + 256MB 磁盘缓存）         |
+| 导航        | Navigation Compose 2.8.2                   |
+| Agent 运行时 | Android WebView + Alpine Linux + PRoot     |
+| 构建        | Gradle 8.11.1 + AGP 8.9.1 + KSP            |
 
 ## 🔧 从源码构建
 
@@ -192,6 +233,7 @@ app/src/main/kotlin/com/nekobot/app/
 ├── NekobotApp.kt                    # Application + ServiceContainer + Coil ImageLoader
 ├── data/
 │   ├── local/
+│   │   ├── ai/                       # Agent Pipeline、工具循环、浏览器与 Linux 沙箱
 │   │   ├── LocalLogger.kt           # 本地日志（SharedPreferences 持久化，上限 2000 条）
 │   │   ├── LocalRepository.kt       # 本地模式数据仓库（Room）
 │   │   └── PrefsManager.kt          # SharedPreferences 封装
@@ -204,6 +246,8 @@ app/src/main/kotlin/com/nekobot/app/
 │   └── repository/
 │       ├── NekobotRepository.kt     # 服务器模式仓库
 │       └── UnifiedRepository.kt     # 模式统一入口（按 appMode 分发）
+├── service/
+│   └── AgentForegroundService.kt    # Agent 后台执行前台服务
 └── ui/
     ├── BaseViewModel.kt             # 统一 loading/error 处理
     ├── components/
@@ -234,12 +278,14 @@ app/src/main/kotlin/com/nekobot/app/
 
 ## 🔐 权限说明
 
-| 权限                     | 用途          |
-| ---------------------- | ----------- |
-| `INTERNET`             | 网络通信        |
-| `ACCESS_NETWORK_STATE` | 检测网络状态      |
-| `RECORD_AUDIO`         | 语音输入（服务器模式） |
-| `POST_NOTIFICATIONS`   | 会话通知提醒      |
+| 权限                                                    | 用途                    |
+| ----------------------------------------------------- | --------------------- |
+| `INTERNET`                                            | 网络通信、Agent 浏览器与沙箱网络访问 |
+| `ACCESS_NETWORK_STATE`                                | 检测网络状态                |
+| `RECORD_AUDIO`                                        | 语音输入（服务器模式）           |
+| `POST_NOTIFICATIONS`                                  | 会话通知与 Agent 后台运行状态    |
+| `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_DATA_SYNC` | Agent 长任务在前台服务中继续执行   |
+| `WAKE_LOCK`                                           | Agent 执行期间避免 CPU 过早休眠 |
 
 ## 🐞 调试
 

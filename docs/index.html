@@ -4,12 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Nekobot — 你的随身 AI 伙伴 | 官方网站</title>
-  <meta name="description" content="Nekobot 是一款温馨的 AI 伙伴 Android 应用，支持服务器与本地双模式，拥有角色卡、世界书、故事图、记忆系统等完整功能。" />
+  <meta name="description" content="Nekobot 是一款原生 Android AI 伙伴应用，支持服务器与本地双模式，并内置 Agent 浏览器、Linux 沙箱、会话终端、角色卡、世界书与记忆系统。" />
   <meta name="theme-color" content="#FFF6F0" />
   <link rel="icon" type="image/png" href="assets/favicon.png" />
   <link rel="apple-touch-icon" href="assets/neko-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="stylesheet" href="styles.css?v=0.4.0-screenshots-2" />
+  <link rel="stylesheet" href="styles.css?v=0.4.2-agent-icons" />
 </head>
 <body>
 
@@ -33,11 +33,11 @@
       </a>
       <nav class="nav-links" id="navLinks">
         <a href="#screenshots">界面</a>
-        <a href="#features">特性</a>
-        <a href="#modes">双模式</a>
+        <a href="#role">角色模式</a>
+        <a href="#agent">Agent</a>
         <a href="#advanced">进阶</a>
-        <a href="#download">下载</a>
         <a href="#changelog">日志</a>
+        <a href="#download">下载</a>
         <a href="#faq">FAQ</a>
       </nav>
       <div class="nav-actions">
@@ -73,7 +73,7 @@
           <p class="hero-sub reveal d2">
             Nekobot 是一款原生 Android AI 伙伴应用。<br />
             角色卡、世界书、故事图、记忆系统一应俱全，<br class="br-pc" />
-            支持连接自己的服务器，也可以完全在本地运行。
+            也能让 Agent 在手机上浏览网页、运行 Linux 并完成任务。
           </p>
           <div class="hero-cta reveal d3">
             <a href="#download" class="btn btn-primary btn-lg">
@@ -246,7 +246,7 @@
         <article class="feature-card reveal">
           <div class="feature-icon" style="--ic:#E8F1FF"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div>
           <h3>Agent 模式</h3>
-          <p>AI 自主调用工具完成任务，磨砂玻璃进度卡片实时展示思考链与每一步工具调用。</p>
+          <p>浏览网页、运行 Linux、处理文件并调用 Skills 与 MCP，进度卡片实时展示每一步。</p>
         </article>
         <article class="feature-card reveal d1">
           <div class="feature-icon" style="--ic:#FFF1D6"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div>
@@ -299,12 +299,12 @@
       </div>
     </section>
 
-    <!-- ======== 功能展示（Tab） ======== -->
-    <section class="section" id="showcase">
+    <!-- ======== 角色模式展示（Tab） ======== -->
+    <section class="section" id="role">
       <div class="section-head reveal">
-        <span class="section-tag">功能</span>
-        <h2>点开看看，里面有什么</h2>
-        <p>点击切换，预览 Nekobot 的核心界面</p>
+        <span class="section-tag">角色模式</span>
+        <h2>让角色真正陪你生活</h2>
+        <p>从对话、群聊到故事与记忆，看看角色模式的完整体验</p>
       </div>
       <div class="showcase reveal">
         <div class="showcase-tabs" role="tablist" aria-label="功能预览">
@@ -313,7 +313,6 @@
           <button class="sc-tab" data-tab="group" role="tab" aria-selected="false">群聊</button>
           <button class="sc-tab" data-tab="plot" role="tab" aria-selected="false">故事图</button>
           <button class="sc-tab" data-tab="stats" role="tab" aria-selected="false">用量</button>
-          <button class="sc-tab" data-tab="agent" role="tab" aria-selected="false">Agent</button>
           <button class="sc-tab" data-tab="memory" role="tab" aria-selected="false">记忆</button>
           <button class="sc-tab" data-tab="config" role="tab" aria-selected="false">配置中心</button>
         </div>
@@ -451,53 +450,6 @@
             </div>
           </div>
 
-          <!-- Agent 面板 -->
-          <div class="sc-panel" data-panel="agent" role="tabpanel">
-            <div class="mock-window">
-              <div class="mock-bar"><i></i><i></i><i></i><span>Agent 进度卡片</span></div>
-              <div class="mock-agent">
-                <div class="ag-head">
-                  <div class="ag-spinner"><i></i><i></i><i></i></div>
-                  <div>
-                    <div class="ag-title">AI 正在处理… <span class="ag-count">5/50</span></div>
-                    <div class="ag-sub">已调用 4 个工具，思考 1 次</div>
-                  </div>
-                </div>
-                <div class="ag-steps">
-                  <div class="ag-step done">
-                    <span class="ag-icon">💭</span>
-                    <div><b>思考</b><p>需要先查找角色卡，再生成首条消息</p></div>
-                    <span class="ag-state">✓</span>
-                  </div>
-                  <div class="ag-step done">
-                    <span class="ag-icon">🔧</span>
-                    <div><b>db_get_character</b><p>查询角色「小奈」基础信息</p></div>
-                    <span class="ag-state">✓</span>
-                  </div>
-                  <div class="ag-step done">
-                    <span class="ag-icon">📚</span>
-                    <div><b>db_list_memories</b><p>返回最近 5 条角色记忆</p></div>
-                    <span class="ag-state">✓</span>
-                  </div>
-                  <div class="ag-step running">
-                    <span class="ag-icon">✏️</span>
-                    <div><b>send_message</b><p>正在生成回复内容…</p></div>
-                    <span class="ag-state ag-state-running"></span>
-                  </div>
-                  <div class="ag-step pending">
-                    <span class="ag-icon">✅</span>
-                    <div><b>完成</b><p>等待上一步结束</p></div>
-                    <span class="ag-state ag-state-pending">○</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="sc-desc">
-              <h3>AI 自己完成的任务</h3>
-              <p>切换到 Agent 模式，AI 会自主调用工具完成任务：思考、检索数据库、调用 MCP、发送消息。磨砂玻璃进度卡片实时展示每一步，支持中途发送「继续」恢复中断的任务，最多 50 轮工具循环 + 3 次错误熔断。</p>
-            </div>
-          </div>
-
           <!-- 记忆面板 -->
           <div class="sc-panel" data-panel="memory" role="tabpanel">
             <div class="mock-window">
@@ -586,6 +538,115 @@
       </div>
     </section>
 
+    <!-- ======== Agent 模式 ======== -->
+    <section class="section agent-section" id="agent">
+      <div class="section-head reveal">
+        <span class="section-tag">Agent 模式</span>
+        <h2>把一套随身工作台，装进手机</h2>
+        <p>不只回答问题，还能浏览、执行、观察并持续完成多步骤任务</p>
+      </div>
+
+      <div class="agent-workbench reveal">
+        <div class="agent-workbench-copy">
+          <span class="agent-kicker">LOCAL AGENT WORKSPACE</span>
+          <h3>一个会话，一条完整执行链</h3>
+          <p>模型可以先读取网页源码与链接，再打开可视页面确认结果，随后进入 Linux 沙箱处理文件。所有步骤都回到同一张进度卡片，浏览器和终端也能随时由你接管。</p>
+          <div class="agent-workbench-points">
+            <span>实时网页预览</span>
+            <span>可写 Linux rootfs</span>
+            <span>独立 /workspace</span>
+            <span>前台服务保活</span>
+          </div>
+          <div class="agent-workbench-stats" aria-label="Agent 运行特性">
+            <div><b>多标签</b><small>浏览器会话</small></div>
+            <div><b>同一环境</b><small>命令持续运行</small></div>
+            <div><b>可追踪</b><small>参数与结果</small></div>
+          </div>
+        </div>
+
+        <div class="agent-workbench-preview" aria-hidden="true">
+          <div class="agent-preview-bar">
+            <span class="agent-preview-dots"><i></i><i></i><i></i></span>
+            <span>Agent 工作台</span>
+            <b>运行中</b>
+          </div>
+          <div class="agent-preview-tabs">
+            <span class="active">浏览器</span>
+            <span>终端</span>
+            <span>文件</span>
+          </div>
+          <div class="agent-browser-mini">
+            <div class="agent-address"><i></i><span>docs.example.dev/guide</span><b>DOM</b></div>
+            <div class="agent-page-lines">
+              <i></i><i></i><i></i>
+              <div><span></span><span></span><span></span></div>
+            </div>
+          </div>
+          <div class="agent-terminal-mini">
+            <p><span>$</span> python /workspace/analyze.py</p>
+            <p class="terminal-muted">读取网页与 12 个资源链接</p>
+            <p class="terminal-ok">✓ 报告已写入 /workspace/report.md</p>
+          </div>
+          <div class="agent-preview-status">
+            <span><i></i> DOM 已稳定</span>
+            <span>步骤 6 / 8</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 6 张卡片保证桌面 3×2、平板 2×3，最后一行始终完整 -->
+      <div class="agent-cap-grid">
+        <article class="agent-cap-card reveal">
+          <span class="agent-cap-icon icon-browser" aria-hidden="true"></span>
+          <div>
+            <h3>原生浏览器</h3>
+            <p>多标签、点击输入、DOM 源码、结构化 URL、Cookie 登录态请求与长页面滚动采集。</p>
+          </div>
+          <span class="agent-card-index">01</span>
+        </article>
+        <article class="agent-cap-card reveal d1">
+          <span class="agent-cap-icon icon-view" aria-hidden="true"></span>
+          <div>
+            <h3>实时预览与视觉理解</h3>
+            <p>聊天页实时观察当前网页，支持全屏放大；AI 可截图并调用视觉模型识别图片和图表。</p>
+          </div>
+          <span class="agent-card-index">02</span>
+        </article>
+        <article class="agent-cap-card reveal d2">
+          <span class="agent-cap-icon icon-linux" aria-hidden="true"></span>
+          <div>
+            <h3>可写 Linux 沙箱</h3>
+            <p>内置 Alpine 环境，可安装软件、运行脚本和后台服务；覆盖升级 APK 后继续保留数据。</p>
+          </div>
+          <span class="agent-card-index">03</span>
+        </article>
+        <article class="agent-cap-card reveal">
+          <span class="agent-cap-icon icon-terminal" aria-hidden="true"></span>
+          <div>
+            <h3>会话终端</h3>
+            <p>从右上角菜单进入全屏终端，直接接管当前会话命令行；每个会话使用独立工作区。</p>
+          </div>
+          <span class="agent-card-index">04</span>
+        </article>
+        <article class="agent-cap-card reveal d1">
+          <span class="agent-cap-icon icon-file" aria-hidden="true"></span>
+          <div>
+            <h3>文件、Skills 与 MCP</h3>
+            <p>读取、写入和精确编辑文件，理解本地图片，并组合已启用 Skills 与外部 MCP 工具。</p>
+          </div>
+          <span class="agent-card-index">05</span>
+        </article>
+        <article class="agent-cap-card reveal d2">
+          <span class="agent-cap-icon icon-safe" aria-hidden="true"></span>
+          <div>
+            <h3>可观察，也可控制</h3>
+            <p>进度卡片保留展开状态；高风险操作需要确认，参数错误和无进展循环会被自动拦截。</p>
+          </div>
+          <span class="agent-card-index">06</span>
+        </article>
+      </div>
+    </section>
+
     <!-- ======== 进阶能力（小卡片网格） ======== -->
     <section class="section" id="advanced">
       <div class="section-head reveal">
@@ -637,6 +698,19 @@
       </div>
     </section>
 
+    <!-- ======== 更新日志 ======== -->
+    <section class="section" id="changelog">
+      <div class="section-head reveal">
+        <span class="section-tag">日志</span>
+        <h2>一点一点，变得更好</h2>
+        <p>Nekobot 的成长记录</p>
+      </div>
+      <div class="timeline" id="changelogList"></div>
+      <div class="changelog-more reveal">
+        <a class="btn btn-ghost" href="https://github.com/asukaneko/Nekobot-Android/releases" target="_blank" rel="noopener">查看完整日志 →</a>
+      </div>
+    </section>
+
     <!-- ======== 下载 ======== -->
     <section class="section" id="download">
       <div class="download-card reveal">
@@ -662,19 +736,6 @@
             <span>免费 · 开源 · 无广告</span>
           </div>
         </div>
-      </div>
-    </section>
-
-    <!-- ======== 更新日志 ======== -->
-    <section class="section" id="changelog">
-      <div class="section-head reveal">
-        <span class="section-tag">日志</span>
-        <h2>一点一点，变得更好</h2>
-        <p>Nekobot 的成长记录</p>
-      </div>
-      <div class="timeline" id="changelogList"></div>
-      <div class="changelog-more reveal">
-        <a class="btn btn-ghost" href="https://github.com/asukaneko/Nekobot-Android/releases" target="_blank" rel="noopener">查看完整日志 →</a>
       </div>
     </section>
 
@@ -707,7 +768,7 @@
         </details>
         <details class="faq-item reveal">
           <summary>Agent 模式是什么？AI 真的会自己干活吗？<span class="faq-arrow"></span></summary>
-          <div class="faq-body">是的！切换到 Agent 模式后，AI 会自主调用工具完成任务：查询本地数据库、调用 MCP 服务、读取 / 上传文件、检索知识库、发送消息等。每一步都在磨砂玻璃进度卡片中实时展示，支持展开查看思考链与工具参数。最多 50 轮工具循环，3 次连续错误自动熔断，中途发"继续"还能恢复中断的任务。</div>
+          <div class="faq-body">是的。切换到 Agent 模式后，AI 可以操作会话内的原生浏览器、读取动态 DOM 与 URL、在 Alpine Linux 沙箱执行命令、处理工作区文件，并组合 Skills、数据库和 MCP 工具。每一步都会显示在进度卡片中；高风险命令需要确认，重复无进展的工具调用也会自动停止。</div>
         </details>
         <details class="faq-item reveal d1">
           <summary>角色会记得我们之前聊过的事吗？<span class="faq-arrow"></span></summary>
@@ -749,7 +810,8 @@
         <b>产品</b>
         <a href="#features">特性</a>
         <a href="#modes">双模式</a>
-        <a href="#showcase">功能</a>
+        <a href="#role">角色模式</a>
+        <a href="#agent">Agent 模式</a>
         <a href="#advanced">进阶能力</a>
         <a href="#download">下载</a>
       </div>
@@ -775,6 +837,6 @@
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
   </button>
 
-  <script src="script.js?v=0.4.0-screenshots-2"></script>
+  <script src="script.js?v=0.4.2-agent-icons"></script>
 </body>
 </html>
