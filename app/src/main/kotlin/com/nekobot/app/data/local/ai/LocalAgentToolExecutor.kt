@@ -666,8 +666,8 @@ internal class LocalAgentToolExecutor(
             ?: return failure("路径为空或超出会话工作区")
         if (!target.isFile) return failure("文件不存在")
 
-        // 参数：max_chars 默认 30000，<=0 视为不限制
-        val maxChars = args.int("max_chars", 30000).coerceIn(0, 80_000)
+        // 参数：max_chars 默认 100000（覆盖 10 万字长文本一次性读取），<=0 视为不限制
+        val maxChars = args.int("max_chars", 100000).coerceIn(0, 500_000)
         // 行号参数：1-based，含两端；未指定时覆盖整个文件
         val startLine = args.int("start_line", 1).coerceAtLeast(1)
         val endLine = args.int("end_line", 0) // 0 或负数 → 读到末尾
@@ -708,7 +708,7 @@ internal class LocalAgentToolExecutor(
             sliced
         }
 
-        return success(
+        val basePairs: List<Pair<String, Any>> = listOf(
             "path" to relativeWorkspacePath(target),
             "absolute_path" to target.canonicalPath,
             "content" to content,
@@ -718,6 +718,14 @@ internal class LocalAgentToolExecutor(
             "start_line" to startLine,
             "end_line" to if (endLine <= 0) totalLines else endLine.coerceAtMost(totalLines)
         )
+        // 截断时附加明确提示，引导 AI 一次性读取完整内容，避免分片累积浪费上下文 token
+        val allPairs = if (truncated) {
+            val recommended = minOf(totalChars, 500_000)
+            basePairs + ("hint" to "内容已截断（仅返回 ${content.length}/$totalChars 字符）。为避免多次分片读取导致上下文 token 重复累积浪费，强烈建议重新调用本工具并设置 max_chars=$recommended 一次性读取完整内容，而非多次分片读取。")
+        } else {
+            basePairs
+        }
+        return success(*allPairs.toTypedArray())
     }
 
     private fun deleteWorkspaceFile(args: Map<String, Any>): Map<String, Any> {

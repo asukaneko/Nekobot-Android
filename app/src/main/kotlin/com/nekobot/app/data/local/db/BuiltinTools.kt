@@ -285,13 +285,13 @@ object BuiltinTools {
         BuiltinToolSpec(
             id = "file_read",
             name = "读取 Linux 工作区文件",
-            description = "读取 /workspace 内的 UTF-8 文本文件。支持相对路径或 /workspace 绝对路径，可按行分片读取，返回完整行数、字符数和截断状态。",
+            description = "读取 /workspace 内的 UTF-8 文本文件。支持相对路径或 /workspace 绝对路径，可按行分片读取，返回完整行数、字符数和截断状态。重要：为节省上下文 token，读取长文本时请优先一次性读取完整内容（设置足够大的 max_chars，如 200000 或 500000），避免多次分片读取导致工具结果在上下文中重复累积。",
             parametersJson = params(
                 mapOf(
                     "path" to mapOf("type" to "string", "description" to "文件路径，如 /workspace/src/main.py"),
                     "start_line" to mapOf("type" to "integer", "description" to "起始行号，1-based，默认 1"),
                     "end_line" to mapOf("type" to "integer", "description" to "结束行号，1-based，默认读到末尾"),
-                    "max_chars" to mapOf("type" to "integer", "description" to "最大返回字符数，默认 30000，最大 80000")
+                    "max_chars" to mapOf("type" to "integer", "description" to "最大返回字符数，默认 100000，最大 500000。读取长文本时建议主动设置足够大的值（如 200000）一次性读完，避免分片读取浪费上下文 token；设为 0 表示不限制")
                 ),
                 listOf("path")
             )
@@ -385,13 +385,13 @@ object BuiltinTools {
         BuiltinToolSpec(
             id = "workspace_read_file",
             name = "工作区-读取文件",
-            description = "读取工作区中指定文件的内容。支持按行范围读取（start_line/end_line，1-based 含两端）和限制返回字符数（max_chars，默认 30000）。若文件较大，建议先按行范围分片读取。返回值含 truncated 字段标识是否因 max_chars 截断，total_chars/total_lines 为完整文件大小。",
+            description = "读取工作区中指定文件的内容。支持按行范围读取（start_line/end_line，1-based 含两端）和限制返回字符数（max_chars，默认 100000，最大 500000）。重要：为节省上下文 token，读取长文本时请优先一次性读取完整内容（设置足够大的 max_chars，如 200000 或 500000，或设为 0 表示不限制），避免多次分片读取导致工具结果在上下文中重复累积。返回值含 truncated 字段标识是否因 max_chars 截断，total_chars/total_lines 为完整文件大小；若 truncated=true，hint 字段会给出一次性读取的建议 max_chars 值。",
             parametersJson = params(
                 mapOf(
                     "path" to mapOf("type" to "string", "description" to "文件相对路径"),
                     "start_line" to mapOf("type" to "integer", "description" to "起始行号（1-based，含），默认 1"),
                     "end_line" to mapOf("type" to "integer", "description" to "结束行号（1-based，含），默认读到末尾"),
-                    "max_chars" to mapOf("type" to "integer", "description" to "最多返回的字符数，默认 30000；超出会被截断并置 truncated=true")
+                    "max_chars" to mapOf("type" to "integer", "description" to "最多返回的字符数，默认 100000，最大 500000；读取长文本时建议主动设置足够大的值一次性读完，设为 0 表示不限制；超出会被截断并置 truncated=true")
                 ),
                 listOf("path")
             )

@@ -318,7 +318,7 @@ internal class LocalPipelineCallbacks(
                             appendBounded("\n  读取内容:\n")
                             appendBounded(fileContent)
                             if (fullResult["truncated"] == true) {
-                                appendBounded("\n  [读取结果已截断，可按上述路径继续分片读取]")
+                                appendBounded("\n  [读取结果已截断，建议重新调用并设置更大的 max_chars 一次性读取完整内容，避免分片读取浪费上下文]")
                             }
                         } else {
                             appendBounded("\n  结果: ${gson.toJson(fullResult).take(2_000)}")
