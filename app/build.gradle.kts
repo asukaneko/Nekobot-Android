@@ -13,8 +13,8 @@ android {
         applicationId = "com.nekobot.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 25
-        versionName = "0.4.2"
+        versionCode = 26
+        versionName = "0.4.3"
         ndk {
             // 内置 Linux 沙盒当前使用 arm64 PRoot。
             abiFilters += "arm64-v8a"

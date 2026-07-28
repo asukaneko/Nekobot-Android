@@ -212,9 +212,9 @@
 
   /* ---------- 11. 从 GitHub Releases 拉取更新日志 ---------- */
   const FALLBACK_RELEASES = [
+    { tag_name: 'v0.4.3', published_at: '2026-07-28', body: '- 支持纯文本文件打开及系统下载功能重构\n- 新增轻小说搜索、榜单、下载及详情查看功能\n- 增强 Agent 工具系统并添加前台保活服务\n- 优化文件读取策略，鼓励一次性读取长文本\n- 迁移 rootfs 标记时不重置用户数据' },
     { tag_name: 'v0.4.2', published_at: '2026-07-27', body: '- Agent 原生浏览器支持多标签、实时预览、DOM / URL 提取与视觉理解\n- 集成可写 Alpine Linux 沙箱、会话终端与持久化工作区\n- 新增标准文件工具、Skills / MCP 调用与工具循环保护\n- 成就存储升级至 V3，支持作用域感知追踪' },
     { tag_name: 'v0.4.1', published_at: '2026-07-27', body: '- 角色、世界书、珍藏会话三大成就体系及作用域隔离机制\n- 成就收藏双列卡片视图切换\n- LocalChatFailoverExecutor 统一非流式 LLM 故障转移\n- 修复 Agent 模式"继续"场景上下文失忆' },
-    { tag_name: 'v0.4.0', published_at: '2026-07-26', body: '- 本地模式 WebDAV 备份与恢复功能\n- 成就系统，多层级徽章、范围隔离与解锁动效\n- 仪表盘组件与小组件（最近会话、Token 构成、快捷操作等）\n- OAuth 账号登录与 OpenAI Responses API 协议支持' },
   ];
   function renderReleases(releases) {
     const container = $('#changelogList');
