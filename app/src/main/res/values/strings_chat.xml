@@ -472,7 +472,7 @@
     <string name="workspace_upload_file">上传文件</string>
     <string name="workspace_empty_title">工作区为空</string>
     <string name="workspace_empty_hint">点击右上角上传文件到工作区</string>
-    <string name="workspace_downloaded_to">已下载到: %1$s</string>
+    <string name="workspace_downloaded_to">已下载到 Download：%1$s</string>
     <string name="workspace_download_failed">下载失败</string>
     <string name="workspace_preview_load_failed">加载文件失败，无法预览</string>
     <string name="workspace_delete_file_title">删除文件</string>

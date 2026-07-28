@@ -803,6 +803,10 @@ internal fun isPdfWorkspaceFile(fileName: String, mimeType: String = ""): Boolea
     mimeType.equals("application/pdf", ignoreCase = true) ||
         fileExt(fileName) == "pdf"
 
+internal fun isPlainTextWorkspaceFile(fileName: String, mimeType: String = ""): Boolean =
+    mimeType.equals("text/plain", ignoreCase = true) ||
+        fileExt(fileName) == "txt"
+
 /** 用户图片附件需要脱离文字气泡单独渲染。 */
 internal fun ContentSegment.isImageContent(): Boolean =
     type == SegmentType.IMAGE ||
@@ -873,9 +877,14 @@ fun FileCardRenderer(fileName: String, sessionId: String, modifier: Modifier = M
                 onClick = {
                     if (
                         previewType == FilePreviewType.UNSUPPORTED ||
-                        isPdfWorkspaceFile(fileName)
+                        isPdfWorkspaceFile(fileName) ||
+                        isPlainTextWorkspaceFile(fileName)
                     ) {
-                        openLocalWorkspaceFile(context, localFile)
+                        openLocalWorkspaceFile(
+                            context = context,
+                            file = localFile,
+                            forceChooser = isPlainTextWorkspaceFile(fileName)
+                        )
                     } else {
                         showLocalPreview = true
                     }
@@ -984,7 +993,11 @@ private fun LocalWorkspaceFileCard(
     }
 }
 
-internal fun openLocalWorkspaceFile(context: android.content.Context, file: File): Boolean =
+internal fun openLocalWorkspaceFile(
+    context: android.content.Context,
+    file: File,
+    forceChooser: Boolean = false
+): Boolean =
     runCatching {
         val uri = androidx.core.content.FileProvider.getUriForFile(
             context,
@@ -997,12 +1010,23 @@ internal fun openLocalWorkspaceFile(context: android.content.Context, file: File
             ?: "application/octet-stream"
         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
             setDataAndType(uri, mime)
+            clipData = android.content.ClipData.newRawUri(file.name, uri)
             addFlags(
                 android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
                     android.content.Intent.FLAG_ACTIVITY_NEW_TASK
             )
         }
-        context.startActivity(intent)
+        val launchIntent = if (forceChooser) {
+            android.content.Intent.createChooser(intent, null).apply {
+                addFlags(
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                )
+            }
+        } else {
+            intent
+        }
+        context.startActivity(launchIntent)
         true
     }.getOrElse {
         android.widget.Toast.makeText(

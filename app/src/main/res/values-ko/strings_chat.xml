@@ -449,7 +449,7 @@
     <string name="workspace_upload_file">파일 업로드</string>
     <string name="workspace_empty_title">워크스페이스가 비어 있어요</string>
     <string name="workspace_empty_hint">오른쪽 위 버튼을 눌러 워크스페이스에 파일을 업로드해 보세요</string>
-    <string name="workspace_downloaded_to">다운로드 위치: %1$s</string>
+    <string name="workspace_downloaded_to">Download에 저장됨: %1$s</string>
     <string name="workspace_download_failed">다운로드 실패</string>
     <string name="workspace_preview_load_failed">미리보기를 위한 파일 불러오기 실패</string>
     <string name="workspace_delete_file_title">파일 삭제</string>

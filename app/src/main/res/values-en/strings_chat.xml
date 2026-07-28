@@ -466,7 +466,7 @@
     <string name="workspace_upload_file">Upload file</string>
     <string name="workspace_empty_title">Workspace is empty</string>
     <string name="workspace_empty_hint">Tap the top-right button to upload files to the workspace</string>
-    <string name="workspace_downloaded_to">Downloaded to: %1$s</string>
+    <string name="workspace_downloaded_to">Downloaded to Download: %1$s</string>
     <string name="workspace_download_failed">Download failed</string>
     <string name="workspace_preview_load_failed">Failed to load file for preview</string>
     <string name="workspace_delete_file_title">Delete file</string>

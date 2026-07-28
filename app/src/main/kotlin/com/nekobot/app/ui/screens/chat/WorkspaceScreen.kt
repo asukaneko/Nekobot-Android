@@ -1,7 +1,11 @@
 package com.nekobot.app.ui.screens.chat
 
+import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -46,6 +50,7 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
+import java.io.OutputStream
 
 /** 工作区文件项 */
 @Immutable
@@ -154,30 +159,98 @@ class WorkspaceViewModel : BaseViewModel() {
         )
     }
 
-    /** 下载工作区文件到应用缓存目录，返回本地 File。 */
-    suspend fun download(context: Context, workspacePath: String): File? = withContext(Dispatchers.IO) {
+    /** 把工作区文件准备到应用缓存目录，供预览或外部应用打开。 */
+    suspend fun prepareForOpen(context: Context, workspacePath: String): File? = withContext(Dispatchers.IO) {
         if (sessionId.isBlank()) return@withContext null
         try {
-            // 本地模式：直接复制本地工作区文件
-            val localFile = unified.downloadWorkspaceFileLocal(sessionId, workspacePath)
             val target = workspacePreviewCacheFile(context, workspacePath)
-            if (localFile != null && localFile.exists()) {
-                localFile.copyTo(target, overwrite = true)
-                return@withContext target
+            FileOutputStream(target).use { output ->
+                if (!copyWorkspaceFileTo(workspacePath, output)) {
+                    target.delete()
+                    return@withContext null
+                }
             }
-            // 远程模式：走 retrofit Response
-            val resp = unified.downloadWorkspaceFile(sessionId, workspacePath)
-            if (resp != null && resp.isSuccessful) {
-                val body = resp.body() ?: return@withContext null
-                FileOutputStream(target).use { body.byteStream().copyTo(it) }
-                target
-            } else null
+            target
         } catch (e: Exception) {
             null
         }
     }
 
+    /**
+     * 把工作区文件流式写入公共 Download 目录。
+     *
+     * Android 10+ 通过 MediaStore.Downloads 写入，避免把大文件先读进内存。
+     * Android 9 及以下由页面层改走系统“创建文档”选择器。
+     */
+    suspend fun saveToDownloads(context: Context, file: WorkspaceFile): String? =
+        withContext(Dispatchers.IO) {
+            if (sessionId.isBlank() || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                return@withContext null
+            }
+            val resolver = context.contentResolver
+            var targetUri: Uri? = null
+            try {
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
+                    put(MediaStore.MediaColumns.MIME_TYPE, file.mimeType.ifBlank { guessMime(file.name) })
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+                targetUri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: return@withContext null
+                val copied = resolver.openOutputStream(targetUri, "w")?.use { output ->
+                    copyWorkspaceFileTo(file.path, output)
+                } == true
+                if (!copied) {
+                    resolver.delete(targetUri, null, null)
+                    return@withContext null
+                }
+                resolver.update(
+                    targetUri,
+                    ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
+                    null,
+                    null
+                )
+                file.name
+            } catch (e: Exception) {
+                targetUri?.let { runCatching { resolver.delete(it, null, null) } }
+                null
+            }
+        }
+
+    /** Android 9 及以下：写入系统“创建文档”选择器返回的目标 Uri。 */
+    suspend fun saveToUri(context: Context, file: WorkspaceFile, targetUri: Uri): Boolean =
+        withContext(Dispatchers.IO) {
+            if (sessionId.isBlank()) return@withContext false
+            try {
+                context.contentResolver.openOutputStream(targetUri, "w")?.use { output ->
+                    copyWorkspaceFileTo(file.path, output)
+                } == true
+            } catch (e: Exception) {
+                false
+            }
+        }
+
     // ---- helpers ----
+
+    /** 本地模式直接读工作区文件；远程模式从接口响应流式复制。 */
+    private suspend fun copyWorkspaceFileTo(
+        workspacePath: String,
+        output: OutputStream
+    ): Boolean {
+        val localFile = unified.downloadWorkspaceFileLocal(sessionId, workspacePath)
+        if (localFile != null && localFile.isFile) {
+            localFile.inputStream().use { input -> input.copyTo(output) }
+            return true
+        }
+        val response = unified.downloadWorkspaceFile(sessionId, workspacePath)
+        if (response == null || !response.isSuccessful) return false
+        val body = response.body() ?: return false
+        body.use { responseBody ->
+            responseBody.byteStream().use { input -> input.copyTo(output) }
+        }
+        return true
+    }
 
     private fun parseFiles(elem: com.google.gson.JsonElement): List<WorkspaceFile> {
         val arr = if (elem.isJsonObject) {
@@ -284,6 +357,7 @@ fun WorkspaceScreen(
     var previewFile by remember { mutableStateOf<java.io.File?>(null) }
     var previewFileName by remember { mutableStateOf("") }
     var previewLoading by remember { mutableStateOf(false) }
+    var pendingLegacyDownload by remember { mutableStateOf<WorkspaceFile?>(null) }
     val snackbarHost = remember { SnackbarHostState() }
 
     LaunchedEffect(sessionId) { viewModel.init(sessionId) }
@@ -302,6 +376,27 @@ fun WorkspaceScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) viewModel.upload(context, uri) {}
+    }
+    val createDownloadDocument = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("*/*")
+    ) { uri ->
+        val file = pendingLegacyDownload
+        pendingLegacyDownload = null
+        if (uri == null || file == null) {
+            downloading = null
+        } else {
+            scope.launch {
+                val saved = viewModel.saveToUri(context, file, uri)
+                downloading = null
+                snackbarHost.showSnackbar(
+                    if (saved) {
+                        context.getString(R.string.workspace_downloaded_to, file.name)
+                    } else {
+                        context.getString(R.string.workspace_download_failed)
+                    }
+                )
+            }
+        }
     }
 
     Scaffold(
@@ -373,13 +468,20 @@ fun WorkspaceScreen(
                                 onDownload = {
                                     if (downloading == null) {
                                         downloading = f.path
-                                        scope.launch {
-                                            val saved = viewModel.download(context, f.path)
-                                            downloading = null
-                                            if (saved != null) {
-                                                snackbarHost.showSnackbar(context.getString(R.string.workspace_downloaded_to, saved.name))
-                                            } else {
-                                                snackbarHost.showSnackbar(context.getString(R.string.workspace_download_failed))
+                                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                                            pendingLegacyDownload = f
+                                            createDownloadDocument.launch(f.name)
+                                        } else {
+                                            scope.launch {
+                                                val savedName = viewModel.saveToDownloads(context, f)
+                                                downloading = null
+                                                snackbarHost.showSnackbar(
+                                                    if (savedName != null) {
+                                                        context.getString(R.string.workspace_downloaded_to, savedName)
+                                                    } else {
+                                                        context.getString(R.string.workspace_download_failed)
+                                                    }
+                                                )
                                             }
                                         }
                                     }
@@ -389,14 +491,23 @@ fun WorkspaceScreen(
                                         previewFileName = f.path
                                         previewLoading = true
                                         scope.launch {
-                                            val saved = viewModel.download(context, f.path)
+                                            val saved = viewModel.prepareForOpen(context, f.path)
                                             previewLoading = false
                                             if (saved != null) {
-                                                if (isPdfWorkspaceFile(f.name, f.mimeType)) {
-                                                    openLocalWorkspaceFile(context, saved)
-                                                    previewFileName = ""
-                                                } else {
-                                                    previewFile = saved
+                                                when {
+                                                    isPlainTextWorkspaceFile(f.name, f.mimeType) -> {
+                                                        openLocalWorkspaceFile(
+                                                            context = context,
+                                                            file = saved,
+                                                            forceChooser = true
+                                                        )
+                                                        previewFileName = ""
+                                                    }
+                                                    isPdfWorkspaceFile(f.name, f.mimeType) -> {
+                                                        openLocalWorkspaceFile(context, saved)
+                                                        previewFileName = ""
+                                                    }
+                                                    else -> previewFile = saved
                                                 }
                                             } else {
                                                 snackbarHost.showSnackbar(context.getString(R.string.workspace_preview_load_failed))

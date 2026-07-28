@@ -14,6 +14,13 @@ class WorkspaceAndPdfPreviewTest {
     }
 
     @Test
+    fun identifiesTxtFilesForSystemChooser() {
+        assertTrue(isPlainTextWorkspaceFile("novel/book.TXT"))
+        assertTrue(isPlainTextWorkspaceFile("no-extension", "text/plain"))
+        assertTrue(!isPlainTextWorkspaceFile("page.html", "text/html"))
+    }
+
+    @Test
     fun normalizesWorkspacePathsAndFindsParent() {
         assertEquals(
             "downloads/books",

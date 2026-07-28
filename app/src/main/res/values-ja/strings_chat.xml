@@ -449,7 +449,7 @@
     <string name="workspace_upload_file">ファイルをアップロード</string>
     <string name="workspace_empty_title">ワークスペースは空です</string>
     <string name="workspace_empty_hint">右上のボタンをタップしてワークスペースにファイルをアップロード</string>
-    <string name="workspace_downloaded_to">ダウンロード先: %1$s</string>
+    <string name="workspace_downloaded_to">Download に保存しました: %1$s</string>
     <string name="workspace_download_failed">ダウンロードに失敗しました</string>
     <string name="workspace_preview_load_failed">プレビュー用ファイルの読み込みに失敗しました</string>
     <string name="workspace_delete_file_title">ファイルを削除</string>
