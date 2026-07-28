@@ -15,6 +15,8 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.google.gson.Gson
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
@@ -28,8 +30,8 @@ import kotlin.math.roundToInt
 /**
  * Agent 模式的会话级原生浏览器工具。
  *
- * 设计参考 OpenMinis 的 browser_use：模型通过单个工具选择动作，页面变化后自动回传
- * 当前页面文本、可交互元素与截图。WebView 只允许 http(s)，文件产物固定写入会话工作区。
+ * 模型通过单个工具选择动作，页面变化后自动回传当前页面文本、可交互元素与截图。
+ * WebView 只允许 http(s)，文件产物固定写入会话工作区。
  *
  * Agent 工具循环运行在 Dispatchers.IO；Android WebView 的所有调用仍统一切回主线程。
  */
@@ -50,10 +52,22 @@ internal class LocalBrowserTool(
         private const val DEFAULT_HTML_LIMIT = 60_000
         private const val DEFAULT_ELEMENT_LIMIT = 80
         private const val DEFAULT_LINK_LIMIT = 200
+        private const val MAX_TABS = 5
+        private const val MAX_FETCH_BYTES = 100L * 1024L * 1024L
         private const val MOBILE_USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/134.0.0.0 Mobile Safari/537.36"
+        private const val DESKTOP_USER_AGENT =
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
     }
+
+    private data class BrowserTab(
+        val id: Int,
+        val view: WebView,
+        var url: String = "",
+        var title: String = ""
+    )
 
     private val appContext = context.applicationContext
     private val workspace = workspaceRoot.canonicalFile
@@ -65,8 +79,15 @@ internal class LocalBrowserTool(
         directory.mkdirs()
     }
     private val gson = Gson()
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .build()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val executionLock = ReentrantLock()
+    private val tabs = LinkedHashMap<Int, BrowserTab>()
+    private var selectedTabId = 0
+    private var nextTabId = 1
 
     @Volatile
     private var webView: WebView? = null
@@ -97,9 +118,22 @@ internal class LocalBrowserTool(
 
         try {
             ensureWebView()
+            args.optionalInt("tab_id")?.let { requestedTab ->
+                if (action !in setOf("new_tab", "list_tabs", "close_tab")) {
+                    selectTab(requestedTab)?.let { return it }
+                }
+            }
             when (action) {
                 "navigate" -> navigate(args.string("url"))
                     .withVisualState(action)
+                "new_tab" -> newTab(args.string("url"))
+                "switch_tab" -> {
+                    val tabId = args.optionalInt("tab_id")
+                        ?: return failure("switch_tab 缺少 tab_id")
+                    selectTab(tabId) ?: listTabs()
+                }
+                "close_tab" -> closeTab(args.optionalInt("tab_id") ?: selectedTabId)
+                "list_tabs" -> listTabs()
 
                 "screenshot", "understand_screenshot" ->
                     screenshot(args.boolean("full_page")) + ("action" to action)
@@ -130,6 +164,13 @@ internal class LocalBrowserTool(
                 )
 
                 "get_page_info" -> getPageInfo()
+                "get_cookies" -> getCookies(args)
+                "set_cookies" -> setCookies(args)
+                "fetch" -> fetch(args)
+                "set_viewport" -> setViewport(args)
+                "set_user_agent" -> setUserAgent(args)
+                "scroll_and_collect" -> scrollAndCollect(args)
+                "wait_for_dom_stable" -> waitForDomStable(args)
                 "scroll" -> scroll(args).withVisualState(action)
                 "execute_js" -> executeJavaScript(args.string("script"))
                 "wait" -> waitForPage(args.int("wait_ms", 1_000))
@@ -156,6 +197,10 @@ internal class LocalBrowserTool(
                     "不支持的浏览器动作: $action",
                     "supported_actions" to listOf(
                         "navigate",
+                        "new_tab",
+                        "switch_tab",
+                        "close_tab",
+                        "list_tabs",
                         "screenshot",
                         "understand_screenshot",
                         "click",
@@ -168,6 +213,13 @@ internal class LocalBrowserTool(
                         "get_backbone",
                         "find_elements",
                         "get_page_info",
+                        "get_cookies",
+                        "set_cookies",
+                        "fetch",
+                        "set_viewport",
+                        "set_user_agent",
+                        "scroll_and_collect",
+                        "wait_for_dom_stable",
                         "scroll",
                         "execute_js",
                         "wait",
@@ -184,9 +236,10 @@ internal class LocalBrowserTool(
 
     fun close() {
         LocalBrowserPreviewRegistry.unregister(sessionId, this)
-        val view = webView ?: return
+        val views = synchronized(tabs) { tabs.values.map { it.view } }
+        synchronized(tabs) { tabs.clear() }
         webView = null
-        runCatching {
+        views.forEach { view -> runCatching {
             runOnMain(5_000) {
                 view.stopLoading()
                 view.loadUrl("about:blank")
@@ -194,14 +247,25 @@ internal class LocalBrowserTool(
                 view.removeAllViews()
                 view.destroy()
             }
-        }
+        } }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun ensureWebView(): WebView {
         webView?.let { return it }
         return runOnMain {
-            webView ?: WebView(appContext).apply browserView@ {
+            webView ?: createBrowserTab(nextTabId++).also { tab ->
+                synchronized(tabs) { tabs[tab.id] = tab }
+                selectedTabId = tab.id
+                webView = tab.view
+            }.view
+        }
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun createBrowserTab(tabId: Int): BrowserTab {
+        lateinit var tab: BrowserTab
+        val view = WebView(appContext).apply browserView@ {
                 settings.apply {
                     javaScriptEnabled = true
                     domStorageEnabled = true
@@ -228,53 +292,66 @@ internal class LocalBrowserTool(
                 webViewClient = createWebViewClient()
                 webChromeClient = object : WebChromeClient() {
                     override fun onReceivedTitle(view: WebView?, title: String?) {
-                        currentTitle = title.orEmpty()
-                        LocalBrowserPreviewRegistry.update(
-                            sessionId = sessionId,
-                            url = currentUrl,
-                            title = currentTitle
-                        )
+                        val target = view?.let(::findTabForView) ?: return
+                        target.title = title.orEmpty()
+                        if (target.id == selectedTabId) {
+                            currentTitle = target.title
+                            LocalBrowserPreviewRegistry.update(
+                                sessionId = sessionId,
+                                url = currentUrl,
+                                title = currentTitle
+                            )
+                        }
                     }
                 }
                 applyDefaultViewport(this)
-                webView = this
             }
-        }
+        tab = BrowserTab(id = tabId, view = view)
+        return tab
     }
 
     private fun createWebViewClient(): WebViewClient = object : WebViewClient() {
         override fun shouldOverrideUrlLoading(
             view: WebView?,
             request: WebResourceRequest?
-        ): Boolean = shouldBlockNavigation(request?.url?.toString())
+        ): Boolean = shouldBlockNavigation(view, request?.url?.toString())
 
         @Suppress("DEPRECATION")
         override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean =
-            shouldBlockNavigation(url)
+            shouldBlockNavigation(view, url)
 
         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-            currentUrl = url.orEmpty()
-            navigationError = null
-            LocalBrowserPreviewRegistry.update(
-                sessionId = sessionId,
-                url = currentUrl,
-                title = currentTitle,
-                isLoading = true,
-                advanceRevision = true
-            )
+            val tab = view?.let(::findTabForView) ?: return
+            tab.url = url.orEmpty()
+            if (tab.id == selectedTabId) {
+                currentUrl = tab.url
+                navigationError = null
+                LocalBrowserPreviewRegistry.update(
+                    sessionId = sessionId,
+                    url = currentUrl,
+                    title = currentTitle,
+                    isLoading = true,
+                    advanceRevision = true
+                )
+            }
         }
 
         override fun onPageFinished(view: WebView?, url: String?) {
-            currentUrl = url.orEmpty()
-            currentTitle = view?.title.orEmpty()
-            LocalBrowserPreviewRegistry.update(
-                sessionId = sessionId,
-                url = currentUrl,
-                title = currentTitle,
-                isLoading = false,
-                advanceRevision = true
-            )
-            navigationLatch?.countDown()
+            val tab = view?.let(::findTabForView) ?: return
+            tab.url = url.orEmpty()
+            tab.title = view.title.orEmpty()
+            if (tab.id == selectedTabId) {
+                currentUrl = tab.url
+                currentTitle = tab.title
+                LocalBrowserPreviewRegistry.update(
+                    sessionId = sessionId,
+                    url = currentUrl,
+                    title = currentTitle,
+                    isLoading = false,
+                    advanceRevision = true
+                )
+                navigationLatch?.countDown()
+            }
         }
 
         override fun onReceivedError(
@@ -282,7 +359,8 @@ internal class LocalBrowserTool(
             request: WebResourceRequest?,
             error: WebResourceError?
         ) {
-            if (request?.isForMainFrame == true) {
+            val tab = view?.let(::findTabForView)
+            if (request?.isForMainFrame == true && tab?.id == selectedTabId) {
                 navigationError = error?.description?.toString().orEmpty()
                     .ifBlank { "网页加载失败" }
                 LocalBrowserPreviewRegistry.update(
@@ -297,16 +375,377 @@ internal class LocalBrowserTool(
         }
     }
 
-    private fun shouldBlockNavigation(url: String?): Boolean {
+    private fun shouldBlockNavigation(view: WebView?, url: String?): Boolean {
         if (url.isNullOrBlank() || isAllowedWebUrl(url)) return false
-        navigationError = "已阻止非 http(s) 地址: $url"
+        if (view?.let(::findTabForView)?.id == selectedTabId) {
+            navigationError = "已阻止非 http(s) 地址: $url"
+            LocalBrowserPreviewRegistry.update(
+                sessionId = sessionId,
+                isLoading = false,
+                advanceRevision = true
+            )
+            navigationLatch?.countDown()
+        }
+        return true
+    }
+
+    private fun findTabForView(view: WebView): BrowserTab? =
+        synchronized(tabs) { tabs.values.firstOrNull { it.view === view } }
+
+    /**
+     * 切换选中的标签页。成功返回 null，失败返回错误结果，便于调用方继续执行原动作。
+     */
+    private fun selectTab(tabId: Int): Map<String, Any>? {
+        val tab = synchronized(tabs) { tabs[tabId] }
+            ?: return failure("标签页不存在: $tabId")
+        selectedTabId = tab.id
+        webView = tab.view
+        currentUrl = tab.url.ifBlank {
+            runCatching { runOnMain { tab.view.url.orEmpty() } }.getOrDefault("")
+        }
+        currentTitle = tab.title.ifBlank {
+            runCatching { runOnMain { tab.view.title.orEmpty() } }.getOrDefault("")
+        }
         LocalBrowserPreviewRegistry.update(
             sessionId = sessionId,
+            url = currentUrl,
+            title = currentTitle,
             isLoading = false,
             advanceRevision = true
         )
-        navigationLatch?.countDown()
-        return true
+        return null
+    }
+
+    private fun newTab(rawUrl: String): Map<String, Any> {
+        if (synchronized(tabs) { tabs.size } >= MAX_TABS) {
+            return failure("最多同时打开 $MAX_TABS 个标签页")
+        }
+        val tab = runOnMain {
+            createBrowserTab(nextTabId++).also { created ->
+                synchronized(tabs) { tabs[created.id] = created }
+            }
+        }
+        selectTab(tab.id)
+        return if (rawUrl.isBlank()) {
+            success(
+                "action" to "new_tab",
+                "content" to "已新建标签页",
+                "tabs" to tabSummaries()
+            )
+        } else {
+            navigate(rawUrl).toMutableMap().apply {
+                put("action", "new_tab")
+                put("tabs", tabSummaries())
+            }
+        }
+    }
+
+    private fun closeTab(tabId: Int): Map<String, Any> {
+        val removed = synchronized(tabs) { tabs.remove(tabId) }
+            ?: return failure("标签页不存在: $tabId")
+        runCatching {
+            runOnMain(5_000) {
+                removed.view.stopLoading()
+                removed.view.loadUrl("about:blank")
+                removed.view.removeAllViews()
+                removed.view.destroy()
+            }
+        }
+        if (synchronized(tabs) { tabs.isEmpty() }) {
+            webView = null
+            selectedTabId = 0
+            ensureWebView()
+        } else if (selectedTabId == tabId) {
+            val fallbackId = synchronized(tabs) { tabs.keys.last() }
+            selectTab(fallbackId)
+        }
+        return success(
+            "action" to "close_tab",
+            "content" to "已关闭标签页 $tabId",
+            "tabs" to tabSummaries()
+        )
+    }
+
+    private fun listTabs(): Map<String, Any> = success(
+        "action" to "list_tabs",
+        "content" to "当前有 ${synchronized(tabs) { tabs.size }} 个标签页",
+        "tabs" to tabSummaries()
+    )
+
+    private fun tabSummaries(): List<Map<String, Any>> =
+        synchronized(tabs) {
+            tabs.values.map { tab ->
+                mapOf(
+                    "tab_id" to tab.id,
+                    "url" to tab.url,
+                    "title" to tab.title,
+                    "selected" to (tab.id == selectedTabId)
+                )
+            }
+        }
+
+    private fun getCookies(args: Map<String, Any>): Map<String, Any> {
+        val url = args.string("url").ifBlank { currentUrl }
+        if (!isAllowedWebUrl(url)) return failure("get_cookies 需要当前页面或有效的 http(s) URL")
+        val keyword = args.string("keywords").trim()
+        val fuzzy = args.boolean("fuzzy")
+        val raw = runOnMain { CookieManager.getInstance().getCookie(url).orEmpty() }
+        val cookies = raw.split(';')
+            .mapNotNull { entry ->
+                val name = entry.substringBefore('=').trim()
+                if (name.isBlank()) null
+                else mapOf(
+                    "name" to name,
+                    "matched" to (
+                        keyword.isBlank() ||
+                            if (fuzzy) name.contains(keyword, ignoreCase = true)
+                            else name.equals(keyword, ignoreCase = true)
+                        )
+                )
+            }
+            .filter { it["matched"] == true }
+            .map { it - "matched" }
+        return success(
+            "action" to "get_cookies",
+            "url" to url,
+            "cookies" to cookies,
+            "count" to cookies.size,
+            "content" to "找到 ${cookies.size} 个 Cookie；值不会写入模型上下文，fetch 会自动携带登录态"
+        )
+    }
+
+    private fun setCookies(args: Map<String, Any>): Map<String, Any> {
+        val defaultUrl = args.string("url").ifBlank { currentUrl }
+        if (!isAllowedWebUrl(defaultUrl)) return failure("set_cookies 需要当前页面或有效的 http(s) URL")
+        val items = args["cookies"] as? List<*>
+            ?: return failure("set_cookies 缺少 cookies 数组")
+        val names = mutableListOf<String>()
+        runOnMain {
+            val manager = CookieManager.getInstance()
+            items.forEach { rawItem ->
+                val item = rawItem as? Map<*, *> ?: return@forEach
+                val name = item["name"]?.toString()?.trim().orEmpty()
+                val value = item["value"]?.toString().orEmpty()
+                if (name.isBlank()) return@forEach
+                val targetUrl = item["url"]?.toString()?.takeIf(::isAllowedWebUrl) ?: defaultUrl
+                val cookie = buildString {
+                    append(name).append('=').append(value)
+                    item["domain"]?.toString()?.takeIf(String::isNotBlank)
+                        ?.let { append("; Domain=").append(it) }
+                    append("; Path=").append(item["path"]?.toString()?.ifBlank { "/" } ?: "/")
+                    if (item["secure"] == true) append("; Secure")
+                    if (item["http_only"] == true) append("; HttpOnly")
+                }
+                manager.setCookie(targetUrl, cookie)
+                names += name
+            }
+            manager.flush()
+        }
+        return success(
+            "action" to "set_cookies",
+            "content" to "已写入 ${names.size} 个 Cookie",
+            "names" to names,
+            "count" to names.size
+        )
+    }
+
+    private fun fetch(args: Map<String, Any>): Map<String, Any> {
+        val normalized = normalizeWebUrl(args.string("url"))
+            ?: return failure("fetch 缺少有效的 http(s) URL")
+        val requestBuilder = Request.Builder()
+            .url(normalized)
+            .header(
+                "User-Agent",
+                runOnMain { requireWebView().settings.userAgentString ?: MOBILE_USER_AGENT }
+            )
+        val cookieHeader = runOnMain {
+            CookieManager.getInstance().getCookie(normalized).orEmpty()
+        }
+        if (cookieHeader.isNotBlank()) requestBuilder.header("Cookie", cookieHeader)
+        @Suppress("UNCHECKED_CAST")
+        (args["headers"] as? Map<*, *>)?.forEach { (key, value) ->
+            if (key != null && value != null && !key.toString().equals("Cookie", ignoreCase = true)) {
+                requestBuilder.header(key.toString(), value.toString())
+            }
+        }
+        httpClient.newCall(requestBuilder.get().build()).execute().use { response ->
+            if (!response.isSuccessful) {
+                return failure("HTTP ${response.code}", "url" to normalized)
+            }
+            val body = response.body ?: return failure("响应没有内容")
+            val declaredLength = body.contentLength()
+            if (declaredLength > MAX_FETCH_BYTES) {
+                return failure("响应超过 100MB 限制", "size" to declaredLength)
+            }
+            val requestedPath = args.string("save_path")
+            val suggestedName = requestedPath.ifBlank {
+                Uri.parse(normalized).lastPathSegment
+                    ?.substringBefore('?')
+                    ?.takeIf(String::isNotBlank)
+                    ?: "fetch_${System.currentTimeMillis()}.bin"
+            }
+            val safeName = suggestedName.substringAfterLast('/').substringAfterLast('\\')
+                .replace(Regex("""[^A-Za-z0-9._-]"""), "_")
+                .ifBlank { "fetch_${System.currentTimeMillis()}.bin" }
+            val output = File(browserDir, safeName).canonicalFile
+            if (!output.path.startsWith(browserDir.path + File.separator)) {
+                return failure("下载文件名无效")
+            }
+            var total = 0L
+            body.byteStream().use { input ->
+                output.outputStream().use { stream ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        total += read
+                        if (total > MAX_FETCH_BYTES) {
+                            output.delete()
+                            return failure("响应超过 100MB 限制")
+                        }
+                        stream.write(buffer, 0, read)
+                    }
+                }
+            }
+            val relativePath = workspace.toPath().relativize(output.toPath()).toString()
+                .replace(File.separatorChar, '/')
+            val mime = response.header("Content-Type").orEmpty()
+            val preview = if (
+                mime.startsWith("text/") ||
+                mime.contains("json") ||
+                mime.contains("xml")
+            ) {
+                runCatching { output.readText(Charsets.UTF_8).take(30_000) }.getOrDefault("")
+            } else ""
+            return success(
+                "action" to "fetch",
+                "content" to if (preview.isBlank()) "已使用当前浏览器登录态下载文件" else preview,
+                "url" to normalized,
+                "status" to response.code,
+                "mime_type" to mime,
+                "size" to total,
+                "path" to relativePath,
+                "absolute_path" to output.absolutePath,
+                "truncated" to (preview.length == 30_000)
+            )
+        }
+    }
+
+    private fun setViewport(args: Map<String, Any>): Map<String, Any> {
+        val reset = args.boolean("reset")
+        val widthCss = if (reset) DEFAULT_VIEWPORT_WIDTH_CSS
+        else args.int("viewport_width", DEFAULT_VIEWPORT_WIDTH_CSS).coerceIn(280, 2_560)
+        val heightCss = if (reset) DEFAULT_VIEWPORT_HEIGHT_CSS
+        else args.int("viewport_height", DEFAULT_VIEWPORT_HEIGHT_CSS).coerceIn(320, 4_096)
+        runOnMain { applyViewport(requireWebView(), widthCss, heightCss) }
+        return success(
+            "action" to "set_viewport",
+            "content" to "视口已设置为 ${widthCss}×${heightCss}",
+            "viewport_width" to widthCss,
+            "viewport_height" to heightCss
+        )
+    }
+
+    private fun setUserAgent(args: Map<String, Any>): Map<String, Any> {
+        val requested = args.string("user_agent").trim()
+        val userAgent = when (requested.lowercase()) {
+            "", "mobile" -> MOBILE_USER_AGENT
+            "desktop" -> DESKTOP_USER_AGENT
+            else -> requested.take(1_000)
+        }
+        runOnMain {
+            requireWebView().settings.userAgentString = userAgent
+            if (args.boolean("reload")) requireWebView().reload()
+        }
+        return success(
+            "action" to "set_user_agent",
+            "content" to "浏览器 User-Agent 已更新",
+            "user_agent" to userAgent
+        )
+    }
+
+    private fun scrollAndCollect(args: Map<String, Any>): Map<String, Any> {
+        val selector = args.string("item_selector")
+            .ifBlank { "article,[role='article'],main li,.item,.card" }
+        val steps = args.int("scroll_count", 5).coerceIn(1, 20)
+        val amount = args.int("amount", 700).coerceIn(100, 5_000)
+        val collected = LinkedHashMap<String, Map<String, Any>>()
+        repeat(steps) {
+            val raw = evaluate(
+                """
+                    (() => {
+                      try {
+                        const items = Array.from(document.querySelectorAll(${gson.toJson(selector)}))
+                          .slice(0, 500)
+                          .map(el => ({
+                            text: (el.innerText || el.textContent || "").trim().slice(0, 2000),
+                            url: el.href || el.querySelector("a[href]")?.href || ""
+                          }))
+                          .filter(item => item.text || item.url);
+                        return JSON.stringify({items});
+                      } catch (error) {
+                        return JSON.stringify({error: String(error)});
+                      }
+                    })()
+                """.trimIndent()
+            )
+            val parsed = parseJsonMap(raw)
+            parsed["error"]?.toString()?.takeIf(String::isNotBlank)?.let { return failure(it) }
+            (parsed["items"] as? List<*>)?.forEach { item ->
+                @Suppress("UNCHECKED_CAST")
+                val mapped = item as? Map<String, Any> ?: return@forEach
+                val key = "${mapped["url"]}\n${mapped["text"]}"
+                if (key.isNotBlank()) collected.putIfAbsent(key, mapped)
+            }
+            evaluate("window.scrollBy(0, $amount); true")
+            waitForDomToSettle(250)
+        }
+        val items = collected.values.take(500)
+        return success(
+            "action" to "scroll_and_collect",
+            "content" to items.joinToString("\n\n") { item ->
+                listOf(item["text"], item["url"])
+                    .mapNotNull { it?.toString()?.takeIf(String::isNotBlank) }
+                    .joinToString("\n")
+            }.take(DEFAULT_TEXT_LIMIT),
+            "items" to items,
+            "count" to items.size,
+            "scroll_count" to steps
+        )
+    }
+
+    private fun waitForDomStable(args: Map<String, Any>): Map<String, Any> {
+        val timeoutMs = args.int("timeout", 15).coerceIn(1, 60) * 1_000L
+        val started = System.currentTimeMillis()
+        var previous = ""
+        var consecutiveMatches = 0
+        while (System.currentTimeMillis() - started < timeoutMs) {
+            val signature = evaluate(
+                "JSON.stringify({" +
+                    "ready:document.readyState," +
+                    "text:document.body?.innerText?.length||0," +
+                    "height:document.documentElement?.scrollHeight||0," +
+                    "nodes:document.getElementsByTagName('*').length" +
+                    "})"
+            )
+            if (signature == previous) consecutiveMatches++ else consecutiveMatches = 0
+            if (consecutiveMatches >= 2) {
+                return success(
+                    "action" to "wait_for_dom_stable",
+                    "content" to "DOM 已稳定",
+                    "stable" to true,
+                    "elapsed_ms" to (System.currentTimeMillis() - started)
+                )
+            }
+            previous = signature
+            Thread.sleep(350)
+        }
+        return success(
+            "action" to "wait_for_dom_stable",
+            "content" to "等待超时，页面仍可能在变化",
+            "stable" to false,
+            "elapsed_ms" to (System.currentTimeMillis() - started)
+        )
     }
 
     private fun navigate(rawUrl: String): Map<String, Any> {
@@ -1086,10 +1525,14 @@ internal class LocalBrowserTool(
     }
 
     private fun applyDefaultViewport(view: WebView) {
+        applyViewport(view, DEFAULT_VIEWPORT_WIDTH_CSS, DEFAULT_VIEWPORT_HEIGHT_CSS)
+    }
+
+    private fun applyViewport(view: WebView, widthCss: Int, heightCss: Int) {
         val density = appContext.resources.displayMetrics.density
-        val width = (DEFAULT_VIEWPORT_WIDTH_CSS * density).roundToInt()
+        val width = (widthCss * density).roundToInt()
             .coerceIn(720, 1440)
-        val height = (DEFAULT_VIEWPORT_HEIGHT_CSS * density).roundToInt()
+        val height = (heightCss * density).roundToInt()
             .coerceIn(1200, 2400)
         view.measure(
             android.view.View.MeasureSpec.makeMeasureSpec(
@@ -1166,6 +1609,7 @@ internal class LocalBrowserTool(
         buildMap {
             put("success", true)
             put("session_id", sessionId)
+            put("tab_id", selectedTabId)
             values.forEach { (key, value) -> put(key, value) }
         }
 
@@ -1175,6 +1619,7 @@ internal class LocalBrowserTool(
     ): Map<String, Any> = buildMap {
         put("success", false)
         put("session_id", sessionId)
+        put("tab_id", selectedTabId)
         put("error", message)
         values.forEach { (key, value) -> put(key, value) }
     }

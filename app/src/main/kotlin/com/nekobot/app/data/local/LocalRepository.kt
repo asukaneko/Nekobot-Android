@@ -67,6 +67,7 @@ import com.nekobot.app.data.model.HookRequest
 import com.nekobot.app.data.model.McpServer
 import com.nekobot.app.data.model.McpServerRequest
 import com.nekobot.app.data.model.Message
+import com.nekobot.app.service.AgentForegroundService
 import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.RELATIONSHIP_STATE_SOURCE_INITIAL
 import com.nekobot.app.data.model.Session
@@ -2384,6 +2385,7 @@ class LocalRepository(
         attachments: List<Map<String, Any>> = emptyList()
     ): Flow<RealtimeEvent> = flow {
         val generationController = LocalGenerationController()
+        var agentForegroundStarted = false
         activeGenerations.put(sessionId, generationController)?.requestStop()
         try {
         // 标记当前会话，供二级 LLM 调用（AutoState/记忆）token 记账归属
@@ -2469,6 +2471,14 @@ class LocalRepository(
             }
             chat(sessionId, userMessage, activeModel).collect { emit(it) }
             return@flow
+        }
+
+        if (session.sessionMode.equals("agent", ignoreCase = true)) {
+            appContext?.let { context ->
+                agentForegroundStarted = runCatching {
+                    AgentForegroundService.acquire(context, sessionId)
+                }.isSuccess
+            }
         }
 
         // 2. 加载世界书条目
@@ -2867,6 +2877,9 @@ class LocalRepository(
             emit(RealtimeEvent.Error(e.message ?: "本地聊天失败"))
             emit(RealtimeEvent.StreamEnd(sessionId))
         } finally {
+            if (agentForegroundStarted) {
+                appContext?.let { AgentForegroundService.release(it, sessionId) }
+            }
             activeGenerations.remove(sessionId, generationController)
         }
     }.flowOn(Dispatchers.IO)

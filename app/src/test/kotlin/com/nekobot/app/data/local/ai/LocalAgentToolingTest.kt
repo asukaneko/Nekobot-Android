@@ -27,6 +27,10 @@ class LocalAgentToolingTest {
         assertTrue("get_date_time" in names)
         assertTrue("exec_command" in names)
         assertTrue("browser_use" in names)
+        assertTrue("file_read" in names)
+        assertTrue("file_write" in names)
+        assertTrue("file_edit" in names)
+        assertTrue("read_image" in names)
         assertTrue("workspace_read_file" in names)
         assertTrue("workspace_extract_epub" in names)
         assertFalse("save_to_memory" in names)
@@ -43,11 +47,18 @@ class LocalAgentToolingTest {
         assertTrue("question" in browserProperties)
         assertTrue("max_chars" in browserProperties)
         assertTrue("max_results" in browserProperties)
+        assertTrue("tab_id" in browserProperties)
+        assertTrue("cookies" in browserProperties)
+        assertTrue("viewport_width" in browserProperties)
+        assertTrue("item_selector" in browserProperties)
         val actionDescription =
             ((browserProperties["action"] as Map<*, *>)["description"] as String)
         assertTrue("understand_screenshot" in actionDescription)
         assertTrue("get_html" in actionDescription)
         assertTrue("get_links" in actionDescription)
+        assertTrue("new_tab" in actionDescription)
+        assertTrue("fetch" in actionDescription)
+        assertTrue("wait_for_dom_stable" in actionDescription)
     }
 
     @Test
@@ -226,6 +237,116 @@ class LocalAgentToolingTest {
         } finally {
             root.deleteRecursively()
         }
+    }
+
+    @Test
+    fun standardLinuxFileToolsSupportWorkspacePathsAppendAndExactEdit() {
+        val root = Files.createTempDirectory("nekobot-linux-file-tools").toFile()
+        try {
+            val executor = LocalAgentToolExecutor(
+                sessionId = "session-linux-files",
+                workspaceRoot = root,
+                authorizationManager = LocalExecAuthorizationManager(100),
+                onConfirmationRequired = {},
+                thinkingHistoryProvider = { emptyList() }
+            )
+
+            val written = executor.execute(
+                "file_write",
+                mapOf("path" to "/workspace/src/demo.txt", "content" to "alpha\n")
+            )
+            assertEquals(true, written["success"])
+            assertEquals("/workspace/src/demo.txt", written["path"])
+
+            val appended = executor.execute(
+                "file_write",
+                mapOf(
+                    "path" to "/workspace/src/demo.txt",
+                    "content" to "beta\n",
+                    "append" to true
+                )
+            )
+            assertEquals(true, appended["success"])
+            assertEquals(true, appended["appended"])
+
+            val edited = executor.execute(
+                "file_edit",
+                mapOf(
+                    "path" to "/workspace/src/demo.txt",
+                    "old_string" to "beta",
+                    "new_string" to "gamma"
+                )
+            )
+            assertEquals(true, edited["success"])
+            assertEquals(1, edited["replacements"])
+
+            val read = executor.execute(
+                "file_read",
+                mapOf("path" to "/workspace/src/demo.txt")
+            )
+            assertEquals(true, read["success"])
+            assertEquals("alpha\ngamma\n", read["content"])
+
+            val escaped = executor.execute(
+                "file_write",
+                mapOf("path" to "/workspace/../outside.txt", "content" to "no")
+            )
+            assertEquals(false, escaped["success"])
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun toolArgumentsAreRepairedValidatedAndRepeatedCallsAreStopped() {
+        val repaired = normalizeAgentToolCall(
+            mapOf(
+                "id" to "call-1",
+                "name" to " file_write ",
+                "arguments" to """{"path":"/workspace/a.txt","content":"ok""""
+            )
+        )
+        assertEquals("file_write", repaired["name"])
+        @Suppress("UNCHECKED_CAST")
+        val repairedArgs = repaired["arguments"] as Map<String, Any>
+        assertEquals("/workspace/a.txt", repairedArgs["path"])
+        assertEquals(null, validateAgentToolCall(repaired))
+
+        val invalid = normalizeAgentToolCall(
+            mapOf(
+                "name" to "file_write",
+                "arguments" to mapOf("path" to "/workspace/a.txt")
+            )
+        )
+        assertTrue(validateAgentToolCall(invalid)?.contains("content") == true)
+
+        var modelCalls = 0
+        var executedTools = 0
+        val result = runToolCallLoop(
+            initialMessages = listOf(mapOf("role" to "user", "content" to "重复调用")),
+            modelCall = { _, _ ->
+                modelCalls += 1
+                mapOf(
+                    "content" to "",
+                    "finish_reason" to "tool_calls",
+                    "tool_calls" to listOf(
+                        mapOf(
+                            "id" to "call-$modelCalls",
+                            "name" to "get_date_time",
+                            "arguments" to emptyMap<String, Any>()
+                        )
+                    )
+                )
+            },
+            toolExecutor = { _, _, _, _ ->
+                executedTools += 1
+                mapOf("success" to true, "time" to "12:00")
+            }
+        )
+
+        assertEquals(5, modelCalls)
+        assertEquals(4, executedTools)
+        assertTrue(result.finalContent.contains("无进展循环"))
     }
 
     @Test

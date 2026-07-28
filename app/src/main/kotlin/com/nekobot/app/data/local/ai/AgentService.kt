@@ -14,6 +14,95 @@ private val agentGson = Gson()
 private val toolCallHistoryType =
     object : TypeToken<List<Map<String, Any>>>() {}.type
 
+private val requiredToolArguments = mapOf(
+    "browser_use" to setOf("action"),
+    "exec_command" to setOf("command"),
+    "file_read" to setOf("path"),
+    "file_write" to setOf("path", "content"),
+    "file_edit" to setOf("path", "old_string", "new_string"),
+    "read_image" to setOf("path"),
+    "workspace_create_file" to setOf("path", "content"),
+    "workspace_read_file" to setOf("path"),
+    "workspace_edit_file" to setOf("path", "content"),
+    "workspace_delete_file" to setOf("path"),
+    "workspace_send_file" to setOf("path")
+)
+
+/**
+ * 兼容部分模型把 arguments 返回成 JSON 字符串，或漏掉末尾右花括号的情况。
+ * 无法修复时保留空参数，由执行前校验生成可读错误，而不是让整个工具循环崩溃。
+ */
+internal fun normalizeAgentToolCall(toolCall: Map<String, Any>): Map<String, Any> {
+    val normalized = toolCall.toMutableMap()
+    normalized["name"] = toolCall["name"]?.toString()?.trim().orEmpty()
+    val rawArguments = toolCall["arguments"]
+    val arguments: Map<String, Any> = when (rawArguments) {
+        is Map<*, *> -> rawArguments.entries
+            .filter { it.key != null }
+            .associate { it.key.toString() to (it.value ?: "") }
+        is String -> parseToolArguments(rawArguments)
+        else -> emptyMap()
+    }
+    normalized["arguments"] = arguments
+    return normalized
+}
+
+@Suppress("UNCHECKED_CAST")
+private fun parseToolArguments(raw: String): Map<String, Any> {
+    val trimmed = raw.trim()
+    if (trimmed.isBlank()) return emptyMap()
+    val candidates = buildList {
+        add(trimmed)
+        if (trimmed.startsWith("{")) {
+            val missingClosers = (trimmed.count { it == '{' } - trimmed.count { it == '}' })
+                .coerceIn(0, 8)
+            if (missingClosers > 0) add(trimmed + "}".repeat(missingClosers))
+        }
+    }
+    return candidates.firstNotNullOfOrNull { candidate ->
+        runCatching {
+            agentGson.fromJson(candidate, Map::class.java) as? Map<String, Any>
+        }.getOrNull()
+    }.orEmpty()
+}
+
+internal fun validateAgentToolCall(toolCall: Map<String, Any>): String? {
+    val name = toolCall["name"]?.toString()?.trim().orEmpty()
+    if (name.isBlank()) return "工具调用缺少 name"
+    @Suppress("UNCHECKED_CAST")
+    val arguments = toolCall["arguments"] as? Map<String, Any> ?: emptyMap()
+    val missing = requiredToolArguments[name].orEmpty().filter { key ->
+        val value = if (key == "path") {
+            arguments["path"] ?: arguments["filename"] ?: arguments["file_path"]
+        } else {
+            arguments[key]
+        }
+        value == null || (value is String && value.isBlank())
+    }
+    return if (missing.isEmpty()) null else "$name 缺少必填参数: ${missing.joinToString()}"
+}
+
+private class AgentToolLoopGuard(
+    private val maxIdenticalCalls: Int = 5
+) {
+    private var previousSignature = ""
+    private var identicalCount = 0
+
+    fun inspect(toolCall: Map<String, Any>): String? {
+        val signature = agentGson.toJson(
+            mapOf(
+                "name" to toolCall["name"],
+                "arguments" to toolCall["arguments"]
+            )
+        )
+        identicalCount = if (signature == previousSignature) identicalCount + 1 else 1
+        previousSignature = signature
+        return if (identicalCount >= maxIdenticalCalls) {
+            "检测到连续 $identicalCount 次完全相同的工具调用，已停止以避免无进展循环。"
+        } else null
+    }
+}
+
 // ============================================================================
 // 异常类型
 // ============================================================================
@@ -365,6 +454,7 @@ fun runToolCallLoop(
     var currentModelName = ""
     var currentModelActualName = ""
     val allFailoverEvents = mutableListOf<Map<String, Any>>()
+    val loopGuard = AgentToolLoopGuard()
 
     fun result(
         finalContentArg: String? = null,
@@ -416,7 +506,9 @@ fun runToolCallLoop(
         mergeUsage(usageTotal, response["usage"])
 
         @Suppress("UNCHECKED_CAST")
-        val toolCalls = response["tool_calls"] as? List<Map<String, Any>> ?: emptyList()
+        val toolCalls = (response["tool_calls"] as? List<Map<String, Any>>)
+            .orEmpty()
+            .map(::normalizeAgentToolCall)
         val thinkingContent = (response["thinking_content"] as? String) ?: (response["content"] as? String) ?: ""
 
         if (toolCalls.isNotEmpty()) {
@@ -440,16 +532,29 @@ fun runToolCallLoop(
             ))
 
             // 执行每个工具调用
+            var loopAbortMessage: String? = null
             for (toolCall in toolCalls) {
                 if (shouldStop()) {
                     return result(stopped = true, iterations = iteration + 1)
                 }
                 hooks?.onToolStart?.invoke(toolCall, thinkingContent, iteration, toolMessages.map { it.toMap() })
 
-                val toolResult = try {
-                    toolExecutor(toolCall, thinkingContent, iteration, toolMessages.map { it.toMap() })
-                } catch (e: ToolLoopExit) {
-                    return result(finalContentArg = e.finalContent, iterations = iteration + 1)
+                val loopGuardMessage = loopAbortMessage ?: loopGuard.inspect(toolCall)
+                if (loopAbortMessage == null && loopGuardMessage != null) {
+                    loopAbortMessage = loopGuardMessage
+                }
+                val validationMessage = validateAgentToolCall(toolCall)
+                val toolResult = if (loopGuardMessage != null || validationMessage != null) {
+                    mapOf(
+                        "success" to false,
+                        "error" to (loopGuardMessage ?: validationMessage.orEmpty())
+                    )
+                } else {
+                    try {
+                        toolExecutor(toolCall, thinkingContent, iteration, toolMessages.map { it.toMap() })
+                    } catch (e: ToolLoopExit) {
+                        return result(finalContentArg = e.finalContent, iterations = iteration + 1)
+                    }
                 }
                 if (shouldStop()) {
                     return result(stopped = true, iterations = iteration + 1)
@@ -472,6 +577,9 @@ fun runToolCallLoop(
                 }
 
                 toolMessages.add(toolHistoryMessage.toMutableMap())
+            }
+            loopAbortMessage?.let { message ->
+                return result(finalContentArg = message, iterations = iteration + 1)
             }
             continue
         }

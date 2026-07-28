@@ -262,7 +262,7 @@ internal class LocalLinuxRootfsManager private constructor(
         private const val ROOTFS_TAR_GZ = "alpine-minirootfs.tar.gz"
         private const val INSTALL_MARKER = ".nekobot-rootfs"
         private const val ROOTFS_REVISION =
-            "openminis-0.20-preview-alpine-3.21.3-arm64-5651126278f52f29"
+            "alpine-3.21.3-arm64-5651126278f52f29"
         private const val SUPPORTED_ABI = "arm64-v8a"
         private const val PROOT_LIBRARY = "libproot.so"
         private const val PROOT_LOADER_64 = "libproot-loader.so"

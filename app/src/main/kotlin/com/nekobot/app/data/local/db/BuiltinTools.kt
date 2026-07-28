@@ -92,7 +92,11 @@ object BuiltinTools {
                   "properties": {
                     "action": {
                       "type": "string",
-                      "description": "动作：navigate、screenshot、understand_screenshot（截图后自动调用图片理解模型）、get_html（获取动态 DOM 源码）、get_links（结构化提取 URL）、click、type、get_text、get_readable、get_backbone、find_elements、get_page_info、scroll、execute_js、wait、back、forward、reload"
+                      "description": "动作：navigate、new_tab、switch_tab、close_tab、list_tabs、screenshot、understand_screenshot、get_html、get_links、click、type、get_text、get_readable、get_backbone、find_elements、get_page_info、get_cookies、set_cookies、fetch、set_viewport、set_user_agent、scroll_and_collect、wait_for_dom_stable、scroll、execute_js、wait、back、forward、reload"
+                    },
+                    "tab_id": {
+                      "type": "integer",
+                      "description": "要操作或切换的标签页 ID；list_tabs 可查看"
                     },
                     "url": {
                       "type": "string",
@@ -153,6 +157,59 @@ object BuiltinTools {
                     "max_results": {
                       "type": "integer",
                       "description": "get_links 返回的最大 URL 数量，默认 200，最大 500"
+                    },
+                    "keywords": {
+                      "type": "string",
+                      "description": "get_cookies 按名称过滤的关键词"
+                    },
+                    "fuzzy": {
+                      "type": "boolean",
+                      "description": "Cookie 名称是否使用模糊匹配"
+                    },
+                    "cookies": {
+                      "type": "array",
+                      "description": "set_cookies 要写入的 Cookie 列表，每项支持 name、value、url、domain、path、secure、http_only",
+                      "items": {"type": "object"}
+                    },
+                    "headers": {
+                      "type": "object",
+                      "description": "fetch 的附加请求头；Cookie 会自动使用当前浏览器登录态"
+                    },
+                    "save_path": {
+                      "type": "string",
+                      "description": "fetch 保存文件名；文件会写入会话 browser 目录"
+                    },
+                    "viewport_width": {
+                      "type": "integer",
+                      "description": "set_viewport 的 CSS 宽度"
+                    },
+                    "viewport_height": {
+                      "type": "integer",
+                      "description": "set_viewport 的 CSS 高度"
+                    },
+                    "reset": {
+                      "type": "boolean",
+                      "description": "set_viewport 是否恢复默认视口"
+                    },
+                    "user_agent": {
+                      "type": "string",
+                      "description": "set_user_agent 使用 mobile、desktop 或自定义 User-Agent"
+                    },
+                    "reload": {
+                      "type": "boolean",
+                      "description": "修改 User-Agent 后是否刷新页面"
+                    },
+                    "item_selector": {
+                      "type": "string",
+                      "description": "scroll_and_collect 用于收集列表项的 CSS 选择器"
+                    },
+                    "scroll_count": {
+                      "type": "integer",
+                      "description": "scroll_and_collect 的滚动次数，1-20"
+                    },
+                    "timeout": {
+                      "type": "integer",
+                      "description": "wait_for_dom_stable 超时秒数，1-60"
                     }
                   },
                   "required": ["action"]
@@ -224,6 +281,59 @@ object BuiltinTools {
                 listOf("command")
             ),
             implementationJson = "{\"requires_confirmation\":true,\"ttl_seconds\":600}"
+        ),
+        BuiltinToolSpec(
+            id = "file_read",
+            name = "读取 Linux 工作区文件",
+            description = "读取 /workspace 内的 UTF-8 文本文件。支持相对路径或 /workspace 绝对路径，可按行分片读取，返回完整行数、字符数和截断状态。",
+            parametersJson = params(
+                mapOf(
+                    "path" to mapOf("type" to "string", "description" to "文件路径，如 /workspace/src/main.py"),
+                    "start_line" to mapOf("type" to "integer", "description" to "起始行号，1-based，默认 1"),
+                    "end_line" to mapOf("type" to "integer", "description" to "结束行号，1-based，默认读到末尾"),
+                    "max_chars" to mapOf("type" to "integer", "description" to "最大返回字符数，默认 30000，最大 80000")
+                ),
+                listOf("path")
+            )
+        ),
+        BuiltinToolSpec(
+            id = "file_write",
+            name = "写入 Linux 工作区文件",
+            description = "写入 /workspace 内的文本文件，自动创建父目录；append=true 时追加，否则覆盖。",
+            parametersJson = params(
+                mapOf(
+                    "path" to mapOf("type" to "string", "description" to "文件路径，如 /workspace/output.txt"),
+                    "content" to mapOf("type" to "string", "description" to "要写入的文本"),
+                    "append" to mapOf("type" to "boolean", "description" to "是否追加写入，默认 false")
+                ),
+                listOf("path", "content")
+            )
+        ),
+        BuiltinToolSpec(
+            id = "file_edit",
+            name = "精确编辑 Linux 工作区文件",
+            description = "在 /workspace 文本文件中精确替换 old_string。默认要求旧文本只出现一次；replace_all=true 可替换全部匹配。",
+            parametersJson = params(
+                mapOf(
+                    "path" to mapOf("type" to "string", "description" to "要编辑的文件路径"),
+                    "old_string" to mapOf("type" to "string", "description" to "必须精确匹配的原文本"),
+                    "new_string" to mapOf("type" to "string", "description" to "替换后的文本"),
+                    "replace_all" to mapOf("type" to "boolean", "description" to "是否替换全部匹配，默认 false")
+                ),
+                listOf("path", "old_string", "new_string")
+            )
+        ),
+        BuiltinToolSpec(
+            id = "read_image",
+            name = "查看 Linux 工作区图片",
+            description = "读取 /workspace 内的图片并调用视觉模型理解内容；也支持 http(s) URL 和 data URI。",
+            parametersJson = params(
+                mapOf(
+                    "path" to mapOf("type" to "string", "description" to "图片路径或 URL"),
+                    "question" to mapOf("type" to "string", "description" to "希望视觉模型回答的问题")
+                ),
+                listOf("path")
+            )
         ),
         BuiltinToolSpec(
             id = "download_file",

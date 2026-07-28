@@ -16,7 +16,7 @@ android {
         versionCode = 25
         versionName = "0.4.2"
         ndk {
-            // 内置 Linux 沙盒与 OpenMinis Android 一致，当前使用 arm64 PRoot。
+            // 内置 Linux 沙盒当前使用 arm64 PRoot。
             abiFilters += "arm64-v8a"
         }
         vectorDrawables { useSupportLibrary = true }

@@ -26,6 +26,10 @@ internal val localExecutableToolIds = setOf(
     "get_date_time",
     "http_get",
     "exec_command",
+    "file_read",
+    "file_write",
+    "file_edit",
+    "read_image",
     "download_file",
     "send_message",
     "get_session_thinking_history",
@@ -145,6 +149,12 @@ internal class LocalAgentToolExecutor(
                 "get_date_time" -> getDateTime(args)
                 "http_get" -> httpGet(args)
                 "exec_command" -> execCommand(args)
+                "file_read" -> readWorkspaceFile(args)
+                "file_write" -> writeLinuxWorkspaceFile(args)
+                "file_edit" -> editLinuxWorkspaceFile(args)
+                "read_image" -> understandImage(
+                    args + ("image_url" to args.workspacePath())
+                )
                 "download_file" -> downloadFile(args)
                 "send_message" -> sendMessage(args)
                 "get_session_thinking_history" -> thinkingHistory(args)
@@ -602,13 +612,62 @@ internal class LocalAgentToolExecutor(
         )
     }
 
+    private fun writeLinuxWorkspaceFile(args: Map<String, Any>): Map<String, Any> {
+        val target = resolveWorkspacePath(args.workspacePath())
+            ?: return failure("路径为空或超出 /workspace")
+        if (!args.containsKey("content")) return failure("file_write 缺少 content")
+        target.parentFile?.mkdirs()
+        val content = args.string("content")
+        if (args.boolean("append")) {
+            target.appendText(content, Charsets.UTF_8)
+        } else {
+            target.writeText(content, Charsets.UTF_8)
+        }
+        return success(
+            "path" to "/workspace/${relativeWorkspacePath(target)}",
+            "absolute_path" to target.canonicalPath,
+            "size" to target.length(),
+            "appended" to args.boolean("append")
+        )
+    }
+
+    private fun editLinuxWorkspaceFile(args: Map<String, Any>): Map<String, Any> {
+        val target = resolveWorkspacePath(args.workspacePath())
+            ?: return failure("路径为空或超出 /workspace")
+        if (!target.isFile) return failure("文件不存在")
+        if (!args.containsKey("old_string")) return failure("file_edit 缺少 old_string")
+        if (!args.containsKey("new_string")) return failure("file_edit 缺少 new_string")
+        val oldString = args.string("old_string")
+        if (oldString.isEmpty()) return failure("old_string 不能为空")
+        val newString = args.string("new_string")
+        val original = target.readText(Charsets.UTF_8)
+        val occurrences = Regex(Regex.escape(oldString)).findAll(original).count()
+        if (occurrences == 0) return failure("未找到要替换的原文本")
+        val replaceAll = args.boolean("replace_all")
+        if (!replaceAll && occurrences > 1) {
+            return failure("原文本出现 $occurrences 次；请提供更精确的 old_string 或设置 replace_all=true")
+        }
+        val updated = if (replaceAll) {
+            original.replace(oldString, newString)
+        } else {
+            original.replaceFirst(oldString, newString)
+        }
+        target.writeText(updated, Charsets.UTF_8)
+        return success(
+            "path" to "/workspace/${relativeWorkspacePath(target)}",
+            "absolute_path" to target.canonicalPath,
+            "replacements" to if (replaceAll) occurrences else 1,
+            "size" to target.length()
+        )
+    }
+
     private fun readWorkspaceFile(args: Map<String, Any>): Map<String, Any> {
         val target = resolveWorkspacePath(args.workspacePath())
             ?: return failure("路径为空或超出会话工作区")
         if (!target.isFile) return failure("文件不存在")
 
         // 参数：max_chars 默认 30000，<=0 视为不限制
-        val maxChars = args.int("max_chars", 30000).coerceAtLeast(0)
+        val maxChars = args.int("max_chars", 30000).coerceIn(0, 80_000)
         // 行号参数：1-based，含两端；未指定时覆盖整个文件
         val startLine = args.int("start_line", 1).coerceAtLeast(1)
         val endLine = args.int("end_line", 0) // 0 或负数 → 读到末尾
@@ -760,8 +819,12 @@ internal class LocalAgentToolExecutor(
     private fun resolveWorkspacePath(path: String, allowRoot: Boolean = false): File? {
         val root = workspace ?: return null
         root.mkdirs()
-        if (path.isBlank()) return root.takeIf { allowRoot }
-        val target = File(root, path).canonicalFile
+        val normalizedPath = path.trim()
+            .replace('\\', '/')
+            .removePrefix("/workspace/")
+            .let { value -> if (value == "/workspace") "" else value }
+        if (normalizedPath.isBlank()) return root.takeIf { allowRoot }
+        val target = File(root, normalizedPath).canonicalFile
         val rootPath = root.path
         return target.takeIf {
             it.path == rootPath || it.path.startsWith(rootPath + File.separator)
@@ -816,6 +879,14 @@ internal class LocalAgentToolExecutor(
 
     private fun Map<String, Any>.int(key: String, default: Int): Int =
         (this[key] as? Number)?.toInt() ?: this[key]?.toString()?.toIntOrNull() ?: default
+
+    private fun Map<String, Any>.boolean(key: String, default: Boolean = false): Boolean =
+        when (val value = this[key]) {
+            is Boolean -> value
+            is Number -> value.toInt() != 0
+            is String -> value.equals("true", ignoreCase = true) || value == "1"
+            else -> default
+        }
 
     private fun success(vararg values: Pair<String, Any>): Map<String, Any> =
         buildMap {
