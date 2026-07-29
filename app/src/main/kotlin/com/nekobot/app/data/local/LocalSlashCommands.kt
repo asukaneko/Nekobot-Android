@@ -189,8 +189,8 @@ internal object LocalSlashCommands {
         ),
         LocalCommandSpec(
             aliases = listOf("/set_wenku_cookie"),
-            usage = "/set_wenku_cookie <Cookie>",
-            description = "更新文库8的 Cookie",
+            usage = "/set_wenku_cookie <Cookie> || <UA>",
+            description = "更新文库8的 Cookie（推荐：设置 → 轻小说 → wenku8 登录）",
             action = LocalCommandAction.NOVEL_SET_COOKIE
         ),
         LocalCommandSpec(

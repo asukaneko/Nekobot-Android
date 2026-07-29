@@ -99,43 +99,40 @@ internal class LocalNovelClient(
      * @param searchTerm 关键词
      * @param searchType `articlename`（按书名）或 `author`（按作者）
      * @param cookie wenku8 登录 Cookie
+     * @param userAgent 自定义 User-Agent；为空时使用 [NOVEL_USER_AGENT_VALUE]。
+     *                  CloudFlare 的 cf_clearance 绑定获取时的 IP + UA，需保持一致。
      * @param maxPages 最多翻页数
      */
     fun searchBooks(
         searchTerm: String,
         searchType: String,
         cookie: String,
+        userAgent: String = "",
         maxPages: Int = 3
     ): List<LocalNovelBook> {
         if (cookie.isBlank()) {
-            throw CookieMissingException(
-                "❌ Cookie 未设置喵！\n请使用 `/set_wenku_cookie <Cookie>` 命令设置 Cookie 喵~\n" +
-                    "或者去 www.wenku8.net 登录后获取 Cookie"
-            )
+            throw CookieMissingException(WENKU8_COOKIE_MISSING_HINT)
         }
         val results = mutableListOf<LocalNovelBook>()
         val seenIds = mutableSetOf<String>()
 
         for (page in 1..maxPages) {
             val url = buildWenku8SearchUrl(searchTerm, searchType, page)
-            val response = executeTextRequest(url, cookie)
+            val response = executeTextRequest(url, cookie, userAgent)
             if (response.siteClosed) {
                 throw IllegalStateException("wenku8.net 网站已关闭，请稍后再试喵~")
             }
             if (response.is403) {
-                throw CookieExpiredException(
-                    "❌ 搜索返回 403，Cookie 可能已失效喵！\n" +
-                        "请使用 `/set_wenku_cookie <Cookie>` 命令更新 Cookie 喵~"
-                )
-            }
-            if (response.requiresLogin) {
-                throw CookieExpiredException(
-                    "❌ 搜索需要登录，Cookie 可能已失效喵！\n" +
-                        "请使用 `/set_wenku_cookie <Cookie>` 命令更新 Cookie 喵~"
-                )
+                throw CookieExpiredException(WENKU8_403_HINT)
             }
             val pageMatches = NOVEL_CARD_BLOCK_REGEX.findAll(response.body).map { it.groupValues[1] }.toList()
-            if (pageMatches.isEmpty()) break
+            if (pageMatches.isEmpty()) {
+                // 匹配为空时才检查是否需要登录（搜索页即使已登录也可能含"登录"字样）
+                if (page == 1 && response.requiresLogin) {
+                    throw CookieExpiredException(WENKU8_LOGIN_HINT)
+                }
+                break
+            }
 
             for (match in pageMatches) {
                 val book = parseNovelCardBlock(match) ?: continue
@@ -154,12 +151,11 @@ internal class LocalNovelClient(
     fun fetchHotNovels(
         period: LocalNovelRankingPeriod,
         cookie: String,
+        userAgent: String = "",
         limit: Int = 10
     ): List<LocalNovelBook> {
         if (cookie.isBlank()) {
-            throw CookieMissingException(
-                "❌ Cookie 未设置喵！\n请使用 `/set_wenku_cookie <Cookie>` 命令设置 Cookie 喵~"
-            )
+            throw CookieMissingException(WENKU8_COOKIE_MISSING_HINT)
         }
         val requestedCount = limit.coerceIn(1, 100)
         val allMatches = mutableListOf<String>()
@@ -171,12 +167,9 @@ internal class LocalNovelClient(
                 .addQueryParameter("sort", period.sort)
                 .addQueryParameter("page", page.toString())
                 .build()
-            val response = executeTextRequest(url, cookie)
+            val response = executeTextRequest(url, cookie, userAgent)
             if (response.is403) {
-                throw CookieExpiredException(
-                    "❌ 榜单返回 403，Cookie 可能已失效喵！\n" +
-                        "请使用 `/set_wenku_cookie <Cookie>` 命令更新 Cookie 喵~"
-                )
+                throw CookieExpiredException(WENKU8_403_HINT)
             }
             if (response.siteClosed) {
                 throw IllegalStateException("wenku8.net 网站已关闭，请稍后再试喵~")
@@ -184,10 +177,7 @@ internal class LocalNovelClient(
             val pageMatches = NOVEL_CARD_BLOCK_REGEX.findAll(response.body).map { it.groupValues[1] }.toList()
             if (pageMatches.isEmpty()) {
                 if (page == 1 && response.requiresLogin) {
-                    throw CookieExpiredException(
-                        "❌ 榜单获取失败，Cookie 可能已失效喵！\n" +
-                            "请使用 `/set_wenku_cookie <Cookie>` 命令更新 Cookie 喵~"
-                    )
+                    throw CookieExpiredException(WENKU8_LOGIN_HINT)
                 }
                 break
             }
@@ -203,8 +193,8 @@ internal class LocalNovelClient(
     /**
      * 从今日热门榜单中随机取一本。
      */
-    fun fetchRandomFromHot(cookie: String): LocalNovelBook? {
-        val entries = fetchHotNovels(LocalNovelRankingPeriod.DAY, cookie, limit = 20)
+    fun fetchRandomFromHot(cookie: String, userAgent: String = ""): LocalNovelBook? {
+        val entries = fetchHotNovels(LocalNovelRankingPeriod.DAY, cookie, userAgent, limit = 20)
         if (entries.isEmpty()) return null
         return entries.random()
     }
@@ -212,15 +202,13 @@ internal class LocalNovelClient(
     /**
      * 通过书籍详情页 URL 获取详细信息。
      */
-    fun fetchBookDetail(bookId: String, cookie: String): LocalNovelBook? {
+    fun fetchBookDetail(bookId: String, cookie: String, userAgent: String = ""): LocalNovelBook? {
         if (bookId.isBlank() || !bookId.matches(Regex("\\d+"))) return null
         if (cookie.isBlank()) {
-            throw CookieMissingException(
-                "❌ Cookie 未设置喵！\n请使用 `/set_wenku_cookie <Cookie>` 命令设置 Cookie 喵~"
-            )
+            throw CookieMissingException(WENKU8_COOKIE_MISSING_HINT)
         }
         val url = "https://www.wenku8.net/book/$bookId.htm"
-        val response = executeTextRequest(url.toHttpUrl(), cookie)
+        val response = executeTextRequest(url.toHttpUrl(), cookie, userAgent)
         if (!response.isSuccessful || response.siteClosed) return null
         return parseNovelDetailPage(response.body, bookId)
     }
@@ -231,7 +219,7 @@ internal class LocalNovelClient(
      * 与原仓库 `/novel_res` 一致：`https://dl.wenku8.com/down.php?type=txt&node={node}&id={id}`。
      * 返回原始字节，由调用方写入工作区。
      */
-    fun downloadWenku8Txt(bookId: String, cookie: String): ByteArray {
+    fun downloadWenku8Txt(bookId: String, cookie: String, userAgent: String = ""): ByteArray {
         val id = bookId.toLongOrNull() ?: error("书 ID 无效：$bookId")
         val node = (id / 1000).toString()
         val url = "https://dl.wenku8.com/down.php"
@@ -243,7 +231,7 @@ internal class LocalNovelClient(
             .build()
         val request = Request.Builder()
             .url(url)
-            .headers(buildWenku8Headers(cookie))
+            .headers(buildWenku8Headers(cookie, userAgent))
             .get()
             .build()
         return httpClient.newCall(request).execute().use { response ->
@@ -400,13 +388,14 @@ internal class LocalNovelClient(
         val requiresLogin: Boolean
             get() = body.contains("出现错误") ||
                 (body.contains("登录") && !body.contains("退出登录")) ||
-                body.lowercase().contains("login")
+                body.contains("请先登录") ||
+                body.contains("您还没有登录")
     }
 
-    private fun executeTextRequest(url: okhttp3.HttpUrl, cookie: String): Wenku8Response {
+    private fun executeTextRequest(url: okhttp3.HttpUrl, cookie: String, userAgent: String = ""): Wenku8Response {
         val request = Request.Builder()
             .url(url)
-            .headers(buildWenku8Headers(cookie))
+            .headers(buildWenku8Headers(cookie, userAgent))
             .get()
             .build()
         return httpClient.newCall(request).execute().use { response ->
@@ -460,39 +449,69 @@ internal fun buildWenku8SearchUrl(
     searchType: String,
     page: Int
 ): okhttp3.HttpUrl {
+    // wenku8 是 GBK 编码网站，搜索关键词必须先用 GBK 编码再做 URL 编码。
+    // 注意：OkHttp 的 addQueryParameter 默认用 UTF-8，addEncodedQueryParameter
+    // 不会再次编码但需要传入已编码字符串。这里手动 GBK 编码后直接拼到 URL 里。
     val encodedKey = try {
         URLEncoder.encode(searchTerm, "GBK")
     } catch (error: Exception) {
         error("搜索关键词编码失败：${error.message}")
     }
-    return "https://www.wenku8.net/modules/article/search.php"
-        .toHttpUrl()
-        .newBuilder()
-        .addQueryParameter("searchtype", searchType)
-        .addEncodedQueryParameter("searchkey", encodedKey)
-        .addQueryParameter("page", page.toString())
-        .build()
+    val url = "https://www.wenku8.net/modules/article/search.php" +
+        "?searchtype=$searchType&searchkey=$encodedKey&page=$page"
+    return url.toHttpUrl()
 }
 
 /**
  * 生成 wenku8 请求头。
  *
- * 不手动设置 `Accept-Encoding`：OkHttp 会自动请求并透明解压 gzip。
- * 若主动声明 `br`，wenku8 会返回 Brotli 正文，而当前客户端没有 Brotli 解码器，
- * 后续把压缩字节按 GBK 解析时会得到空榜单。
+ * 注意：不手动设置 `Accept-Encoding`。OkHttp 会自动添加 `gzip` 并透明解压。
+ * 若手动设置，OkHttp 会认为用户自行处理解压，导致拿到压缩字节按 GBK 解析成乱码。
+ *
+ * @param cookie wenku8 登录 Cookie
+ * @param userAgent 自定义 User-Agent；为空时使用 [NOVEL_USER_AGENT_VALUE]。
+ *                  CloudFlare 的 cf_clearance 绑定获取时的 IP + UA，需保持一致。
  */
-internal fun buildWenku8Headers(cookie: String): okhttp3.Headers =
-    okhttp3.Headers.Builder()
-        .add("User-Agent", NOVEL_USER_AGENT_VALUE)
+internal fun buildWenku8Headers(cookie: String, userAgent: String = ""): okhttp3.Headers {
+    val ua = userAgent.ifBlank { NOVEL_USER_AGENT_VALUE }
+    return okhttp3.Headers.Builder()
+        .add("User-Agent", ua)
         .add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
         .add("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
         .add("Referer", "https://www.wenku8.net/")
         .add("Cookie", cookie)
         .build()
+}
 
 private const val NOVEL_USER_AGENT_VALUE =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+
+/**
+ * wenku8 返回 403 时的统一提示。
+ *
+ * 403 最常见的原因是 CloudFlare 的 cf_clearance 绑定了获取时的 IP + User-Agent，
+ * 在手机上使用时若 IP 或 UA 不匹配就会被拦截。提示用户同时设置 Cookie 和 UA，
+ * 并在手机浏览器上获取 Cookie 以保证 IP 一致。
+ */
+internal const val WENKU8_403_HINT: String =
+    "❌ wenku8 返回 403，被 CloudFlare 拦截喵！\n" +
+        "常见原因：cf_clearance 绑定了获取时的 IP + User-Agent，手机上不匹配。\n" +
+        "推荐解决方法：\n" +
+        "设置 → 轻小说 → wenku8 登录\n" +
+        "（内置浏览器登录，自动保存 Cookie + UA，保证 IP 一致）\n\n" +
+        "手动方式（高级）：\n" +
+        "/set_wenku_cookie <Cookie> || <UA>"
+
+internal const val WENKU8_LOGIN_HINT: String =
+    "❌ wenku8 需要登录，Cookie 可能已失效喵！\n" +
+        "推荐：设置 → 轻小说 → wenku8 登录（自动保存 Cookie + UA）\n" +
+        "或使用 `/set_wenku_cookie <Cookie>` 命令更新 Cookie 喵~"
+
+internal const val WENKU8_COOKIE_MISSING_HINT: String =
+    "❌ Cookie 未设置喵！\n" +
+        "推荐：设置 → 轻小说 → wenku8 登录（自动保存 Cookie + UA）\n" +
+        "或使用 `/set_wenku_cookie <Cookie>` 命令手动设置"
 
 /**
  * 解析 `/hotnovel` 的参数。

@@ -88,6 +88,7 @@ import com.nekobot.app.data.model.WorkflowRequest
 import com.nekobot.app.data.model.WorldBook
 import com.nekobot.app.data.model.WorldBookEntry
 import com.nekobot.app.data.remote.RealtimeEvent
+import com.nekobot.app.ServiceContainer
 import androidx.room.withTransaction
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -2001,17 +2002,25 @@ class LocalRepository(
      * 因此 `/set_wenku_cookie` 写入的值在 LocalRepository 中也能立即读到。
      */
     private fun readWenku8Cookie(): String =
-        appContext
-            ?.getSharedPreferences("nekobot_prefs", android.content.Context.MODE_PRIVATE)
-            ?.getString("wenku8_cookie", "") ?: ""
+        ServiceContainer.prefs.wenku8Cookie
 
     /** 写入 wenku8 Cookie，供 `/set_wenku_cookie` 命令使用。 */
     private fun writeWenku8Cookie(cookie: String) {
-        appContext
-            ?.getSharedPreferences("nekobot_prefs", android.content.Context.MODE_PRIVATE)
-            ?.edit()
-            ?.putString("wenku8_cookie", cookie)
-            ?.apply()
+        ServiceContainer.prefs.wenku8Cookie = cookie
+    }
+
+    /**
+     * 读取 wenku8 自定义 User-Agent。
+     *
+     * CloudFlare 的 cf_clearance 绑定获取时的 IP + UA，
+     * 允许用户通过 `/set_wenku_cookie <Cookie> || <UA>` 一并设置。
+     */
+    private fun readWenku8UserAgent(): String =
+        ServiceContainer.prefs.wenku8UserAgent
+
+    /** 写入 wenku8 自定义 User-Agent。 */
+    private fun writeWenku8UserAgent(ua: String) {
+        ServiceContainer.prefs.wenku8UserAgent = ua
     }
 
     /**
@@ -2042,6 +2051,7 @@ class LocalRepository(
             return hint
         }
         val cookie = readWenku8Cookie()
+        val userAgent = readWenku8UserAgent()
         val currentProgress = AtomicInteger(0)
 
         suspend fun report(
@@ -2069,7 +2079,8 @@ class LocalRepository(
                 localNovelClient.searchBooks(
                     searchTerm = searchTerm,
                     searchType = if (byAuthor) "author" else "articlename",
-                    cookie = cookie
+                    cookie = cookie,
+                    userAgent = userAgent
                 )
             }
             report(
@@ -2208,6 +2219,7 @@ class LocalRepository(
         }
         val limit = parseLocalNovelHotLimit(rawArgs)
         val cookie = readWenku8Cookie()
+        val userAgent = readWenku8UserAgent()
         val currentProgress = AtomicInteger(0)
 
         suspend fun report(
@@ -2230,7 +2242,7 @@ class LocalRepository(
 
         return try {
             val entries = withContext(Dispatchers.IO) {
-                localNovelClient.fetchHotNovels(period, cookie, limit)
+                localNovelClient.fetchHotNovels(period, cookie, userAgent, limit)
             }
             report(
                 content = "处理 ${period.displayName}",
@@ -2320,6 +2332,7 @@ class LocalRepository(
         progressReporter: LocalCommandProgressReporter?
     ): String {
         val cookie = readWenku8Cookie()
+        val userAgent = readWenku8UserAgent()
         val currentProgress = AtomicInteger(0)
 
         suspend fun report(
@@ -2342,7 +2355,7 @@ class LocalRepository(
 
         return try {
             val book = withContext(Dispatchers.IO) {
-                localNovelClient.fetchRandomFromHot(cookie)
+                localNovelClient.fetchRandomFromHot(cookie, userAgent)
             }
             if (book == null) {
                 val msg = "获取随机小说失败喵~请稍后再试~"
@@ -2366,7 +2379,7 @@ class LocalRepository(
             )
             // 尝试获取更详细的页面信息
             val detail = withContext(Dispatchers.IO) {
-                localNovelClient.fetchBookDetail(book.id, cookie) ?: book
+                localNovelClient.fetchBookDetail(book.id, cookie, userAgent) ?: book
             }
             report(
                 content = "生成《${detail.title}》详情",
@@ -2497,12 +2510,13 @@ class LocalRepository(
 
         return try {
             val cookie = readWenku8Cookie()
+            val userAgent = readWenku8UserAgent()
             val isWebMatch = index < state.webMatches.size
             val book: LocalNovelBook = if (isWebMatch) {
                 val webBook = state.webMatches[index]
                 // 尝试从详情页获取更完整的信息，失败则回退到搜索结果
                 withContext(Dispatchers.IO) {
-                    localNovelClient.fetchBookDetail(webBook.id, cookie) ?: webBook
+                    localNovelClient.fetchBookDetail(webBook.id, cookie, userAgent) ?: webBook
                 }
             } else {
                 val apiIndex = index - state.webMatches.size
@@ -2647,7 +2661,7 @@ class LocalRepository(
                     force = true
                 )
                 val bytes = withContext(Dispatchers.IO) {
-                    localNovelClient.downloadWenku8Txt(book.id, readWenku8Cookie())
+                    localNovelClient.downloadWenku8Txt(book.id, readWenku8Cookie(), readWenku8UserAgent())
                 }
                 val root = localWorkspaceRoot(sessionId) ?: error("无法打开当前会话工作区。")
                 val novelDir = File(root, "novel")
@@ -2769,6 +2783,7 @@ class LocalRepository(
             return msg
         }
         val cookie = readWenku8Cookie()
+        val userAgent = readWenku8UserAgent()
         val currentProgress = AtomicInteger(0)
         suspend fun report(
             content: String,
@@ -2790,7 +2805,7 @@ class LocalRepository(
 
         return try {
             val bytes = withContext(Dispatchers.IO) {
-                localNovelClient.downloadWenku8Txt(resValue, cookie)
+                localNovelClient.downloadWenku8Txt(resValue, cookie, userAgent)
             }
             report(
                 content = "保存 TXT 文件",
@@ -2848,15 +2863,43 @@ class LocalRepository(
     }
 
     /**
-     * `/set_wenku_cookie <Cookie>`：更新 wenku8 Cookie。
+     * `/set_wenku_cookie <Cookie>` 或 `/set_wenku_cookie <Cookie> || <User-Agent>`：更新 wenku8 Cookie。
      *
      * 对齐原仓库 `handle_set_wenku_cookie`，但不做管理员校验（本地模式无多用户概念）。
+     *
+     * 支持用 `||` 分隔 Cookie 和 User-Agent：
+     * - `/set_wenku_cookie PHPSESSID=xxx; cf_clearance=yyy`
+     * - `/set_wenku_cookie PHPSESSID=xxx; cf_clearance=yyy || Mozilla/5.0 ... Chrome/125.0.0.0`
+     *
+     * CloudFlare 的 cf_clearance 绑定获取时的 IP + UA，建议使用内置浏览器登录
+     * （设置 → 轻小说 → wenku8 登录），自动保证 IP + UA + Cookie 三者一致，避免 403。
      */
     private fun localNovelSetCookieText(rawArgs: String): String {
-        val cookie = rawArgs.trim()
-        if (cookie.isEmpty()) return "请输入新的 Cookie 喵~"
+        val trimmed = rawArgs.trim()
+        if (trimmed.isEmpty()) {
+            return "📖 wenku8 Cookie 设置喵~\n\n" +
+                "推荐方式：设置 → 轻小说 → wenku8 登录\n" +
+                "（内置浏览器登录，自动保存 Cookie + UA，避免 403）\n\n" +
+                "手动方式（高级）：\n" +
+                "/set_wenku_cookie <Cookie>\n" +
+                "/set_wenku_cookie <Cookie> || <User-Agent>\n\n" +
+                "提示：CloudFlare 的 cf_clearance 绑定 IP + UA，\n" +
+                "手动设置时请确保与获取 Cookie 时的环境一致"
+        }
+        // 按 `||` 分隔 Cookie 和 User-Agent
+        val parts = trimmed.split("||", limit = 2)
+        val cookie = parts[0].trim()
+        val userAgent = parts.getOrNull(1)?.trim().orEmpty()
+        if (cookie.isEmpty()) return "请输入有效的 Cookie 喵~"
         writeWenku8Cookie(cookie)
-        return "✅ Cookie 更新成功喵！现在可以尝试使用 `/hotnovel` 喵~"
+        writeWenku8UserAgent(userAgent)
+        return if (userAgent.isNotEmpty()) {
+            "✅ Cookie + User-Agent 更新成功喵！\nUA: ${userAgent.take(80)}...\n现在可以尝试使用 `/hotnovel` 喵~"
+        } else {
+            "✅ Cookie 更新成功喵！现在可以尝试使用 `/hotnovel` 喵~\n" +
+                "提示：如遇 403，建议使用 设置 → 轻小说 → wenku8 登录\n" +
+                "（内置浏览器自动保存 Cookie + UA，避免 IP/UA 不匹配）"
+        }
     }
 
     private fun localFortuneText(sessionId: String): String {

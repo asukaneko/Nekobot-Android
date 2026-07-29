@@ -9,12 +9,20 @@ import org.junit.Test
 class LocalNovelClientTest {
 
     @Test
-    fun `wenku8 headers let OkHttp negotiate supported compression`() {
+    fun `wenku8 headers let OkHttp negotiate compression automatically`() {
         val headers = buildWenku8Headers("jieqiUserInfo=test")
 
+        // 不手动设置 Accept-Encoding，让 OkHttp 自动添加 gzip 并透明解压
         assertNull(headers["Accept-Encoding"])
-        assertNull(headers["Connection"])
         assertEquals("jieqiUserInfo=test", headers["Cookie"])
+    }
+
+    @Test
+    fun `wenku8 headers use custom User-Agent when provided`() {
+        val customUa = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/125.0.0.0 Safari/537.36"
+        val headers = buildWenku8Headers("jieqiUserInfo=test", customUa)
+
+        assertEquals(customUa, headers["User-Agent"])
     }
 
     @Test

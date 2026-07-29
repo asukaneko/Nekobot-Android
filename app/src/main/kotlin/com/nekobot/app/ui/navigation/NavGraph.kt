@@ -59,6 +59,7 @@ import com.nekobot.app.ui.screens.settings.WebDavBackupScreen
 import com.nekobot.app.ui.screens.settings.AboutScreen
 import com.nekobot.app.ui.screens.settings.LicenseScreen
 import com.nekobot.app.ui.screens.settings.PrivacyScreen
+import com.nekobot.app.ui.screens.settings.Wenku8LoginScreen
 import com.nekobot.app.ui.screens.statehistory.StateHistoryScreen
 import com.nekobot.app.ui.screens.tokens.TokensScreen
 import com.nekobot.app.ui.screens.worldbook.WorldBookDetailScreen
@@ -408,6 +409,9 @@ fun NekobotNavGraph() {
                     onOpenLicense = { navController.navigate(Routes.LICENSE) },
                     onOpenPrivacy = { navController.navigate(Routes.PRIVACY) }
                 )
+            }
+            composable(Routes.WENKU_LOGIN) {
+                Wenku8LoginScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.LICENSE) {
                 LicenseScreen(onBack = { navController.popBackStack() })

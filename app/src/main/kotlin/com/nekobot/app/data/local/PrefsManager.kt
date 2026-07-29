@@ -305,6 +305,18 @@ class PrefsManager(context: Context) {
             prefs.edit().putString(KEY_WENKU8_COOKIE, value).apply()
         }
 
+    /**
+     * wenku8 自定义 User-Agent。
+     *
+     * CloudFlare 的 cf_clearance 绑定获取时的 IP + UA，需保持一致。
+     * 由 `/set_wenku_cookie <Cookie> || <UA>` 或内置 WebView 登录页写入。
+     */
+    var wenku8UserAgent: String
+        get() = prefs.getString(KEY_WENKU8_USER_AGENT, "") ?: ""
+        set(value) {
+            prefs.edit().putString(KEY_WENKU8_USER_AGENT, value).apply()
+        }
+
     // ==================== 本地 DB Profile 切换 ====================
 
     /**
@@ -496,6 +508,9 @@ class PrefsManager(context: Context) {
 
         // wenku8 轻小说 Cookie
         const val KEY_WENKU8_COOKIE = "wenku8_cookie"
+
+        // wenku8 自定义 User-Agent
+        const val KEY_WENKU8_USER_AGENT = "wenku8_user_agent"
 
         /**
          * 规范化服务器地址：
