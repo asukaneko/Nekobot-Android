@@ -126,16 +126,16 @@ fun AboutScreen(
                 Spacer(Modifier.height(16.dp))
                 Box(
                     modifier = Modifier
-                        .size(120.dp)
+                        .size(140.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)),
+                        .background(Color.White),
                     contentAlignment = Alignment.Center
                 ) {
                     AsyncImage(
                         model = R.mipmap.neko,
                         contentDescription = stringResource(R.string.app_name),
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(120.dp)
+                        modifier = Modifier.size(124.dp)
                     )
                 }
                 Spacer(Modifier.height(12.dp))
