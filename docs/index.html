@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" href="assets/favicon.png" />
   <link rel="apple-touch-icon" href="assets/neko-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="stylesheet" href="styles.css?v=0.4.3-gallery" />
+  <link rel="stylesheet" href="styles.css?v=0.4.7-rim" />
 </head>
 <body>
 
@@ -94,8 +94,20 @@
         <!-- 手机模型 + 模拟聊天 -->
         <div class="hero-phone reveal d2" aria-hidden="true">
           <div class="phone">
-            <div class="phone-island"></div>
+            <span class="phone-btn phone-btn--action"></span>
+            <span class="phone-btn phone-btn--vol-up"></span>
+            <span class="phone-btn phone-btn--vol-down"></span>
+            <span class="phone-btn phone-btn--power"></span>
             <div class="phone-screen">
+              <div class="phone-statusbar">
+                <span class="sb-time">9:41</span>
+                <span class="sb-island"></span>
+                <span class="sb-icons">
+                  <svg viewBox="0 0 17 11" width="15" height="10" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+                  <svg viewBox="0 0 16 12" width="14" height="11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M1.8 4.2a9.6 9.6 0 0 1 12.4 0"/><path d="M4.3 6.9a6 6 0 0 1 7.4 0"/><circle cx="8" cy="9.9" r="1.5" fill="currentColor" stroke="none"/></svg>
+                  <svg viewBox="0 0 25 12" width="22" height="11" fill="none"><rect x="0.7" y="0.7" width="20.6" height="10.6" rx="3.2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.3" y="2.3" width="14.5" height="7.4" rx="1.8" fill="currentColor"/><path d="M23 4v4a2.1 2.1 0 0 0 0-4z" fill="currentColor" fill-opacity=".45"/></svg>
+                </span>
+              </div>
               <div class="chat-head">
                 <div class="chat-avatar">
                   <img src="assets/neko-icon.png" alt="" />
@@ -137,8 +149,20 @@
           </button>
 
           <div class="screenshot-phone">
-            <span class="screenshot-island" aria-hidden="true"></span>
+            <span class="phone-btn phone-btn--action" aria-hidden="true"></span>
+            <span class="phone-btn phone-btn--vol-up" aria-hidden="true"></span>
+            <span class="phone-btn phone-btn--vol-down" aria-hidden="true"></span>
+            <span class="phone-btn phone-btn--power" aria-hidden="true"></span>
             <div class="screenshot-frame">
+              <div class="screenshot-statusbar" aria-hidden="true">
+                <span class="sb-time">9:41</span>
+                <span class="sb-island"></span>
+                <span class="sb-icons">
+                  <svg viewBox="0 0 17 11" width="16" height="11" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+                  <svg viewBox="0 0 16 12" width="15" height="12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M1.8 4.2a9.6 9.6 0 0 1 12.4 0"/><path d="M4.3 6.9a6 6 0 0 1 7.4 0"/><circle cx="8" cy="9.9" r="1.5" fill="currentColor" stroke="none"/></svg>
+                  <svg viewBox="0 0 25 12" width="24" height="12" fill="none"><rect x="0.7" y="0.7" width="20.6" height="10.6" rx="3.2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.3" y="2.3" width="14.5" height="7.4" rx="1.8" fill="currentColor"/><path d="M23 4v4a2.1 2.1 0 0 0 0-4z" fill="currentColor" fill-opacity=".45"/></svg>
+                </span>
+              </div>
               <div class="screenshot-gallery" aria-label="Nekobot 应用界面截图">
                 <figure class="screenshot-card">
                   <img src="assets/screenshots/sessions.jpg" alt="Nekobot 会话管理页面" loading="lazy" decoding="async" />
@@ -838,6 +862,6 @@
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
   </button>
 
-  <script src="script.js?v=0.4.3-gallery"></script>
+  <script src="script.js?v=0.4.7-rim"></script>
 </body>
 </html>

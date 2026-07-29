@@ -195,26 +195,35 @@ code {
 .hero-phone { position: relative; justify-self: center; }
 .phone {
   width: 280px; height: 570px;
-  background: linear-gradient(145deg, #8A8A8E, #6B6B70);
-  border-radius: 50px; padding: 5px;
-  box-shadow: var(--shadow-lg), inset 0 0 0 1px rgba(255,255,255,.15);
+  border: 5px solid transparent;
+  background:
+    linear-gradient(145deg, #232328, #08080A) padding-box,
+    linear-gradient(145deg, #F6F6F9, #C6C7D0 55%, #ECEDF1) border-box;
+  border-radius: 50px; padding: 6px;
+  box-shadow: 0 0 0 1px rgba(45, 45, 65, .14), var(--shadow-lg);
   transform: rotate(2.5deg);
   transition: transform .5s var(--ease-spring);
   position: relative;
 }
 .hero-phone:hover .phone { transform: rotate(0); }
-.phone-island {
-  position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
-  width: 88px; height: 26px; background: #1a1a1e; border-radius: 999px; z-index: 3;
+/* Hero 仿真状态栏 */
+.phone-statusbar {
+  flex: none;
+  display: flex; align-items: center;
+  height: 34px; padding: 0 18px;
+  color: #151517;
 }
+.phone-statusbar .sb-time { font-size: 12px; }
+.phone-statusbar .sb-island { width: 72px; height: 21px; }
+.phone-statusbar .sb-island::after { right: 7px; width: 6px; height: 6px; margin-top: -3px; }
 .phone-screen {
-  width: 100%; height: 100%;   border-radius: 45px; overflow: hidden;
+  width: 100%; height: 100%;   border-radius: 39px; overflow: hidden;
   background: linear-gradient(170deg, #FFF2F6 0%, #FDEAF2 55%, #F3EEFF 100%);
   display: flex; flex-direction: column;
 }
 .chat-head {
   display: flex; align-items: center; gap: 10px;
-  padding: 44px 16px 12px;
+  padding: 4px 16px 12px;
   background: rgba(255,255,255,.55);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid rgba(255,255,255,.7);
@@ -296,27 +305,37 @@ code {
   display: flex; flex-direction: column; align-items: center;
 }
 .screenshot-device { position: relative; }
-
 /* 手机外壳（与 Hero 手机模型同款） */
 .screenshot-phone {
   position: relative;
   width: min(312px, 78vw);
-  background: linear-gradient(145deg, #8B8B90, #67676C);
-  border-radius: 46px;
+  border: 5px solid transparent;
+  background:
+    linear-gradient(145deg, #232328, #08080A) padding-box,
+    linear-gradient(145deg, #F6F6F9, #C6C7D0 55%, #ECEDF1) border-box;
+  border-radius: 48px;
   padding: 6px;
-  box-shadow: 0 24px 60px rgba(58, 48, 75, .2), inset 0 0 0 1px rgba(255, 255, 255, .16);
+  box-shadow: 0 0 0 1px rgba(45, 45, 65, .14), 0 24px 60px rgba(58, 48, 75, .22);
 }
-.screenshot-island {
-  position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
-  width: 29%; aspect-ratio: 88 / 26;
-  background: #1A1A1E; border-radius: 999px; z-index: 3;
+
+/* 侧边实体按键（左侧静音+音量，右侧电源，落在银色外框上） */
+.phone-btn {
+  position: absolute; width: 3px; border-radius: 1.5px; z-index: 4;
+  background: linear-gradient(90deg, #C9CAD2, #9A9BA6);
+  box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .55), 0 0 1px rgba(30, 30, 45, .4);
 }
+.phone-btn--action { left: -6px; top: 15%; height: 16px; }
+.phone-btn--vol-up { left: -6px; top: calc(15% + 26px); height: 30px; }
+.phone-btn--vol-down { left: -6px; top: calc(15% + 62px); height: 30px; }
+.phone-btn--power { right: -6px; top: 22%; height: 52px; }
+
 .screenshot-frame {
   position: relative;
-  aspect-ratio: 1440 / 2928;
+  aspect-ratio: 30 / 65;
   overflow: hidden;
-  border-radius: 40px;
+  border-radius: 37px;
   background: #F7F6FB;
+  display: flex; flex-direction: column;
 }
 /* 屏幕玻璃反光 */
 .screenshot-frame::after {
@@ -324,9 +343,31 @@ code {
   background: linear-gradient(118deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, 0) 30%);
 }
 
+/* 仿真状态栏（时间 / 灵动岛 / 信号图标） */
+.screenshot-statusbar {
+  flex: none;
+  display: flex; align-items: center;
+  height: 40px; padding: 0 22px;
+  background: #FFFFFF;
+  color: #151517;
+}
+.sb-time { flex: 1; font-size: 13.5px; font-weight: 700; letter-spacing: .02em; }
+.sb-island {
+  position: relative;
+  width: 86px; height: 25px; border-radius: 999px;
+  background: #0B0B0D;
+}
+.sb-island::after {
+  content: ""; position: absolute; right: 9px; top: 50%;
+  width: 8px; height: 8px; transform: translateY(-50%); border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #2A2F3F, #05060A 72%);
+}
+.sb-icons { flex: 1; display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
+.sb-icons svg { display: block; }
+
 /* 屏幕内的滑动轨道 */
 .screenshot-gallery {
-  position: absolute; inset: 0;
+  flex: 1; min-height: 0;
   display: flex;
   overflow-x: auto;
   overscroll-behavior-inline: contain;
@@ -342,7 +383,7 @@ code {
 }
 .screenshot-card img {
   width: 100%; height: 100%;
-  display: block; object-fit: cover;
+  display: block; object-fit: cover; object-position: top center;
 }
 .screenshot-card figcaption { display: none; }
 
@@ -1307,6 +1348,9 @@ body.lightbox-open { overflow: hidden; }
   .section { padding-top: 64px; }
   .screenshot-section { padding-inline: 12px; }
   .gallery-btn { display: none; }
+  .screenshot-statusbar { height: 36px; padding: 0 18px; }
+  .sb-time { font-size: 12.5px; }
+  .sb-island { width: 76px; height: 22px; }
   .screenshot-caption { margin-top: 20px; padding-inline: 8px; }
   .screenshot-caption b { font-size: 16px; }
   .screenshot-caption span { font-size: 13px; }
