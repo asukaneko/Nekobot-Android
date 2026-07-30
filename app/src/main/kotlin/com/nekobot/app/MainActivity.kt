@@ -2,6 +2,7 @@ package com.nekobot.app
 
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -34,9 +35,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.lifecycleScope
 import com.nekobot.app.data.local.LocaleHelper
+import com.nekobot.app.integration.IncomingShareParser
+import com.nekobot.app.integration.NekobotShortcutManager
 import com.nekobot.app.ui.navigation.NekobotNavGraph
 import com.nekobot.app.ui.theme.NekobotTheme
+import com.nekobot.app.widget.NekobotWidgetProvider
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : FragmentActivity() {
 
@@ -76,7 +84,7 @@ class MainActivity : FragmentActivity() {
                 }
             }
         )
-        handleNotificationIntent(intent)
+        handleExternalIntent(intent)
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(Color.Transparent.value.toInt(), Color.Transparent.value.toInt()),
             navigationBarStyle = SystemBarStyle.auto(Color.Transparent.value.toInt(), Color.Transparent.value.toInt())
@@ -103,6 +111,10 @@ class MainActivity : FragmentActivity() {
     override fun onStart() {
         super.onStart()
         activityStarted = true
+        ServiceContainer.applicationScope.launch {
+            NekobotShortcutManager.refresh(this@MainActivity)
+            NekobotWidgetProvider.refreshAll(this@MainActivity)
+        }
         if (!ServiceContainer.prefs.appLockEnabled) {
             appUnlocked = true
             return
@@ -122,12 +134,30 @@ class MainActivity : FragmentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        handleNotificationIntent(intent)
+        setIntent(intent)
+        handleExternalIntent(intent)
     }
 
-    private fun handleNotificationIntent(intent: Intent?) {
-        val sid = intent?.getStringExtra("session_id") ?: return
-        ServiceContainer.setPendingSessionId(sid)
+    private fun handleExternalIntent(intent: Intent?) {
+        intent ?: return
+        val sessionId = intent.getStringExtra("session_id")
+            ?: IncomingShareParser.parseDeepLinkSessionId(intent.dataString)
+        if (!sessionId.isNullOrBlank()) {
+            ServiceContainer.setPendingSessionId(sessionId)
+            return
+        }
+        if (intent.action !in setOf(Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE)) return
+        lifecycleScope.launch {
+            val share = withContext(Dispatchers.IO) {
+                IncomingShareParser.parse(this@MainActivity, intent)
+            } ?: return@launch
+            ServiceContainer.setPendingShare(share)
+            Toast.makeText(
+                this@MainActivity,
+                getString(R.string.share_choose_session),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
     }
 
     private fun requestAppUnlock() {

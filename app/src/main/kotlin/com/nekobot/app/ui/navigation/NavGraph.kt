@@ -145,6 +145,18 @@ fun NekobotNavGraph() {
         }
     }
 
+    // 系统分享先回到会话页，内容在用户进入目标聊天后才会被消费。
+    val pendingShare by ServiceContainer.pendingShare.collectAsState()
+    LaunchedEffect(pendingShare?.id, isLoggedIn) {
+        if (pendingShare == null || !isLoggedIn) return@LaunchedEffect
+        mainPagerState.scrollToPage(0)
+        if (currentRoute != Routes.SESSIONS) {
+            navController.navigate(Routes.SESSIONS) {
+                launchSingleTop = true
+            }
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,

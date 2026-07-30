@@ -77,6 +77,13 @@
     <string name="more_extensions">扩展功能</string>
     <string name="more_extensions_desc_server">Hook、任务、工作流、知识库、MCP、频道等高级配置</string>
     <string name="more_extensions_desc_local">Hook、任务、工作流、知识库、Skills、Tools、MCP 等本地配置</string>
+    <string name="share_choose_session">请选择一个会话接收分享内容</string>
+    <string name="share_imported">已导入 %1$d 个分享文件</string>
+    <string name="widget_description">最近会话、今日 Token 与快捷发送</string>
+    <string name="widget_no_session">暂无可用会话</string>
+    <string name="widget_today_tokens">今日 Token：%1$d</string>
+    <string name="widget_today_tokens_zero">今日 Token：0</string>
+    <string name="widget_quick_send">快捷发送</string>
     <string name="more_settings">设置</string>
     <string name="more_settings_desc">服务器、系统配置、日志、账号</string>
     <string name="more_logout">退出登录</string>

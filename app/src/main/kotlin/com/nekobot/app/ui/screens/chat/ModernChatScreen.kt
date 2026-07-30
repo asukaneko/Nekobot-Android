@@ -401,6 +401,70 @@ private fun ModernChatComposer(
         }
     }
 
+    val pendingShare by ServiceContainer.pendingShare.collectAsState()
+    LaunchedEffect(sessionId, pendingShare?.id) {
+        val share = pendingShare ?: return@LaunchedEffect
+        fileBusy = share.attachments.isNotEmpty()
+        try {
+            if (share.text.isNotBlank()) {
+                input = buildString {
+                    if (input.isNotBlank()) append(input).append('\n')
+                    append(share.text)
+                }
+            }
+            share.attachments.forEach { attachment ->
+                val file = java.io.File(attachment.localPath)
+                if (!file.isFile) return@forEach
+                val bytes = withContext(Dispatchers.IO) { file.readBytes() }
+                val mime = attachment.mimeType.ifBlank { modernGuessMime(attachment.name) }
+                val body = bytes.toRequestBody(mime.toMediaTypeOrNull())
+                val part = MultipartBody.Part.createFormData("file", attachment.name, body)
+                when (val result = ServiceContainer.unified.uploadWorkspaceFile(sessionId, part)) {
+                    is Resource.Success -> {
+                        val baseAttachment = buildWorkspaceChatAttachment(
+                            uploadResult = result.data,
+                            sessionId = sessionId,
+                            originalName = attachment.name,
+                            fallbackMime = mime
+                        )
+                        val uploadedName = baseAttachment["name"]?.toString() ?: attachment.name
+                        val uploadedMime = baseAttachment["type"]?.toString() ?: mime
+                        if (uploadedMime.startsWith("image/")) {
+                            val localFile = if (ServiceContainer.prefs.isLocalMode) {
+                                resolveLocalWorkspaceFile(context, sessionId, uploadedName)
+                            } else {
+                                null
+                            }
+                            pendingImageAttachments = pendingImageAttachments + buildWorkspaceChatAttachment(
+                                uploadResult = result.data,
+                                sessionId = sessionId,
+                                originalName = uploadedName,
+                                fallbackMime = uploadedMime,
+                                localPath = localFile?.absolutePath
+                            )
+                        } else {
+                            input = buildString {
+                                if (input.isNotBlank()) append(input).append('\n')
+                                append(context.getString(R.string.chat_file_uploaded_ref_inline, uploadedName))
+                            }
+                        }
+                    }
+                    is Resource.Error -> toast(context.getString(R.string.chat_upload_failed, result.message))
+                    is Resource.Loading -> Unit
+                }
+                withContext(Dispatchers.IO) { runCatching { file.delete() } }
+            }
+            if (share.attachments.isNotEmpty()) {
+                toast(context.getString(R.string.share_imported, share.attachments.size))
+            }
+        } catch (e: Exception) {
+            toast(context.getString(R.string.chat_operation_failed, e.message ?: context.getString(R.string.common_unknown_error)))
+        } finally {
+            fileBusy = false
+            ServiceContainer.consumePendingShare(share.id)
+        }
+    }
+
     LaunchedEffect(isRecording) {
         while (isRecording) {
             delay(1000)

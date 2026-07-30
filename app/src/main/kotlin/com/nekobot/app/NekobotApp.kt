@@ -15,6 +15,9 @@ import com.nekobot.app.data.remote.NetworkClient
 import com.nekobot.app.data.remote.SocketManager
 import com.nekobot.app.data.repository.NekobotRepository
 import com.nekobot.app.data.repository.UnifiedRepository
+import com.nekobot.app.integration.IncomingShare
+import com.nekobot.app.integration.NekobotShortcutManager
+import com.nekobot.app.widget.NekobotWidgetProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -75,6 +78,10 @@ object ServiceContainer {
     private val _pendingSessionId = MutableStateFlow<String?>(null)
     val pendingSessionId: StateFlow<String?> = _pendingSessionId.asStateFlow()
 
+    /** Android 系统分享进入应用后等待选择目标会话的内容。 */
+    private val _pendingShare = MutableStateFlow<IncomingShare?>(null)
+    val pendingShare: StateFlow<IncomingShare?> = _pendingShare.asStateFlow()
+
     /**
      * 角色卡数据变化事件流：角色卡立绘/头像等关键字段更新后广播其 ID，
      * 会话列表/聊天页等持有角色快照的 ViewModel 订阅后重新加载，保持立绘同步。
@@ -84,6 +91,12 @@ object ServiceContainer {
     val characterChanged: SharedFlow<String> = _characterChanged
 
     fun setPendingSessionId(id: String?) { _pendingSessionId.value = id }
+
+    fun setPendingShare(share: IncomingShare?) { _pendingShare.value = share }
+
+    fun consumePendingShare(id: String) {
+        if (_pendingShare.value?.id == id) _pendingShare.value = null
+    }
 
     /** 广播角色卡数据变化（id 为变化的角色卡 ID，null/blank 时广播通配符 ""）。 */
     fun notifyCharacterChanged(characterId: String?) {
@@ -110,6 +123,10 @@ object ServiceContainer {
         _loginStateFlow.value = prefs.isLoggedIn
         if (prefs.isLocalMode) {
             applicationScope.launch { localRepository.syncAutomationSchedules() }
+        }
+        applicationScope.launch {
+            NekobotShortcutManager.refresh(app)
+            NekobotWidgetProvider.refreshAll(app)
         }
     }
 
