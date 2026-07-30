@@ -665,3 +665,39 @@ interface MessageFavoriteDao {
     @Query("DELETE FROM local_message_favorites WHERE session_id = :sessionId")
     suspend fun deleteBySession(sessionId: String)
 }
+
+@Dao
+interface KnowledgeDao {
+    @Query("SELECT * FROM local_knowledge_documents ORDER BY updated_at DESC")
+    suspend fun listDocuments(): List<LocalKnowledgeDocumentEntity>
+
+    @Query("SELECT * FROM local_knowledge_documents WHERE id = :id")
+    suspend fun getDocument(id: String): LocalKnowledgeDocumentEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertDocument(document: LocalKnowledgeDocumentEntity)
+
+    @Query("DELETE FROM local_knowledge_documents WHERE id = :id")
+    suspend fun deleteDocument(id: String)
+
+    @Query("UPDATE local_knowledge_documents SET indexed = :indexed, updated_at = :updatedAt WHERE id = :id")
+    suspend fun updateIndexed(id: String, indexed: Boolean, updatedAt: String)
+
+    @Query("SELECT COUNT(*) FROM local_knowledge_documents")
+    suspend fun documentCount(): Int
+
+    @Query("SELECT COUNT(*) FROM local_knowledge_documents WHERE indexed = 1")
+    suspend fun indexedCount(): Int
+
+    @Query("SELECT * FROM local_knowledge_chunks ORDER BY document_id, chunk_index")
+    suspend fun listAllChunks(): List<LocalKnowledgeChunkEntity>
+
+    @Query("SELECT * FROM local_knowledge_chunks WHERE document_id = :documentId ORDER BY chunk_index")
+    suspend fun listChunks(documentId: String): List<LocalKnowledgeChunkEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertChunks(chunks: List<LocalKnowledgeChunkEntity>)
+
+    @Query("DELETE FROM local_knowledge_chunks WHERE document_id = :documentId")
+    suspend fun deleteChunks(documentId: String)
+}

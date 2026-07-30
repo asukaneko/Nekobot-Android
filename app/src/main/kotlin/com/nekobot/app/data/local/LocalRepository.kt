@@ -38,6 +38,7 @@ import com.nekobot.app.data.local.ai.sessionRelationshipTargetId
 import com.nekobot.app.data.local.automation.AutomationExecutionResult
 import com.nekobot.app.data.local.automation.LocalAutomationScheduler
 import com.nekobot.app.data.local.automation.LocalScheduleCalculator
+import com.nekobot.app.data.local.knowledge.LocalKnowledgeManager
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.local.oauth.LocalOAuthManager
 import com.nekobot.app.data.repository.SessionImportResult
@@ -70,6 +71,11 @@ import com.nekobot.app.data.model.HookRequest
 import com.nekobot.app.data.model.McpServer
 import com.nekobot.app.data.model.McpServerRequest
 import com.nekobot.app.data.model.Message
+import com.nekobot.app.data.model.KnowledgeDocument
+import com.nekobot.app.data.model.KnowledgeDocumentRequest
+import com.nekobot.app.data.model.KnowledgeSearchRequest
+import com.nekobot.app.data.model.KnowledgeSearchResult
+import com.nekobot.app.data.model.KnowledgeStats
 import com.nekobot.app.service.AgentForegroundService
 import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.RELATIONSHIP_STATE_SOURCE_INITIAL
@@ -164,6 +170,7 @@ class LocalRepository(
     private val automationScheduler = appContext?.let {
         LocalAutomationScheduler(it, db.dbName.removeSuffix(".db"))
     }
+    private val knowledgeManager by lazy { LocalKnowledgeManager(db, aiClient) }
     private val runningTaskIds = ConcurrentHashMap.newKeySet<String>()
     private val runningWorkflowIds = ConcurrentHashMap.newKeySet<String>()
     /**
@@ -3652,6 +3659,15 @@ class LocalRepository(
             db, aiClient, activeModel, session, character, worldBookEntries, runtime, identity,
             parentMessageId = parentMessageId,
             assistantSource = assistantSource,
+            knowledgeSearcher = { query ->
+                kotlinx.coroutines.runBlocking {
+                    knowledgeManager.searchPrompt(
+                        query = query,
+                        sessionId = sessionId,
+                        characterId = character?.id
+                    )
+                }
+            },
             onTokenRecorded = { sid, messageId, model, actualModel, input, output, ts, purpose, estimated, durationMs, ttftMs ->
                 appendTokenUsageRecord(
                     sid, model, actualModel, input, output, ts,
@@ -4149,6 +4165,15 @@ class LocalRepository(
                     channel = "local"
                 ),
                 parentMessageId = parentMessageId,
+                knowledgeSearcher = { query ->
+                    kotlinx.coroutines.runBlocking {
+                        knowledgeManager.searchPrompt(
+                            query = query,
+                            sessionId = session.id,
+                            characterId = character.id
+                        )
+                    }
+                },
                 onTokenRecorded = { sid, messageId, model, actualModel, input, output, ts, purpose, estimated, durationMs, ttftMs ->
                     appendTokenUsageRecord(
                         sid, model, actualModel, input, output, ts,
@@ -6411,6 +6436,52 @@ $charSection$topicSection
             eventType = eventType,
             createdAt = createdAt
         )
+
+    // ==================== 扩展功能：本地知识库 ====================
+
+    suspend fun listKnowledge(): List<KnowledgeDocument> = withContext(Dispatchers.IO) {
+        knowledgeManager.list()
+    }
+
+    suspend fun createKnowledge(req: KnowledgeDocumentRequest): KnowledgeDocument =
+        withContext(Dispatchers.IO) { knowledgeManager.create(req) }
+
+    suspend fun updateKnowledge(id: String, req: KnowledgeDocumentRequest): KnowledgeDocument =
+        withContext(Dispatchers.IO) { knowledgeManager.update(id, req) }
+
+    suspend fun deleteKnowledge(id: String) = withContext(Dispatchers.IO) {
+        knowledgeManager.delete(id)
+    }
+
+    suspend fun importKnowledge(
+        fileName: String,
+        mimeType: String?,
+        bytes: ByteArray
+    ): KnowledgeDocument = withContext(Dispatchers.IO) {
+        knowledgeManager.import(fileName, mimeType, bytes)
+    }
+
+    suspend fun indexKnowledge(id: String): JsonElement = withContext(Dispatchers.IO) {
+        knowledgeManager.index(id)
+        JsonObject().apply {
+            addProperty("success", true)
+            addProperty("document_id", id)
+        }
+    }
+
+    suspend fun knowledgeStats(): KnowledgeStats = withContext(Dispatchers.IO) {
+        knowledgeManager.stats()
+    }
+
+    suspend fun searchKnowledge(req: KnowledgeSearchRequest): List<KnowledgeSearchResult> =
+        withContext(Dispatchers.IO) {
+            knowledgeManager.search(req.query, req.topK)
+        }
+
+    suspend fun rebuildKnowledge(): JsonElement = withContext(Dispatchers.IO) {
+        knowledgeManager.rebuild()
+        JsonObject().apply { addProperty("success", true) }
+    }
 
     // ==================== 扩展功能：任务中心 ====================
 

@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 
 /**
  * 全局依赖容器：单例持有 Prefs / Network / Repository / Gson。
@@ -168,6 +169,7 @@ object ServiceContainer {
 class NekobotApp : Application(), coil.ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
+        PDFBoxResourceLoader.init(this)
         ServiceContainer.init(this)
     }
 

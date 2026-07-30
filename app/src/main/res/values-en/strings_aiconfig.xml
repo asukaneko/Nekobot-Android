@@ -169,6 +169,6 @@
     <string name="localai_purpose_hint_video">For video message understanding (not auto-invoked in local mode yet)</string>
     <string name="localai_purpose_hint_tts">For text-to-speech, can be triggered manually in chat</string>
     <string name="localai_purpose_hint_stt">For speech-to-text, auto-invoked after recording. Leave Provider empty or set openai/openai_compatible for OpenAI-compatible /audio/transcriptions; set xiaomi or mimo for Xiaomi MiMo /v1/chat/completions (m4a recording auto-converted to 16kHz mono WAV, ≤10MB)</string>
-    <string name="localai_purpose_hint_embedding">For embedding (knowledge base not integrated in local mode yet)</string>
+    <string name="localai_purpose_hint_embedding">Semantic search for the local knowledge base; falls back to offline lexical search</string>
     <string name="localai_purpose_hint_image_generation">For AI image generation (not integrated in local mode yet)</string>
 </resources>

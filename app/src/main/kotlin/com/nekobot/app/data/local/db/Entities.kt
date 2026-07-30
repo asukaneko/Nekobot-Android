@@ -561,3 +561,38 @@ data class LocalMessageFavoriteEntity(
     @ColumnInfo(name = "message_ids_json") val messageIdsJson: String = "[]",
     @ColumnInfo(name = "created_at") val createdAt: String
 )
+
+/** 本地知识库文档。正文保留原文，索引状态由 chunk 表重建。 */
+@Entity(tableName = "local_knowledge_documents")
+data class LocalKnowledgeDocumentEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val content: String,
+    val source: String? = null,
+    @ColumnInfo(name = "tags_json") val tagsJson: String = "[]",
+    @ColumnInfo(name = "metadata_json") val metadataJson: String? = null,
+    val indexed: Boolean = false,
+    @ColumnInfo(name = "created_at") val createdAt: String,
+    @ColumnInfo(name = "updated_at") val updatedAt: String
+)
+
+/** 本地知识库切片。embedding_json 为空时仍可使用本地词法检索。 */
+@Entity(
+    tableName = "local_knowledge_chunks",
+    foreignKeys = [
+        ForeignKey(
+            entity = LocalKnowledgeDocumentEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["document_id"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index("document_id"), Index(value = ["document_id", "chunk_index"], unique = true)]
+)
+data class LocalKnowledgeChunkEntity(
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "document_id") val documentId: String,
+    @ColumnInfo(name = "chunk_index") val chunkIndex: Int,
+    val content: String,
+    @ColumnInfo(name = "embedding_json") val embeddingJson: String? = null
+)

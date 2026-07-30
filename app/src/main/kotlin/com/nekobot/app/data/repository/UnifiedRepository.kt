@@ -872,21 +872,48 @@ class UnifiedRepository(
 
     // ---- 知识库 ----
     suspend fun listKnowledge(): Resource<List<KnowledgeDocument>> =
-        if (isLocal) localNotSupported("知识库") else remote.listKnowledge()
+        if (isLocal) runCatching { Resource.Success(local.listKnowledge()) }
+            .getOrElse { Resource.Error(it.message ?: "加载知识库失败") }
+        else remote.listKnowledge()
     suspend fun createKnowledge(req: KnowledgeDocumentRequest): Resource<KnowledgeDocument> =
-        if (isLocal) localNotSupported("知识库") else remote.createKnowledge(req)
+        if (isLocal) runCatching { Resource.Success(local.createKnowledge(req)) }
+            .getOrElse { Resource.Error(it.message ?: "创建文档失败") }
+        else remote.createKnowledge(req)
     suspend fun updateKnowledge(id: String, req: KnowledgeDocumentRequest): Resource<KnowledgeDocument> =
-        if (isLocal) localNotSupported("知识库") else remote.updateKnowledge(id, req)
+        if (isLocal) runCatching { Resource.Success(local.updateKnowledge(id, req)) }
+            .getOrElse { Resource.Error(it.message ?: "更新文档失败") }
+        else remote.updateKnowledge(id, req)
     suspend fun deleteKnowledge(id: String): Resource<Unit> =
-        if (isLocal) localNotSupported("知识库") else remote.deleteKnowledge(id)
+        if (isLocal) runCatching {
+            local.deleteKnowledge(id)
+            Resource.Success(Unit)
+        }.getOrElse { Resource.Error(it.message ?: "删除文档失败") }
+        else remote.deleteKnowledge(id)
+    suspend fun importKnowledge(
+        fileName: String,
+        mimeType: String?,
+        bytes: ByteArray
+    ): Resource<KnowledgeDocument> =
+        if (isLocal) runCatching {
+            Resource.Success(local.importKnowledge(fileName, mimeType, bytes))
+        }.getOrElse { Resource.Error(it.message ?: "导入文档失败") }
+        else Resource.Error("文件导入目前仅支持本地模式")
     suspend fun indexKnowledge(id: String): Resource<JsonElement> =
-        if (isLocal) localNotSupported("知识库") else remote.indexKnowledge(id)
+        if (isLocal) runCatching { Resource.Success(local.indexKnowledge(id)) }
+            .getOrElse { Resource.Error(it.message ?: "索引文档失败") }
+        else remote.indexKnowledge(id)
     suspend fun knowledgeStats(): Resource<KnowledgeStats> =
-        if (isLocal) localNotSupported("知识库") else remote.knowledgeStats()
+        if (isLocal) runCatching { Resource.Success(local.knowledgeStats()) }
+            .getOrElse { Resource.Error(it.message ?: "加载知识库统计失败") }
+        else remote.knowledgeStats()
     suspend fun searchKnowledge(req: KnowledgeSearchRequest): Resource<List<KnowledgeSearchResult>> =
-        if (isLocal) localNotSupported("知识库") else remote.searchKnowledge(req)
+        if (isLocal) runCatching { Resource.Success(local.searchKnowledge(req)) }
+            .getOrElse { Resource.Error(it.message ?: "知识检索失败") }
+        else remote.searchKnowledge(req)
     suspend fun rebuildKnowledge(): Resource<JsonElement> =
-        if (isLocal) localNotSupported("知识库") else remote.rebuildKnowledge()
+        if (isLocal) runCatching { Resource.Success(local.rebuildKnowledge()) }
+            .getOrElse { Resource.Error(it.message ?: "重建知识库失败") }
+        else remote.rebuildKnowledge()
 
     // ---- Skills 配置 ----
     suspend fun listSkills(): Resource<List<Skill>> =

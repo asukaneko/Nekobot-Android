@@ -83,7 +83,7 @@ fun ExtensionsScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
     // 本地模式仅展示本地已实现的模块（含 TTS/图片生成实验室）
     val localSupportedRoutes = setOf(
         Routes.ACHIEVEMENTS, Routes.HOOKS, Routes.TASK_CENTER, Routes.WORKFLOWS,
-        Routes.SKILLS, Routes.TOOLS, Routes.MCP_SERVERS, Routes.API_KEYS,
+        Routes.KNOWLEDGE, Routes.SKILLS, Routes.TOOLS, Routes.MCP_SERVERS, Routes.API_KEYS,
         Routes.TTS_PLAYGROUND, Routes.IMAGE_GENERATION_PLAYGROUND
     )
     val items = if (isLocalMode) allItems.filter { it.route in localSupportedRoutes } else allItems

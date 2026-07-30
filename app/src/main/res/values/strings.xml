@@ -76,7 +76,7 @@
     <string name="more_db_management_desc">从远程地址导入 nbotcfg，切换或删除本地 db</string>
     <string name="more_extensions">扩展功能</string>
     <string name="more_extensions_desc_server">Hook、任务、工作流、知识库、MCP、频道等高级配置</string>
-    <string name="more_extensions_desc_local">Hook、任务、工作流、Skills、Tools、MCP、API Keys 等本地配置</string>
+    <string name="more_extensions_desc_local">Hook、任务、工作流、知识库、Skills、Tools、MCP 等本地配置</string>
     <string name="more_settings">设置</string>
     <string name="more_settings_desc">服务器、系统配置、日志、账号</string>
     <string name="more_logout">退出登录</string>

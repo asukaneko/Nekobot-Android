@@ -169,6 +169,6 @@
     <string name="localai_purpose_hint_video">動画メッセージの理解用（ローカルモードでは自動呼び出し未対応）</string>
     <string name="localai_purpose_hint_tts">音声合成用、チャットで手動トリガー可能</string>
     <string name="localai_purpose_hint_stt">音声認識用、録音後に自動呼び出し。Provider 空欄または openai/openai_compatible で OpenAI 互換 /audio/transcriptions、xiaomi または mimo で小米 MiMo /v1/chat/completions（m4a 録音は 16kHz モノラル WAV に自動変換、≤10MB）</string>
-    <string name="localai_purpose_hint_embedding">Embedding 用（ローカルモードではナレッジベース未統合）</string>
+    <string name="localai_purpose_hint_embedding">ローカル知識ベースのセマンティック検索用（未設定時はオフライン字句検索）</string>
     <string name="localai_purpose_hint_image_generation">AI 画像生成用（ローカルモードでは未統合）</string>
 </resources>

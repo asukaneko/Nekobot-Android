@@ -169,6 +169,6 @@
     <string name="localai_purpose_hint_video">비디오 메시지 이해용 (로컬 모드에서는 아직 자동 호출되지 않아요)</string>
     <string name="localai_purpose_hint_tts">텍스트 음성 변환용, 대화에서 수동으로 호출할 수 있어요</string>
     <string name="localai_purpose_hint_stt">음성 텍스트 변환용, 녹음 후 자동 호출돼요. Provider를 비워두거나 openai/openai_compatible 설정 시 OpenAI 호환 /audio/transcriptions, xiaomi 또는 mimo 설정 시 샤오미 MiMo /v1/chat/completions (m4a 녹음은 16kHz 모노 WAV로 자동 변환, ≤10MB)</string>
-    <string name="localai_purpose_hint_embedding">임베딩용 (로컬 모드에서는 지식 베이스가 아직 연동되지 않았어요)</string>
+    <string name="localai_purpose_hint_embedding">로컬 지식 베이스 의미 검색용 (미설정 시 오프라인 어휘 검색 사용)</string>
     <string name="localai_purpose_hint_image_generation">AI 이미지 생성용 (로컬 모드에서는 아직 연동되지 않았어요)</string>
 </resources>

@@ -46,6 +46,8 @@ internal class LocalPipelineCallbacks(
     private val parentMessageId: String? = null,
     /** 助手消息来源标记；后台主动聊天用 proactive_chat，普通聊天为空。 */
     private val assistantSource: String? = null,
+    /** 本地知识库检索入口。 */
+    private val knowledgeSearcher: ((query: String) -> String)? = null,
     private val onTokenRecorded: ((sessionId: String, messageId: String, model: String, actualModel: String, inputTokens: Int, outputTokens: Int, timestamp: String, purpose: String, estimated: Boolean, durationMs: Double?, ttftMs: Double?) -> Unit)? = null,
     /** 进度卡片更新回调；本地模式用于持久化到父用户消息 */
     private val onThinkingCardUpdate: ((card: ThinkingCard) -> Unit)? = null,
@@ -162,6 +164,9 @@ internal class LocalPipelineCallbacks(
         // 不再使用旧 LocalPromptBuilder，由 PromptStack 合成
         return ""
     }
+
+    override fun searchKnowledge(ctx: PipelineContext, query: String): String =
+        knowledgeSearcher?.invoke(query).orEmpty()
 
     override fun loadMessages(ctx: PipelineContext): List<Map<String, Any>> {
         val history = kotlinx.coroutines.runBlocking {
@@ -652,10 +657,6 @@ internal class LocalPipelineCallbacks(
     override fun checkConfirmation(ctx: PipelineContext, userInput: String): String? {
         return detectConfirmation(userInput)
     }
-
-    // ---- 知识库 ----
-
-    override fun searchKnowledge(ctx: PipelineContext, query: String): String = ""
 
     // ---- 工作区 ----
 

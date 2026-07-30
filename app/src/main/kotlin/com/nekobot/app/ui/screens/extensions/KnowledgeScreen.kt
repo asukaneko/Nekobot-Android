@@ -1,6 +1,11 @@
 package com.nekobot.app.ui.screens.extensions
 
+import android.content.ContentResolver
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,6 +29,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.UploadFile
 import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -68,6 +74,8 @@ import com.nekobot.app.ui.theme.SuccessGreen
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * 知识库管理 ViewModel：负责文档 CRUD、索引重建与向量检索。
@@ -104,6 +112,31 @@ class KnowledgeViewModel : BaseViewModel() {
     fun rebuildAll() =
         launchResult(block = { unified.rebuildKnowledge() }, onSuccess = { showToast(string(R.string.knowledge_all_index_rebuilt)); load() })
 
+    fun importDocument(contentResolver: ContentResolver, uri: Uri) =
+        launchResult(
+            block = {
+                val (name, mimeType, bytes) = withContext(Dispatchers.IO) {
+                    val displayName = contentResolver.query(
+                        uri,
+                        arrayOf(OpenableColumns.DISPLAY_NAME),
+                        null,
+                        null,
+                        null
+                    )?.use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getString(0) else null
+                    } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "导入文档"
+                    val data = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: error("无法读取所选文件")
+                    Triple(displayName, contentResolver.getType(uri), data)
+                }
+                unified.importKnowledge(name, mimeType, bytes)
+            },
+            onSuccess = {
+                showToast("文档已导入并建立索引")
+                load()
+            }
+        )
+
     fun search(query: String) =
         launchResult(
             block = { unified.searchKnowledge(KnowledgeSearchRequest(query = query)) },
@@ -115,6 +148,7 @@ class KnowledgeViewModel : BaseViewModel() {
 @Composable
 fun KnowledgeScreen(onBack: () -> Unit) {
     val vm: KnowledgeViewModel = viewModel()
+    val context = LocalContext.current
     val list by vm.list.collectAsState()
     val stats by vm.stats.collectAsState()
     val searchResults by vm.searchResults.collectAsState()
@@ -125,6 +159,11 @@ fun KnowledgeScreen(onBack: () -> Unit) {
     var editingItem by remember { mutableStateOf<KnowledgeDocument?>(null) }
     var deleteTarget by remember { mutableStateOf<KnowledgeDocument?>(null) }
     var query by remember { mutableStateOf("") }
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let { vm.importDocument(context.contentResolver, it) }
+    }
 
     Scaffold(
         topBar = {
@@ -136,6 +175,20 @@ fun KnowledgeScreen(onBack: () -> Unit) {
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = {
+                            importLauncher.launch(
+                                arrayOf(
+                                    "text/*",
+                                    "application/pdf",
+                                    "application/epub+zip",
+                                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                )
+                            )
+                        }
+                    ) {
+                        Icon(Icons.Filled.UploadFile, contentDescription = "导入文档")
+                    }
                     TextButton(onClick = { vm.rebuildAll() }) {
                         Text(stringResource(R.string.knowledge_rebuild_all), color = MaterialTheme.colorScheme.primary)
                     }

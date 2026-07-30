@@ -90,6 +90,7 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.work.runtime.ktx)
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     ksp(libs.androidx.room.compiler)
     debugImplementation(libs.androidx.ui.tooling)
 }

@@ -53,6 +53,12 @@ data class GeneratedImage(
     val bytes: ByteArray?
 )
 
+/** OpenAI 兼容 Embeddings 结果。 */
+data class EmbeddingResult(
+    val vectors: List<FloatArray>,
+    val inputTokens: Int = 0
+)
+
 /**
  * 本地 AI 客户端：直接通过 OkHttp 调用 OpenAI 兼容 / Anthropic 端点。
  *
@@ -1210,6 +1216,68 @@ class LocalAiClient(
     }
 
     /**
+     * 调用 OpenAI 兼容 `/embeddings` 接口。
+     *
+     * Embedding 模型配置复用本地模型的 baseUrl/apiKey/proxy/OAuth 字段；
+     * 输入按批次发送，返回顺序按响应 index 还原。
+     */
+    suspend fun createEmbeddings(
+        model: LocalAiModelEntity,
+        inputs: List<String>
+    ): EmbeddingResult {
+        require(inputs.isNotEmpty()) { "Embedding 输入不能为空" }
+        val (runtimeModel, credential) = resolveRuntimeModel(model)
+        val url = resolveEmbeddingUrl(runtimeModel.baseUrl, runtimeModel.appendBaseUrlPath)
+        val payload = linkedMapOf<String, Any>(
+            "model" to runtimeModel.model,
+            "input" to inputs
+        )
+        val headers = mergeRuntimeHeaders(
+            mapOf(
+                "Authorization" to "Bearer ${runtimeModel.apiKey}",
+                "api-key" to runtimeModel.apiKey,
+                "Content-Type" to "application/json"
+            ),
+            credential
+        )
+        val builder = Request.Builder()
+            .url(url)
+            .post(gson.toJson(payload).toRequestBody(JSON_TYPE))
+        headers.forEach { (name, value) -> builder.header(name, value) }
+        clientFor(runtimeModel).newCall(builder.build()).awaitResponse().use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw FailoverHttpException(
+                    response.code,
+                    "Embedding HTTP ${response.code}: ${raw.take(500)}"
+                )
+            }
+            val root = JsonParser.parseString(raw).asJsonObject
+            val vectors = root.getAsJsonArray("data")
+                ?.mapNotNull { item ->
+                    val obj = item.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
+                    val index = obj.get("index")?.asInt ?: 0
+                    val vector = obj.getAsJsonArray("embedding")
+                        ?.map { it.asFloat }
+                        ?.toFloatArray()
+                        ?: return@mapNotNull null
+                    index to vector
+                }
+                ?.sortedBy { it.first }
+                ?.map { it.second }
+                .orEmpty()
+            if (vectors.size != inputs.size) {
+                error("Embedding 响应数量不匹配：期望 ${inputs.size}，实际 ${vectors.size}")
+            }
+            val usage = root.getAsJsonObject("usage")
+            val inputTokens = usage?.get("prompt_tokens")?.asInt
+                ?: usage?.get("total_tokens")?.asInt
+                ?: 0
+            return EmbeddingResult(vectors = vectors, inputTokens = inputTokens)
+        }
+    }
+
+    /**
      * 图片生成（基本参数重载）：供远程模式直接调用，无需构造 [LocalAiModelEntity]。
      * 逻辑同上，调用 OpenAI 兼容 /images/generations 端点。
      */
@@ -1321,6 +1389,21 @@ class LocalAiClient(
             if (!appendBaseUrlPath) return base
             if (base.endsWith("/v1")) return "$base/images/generations"
             return "$base/v1/images/generations"
+        }
+
+        /** 解析 OpenAI 兼容 Embedding 端点。 */
+        private fun resolveEmbeddingUrl(baseUrl: String, appendBaseUrlPath: Boolean): String {
+            val base = baseUrl.trimEnd('/')
+            if (base.contains("/embeddings")) return base
+            if (base.contains("/chat/completions")) {
+                return base.replace("/chat/completions", "/embeddings")
+            }
+            if (base.contains("/responses")) {
+                return base.replace("/responses", "/embeddings")
+            }
+            if (!appendBaseUrlPath) return base
+            if (base.endsWith("/v1")) return "$base/embeddings"
+            return "$base/v1/embeddings"
         }
 
         /**
