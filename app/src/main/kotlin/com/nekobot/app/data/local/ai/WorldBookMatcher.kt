@@ -133,6 +133,9 @@ object WorldBookMatcher {
                 val triggerSources = mutableListOf<String>()
                 val matchedKeywords = mutableListOf<String>()
                 var score = 0
+                val allowedSources = parseTriggerSources(entry.triggerSourcesJson)
+                fun sourceEnabled(source: String): Boolean =
+                    allowedSources.isEmpty() || source in allowedSources
 
                 // 常驻条目
                 if (entry.constant) {
@@ -141,12 +144,12 @@ object WorldBookMatcher {
                 }
 
                 val hasKeywords = !entry.keys.isNullOrBlank()
-                val hasStateTriggers = false  // Android 简化：暂不支持 state_triggers
+                val hasStateTriggers = parseStateTriggers(entry.stateTriggersJson).isNotEmpty()
 
                 if (!entry.constant && !hasKeywords && !hasStateTriggers) continue
 
                 // 1. 用户消息源
-                if (hasKeywords) {
+                if (hasKeywords && sourceEnabled("user")) {
                     val userHits = checkMatchKeywords(context.latestUserMessage, entry)
                     if (userHits.isNotEmpty() && satisfiesMatchMode(userHits, entry)) {
                         triggerSources.add("user")
@@ -156,7 +159,7 @@ object WorldBookMatcher {
                 }
 
                 // 2. 助手最近回复源
-                if (config.enableAssistantTrigger && hasKeywords &&
+                if (config.enableAssistantTrigger && hasKeywords && sourceEnabled("assistant_recent") &&
                     assistantTriggeredCount < config.maxAssistantTriggeredEntries &&
                     entry.priority >= config.minAssistantPriority
                 ) {
@@ -170,7 +173,7 @@ object WorldBookMatcher {
                 }
 
                 // 3. 历史上下文源
-                if (config.enableHistoryTrigger && hasKeywords) {
+                if (config.enableHistoryTrigger && hasKeywords && sourceEnabled("history")) {
                     val historyHits = checkMatchKeywords(historyText, entry)
                     if (historyHits.isNotEmpty() && satisfiesMatchMode(historyHits, entry)) {
                         triggerSources.add("history")
@@ -180,7 +183,12 @@ object WorldBookMatcher {
                 }
 
                 // 4. 场景状态触发源
-                if (config.enableSceneTrigger && hasStateTriggers && sceneText.isNotEmpty()) {
+                if (
+                    config.enableSceneTrigger &&
+                    hasStateTriggers &&
+                    sourceEnabled("scene_state") &&
+                    sceneText.isNotEmpty()
+                ) {
                     if (checkStateTriggers(context.scene, entry)) {
                         triggerSources.add("scene_state")
                         score += SOURCE_WEIGHTS["scene_state"] ?: 0
@@ -190,6 +198,7 @@ object WorldBookMatcher {
                 if (triggerSources.isEmpty()) continue
 
                 score += entry.priority
+                score += (ENTRY_TYPE_PRIORITY[entry.entryType.lowercase()] ?: 0) / 10
 
                 // 关键词去重
                 val dedupedKeywords = matchedKeywords.distinct()
@@ -207,6 +216,7 @@ object WorldBookMatcher {
         val sorted = results.sortedWith(
             compareByDescending<WorldBookMatchResult> { it.score }
                 .thenByDescending { it.entry.priority }
+                .thenByDescending { ENTRY_TYPE_PRIORITY[it.entry.entryType.lowercase()] ?: 0 }
                 .thenBy { (it.entry.content ?: "").length }
         )
 
@@ -242,14 +252,105 @@ object WorldBookMatcher {
 
     /** match_mode 满足判定 */
     private fun satisfiesMatchMode(matchedKeywords: List<String>, entry: LocalWorldBookEntryEntity): Boolean {
-        // Android 简化：selective 模式需至少命中 1 个，非 selective 也至少 1 个
-        return matchedKeywords.isNotEmpty()
+        if (matchedKeywords.isEmpty()) return false
+        if (!entry.matchMode.equals("all", ignoreCase = true)) return true
+        return matchedKeywords.distinct().size >= parseKeys(entry.keys.orEmpty()).distinct().size
     }
 
-    /** 场景状态触发器检测（简化版） */
+    /** 动态状态条件：字段之间由 match_mode 控制，单个字段的候选值为 OR。 */
     private fun checkStateTriggers(scene: Map<String, Any>, entry: LocalWorldBookEntryEntity): Boolean {
-        // Android 暂不支持 state_triggers
-        return false
+        val conditions = parseStateTriggers(entry.stateTriggersJson)
+        if (conditions.isEmpty()) return false
+        val matches = conditions.map { (field, expectedValues) ->
+            val actual = resolveSceneValue(scene, field)
+            expectedValues.any { expected ->
+                matchesStateValue(actual, expected, entry.caseSensitive)
+            }
+        }
+        return if (entry.matchMode.equals("all", ignoreCase = true)) {
+            matches.all { it }
+        } else {
+            matches.any { it }
+        }
+    }
+
+    private fun parseTriggerSources(json: String?): Set<String> {
+        if (json.isNullOrBlank()) return emptySet()
+        return try {
+            val type = object : com.google.gson.reflect.TypeToken<List<String>>() {}.type
+            val sources: List<String> = com.google.gson.Gson().fromJson(json, type) ?: emptyList()
+            sources.map { it.trim().lowercase() }.filter(String::isNotEmpty).toSet()
+        } catch (_: Exception) {
+            emptySet()
+        }
+    }
+
+    private fun parseStateTriggers(json: String?): Map<String, List<String>> {
+        if (json.isNullOrBlank()) return emptyMap()
+        return try {
+            val type =
+                object : com.google.gson.reflect.TypeToken<Map<String, List<String>>>() {}.type
+            val values: Map<String, List<String>> =
+                com.google.gson.Gson().fromJson(json, type) ?: emptyMap()
+            values.mapKeys { it.key.trim().lowercase() }
+                .mapValues { (_, items) -> items.map(String::trim).filter(String::isNotEmpty) }
+                .filterValues { it.isNotEmpty() }
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    private fun resolveSceneValue(scene: Map<String, Any>, field: String): Any? {
+        var current: Any? = scene
+        field.split('.').forEach { segment ->
+            current = (current as? Map<*, *>)?.entries
+                ?.firstOrNull { it.key?.toString()?.equals(segment, ignoreCase = true) == true }
+                ?.value
+                ?: return null
+        }
+        return current
+    }
+
+    private fun matchesStateValue(actual: Any?, expectedRaw: String, caseSensitive: Boolean): Boolean {
+        val expected = expectedRaw.trim()
+        if (expected == "*") return actual != null && actual.toString().isNotBlank()
+        if (expected.startsWith("!")) {
+            return !matchesStateValue(actual, expected.drop(1), caseSensitive)
+        }
+        val actualValues = when (actual) {
+            null -> emptyList()
+            is Iterable<*> -> actual.toList()
+            is Array<*> -> actual.toList()
+            else -> listOf(actual)
+        }
+        return actualValues.any { value ->
+            val numeric = value?.toString()?.toDoubleOrNull()
+            val range = Regex("""^\s*(-?\d+(?:\.\d+)?)\s*\.\.\s*(-?\d+(?:\.\d+)?)\s*$""")
+                .matchEntire(expected)
+            if (numeric != null && range != null) {
+                val start = range.groupValues[1].toDouble()
+                val end = range.groupValues[2].toDouble()
+                return@any numeric in minOf(start, end)..maxOf(start, end)
+            }
+            val comparison = Regex("""^\s*(>=|<=|>|<|==|=)\s*(-?\d+(?:\.\d+)?)\s*$""")
+                .matchEntire(expected)
+            if (numeric != null && comparison != null) {
+                val target = comparison.groupValues[2].toDouble()
+                return@any when (comparison.groupValues[1]) {
+                    ">=" -> numeric >= target
+                    "<=" -> numeric <= target
+                    ">" -> numeric > target
+                    "<" -> numeric < target
+                    else -> numeric == target
+                }
+            }
+            val actualText = value?.toString().orEmpty()
+            if (caseSensitive) {
+                actualText == expected
+            } else {
+                actualText.equals(expected, ignoreCase = true)
+            }
+        }
     }
 
     /** 解析 keys JSON */

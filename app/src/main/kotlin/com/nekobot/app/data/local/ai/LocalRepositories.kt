@@ -16,6 +16,7 @@ import com.nekobot.app.data.local.db.RelationshipDao
 import com.nekobot.app.data.local.db.StateSnapshotDao
 import com.nekobot.app.data.local.db.CharacterDao
 import java.time.Instant
+import java.time.ZonedDateTime
 import java.util.UUID
 
 /**
@@ -340,6 +341,8 @@ class LocalWorldBookStore(
         characterId: String,
         userMessage: String,
         state: CharacterState?,
+        relationship: RelationshipState?,
+        scopeId: String,
         recentMessages: List<String>
     ): List<CharacterRuntime.WorldBookMatch> {
         val books = worldBookDao.listByCharacter(characterId).filter { it.enabled }
@@ -357,11 +360,59 @@ class LocalWorldBookStore(
         val recentMsgMaps = recentMessages.mapIndexed { idx, text ->
             mapOf("role" to if (idx % 2 == 0) "user" else "assistant", "content" to text)
         }
+        val now = ZonedDateTime.now()
+        val plotNode = scopeId.takeIf(String::isNotBlank)
+            ?.let { getGlobalPlotGraphManager().getLatestNode(it) }
+        val dynamicScene = buildMap<String, Any> {
+            putAll(state?.scene.orEmpty())
+            state?.scene?.get("current_location")?.let { currentLocation ->
+                if (!containsKey("location")) put("location", currentLocation)
+            }
+            state?.let {
+                put("mood", it.mood)
+                put("mood_intensity", it.moodIntensity)
+                put("energy", it.energy)
+            }
+            relationship?.let {
+                put("affection", it.affection)
+                put("trust", it.trust)
+                put("familiarity", it.familiarity)
+                put("dependency", it.dependency)
+                put("security", it.security)
+                put("jealousy", it.jealousy)
+            }
+            put("hour", now.hour)
+            put("time_of_day", when (now.hour) {
+                in 5..10 -> "morning"
+                in 11..13 -> "noon"
+                in 14..17 -> "afternoon"
+                in 18..22 -> "evening"
+                else -> "night"
+            })
+            put("weekday", now.dayOfWeek.name.lowercase())
+            put("date", now.toLocalDate().toString())
+            plotNode?.let { node ->
+                node.scene.forEach { (key, value) ->
+                    if (!containsKey(key)) put(key, value)
+                }
+                put("plot_node", node.id)
+                put("plot_node_id", node.id)
+                put("plot_node_title", node.title)
+                put("plot_level", node.level)
+                put("plot_activity_type", node.activityType)
+                if (node.location.isNotBlank()) {
+                    put("plot_location", node.location)
+                    if (!containsKey("location")) put("location", node.location)
+                }
+                put("plot_scene", node.scene)
+            }
+        }
         val context = WorldBookRecallContext(
             latestUserMessage = userMessage,
             recentMessages = recentMsgMaps,
-            scene = state?.scene ?: emptyMap(),
-            characterId = characterId
+            scene = dynamicScene,
+            characterId = characterId,
+            scopeId = scopeId
         )
 
         // 使用 V2 多源召回匹配器

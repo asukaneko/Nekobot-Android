@@ -4921,6 +4921,18 @@ class LocalRepository(
                 if (contentStr.isBlank()) continue
                 val priority = o.get("priority")?.takeIf { !it.isJsonNull }?.asInt ?: 10
                 val position = o.get("position")?.takeIf { !it.isJsonNull }?.asString ?: "before_char"
+                val triggerSources = o.get("trigger_sources")
+                    ?.takeIf { it.isJsonArray }
+                    ?.asJsonArray
+                    ?.mapNotNull { it.takeIf { value -> value.isJsonPrimitive }?.asString }
+                val stateTriggers = o.get("state_triggers")
+                    ?.takeIf { it.isJsonObject }
+                    ?.let { value ->
+                        val type = object : TypeToken<Map<String, List<String>>>() {}.type
+                        runCatching {
+                            gson.fromJson<Map<String, List<String>>>(value, type)
+                        }.getOrNull()
+                    }
                 val entry = WorldBookEntry(
                     id = UUID.randomUUID().toString(),
                     keys = keys.takeIf { it.isNotEmpty() },
@@ -4931,7 +4943,11 @@ class LocalRepository(
                     selective = true,
                     priority = priority,
                     position = position,
-                    caseSensitive = false
+                    caseSensitive = false,
+                    triggerSources = triggerSources,
+                    stateTriggers = stateTriggers,
+                    matchMode = o.get("match_mode")?.takeIf { !it.isJsonNull }?.asString ?: "any",
+                    entryType = o.get("entry_type")?.takeIf { !it.isJsonNull }?.asString ?: "lore"
                 )
                 val saved = upsertEntry(bookId, entry)
                 created.add(saved)
@@ -5043,6 +5059,8 @@ class LocalRepository(
   - "history" 历史上下文触发
   - "scene_state" 场景状态触发
   一般条目用 ["user"]，地点/NPC/事件类建议加上 "assistant_recent" 和 "scene_state"
+- state_triggers: 可选动态条件对象，例如 {"affection":[">=60"],"location":["白塔"],"time_of_day":["night"]}；
+  可用字段包括 mood、energy、affection、trust、location、hour、time_of_day、weekday、plot_node、plot_level
 - weight: 额外权重（0-50，用于微调优先级）
 - always_on: 是否常驻注入（true/false，只有核心规则才设为true）
 - cooldown_turns: 冷却轮数（命中后需间隔多少轮才能再次触发，0=无冷却）
@@ -5062,6 +5080,7 @@ $charSection$topicSection
             "priority": 50,
             "entry_type": "lore",
             "trigger_sources": ["user"],
+            "state_triggers": {},
             "weight": 0,
             "always_on": false,
             "cooldown_turns": 0
@@ -6130,7 +6149,18 @@ $charSection$topicSection
         priority = priority,
         position = position,
         caseSensitive = caseSensitive,
-        displayIndex = displayIndex
+        displayIndex = displayIndex,
+        triggerSources = triggerSourcesJson?.let {
+            LocalPromptBuilder.parseStringList(it)
+        },
+        stateTriggers = stateTriggersJson?.let { json ->
+            runCatching {
+                val type = object : TypeToken<Map<String, List<String>>>() {}.type
+                gson.fromJson<Map<String, List<String>>>(json, type)
+            }.getOrNull()
+        },
+        matchMode = matchMode,
+        entryType = entryType
     )
 
     private fun WorldBookEntry.toEntity(bookId: String): LocalWorldBookEntryEntity =
@@ -6147,7 +6177,11 @@ $charSection$topicSection
             priority = priority ?: 0,
             position = position,
             caseSensitive = caseSensitive ?: false,
-            displayIndex = displayIndex ?: 0
+            displayIndex = displayIndex ?: 0,
+            triggerSourcesJson = triggerSources?.let { gson.toJson(it) },
+            stateTriggersJson = stateTriggers?.let { gson.toJson(it) },
+            matchMode = matchMode?.lowercase()?.takeIf { it in setOf("any", "all") } ?: "any",
+            entryType = entryType?.trim()?.lowercase()?.ifBlank { "lore" } ?: "lore"
         )
 
     /** 用于 chat API 返回的统一结果。 */

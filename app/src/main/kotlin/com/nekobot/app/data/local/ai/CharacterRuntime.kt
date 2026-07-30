@@ -41,7 +41,14 @@ class CharacterRuntime(
     /** 世界书存储接口 */
     interface WorldBookStore {
         /** 按角色 ID 和用户消息匹配世界书条目 */
-        suspend fun match(characterId: String, userMessage: String, state: CharacterState?, recentMessages: List<String>): List<WorldBookMatch>
+        suspend fun match(
+            characterId: String,
+            userMessage: String,
+            state: CharacterState?,
+            relationship: RelationshipState?,
+            scopeId: String,
+            recentMessages: List<String>
+        ): List<WorldBookMatch>
     }
 
     /** 世界书匹配结果 */
@@ -93,7 +100,13 @@ class CharacterRuntime(
         val plan = ReactionPlanner.plan(profile, state, relationship, memories, signals, chatRequest.content)
 
         // 7. 世界书匹配
-        val worldBookEntries = matchWorldBooks(identity, chatRequest.content, state, recentMessages)
+        val worldBookEntries = matchWorldBooks(
+            identity,
+            chatRequest.content,
+            state,
+            relationship,
+            recentMessages
+        )
 
         // 8. 编译提示词
         val promptStack = PromptStack()
@@ -391,9 +404,19 @@ class CharacterRuntime(
         identity: CharacterIdentity,
         userMessage: String,
         state: CharacterState,
+        relationship: RelationshipState,
         recentMessages: List<String>
     ): List<WorldBookMatch> {
-        worldBookStore?.let { return it.match(identity.characterId, userMessage, state, recentMessages) }
+        worldBookStore?.let {
+            return it.match(
+                identity.characterId,
+                userMessage,
+                state,
+                relationship,
+                identity.scopeId,
+                recentMessages
+            )
+        }
         return emptyList()
     }
 

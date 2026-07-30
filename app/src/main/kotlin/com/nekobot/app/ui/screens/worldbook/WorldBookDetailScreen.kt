@@ -48,6 +48,29 @@ import kotlinx.coroutines.flow.asStateFlow
 
 // 条目位置可选项
 private val POSITION_OPTIONS = listOf("before_char", "after_char", "before_an", "after_an")
+private val DEFAULT_TRIGGER_SOURCES =
+    listOf("user", "assistant_recent", "history", "scene_state")
+
+private fun formatStateTriggers(values: Map<String, List<String>>?): String =
+    values.orEmpty().entries.joinToString("\n") { (key, items) ->
+        "$key=${items.joinToString("|")}"
+    }
+
+private fun parseStateTriggers(text: String): Map<String, List<String>> =
+    text.split('\n', ';')
+        .mapNotNull { line ->
+            val separator = line.indexOf('=').takeIf { it > 0 }
+                ?: line.indexOf(':').takeIf { it > 0 }
+                ?: return@mapNotNull null
+            val key = line.substring(0, separator).trim().lowercase()
+            val values = line.substring(separator + 1)
+                .split('|', ',')
+                .map(String::trim)
+                .filter(String::isNotEmpty)
+            key.takeIf(String::isNotEmpty)?.let { it to values }
+        }
+        .filter { it.second.isNotEmpty() }
+        .toMap()
 
 /**
  * 世界书详情/条目管理页 ViewModel：管理世界书信息与条目列表的增删改。
@@ -83,6 +106,10 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
     val entryPosition = MutableStateFlow(POSITION_OPTIONS.first())
     val entryPriority = MutableStateFlow(10)
     val entryCaseSensitive = MutableStateFlow(false)
+    val entryTriggerSources = MutableStateFlow(DEFAULT_TRIGGER_SOURCES.joinToString(", "))
+    val entryStateTriggers = MutableStateFlow("")
+    val entryMatchMode = MutableStateFlow("any")
+    val entryType = MutableStateFlow("lore")
 
     init { load(bookId) }
 
@@ -165,6 +192,10 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
         entryPosition.value = POSITION_OPTIONS.first()
         entryPriority.value = 10
         entryCaseSensitive.value = false
+        entryTriggerSources.value = DEFAULT_TRIGGER_SOURCES.joinToString(", ")
+        entryStateTriggers.value = ""
+        entryMatchMode.value = "any"
+        entryType.value = "lore"
         _showEntryDialog.value = true
     }
 
@@ -180,6 +211,11 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
         entryPosition.value = entry.position ?: POSITION_OPTIONS.first()
         entryPriority.value = entry.priority ?: 10
         entryCaseSensitive.value = entry.caseSensitive ?: false
+        entryTriggerSources.value =
+            (entry.triggerSources ?: DEFAULT_TRIGGER_SOURCES).joinToString(", ")
+        entryStateTriggers.value = formatStateTriggers(entry.stateTriggers)
+        entryMatchMode.value = entry.matchMode ?: "any"
+        entryType.value = entry.entryType ?: "lore"
         _showEntryDialog.value = true
     }
 
@@ -203,7 +239,15 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
             selective = entrySelective.value,
             position = entryPosition.value,
             priority = entryPriority.value,
-            caseSensitive = entryCaseSensitive.value
+            caseSensitive = entryCaseSensitive.value,
+            triggerSources = entryTriggerSources.value
+                .split(',')
+                .map(String::trim)
+                .filter(String::isNotEmpty)
+                .takeIf { it.isNotEmpty() },
+            stateTriggers = parseStateTriggers(entryStateTriggers.value).takeIf { it.isNotEmpty() },
+            matchMode = entryMatchMode.value,
+            entryType = entryType.value.trim().lowercase().ifBlank { "lore" }
         )
         val editing = _editingEntry.value
         if (editing == null) {
@@ -561,6 +605,17 @@ private fun EntryItem(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                if (!entry.stateTriggers.isNullOrEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(
+                            R.string.worldbook_dynamic_condition_summary,
+                            formatStateTriggers(entry.stateTriggers).replace("\n", "；")
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
                 // 关键词：内容下方一排，可左右拖动
                 val keys = entry.keys
                 if (!keys.isNullOrEmpty()) {
@@ -646,6 +701,10 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
     val position by vm.entryPosition.collectAsState()
     val priority by vm.entryPriority.collectAsState()
     val caseSensitive by vm.entryCaseSensitive.collectAsState()
+    val triggerSources by vm.entryTriggerSources.collectAsState()
+    val stateTriggers by vm.entryStateTriggers.collectAsState()
+    val matchMode by vm.entryMatchMode.collectAsState()
+    val entryType by vm.entryType.collectAsState()
 
     var positionExpanded by remember { mutableStateOf(false) }
 
@@ -670,6 +729,74 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
             NekoTextField(
                 value = keys,
                 onValueChange = { vm.entryKeys.value = it },
+                singleLine = true
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                stringResource(R.string.worldbook_field_trigger_sources),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(4.dp))
+            NekoTextField(
+                value = triggerSources,
+                onValueChange = { vm.entryTriggerSources.value = it },
+                singleLine = true
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                stringResource(R.string.worldbook_field_state_triggers),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(4.dp))
+            NekoTextField(
+                value = stateTriggers,
+                onValueChange = { vm.entryStateTriggers.value = it },
+                singleLine = false,
+                minLines = 3,
+                maxLines = 5
+            )
+            Text(
+                stringResource(R.string.worldbook_state_triggers_hint),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                stringResource(R.string.worldbook_field_match_mode),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("any", "all").forEach { mode ->
+                    FilterChip(
+                        selected = matchMode == mode,
+                        onClick = { vm.entryMatchMode.value = mode },
+                        label = {
+                            Text(
+                                stringResource(
+                                    if (mode == "all") {
+                                        R.string.worldbook_match_all
+                                    } else {
+                                        R.string.worldbook_match_any
+                                    }
+                                )
+                            )
+                        }
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                stringResource(R.string.worldbook_field_entry_type),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(4.dp))
+            NekoTextField(
+                value = entryType,
+                onValueChange = { vm.entryType.value = it },
                 singleLine = true
             )
             Spacer(Modifier.height(10.dp))

@@ -459,7 +459,11 @@ data class WorldBookEntry(
     val priority: Int? = null,
     val position: String? = null,
     @SerializedName("case_sensitive") val caseSensitive: Boolean? = null,
-    @SerializedName("display_index") val displayIndex: Int? = null
+    @SerializedName("display_index") val displayIndex: Int? = null,
+    @SerializedName("trigger_sources") val triggerSources: List<String>? = null,
+    @SerializedName("state_triggers") val stateTriggers: Map<String, List<String>>? = null,
+    @SerializedName("match_mode") val matchMode: String? = null,
+    @SerializedName("entry_type") val entryType: String? = null
 ) {
     val keysText: String get() = keys?.joinToString(", ") ?: ""
 }
@@ -484,7 +488,11 @@ data class WorldBookEntryRequest(
     @SerializedName("insertion_order") val insertionOrder: Int? = null,
     val priority: Int? = null,
     val position: String? = null,
-    @SerializedName("case_sensitive") val caseSensitive: Boolean? = null
+    @SerializedName("case_sensitive") val caseSensitive: Boolean? = null,
+    @SerializedName("trigger_sources") val triggerSources: List<String>? = null,
+    @SerializedName("state_triggers") val stateTriggers: Map<String, List<String>>? = null,
+    @SerializedName("match_mode") val matchMode: String? = null,
+    @SerializedName("entry_type") val entryType: String? = null
 )
 
 // ==================== AI 配置 / 模型 ====================

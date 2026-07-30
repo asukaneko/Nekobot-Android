@@ -178,7 +178,15 @@ data class LocalWorldBookEntryEntity(
     val priority: Int = 0,
     val position: String? = null,
     @ColumnInfo(name = "case_sensitive") val caseSensitive: Boolean = false,
-    @ColumnInfo(name = "display_index") val displayIndex: Int = 0
+    @ColumnInfo(name = "display_index") val displayIndex: Int = 0,
+    /** 允许的召回来源 JSON 数组；空值表示使用全部来源。 */
+    @ColumnInfo(name = "trigger_sources_json") val triggerSourcesJson: String? = null,
+    /** 动态状态条件 JSON 对象，例如 {"affection":[">=60"],"location":["白塔"]}。 */
+    @ColumnInfo(name = "state_triggers_json") val stateTriggersJson: String? = null,
+    /** any：任一条件命中；all：全部条件命中。 */
+    @ColumnInfo(name = "match_mode") val matchMode: String = "any",
+    /** lore/location/relationship/event/rule 等，用于同分时排序。 */
+    @ColumnInfo(name = "entry_type") val entryType: String = "lore"
 )
 
 /**

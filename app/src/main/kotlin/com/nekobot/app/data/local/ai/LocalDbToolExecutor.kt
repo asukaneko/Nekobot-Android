@@ -249,7 +249,11 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
                     "insertion_order" to int("插入顺序，默认 0"),
                     "position" to str("注入位置"),
                     "case_sensitive" to bool("是否区分大小写"),
-                    "display_index" to int("显示索引，默认 0")
+                    "display_index" to int("显示索引，默认 0"),
+                    "trigger_sources" to strArr("触发来源：user/assistant_recent/history/scene_state"),
+                    "state_triggers" to obj("动态条件，例如 {\"affection\":[\">=60\"],\"location\":[\"白塔\"]}"),
+                    "match_mode" to str("条件模式：any 或 all"),
+                    "entry_type" to str("条目类型：lore/location/relationship/event/rule 等")
                 ),
                 listOf("book_id")
             )
@@ -934,7 +938,11 @@ internal class LocalDbToolExecutor(
             priority = args.int("priority", 0),
             position = args.string("position").ifBlank { null },
             caseSensitive = args.bool("case_sensitive", false),
-            displayIndex = args.int("display_index", 0)
+            displayIndex = args.int("display_index", 0),
+            triggerSourcesJson = args.stringList("trigger_sources")?.let { gson.toJson(it) },
+            stateTriggersJson = args["state_triggers"]?.let { gson.toJson(it) },
+            matchMode = args.string("match_mode").ifBlank { "any" },
+            entryType = args.string("entry_type").ifBlank { "lore" }
         )
         db.worldBookDao().upsertEntry(entity)
         return success("entry_id" to entryId, "book_id" to bookId)

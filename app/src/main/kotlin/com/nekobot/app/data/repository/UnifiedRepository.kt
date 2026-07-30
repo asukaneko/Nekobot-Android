@@ -523,7 +523,11 @@ class UnifiedRepository(
                 insertionOrder = req.insertionOrder,
                 priority = req.priority,
                 position = req.position,
-                caseSensitive = req.caseSensitive
+                caseSensitive = req.caseSensitive,
+                triggerSources = req.triggerSources,
+                stateTriggers = req.stateTriggers,
+                matchMode = req.matchMode,
+                entryType = req.entryType
             )
             Resource.Success(local.upsertEntry(bookId, entry))
         } else remote.createEntry(bookId, req)
@@ -541,7 +545,11 @@ class UnifiedRepository(
                 insertionOrder = req.insertionOrder,
                 priority = req.priority,
                 position = req.position,
-                caseSensitive = req.caseSensitive
+                caseSensitive = req.caseSensitive,
+                triggerSources = req.triggerSources,
+                stateTriggers = req.stateTriggers,
+                matchMode = req.matchMode,
+                entryType = req.entryType
             )
             Resource.Success(local.upsertEntry(bookId, entry))
         } else remote.updateEntry(bookId, entryId, req)

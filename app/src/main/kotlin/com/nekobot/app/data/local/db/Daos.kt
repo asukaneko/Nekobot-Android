@@ -201,7 +201,7 @@ interface WorldBookDao {
     @Query("SELECT * FROM local_world_books WHERE id = :id")
     suspend fun getById(id: String): LocalWorldBookEntity?
 
-    @Query("SELECT * FROM local_world_books WHERE character_id IS NOT NULL AND ',' || character_id || ',' LIKE '%,' || :characterId || ',%'")
+    @Query("SELECT * FROM local_world_books WHERE character_id IS NULL OR character_id = '' OR ',' || character_id || ',' LIKE '%,' || :characterId || ',%'")
     suspend fun listByCharacter(characterId: String): List<LocalWorldBookEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

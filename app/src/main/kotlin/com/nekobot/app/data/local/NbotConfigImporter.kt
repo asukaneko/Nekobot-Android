@@ -481,7 +481,11 @@ object NbotConfigImporter {
                         priority = entry.int("priority", 0),
                         position = entry.str("position"),
                         caseSensitive = entry.bool("case_sensitive", false),
-                        displayIndex = entry.int("display_index", 0)
+                        displayIndex = entry.int("display_index", 0),
+                        triggerSourcesJson = entry.jsonStr("trigger_sources"),
+                        stateTriggersJson = entry.jsonStr("state_triggers"),
+                        matchMode = entry.str("match_mode") ?: "any",
+                        entryType = entry.str("entry_type") ?: "lore"
                     )
                 )
             }

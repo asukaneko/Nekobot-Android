@@ -117,6 +117,14 @@
     <string name="worldbook_field_comment">备注</string>
     <string name="worldbook_field_position">位置</string>
     <string name="worldbook_field_priority">优先级</string>
+    <string name="worldbook_field_trigger_sources">触发来源（逗号分隔）</string>
+    <string name="worldbook_field_state_triggers">动态状态条件</string>
+    <string name="worldbook_state_triggers_hint">每行一个条件，例如 affection=&gt;=60、location=白塔|观星台、time_of_day=night、plot_node=节点ID</string>
+    <string name="worldbook_field_match_mode">条件匹配方式</string>
+    <string name="worldbook_match_any">任一条件</string>
+    <string name="worldbook_match_all">全部条件</string>
+    <string name="worldbook_field_entry_type">条目类型（lore/location/relationship/event/rule）</string>
+    <string name="worldbook_dynamic_condition_summary">动态：%1$s</string>
     <string name="worldbook_case_sensitive">大小写敏感</string>
     <string name="worldbook_edit_book_title">编辑世界书</string>
     <string name="worldbook_bind_characters_multi">绑定角色（可多选）</string>
