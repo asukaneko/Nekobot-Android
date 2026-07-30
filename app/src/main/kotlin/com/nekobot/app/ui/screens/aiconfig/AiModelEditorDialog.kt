@@ -301,6 +301,17 @@ fun AiModelEditorDialog(
                 password = true,
                 placeholder = "输入 API Key"
             ) { state = state.copy(apiKey = it) }
+            if (savedApiKeys.isNotEmpty()) {
+                EditorDropdownField(
+                    label = "选择已保存的 Key",
+                    value = "",
+                    options = savedApiKeys.mapNotNull { it.id },
+                    labelFor = { id -> savedApiKeys.firstOrNull { it.id == id }?.displayName ?: id },
+                    onSelect = { id ->
+                        onResolveApiKey(id) { key -> state = state.copy(apiKey = key) }
+                    }
+                )
+            }
             if (showProxyConfig) {
                 EditorTextField(
                     label = "代理链接（可选）",
@@ -311,17 +322,6 @@ fun AiModelEditorDialog(
                     text = "留空时该模型直连；支持 HTTP 和 SOCKS5 代理",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            if (savedApiKeys.isNotEmpty()) {
-                EditorDropdownField(
-                    label = "选择已保存的 Key",
-                    value = "",
-                    options = savedApiKeys.mapNotNull { it.id },
-                    labelFor = { id -> savedApiKeys.firstOrNull { it.id == id }?.displayName ?: id },
-                    onSelect = { id ->
-                        onResolveApiKey(id) { key -> state = state.copy(apiKey = key) }
-                    }
                 )
             }
 
