@@ -152,6 +152,12 @@
     <string name="webdav_file_url">文件地址</string>
     <string name="webdav_recent_error">最近错误: %1$s</string>
     <string name="webdav_refresh_info">刷新信息</string>
+    <string name="webdav_incremental_title">增量同步</string>
+    <string name="webdav_incremental_subtitle">跨设备合并会话、角色卡与世界书</string>
+    <string name="webdav_incremental_desc">端到端加密，只上传发生变化的记录；远端保留版本文件，冲突时自动采用更新时间较新的内容。启用 WebDAV 后每 6 小时自动同步。</string>
+    <string name="webdav_incremental_button">立即增量同步</string>
+    <string name="webdav_incremental_result">同步完成：上传 %1$d，下载 %2$d，冲突 %3$d</string>
+    <string name="webdav_incremental_failed">增量同步失败</string>
     <string name="webdav_backup_upload_title">备份上传</string>
     <string name="webdav_backup_upload_subtitle">将本地配置打包上传到 WebDAV</string>
     <string name="webdav_encryption_password_optional_override">加密密码（可选，覆盖配置）</string>

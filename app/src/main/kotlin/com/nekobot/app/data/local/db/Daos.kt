@@ -87,6 +87,9 @@ interface SessionDao {
 
 @Dao
 interface MessageDao {
+    @Query("SELECT * FROM local_messages ORDER BY created_at ASC")
+    suspend fun listAll(): List<LocalMessageEntity>
+
     @Query("SELECT * FROM local_messages WHERE session_id = :sessionId ORDER BY created_at ASC")
     suspend fun listBySession(sessionId: String): List<LocalMessageEntity>
 
@@ -225,6 +228,9 @@ interface WorldBookDao {
 
     @Query("SELECT * FROM local_world_book_entries WHERE book_id = :bookId ORDER BY display_index ASC, insertion_order ASC")
     suspend fun listEntries(bookId: String): List<LocalWorldBookEntryEntity>
+
+    @Query("SELECT * FROM local_world_book_entries ORDER BY book_id ASC, display_index ASC, insertion_order ASC")
+    suspend fun listAllEntries(): List<LocalWorldBookEntryEntity>
 
     @Query("SELECT * FROM local_world_book_entries WHERE book_id IN (SELECT id FROM local_world_books WHERE enabled = 1 AND (character_id IS NULL OR ',' || character_id || ',' LIKE '%,' || :characterId || ',%'))")
     suspend fun listActiveEntriesForCharacter(characterId: String): List<LocalWorldBookEntryEntity>

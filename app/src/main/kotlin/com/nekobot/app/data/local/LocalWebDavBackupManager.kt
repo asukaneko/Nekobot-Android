@@ -2,11 +2,17 @@ package com.nekobot.app.data.local
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.room.withTransaction
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.db.LocalCharacterEntity
+import com.nekobot.app.data.local.db.LocalMessageEntity
+import com.nekobot.app.data.local.db.LocalSessionEntity
+import com.nekobot.app.data.local.db.LocalWorldBookEntity
+import com.nekobot.app.data.local.db.LocalWorldBookEntryEntity
 import com.nekobot.app.data.local.db.NekobotDatabase
 import com.nekobot.app.data.model.WebDavBackupRequest
 import com.nekobot.app.data.model.WebDavConfig
@@ -21,11 +27,13 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.net.URLEncoder
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.OffsetDateTime
 import java.util.Base64
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -99,6 +107,10 @@ class LocalWebDavBackupManager(
             ?.takeIf { it.isNotBlank() && '*' !in it }
             ?.let { editor.putString(KEY_ENCRYPTION_PASSWORD, it) }
         editor.apply()
+        LocalWebDavSyncScheduler.configure(
+            appContext,
+            config.enabled ?: configPrefs.getBoolean(KEY_ENABLED, false)
+        )
         return successJson().apply {
             add("config", gson.toJsonTree(getConfig()))
         }
@@ -381,6 +393,404 @@ class LocalWebDavBackupManager(
                 throw IllegalStateException(message, e)
             }
         }
+
+    /**
+     * 双向增量同步。远端只追加本次变化的加密 delta，manifest 保存每条记录的最新版本指针。
+     * 本地和远端同时修改时按 updatedAt 选择较新的版本，并统计冲突数量。
+     */
+    suspend fun incrementalSync(request: WebDavBackupRequest): JsonObject =
+        withContext(Dispatchers.IO) {
+            val raw = rawConfig()
+            val encryptionPassword =
+                request.password?.trim().takeUnless { it.isNullOrBlank() }
+                    ?: raw.encryptionPassword
+            require(encryptionPassword.isNotBlank()) {
+                "未设置加密密码，请先在配置中填写"
+            }
+            val folder = ensureFolder(raw)
+            if (!folder.ok) error(folder.message)
+            ensureIncrementalFolders(raw)
+
+            try {
+                val profileName = prefs.activeDbName
+                val rootUrl = resolveIncrementalRootUrl(raw.url, profileName)
+                val manifestUrl = "${rootUrl}manifest.nksync"
+                var remoteManifestPayload: ByteArray? = null
+                var remoteManifestEtag: String? = null
+                val remoteManifest = execute(
+                    Request.Builder().url(manifestUrl).get(),
+                    raw
+                ).use { response ->
+                    when (response.code) {
+                        200 -> {
+                            remoteManifestPayload = response.body?.bytes() ?: byteArrayOf()
+                            remoteManifestEtag = response.header("ETag")
+                            val plain = LocalWebDavArchiveCodec.decrypt(
+                                remoteManifestPayload!!,
+                                encryptionPassword
+                            )
+                            gson.fromJson(
+                                plain.toString(Charsets.UTF_8),
+                                WebDavSyncManifest::class.java
+                            ) ?: WebDavSyncManifest()
+                        }
+                        404 -> WebDavSyncManifest()
+                        else -> error("读取增量同步清单失败 (HTTP ${response.code})")
+                    }
+                }
+
+                val baselineKey = "$KEY_SYNC_BASE_PREFIX$profileName"
+                val baseline = configPrefs.getString(baselineKey, null)
+                    ?.let { json ->
+                        runCatching {
+                            gson.fromJson(json, WebDavSyncManifest::class.java)
+                        }.getOrNull()
+                    }
+                    ?: WebDavSyncManifest()
+                val db = NekobotDatabase.get(appContext, profileName)
+                val localRecords = collectIncrementalRecords(db)
+                val localIndex = localRecords.mapValues { (_, record) ->
+                    LocalWebDavIncrementalLogic.indexOf(record, "")
+                }
+                val now = nowIso()
+                val outgoing = linkedMapOf<String, WebDavSyncRecord>()
+                val incoming = linkedMapOf<String, WebDavSyncRecord>()
+                var conflicts = 0
+                val deltaCache = mutableMapOf<String, WebDavSyncDelta>()
+
+                fun localRecordFor(key: String): WebDavSyncRecord? =
+                    localRecords[key] ?: baseline.records[key]
+                        ?.takeUnless { it.deleted }
+                        ?.let { LocalWebDavIncrementalLogic.tombstone(key, now) }
+
+                fun loadRemoteRecord(
+                    key: String,
+                    index: WebDavSyncIndexEntry
+                ): WebDavSyncRecord {
+                    if (index.deleted) {
+                        return LocalWebDavIncrementalLogic.tombstone(key, index.updatedAt)
+                    }
+                    require(index.delta.isNotBlank()) { "远端同步索引缺少版本文件：$key" }
+                    val delta = deltaCache.getOrPut(index.delta) {
+                        val encrypted = execute(
+                            Request.Builder().url("$rootUrl${index.delta}").get(),
+                            raw
+                        ).use { response ->
+                            if (response.code != 200) {
+                                error("读取增量版本失败 (HTTP ${response.code})")
+                            }
+                            response.body?.bytes() ?: byteArrayOf()
+                        }
+                        val plain = LocalWebDavArchiveCodec.decrypt(encrypted, encryptionPassword)
+                        gson.fromJson(
+                            plain.toString(Charsets.UTF_8),
+                            WebDavSyncDelta::class.java
+                        )
+                    }
+                    return delta.records.firstOrNull { it.key == key }
+                        ?: error("增量版本中缺少记录：$key")
+                }
+
+                val allKeys = linkedSetOf<String>().apply {
+                    addAll(baseline.records.keys)
+                    addAll(localRecords.keys)
+                    addAll(remoteManifest.records.keys)
+                }
+                allKeys.forEach { key ->
+                    val baseIndex = baseline.records[key]
+                    val localRecord = localRecordFor(key)
+                    val localCandidate = localRecord?.let {
+                        LocalWebDavIncrementalLogic.indexOf(it, "")
+                    }
+                    val remoteIndex = remoteManifest.records[key]
+                    val localChanged = LocalWebDavIncrementalLogic.changed(localCandidate, baseIndex)
+                    val remoteChanged = LocalWebDavIncrementalLogic.changed(remoteIndex, baseIndex)
+
+                    when {
+                        localChanged && !remoteChanged && localRecord != null -> {
+                            outgoing[key] = localRecord
+                        }
+                        !localChanged && remoteChanged && remoteIndex != null -> {
+                            incoming[key] = loadRemoteRecord(key, remoteIndex)
+                        }
+                        localChanged && remoteChanged && localRecord != null && remoteIndex != null -> {
+                            if (
+                                localCandidate?.hash == remoteIndex.hash &&
+                                localCandidate.deleted == remoteIndex.deleted
+                            ) {
+                                return@forEach
+                            }
+                            conflicts++
+                            val localWins = when {
+                                localRecord.updatedAt > remoteIndex.updatedAt -> true
+                                localRecord.updatedAt < remoteIndex.updatedAt -> false
+                                else -> localRecord.hash >= remoteIndex.hash
+                            }
+                            if (localWins) {
+                                outgoing[key] = localRecord
+                            } else {
+                                incoming[key] = loadRemoteRecord(key, remoteIndex)
+                            }
+                        }
+                    }
+                }
+
+                if (incoming.isNotEmpty()) {
+                    applyIncrementalRecords(db, incoming.values.toList())
+                }
+
+                var uploadedBytes = 0L
+                if (outgoing.isNotEmpty()) {
+                    val nextRevision = remoteManifest.revision + 1L
+                    val deltaName = "delta-${nextRevision}-${UUID.randomUUID()}.nksync"
+                    val delta = WebDavSyncDelta(
+                        revision = nextRevision,
+                        deviceId = getOrCreateSyncDeviceId(),
+                        createdAt = now,
+                        records = outgoing.values.toList()
+                    )
+                    val encryptedDelta = LocalWebDavArchiveCodec.encrypt(
+                        gson.toJson(delta).toByteArray(Charsets.UTF_8),
+                        encryptionPassword,
+                        profileName
+                    )
+                    putIncrementalFile("$rootUrl$deltaName", encryptedDelta, raw)
+                    uploadedBytes += encryptedDelta.size
+
+                    if (remoteManifestPayload != null && remoteManifest.revision > 0L) {
+                        val historyUrl =
+                            "${rootUrl}history/manifest-${remoteManifest.revision}.nksync"
+                        putIncrementalFile(historyUrl, remoteManifestPayload!!, raw)
+                    }
+                    outgoing.values.forEach { record ->
+                        remoteManifest.records[record.key] =
+                            LocalWebDavIncrementalLogic.indexOf(record, deltaName)
+                    }
+                    remoteManifest.revision = nextRevision
+                    remoteManifest.updatedAt = now
+                    val encryptedManifest = LocalWebDavArchiveCodec.encrypt(
+                        gson.toJson(remoteManifest).toByteArray(Charsets.UTF_8),
+                        encryptionPassword,
+                        profileName
+                    )
+                    val builder = Request.Builder()
+                        .url(manifestUrl)
+                        .put(encryptedManifest.toRequestBody(BINARY_MEDIA_TYPE))
+                    if (!remoteManifestEtag.isNullOrBlank()) {
+                        builder.header("If-Match", remoteManifestEtag!!)
+                    } else if (remoteManifestPayload == null) {
+                        builder.header("If-None-Match", "*")
+                    }
+                    execute(builder, raw).use { response ->
+                        if (response.code == 412) {
+                            error("远端数据已被其他设备更新，请重新同步")
+                        }
+                        if (response.code !in listOf(200, 201, 204)) {
+                            error("更新增量同步清单失败 (HTTP ${response.code})")
+                        }
+                    }
+                    uploadedBytes += encryptedManifest.size
+                }
+
+                configPrefs.edit()
+                    .putString(baselineKey, gson.toJson(remoteManifest))
+                    .apply()
+                updateStatus(
+                    lastSyncAt = now,
+                    lastError = "",
+                    lastFileSize = uploadedBytes.takeIf { it > 0L }
+                )
+                successJson().apply {
+                    addProperty("ok", true)
+                    addProperty("synced_at", now)
+                    addProperty("revision", remoteManifest.revision)
+                    addProperty("uploaded", outgoing.size)
+                    addProperty("downloaded", incoming.size)
+                    addProperty("conflicts", conflicts)
+                    addProperty("uploaded_bytes", uploadedBytes)
+                    addProperty("incremental", true)
+                }
+            } catch (e: Exception) {
+                val message = readableError("增量同步失败", e)
+                updateStatus(lastError = message)
+                throw IllegalStateException(message, e)
+            }
+        }
+
+    private suspend fun collectIncrementalRecords(
+        db: NekobotDatabase
+    ): Map<String, WebDavSyncRecord> {
+        val records = linkedMapOf<String, WebDavSyncRecord>()
+        db.sessionDao().listAll().forEach { entity ->
+            val record = LocalWebDavIncrementalLogic.record(
+                TYPE_SESSION,
+                entity.id,
+                entity.updatedAt,
+                gson.toJsonTree(entity).asJsonObject
+            )
+            records[record.key] = record
+        }
+        db.messageDao().listAll().forEach { entity ->
+            val record = LocalWebDavIncrementalLogic.record(
+                TYPE_MESSAGE,
+                entity.id,
+                entity.createdAt,
+                gson.toJsonTree(entity).asJsonObject
+            )
+            records[record.key] = record
+        }
+        db.characterDao().listAll().forEach { entity ->
+            val record = LocalWebDavIncrementalLogic.record(
+                TYPE_CHARACTER,
+                entity.id,
+                entity.updatedAt,
+                gson.toJsonTree(entity).asJsonObject
+            )
+            records[record.key] = record
+        }
+        val books = db.worldBookDao().listAll()
+        val bookUpdatedAt = books.associate { it.id to it.updatedAt }
+        books.forEach { entity ->
+            val record = LocalWebDavIncrementalLogic.record(
+                TYPE_WORLD_BOOK,
+                entity.id,
+                entity.updatedAt,
+                gson.toJsonTree(entity).asJsonObject
+            )
+            records[record.key] = record
+        }
+        db.worldBookDao().listAllEntries().forEach { entity ->
+            val record = LocalWebDavIncrementalLogic.record(
+                TYPE_WORLD_BOOK_ENTRY,
+                entity.id,
+                bookUpdatedAt[entity.bookId].orEmpty(),
+                gson.toJsonTree(entity).asJsonObject
+            )
+            records[record.key] = record
+        }
+        return records
+    }
+
+    private suspend fun applyIncrementalRecords(
+        db: NekobotDatabase,
+        records: List<WebDavSyncRecord>
+    ) {
+        db.withTransaction {
+            records.filter { it.deleted }
+                .sortedBy { record ->
+                    when (record.type) {
+                        TYPE_WORLD_BOOK_ENTRY -> 0
+                        TYPE_MESSAGE -> 1
+                        TYPE_SESSION -> 2
+                        TYPE_WORLD_BOOK -> 3
+                        TYPE_CHARACTER -> 4
+                        else -> 5
+                    }
+                }
+                .forEach { record ->
+                    when (record.type) {
+                        TYPE_SESSION -> db.sessionDao().deleteById(record.id)
+                        TYPE_MESSAGE -> db.messageDao().deleteById(record.id)
+                        TYPE_CHARACTER -> db.characterDao().deleteById(record.id)
+                        TYPE_WORLD_BOOK -> db.worldBookDao().deleteById(record.id)
+                        TYPE_WORLD_BOOK_ENTRY -> db.worldBookDao().deleteEntryById(record.id)
+                    }
+                }
+
+            records.filterNot { it.deleted }
+                .sortedBy { record ->
+                    when (record.type) {
+                        TYPE_CHARACTER -> 0
+                        TYPE_WORLD_BOOK -> 1
+                        TYPE_SESSION -> 2
+                        TYPE_WORLD_BOOK_ENTRY -> 3
+                        TYPE_MESSAGE -> 4
+                        else -> 5
+                    }
+                }
+                .forEach { record ->
+                    val value = requireNotNull(record.value) { "同步记录内容为空：${record.key}" }
+                    when (record.type) {
+                        TYPE_SESSION -> {
+                            val entity = gson.fromJson(value, LocalSessionEntity::class.java)
+                            if (db.sessionDao().getById(entity.id) == null) {
+                                db.sessionDao().upsert(entity)
+                            } else {
+                                db.sessionDao().update(entity)
+                            }
+                        }
+                        TYPE_MESSAGE -> db.messageDao().upsert(
+                            gson.fromJson(value, LocalMessageEntity::class.java)
+                        )
+                        TYPE_CHARACTER -> {
+                            val entity = gson.fromJson(value, LocalCharacterEntity::class.java)
+                            if (db.characterDao().getById(entity.id) == null) {
+                                db.characterDao().upsert(entity)
+                            } else {
+                                db.characterDao().update(entity)
+                            }
+                        }
+                        TYPE_WORLD_BOOK -> {
+                            val entity = gson.fromJson(value, LocalWorldBookEntity::class.java)
+                            if (db.worldBookDao().getById(entity.id) == null) {
+                                db.worldBookDao().upsert(entity)
+                            } else {
+                                db.worldBookDao().update(entity)
+                            }
+                        }
+                        TYPE_WORLD_BOOK_ENTRY -> db.worldBookDao().upsertEntry(
+                            gson.fromJson(value, LocalWorldBookEntryEntity::class.java)
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun ensureIncrementalFolders(raw: RawConfig) {
+        val profile = encodePathSegment(prefs.activeDbName)
+        val base = "${normalizeBaseUrl(raw.url)}/$BACKUP_FOLDER/"
+        listOf(
+            "${base}sync/",
+            "${base}sync/$profile/",
+            "${base}sync/$profile/history/"
+        ).forEach { url ->
+            execute(
+                Request.Builder()
+                    .url(url)
+                    .method("MKCOL", ByteArray(0).toRequestBody(null)),
+                raw
+            ).use { response ->
+                if (response.code !in listOf(200, 201, 204, 405)) {
+                    error("创建增量同步目录失败 (HTTP ${response.code})")
+                }
+            }
+        }
+    }
+
+    private fun putIncrementalFile(url: String, bytes: ByteArray, raw: RawConfig) {
+        execute(
+            Request.Builder().url(url).put(bytes.toRequestBody(BINARY_MEDIA_TYPE)),
+            raw
+        ).use { response ->
+            if (response.code !in listOf(200, 201, 204)) {
+                error("上传增量版本失败 (HTTP ${response.code})")
+            }
+        }
+    }
+
+    private fun resolveIncrementalRootUrl(baseUrl: String, profileName: String): String =
+        "${normalizeBaseUrl(baseUrl)}/$BACKUP_FOLDER/sync/${encodePathSegment(profileName)}/"
+
+    private fun encodePathSegment(value: String): String =
+        URLEncoder.encode(value, Charsets.UTF_8.name()).replace("+", "%20")
+
+    private fun getOrCreateSyncDeviceId(): String {
+        val current = configPrefs.getString(KEY_SYNC_DEVICE_ID, "").orEmpty()
+        if (current.isNotBlank()) return current
+        return UUID.randomUUID().toString().also {
+            configPrefs.edit().putString(KEY_SYNC_DEVICE_ID, it).apply()
+        }
+    }
 
     private fun buildArchive(includePortraits: Boolean): ByteArray {
         val profileName = prefs.activeDbName
@@ -824,6 +1234,8 @@ class LocalWebDavBackupManager(
         const val KEY_LAST_ERROR = "last_error"
         const val KEY_LAST_FILE_SIZE = "last_file_size"
         const val KEY_LAST_MODIFIED = "last_modified"
+        const val KEY_SYNC_DEVICE_ID = "sync_device_id"
+        const val KEY_SYNC_BASE_PREFIX = "sync_base_"
 
         const val BACKUP_FOLDER = "nekobot"
         const val BACKUP_FILENAME = "config.nbotcfg"
@@ -835,6 +1247,11 @@ class LocalWebDavBackupManager(
         const val ENTRY_ACHIEVEMENTS = "achievements.json"
         const val ENTRY_PORTRAITS_PREFIX = "portraits/"
         const val ACHIEVEMENT_PREF_NAME = "nekobot_achievements"
+        const val TYPE_SESSION = "session"
+        const val TYPE_MESSAGE = "message"
+        const val TYPE_CHARACTER = "character"
+        const val TYPE_WORLD_BOOK = "world_book"
+        const val TYPE_WORLD_BOOK_ENTRY = "world_book_entry"
         const val MAX_ARCHIVE_ENTRIES = 5_000
         const val MAX_ARCHIVE_SIZE = 1024L * 1024L * 1024L
 

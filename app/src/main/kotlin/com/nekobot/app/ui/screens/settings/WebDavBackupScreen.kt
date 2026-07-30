@@ -200,6 +200,32 @@ class WebDavBackupViewModel : BaseViewModel() {
         )
     }
 
+    fun incrementalSync(password: String) {
+        val req = WebDavBackupRequest(password = password.ifBlank { null })
+        launchResult(
+            block = { unified.webDavIncrementalSync(req) },
+            onSuccess = { elem ->
+                val obj = elem?.asJsonObject
+                if (obj?.get("success")?.asBoolean == true) {
+                    showToast(
+                        string(
+                            R.string.webdav_incremental_result,
+                            obj.get("uploaded")?.asInt ?: 0,
+                            obj.get("downloaded")?.asInt ?: 0,
+                            obj.get("conflicts")?.asInt ?: 0
+                        )
+                    )
+                    loadConfig()
+                } else {
+                    showError(
+                        obj?.get("error")?.asString
+                            ?: string(R.string.webdav_incremental_failed)
+                    )
+                }
+            }
+        )
+    }
+
     fun clearTestResult() {
         _testResult.value = null
     }
@@ -240,6 +266,7 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
 
     // 备份/同步选项
     var backupPassword by remember { mutableStateOf("") }
+    var incrementalPassword by remember { mutableStateOf("") }
     var backupIncludePortraits by remember { mutableStateOf(false) }
     var syncPassword by remember { mutableStateOf("") }
     var syncIncludePortraits by remember { mutableStateOf(false) }
@@ -439,6 +466,41 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                             Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(8.dp))
                             Text(stringResource(R.string.webdav_refresh_info))
+                        }
+                    }
+
+                    if (ServiceContainer.prefs.isLocalMode) {
+                        GlassCard(modifier = Modifier.fillMaxWidth()) {
+                            SectionHeader(
+                                title = stringResource(R.string.webdav_incremental_title),
+                                subtitle = stringResource(R.string.webdav_incremental_subtitle)
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            OutlinedTextField(
+                                value = incrementalPassword,
+                                onValueChange = { incrementalPassword = it },
+                                label = {
+                                    Text(stringResource(R.string.webdav_encryption_password_optional_override))
+                                },
+                                singleLine = true,
+                                visualTransformation = PasswordVisualTransformation(),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = stringResource(R.string.webdav_incremental_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Button(
+                                onClick = { vm.incrementalSync(incrementalPassword) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Filled.CloudSync, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.webdav_incremental_button))
+                            }
                         }
                     }
 
