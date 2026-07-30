@@ -35,6 +35,9 @@ import com.nekobot.app.data.local.ai.reconcileLocalTokenUsageRecords
 import com.nekobot.app.data.local.ai.relationshipStateFromInitial
 import com.nekobot.app.data.local.ai.resolveLocalTokenUsage
 import com.nekobot.app.data.local.ai.sessionRelationshipTargetId
+import com.nekobot.app.data.local.automation.AutomationExecutionResult
+import com.nekobot.app.data.local.automation.LocalAutomationScheduler
+import com.nekobot.app.data.local.automation.LocalScheduleCalculator
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.local.oauth.LocalOAuthManager
 import com.nekobot.app.data.repository.SessionImportResult
@@ -112,6 +115,11 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.text.SimpleDateFormat
 import java.time.Instant
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
@@ -153,6 +161,11 @@ class LocalRepository(
     private val skillPackageDownloader = SkillPackageDownloader()
     private val localJmRankingClient by lazy { LocalJmRankingClient() }
     private val localNovelClient by lazy { LocalNovelClient() }
+    private val automationScheduler = appContext?.let {
+        LocalAutomationScheduler(it, db.dbName.removeSuffix(".db"))
+    }
+    private val runningTaskIds = ConcurrentHashMap.newKeySet<String>()
+    private val runningWorkflowIds = ConcurrentHashMap.newKeySet<String>()
     /**
      * 轻小说搜索的会话级状态：`/findbook`、`/fa` 写入；`/select`、`/info` 读取。
      *
@@ -921,6 +934,9 @@ class LocalRepository(
                 sessionDao.countFavorites().toLong()
             )
         }
+        if (proactiveChat != null) {
+            scheduleProactiveSession(updated)
+        }
         android.util.Log.d("LocalRepo", "updateSession: updated.isPublic=${updated.isPublic}, updated.ttsConfig=${updated.ttsConfig}, updated.shareConfig=${updated.shareConfig}")
     }
 
@@ -930,7 +946,186 @@ class LocalRepository(
             ?.edit()?.remove(id)?.apply()
         localBrowserTools.remove(id)?.close()
         LocalLinuxSandboxCoordinator.stopSession(id)
+        automationScheduler?.cancelProactive(id)
         sessionDao.deleteById(id)
+    }
+
+    /**
+     * 重新扫描当前本地 Profile 的自动化配置。
+     * 应用启动、切换本地数据库或从远程模式返回本地模式时调用。
+     */
+    suspend fun syncAutomationSchedules() = withContext(Dispatchers.IO) {
+        db.taskDao().listAll().forEach { scheduleTask(it, preserveExisting = true) }
+        db.workflowDao().listAll().forEach { scheduleWorkflow(it, preserveExisting = true) }
+        sessionDao.listAll().forEach { scheduleProactiveSession(it, replaceExisting = false) }
+    }
+
+    /**
+     * 主动聊天使用固定间隔，基线取最近一次真实用户活动与最近一次主动回复中的较新者。
+     * 用户重新发言会立即重置下一次触发时间；主动聊天不使用指数退避。
+     */
+    private suspend fun scheduleProactiveSession(
+        session: LocalSessionEntity,
+        replaceExisting: Boolean = true,
+        appendAfterCurrent: Boolean = false
+    ) {
+        val config = session.proactiveChat
+            ?.let { runCatching { JsonParser.parseString(it).asJsonObject }.getOrNull() }
+        val enabled = config?.get("enabled")?.let { runCatching { it.asBoolean }.getOrNull() } == true
+        if (
+            !enabled ||
+            session.archived ||
+            session.sessionMode.equals("group", ignoreCase = true)
+        ) {
+            automationScheduler?.cancelProactive(session.id)
+            return
+        }
+        val latestUser = messageDao.latestUserBySession(session.id)
+        if (latestUser == null) {
+            automationScheduler?.cancelProactive(session.id)
+            return
+        }
+        val latestProactive = messageDao.latestBySource(session.id, "proactive_chat")
+        val userAt = parseStoredInstant(latestUser.createdAt)
+            ?: parseStoredInstant(latestUser.timestamp)
+            ?: Instant.now()
+        val proactiveAt = latestProactive?.let {
+            parseStoredInstant(it.createdAt) ?: parseStoredInstant(it.timestamp)
+        }
+        val intervalMinutes = config.get("interval_minutes")
+            ?.let { runCatching { it.asInt }.getOrNull() }
+            ?.coerceAtLeast(1)
+            ?: 60
+        val baseline = if (proactiveAt != null && proactiveAt.isAfter(userAt)) proactiveAt else userAt
+        automationScheduler?.scheduleProactive(
+            sessionId = session.id,
+            dueAt = baseline.plusSeconds(intervalMinutes * 60L),
+            replaceExisting = replaceExisting,
+            appendAfterCurrent = appendAfterCurrent
+        )
+    }
+
+    suspend fun executeProactiveChat(sessionId: String): AutomationExecutionResult =
+        withContext(Dispatchers.IO) {
+            val session = sessionDao.getById(sessionId)
+                ?: return@withContext AutomationExecutionResult("主动聊天", notify = false)
+            val config = session.proactiveChat
+                ?.let { runCatching { JsonParser.parseString(it).asJsonObject }.getOrNull() }
+            val enabled = config?.get("enabled")?.let { runCatching { it.asBoolean }.getOrNull() } == true
+            if (
+                !enabled ||
+                session.archived ||
+                session.sessionMode.equals("group", ignoreCase = true)
+            ) {
+                return@withContext AutomationExecutionResult(session.name, notify = false)
+            }
+            val latestUser = messageDao.latestUserBySession(sessionId)
+                ?: return@withContext AutomationExecutionResult(session.name, notify = false)
+            val latestProactive = messageDao.latestBySource(sessionId, "proactive_chat")
+            val userAt = parseStoredInstant(latestUser.createdAt)
+                ?: parseStoredInstant(latestUser.timestamp)
+                ?: Instant.EPOCH
+            val proactiveAt = latestProactive?.let {
+                parseStoredInstant(it.createdAt) ?: parseStoredInstant(it.timestamp)
+            }
+            val intervalMinutes = config.get("interval_minutes")
+                ?.let { runCatching { it.asInt }.getOrNull() }
+                ?.coerceAtLeast(1)
+                ?: 60
+            val baseline = if (proactiveAt != null && proactiveAt.isAfter(userAt)) proactiveAt else userAt
+            val dueAt = baseline.plusSeconds(intervalMinutes * 60L)
+            if (Instant.now().isBefore(dueAt)) {
+                return@withContext AutomationExecutionResult(session.name, notify = false)
+            }
+
+            val configuredPrompt = config.get("prompt")
+                ?.takeIf { it.isJsonPrimitive }
+                ?.asString
+                ?.trim()
+            val hiddenTrigger = configuredPrompt?.takeIf(String::isNotBlank)
+                ?: """
+                    这是一次静默主动聊天触发。结合既有对话、角色状态和当前情境，自然地主动找用户聊天。
+                    不要提及定时器、后台任务、系统提示或“主动聊天”机制；只输出角色真正会发给用户的消息。
+                """.trimIndent()
+            val content = executeAutomationPrompt(
+                sessionId = sessionId,
+                prompt = hiddenTrigger,
+                assistantSource = "proactive_chat",
+                allowTools = false,
+                persistUserMessage = false,
+                metadata = mapOf(
+                    "is_heartbeat" to true,
+                    "silent_trigger" to true,
+                    "is_proactive_chat" to true,
+                    "skip_auto_memory" to true,
+                    "skip_character_after_turn" to true,
+                    "source" to "proactive_chat",
+                    "proactive_chat_triggered_at" to OffsetDateTime.now().toString()
+                )
+            )
+            AutomationExecutionResult(
+                title = session.characterName?.takeIf(String::isNotBlank) ?: session.name,
+                content = content,
+                sessionId = sessionId
+            )
+        }
+
+    suspend fun onAutomationWorkerFinished(type: String, targetId: String) =
+        withContext(Dispatchers.IO) {
+            when (type) {
+                LocalAutomationScheduler.TYPE_TASK ->
+                    db.taskDao().getById(targetId)?.let {
+                        if (it.enabled) {
+                            scheduleTask(it, appendAfterCurrent = true)
+                        } else {
+                            db.taskDao().updateNextRun(it.id, null)
+                        }
+                    }
+                LocalAutomationScheduler.TYPE_WORKFLOW ->
+                    db.workflowDao().getById(targetId)?.let {
+                        if (it.enabled && it.trigger.equals("cron", true)) {
+                            scheduleWorkflow(it, appendAfterCurrent = true)
+                        } else {
+                            db.workflowDao().updateNextRun(it.id, null)
+                        }
+                    }
+                LocalAutomationScheduler.TYPE_PROACTIVE ->
+                    sessionDao.getById(targetId)?.let {
+                        val config = it.proactiveChat
+                            ?.let { raw -> runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull() }
+                        val enabled = config?.get("enabled")
+                            ?.let { value -> runCatching { value.asBoolean }.getOrNull() } == true
+                        if (
+                            enabled &&
+                            !it.archived &&
+                            !it.sessionMode.equals("group", ignoreCase = true)
+                        ) {
+                            scheduleProactiveSession(it, appendAfterCurrent = true)
+                        }
+                    }
+            }
+        }
+
+    private fun parseStoredInstant(raw: String?): Instant? {
+        val value = raw?.trim().orEmpty()
+        if (value.isEmpty()) return null
+        runCatching { Instant.parse(value) }.getOrNull()?.let { return it }
+        runCatching { OffsetDateTime.parse(value).toInstant() }.getOrNull()?.let { return it }
+        runCatching { ZonedDateTime.parse(value).toInstant() }.getOrNull()?.let { return it }
+        val localFormatters = listOf(
+            DateTimeFormatter.ISO_LOCAL_DATE_TIME,
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+        )
+        localFormatters.forEach { formatter ->
+            runCatching {
+                LocalDateTime.parse(value, formatter)
+                    .atZone(ZoneId.systemDefault())
+                    .toInstant()
+            }.getOrNull()?.let { return it }
+        }
+        return value.toLongOrNull()?.let { epoch ->
+            if (epoch > 10_000_000_000L) Instant.ofEpochMilli(epoch) else Instant.ofEpochSecond(epoch)
+        }
     }
 
     // ==================== 剧情选项持久化 ====================
@@ -1087,6 +1282,7 @@ class LocalRepository(
                         messageDao.countUserMessages().toLong()
                     )
                 }
+                sessionDao.getById(sessionId)?.let { scheduleProactiveSession(it) }
             }
             msg.toMessage()
         }
@@ -3322,7 +3518,11 @@ class LocalRepository(
         sessionId: String,
         userMessage: String,
         activeModel: LocalAiModelEntity,
-        attachments: List<Map<String, Any>> = emptyList()
+        attachments: List<Map<String, Any>> = emptyList(),
+        persistUserMessage: Boolean = true,
+        internalMetadata: Map<String, Any> = emptyMap(),
+        assistantSource: String? = null,
+        allowTools: Boolean = true
     ): Flow<RealtimeEvent> = flow {
         val generationController = LocalGenerationController()
         var agentForegroundStarted = false
@@ -3332,8 +3532,12 @@ class LocalRepository(
         currentSessionId = sessionId
 
         // 1. 保存用户消息
-        val savedUserMessage = addMessage(sessionId, "user", userMessage)
-        val parentMessageId = savedUserMessage.id ?: java.util.UUID.randomUUID().toString()
+        val savedUserMessage = if (persistUserMessage) {
+            addMessage(sessionId, "user", userMessage)
+        } else {
+            null
+        }
+        val parentMessageId = savedUserMessage?.id
 
         val session = sessionDao.getById(sessionId) ?: run {
             emit(RealtimeEvent.Error("会话不存在"))
@@ -3355,7 +3559,8 @@ class LocalRepository(
             return@flow
         }
 
-        LocalSlashCommands.parse(userMessage)?.let { command ->
+        if (persistUserMessage) LocalSlashCommands.parse(userMessage)?.let { command ->
+            val commandParentId = parentMessageId ?: java.util.UUID.randomUUID().toString()
             if (
                 command.action == LocalCommandAction.JM_RANK ||
                 command.action == LocalCommandAction.JM_DOWNLOAD
@@ -3367,7 +3572,7 @@ class LocalRepository(
                         session = session,
                         activeModel = activeModel,
                         command = command,
-                        parentMessageId = parentMessageId,
+                        parentMessageId = commandParentId,
                         onProgress = { card ->
                             send(RealtimeEvent.ThinkingCardUpdate(card))
                         }
@@ -3379,7 +3584,7 @@ class LocalRepository(
                     session = session,
                     activeModel = activeModel,
                     command = command,
-                    parentMessageId = parentMessageId
+                    parentMessageId = commandParentId
                 )
                 emit(RealtimeEvent.AiResponse(reply))
             }
@@ -3394,7 +3599,7 @@ class LocalRepository(
                 userMessage = userMessage,
                 activeModel = activeModel,
                 attachments = attachments,
-                parentMessageId = parentMessageId,
+                parentMessageId = parentMessageId ?: java.util.UUID.randomUUID().toString(),
                 generationController = generationController
             ).collect { emit(it) }
             return@flow
@@ -3404,7 +3609,10 @@ class LocalRepository(
 
         // 普通无角色会话沿用旧流程；Agent 无角色会话需要进入 Pipeline 产生进度卡片。
         // 图片附件必须经过 Pipeline 的附件解析与视觉描述阶段；普通无角色会话也不能回退旧聊天链路。
-        if (!shouldUseLocalPipeline(session.sessionMode, character != null, attachments.isNotEmpty())) {
+        if (
+            persistUserMessage &&
+            !shouldUseLocalPipeline(session.sessionMode, character != null, attachments.isNotEmpty())
+        ) {
             // 回退时需删除刚保存的用户消息（chat 会重新保存）
             messageDao.listBySession(sessionId).lastOrNull { it.role == "user" }?.let {
                 messageDao.deleteById(it.id)
@@ -3413,7 +3621,7 @@ class LocalRepository(
             return@flow
         }
 
-        if (session.sessionMode.equals("agent", ignoreCase = true)) {
+        if (allowTools && session.sessionMode.equals("agent", ignoreCase = true)) {
             appContext?.let { context ->
                 agentForegroundStarted = runCatching {
                     AgentForegroundService.acquire(context, sessionId)
@@ -3443,6 +3651,7 @@ class LocalRepository(
         val callbacks = com.nekobot.app.data.local.ai.LocalPipelineCallbacks(
             db, aiClient, activeModel, session, character, worldBookEntries, runtime, identity,
             parentMessageId = parentMessageId,
+            assistantSource = assistantSource,
             onTokenRecorded = { sid, messageId, model, actualModel, input, output, ts, purpose, estimated, durationMs, ttftMs ->
                 appendTokenUsageRecord(
                     sid, model, actualModel, input, output, ts,
@@ -3455,7 +3664,7 @@ class LocalRepository(
             },
             onThinkingCardUpdate = { card ->
                 // 持久化进度卡片到父用户消息
-                kotlinx.coroutines.runBlocking {
+                if (parentMessageId != null) kotlinx.coroutines.runBlocking {
                     updateMessageThinkingCards(parentMessageId, listOf(card))
                 }
             },
@@ -3500,11 +3709,13 @@ class LocalRepository(
                 // userPersona 供 AIPipeline 注入 PromptStack 的 user.persona 项、AutoMemory 识别玩家姓名。
                 session.senderName?.takeIf { it.isNotBlank() }?.let { put("sender_name", it) }
                 session.userPersona?.takeIf { it.isNotBlank() }?.let { put("user_persona", it) }
+                putAll(internalMetadata)
             }
         )
         val ctx = com.nekobot.app.data.local.ai.PipelineContext(chatRequest)
         ctx.stopRequested = { generationController.isStopped }
         ctx.metadata["session_mode"] = session.sessionMode
+        ctx.metadata.putAll(internalMetadata)
         if (session.sessionMode.equals("agent", ignoreCase = true)) {
             val skillsPrompt = buildEnabledSkillsPrompt()
             if (skillsPrompt.isNotBlank()) {
@@ -3632,7 +3843,7 @@ class LocalRepository(
                 // 避免阻塞 coroutineScope 导致下一次聊天被取消时报 "StandaloneCoroutine was cancelled"
                 val pipelineJob = launch {
                     try {
-                        val tools = if (session.sessionMode.equals("agent", ignoreCase = true)) {
+                        val tools = if (allowTools && session.sessionMode.equals("agent", ignoreCase = true)) {
                             com.nekobot.app.data.local.ai.buildLocalAgentToolDefinitions() +
                                 com.nekobot.app.data.local.ai.buildLocalSkillToolDefinitions() +
                                 com.nekobot.app.data.local.ai.buildLocalDbToolDefinitions() +
@@ -3710,16 +3921,24 @@ class LocalRepository(
                     conversationId = sessionId,
                     characterId = character.id,
                     title = selectedChoice?.text?.take(80)
-                        ?: userMessage.replace('\n', ' ').take(80).ifBlank { "剧情节点" },
+                        ?: if (persistUserMessage) {
+                            userMessage.replace('\n', ' ').take(80).ifBlank { "剧情节点" }
+                        } else {
+                            "主动聊天"
+                        },
                     summary = ctx.finalContent.take(500),
                     level = selectedChoice?.level ?: "normal",
                     scene = turn?.state?.scene ?: emptyMap(),
                     stateSnapshot = turn?.state?.toDict() ?: emptyMap(),
                     relationshipSnapshot = turn?.relationship?.toDict() ?: emptyMap(),
                     parentNodeId = parent?.id,
-                    userMessage = userMessage,
+                    userMessage = if (persistUserMessage) userMessage else "",
                     assistantMessage = ctx.finalContent,
-                    activityType = turn?.state?.scene?.get("current_activity") as? String ?: "chat",
+                    activityType = if (persistUserMessage) {
+                        turn?.state?.scene?.get("current_activity") as? String ?: "chat"
+                    } else {
+                        "proactive_chat"
+                    },
                     location = turn?.state?.scene?.get("location") as? String ?: "",
                     mood = turn?.state?.mood ?: ""
                 )
@@ -6200,6 +6419,7 @@ $charSection$topicSection
     }
 
     suspend fun createTask(req: TaskRequest): TaskItem = withContext(Dispatchers.IO) {
+        validateTaskRequest(req)
         val now = nowIso()
         val entity = LocalTaskEntity(
             id = UUID.randomUUID().toString(),
@@ -6213,10 +6433,11 @@ $charSection$topicSection
             createdAt = now
         )
         db.taskDao().upsert(entity)
-        entity.toTaskItem()
+        scheduleTask(entity).toTaskItem()
     }
 
     suspend fun updateTask(id: String, req: TaskRequest): TaskItem = withContext(Dispatchers.IO) {
+        validateTaskRequest(req)
         val existing = db.taskDao().getById(id) ?: throw IllegalStateException("任务不存在")
         val updated = existing.copy(
             name = req.name,
@@ -6228,10 +6449,11 @@ $charSection$topicSection
             prompt = req.prompt
         )
         db.taskDao().upsert(updated)
-        updated.toTaskItem()
+        scheduleTask(updated).toTaskItem()
     }
 
     suspend fun deleteTask(id: String) = withContext(Dispatchers.IO) {
+        automationScheduler?.cancelTask(id)
         db.taskDao().deleteById(id)
     }
 
@@ -6239,17 +6461,155 @@ $charSection$topicSection
         val existing = db.taskDao().getById(id) ?: throw IllegalStateException("任务不存在")
         val newEnabled = !existing.enabled
         db.taskDao().setEnabled(id, newEnabled)
-        existing.copy(enabled = newEnabled).toTaskItem()
+        scheduleTask(existing.copy(enabled = newEnabled)).toTaskItem()
     }
 
-    /** 本地模式无调度器，runTask 仅记录 last_run 时间并返回回显。 */
-    suspend fun runTask(id: String): JsonElement = withContext(Dispatchers.IO) {
-        db.taskDao().touchRun(id, nowIso())
-        JsonObject().apply {
+    /** 立即执行任务；定时任务也复用这一条真实聊天 Pipeline。 */
+    suspend fun runTask(id: String): JsonElement {
+        val result = executeTask(id, requireEnabled = false)
+        return JsonObject().apply {
             addProperty("success", true)
-            addProperty("message", "本地模式仅记录执行时间，不实际调度任务")
+            addProperty("message", result.content)
             addProperty("task_id", id)
+            result.sessionId?.let { addProperty("session_id", it) }
         }
+    }
+
+    suspend fun executeScheduledTask(id: String): AutomationExecutionResult =
+        executeTask(id, requireEnabled = true)
+
+    private suspend fun executeTask(
+        id: String,
+        requireEnabled: Boolean
+    ): AutomationExecutionResult = withContext(Dispatchers.IO) {
+        var task = db.taskDao().getById(id) ?: throw IllegalStateException("任务不存在")
+        if (requireEnabled && !task.enabled) {
+            return@withContext AutomationExecutionResult(
+                title = task.name,
+                content = "",
+                notify = false
+            )
+        }
+        val prompt = task.prompt?.trim().orEmpty()
+        require(prompt.isNotBlank()) { "任务未配置执行提示词" }
+        check(runningTaskIds.add(id)) { "任务正在执行中" }
+
+        try {
+            var session = task.targetSessionId?.let { sessionDao.getById(it) }
+            if (!task.targetSessionId.isNullOrBlank() && session == null) {
+                throw IllegalStateException("目标会话不存在：${task.targetSessionId}")
+            }
+            if (session == null) {
+                val created = createSession(
+                    CreateSessionRequest(
+                        name = "任务 · ${task.name}",
+                        sessionMode = "agent",
+                        systemPrompt = task.description
+                    )
+                )
+                session = sessionDao.getById(created.id ?: error("创建任务会话失败"))
+                    ?: error("创建任务会话失败")
+                task = task.copy(targetSessionId = session.id)
+                db.taskDao().upsert(task)
+            }
+            val targetSession = session ?: error("创建任务会话失败")
+
+            val startedAt = nowIso()
+            db.taskDao().updateExecutionState(id, "running", null, startedAt)
+            val isOneShot = task.trigger.equals("run_at", true) || task.trigger.equals("date", true)
+            if (isOneShot) {
+                db.taskDao().setEnabled(id, false)
+                db.taskDao().updateNextRun(id, null)
+            }
+            val content = executeAutomationPrompt(
+                sessionId = targetSession.id,
+                prompt = prompt,
+                assistantSource = "task_center",
+                allowTools = targetSession.sessionMode.equals("agent", ignoreCase = true)
+            )
+            db.taskDao().updateExecutionState(id, "success", null, nowIso())
+            AutomationExecutionResult(
+                title = "任务完成 · ${task.name}",
+                content = content,
+                sessionId = targetSession.id
+            )
+        } catch (error: Exception) {
+            db.taskDao().updateExecutionState(id, "failed", error.message, nowIso())
+            throw error
+        } finally {
+            runningTaskIds.remove(id)
+        }
+    }
+
+    private suspend fun scheduleTask(
+        task: LocalTaskEntity,
+        preserveExisting: Boolean = false,
+        appendAfterCurrent: Boolean = false
+    ): LocalTaskEntity {
+        val preserved = task.nextRun
+            ?.takeIf { preserveExisting }
+            ?.let(::parseStoredInstant)
+        val calculated = if (task.enabled) {
+            preserved ?: LocalScheduleCalculator.nextRun(task.trigger, task.configJson)
+        } else {
+            null
+        }
+        val next = automationScheduler?.scheduleTask(
+            task = task,
+            preferredDueAt = calculated,
+            replaceExisting = !preserveExisting,
+            appendAfterCurrent = appendAfterCurrent
+        ) ?: calculated
+        val nextText = next?.atZone(ZoneId.systemDefault())?.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+        db.taskDao().updateNextRun(task.id, nextText)
+        return task.copy(nextRun = nextText)
+    }
+
+    private fun validateTaskRequest(req: TaskRequest) {
+        require(req.name.isNotBlank()) { "任务名称不能为空" }
+        require(!req.prompt.isNullOrBlank()) { "任务提示词不能为空" }
+        require(req.trigger in setOf("interval", "cron", "run_at", "date", "manual")) {
+            "不支持的任务触发方式：${req.trigger}"
+        }
+        if (req.trigger != "manual") {
+            require(LocalScheduleCalculator.nextRun(req.trigger, req.config?.toString()) != null) {
+                when (req.trigger) {
+                    "cron" -> "Cron 表达式无效"
+                    "run_at", "date" -> "指定运行时间无效"
+                    else -> "任务调度配置无效"
+                }
+            }
+        }
+    }
+
+    private suspend fun executeAutomationPrompt(
+        sessionId: String,
+        prompt: String,
+        assistantSource: String,
+        allowTools: Boolean,
+        persistUserMessage: Boolean = true,
+        metadata: Map<String, Any> = emptyMap()
+    ): String {
+        val model = aiModelDao.getActiveByPurpose("chat") ?: aiModelDao.getActive()
+            ?: throw IllegalStateException("请先配置并启用聊天模型")
+        var failure: String? = null
+        chatWithPipeline(
+            sessionId = sessionId,
+            userMessage = prompt,
+            activeModel = model,
+            persistUserMessage = persistUserMessage,
+            internalMetadata = metadata,
+            assistantSource = assistantSource,
+            allowTools = allowTools
+        ).collect { event ->
+            if (event is RealtimeEvent.Error) failure = event.message
+        }
+        failure?.let { throw IllegalStateException(it) }
+        return messageDao.latestBySource(sessionId, assistantSource)?.content
+            ?: messageDao.listBySession(sessionId)
+                .lastOrNull { it.role == "assistant" }
+                ?.content
+            ?: throw IllegalStateException("AI 未生成可保存的结果")
     }
 
     private fun LocalTaskEntity.toTaskItem(): TaskItem = TaskItem(
@@ -6264,7 +6624,9 @@ $charSection$topicSection
         prompt = prompt,
         createdAt = createdAt,
         lastRun = lastRun,
-        nextRun = nextRun
+        nextRun = nextRun,
+        status = status,
+        lastError = lastError
     )
 
     // ==================== 扩展功能：工作流 ====================
@@ -6274,6 +6636,7 @@ $charSection$topicSection
     }
 
     suspend fun createWorkflow(req: WorkflowRequest): Workflow = withContext(Dispatchers.IO) {
+        validateWorkflowRequest(req)
         val entity = LocalWorkflowEntity(
             id = UUID.randomUUID().toString(),
             name = req.name,
@@ -6284,10 +6647,11 @@ $charSection$topicSection
             createdAt = nowIso()
         )
         db.workflowDao().upsert(entity)
-        entity.toWorkflow()
+        scheduleWorkflow(entity).toWorkflow()
     }
 
     suspend fun updateWorkflow(id: String, req: WorkflowRequest): Workflow = withContext(Dispatchers.IO) {
+        validateWorkflowRequest(req)
         val existing = db.workflowDao().getById(id) ?: throw IllegalStateException("工作流不存在")
         val updated = existing.copy(
             name = req.name,
@@ -6297,10 +6661,11 @@ $charSection$topicSection
             configJson = req.config?.let { gson.toJson(it) }
         )
         db.workflowDao().upsert(updated)
-        updated.toWorkflow()
+        scheduleWorkflow(updated).toWorkflow()
     }
 
     suspend fun deleteWorkflow(id: String) = withContext(Dispatchers.IO) {
+        automationScheduler?.cancelWorkflow(id)
         db.workflowDao().deleteById(id)
     }
 
@@ -6308,15 +6673,130 @@ $charSection$topicSection
         val existing = db.workflowDao().getById(id) ?: throw IllegalStateException("工作流不存在")
         val newEnabled = !existing.enabled
         db.workflowDao().setEnabled(id, newEnabled)
-        existing.copy(enabled = newEnabled).toWorkflow()
+        scheduleWorkflow(existing.copy(enabled = newEnabled)).toWorkflow()
     }
 
-    /** 本地模式无工作流执行引擎，executeWorkflow 仅返回回显。 */
-    suspend fun executeWorkflow(id: String): JsonElement = withContext(Dispatchers.IO) {
-        JsonObject().apply {
+    suspend fun executeWorkflow(id: String): JsonElement {
+        val result = executeWorkflowInternal(
+            id = id,
+            requireEnabled = false,
+            triggerSource = "manual"
+        )
+        return JsonObject().apply {
             addProperty("success", true)
-            addProperty("message", "本地模式仅保存配置，不实际执行工作流")
+            addProperty("message", result.content)
             addProperty("workflow_id", id)
+            result.sessionId?.let { addProperty("session_id", it) }
+        }
+    }
+
+    suspend fun executeScheduledWorkflow(id: String): AutomationExecutionResult =
+        executeWorkflowInternal(
+            id = id,
+            requireEnabled = true,
+            triggerSource = "scheduler"
+        )
+
+    private suspend fun executeWorkflowInternal(
+        id: String,
+        requireEnabled: Boolean,
+        triggerSource: String
+    ): AutomationExecutionResult = withContext(Dispatchers.IO) {
+        var workflow = db.workflowDao().getById(id) ?: throw IllegalStateException("工作流不存在")
+        if (requireEnabled && !workflow.enabled) {
+            return@withContext AutomationExecutionResult(
+                title = workflow.name,
+                content = "",
+                notify = false
+            )
+        }
+        check(runningWorkflowIds.add(id)) { "工作流正在执行中" }
+        try {
+            var session = workflow.sessionId?.let { sessionDao.getById(it) }
+            if (session == null) {
+                val created = createSession(
+                    CreateSessionRequest(
+                        name = "工作流 · ${workflow.name}",
+                        sessionMode = "agent",
+                        systemPrompt = workflow.description
+                    )
+                )
+                session = sessionDao.getById(created.id ?: error("创建工作流会话失败"))
+                    ?: error("创建工作流会话失败")
+                db.workflowDao().updateSessionId(id, session.id)
+                workflow = workflow.copy(sessionId = session.id)
+            }
+            val targetSession = session ?: error("创建工作流会话失败")
+            val configPrompt = workflow.configJson
+                ?.let { runCatching { JsonParser.parseString(it).asJsonObject }.getOrNull() }
+                ?.get("prompt")
+                ?.takeIf { it.isJsonPrimitive }
+                ?.asString
+                ?.trim()
+            val workflowDescription = configPrompt
+                ?: workflow.description?.trim()?.takeIf(String::isNotBlank)
+                ?: "执行工作流「${workflow.name}」，分析当前会话并完成可执行的步骤。"
+            val prompt = """
+                [工作流触发 - $triggerSource] 请根据以下工作流描述执行任务。触发时间：${OffsetDateTime.now()}
+
+                $workflowDescription
+            """.trimIndent()
+
+            db.workflowDao().updateExecutionState(id, "running", null, nowIso())
+            val content = executeAutomationPrompt(
+                sessionId = targetSession.id,
+                prompt = prompt,
+                assistantSource = "workflow",
+                allowTools = true
+            )
+            db.workflowDao().updateExecutionState(id, "success", null, nowIso())
+            AutomationExecutionResult(
+                title = "工作流完成 · ${workflow.name}",
+                content = content,
+                sessionId = targetSession.id
+            )
+        } catch (error: Exception) {
+            db.workflowDao().updateExecutionState(id, "failed", error.message, nowIso())
+            throw error
+        } finally {
+            runningWorkflowIds.remove(id)
+        }
+    }
+
+    private suspend fun scheduleWorkflow(
+        workflow: LocalWorkflowEntity,
+        preserveExisting: Boolean = false,
+        appendAfterCurrent: Boolean = false
+    ): LocalWorkflowEntity {
+        val preserved = workflow.nextRun
+            ?.takeIf { preserveExisting }
+            ?.let(::parseStoredInstant)
+        val calculated = if (workflow.enabled && workflow.trigger.equals("cron", true)) {
+            preserved ?: LocalScheduleCalculator.nextRun(workflow.trigger, workflow.configJson)
+        } else {
+            null
+        }
+        val next = automationScheduler?.scheduleWorkflow(
+            workflow = workflow,
+            preferredDueAt = calculated,
+            replaceExisting = !preserveExisting,
+            appendAfterCurrent = appendAfterCurrent
+        ) ?: calculated
+        val nextText = next?.atZone(ZoneId.systemDefault())?.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+        db.workflowDao().updateNextRun(workflow.id, nextText)
+        return workflow.copy(nextRun = nextText)
+    }
+
+    private fun validateWorkflowRequest(req: WorkflowRequest) {
+        require(req.name.isNotBlank()) { "工作流名称不能为空" }
+        require(!req.description.isNullOrBlank()) { "工作流描述不能为空" }
+        require(req.trigger in setOf("manual", "cron")) {
+            "不支持的工作流触发方式：${req.trigger}"
+        }
+        if (req.trigger == "cron") {
+            require(LocalScheduleCalculator.nextRun(req.trigger, req.config?.toString()) != null) {
+                "Cron 表达式无效"
+            }
         }
     }
 
@@ -6389,7 +6869,12 @@ $charSection$topicSection
         enabled = enabled,
         trigger = trigger,
         config = configJson?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
-        createdAt = createdAt
+        createdAt = createdAt,
+        sessionId = sessionId,
+        lastRun = lastRun,
+        nextRun = nextRun,
+        status = status,
+        lastError = lastError
     )
 
     // ==================== 扩展功能：Skills ====================

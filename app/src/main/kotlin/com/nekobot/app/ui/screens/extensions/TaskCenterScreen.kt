@@ -341,6 +341,28 @@ private fun TaskCard(
         if (!task.nextRun.isNullOrBlank()) {
             Text(stringResource(R.string.tasks_next_run, task.nextRun), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        if (task.status != "idle") {
+            val executionLabel = when (task.status) {
+                "running" -> "执行中"
+                "success" -> "上次执行成功"
+                "failed" -> "上次执行失败"
+                else -> task.status
+            }
+            Text(
+                executionLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (task.status == "failed") ErrorRed else MaterialTheme.colorScheme.primary
+            )
+        }
+        task.lastError?.takeIf(String::isNotBlank)?.let { message ->
+            Text(
+                message,
+                style = MaterialTheme.typography.labelSmall,
+                color = ErrorRed,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 

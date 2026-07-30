@@ -44,6 +44,8 @@ internal class LocalPipelineCallbacks(
     private val characterIdentity: CharacterIdentity? = null,
     /** 父用户消息 id；agent 模式进度卡片关联用，UI 在用户气泡下方渲染 */
     private val parentMessageId: String? = null,
+    /** 助手消息来源标记；后台主动聊天用 proactive_chat，普通聊天为空。 */
+    private val assistantSource: String? = null,
     private val onTokenRecorded: ((sessionId: String, messageId: String, model: String, actualModel: String, inputTokens: Int, outputTokens: Int, timestamp: String, purpose: String, estimated: Boolean, durationMs: Double?, ttftMs: Double?) -> Unit)? = null,
     /** 进度卡片更新回调；本地模式用于持久化到父用户消息 */
     private val onThinkingCardUpdate: ((card: ThinkingCard) -> Unit)? = null,
@@ -386,7 +388,8 @@ internal class LocalPipelineCallbacks(
                 outputTokens = outputTokens,
                 model = modelName,
                 createdAt = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
-                toolCallHistory = toolCallHistoryJson
+                toolCallHistory = toolCallHistoryJson,
+                source = assistantSource
             ))
 
             // 更新会话元信息

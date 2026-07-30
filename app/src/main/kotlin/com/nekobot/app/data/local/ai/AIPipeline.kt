@@ -868,11 +868,12 @@ class AIPipeline {
         result: PipelineResult
     ) {
         if (ctx.shouldStop() || ctx.stoppedPrematurely) return
-        // 角色运行时 after_turn
-        phaseCharacterRuntimeAfterTurn(ctx, callbacks, result)
-
-        // 对话后审查（ReviewPipeline）
-        phaseReview(ctx, callbacks, result)
+        // 静默的内部触发不是用户交互，不能改变角色对用户的情绪、好感和关系状态。
+        if (ctx.metadata["skip_character_after_turn"] != true) {
+            phaseCharacterRuntimeAfterTurn(ctx, callbacks, result)
+            // 对话后审查可能回写关系增量，因此与角色 after_turn 使用同一跳过语义。
+            phaseReview(ctx, callbacks, result)
+        }
 
         // on_response_complete
         callbacks.onResponseComplete(ctx, result)

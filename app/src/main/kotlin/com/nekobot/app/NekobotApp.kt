@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /**
  * 全局依赖容器：单例持有 Prefs / Network / Repository / Gson。
@@ -106,6 +107,9 @@ object ServiceContainer {
         // 初始化全局状态
         _appModeFlow.value = prefs.appMode
         _loginStateFlow.value = prefs.isLoggedIn
+        if (prefs.isLocalMode) {
+            applicationScope.launch { localRepository.syncAutomationSchedules() }
+        }
     }
 
     /** 刷新本地化上下文（语言切换后调用）。 */
@@ -131,6 +135,7 @@ object ServiceContainer {
             unified = UnifiedRepository(prefs, repository, localRepository, ctx)
             com.nekobot.app.data.local.AchievementManager.switchScope(achievementScopeId())
             _dataSourceRevision.value += 1L
+            applicationScope.launch { localRepository.syncAutomationSchedules() }
         }
     }
 
@@ -141,6 +146,9 @@ object ServiceContainer {
         _appModeFlow.value = mode
         _dataSourceRevision.value += 1L
         _loginStateFlow.value = prefs.isLoggedIn
+        if (mode == AppMode.LOCAL) {
+            applicationScope.launch { localRepository.syncAutomationSchedules() }
+        }
     }
 
     private fun achievementScopeId(): String =

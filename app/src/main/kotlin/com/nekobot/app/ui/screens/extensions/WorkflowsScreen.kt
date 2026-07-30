@@ -350,6 +350,34 @@ private fun WorkflowCard(
         if (!workflow.description.isNullOrBlank()) {
             Text(workflow.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
+        workflow.nextRun?.takeIf(String::isNotBlank)?.let {
+            Text("下次运行：$it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        workflow.lastRun?.takeIf(String::isNotBlank)?.let {
+            Text("上次运行：$it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (workflow.status != "idle") {
+            val executionLabel = when (workflow.status) {
+                "running" -> "执行中"
+                "success" -> "上次执行成功"
+                "failed" -> "上次执行失败"
+                else -> workflow.status
+            }
+            Text(
+                executionLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (workflow.status == "failed") ErrorRed else MaterialTheme.colorScheme.primary
+            )
+        }
+        workflow.lastError?.takeIf(String::isNotBlank)?.let { message ->
+            Text(
+                message,
+                style = MaterialTheme.typography.labelSmall,
+                color = ErrorRed,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 

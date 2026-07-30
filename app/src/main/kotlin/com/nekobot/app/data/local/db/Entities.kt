@@ -103,7 +103,9 @@ data class LocalMessageEntity(
     /** 该用户消息关联的进度卡片 JSON（ThinkingCard 列表序列化），agent 模式持久化 */
     @ColumnInfo(name = "thinking_cards") val thinkingCards: String? = null,
     /** 该助手消息当前轮产生的完整 assistant/tool 调用历史 JSON，供后续轮次恢复 */
-    @ColumnInfo(name = "tool_call_history") val toolCallHistory: String? = null
+    @ColumnInfo(name = "tool_call_history") val toolCallHistory: String? = null,
+    /** 消息来源：普通聊天为空；后台任务/主动聊天分别使用 task_center / proactive_chat。 */
+    val source: String? = null
 )
 
 /**
@@ -467,7 +469,9 @@ data class LocalTaskEntity(
     val prompt: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: String,
     @ColumnInfo(name = "last_run") val lastRun: String? = null,
-    @ColumnInfo(name = "next_run") val nextRun: String? = null
+    @ColumnInfo(name = "next_run") val nextRun: String? = null,
+    val status: String = "idle",
+    @ColumnInfo(name = "last_error") val lastError: String? = null
 )
 
 /** 本地工作流。config 为 JSON 字符串（节点+连线）。 */
@@ -479,7 +483,12 @@ data class LocalWorkflowEntity(
     val enabled: Boolean = true,
     val trigger: String = "manual",
     @ColumnInfo(name = "config_json") val configJson: String? = null,
-    @ColumnInfo(name = "created_at") val createdAt: String
+    @ColumnInfo(name = "created_at") val createdAt: String,
+    @ColumnInfo(name = "session_id") val sessionId: String? = null,
+    @ColumnInfo(name = "last_run") val lastRun: String? = null,
+    @ColumnInfo(name = "next_run") val nextRun: String? = null,
+    val status: String = "idle",
+    @ColumnInfo(name = "last_error") val lastError: String? = null
 )
 
 /** 本地 Skill 元数据。aliases/parameters 以 JSON 字符串存储。 */

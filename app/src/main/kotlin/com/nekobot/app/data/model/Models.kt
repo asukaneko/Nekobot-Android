@@ -826,7 +826,9 @@ data class TaskItem(
     val prompt: String? = null,
     @SerializedName("created_at") val createdAt: String? = null,
     @SerializedName("last_run") val lastRun: String? = null,
-    @SerializedName("next_run") val nextRun: String? = null
+    @SerializedName("next_run") val nextRun: String? = null,
+    val status: String = "idle",
+    @SerializedName("last_error") val lastError: String? = null
 ) {
     val displayName: String get() = name.ifBlank { "未命名任务" }
 }
@@ -852,7 +854,12 @@ data class Workflow(
     val enabled: Boolean = true,
     val trigger: String = "manual",
     val config: JsonElement? = null,
-    @SerializedName("created_at") val createdAt: String? = null
+    @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("session_id") val sessionId: String? = null,
+    @SerializedName("last_run") val lastRun: String? = null,
+    @SerializedName("next_run") val nextRun: String? = null,
+    val status: String = "idle",
+    @SerializedName("last_error") val lastError: String? = null
 ) {
     val displayName: String get() = name.ifBlank { "未命名工作流" }
 }

@@ -96,6 +96,12 @@ interface MessageDao {
     @Query("SELECT COUNT(*) FROM local_messages WHERE session_id = :sessionId")
     suspend fun countBySession(sessionId: String): Int
 
+    @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND role = 'user' ORDER BY created_at DESC LIMIT 1")
+    suspend fun latestUserBySession(sessionId: String): LocalMessageEntity?
+
+    @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND source = :source ORDER BY created_at DESC LIMIT 1")
+    suspend fun latestBySource(sessionId: String, source: String): LocalMessageEntity?
+
     @Query("SELECT COUNT(*) FROM local_messages WHERE role = 'user'")
     suspend fun countUserMessages(): Int
 
@@ -526,8 +532,11 @@ interface TaskDao {
     @Query("UPDATE local_tasks SET enabled = :enabled WHERE id = :id")
     suspend fun setEnabled(id: String, enabled: Boolean)
 
-    @Query("UPDATE local_tasks SET last_run = :lastRun WHERE id = :id")
-    suspend fun touchRun(id: String, lastRun: String)
+    @Query("UPDATE local_tasks SET next_run = :nextRun WHERE id = :id")
+    suspend fun updateNextRun(id: String, nextRun: String?)
+
+    @Query("UPDATE local_tasks SET status = :status, last_error = :error, last_run = :lastRun WHERE id = :id")
+    suspend fun updateExecutionState(id: String, status: String, error: String?, lastRun: String?)
 }
 
 @Dao
@@ -546,6 +555,15 @@ interface WorkflowDao {
 
     @Query("UPDATE local_workflows SET enabled = :enabled WHERE id = :id")
     suspend fun setEnabled(id: String, enabled: Boolean)
+
+    @Query("UPDATE local_workflows SET next_run = :nextRun WHERE id = :id")
+    suspend fun updateNextRun(id: String, nextRun: String?)
+
+    @Query("UPDATE local_workflows SET session_id = :sessionId WHERE id = :id")
+    suspend fun updateSessionId(id: String, sessionId: String?)
+
+    @Query("UPDATE local_workflows SET status = :status, last_error = :error, last_run = :lastRun WHERE id = :id")
+    suspend fun updateExecutionState(id: String, status: String, error: String?, lastRun: String?)
 }
 
 @Dao
