@@ -279,7 +279,7 @@ class UnifiedRepository(
      */
     suspend fun chatStream(id: String, message: String, attachments: List<Map<String, Any>> = emptyList()): Flow<RealtimeEvent>? {
         if (!isLocal) return null
-        val model = local.getActiveModel() ?: return null
+        val model = local.getRoutedModel(id, message, attachments) ?: return null
         // 启用角色运行时的会话走 Pipeline，否则走旧流程
         return local.chatWithPipeline(id, message, model, attachments)
     }
@@ -290,7 +290,7 @@ class UnifiedRepository(
      */
     suspend fun chatStreamLegacy(id: String, message: String): Flow<RealtimeEvent>? {
         if (!isLocal) return null
-        val model = local.getActiveModel() ?: return null
+        val model = local.getRoutedModel(id, message) ?: return null
         return local.chat(id, message, model)
     }
 
@@ -307,7 +307,7 @@ class UnifiedRepository(
      */
     suspend fun regenerateStream(id: String, messageId: String?): Flow<RealtimeEvent>? {
         if (!isLocal) return null
-        val model = local.getActiveModel() ?: return null
+        val model = local.getRoutedModel(id, "重新生成上一条回复") ?: return null
         return local.regenerate(id, messageId, model)
     }
 

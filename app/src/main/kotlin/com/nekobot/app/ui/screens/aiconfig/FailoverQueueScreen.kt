@@ -36,6 +36,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -60,6 +61,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonObject
 import com.nekobot.app.R
+import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.FailoverModelDetail
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.BaseViewModel
@@ -132,6 +134,14 @@ internal class FailoverQueueViewModel : BaseViewModel() {
     /** 详情保存中状态 */
     private val _detailSaving = MutableStateFlow(false)
     val detailSaving: StateFlow<Boolean> = _detailSaving.asStateFlow()
+
+    private val _smartRoutingEnabled =
+        MutableStateFlow(ServiceContainer.prefs.smartRoutingEnabled)
+    val smartRoutingEnabled: StateFlow<Boolean> = _smartRoutingEnabled.asStateFlow()
+
+    private val _smartRoutingBudget =
+        MutableStateFlow(ServiceContainer.prefs.smartRoutingDailyBudgetUsd)
+    val smartRoutingBudget: StateFlow<Double> = _smartRoutingBudget.asStateFlow()
 
     init {
         load()
@@ -248,6 +258,14 @@ internal class FailoverQueueViewModel : BaseViewModel() {
         _selectedDetail.value = null
     }
 
+    fun saveSmartRouting(enabled: Boolean, dailyBudgetUsd: Double) {
+        ServiceContainer.prefs.smartRoutingEnabled = enabled
+        ServiceContainer.prefs.smartRoutingDailyBudgetUsd = dailyBudgetUsd
+        _smartRoutingEnabled.value = enabled
+        _smartRoutingBudget.value = dailyBudgetUsd
+        showToast(string(R.string.smart_routing_saved))
+    }
+
     private fun JsonObject.toQueueItem(): FailoverQueueItem? {
         val modelId = string("model_id") ?: return null
         val health = get("health")?.takeIf { it.isJsonObject }?.asJsonObject
@@ -300,7 +318,17 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
     val selectedDetail by vm.selectedDetail.collectAsState()
     val detailLoading by vm.detailLoading.collectAsState()
     val detailSaving by vm.detailSaving.collectAsState()
+    val smartRoutingEnabled by vm.smartRoutingEnabled.collectAsState()
+    val smartRoutingBudget by vm.smartRoutingBudget.collectAsState()
     val context = LocalContext.current
+    var smartRoutingEnabledInput by remember(smartRoutingEnabled) {
+        mutableStateOf(smartRoutingEnabled)
+    }
+    var smartRoutingBudgetInput by remember(smartRoutingBudget) {
+        mutableStateOf(
+            smartRoutingBudget.takeIf { it > 0.0 }?.toString().orEmpty()
+        )
+    }
 
     LaunchedEffect(toast) {
         toast?.let {
@@ -333,6 +361,60 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+                if (ServiceContainer.prefs.isLocalMode && purpose == "chat") {
+                    GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 16) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    stringResource(R.string.smart_routing_title),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    stringResource(R.string.smart_routing_subtitle),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = smartRoutingEnabledInput,
+                                onCheckedChange = { smartRoutingEnabledInput = it }
+                            )
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = smartRoutingBudgetInput,
+                                onValueChange = { value ->
+                                    smartRoutingBudgetInput = value.filter {
+                                        it.isDigit() || it == '.'
+                                    }
+                                },
+                                label = {
+                                    Text(stringResource(R.string.smart_routing_daily_budget))
+                                },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                singleLine = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                            OutlinedButton(
+                                onClick = {
+                                    vm.saveSmartRouting(
+                                        smartRoutingEnabledInput,
+                                        smartRoutingBudgetInput.toDoubleOrNull() ?: 0.0
+                                    )
+                                }
+                            ) {
+                                Text(stringResource(R.string.common_save))
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)

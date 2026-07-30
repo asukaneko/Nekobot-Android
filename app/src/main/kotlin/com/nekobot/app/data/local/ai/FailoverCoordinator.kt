@@ -96,12 +96,26 @@ class FailoverCoordinator(
             }
         }
 
+        val hasLocalOrSelfHosted = models.any { model ->
+            val url = model.baseUrl.lowercase()
+            url.contains("localhost") ||
+                url.contains("127.0.0.1") ||
+                url.contains("0.0.0.0") ||
+                Regex("""https?://(?:10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)""")
+                    .containsMatchIn(url)
+        }
+        val fallbackHint = if (hasLocalOrSelfHosted) {
+            ""
+        } else {
+            "；可添加本地或自建模型作为离线备用"
+        }
         throw FailoverAllFailedException(
             purpose = purpose,
             attempts = attempts,
             failures = failures,
             message = failures.lastOrNull()?.message
-                ?: "所有模型均失败（purpose=$purpose, tried=${models.map { it.id }}）"
+                ?.plus(fallbackHint)
+                ?: "所有模型均失败（purpose=$purpose, tried=${models.map { it.id }}）$fallbackHint"
         )
     }
 

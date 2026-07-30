@@ -139,6 +139,31 @@ class PrefsManager(context: Context) {
             prefs.edit().putString(KEY_CHAT_INPUT_LAYOUT, value.name).apply()
         }
 
+    /** 根据费用、延迟、上下文和任务复杂度动态调整本地聊天模型顺序。 */
+    var smartRoutingEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SMART_ROUTING_ENABLED, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_SMART_ROUTING_ENABLED, value).apply()
+        }
+
+    /** 每日模型费用预算（美元）；0 表示不限制。 */
+    var smartRoutingDailyBudgetUsd: Double
+        get() = prefs.getString(KEY_SMART_ROUTING_DAILY_BUDGET, "0")
+            ?.toDoubleOrNull()
+            ?.coerceAtLeast(0.0)
+            ?: 0.0
+        set(value) {
+            prefs.edit()
+                .putString(KEY_SMART_ROUTING_DAILY_BUDGET, value.coerceAtLeast(0.0).toString())
+                .apply()
+        }
+
+    var smartRoutingBudgetAlertState: String
+        get() = prefs.getString(KEY_SMART_ROUTING_BUDGET_ALERT, "").orEmpty()
+        set(value) {
+            prefs.edit().putString(KEY_SMART_ROUTING_BUDGET_ALERT, value).apply()
+        }
+
     /** 负一屏统计组件顺序；显示状态单独保存在 [statsDashboardHiddenWidgets]。 */
     var statsDashboardWidgetOrder: List<String>
         get() {
@@ -424,6 +449,9 @@ class PrefsManager(context: Context) {
         private const val KEY_LOGIN_RECORDS = "login_records"
         private const val KEY_APP_LOCK_ENABLED = "app_lock_enabled"
         private const val KEY_CHAT_INPUT_LAYOUT = "chat_input_layout"
+        private const val KEY_SMART_ROUTING_ENABLED = "smart_routing_enabled"
+        private const val KEY_SMART_ROUTING_DAILY_BUDGET = "smart_routing_daily_budget"
+        private const val KEY_SMART_ROUTING_BUDGET_ALERT = "smart_routing_budget_alert"
         private const val KEY_STATS_DASHBOARD_ORDER = "stats_dashboard_widget_order"
         private const val KEY_STATS_DASHBOARD_HIDDEN = "stats_dashboard_hidden_widgets"
         private const val KEY_STATS_DASHBOARD_HIDDEN_VERSION = "stats_dashboard_hidden_version"

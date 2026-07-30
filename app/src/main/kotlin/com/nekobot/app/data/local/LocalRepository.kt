@@ -29,6 +29,10 @@ import com.nekobot.app.data.local.ai.LocalPromptBuilder
 import com.nekobot.app.data.local.ai.LocalProfileRepository
 import com.nekobot.app.data.local.ai.LocalRelationshipRepository
 import com.nekobot.app.data.local.ai.RelationshipState
+import com.nekobot.app.data.local.ai.SmartModelMetric
+import com.nekobot.app.data.local.ai.SmartModelRouter
+import com.nekobot.app.data.local.ai.SmartRoutingBudgetNotifier
+import com.nekobot.app.data.local.ai.SmartRoutingRequest
 import com.nekobot.app.data.local.ai.TokenStatsManager
 import com.nekobot.app.data.local.ai.currentLocalContextTokens
 import com.nekobot.app.data.local.ai.reconcileLocalTokenUsageRecords
@@ -121,6 +125,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.text.SimpleDateFormat
 import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
@@ -206,6 +211,87 @@ class LocalRepository(
         aiModelDao.listByPurpose(purpose)
             .sortedWith(compareBy(LocalAiModelEntity::priority, LocalAiModelEntity::createdAt))
 
+    private suspend fun routedChatQueue(
+        sessionId: String,
+        prompt: String,
+        attachments: List<Map<String, Any>> = emptyList(),
+        sessionModeOverride: String? = null
+    ): List<LocalAiModelEntity> {
+        val models = queueFor("chat")
+        val routingPrefs = ServiceContainer.prefs
+        if (!routingPrefs.smartRoutingEnabled || models.size <= 1) return models
+
+        val session = sessionId.takeIf(String::isNotBlank)?.let { sessionDao.getById(it) }
+        val contextTokens = sessionId.takeIf(String::isNotBlank)
+            ?.let { id ->
+                messageDao.listBySession(id).sumOf { message ->
+                    (message.content.length + 2) / 3
+                }
+            }
+            ?: 0
+        val records = readTokenUsageRecordsReconciled().takeLast(1_000)
+        val healthByModel = failoverHealthDao.listAll().associateBy { it.modelId }
+        val nowMs = System.currentTimeMillis()
+        val today = LocalDate.now().toString()
+        val metrics = models.associate { model ->
+            val samples = records.filter { record ->
+                val actual = record.get("actual_model")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                val display = record.get("model")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                actual == model.model || display == model.name
+            }.takeLast(30)
+            val health = healthByModel[model.id]
+            model.id to SmartModelMetric(
+                averageTtftMs = samples.mapNotNull { record ->
+                    record.get("ttft_ms")?.takeIf { !it.isJsonNull }?.asDouble
+                }.takeIf { it.isNotEmpty() }?.average(),
+                averageDurationMs = samples.mapNotNull { record ->
+                    record.get("duration_ms")?.takeIf { !it.isJsonNull }?.asDouble
+                }.takeIf { it.isNotEmpty() }?.average(),
+                recentRequests = samples.size,
+                consecutiveFailures = health?.consecutiveFailures ?: 0,
+                dailyFailures = health?.dailyFailures
+                    ?.takeIf { health.dailyFailuresDate == today }
+                    ?: 0,
+                coolingDown = (health?.cooldownUntilMs ?: 0L) > nowMs
+            )
+        }
+        val modelsByActual = models.associateBy { it.model }
+        val modelsByDisplay = models.associateBy { it.name }
+        val spentToday = records.asSequence()
+            .filter { record ->
+                record.get("date")?.takeIf { !it.isJsonNull }?.asString == today
+            }
+            .sumOf { record ->
+                val actual = record.get("actual_model")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                val display = record.get("model")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                val model = modelsByActual[actual] ?: modelsByDisplay[display]
+                if (model == null) {
+                    0.0
+                } else {
+                    val input = record.get("input_tokens")?.takeIf { !it.isJsonNull }?.asLong ?: 0L
+                    val output = record.get("output_tokens")?.takeIf { !it.isJsonNull }?.asLong ?: 0L
+                    input / 1_000_000.0 * (model.inputPrice ?: 0.0) +
+                        output / 1_000_000.0 * (model.outputPrice ?: 0.0)
+                }
+            }
+        val budget = routingPrefs.smartRoutingDailyBudgetUsd
+        appContext?.let { context ->
+            SmartRoutingBudgetNotifier.notifyIfNeeded(context, routingPrefs, spentToday, budget)
+        }
+        return SmartModelRouter.route(
+            models,
+            SmartRoutingRequest(
+                promptChars = prompt.length,
+                estimatedContextTokens = contextTokens + (prompt.length + 2) / 3,
+                sessionMode = sessionModeOverride ?: session?.sessionMode ?: "character",
+                hasAttachments = attachments.isNotEmpty(),
+                dailyBudgetUsd = budget,
+                dailySpentUsd = spentToday
+            ),
+            metrics
+        )
+    }
+
     /**
      * 所有本地非流式文本生成任务的统一入口。
      *
@@ -217,7 +303,12 @@ class LocalRepository(
         extra: Map<String, Any?> = emptyMap(),
         requestTag: String? = null
     ): FailoverExecution<LocalAiResult> {
-        val queue = queueFor("chat")
+        val routingPrompt = messages.joinToString("\n") { it["content"]?.toString().orEmpty() }
+        val queue = routedChatQueue(
+            sessionId = requestTag ?: currentSessionId,
+            prompt = routingPrompt,
+            sessionModeOverride = "utility"
+        )
         if (queue.isEmpty()) {
             throw IllegalStateException("未配置可用的聊天模型，请在故障转移队列中启用 purpose=chat 的模型")
         }
@@ -3345,11 +3436,12 @@ class LocalRepository(
         }
 
         // 5. 构造故障转移队列：activeModel 优先，附加同 purpose 其他启用模型
-        val queue = buildList {
-            add(activeModel)
-            aiModelDao.listByPurpose(activeModel.purpose.ifBlank { "chat" })
-                .filter { it.id != activeModel.id }
-                .forEach { add(it) }
+        val queue = routedChatQueue(sessionId, userMessage).let { routed ->
+            if (routed.any { it.id == activeModel.id }) {
+                listOf(activeModel) + routed.filter { it.id != activeModel.id }
+            } else {
+                listOf(activeModel) + routed
+            }
         }
 
         // 6. 流式调用（带故障转移）
@@ -3653,7 +3745,12 @@ class LocalRepository(
         }
 
         // 4. 构建回调（传入故障转移备选队列：同 purpose 其他启用模型 + 持久化协调器）
-        val failoverQueue = aiModelDao.listByPurpose(activeModel.purpose.ifBlank { "chat" })
+        val failoverQueue = routedChatQueue(
+            sessionId = sessionId,
+            prompt = userMessage,
+            attachments = attachments,
+            sessionModeOverride = session.sessionMode
+        )
             .filter { it.id != activeModel.id }
         val callbacks = com.nekobot.app.data.local.ai.LocalPipelineCallbacks(
             db, aiClient, activeModel, session, character, worldBookEntries, runtime, identity,
@@ -4130,7 +4227,12 @@ class LocalRepository(
                 gson.fromJson<List<Map<String, Any>>>(raw, type)
             }.getOrNull()
         }.orEmpty()
-        val failoverQueue = aiModelDao.listByPurpose(activeModel.purpose.ifBlank { "chat" })
+        val failoverQueue = routedChatQueue(
+            sessionId = session.id,
+            prompt = userMessage,
+            attachments = attachments,
+            sessionModeOverride = session.sessionMode
+        )
             .filter { it.id != activeModel.id }
 
         var lastCompletedSpeaker: com.nekobot.app.data.local.ai.LocalGroupParticipant? = null
@@ -4990,6 +5092,15 @@ $charSection$topicSection
 
     suspend fun getActiveModel(): LocalAiModelEntity? = withContext(Dispatchers.IO) {
         aiModelDao.getActive()
+    }
+
+    suspend fun getRoutedModel(
+        sessionId: String,
+        prompt: String,
+        attachments: List<Map<String, Any>> = emptyList()
+    ): LocalAiModelEntity? = withContext(Dispatchers.IO) {
+        routedChatQueue(sessionId, prompt, attachments).firstOrNull()
+            ?: aiModelDao.getActive()
     }
 
     /** 获取指定 purpose 的激活模型。未指定 purpose 时回退到默认 chat。 */
