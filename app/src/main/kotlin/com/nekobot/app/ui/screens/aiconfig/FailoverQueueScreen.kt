@@ -397,6 +397,9 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
                                 label = {
                                     Text(stringResource(R.string.smart_routing_daily_budget))
                                 },
+                                supportingText = {
+                                    Text(stringResource(R.string.smart_routing_daily_budget_hint))
+                                },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 singleLine = true,
                                 modifier = Modifier.weight(1f)

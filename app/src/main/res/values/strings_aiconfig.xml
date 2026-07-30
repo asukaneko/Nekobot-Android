@@ -86,7 +86,8 @@
     <string name="failover_queue_title">模型优先级</string>
     <string name="smart_routing_title">智能模型路由</string>
     <string name="smart_routing_subtitle">根据费用、速度、上下文、成功率和任务类型动态选择首选模型</string>
-    <string name="smart_routing_daily_budget">每日预算（美元，0 表示不限）</string>
+    <string name="smart_routing_daily_budget">每日预算（美元）</string>
+    <string name="smart_routing_daily_budget_hint">填 0 表示不限</string>
     <string name="smart_routing_saved">智能路由设置已保存</string>
     <string name="smart_routing_budget_channel">模型预算提醒</string>
     <string name="smart_routing_budget_title">今日模型预算</string>
