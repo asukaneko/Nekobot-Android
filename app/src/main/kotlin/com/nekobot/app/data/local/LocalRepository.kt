@@ -28,6 +28,7 @@ import com.nekobot.app.data.local.ai.LocalPersistedTokenMessage
 import com.nekobot.app.data.local.ai.LocalPromptBuilder
 import com.nekobot.app.data.local.ai.LocalProfileRepository
 import com.nekobot.app.data.local.ai.LocalRelationshipRepository
+import com.nekobot.app.data.local.ai.ModelPricingCatalog
 import com.nekobot.app.data.local.ai.RelationshipState
 import com.nekobot.app.data.local.ai.SmartModelMetric
 import com.nekobot.app.data.local.ai.SmartModelRouter
@@ -270,8 +271,14 @@ class LocalRepository(
                 } else {
                     val input = record.get("input_tokens")?.takeIf { !it.isJsonNull }?.asLong ?: 0L
                     val output = record.get("output_tokens")?.takeIf { !it.isJsonNull }?.asLong ?: 0L
-                    input / 1_000_000.0 * (model.inputPrice ?: 0.0) +
-                        output / 1_000_000.0 * (model.outputPrice ?: 0.0)
+                    val prices = ModelPricingCatalog.resolvePrices(
+                        modelName = model.model,
+                        provider = model.provider,
+                        inputPrice = model.inputPrice,
+                        outputPrice = model.outputPrice
+                    )
+                    input / 1_000_000.0 * (prices.first ?: 0.0) +
+                        output / 1_000_000.0 * (prices.second ?: 0.0)
                 }
             }
         val budget = routingPrefs.smartRoutingDailyBudgetUsd

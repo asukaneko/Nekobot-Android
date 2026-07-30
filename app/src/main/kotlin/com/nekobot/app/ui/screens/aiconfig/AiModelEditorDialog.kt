@@ -10,11 +10,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -27,6 +30,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +41,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.data.local.ai.ModelPricingCatalog
+import com.nekobot.app.data.local.ai.ModelPricingEntry
 import com.nekobot.app.data.local.ai.LocalProtocols
 import com.nekobot.app.data.local.ai.parseModelProxyUrl
 import com.nekobot.app.data.local.db.LocalAiModelEntity
@@ -70,8 +78,8 @@ data class AiModelEditorState(
     val maxTokens: String = "2000",
     val maxContextLength: String = "1050000",
     val topP: String = "",
-    val inputPrice: String = "33.90",
-    val outputPrice: String = "203.40",
+    val inputPrice: String = "",
+    val outputPrice: String = "",
     val supportsTools: Boolean = true,
     val supportsReasoning: Boolean = true,
     val supportsStream: Boolean = true,
@@ -111,15 +119,15 @@ private data class ProviderPreset(
 )
 
 private val providerPresets = listOf(
-    ProviderPreset("OpenAI", "openai", "gpt-5.5", "", "1050000", "128000", "33.90", "203.40"),
-    ProviderPreset("Claude", "anthropic", "claude-opus-4-8", "", "1000000", "128000", "33.90", "169.50"),
-    ProviderPreset("Gemini", "google", "gemini-3.5-flash", "", "1048576", "65536", "10.17", "61.02"),
-    ProviderPreset("DeepSeek", "deepseek", "deepseek-v4-flash", "https://api.deepseek.com", "1000000", "131072", "0.95", "1.90"),
-    ProviderPreset("GLM", "zhipu", "glm-5.1", "https://open.bigmodel.cn/api/paas/v4", "200000", "128000", "6.64", "20.88"),
-    ProviderPreset("MiniMax", "minimax", "minimax-m2.7", "https://api.minimax.chat/v1", "204800", "131072", "1.89", "8.14"),
-    ProviderPreset("Grok", "grok", "grok-4.20", "https://api.x.ai/v1", "1000000", "131072", "8.47", "16.95"),
-    ProviderPreset("Qwen", "qwen", "qwen3.7-max", "https://dashscope.aliyuncs.com/compatible-mode/v1", "1000000", "65536", "8.47", "25.43"),
-    ProviderPreset("Mimo", "xiaomi", "mimo-v2.5", "https://api.xiaomimimo.com/v1", "1048576", "131072", "2.95", "5.90")
+    ProviderPreset("OpenAI", "openai", "gpt-5.5", "", "1050000", "128000", "", ""),
+    ProviderPreset("Claude", "anthropic", "claude-opus-4.8", "", "1000000", "128000", "", ""),
+    ProviderPreset("Gemini", "google", "gemini-3.5-flash", "", "1048576", "65536", "", ""),
+    ProviderPreset("DeepSeek", "deepseek", "deepseek-v4-flash", "https://api.deepseek.com", "1000000", "131072", "", ""),
+    ProviderPreset("GLM", "zhipu", "glm-5.1", "https://open.bigmodel.cn/api/paas/v4", "200000", "128000", "", ""),
+    ProviderPreset("MiniMax", "minimax", "minimax-m2.7", "https://api.minimax.chat/v1", "204800", "131072", "", ""),
+    ProviderPreset("Grok", "grok", "grok-4.20", "https://api.x.ai/v1", "1000000", "131072", "", ""),
+    ProviderPreset("Qwen", "qwen", "qwen3.7-max", "https://dashscope.aliyuncs.com/compatible-mode/v1", "1000000", "65536", "", ""),
+    ProviderPreset("Mimo", "xiaomi", "mimo-v2.5", "https://api.xiaomimimo.com/v1", "1048576", "131072", "", "")
 )
 
 private val purposeLabels = linkedMapOf(
@@ -169,6 +177,8 @@ fun AiModelEditorDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val pricingViewModel: ModelPricingCatalogViewModel = viewModel()
+    val pricingState by pricingViewModel.state.collectAsState()
     val protocolOptions = remember(protocols) {
         protocols.ifEmpty {
             LocalProtocols.names().map { ProtocolOption(it, it) }
@@ -180,6 +190,26 @@ fun AiModelEditorDialog(
     }
     var state by remember(initial) { mutableStateOf(initial.ensureProtocol(protocolOptions)) }
     var validationError by remember { mutableStateOf<String?>(null) }
+    var allowAutomaticPricing by remember(initial, isEditing) {
+        mutableStateOf(!isEditing || initial.inputPrice.isBlank() || initial.outputPrice.isBlank())
+    }
+    val matchedPricing = remember(
+        state.model,
+        state.provider,
+        pricingState.snapshot
+    ) {
+        ModelPricingCatalog.find(
+            modelName = state.model,
+            provider = state.provider,
+            catalog = pricingState.snapshot
+        )
+    }
+
+    LaunchedEffect(matchedPricing?.id, pricingState.snapshot.updatedAt, allowAutomaticPricing) {
+        if (allowAutomaticPricing && matchedPricing != null) {
+            state = state.applyPricing(matchedPricing, overwrite = false)
+        }
+    }
 
     val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -235,7 +265,10 @@ fun AiModelEditorDialog(
             ) {
                 providerPresets.forEach { preset ->
                     AssistChip(
-                        onClick = { state = state.applyPreset(preset, protocolOptions) },
+                        onClick = {
+                            allowAutomaticPricing = true
+                            state = state.applyPreset(preset, protocolOptions)
+                        },
                         label = { Text(preset.label) }
                     )
                 }
@@ -256,6 +289,7 @@ fun AiModelEditorDialog(
                 labelFor = { providerLabels[it] ?: it },
                 onSelect = { provider ->
                     val preset = providerPresets.firstOrNull { it.provider == provider }
+                    allowAutomaticPricing = true
                     state = preset?.let { state.applyPreset(it, protocolOptions) }
                         ?: state.copy(provider = provider, protocol = protocolFor(provider, protocolOptions))
                 }
@@ -321,7 +355,13 @@ fun AiModelEditorDialog(
                     value = state.model,
                     modifier = Modifier.weight(1f),
                     placeholder = "例如：gpt-4"
-                ) { state = state.copy(model = it) }
+                ) {
+                    state = state.copy(
+                        model = it,
+                        inputPrice = if (allowAutomaticPricing) "" else state.inputPrice,
+                        outputPrice = if (allowAutomaticPricing) "" else state.outputPrice
+                    )
+                }
                 IconButton(
                     enabled = state.baseUrl.isNotBlank() && state.apiKey.isNotBlank(),
                     onClick = {
@@ -342,7 +382,10 @@ fun AiModelEditorDialog(
                     label = "从已获取列表选择（${availableModels.size}）",
                     value = state.model,
                     options = availableModels,
-                    onSelect = { state = state.copy(model = it) }
+                    onSelect = {
+                        allowAutomaticPricing = true
+                        state = state.copy(model = it, inputPrice = "", outputPrice = "")
+                    }
                 )
             }
 
@@ -353,8 +396,89 @@ fun AiModelEditorDialog(
                 state = state.copy(maxContextLength = it)
             }
             EditorTextField("Top P（可选）", state.topP) { state = state.copy(topP = it) }
-            EditorTextField("输入价格 / 百万 Token", state.inputPrice) { state = state.copy(inputPrice = it) }
-            EditorTextField("输出价格 / 百万 Token", state.outputPrice) { state = state.copy(outputPrice = it) }
+
+            FormSection("价格目录")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "当前目录 ${pricingState.snapshot.entries.size} 个模型",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = if (pricingState.snapshot.source == ModelPricingCatalog.SOURCE_OPENROUTER) {
+                            "在线数据 · ${pricingState.snapshot.updatedAt.take(10)}"
+                        } else {
+                            "内置离线数据 · 可在线更新"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                TextButton(
+                    enabled = !pricingState.refreshing,
+                    onClick = pricingViewModel::refresh
+                ) {
+                    if (pricingState.refreshing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .size(18.dp)
+                                .padding(end = 2.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(
+                            Icons.Filled.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.padding(end = 4.dp)
+                        )
+                    }
+                    Text(if (pricingState.refreshing) "更新中" else "一键更新")
+                }
+            }
+            pricingState.message?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+            pricingState.error?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
+            if (matchedPricing != null) {
+                Text(
+                    text = buildPricingMatchText(matchedPricing),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                TextButton(
+                    onClick = {
+                        allowAutomaticPricing = false
+                        state = state.applyPricing(matchedPricing, overwrite = true)
+                    }
+                ) {
+                    Text("应用目录价格和上下文")
+                }
+            } else if (state.model.isNotBlank()) {
+                Text(
+                    text = "目录中未匹配到“${state.model}”，可保留手动价格或在线更新后重试",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                text = "目录价格为 OpenRouter 美元参考价；手动填写的服务商价格优先。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            EditorTextField("输入价格 / 百万 Token（美元）", state.inputPrice) {
+                allowAutomaticPricing = false
+                state = state.copy(inputPrice = it)
+            }
+            EditorTextField("输出价格 / 百万 Token（美元）", state.outputPrice) {
+                allowAutomaticPricing = false
+                state = state.copy(outputPrice = it)
+            }
             EditorTextField("优先级", state.priority) { state = state.copy(priority = it) }
 
             FormSection("能力")
@@ -609,6 +733,42 @@ private fun protocolFor(provider: String, protocols: List<ProtocolOption>): Stri
 private fun AiModelEditorState.ensureProtocol(protocols: List<ProtocolOption>): AiModelEditorState {
     if (protocols.any { it.key == protocol }) return this
     return copy(protocol = protocolFor(provider, protocols))
+}
+
+private fun AiModelEditorState.applyPricing(
+    entry: ModelPricingEntry,
+    overwrite: Boolean
+): AiModelEditorState = copy(
+    inputPrice = if (overwrite || inputPrice.isBlank()) {
+        entry.inputPricePerMillion?.toCatalogPrice().orEmpty()
+    } else {
+        inputPrice
+    },
+    outputPrice = if (overwrite || outputPrice.isBlank()) {
+        entry.outputPricePerMillion?.toCatalogPrice().orEmpty()
+    } else {
+        outputPrice
+    },
+    maxContextLength = if ((overwrite || maxContextLength.isBlank()) && entry.contextLength != null) {
+        entry.contextLength.toString()
+    } else {
+        maxContextLength
+    },
+    supportsTools = if (overwrite) entry.supportsTools else supportsTools,
+    supportsReasoning = if (overwrite) entry.supportsReasoning else supportsReasoning
+)
+
+private fun buildPricingMatchText(entry: ModelPricingEntry): String = buildString {
+    append("已匹配 ${entry.name}")
+    entry.inputPricePerMillion?.let { append(" · 输入 $").append(it.toCatalogPrice()) }
+    entry.outputPricePerMillion?.let { append(" · 输出 $").append(it.toCatalogPrice()) }
+    append(" / 百万 Token")
+    entry.contextLength?.let { append(" · 上下文 ").append(it) }
+}
+
+private fun Double.toCatalogPrice(): String {
+    val raw = "%.6f".format(Locale.US, this)
+    return raw.trimEnd('0').trimEnd('.').ifBlank { "0" }
 }
 
 private fun AiModelEditorState.applyPreset(

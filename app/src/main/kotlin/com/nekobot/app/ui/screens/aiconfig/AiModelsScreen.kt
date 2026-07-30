@@ -352,6 +352,7 @@ fun AiModelsScreen(onBack: () -> Unit) {
                     }
                 },
                 actions = {
+                    ModelPricingCatalogRefreshAction()
                     IconButton(onClick = {
                         editingModel = null
                         showForm = true

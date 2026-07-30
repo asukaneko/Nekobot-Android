@@ -408,6 +408,9 @@ internal class LocalPipelineCallbacks(
             // 从 Pipeline metadata 提取首字延迟与总耗时
             val durationMs = (ctx.metadata["duration_ms"] as? Number)?.toDouble()
             val ttftMs = (ctx.metadata["ttft_ms"] as? Number)?.toDouble()
+            val priceModel = modelQueue.firstOrNull { model ->
+                model.model == actualModelName || model.name == modelName
+            } ?: activeModel
             try {
                 getGlobalTokenStatsManager().recordUsage(
                     promptTokens = inputTokens ?: 0,
@@ -418,7 +421,10 @@ internal class LocalPipelineCallbacks(
                     userId = "local-user",
                     purpose = TokenStatsManager.PURPOSE_CHAT,
                     durationMs = durationMs,
-                    ttftMs = ttftMs
+                    ttftMs = ttftMs,
+                    provider = priceModel.provider,
+                    inputPricePerMillion = priceModel.inputPrice,
+                    outputPricePerMillion = priceModel.outputPrice
                 )
             } catch (e: Exception) {
                 com.nekobot.app.data.local.LocalLogger.w(TAG, "TokenStats 记录失败: ${e.message}")

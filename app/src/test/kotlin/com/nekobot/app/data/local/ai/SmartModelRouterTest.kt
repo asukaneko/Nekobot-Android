@@ -42,9 +42,25 @@ class SmartModelRouterTest {
         assertEquals(listOf("long"), routed.map { it.id })
     }
 
+    @Test
+    fun catalogPriceRoutesModelsWhosePriceWasNotFilledManually() {
+        val expensive = model("gpt-4o", price = null)
+        val cheap = model("gpt-4o-mini", price = null)
+        val routed = SmartModelRouter.route(
+            listOf(expensive, cheap),
+            SmartRoutingRequest(promptChars = 120, estimatedContextTokens = 500),
+            mapOf(
+                expensive.id to SmartModelMetric(averageTtftMs = 500.0, recentRequests = 5),
+                cheap.id to SmartModelMetric(averageTtftMs = 500.0, recentRequests = 5)
+            )
+        )
+
+        assertEquals("gpt-4o-mini", routed.first().id)
+    }
+
     private fun model(
         id: String,
-        price: Double,
+        price: Double?,
         tools: Boolean = true,
         reasoning: Boolean = false,
         context: Int = 32_000

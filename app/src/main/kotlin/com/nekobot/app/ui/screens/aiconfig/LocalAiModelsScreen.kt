@@ -257,6 +257,7 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
                     }
                 },
                 actions = {
+                    ModelPricingCatalogRefreshAction()
                     IconButton(onClick = {
                         logRecords = LocalLogger.listLogs()
                         showLogs = true

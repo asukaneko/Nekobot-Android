@@ -52,9 +52,12 @@ object SmartModelRouter {
             contextCapable
         }
 
-        val knownPrices = candidates.mapNotNull(::effectivePrice).sorted()
+        val pricingCatalog = ModelPricingCatalog.current()
+        val knownPrices = candidates.mapNotNull { effectivePrice(it, pricingCatalog) }.sorted()
         val fallbackPrice = knownPrices.getOrNull(knownPrices.size / 2) ?: 0.0
-        val prices = candidates.associate { it.id to (effectivePrice(it) ?: fallbackPrice) }
+        val prices = candidates.associate {
+            it.id to (effectivePrice(it, pricingCatalog) ?: fallbackPrice)
+        }
         val minPrice = prices.values.minOrNull() ?: 0.0
         val maxPrice = prices.values.maxOrNull() ?: minPrice
         val knownTtft = candidates.mapNotNull { metrics[it.id]?.averageTtftMs }.sorted()
@@ -105,9 +108,17 @@ object SmartModelRouter {
         metrics: Map<String, SmartModelMetric> = emptyMap()
     ): List<LocalAiModelEntity> = score(models, request, metrics).map(SmartModelScore::model)
 
-    private fun effectivePrice(model: LocalAiModelEntity): Double? {
-        val input = model.inputPrice
-        val output = model.outputPrice
+    private fun effectivePrice(
+        model: LocalAiModelEntity,
+        pricingCatalog: ModelPricingSnapshot
+    ): Double? {
+        val (input, output) = ModelPricingCatalog.resolvePrices(
+            modelName = model.model,
+            provider = model.provider,
+            inputPrice = model.inputPrice,
+            outputPrice = model.outputPrice,
+            catalog = pricingCatalog
+        )
         if (input == null && output == null) return null
         return ((input ?: output ?: 0.0) + (output ?: input ?: 0.0) * 2.0) / 3.0
     }

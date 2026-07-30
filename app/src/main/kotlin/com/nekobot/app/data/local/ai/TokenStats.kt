@@ -43,18 +43,6 @@ class TokenStatsManager {
             PURPOSE_IMAGE_GEN to "图片生成"
         )
 
-        // 模型定价（$/M tokens）
-        private val MODEL_PRICING = mapOf(
-            "claude-opus-4-7" to (15.0 to 75.0),
-            "claude-sonnet-4-5" to (3.0 to 15.0),
-            "gpt-4o" to (2.5 to 10.0),
-            "gpt-4o-mini" to (0.15 to 0.6),
-            "deepseek-v3" to (0.27 to 1.10),
-            "deepseek-r1" to (0.55 to 2.19),
-            "gemini-2.0-flash" to (0.1 to 0.4),
-            "qwen-max" to (0.4 to 1.2)
-        )
-
         private const val MAX_HISTORY_DAYS = 90
         private const val MAX_RECORDS = 50000
     }
@@ -139,12 +127,22 @@ class TokenStatsManager {
         source: String = "local",
         purpose: String = PURPOSE_CHAT,
         durationMs: Double? = null,
-        ttftMs: Double? = null
+        ttftMs: Double? = null,
+        provider: String? = null,
+        inputPricePerMillion: Double? = null,
+        outputPricePerMillion: Double? = null
     ) {
         if (promptTokens < 0 || completionTokens < 0) return
         // 排行榜聚合键：优先使用实际模型名，为空时回退到配置名
         val rankingKey = actualModel.ifBlank { model }
-        val (inputPrice, outputPrice) = MODEL_PRICING[rankingKey] ?: (0.0 to 0.0)
+        val resolvedPrices = ModelPricingCatalog.resolvePrices(
+            modelName = rankingKey,
+            provider = provider,
+            inputPrice = inputPricePerMillion,
+            outputPrice = outputPricePerMillion
+        )
+        val inputPrice = resolvedPrices.first ?: 0.0
+        val outputPrice = resolvedPrices.second ?: 0.0
         val cost = estimateCost(rankingKey, promptTokens, completionTokens, inputPrice, outputPrice)
         val now = LocalDateTime.now()
         val nowDate = now.toLocalDate().toString()

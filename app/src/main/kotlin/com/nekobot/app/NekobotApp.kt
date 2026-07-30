@@ -9,6 +9,7 @@ import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.data.local.LocaleHelper
 import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.local.ai.LocalAiClient
+import com.nekobot.app.data.local.ai.ModelPricingCatalog
 import com.nekobot.app.data.local.db.NekobotDatabase
 import com.nekobot.app.data.local.LocalRepository
 import com.nekobot.app.data.remote.NetworkClient
@@ -112,6 +113,7 @@ object ServiceContainer {
         localRepository = LocalRepository(db, LocalAiClient(), app)
         unified = UnifiedRepository(prefs, repository, localRepository, app)
         socket = SocketManager(prefs)
+        ModelPricingCatalog.loadCached(app)
         // 初始化本地日志记录器
         com.nekobot.app.data.local.LocalLogger.init(app)
         // 初始化成就系统；本地模式按数据库 Profile 隔离解锁记录。
