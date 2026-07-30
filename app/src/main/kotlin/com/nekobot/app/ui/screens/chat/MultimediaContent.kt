@@ -812,6 +812,23 @@ internal fun ContentSegment.isImageContent(): Boolean =
     type == SegmentType.IMAGE ||
         (type == SegmentType.FILE && fileExt(fileName) in IMAGE_EXTS)
 
+/** 保持原始顺序，将用户图文消息拆成连续的图片组与非图片组。 */
+internal fun groupUserMessageContent(
+    segments: List<ContentSegment>
+): List<List<ContentSegment>> {
+    if (segments.isEmpty()) return emptyList()
+    val groups = mutableListOf<MutableList<ContentSegment>>()
+    segments.forEach { segment ->
+        val current = groups.lastOrNull()
+        if (current == null || current.first().isImageContent() != segment.isImageContent()) {
+            groups += mutableListOf(segment)
+        } else {
+            current += segment
+        }
+    }
+    return groups
+}
+
 internal fun encodeWorkspaceFileName(fileName: String): String =
     java.net.URLEncoder.encode(fileName, "UTF-8")
         .replace("+", "%20")

@@ -2101,13 +2101,45 @@ private fun MessageBubble(
                             else Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
                         )
                 ) {
-                    if (segHasMultimedia) {
+                    if (segHasUserImage) {
+                        // 图片保持独立展示；同一条消息里的文字仍使用用户气泡，避免图文同发时文字裸露。
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            groupUserMessageContent(contentSegments).forEach { group ->
+                                if (group.firstOrNull()?.isImageContent() == true) {
+                                    RenderContentSegments(
+                                        segments = group,
+                                        textColor = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        sessionId = sessionId
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .widthIn(max = maxBubbleWidth)
+                                            .shadow(2.dp, segShape, clip = false)
+                                            .background(brush = userBrush, shape = segShape)
+                                            .padding(horizontal = 14.dp, vertical = 9.dp)
+                                    ) {
+                                        RenderContentSegments(
+                                            segments = group,
+                                            textColor = textColor,
+                                            modifier = Modifier.widthIn(max = maxBubbleWidth),
+                                            sessionId = sessionId
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else if (segHasMultimedia) {
                         // 多媒体内容：用渲染器渲染，宽度可超出普通文本宽度
                         RenderContentSegments(
                             segments = contentSegments,
-                            textColor = if (segHasUserImage) MaterialTheme.colorScheme.onSurface else textColor,
-                            modifier = if (segHasUserImage) Modifier.fillMaxWidth()
-                            else Modifier.widthIn(max = 360.dp),
+                            textColor = textColor,
+                            modifier = Modifier.widthIn(max = 360.dp),
                             sessionId = sessionId
                         )
                     } else {
