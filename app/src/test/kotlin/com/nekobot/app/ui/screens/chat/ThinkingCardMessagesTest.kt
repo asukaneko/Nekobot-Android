@@ -11,6 +11,12 @@ import org.junit.Test
 class ThinkingCardMessagesTest {
 
     @Test
+    fun acceptsAgentCardBeforeSessionMetadataFinishesLoading() {
+        assertTrue(shouldApplyThinkingCardUpdate(sessionMode = null, isAgentCard = true))
+        assertFalse(shouldApplyThinkingCardUpdate(sessionMode = null, isAgentCard = false))
+    }
+
+    @Test
     fun attachesRealtimeCardToOptimisticUserWhenPersistedIdIsNotLoadedYet() {
         val optimisticUser = Message(
             id = null,

@@ -297,6 +297,9 @@
     <string name="chat_ai_label">AI</string>
     <string name="chat_delete_message_title">メッセージを削除</string>
     <string name="chat_delete_message_confirm">このメッセージを削除してもよろしいですか？</string>
+    <string name="chat_message_actions">メッセージ操作</string>
+    <string name="chat_multi_select">複数選択</string>
+    <string name="chat_select_text_title">テキストを選択</string>
     <string name="chat_clear_messages_title">メッセージをクリア</string>
     <string name="chat_clear_messages_confirm">このチャットのすべてのメッセージが削除されます。この操作は元に戻せません。</string>
     <string name="chat_extract_archive_title">アーカイブから抽出</string>

@@ -97,6 +97,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
@@ -107,6 +108,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -129,6 +131,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalContext
@@ -255,6 +258,8 @@ fun ChatScreen(
     }
     var menuExpanded by remember { mutableStateOf(false) }
     var deletingMessage by remember { mutableStateOf<Message?>(null) }
+    var messageActionTarget by remember(sessionId) { mutableStateOf<Message?>(null) }
+    var selectingTextMessage by remember(sessionId) { mutableStateOf<Message?>(null) }
     var showClearConfirm by remember { mutableStateOf(false) }
     var showMyMessages by remember { mutableStateOf(false) }
     var showRestoreArchiveDialog by remember { mutableStateOf(false) }
@@ -272,6 +277,7 @@ fun ChatScreen(
     val keyboard = LocalSoftwareKeyboardController.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
     // 文件选择模式：null=未选择, "send"=发送文件(上传+插入引用), "upload"=仅上传到工作区
     var filePickMode by remember { mutableStateOf<String?>(null) }
@@ -882,8 +888,10 @@ fun ChatScreen(
                                     showAiAvatar = session?.sessionMode != "agent",
                                     fillAiWidth = session?.sessionMode == "agent",
                                     onLongClick = {
-                                        if (!selectionMode && msg.id != null) {
-                                            viewModel.enterSelectionMode(msg.id)
+                                        if (selectionMode) {
+                                            msg.id?.let(viewModel::toggleSelection)
+                                        } else if (msg.id != ChatViewModel.STREAMING_ID) {
+                                            messageActionTarget = msg
                                         }
                                     },
                                     onRegenerate = { viewModel.regenerate() },
@@ -974,6 +982,98 @@ fun ChatScreen(
                 step = step,
                 onDismiss = { stepDetailTarget = null }
             )
+        }
+    }
+
+    // 长按消息后的操作菜单
+    messageActionTarget?.let { target ->
+        val targetId = target.id?.takeIf {
+            it.isNotBlank() && it != ChatViewModel.STREAMING_ID
+        }
+        ModalBottomSheet(
+            onDismissRequest = { messageActionTarget = null },
+            containerColor = MaterialTheme.colorScheme.surface,
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            Text(
+                text = stringResource(R.string.chat_message_actions),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+            )
+            MessageActionSheetItem(
+                text = stringResource(R.string.common_delete),
+                icon = Icons.Filled.Delete,
+                tint = MaterialTheme.colorScheme.error,
+                enabled = targetId != null,
+                onClick = {
+                    messageActionTarget = null
+                    deletingMessage = target
+                }
+            )
+            MessageActionSheetItem(
+                text = stringResource(R.string.chat_multi_select),
+                icon = Icons.Filled.CheckCircle,
+                enabled = targetId != null,
+                onClick = {
+                    messageActionTarget = null
+                    targetId?.let(viewModel::enterSelectionMode)
+                }
+            )
+            MessageActionSheetItem(
+                text = stringResource(R.string.common_select),
+                icon = Icons.Filled.ContentCopy,
+                onClick = {
+                    messageActionTarget = null
+                    selectingTextMessage = target
+                }
+            )
+            MessageActionSheetItem(
+                text = stringResource(R.string.chat_fork),
+                icon = Icons.Filled.VerticalSplit,
+                enabled = targetId != null,
+                onClick = {
+                    messageActionTarget = null
+                    targetId?.let { messageId ->
+                        viewModel.forkFromMessage(messageId) { onOpenChat(it) }
+                    }
+                }
+            )
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+
+    selectingTextMessage?.let { selectedMessage ->
+        val selectableText = selectedMessage.displayContent
+        NekoDialog(
+            onDismiss = { selectingTextMessage = null },
+            title = stringResource(R.string.chat_select_text_title),
+            confirmText = stringResource(R.string.common_copy),
+            onConfirm = {
+                clipboard.setText(AnnotatedString(selectableText))
+                selectingTextMessage = null
+            },
+            cancelText = stringResource(R.string.common_close),
+            onCancel = { selectingTextMessage = null }
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .verticalScroll(rememberScrollState())
+                    .padding(14.dp)
+            ) {
+                SelectionContainer {
+                    Text(
+                        text = selectableText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
         }
     }
 
@@ -1933,6 +2033,37 @@ private fun MessageSearchDialog(
 }
 
 /** 单条消息气泡：用户靠右、AI 靠左。支持 <||> 分隔符拆分为多段气泡。 */
+@Composable
+private fun MessageActionSheetItem(
+    text: String,
+    icon: ImageVector,
+    tint: Color = MaterialTheme.colorScheme.onSurface,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    val contentColor = if (enabled) tint else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = contentColor,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(Modifier.width(16.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge,
+            color = contentColor
+        )
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageBubble(
@@ -3882,6 +4013,11 @@ internal fun attachThinkingCardToMessages(
     }
 }
 
+internal fun shouldApplyThinkingCardUpdate(
+    sessionMode: String?,
+    isAgentCard: Boolean
+): Boolean = isAgentCard || sessionMode.equals("agent", ignoreCase = true)
+
 @Composable
 private fun TtsGenerationBar(
     state: MessageTtsUiState,
@@ -4154,7 +4290,7 @@ class ChatViewModel : BaseViewModel() {
         loadSession(sessionId)
         // 仅当该会话没有正在进行的 AI 生成时才重新加载消息，
         // 否则保留 runtime 中的流式状态（用户切回正在生成的会话时能看到进度）。
-        if (!runtime.hasActiveJobs()) {
+        if (!runtime.hasActiveGeneration()) {
             loadMessages()
         }
         if (!isLocalMode) {
@@ -4365,8 +4501,9 @@ class ChatViewModel : BaseViewModel() {
                 }
             }
             is RealtimeEvent.ThinkingCardUpdate -> {
-                // thinking_card 只属于 Agent 会话；角色/群聊即使误收到也不能渲染。
-                if (_session.value?.sessionMode.equals("agent", ignoreCase = true)) {
+                // 本地 Agent 的首张卡片可能早于 loadSession 返回；此时以卡片自身的 isAgent
+                // 标记为准，不能因为 _session 暂时为空而丢掉整轮进度事件。
+                if (shouldApplyThinkingCardUpdate(_session.value?.sessionMode, event.card.isAgent)) {
                     applyThinkingCardUpdate(event.card)
                     _sending.value = !event.card.isComplete
                 }
@@ -4489,6 +4626,9 @@ class ChatViewModel : BaseViewModel() {
      */
     fun refreshSession() {
         val sid = currentSessionId.takeIf { it.isNotBlank() } ?: return
+        if (!runtime.hasActiveGeneration()) {
+            loadMessages()
+        }
         launchResult(
             block = { unified.getSession(sid) },
             onSuccess = { latest ->
@@ -4948,6 +5088,7 @@ class ChatViewModel : BaseViewModel() {
                 }
                 if (flow == null) {
                     _sending.value = false
+                    _messages.value = _messages.value.filter { it.id != streamingId }
                     showError(string(R.string.chat_no_ai_model))
                     return@launch
                 }

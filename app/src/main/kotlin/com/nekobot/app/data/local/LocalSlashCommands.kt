@@ -2,6 +2,7 @@ package com.nekobot.app.data.local
 
 import com.nekobot.app.data.local.db.LocalMessageEntity
 import com.nekobot.app.data.model.Message
+import com.nekobot.app.data.remote.RealtimeEvent
 
 internal const val LOCAL_COMMAND_MODEL = "local-command"
 
@@ -27,6 +28,23 @@ internal fun LocalMessageEntity.isLocalCommandMessage(): Boolean =
 
 internal fun Message.isLocalCommandMessage(): Boolean =
     isLocalCommandMessage(role = role, content = content, model = model)
+
+/** 智能路由使用的上下文估算必须与真正交给 AI 的消息集合一致。 */
+internal fun estimateLocalAiContextTokens(messages: List<LocalMessageEntity>): Int =
+    messages
+        .filterNot { it.isLocalCommandMessage() }
+        .sumOf { (it.content.length + 2) / 3 }
+
+/**
+ * 本地命令虽然直接返回完整消息，也必须发送结束事件，让聊天运行时清理占位消息并重新读取 Room。
+ */
+internal fun localCommandCompletionEvents(
+    sessionId: String,
+    reply: Message
+): List<RealtimeEvent> = listOf(
+    RealtimeEvent.AiResponse(reply, sessionId),
+    RealtimeEvent.StreamEnd(sessionId)
+)
 
 /**
  * 本地模式斜杠命令目录。

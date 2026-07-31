@@ -126,6 +126,7 @@ data class PipelineResult(
  * 对应原仓库 ProgressReporter。
  */
 open class ProgressReporter {
+    open fun onPreparingStart(ctx: PipelineContext) {}
     open fun onAttachmentStart(ctx: PipelineContext, count: Int) {}
     open fun onAttachmentItem(ctx: PipelineContext, name: String, itemType: String) {}
     open fun onAttachmentItemDone(ctx: PipelineContext, name: String, success: Boolean, resultPreview: String = "") {}

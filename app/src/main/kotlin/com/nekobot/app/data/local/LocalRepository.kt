@@ -136,6 +136,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipInputStream
 
@@ -167,6 +168,9 @@ class LocalRepository(
     private val localExecAuthorizationManager =
         com.nekobot.app.data.local.ai.LocalExecAuthorizationManager()
     private val localMcpRuntime = LocalMcpRuntime()
+    private val mcpAutoConnectRunning = AtomicBoolean(false)
+    @Volatile
+    private var cachedMcpAgentTools: List<Map<String, Any>> = emptyList()
     private val localBrowserTools = ConcurrentHashMap<String, LocalBrowserTool>()
     private val localSkillStorage = appContext?.filesDir
         ?.let { LocalSkillStorage(File(it, "skills")) }
@@ -225,9 +229,7 @@ class LocalRepository(
         val session = sessionId.takeIf(String::isNotBlank)?.let { sessionDao.getById(it) }
         val contextTokens = sessionId.takeIf(String::isNotBlank)
             ?.let { id ->
-                messageDao.listBySession(id).sumOf { message ->
-                    (message.content.length + 2) / 3
-                }
+                estimateLocalAiContextTokens(messageDao.listBySession(id))
             }
             ?: 0
         val records = readTokenUsageRecordsReconciled().takeLast(1_000)
@@ -502,12 +504,24 @@ class LocalRepository(
         _execConfirmationEvents
 
     /** 本地模式会话自动命名器（跨会话保持 autoNamed/lastRenameCount 状态） */
-    val sessionNameGenerator by lazy {
+    private val sessionNameGenerator by lazy {
         com.nekobot.app.data.local.ai.SessionNameGenerator(
             aiClient = aiClient,
             aiModelProvider = { aiModelDao.getActive() },
             failoverExecutor = chatFailoverExecutor,
-            onTokenUsage = ::recordSecondaryTokenUsage
+            onTokenUsage = ::recordSecondaryTokenUsage,
+            stateLoader = { sessionId ->
+                ServiceContainer.prefs.getSessionAutoNamingState(sessionId)?.let { (autoNamed, count) ->
+                    com.nekobot.app.data.local.ai.SessionNamingState(autoNamed, count)
+                }
+            },
+            stateSaver = { sessionId, state ->
+                ServiceContainer.prefs.setSessionAutoNamingState(
+                    sessionId = sessionId,
+                    autoNamed = state.autoNamed,
+                    messageCount = state.lastRenameCount
+                )
+            }
         )
     }
 
@@ -3661,7 +3675,7 @@ class LocalRepository(
                 content = "已开启 YOLO 模式：本会话内命令无需授权即可执行，高风险黑名单命令仍会被阻止。",
                 model = LOCAL_COMMAND_MODEL
             )
-            emit(RealtimeEvent.AiResponse(reply))
+            localCommandCompletionEvents(sessionId, reply).forEach { emit(it) }
             return@flow
         }
 
@@ -3683,7 +3697,7 @@ class LocalRepository(
                             send(RealtimeEvent.ThinkingCardUpdate(card))
                         }
                     )
-                    send(RealtimeEvent.AiResponse(reply))
+                    localCommandCompletionEvents(sessionId, reply).forEach { send(it) }
                 }.collect { event -> emit(event) }
             } else {
                 val reply = executeLocalSlashCommand(
@@ -3692,7 +3706,7 @@ class LocalRepository(
                     command = command,
                     parentMessageId = commandParentId
                 )
-                emit(RealtimeEvent.AiResponse(reply))
+                localCommandCompletionEvents(sessionId, reply).forEach { emit(it) }
             }
             return@flow
         }
@@ -3963,6 +3977,13 @@ class LocalRepository(
                 // 避免阻塞 coroutineScope 导致下一次聊天被取消时报 "StandaloneCoroutine was cancelled"
                 val pipelineJob = launch {
                     try {
+                        val progressReporter = if (
+                            session.sessionMode.equals("agent", ignoreCase = true)
+                        ) {
+                            callbacks.getProgressReporter(ctx).also { it.onPreparingStart(ctx) }
+                        } else {
+                            null
+                        }
                         val tools = if (allowTools && session.sessionMode.equals("agent", ignoreCase = true)) {
                             com.nekobot.app.data.local.ai.buildLocalAgentToolDefinitions() +
                                 com.nekobot.app.data.local.ai.buildLocalSkillToolDefinitions() +
@@ -3974,7 +3995,8 @@ class LocalRepository(
                         com.nekobot.app.data.local.ai.aiPipeline.process(
                             ctx = ctx,
                             callbacks = callbacks,
-                            tools = tools
+                            tools = tools,
+                            progressReporter = progressReporter
                         )
                     } finally {
                         callbacks.eventChannel.close()
@@ -7571,15 +7593,48 @@ $charSection$topicSection
             }
     }
 
-    /** 与原仓库一致：本地 Agent 的内置工具之外，注入所有真实已连接的 MCP 工具。 */
+    /**
+     * 本地 Agent 的内置工具之外，注入已经连接的 MCP 工具。
+     *
+     * 自动连接可能包含最长 90 秒的阻塞式 HTTP 初始化，不能放在聊天首条进度事件之前同步等待；
+     * 否则界面只剩三个点。未连接的服务在后台连接，成功后从下一轮开始加入工具列表。
+     */
     private suspend fun prepareMcpAgentTools(): List<Map<String, Any>> {
-        autoConnectMcpServers()
-        val connectedIds = db.mcpServerDao().listAll()
+        if (mcpAutoConnectRunning.get()) return cachedMcpAgentTools
+
+        val servers = db.mcpServerDao().listAll()
+        val connectedIds = servers
             .asSequence()
             .filter { localMcpRuntime.isConnected(it.id) }
             .map { it.id }
             .toSet()
-        return localMcpRuntime.getOpenAiToolDefinitions(connectedIds)
+        val currentTools = localMcpRuntime.getOpenAiToolDefinitions(connectedIds)
+        cachedMcpAgentTools = currentTools
+
+        val needsAutoConnect = servers.any {
+            it.enabled && it.autoConnect && it.id !in connectedIds
+        }
+        if (needsAutoConnect && mcpAutoConnectRunning.compareAndSet(false, true)) {
+            ServiceContainer.applicationScope.launch(Dispatchers.IO) {
+                try {
+                    runCatching {
+                        autoConnectMcpServers()
+                        val latestConnectedIds = db.mcpServerDao().listAll()
+                            .asSequence()
+                            .filter { localMcpRuntime.isConnected(it.id) }
+                            .map { it.id }
+                            .toSet()
+                        cachedMcpAgentTools =
+                            localMcpRuntime.getOpenAiToolDefinitions(latestConnectedIds)
+                    }.onFailure { error ->
+                        LocalLogger.w(TAG, "后台自动连接 MCP 失败，不阻塞 Agent 对话", error)
+                    }
+                } finally {
+                    mcpAutoConnectRunning.set(false)
+                }
+            }
+        }
+        return currentTools
     }
 
     private fun validateMcpRequest(req: McpServerRequest) {

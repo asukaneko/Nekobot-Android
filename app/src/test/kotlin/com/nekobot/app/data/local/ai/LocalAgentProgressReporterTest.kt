@@ -20,6 +20,7 @@ class LocalAgentProgressReporterTest {
             ChatRequest.forLocal(sessionId = "session-1", content = "检查项目")
         )
 
+        reporter.onPreparingStart(context)
         reporter.onThinkingStart(context)
         reporter.onToolStart(
             context,
@@ -39,6 +40,7 @@ class LocalAgentProgressReporterTest {
         assertTrue(updates.all { it.id == "progress-card-1" })
         assertTrue(updates.all { it.parentMessageId == "user-message-1" })
         assertFalse(updates.first().isComplete)
+        assertEquals("正在准备 Agent...", updates.first().content)
 
         val completed = updates.last()
         assertTrue(completed.isComplete)
@@ -46,6 +48,7 @@ class LocalAgentProgressReporterTest {
         assertEquals("处理完成", completed.content)
         assertTrue(completed.steps.isNotEmpty())
         assertTrue(completed.steps.all { it.status == "done" })
+        assertEquals(1, completed.steps.count { it.type == "preparing" })
         assertEquals(1, completed.steps.count { it.type == "tool" })
         assertEquals(1, completed.steps.count { it.type == "done" })
     }

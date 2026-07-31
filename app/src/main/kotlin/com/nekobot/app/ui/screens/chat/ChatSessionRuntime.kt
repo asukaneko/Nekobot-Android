@@ -70,9 +70,13 @@ class ChatSessionState(val sessionId: String) {
         generationStopRequested = false
     }
 
+    /** 是否有一轮 AI 回复仍在生成；被动事件监听和 TTS 不应阻止重新加载持久化消息。 */
+    fun hasActiveGeneration(): Boolean =
+        sending.value || localChatJob?.isActive == true
+
     /** 是否还有活跃的后台 Job */
     fun hasActiveJobs(): Boolean =
-        localChatJob?.isActive == true ||
+        hasActiveGeneration() ||
             eventsJob?.isActive == true ||
             ttsJobs.values.any { it.isActive }
 }

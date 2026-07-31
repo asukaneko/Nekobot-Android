@@ -5,6 +5,45 @@ import com.nekobot.app.data.local.db.LocalMessageEntity
 import com.nekobot.app.data.local.db.LocalSessionEntity
 import java.util.concurrent.ConcurrentHashMap
 
+private const val MIN_MESSAGES_FOR_FIRST_NAMING = 2
+private const val RE_NAME_INTERVAL = 10
+
+internal data class SessionNamingState(
+    val autoNamed: Boolean = false,
+    val lastRenameCount: Int = 0
+)
+
+/**
+ * 旧版本没有持久化命名状态时，按“首次 2 条、之后每 10 条”恢复最近一次触发点。
+ */
+internal fun recoverSessionNamingState(
+    isDefaultName: Boolean,
+    totalCount: Int
+): SessionNamingState {
+    if (isDefaultName) return SessionNamingState()
+    val lastRenameCount = when {
+        totalCount <= MIN_MESSAGES_FOR_FIRST_NAMING -> MIN_MESSAGES_FOR_FIRST_NAMING
+        else -> MIN_MESSAGES_FOR_FIRST_NAMING +
+            ((totalCount - MIN_MESSAGES_FOR_FIRST_NAMING - 1) / RE_NAME_INTERVAL) * RE_NAME_INTERVAL
+    }
+    return SessionNamingState(autoNamed = true, lastRenameCount = lastRenameCount)
+}
+
+internal fun shouldAutoRenameSession(
+    isDefaultName: Boolean,
+    totalCount: Int,
+    state: SessionNamingState
+): Boolean = totalCount >= MIN_MESSAGES_FOR_FIRST_NAMING &&
+    (
+        isDefaultName ||
+            (state.autoNamed && totalCount - state.lastRenameCount >= RE_NAME_INTERVAL)
+        )
+
+internal fun isDefaultAutoNamingSessionName(name: String): Boolean =
+    name.isBlank() ||
+        SessionNameGenerator.DEFAULT_NAME_PREFIXES.any { name.startsWith(it) } ||
+        SessionNameGenerator.DEFAULT_NAME_SUFFIXES.any { name.endsWith(it) }
+
 /**
  * 会话名称自动生成器，对应原仓库 nbot/web/ai_service.py:_try_auto_name_session
  * 与 nbot/web/server.py:_generate_session_name。
@@ -20,41 +59,32 @@ import java.util.concurrent.ConcurrentHashMap
  * @param onTokenUsage 二级 LLM token 记账回调
  *        参数：source, model（配置名）, actualModel（实际模型标识，用于排行榜聚合）, inputTokens, outputTokens
  */
-class SessionNameGenerator(
+internal class SessionNameGenerator(
     private val aiClient: LocalAiClient,
     private val aiModelProvider: (suspend () -> LocalAiModelEntity?)? = null,
     private val failoverExecutor: LocalChatFailoverExecutor? = null,
-    private val onTokenUsage: ((String, String, String, Int, Int) -> Unit)? = null
+    private val onTokenUsage: ((String, String, String, Int, Int) -> Unit)? = null,
+    private val stateLoader: ((String) -> SessionNamingState?)? = null,
+    private val stateSaver: ((String, SessionNamingState) -> Unit)? = null
 ) {
     companion object {
         private const val TAG = "SessionNameGen"
-        /** 首次命名最少消息数（user + assistant 总数） */
-        private const val MIN_MESSAGES_FOR_FIRST_NAMING = 2
-        /** 已自动命名后，每多少条新消息触发重新命名 */
-        private const val RE_NAME_INTERVAL = 10
         /** 默认名称前缀（用于检测是否需要首次命名） */
-        private val DEFAULT_NAME_PREFIXES = listOf(
-            "新会话", "新对话", "Web 会话", "Agent 会话", "群聊",
-            "New session", "New conversation", "Web session", "Agent chat", "Group chat",
-            "新しい会話", "新規会話", "エージェント会話", "グループ会話",
+        internal val DEFAULT_NAME_PREFIXES = listOf(
+            "新会话", "新对话", "Web 会话", "Agent 会话", "Agent 对话", "群聊",
+            "New chat", "New session", "New conversation", "Web session", "Agent chat", "Group chat",
+            "新しい会話", "新規会話", "新規チャット", "エージェント会話", "エージェントチャット", "グループ会話",
             "새 대화", "새 세션", "에이전트 대화", "그룹 대화"
         )
         /** 默认名称后缀（用于检测是否需要首次命名） */
-        private val DEFAULT_NAME_SUFFIXES = listOf("的对话")
+        internal val DEFAULT_NAME_SUFFIXES = listOf("的对话")
     }
 
-    /** 各会话的命名状态：sessionId → NamingState */
-    private val states = ConcurrentHashMap<String, NamingState>()
+    /** 各会话的命名状态：sessionId → SessionNamingState */
+    private val states = ConcurrentHashMap<String, SessionNamingState>()
 
     /** 各会话命名任务的进行中标志，防止并发重复生成 */
     private val inProgress = ConcurrentHashMap<String, Boolean>()
-
-    data class NamingState(
-        /** 是否已自动命名过 */
-        val autoNamed: Boolean = false,
-        /** 上次命名时的消息总数 */
-        val lastRenameCount: Int = 0
-    )
 
     /**
      * 检查并触发会话自动命名（必要时）。
@@ -79,13 +109,13 @@ class SessionNameGenerator(
         if (totalCount < MIN_MESSAGES_FOR_FIRST_NAMING) return null
 
         val name = session.name
-        val isDefaultName = name.isBlank() ||
-            DEFAULT_NAME_PREFIXES.any { name.startsWith(it) } ||
-            DEFAULT_NAME_SUFFIXES.any { name.endsWith(it) }
+        val isDefaultName = isDefaultAutoNamingSessionName(name)
 
-        val state = states[sessionId] ?: NamingState()
-        val shouldRename = isDefaultName ||
-            (state.autoNamed && totalCount - state.lastRenameCount >= RE_NAME_INTERVAL)
+        val state = states[sessionId]
+            ?: runCatching { stateLoader?.invoke(sessionId) }.getOrNull()
+            ?: recoverSessionNamingState(isDefaultName, totalCount)
+        states.putIfAbsent(sessionId, state)
+        val shouldRename = shouldAutoRenameSession(isDefaultName, totalCount, state)
 
         if (!shouldRename) return null
 
@@ -103,10 +133,12 @@ class SessionNameGenerator(
 
             if (newName.length !in 2..15) return null
 
-            states[sessionId] = NamingState(
+            val nextState = SessionNamingState(
                 autoNamed = true,
                 lastRenameCount = totalCount
             )
+            states[sessionId] = nextState
+            runCatching { stateSaver?.invoke(sessionId, nextState) }
             return newName
         } catch (e: Exception) {
             com.nekobot.app.data.local.LocalLogger.w(TAG, "会话自动命名失败: ${e.message}", e)
@@ -123,7 +155,7 @@ class SessionNameGenerator(
         characterDescription: String,
         isUpdate: Boolean
     ): String? {
-        val fallbackModel = if (failoverExecutor == null) aiModelProvider?.invoke() else null
+        val fallbackModel = aiModelProvider?.invoke()
         if (failoverExecutor == null && fallbackModel == null) return null
 
         val roleContext = if (characterName.isNotBlank()) {
@@ -160,9 +192,22 @@ class SessionNameGenerator(
             mapOf("role" to "user", "content" to "请为以下对话生成标题：\n\n$conversationText")
         )
 
-        val execution = failoverExecutor?.execute(promptMessages)
-        val result = execution?.value ?: aiClient.chatOnce(fallbackModel!!, promptMessages)
-        val usedModel = execution?.model ?: fallbackModel!!
+        // 聊天主请求允许直接回退到 active 模型；会话命名也必须保持同一语义。
+        // 部分旧配置只有 active 模型、没有 purpose=chat 队列，不能因此静默丢失首次命名。
+        val execution = failoverExecutor?.let { executor ->
+            runCatching { executor.execute(promptMessages) }
+                .onFailure {
+                    com.nekobot.app.data.local.LocalLogger.w(
+                        TAG,
+                        "命名故障转移队列不可用，回退到当前激活模型: ${it.message}"
+                    )
+                }
+                .getOrNull()
+        }
+        val result = execution?.value
+            ?: fallbackModel?.let { aiClient.chatOnce(it, promptMessages) }
+            ?: return null
+        val usedModel = execution?.model ?: fallbackModel ?: return null
         // 记账二级 LLM 调用 token（source=session_name）
         if (result.usage.isNotEmpty()) {
             onTokenUsage?.invoke(

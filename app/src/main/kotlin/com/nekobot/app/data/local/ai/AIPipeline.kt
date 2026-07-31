@@ -65,13 +65,14 @@ class AIPipeline {
         callbacks: PipelineCallbacks,
         tools: List<Map<String, Any>> = emptyList(),
         maxToolIterations: Int = 50,
-        maxContextChars: Int = 100000
+        maxContextChars: Int = 100000,
+        progressReporter: ProgressReporter? = null
     ): PipelineResult {
         val startTime = System.nanoTime()
         ctx.metadata["_pipeline_start_time"] = startTime
         com.nekobot.app.data.local.LocalLogger.i(TAG, "Pipeline 开始 | 会话=${ctx.chatRequest.conversationId} | 用户消息=${ctx.chatRequest.content.take(80)}")
 
-        val progress = callbacks.getProgressReporter(ctx)
+        val progress = progressReporter ?: callbacks.getProgressReporter(ctx)
 
         // Phase 1: 附件解析
         phaseAttachments(ctx, callbacks, progress)

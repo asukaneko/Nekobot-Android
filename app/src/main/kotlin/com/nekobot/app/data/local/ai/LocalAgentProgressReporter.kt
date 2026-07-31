@@ -32,8 +32,20 @@ internal class LocalAgentProgressReporter(
         )
     }
 
+    override fun onPreparingStart(ctx: PipelineContext) {
+        if (steps.none { it.type == "preparing" }) {
+            steps.add(ThinkingStep(type = "preparing", name = "正在准备 Agent...", status = "active"))
+        }
+        emit("正在准备 Agent...")
+    }
+
     override fun onThinkingStart(ctx: PipelineContext) {
-        steps.add(ThinkingStep(type = "thinking", name = "AI 正在思考...", status = "active"))
+        steps.indexOfLast { it.type == "preparing" }.takeIf { it >= 0 }?.let { index ->
+            steps[index] = steps[index].copy(status = "done")
+        }
+        if (steps.none { it.type == "thinking" }) {
+            steps.add(ThinkingStep(type = "thinking", name = "AI 正在思考...", status = "active"))
+        }
         emit("AI 正在处理...")
     }
 

@@ -303,6 +303,9 @@
     <string name="chat_ai_label">AI</string>
     <string name="chat_delete_message_title">删除消息</string>
     <string name="chat_delete_message_confirm">确定删除这条消息吗？</string>
+    <string name="chat_message_actions">消息操作</string>
+    <string name="chat_multi_select">多选</string>
+    <string name="chat_select_text_title">选择文本</string>
     <string name="chat_clear_messages_title">清空消息</string>
     <string name="chat_clear_messages_confirm">将删除本会话所有消息，此操作不可撤销。</string>
     <string name="chat_extract_archive_title">提取归档</string>

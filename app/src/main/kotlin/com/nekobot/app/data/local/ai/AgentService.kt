@@ -638,9 +638,26 @@ fun runToolLoopSession(session: ToolLoopSession): ToolExecutionResult {
     return ToolExecutionResult(loopResult = loopResult, preparedMessages = preparedMessages)
 }
 
-/** 从循环结果中解析最终内容 */
+/**
+ * 从循环结果中解析最终内容。
+ *
+ * 本地 send_message 工具本身不会额外创建聊天气泡；部分模型会把最终答复只放进该工具，
+ * 随后的空 assistant 结束包会让 loopResult.finalContent 为空。此时必须把最后一次成功发送
+ * 的内容提升为公开回复，否则 UI、Room 与自动命名都会收到空字符串。
+ */
 fun resolveLoopFinalContent(loopResult: ToolLoopResult, defaultContent: String = ""): String {
     if (loopResult.finalContent.isNotEmpty()) return loopResult.finalContent
+    loopResult.toolMessages.asReversed().firstNotNullOfOrNull { message ->
+        if (message["role"] != "tool" || message["name"] != "send_message") {
+            return@firstNotNullOfOrNull null
+        }
+        val rawContent = message["content"] as? String ?: return@firstNotNullOfOrNull null
+        runCatching {
+            @Suppress("UNCHECKED_CAST")
+            val result = agentGson.fromJson(rawContent, Map::class.java) as? Map<String, Any>
+            (result?.get("_send_message") as? String)?.takeIf(String::isNotBlank)
+        }.getOrNull()
+    }?.let { return it }
     if (loopResult.toolMessages.isNotEmpty()) {
         val lastMsg = loopResult.toolMessages.last()
         if (lastMsg["role"] == "assistant") {

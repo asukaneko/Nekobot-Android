@@ -18,6 +18,39 @@ import java.util.zip.ZipOutputStream
 class LocalAgentToolingTest {
 
     @Test
+    fun sendMessageToolContentBecomesVisibleReplyWhenModelEndsWithEmptyContent() {
+        val result = ToolLoopResult(
+            finalContent = "",
+            toolMessages = listOf(
+                mapOf(
+                    "role" to "tool",
+                    "name" to "send_message",
+                    "content" to """{"success":true,"_send_message":"Agent 的最终回复"}"""
+                ),
+                mapOf("role" to "assistant", "content" to "")
+            )
+        )
+
+        assertEquals("Agent 的最终回复", resolveLoopFinalContent(result))
+    }
+
+    @Test
+    fun directAgentContentTakesPriorityOverSendMessageFallback() {
+        val result = ToolLoopResult(
+            finalContent = "模型最终总结",
+            toolMessages = listOf(
+                mapOf(
+                    "role" to "tool",
+                    "name" to "send_message",
+                    "content" to """{"success":true,"_send_message":"处理中"}"""
+                )
+            )
+        )
+
+        assertEquals("模型最终总结", resolveLoopFinalContent(result))
+    }
+
+    @Test
     fun toolDefinitionsExposeOnlyExecutableTools() {
         val names = buildLocalAgentToolDefinitions().mapNotNull { tool ->
             @Suppress("UNCHECKED_CAST")

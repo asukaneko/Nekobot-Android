@@ -440,6 +440,22 @@ class PrefsManager(context: Context) {
         prefs.edit().remove("chat_draft_$sessionId").apply()
     }
 
+    /** 读取会话自动命名进度；没有旧记录时返回 null，由命名器从当前消息数恢复。 */
+    fun getSessionAutoNamingState(sessionId: String): Pair<Boolean, Int>? {
+        val countKey = "session_auto_name_count_$sessionId"
+        if (!prefs.contains(countKey)) return null
+        return prefs.getBoolean("session_auto_named_$sessionId", false) to
+            prefs.getInt(countKey, 0).coerceAtLeast(0)
+    }
+
+    /** 持久化自动命名进度，避免进程或页面重建后只完成首次命名。 */
+    fun setSessionAutoNamingState(sessionId: String, autoNamed: Boolean, messageCount: Int) {
+        prefs.edit()
+            .putBoolean("session_auto_named_$sessionId", autoNamed)
+            .putInt("session_auto_name_count_$sessionId", messageCount.coerceAtLeast(0))
+            .apply()
+    }
+
     companion object {
         private const val PREF_NAME = "nekobot_prefs"
         private const val KEY_SERVER_URL = "server_url"
