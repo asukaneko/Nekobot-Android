@@ -122,6 +122,9 @@
     <string name="mcp_transport_label">传输方式</string>
     <string name="mcp_description_label">描述</string>
     <string name="mcp_url_label">URL</string>
+    <string name="mcp_headers_label">请求头（每行 Name: Value）</string>
+    <string name="mcp_headers_hint">Authorization: Bearer token\nX-API-Key: key</string>
+    <string name="mcp_headers_error">格式错误，请每行填写一个 Name: Value</string>
     <string name="mcp_command_label">命令 (command)</string>
     <string name="mcp_args_label">参数 (args，空格分隔)</string>
     <string name="mcp_env_label">环境变量 (env，每行 KEY=VALUE)</string>

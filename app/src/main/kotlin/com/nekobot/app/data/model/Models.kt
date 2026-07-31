@@ -1031,6 +1031,7 @@ data class McpServer(
     val connected: Boolean = false,
     @SerializedName("tool_count") val toolCount: Int = 0,
     val url: String? = null,
+    val headers: JsonElement? = null,
     val command: String? = null,
     val args: List<String> = emptyList(),
     val env: JsonElement? = null,
@@ -1048,6 +1049,7 @@ data class McpServerRequest(
     val enabled: Boolean = true,
     @SerializedName("auto_connect") val autoConnect: Boolean = false,
     val url: String? = null,
+    val headers: JsonElement? = null,
     val command: String? = null,
     val args: List<String> = emptyList(),
     val env: JsonElement? = null

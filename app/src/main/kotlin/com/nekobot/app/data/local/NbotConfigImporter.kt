@@ -682,6 +682,7 @@ object NbotConfigImporter {
                     connected = false,
                     toolCount = obj.int("tool_count", 0),
                     url = obj.str("url"),
+                    headersJson = obj.jsonStr("headers"),
                     command = obj.str("command"),
                     argsJson = obj.jsonStr("args"),
                     envJson = obj.jsonStr("env"),

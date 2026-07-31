@@ -622,6 +622,8 @@ private fun McpServerFormDialog(
     var autoConnect by remember { mutableStateOf(initial?.autoConnect ?: false) }
     // streamable-http 模式
     var url by remember { mutableStateOf(initial?.url ?: "") }
+    var headersText by remember { mutableStateOf(initial?.headers.toHeaderText()) }
+    var headersError by remember { mutableStateOf(false) }
     // stdio 模式
     var command by remember { mutableStateOf(initial?.command ?: "") }
     var argsText by remember { mutableStateOf(initial?.args?.joinToString(" ") ?: "") }
@@ -633,6 +635,16 @@ private fun McpServerFormDialog(
         confirmText = stringResource(R.string.common_save),
         onConfirm = {
             if (name.isBlank()) return@NekoDialog
+            val headers = if (transport == "streamable-http") {
+                try {
+                    headersText.toHeaderObject()
+                } catch (_: IllegalArgumentException) {
+                    headersError = true
+                    return@NekoDialog
+                }
+            } else {
+                null
+            }
             val req = McpServerRequest(
                 name = name.trim(),
                 transport = transport,
@@ -640,6 +652,7 @@ private fun McpServerFormDialog(
                 enabled = enabled,
                 autoConnect = autoConnect,
                 url = if (transport == "streamable-http") url.trim().takeIf { it.isNotBlank() } else null,
+                headers = headers,
                 command = if (transport == "stdio") command.trim().takeIf { it.isNotBlank() } else null,
                 args = if (transport == "stdio") argsText.splitWhitespace() else emptyList(),
                 env = if (transport == "stdio") envText.toEnvObject() else null
@@ -698,6 +711,28 @@ private fun McpServerFormDialog(
                     shape = RoundedCornerShape(12.dp),
                     colors = fieldColors(),
                     placeholder = { Text("https://example.com/mcp") }
+                )
+                Spacer(Modifier.height(8.dp))
+                LabeledField(stringResource(R.string.mcp_headers_label))
+                OutlinedTextField(
+                    value = headersText,
+                    onValueChange = {
+                        headersText = it
+                        headersError = false
+                    },
+                    singleLine = false,
+                    minLines = 2,
+                    maxLines = 6,
+                    isError = headersError,
+                    supportingText = if (headersError) {
+                        { Text(stringResource(R.string.mcp_headers_error)) }
+                    } else {
+                        null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = fieldColors(),
+                    placeholder = { Text(stringResource(R.string.mcp_headers_hint)) }
                 )
                 Spacer(Modifier.height(8.dp))
             } else {
@@ -833,6 +868,31 @@ private fun JsonElement?.toEnvText(): String {
     } catch (e: Exception) {
         ""
     }
+}
+
+/** 将 JsonElement 形式的 HTTP 请求头转换为 "Name: Value" 多行文本。 */
+private fun JsonElement?.toHeaderText(): String {
+    if (this == null || !this.isJsonObject) return ""
+    return this.asJsonObject.entrySet().joinToString("\n") { (name, value) ->
+        "$name: ${if (value.isJsonPrimitive) value.asString else value}"
+    }
+}
+
+/** 将 "Name: Value" 多行文本解析为 HTTP 请求头对象。 */
+private fun String.toHeaderObject(): JsonObject? {
+    if (isBlank()) return null
+    val headers = JsonObject()
+    lineSequence().forEach { line ->
+        val trimmed = line.trim()
+        if (trimmed.isEmpty()) return@forEach
+        val separator = trimmed.indexOf(':')
+        require(separator > 0) { "HTTP 请求头格式错误" }
+        val name = trimmed.substring(0, separator).trim()
+        val value = trimmed.substring(separator + 1).trim()
+        require(name.isNotEmpty()) { "HTTP 请求头名称不能为空" }
+        headers.addProperty(name, value)
+    }
+    return headers.takeIf { it.size() > 0 }
 }
 
 /** 将 "KEY=VALUE" 多行文本解析为 JsonObject */

@@ -96,6 +96,7 @@ class LocalMcpRuntimeTest {
                 name = "fake",
                 transport = "streamable-http",
                 url = server.url,
+                headersJson = """{"Authorization":"Bearer secret","X-Tenant":"demo"}""",
                 createdAt = "2026-07-18T00:00:00"
             )
 
@@ -120,6 +121,8 @@ class LocalMcpRuntimeTest {
                 listOf("initialize", "notifications/initialized", "tools/list", "tools/call"),
                 server.methods
             )
+            assertTrue(server.headers.all { it["authorization"] == "Bearer secret" })
+            assertTrue(server.headers.all { it["x-tenant"] == "demo" })
             val operationalHeaders = server.headers.drop(1)
             assertTrue(operationalHeaders.all { it["mcp-session-id"] == "fake-session" })
             assertTrue(operationalHeaders.all { it["mcp-protocol-version"] == "2025-11-25" })
@@ -162,6 +165,7 @@ class LocalMcpRuntimeTest {
                         } else {
                             ""
                         }
+                        headers += requestHeaders
 
                         if (requestLine.startsWith("DELETE ")) {
                             writeResponse(client.getOutputStream(), 200, "")
@@ -170,7 +174,6 @@ class LocalMcpRuntimeTest {
                             val request = JsonParser.parseString(body).asJsonObject
                             val method = request.get("method").asString
                             methods += method
-                            headers += requestHeaders
                             when (method) {
                                 "notifications/initialized" ->
                                     writeResponse(client.getOutputStream(), 202, "")

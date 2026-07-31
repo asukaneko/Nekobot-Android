@@ -524,7 +524,7 @@ data class LocalToolEntity(
     @ColumnInfo(name = "created_at") val createdAt: String
 )
 
-/** 本地 MCP 服务。args/env 以 JSON 字符串存储。 */
+/** 本地 MCP 服务。headers/args/env 以 JSON 字符串存储。 */
 @Entity(tableName = "local_mcp_servers")
 data class LocalMcpServerEntity(
     @PrimaryKey val id: String,
@@ -536,6 +536,7 @@ data class LocalMcpServerEntity(
     val connected: Boolean = false,
     @ColumnInfo(name = "tool_count") val toolCount: Int = 0,
     val url: String? = null,
+    @ColumnInfo(name = "headers_json") val headersJson: String? = null,
     val command: String? = null,
     @ColumnInfo(name = "args_json") val argsJson: String? = null,
     @ColumnInfo(name = "env_json") val envJson: String? = null,

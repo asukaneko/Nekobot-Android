@@ -274,7 +274,11 @@ internal class LocalMcpRuntime(
             "streamable-http", "http" -> {
                 val url = server.url?.trim().orEmpty()
                 require(url.isNotEmpty()) { "HTTP 模式需要 url 参数" }
-                HttpMcpTransportSession(url, httpClient)
+                HttpMcpTransportSession(
+                    url = url,
+                    headers = parseStringMap(server.headersJson),
+                    client = httpClient
+                )
             }
             else -> throw IllegalArgumentException("不支持的 MCP transport: ${server.transport}")
         }
@@ -393,6 +397,7 @@ private interface McpTransportSession : Closeable {
 
 private class HttpMcpTransportSession(
     private val url: String,
+    private val headers: Map<String, String>,
     private val client: OkHttpClient
 ) : McpTransportSession {
 
@@ -421,6 +426,8 @@ private class HttpMcpTransportSession(
         val request = Request.Builder()
             .url(url)
             .post(message.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .apply { headers.forEach { (name, value) -> header(name, value) } }
+            .header("Content-Type", "application/json; charset=utf-8")
             .header("Accept", "application/json, text/event-stream")
             .apply {
                 sessionId?.let { header("Mcp-Session-Id", it) }
@@ -467,6 +474,7 @@ private class HttpMcpTransportSession(
         val request = Request.Builder()
             .url(url)
             .delete()
+            .apply { headers.forEach { (name, value) -> header(name, value) } }
             .header("Accept", "application/json, text/event-stream")
             .header("Mcp-Session-Id", activeSessionId)
             .apply { protocolVersion?.let { header("MCP-Protocol-Version", it) } }

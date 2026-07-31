@@ -7484,6 +7484,7 @@ $charSection$topicSection
             enabled = req.enabled,
             autoConnect = req.autoConnect,
             url = req.url?.trim(),
+            headersJson = req.headers?.let { gson.toJson(it) },
             command = req.command?.trim(),
             argsJson = gson.toJson(req.args),
             envJson = req.env?.let { gson.toJson(it) },
@@ -7507,6 +7508,7 @@ $charSection$topicSection
             connected = false,
             toolCount = 0,
             url = req.url?.trim(),
+            headersJson = req.headers?.let { gson.toJson(it) },
             command = req.command?.trim(),
             argsJson = gson.toJson(req.args),
             envJson = req.env?.let { gson.toJson(it) },
@@ -7641,8 +7643,16 @@ $charSection$topicSection
         require(req.name.isNotBlank()) { "MCP 服务名称不能为空" }
         when (req.transport.lowercase()) {
             "stdio" -> require(!req.command.isNullOrBlank()) { "stdio 模式需要 command 参数" }
-            "streamable-http", "http" ->
+            "streamable-http", "http" -> {
                 require(!req.url.isNullOrBlank()) { "HTTP 模式需要 url 参数" }
+                req.headers?.let { headers ->
+                    require(headers.isJsonObject) { "HTTP 请求头必须是键值对象" }
+                    headers.asJsonObject.entrySet().forEach { (name, value) ->
+                        require(name.isNotBlank()) { "HTTP 请求头名称不能为空" }
+                        require(value.isJsonPrimitive) { "HTTP 请求头 $name 的值必须是文本" }
+                    }
+                }
+            }
             else -> throw IllegalArgumentException("不支持的 MCP transport: ${req.transport}")
         }
     }
@@ -7660,6 +7670,7 @@ $charSection$topicSection
         connected = connectedOverride ?: connected,
         toolCount = toolCountOverride ?: toolCount,
         url = url,
+        headers = headersJson?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
         command = command,
         args = runCatching { JsonParser.parseString(argsJson ?: "[]").asJsonArray.map { it.asString } }.getOrDefault(emptyList()),
         env = envJson?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },

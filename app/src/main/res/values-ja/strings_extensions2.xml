@@ -103,6 +103,9 @@
     <string name="mcp_transport_label">トランスポート</string>
     <string name="mcp_description_label">説明</string>
     <string name="mcp_url_label">URL</string>
+    <string name="mcp_headers_label">リクエストヘッダー（1行に Name: Value）</string>
+    <string name="mcp_headers_hint">Authorization: Bearer token\nX-API-Key: key</string>
+    <string name="mcp_headers_error">形式が正しくありません。1行に1つ Name: Value を入力してください。</string>
     <string name="mcp_command_label">コマンド (command)</string>
     <string name="mcp_args_label">引数 (args、スペース区切り)</string>
     <string name="mcp_env_label">環境変数 (env、KEY=VALUE を1行に1つ)</string>
