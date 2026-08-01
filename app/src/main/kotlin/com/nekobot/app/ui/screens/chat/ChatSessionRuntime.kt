@@ -41,6 +41,8 @@ class ChatSessionState(val sessionId: String) {
     // ============ 流式生成的临时可变状态 ============
     /** 流式生成中的临时消息内容累加器 */
     val streamingContent = StringBuilder()
+    /** 流式生成中的模型思考内容累加器 */
+    val streamingReasoning = StringBuilder()
     /** 上次流式 chunk 更新 UI 的时间戳，用于节流（避免高频 chunk 触发 MarkdownText 全量重解析） */
     @Volatile
     var lastStreamUiUpdateMs: Long = 0L
@@ -66,6 +68,7 @@ class ChatSessionState(val sessionId: String) {
     /** 重置流式生成相关临时状态（用于新一轮发送前清场） */
     fun resetStreamingState() {
         streamingContent.setLength(0)
+        streamingReasoning.setLength(0)
         lastStreamUiUpdateMs = 0L
         generationStopRequested = false
     }

@@ -163,6 +163,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import com.nekobot.app.R
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.model.CharacterPreset
+import com.nekobot.app.data.model.ReasoningEffort
+import com.nekobot.app.data.model.ThinkingCard
+import com.nekobot.app.data.model.ThinkingStep
 import com.nekobot.app.data.local.ChatInputLayoutMode
 import com.nekobot.app.data.local.VISION_FAILURE_MARKER
 import com.nekobot.app.data.local.isLocalCommandMessage
@@ -867,7 +870,11 @@ fun ChatScreen(
                                 Spacer(Modifier.height(2.dp))
                             }
                             // 流式占位消息且内容为空：显示骨架动画（等待第一个 chunk）
-                            if (msg.id == ChatViewModel.STREAMING_ID && msg.displayContent.isBlank()) {
+                            if (
+                                msg.id == ChatViewModel.STREAMING_ID &&
+                                msg.displayContent.isBlank() &&
+                                msg.reasoningContent.isNullOrBlank()
+                            ) {
                                 ThinkingIndicator(
                                     portraitUrl = session?.portraitUrl,
                                     showAiAvatar = session?.sessionMode != "agent",
@@ -2161,6 +2168,69 @@ private fun MessageBubble(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+            }
+            if (!isUser && !fillAiWidth && !message.reasoningContent.isNullOrBlank()) {
+                var reasoningExpanded by remember(message.id) {
+                    mutableStateOf(isStreamingPlaceholder)
+                }
+                androidx.compose.material3.Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
+                    )
+                ) {
+                    Column {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { reasoningExpanded = !reasoningExpanded }
+                                .padding(horizontal = 11.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Psychology,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(7.dp))
+                            Text(
+                                text = if (isStreamingPlaceholder) "正在思考…" else "思考过程",
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Icon(
+                                imageVector = if (reasoningExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                contentDescription = if (reasoningExpanded) "折叠" else "展开",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        AnimatedVisibility(
+                            visible = reasoningExpanded,
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut()
+                        ) {
+                            SelectionContainer {
+                                Text(
+                                    text = message.reasoningContent.orEmpty(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 11.dp, end = 11.dp, bottom = 10.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.88f)
+                                )
+                            }
+                        }
+                    }
+                }
             }
             // 视觉识别失败警告：当消息内容包含 VISION_FAILURE_MARKER 时显示非阻塞提示
             if (message.displayContent.contains(VISION_FAILURE_MARKER)) {
@@ -3472,17 +3542,21 @@ internal fun finalizeStreamEndMessages(
     current: List<Message>,
     streamingId: String,
     finalContent: String,
+    finalReasoning: String = "",
     materializeFallback: Boolean,
     fallbackId: String = ChatViewModel.STREAM_FALLBACK_PREFIX + java.util.UUID.randomUUID(),
     fallbackTimestamp: String = System.currentTimeMillis().toString()
 ): List<Message> {
     val withoutPlaceholder = current.filter { it.id != streamingId }
-    if (!materializeFallback || finalContent.isBlank()) return withoutPlaceholder
-    if (withoutPlaceholder.any { !it.isUser && it.content == finalContent }) return withoutPlaceholder
+    if (!materializeFallback || (finalContent.isBlank() && finalReasoning.isBlank())) return withoutPlaceholder
+    if (withoutPlaceholder.any {
+            !it.isUser && it.content == finalContent && it.reasoningContent == finalReasoning.takeIf(String::isNotBlank)
+        }) return withoutPlaceholder
     return withoutPlaceholder + Message(
         id = fallbackId,
         role = "assistant",
         content = finalContent,
+        reasoningContent = finalReasoning.takeIf(String::isNotBlank),
         timestamp = fallbackTimestamp
     )
 }
@@ -3989,7 +4063,7 @@ internal fun buildChatMessageContent(
  */
 internal fun attachThinkingCardToMessages(
     messages: List<Message>,
-    card: com.nekobot.app.data.model.ThinkingCard
+    card: ThinkingCard
 ): List<Message> {
     val parentIndex = card.parentMessageId?.let { parentId ->
         messages.indexOfFirst { it.id == parentId && it.isUser }
@@ -4010,6 +4084,46 @@ internal fun attachThinkingCardToMessages(
     }
     return messages.toMutableList().apply {
         set(targetIndex, parent.copy(thinkingCards = updated))
+    }
+}
+
+internal fun mergeThinkingCardReasoning(
+    freshCards: List<ThinkingCard>?,
+    currentCards: List<ThinkingCard>?
+): List<ThinkingCard>? {
+    if (freshCards == null) return currentCards
+    if (currentCards.isNullOrEmpty()) return freshCards
+
+    return freshCards.map { freshCard ->
+        val currentCard = currentCards.firstOrNull { it.id == freshCard.id } ?: return@map freshCard
+        val currentThinking = currentCard.steps.lastOrNull {
+            it.type.equals("thinking", ignoreCase = true) && !it.thinkingContent.isNullOrBlank()
+        } ?: return@map freshCard
+        val freshThinkingIndex = freshCard.steps.indexOfLast {
+            it.type.equals("thinking", ignoreCase = true)
+        }
+        if (freshThinkingIndex < 0) {
+            freshCard.copy(steps = freshCard.steps + currentThinking)
+        } else {
+            val freshThinking = freshCard.steps[freshThinkingIndex]
+            val freshContent = freshThinking.thinkingContent.orEmpty()
+            val currentContent = currentThinking.thinkingContent.orEmpty()
+            if (freshContent.length >= currentContent.length) {
+                freshCard
+            } else {
+                freshCard.copy(
+                    steps = freshCard.steps.toMutableList().apply {
+                        set(
+                            freshThinkingIndex,
+                            freshThinking.copy(
+                                detail = currentThinking.detail ?: freshThinking.detail,
+                                thinkingContent = currentThinking.thinkingContent
+                            )
+                        )
+                    }
+                )
+            }
+        }
     }
 }
 
@@ -4224,8 +4338,52 @@ class ChatViewModel : BaseViewModel() {
      * - 在该消息的 thinkingCards 列表中替换同 id 卡片或追加
      * - StreamEnd 时 loadMessages 会用持久化数据覆盖，保证最终一致
      */
-    private fun applyThinkingCardUpdate(card: com.nekobot.app.data.model.ThinkingCard) {
+    private fun applyThinkingCardUpdate(card: ThinkingCard) {
         _messages.value = attachThinkingCardToMessages(_messages.value, card)
+    }
+
+    private fun isReasoningEnabled(): Boolean =
+        ServiceContainer.prefs.getSessionReasoningEffort(currentSessionId) != ReasoningEffort.NONE
+
+    private fun isAgentSession(): Boolean =
+        _session.value?.sessionMode.equals("agent", ignoreCase = true) ||
+            _messages.value.any { message -> message.thinkingCards.orEmpty().any(ThinkingCard::isAgent) }
+
+    private fun enrichAgentThinkingCard(card: ThinkingCard, reasoning: String): ThinkingCard {
+        if (reasoning.isBlank()) return card
+        val steps = card.steps.toMutableList()
+        val thinkingIndex = steps.indexOfLast { it.type.equals("thinking", ignoreCase = true) }
+        val status = if (card.isComplete) "done" else "active"
+        val enrichedStep = if (thinkingIndex >= 0) {
+            steps[thinkingIndex].copy(
+                name = steps[thinkingIndex].name?.takeIf(String::isNotBlank) ?: "AI 正在思考...",
+                status = steps[thinkingIndex].status?.takeIf(String::isNotBlank) ?: status,
+                detail = reasoning.takeLast(160),
+                thinkingContent = reasoning
+            )
+        } else {
+            ThinkingStep(
+                type = "thinking",
+                name = "AI 正在思考...",
+                status = status,
+                detail = reasoning.takeLast(160),
+                thinkingContent = reasoning
+            )
+        }
+        if (thinkingIndex >= 0) steps[thinkingIndex] = enrichedStep else steps.add(enrichedStep)
+        return card.copy(steps = steps)
+    }
+
+    private fun applyAgentReasoningToLatestCard(reasoning: String) {
+        if (reasoning.isBlank()) return
+        val latestCard = _messages.value
+            .asReversed()
+            .asSequence()
+            .filter(Message::isUser)
+            .flatMap { it.thinkingCards.orEmpty().asReversed().asSequence() }
+            .firstOrNull { it.isAgent }
+            ?: return
+        applyThinkingCardUpdate(enrichAgentThinkingCard(latestCard, reasoning))
     }
 
     // 多选模式状态
@@ -4238,6 +4396,7 @@ class ChatViewModel : BaseViewModel() {
 
     /** 流式生成中的临时消息内容累加器（引用 runtime，跨 VM 共享） */
     private val streamingContent: StringBuilder get() = runtime.streamingContent
+    private val streamingReasoning: StringBuilder get() = runtime.streamingReasoning
     /** 流式消息在列表中的临时 id */
     private val streamingId = STREAMING_ID
     /** 上次流式 chunk 更新 UI 的时间戳，用于节流（避免高频 chunk 触发 MarkdownText 全量重解析） */
@@ -4344,6 +4503,7 @@ class ChatViewModel : BaseViewModel() {
             generationStopRequested && (
                 event is RealtimeEvent.StreamStart ||
                     event is RealtimeEvent.StreamChunk ||
+                    event is RealtimeEvent.ReasoningChunk ||
                     event is RealtimeEvent.ThinkingCardUpdate
                 )
         ) {
@@ -4355,6 +4515,7 @@ class ChatViewModel : BaseViewModel() {
             is RealtimeEvent.StreamStart -> {
                 _sending.value = true
                 streamingContent.setLength(0)
+                streamingReasoning.setLength(0)
                 lastStreamUiUpdateMs = 0L
                 // 插入流式占位消息
                 val placeholder = Message(
@@ -4377,15 +4538,36 @@ class ChatViewModel : BaseViewModel() {
                     }
                 }
             }
+            is RealtimeEvent.ReasoningChunk -> {
+                if (!isReasoningEnabled()) return
+                streamingReasoning.append(event.chunk)
+                if (isAgentSession()) {
+                    applyAgentReasoningToLatestCard(streamingReasoning.toString())
+                    return
+                }
+                val now = System.currentTimeMillis()
+                if (now - lastStreamUiUpdateMs >= streamThrottleMs) {
+                    lastStreamUiUpdateMs = now
+                    _messages.value = _messages.value.map {
+                        if (it.id == streamingId) {
+                            it.copy(reasoningContent = streamingReasoning.toString())
+                        } else it
+                    }
+                }
+            }
             is RealtimeEvent.StreamEnd -> {
                 _sending.value = false
                 // 本地流程在 StreamEnd 前已完成 Room 持久化，直接刷新数据库即可。
                 // 若再生成随机 ID 的正式消息，刷新时会因时间戳不同同时保留两条相同气泡。
                 val finalContent = streamingContent.toString()
+                val finalReasoning = streamingReasoning.toString()
+                    .takeIf { isReasoningEnabled() && !isAgentSession() }
+                    .orEmpty()
                 _messages.value = finalizeStreamEndMessages(
                     current = _messages.value,
                     streamingId = streamingId,
                     finalContent = finalContent,
+                    finalReasoning = finalReasoning,
                     materializeFallback = !isLocalMode
                 )
                 // 刷新列表获取服务端持久化的真实消息（含 id/token 等）
@@ -4428,7 +4610,10 @@ class ChatViewModel : BaseViewModel() {
             is RealtimeEvent.AiResponse -> {
                 _sending.value = false
                 _execConfirmation.value = null
-                val msg = event.message
+                val msg = event.message?.let { incoming ->
+                    if (isReasoningEnabled() && !isAgentSession()) incoming
+                    else incoming.copy(reasoningContent = null)
+                }
                 if (msg != null && !msg.content.isNullOrBlank()) {
                     // 移除流式占位，追加完整回复
                     _messages.value = (_messages.value.filter {
@@ -4457,7 +4642,10 @@ class ChatViewModel : BaseViewModel() {
                 }
             }
             is RealtimeEvent.NewMessage -> {
-                val msg = event.message
+                val msg = event.message.let { incoming ->
+                    if (isReasoningEnabled() && !isAgentSession()) incoming
+                    else incoming.copy(reasoningContent = null)
+                }
                 // 过滤进度卡片（thinking_card），不展示在聊天列表
                 if (msg.isThinkingCard) return
                 _messages.value = mergeRealtimeNewMessage(
@@ -4504,7 +4692,14 @@ class ChatViewModel : BaseViewModel() {
                 // 本地 Agent 的首张卡片可能早于 loadSession 返回；此时以卡片自身的 isAgent
                 // 标记为准，不能因为 _session 暂时为空而丢掉整轮进度事件。
                 if (shouldApplyThinkingCardUpdate(_session.value?.sessionMode, event.card.isAgent)) {
-                    applyThinkingCardUpdate(event.card)
+                    val card = if (
+                        event.card.isAgent &&
+                        isReasoningEnabled() &&
+                        streamingReasoning.isNotBlank()
+                    ) {
+                        enrichAgentThinkingCard(event.card, streamingReasoning.toString())
+                    } else event.card
+                    applyThinkingCardUpdate(card)
                     _sending.value = !event.card.isComplete
                 }
             }
@@ -4646,8 +4841,16 @@ class ChatViewModel : BaseViewModel() {
         launchResult(
             block = { unified.listMessages(currentSessionId) },
             onSuccess = { fresh ->
+                val hasAgentCards = fresh.orEmpty().any { message ->
+                    message.thinkingCards.orEmpty().any(ThinkingCard::isAgent)
+                }
+                val showStandaloneReasoning =
+                    isReasoningEnabled() && !isAgentSession() && !hasAgentCards
                 // 合并：保留现有 thinking_cards，避免被刷新覆盖（对齐原仓库 nbot-methods.js:6221）
-                val current = _messages.value
+                val current = _messages.value.map { message ->
+                    if (showStandaloneReasoning || message.isUser) message
+                    else message.copy(reasoningContent = null)
+                }
                 val byId = current.associateBy { it.id }
                 val byUserContent = current.filter { it.isUser }
                     .associateBy { it.content to it.timestamp }
@@ -4656,7 +4859,13 @@ class ChatViewModel : BaseViewModel() {
                     .filter { !it.isUser && it.id != streamingId && !it.content.isNullOrBlank() }
                     .associateBy { it.content to it.timestamp }
 
-                val merged = (fresh ?: emptyList()).filterNot { msg -> msg.isThinkingCard }.map { newMsg ->
+                val merged = (fresh ?: emptyList())
+                    .filterNot { msg -> msg.isThinkingCard }
+                    .map { message ->
+                        if (showStandaloneReasoning || message.isUser) message
+                        else message.copy(reasoningContent = null)
+                    }
+                    .map { newMsg ->
                     // 历史加载的 thinking_cards 必定已完成（否则为数据不一致），
                     // 强制最后一张卡片 isComplete=true，避免重进会话还在转圈
                     val normalizedCards = newMsg.thinkingCards?.map { card ->
@@ -4667,8 +4876,12 @@ class ChatViewModel : BaseViewModel() {
                     } else newMsg
 
                     val existing = withCards.id?.let { byId[it] }
-                    val mergedCard = if (existing?.thinkingCards != null && withCards.thinkingCards == null) {
-                        withCards.copy(thinkingCards = existing.thinkingCards)
+                    val mergedCards = mergeThinkingCardReasoning(
+                        freshCards = withCards.thinkingCards,
+                        currentCards = existing?.thinkingCards
+                    )
+                    val mergedCard = if (mergedCards != withCards.thinkingCards) {
+                        withCards.copy(thinkingCards = mergedCards)
                     } else withCards
                     val mergedAudio = if (
                         mergedCard.audioUrl.isNullOrBlank() &&
@@ -5040,7 +5253,12 @@ class ChatViewModel : BaseViewModel() {
      * - 服务器模式：优先通过 Socket.IO send_message 触发 AI（服务端会推送流式回复），
      *   Socket 未连接时回退到 HTTP /chat
      */
-    fun sendMessage(text: String, plotChoiceId: String? = null, attachments: List<Map<String, Any>> = emptyList()) {
+    fun sendMessage(
+        text: String,
+        plotChoiceId: String? = null,
+        attachments: List<Map<String, Any>> = emptyList(),
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort = com.nekobot.app.data.model.ReasoningEffort.NONE
+    ) {
         val content = text.trim()
         val messageContent = buildChatMessageContent(content, attachments)
         if (messageContent.isBlank()) return
@@ -5048,7 +5266,7 @@ class ChatViewModel : BaseViewModel() {
         if (plotChoiceId != null) {
             viewModelScope.launch {
                 commitPlotChoiceSelection(plotChoiceId)
-                sendMessage(content, attachments = attachments)
+                sendMessage(content, attachments = attachments, reasoningEffort = reasoningEffort)
             }
             return
         }
@@ -5065,6 +5283,7 @@ class ChatViewModel : BaseViewModel() {
 
         // 立即创建流式占位消息，显示骨架动画（等待第一个 chunk）
         streamingContent.setLength(0)
+        streamingReasoning.setLength(0)
         val placeholder = Message(
             id = streamingId,
             role = "assistant",
@@ -5079,7 +5298,7 @@ class ChatViewModel : BaseViewModel() {
             localChatJob?.cancel()
             localChatJob = ServiceContainer.applicationScope.launch {
                 val flow = try {
-                    unified.chatStream(currentSessionId, messageContent, attachments)
+                    unified.chatStream(currentSessionId, messageContent, attachments, reasoningEffort)
                 } catch (e: Exception) {
                     _sending.value = false
                     _messages.value = _messages.value.filter { it.id != streamingId }
@@ -5109,7 +5328,7 @@ class ChatViewModel : BaseViewModel() {
             }
         } else if (socket.state.value == SocketState.Connected) {
             // Socket.IO 路径：触发 send_message，等待流式推送
-            socket.sendMessage(currentSessionId, messageContent, attachments)
+            socket.sendMessage(currentSessionId, messageContent, attachments, reasoningEffort)
             // 兜底：若 60 秒仍无 chunk 回调，尝试刷新消息
             ServiceContainer.applicationScope.launch {
                 kotlinx.coroutines.delay(60000)
@@ -5121,14 +5340,15 @@ class ChatViewModel : BaseViewModel() {
             }
         } else {
             // Socket 未连接，回退 HTTP
-            launchHttpChat(messageContent, attachments)
+            launchHttpChat(messageContent, attachments, reasoningEffort)
         }
     }
 
     /** HTTP /chat 回退路径：触发后等待 socket 推送或轮询。 */
     private fun launchHttpChat(
         content: String,
-        attachments: List<Map<String, Any>> = emptyList()
+        attachments: List<Map<String, Any>> = emptyList(),
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort = com.nekobot.app.data.model.ReasoningEffort.NONE
     ) {
         val previousAssistantIds = _messages.value
             .filterNot { it.isUser }
@@ -5136,6 +5356,7 @@ class ChatViewModel : BaseViewModel() {
             .toSet()
         // 创建流式占位消息，显示骨架动画（等待第一个 chunk）
         streamingContent.setLength(0)
+        streamingReasoning.setLength(0)
         val placeholder = Message(
             id = streamingId,
             role = "assistant",
@@ -5144,7 +5365,7 @@ class ChatViewModel : BaseViewModel() {
         )
         _messages.value = _messages.value.filter { it.id != streamingId } + placeholder
         launchResult(
-            block = { unified.chat(currentSessionId, content, attachments) },
+            block = { unified.chat(currentSessionId, content, attachments, reasoningEffort) },
             onSuccess = {
                 _sending.value = false
                 // HTTP 成功后稍等再刷新，给 AI 生成时间
@@ -5297,7 +5518,11 @@ class ChatViewModel : BaseViewModel() {
             localChatJob?.cancel()
             localChatJob = ServiceContainer.applicationScope.launch {
                 val flow = try {
-                    unified.regenerateStream(currentSessionId, messageId)
+                    unified.regenerateStream(
+                        currentSessionId,
+                        messageId,
+                        ServiceContainer.prefs.getSessionReasoningEffort(currentSessionId)
+                    )
                 } catch (e: Exception) {
                     _sending.value = false
                     showError(e.message ?: string(R.string.chat_regenerate_failed))
@@ -5325,7 +5550,13 @@ class ChatViewModel : BaseViewModel() {
             }
         } else {
             launchResult(
-                block = { unified.regenerate(currentSessionId, messageId) },
+                block = {
+                    unified.regenerate(
+                        currentSessionId,
+                        messageId,
+                        ServiceContainer.prefs.getSessionReasoningEffort(currentSessionId)
+                    )
+                },
                 onSuccess = {
                     // 等待 socket 推送流式，或延迟刷新
                     ServiceContainer.applicationScope.launch {
@@ -5367,6 +5598,7 @@ class ChatViewModel : BaseViewModel() {
         _sending.value = false
         _plotChoicesLoading.value = false
         streamingContent.setLength(0)
+        streamingReasoning.setLength(0)
         _messages.value = _messages.value
             .filter { it.id != streamingId }
             .map { message ->

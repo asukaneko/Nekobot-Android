@@ -110,12 +110,25 @@ class NekobotRepository(
     suspend fun chat(
         id: String,
         message: String,
-        attachments: List<Map<String, Any>> = emptyList()
+        attachments: List<Map<String, Any>> = emptyList(),
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort = com.nekobot.app.data.model.ReasoningEffort.NONE
     ): Resource<ApiResult> =
-        safeCall { api.chat(id, ChatRequest.of(message, attachments)) }
+        safeCall { api.chat(id, ChatRequest.of(message, attachments, reasoningEffort)) }
 
-    suspend fun regenerate(id: String, messageId: String? = null): Resource<ApiResult> =
-        safeCall { api.regenerate(id, mapOf("message_id" to messageId)) }
+    suspend fun regenerate(
+        id: String,
+        messageId: String? = null,
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort = com.nekobot.app.data.model.ReasoningEffort.NONE
+    ): Resource<ApiResult> =
+        safeCall {
+            api.regenerate(
+                id,
+                mapOf(
+                    "message_id" to messageId,
+                    "reasoning_effort" to reasoningEffort.wireValue
+                )
+            )
+        }
     suspend fun stopGeneration(id: String): Resource<ApiResult> = safeCall { api.stopGeneration(mapOf("session_id" to id)) }
     suspend fun listMessages(id: String): Resource<List<Message>> = safeCall { api.listMessages(id) }
     suspend fun addMessage(id: String, content: String): Resource<Message> =

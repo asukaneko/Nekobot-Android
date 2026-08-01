@@ -538,12 +538,18 @@ class AIPipeline {
         // 尝试工具循环
         if (tools.isNotEmpty()) {
             runToolLoop(ctx, callbacks, tools, maxToolIterations, progress)
+            if (ctx.finalReasoning.isNotBlank()) {
+                progress.onThinkingContent(ctx, ctx.finalReasoning)
+            }
             progress.onDone(ctx)
             return
         }
 
         // 简单路径：单次模型调用
         runSimple(ctx, callbacks)
+        if (ctx.finalReasoning.isNotBlank()) {
+            progress.onThinkingContent(ctx, ctx.finalReasoning)
+        }
         progress.onDone(ctx)
     }
 
@@ -563,6 +569,9 @@ class AIPipeline {
             // 提取模型追踪信息
             extractModelTrace(ctx, response)
             ctx.finalContent = (response["content"] as? String) ?: ""
+            ctx.finalReasoning = (response["reasoning_content"] as? String)
+                ?: (response["thinking_content"] as? String)
+                ?: ""
             @Suppress("UNCHECKED_CAST")
             ctx.usage = (response["usage"] as? Map<String, Any>) ?: emptyMap()
             com.nekobot.app.data.local.LocalLogger.i(TAG, "模型调用完成(simple) | 回复=${ctx.finalContent.length}字符")
@@ -649,6 +658,7 @@ class AIPipeline {
         try {
             val executionResult = runToolLoopSession(session)
             val loopResult = executionResult.loopResult
+            ctx.finalReasoning = loopResult.finalReasoning
 
             @Suppress("UNCHECKED_CAST")
             ctx.usage = (loopResult.usage as? Map<String, Any>) ?: emptyMap()
@@ -703,6 +713,7 @@ class AIPipeline {
     ) {
         val messageId = UUID.randomUUID().toString()
         val fullContent = StringBuilder()
+        val fullReasoning = StringBuilder()
         val streamStart = System.nanoTime()
         var ttftMs: Double? = null
 
@@ -718,19 +729,31 @@ class AIPipeline {
                 val usage = (event["usage"] as? Map<String, Any>)
                 if (usage != null) ctx.usage = usage
 
+                val reasoningChunk = (event["thinking_content"] as? String)
+                    ?: (event["reasoning_content"] as? String)
+                    ?: ""
                 val chunk = (event["content"] as? String) ?: ""
-                if (chunk.isEmpty()) continue
+                if (reasoningChunk.isEmpty() && chunk.isEmpty()) continue
 
-                if (fullContent.isEmpty()) {
+                if (ctx.streamedMessage == null) {
                     // 首块：记录 TTFT
                     ttftMs = (System.nanoTime() - streamStart) / 1_000_000.0
                     val msg = mapOf("role" to "assistant", "content" to "", "id" to messageId)
-                    callbacks.onStreamStart(ctx, msg)
+                    if (event["_relayed"] != true) callbacks.onStreamStart(ctx, msg)
                     ctx.streamedMessage = msg
                 }
 
-                fullContent.append(chunk)
-                callbacks.onStreamChunk(ctx, chunk, messageId)
+                if (reasoningChunk.isNotEmpty()) {
+                    fullReasoning.append(reasoningChunk)
+                    if (event["_relayed"] != true) {
+                        callbacks.onReasoningChunk(ctx, reasoningChunk, messageId)
+                    }
+                }
+
+                if (chunk.isNotEmpty()) {
+                    fullContent.append(chunk)
+                    if (event["_relayed"] != true) callbacks.onStreamChunk(ctx, chunk, messageId)
+                }
             }
         } catch (e: Exception) {
             com.nekobot.app.data.local.LocalLogger.e(TAG, "Streaming failed: ${e.message}", e)
@@ -741,6 +764,7 @@ class AIPipeline {
         }
 
         ctx.finalContent = fullContent.toString()
+        ctx.finalReasoning = fullReasoning.toString()
         if (ctx.shouldStop()) {
             markStopped(ctx)
         }
@@ -777,6 +801,7 @@ class AIPipeline {
             @Suppress("UNCHECKED_CAST")
             val streamedMsg = (ctx.streamedMessage as Map<String, Any>).toMutableMap()
             streamedMsg["content"] = ctx.finalContent
+            if (ctx.finalReasoning.isNotBlank()) streamedMsg["reasoning_content"] = ctx.finalReasoning
             (ctx.metadata["group_speaker_name"] as? String)?.takeIf { it.isNotBlank() }?.let {
                 streamedMsg["sender"] = it
             }
@@ -835,6 +860,7 @@ class AIPipeline {
             "timestamp" to Instant.now().toString(),
             "sender" to ((ctx.metadata["group_speaker_name"] as? String)?.takeIf { it.isNotBlank() } ?: "AI")
         )
+        if (ctx.finalReasoning.isNotBlank()) assistantMessage["reasoning_content"] = ctx.finalReasoning
 
         // 添加工具调用历史（用于「继续」功能）
         if (ctx.toolTrace.isNotEmpty()) {

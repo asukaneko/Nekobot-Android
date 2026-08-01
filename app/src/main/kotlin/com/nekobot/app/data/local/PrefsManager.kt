@@ -440,6 +440,20 @@ class PrefsManager(context: Context) {
         prefs.edit().remove("chat_draft_$sessionId").apply()
     }
 
+    /** 获取指定会话的思考强度；默认关闭以保持既有调用行为。 */
+    fun getSessionReasoningEffort(sessionId: String): com.nekobot.app.data.model.ReasoningEffort =
+        com.nekobot.app.data.model.ReasoningEffort.fromValue(
+            prefs.getString("reasoning_effort_$sessionId", null)
+        )
+
+    /** 持久化指定会话的思考强度。 */
+    fun setSessionReasoningEffort(
+        sessionId: String,
+        effort: com.nekobot.app.data.model.ReasoningEffort
+    ) {
+        prefs.edit().putString("reasoning_effort_$sessionId", effort.wireValue).apply()
+    }
+
     /** 读取会话自动命名进度；没有旧记录时返回 null，由命名器从当前消息数恢复。 */
     fun getSessionAutoNamingState(sessionId: String): Pair<Boolean, Int>? {
         val countKey = "session_auto_name_count_$sessionId"

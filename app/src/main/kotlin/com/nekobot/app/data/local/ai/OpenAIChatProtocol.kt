@@ -48,14 +48,36 @@ object OpenAIChatProtocol : LocalProtocol {
         extra["temperature"]?.let { payload["temperature"] = it }
         extra["max_tokens"]?.let { payload["max_tokens"] = it }
         extra["top_p"]?.let { payload["top_p"] = it }
+        if (extra["deepseek_thinking"] == true) {
+            val effort = extra["reasoning_effort"]
+            payload["thinking"] = mapOf(
+                "type" to if (effort == "none") "disabled" else "enabled"
+            )
+            if (effort != null && effort != "none") payload["reasoning_effort"] = effort
+        } else {
+            extra["reasoning_effort"]?.let { payload["reasoning_effort"] = it }
+        }
         @Suppress("UNCHECKED_CAST")
         (extra["tools"] as? List<Map<String, Any>>)
             ?.takeIf { it.isNotEmpty() }
             ?.let {
                 payload["tools"] = it
-                payload["tool_choice"] = "auto"
+                if (extra["deepseek_thinking"] != true) payload["tool_choice"] = "auto"
             }
         return payload
+    }
+
+    override fun parseStreamThinkingChunk(chunkJson: String): String? = try {
+        val obj = JsonParser.parseString(chunkJson).asJsonObject
+        val delta = obj.getAsJsonArray("choices")
+            ?.takeIf { it.size() > 0 }
+            ?.get(0)?.asJsonObject
+            ?.getAsJsonObject("delta")
+            ?: return null
+        val value = delta.get("reasoning_content") ?: delta.get("thinking_content") ?: return null
+        value.takeIf { !it.isJsonNull }?.asString?.ifEmpty { null }
+    } catch (_: Exception) {
+        null
     }
 
     override fun parseStreamChunk(chunkJson: String): String? {

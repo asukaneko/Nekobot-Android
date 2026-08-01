@@ -71,6 +71,8 @@ class PipelineContext(
     // === 结果 ===
     /** 最终回复文本 */
     var finalContent: String = ""
+    /** 本轮模型返回的完整思考/推理文本。 */
+    var finalReasoning: String = ""
     /** 是否被用户提前停止 */
     var stoppedPrematurely: Boolean = false
     /** 工具调用追踪 */
@@ -221,6 +223,7 @@ open class PipelineCallbacks {
     }
 
     open fun onStreamStart(ctx: PipelineContext, message: Map<String, Any>) {}
+    open fun onReasoningChunk(ctx: PipelineContext, chunk: String, messageId: String) {}
     open fun onStreamChunk(ctx: PipelineContext, chunk: String, messageId: String) {}
     open fun onStreamEnd(ctx: PipelineContext, messageId: String) {}
 

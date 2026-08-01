@@ -17,6 +17,8 @@ internal class LocalAgentProgressReporter(
 ) : ProgressReporter() {
 
     private val steps = mutableListOf<ThinkingStep>()
+    private val reasoningContent = StringBuilder()
+    private var lastReasoningSegment: String = ""
 
     private fun emit(content: String, isComplete: Boolean = false) {
         onUpdate(
@@ -50,8 +52,15 @@ internal class LocalAgentProgressReporter(
     }
 
     override fun onThinkingContent(ctx: PipelineContext, content: String) {
+        if (content.isBlank() || content == lastReasoningSegment) return
+        lastReasoningSegment = content
+        reasoningContent.append(content)
+        val fullReasoning = reasoningContent.toString()
         steps.indexOfLast { it.type == "thinking" }.takeIf { it >= 0 }?.let { index ->
-            steps[index] = steps[index].copy(detail = content.take(120))
+            steps[index] = steps[index].copy(
+                detail = fullReasoning.takeLast(160),
+                thinkingContent = fullReasoning
+            )
         }
         emit("AI 正在思考...")
     }
@@ -62,6 +71,7 @@ internal class LocalAgentProgressReporter(
         arguments: Map<String, Any>,
         thinking: String
     ) {
+        if (thinking.isNotBlank()) onThinkingContent(ctx, thinking)
         val argumentPreview = arguments.entries
             .joinToString(", ") { "${it.key}=${it.value}" }
             .take(100)

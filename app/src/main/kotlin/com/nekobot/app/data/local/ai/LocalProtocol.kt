@@ -45,6 +45,9 @@ interface LocalProtocol {
      */
     fun parseStreamChunk(chunkJson: String): String?
 
+    /** 解析模型推理/思考文本增量；协议不支持时返回 null。 */
+    fun parseStreamThinkingChunk(chunkJson: String): String? = null
+
     /**
      * 解析流式 SSE chunk 中的 usage 字段（OpenAI 在最后 chunk 携带，Anthropic 在 message_delta 携带）。
      * @return Triple(prompt, completion, total)，无 usage 返回 null

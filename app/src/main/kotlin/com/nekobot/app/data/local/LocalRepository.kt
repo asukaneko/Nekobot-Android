@@ -887,6 +887,7 @@ class LocalRepository(
                     sessionId = sessionId,
                     role = role,
                     content = content,
+                    reasoningContent = m.str("reasoning_content", "thinking_content", "reasoningContent"),
                     sender = m.str("sender", "sender_name", "character_name"),
                     timestamp = ts,
                     model = m.str("model"),
@@ -1416,7 +1417,8 @@ class LocalRepository(
         actualModel: String? = null,
         usageEstimated: Boolean = false,
         durationMs: Double? = null,
-        ttftMs: Double? = null
+        ttftMs: Double? = null,
+        reasoningContent: String? = null
     ) = withContext(Dispatchers.IO) {
         val now = nowIso()
         val msg = LocalMessageEntity(
@@ -1424,6 +1426,7 @@ class LocalRepository(
             sessionId = sessionId,
             role = "assistant",
             content = content,
+            reasoningContent = reasoningContent?.takeIf(String::isNotBlank),
             sender = "assistant",
             timestamp = now,
             createdAt = now,
@@ -3426,7 +3429,8 @@ class LocalRepository(
     fun chat(
         sessionId: String,
         userMessage: String,
-        activeModel: LocalAiModelEntity
+        activeModel: LocalAiModelEntity,
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort = com.nekobot.app.data.model.ReasoningEffort.NONE
     ): Flow<RealtimeEvent> = flow {
         // 1. 保存用户消息
         addMessage(sessionId, "user", userMessage)
@@ -3454,6 +3458,7 @@ class LocalRepository(
             activeModel.temperature?.let { put("temperature", it) }
             activeModel.maxTokens?.let { put("max_tokens", it) }
             activeModel.topP?.let { put("top_p", it) }
+            put("reasoning_effort", reasoningEffort.wireValue)
         }
 
         // 5. 构造故障转移队列：activeModel 优先，附加同 purpose 其他启用模型
@@ -3467,6 +3472,7 @@ class LocalRepository(
 
         // 6. 流式调用（带故障转移）
         val fullContent = StringBuilder()
+        val fullReasoning = StringBuilder()
         var inputTokens: Int? = null
         var outputTokens: Int? = null
         var modelName: String? = null
@@ -3478,6 +3484,12 @@ class LocalRepository(
                 is RealtimeEvent.StreamChunk -> {
                     if (fullContent.isEmpty()) firstChunkNano = System.nanoTime()
                     fullContent.append(event.chunk)
+                }
+                is RealtimeEvent.ReasoningChunk -> {
+                    if (reasoningEffort != com.nekobot.app.data.model.ReasoningEffort.NONE) {
+                        fullReasoning.append(event.chunk)
+                        emit(event)
+                    }
                 }
                 is RealtimeEvent.Usage -> {
                     inputTokens = event.inputTokens
@@ -3512,7 +3524,8 @@ class LocalRepository(
                             actualModel = modelName ?: activeModel.model,
                             usageEstimated = usage.estimated,
                             durationMs = durationMs,
-                            ttftMs = ttftMs ?: durationMs
+                            ttftMs = ttftMs ?: durationMs,
+                            reasoningContent = fullReasoning.toString()
                         )
                     }
                     emit(RealtimeEvent.StreamEnd(sessionId))
@@ -3557,7 +3570,8 @@ class LocalRepository(
     fun regenerate(
         sessionId: String,
         messageId: String?,
-        activeModel: LocalAiModelEntity
+        activeModel: LocalAiModelEntity,
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort = com.nekobot.app.data.model.ReasoningEffort.NONE
     ): Flow<RealtimeEvent> = flow {
         val messages = messageDao.listBySession(sessionId)
         val targetId = messageId ?: messages.lastOrNull { it.role == "assistant" }?.id
@@ -3587,7 +3601,7 @@ class LocalRepository(
         lastUserBefore?.let { messageDao.deleteById(it.id) }
 
         // 复用 chat 流程
-        chat(sessionId, userInput, activeModel).collect { emit(it) }
+        chat(sessionId, userInput, activeModel, reasoningEffort).collect { emit(it) }
     }.flowOn(Dispatchers.IO)
 
     /** 停止生成：同时中断模型请求、工具调用、命令进程和授权等待。 */
@@ -3642,7 +3656,8 @@ class LocalRepository(
         persistUserMessage: Boolean = true,
         internalMetadata: Map<String, Any> = emptyMap(),
         assistantSource: String? = null,
-        allowTools: Boolean = true
+        allowTools: Boolean = true,
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort = com.nekobot.app.data.model.ReasoningEffort.NONE
     ): Flow<RealtimeEvent> = flow {
         val generationController = LocalGenerationController()
         var agentForegroundStarted = false
@@ -3720,7 +3735,8 @@ class LocalRepository(
                 activeModel = activeModel,
                 attachments = attachments,
                 parentMessageId = parentMessageId ?: java.util.UUID.randomUUID().toString(),
-                generationController = generationController
+                generationController = generationController,
+                reasoningEffort = reasoningEffort
             ).collect { emit(it) }
             return@flow
         }
@@ -3737,7 +3753,7 @@ class LocalRepository(
             messageDao.listBySession(sessionId).lastOrNull { it.role == "user" }?.let {
                 messageDao.deleteById(it.id)
             }
-            chat(sessionId, userMessage, activeModel).collect { emit(it) }
+            chat(sessionId, userMessage, activeModel, reasoningEffort).collect { emit(it) }
             return@flow
         }
 
@@ -3820,6 +3836,7 @@ class LocalRepository(
                 )
             },
             generationController = generationController,
+            reasoningEffort = reasoningEffort,
             execConfirmationEmitter = { request -> _execConfirmationEvents.tryEmit(request) }
         )
 
@@ -3838,6 +3855,7 @@ class LocalRepository(
                 if (session.plotMode) put("plot_mode", true)
                 if (session.plotRealTimeSync) put("plot_realtime_sync", true)
                 put("auto_state_interval", session.autoStateInterval)
+                put("reasoning_effort", reasoningEffort.wireValue)
                 if (disabledKeys.isNotEmpty()) put("disabled_prompt_keys", disabledKeys)
                 // senderName 是 AI 扮演的角色名；userPersona 是本会话玩家身份描述（含姓名/背景）。
                 // userPersona 供 AIPipeline 注入 PromptStack 的 user.persona 项、AutoMemory 识别玩家姓名。
@@ -4197,7 +4215,8 @@ class LocalRepository(
         activeModel: LocalAiModelEntity,
         attachments: List<Map<String, Any>>,
         parentMessageId: String,
-        generationController: LocalGenerationController
+        generationController: LocalGenerationController,
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort
     ): Flow<RealtimeEvent> = flow {
         val characterIds = session.characterIds?.let { json ->
             runCatching {
@@ -4332,6 +4351,7 @@ class LocalRepository(
                     )
                 },
                 generationController = generationController,
+                reasoningEffort = reasoningEffort,
                 execConfirmationEmitter = { request -> _execConfirmationEvents.tryEmit(request) }
             )
 
@@ -4346,6 +4366,7 @@ class LocalRepository(
                 )
                 if (isCrossTalk) put("cross_talk_triggered", true)
                 put("auto_state_interval", session.autoStateInterval)
+                put("reasoning_effort", reasoningEffort.wireValue)
                 if (disabledKeys.isNotEmpty()) put("disabled_prompt_keys", disabledKeys)
                 if (customPrompts.isNotEmpty()) put("custom_prompts", customPrompts)
                 session.userPersona?.takeIf { it.isNotBlank() }?.let { put("user_persona", it) }
@@ -6065,6 +6086,7 @@ $charSection$topicSection
         id = id,
         role = role,
         content = content,
+        reasoningContent = reasoningContent,
         sender = sender,
         timestamp = timestamp,
         model = model,

@@ -11,8 +11,10 @@ import com.nekobot.app.data.local.db.LocalSessionEntity
 import com.nekobot.app.data.local.db.LocalWorldBookEntryEntity
 import com.nekobot.app.data.local.db.NekobotDatabase
 import com.nekobot.app.data.model.ThinkingCard
+import com.nekobot.app.data.model.ReasoningEffort
 import com.nekobot.app.data.remote.RealtimeEvent
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 /**
@@ -73,6 +75,8 @@ internal class LocalPipelineCallbacks(
     private val visionDescriber: (suspend (imageUrl: String, question: String) -> String)? = null,
     /** 当前生成的会话级取消控制器。 */
     private val generationController: LocalGenerationController = LocalGenerationController(),
+    /** 当前会话选择的思考强度。 */
+    private val reasoningEffort: ReasoningEffort = ReasoningEffort.NONE,
     /**
      * 高风险工具授权请求的桥接 emitter：把 LocalDbToolExecutor.requestAuthorization
      * 内部的 ExecConfirmationRequest 路由到 LocalRepository 的 execConfirmationEvents
@@ -157,6 +161,7 @@ internal class LocalPipelineCallbacks(
 
     /** 流式消息 ID */
     private var streamMessageId: String = ""
+    private var activeAgentProgressReporter: LocalAgentProgressReporter? = null
 
     // ---- 会话 / 消息 I/O ----
 
@@ -379,6 +384,13 @@ internal class LocalPipelineCallbacks(
         }
 
         val messageId = (message["id"] as? String) ?: java.util.UUID.randomUUID().toString()
+        val reasoningContent = if (reasoningEffort == ReasoningEffort.NONE) {
+            ""
+        } else {
+            (message["reasoning_content"] as? String)
+                ?: (message["thinking_content"] as? String)
+                ?: ctx.finalReasoning
+        }
 
         // 保存到 Room（同步执行，因为已在 IO 线程）
         kotlinx.coroutines.runBlocking {
@@ -394,7 +406,8 @@ internal class LocalPipelineCallbacks(
                 model = modelName,
                 createdAt = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
                 toolCallHistory = toolCallHistoryJson,
-                source = assistantSource
+                source = assistantSource,
+                reasoningContent = reasoningContent.takeIf(String::isNotBlank)
             ))
 
             // 更新会话元信息
@@ -464,6 +477,7 @@ internal class LocalPipelineCallbacks(
                 activeModel.maxTokens?.let { put("max_tokens", it) }
                 activeModel.topP?.let { put("top_p", it) }
                 if (tools.isNotEmpty()) put("tools", tools)
+                put("reasoning_effort", reasoningEffort.wireValue)
             }
 
             // 优先走 coordinator（持久化健康状态 + token 限额 + 超时）；为空时回退到内存版
@@ -512,7 +526,7 @@ internal class LocalPipelineCallbacks(
                 put("_model_name", result.usedModelName ?: activeModel.name)
                 put("_model_actual_name", result.usedModelActualName ?: activeModel.model)
                 if (result.toolCalls.isNotEmpty()) put("tool_calls", result.toolCalls)
-                if (result.thinkingContent.isNotBlank()) {
+                if (reasoningEffort != ReasoningEffort.NONE && result.thinkingContent.isNotBlank()) {
                     put("thinking_content", result.thinkingContent)
                 }
             }
@@ -530,50 +544,62 @@ internal class LocalPipelineCallbacks(
                 activeModel.temperature?.let { put("temperature", it) }
                 activeModel.maxTokens?.let { put("max_tokens", it) }
                 activeModel.topP?.let { put("top_p", it) }
+                put("reasoning_effort", reasoningEffort.wireValue)
             }
 
-            // 流式回退到非流式 coordinator/chatOnceWithFailover（流式故障转移在 LocalRepository.chat 中处理）
-            val result = if (coordinator != null) {
-                kotlinx.coroutines.runBlocking {
-                    try {
-                        val exec = coordinator.execute(modelQueue, activeModel.purpose.ifBlank { "chat" }) { model ->
-                            chatOnceForGeneration(model, messages, extra)
+            val chunks = mutableListOf<Map<String, Any>>()
+            var streamError: String? = null
+            var usedModelName = activeModel.name
+            var usedActualModel = activeModel.model
+            var usage: Map<String, Any> = emptyMap()
+
+            // UI 事件在网络读取时立即转发；返回的 chunk 列表仅供 Pipeline 聚合与落库，
+            // 通过 _relayed 标志避免 AIPipeline 再次推送同一分片。
+            kotlinx.coroutines.runBlocking {
+                aiClient.chatStreamWithFailover(modelQueue, messages, extra).collect { event ->
+                    if (generationController.isStopped) {
+                        throw kotlinx.coroutines.CancellationException("生成已停止")
+                    }
+                    when (event) {
+                        is RealtimeEvent.StreamStart -> emitEvent(RealtimeEvent.StreamStart(null))
+                        is RealtimeEvent.ReasoningChunk -> {
+                            if (reasoningEffort != ReasoningEffort.NONE) {
+                                if (session.sessionMode.equals("agent", ignoreCase = true)) {
+                                    activeAgentProgressReporter?.onThinkingContent(ctx, event.chunk)
+                                } else {
+                                    emitEvent(event)
+                                }
+                                chunks += mapOf("thinking_content" to event.chunk, "_relayed" to true)
+                            }
                         }
-                        exec.value.copy(
-                            usedModelId = exec.model.id,
-                            usedModelName = exec.model.name,
-                            usedModelActualName = exec.model.model
-                        )
-                    } catch (e: FailoverAllFailedException) {
-                        LocalAiResult("", error = e.message ?: "所有模型均失败")
+                        is RealtimeEvent.StreamChunk -> {
+                            emitEvent(event)
+                            chunks += mapOf("content" to event.chunk, "_relayed" to true)
+                        }
+                        is RealtimeEvent.Usage -> {
+                            usedModelName = event.modelDisplayName ?: usedModelName
+                            usedActualModel = event.model ?: usedActualModel
+                            usage = mapOf(
+                                "prompt" to event.inputTokens,
+                                "completion" to event.outputTokens,
+                                "total" to event.inputTokens + event.outputTokens
+                            )
+                        }
+                        is RealtimeEvent.Error -> streamError = event.message
+                        else -> Unit
                     }
                 }
-            } else {
-                kotlinx.coroutines.runBlocking {
-                    aiClient.chatOnceWithFailover(
-                        modelQueue,
-                        messages,
-                        extra,
-                        requestTag = session.id,
-                        shouldStop = { generationController.isStopped }
-                    )
-                }
             }
-
-            if (result.error != null) {
-                throw RuntimeException(result.error)
+            streamError?.let { throw RuntimeException(it) }
+            chunks += buildMap<String, Any> {
+                if (usage.isNotEmpty()) put("usage", usage)
+                put("_model_id", activeModel.id)
+                put("_model_name", usedModelName)
+                put("_model_actual_name", usedActualModel)
+                put("_relayed", true)
             }
-
-            // 模型调用完成 → 触发 model.after_call hook
-            triggerModelAfterCallHook(ctx, result.usedModelName ?: activeModel.name)
-
-            listOf(buildMap<String, Any> {
-                put("content", result.content)
-                put("usage", result.usage)
-                put("_model_id", result.usedModelId ?: activeModel.id)
-                put("_model_name", result.usedModelName ?: activeModel.name)
-                put("_model_actual_name", result.usedModelActualName ?: activeModel.model)
-            })
+            triggerModelAfterCallHook(ctx, usedModelName)
+            chunks
         }
     }
 
@@ -606,6 +632,11 @@ internal class LocalPipelineCallbacks(
             id = (message["id"] as? String),
             role = "assistant",
             content = (message["content"] as? String) ?: "",
+            reasoningContent = if (reasoningEffort == ReasoningEffort.NONE) null else {
+                (message["reasoning_content"] as? String)
+                    ?: (message["thinking_content"] as? String)
+                    ?: ctx.finalReasoning.takeIf(String::isNotBlank)
+            },
             sender = if (session.sessionMode.equals("group", ignoreCase = true)) {
                 (ctx.metadata["group_speaker_name"] as? String) ?: character?.name
             } else {
@@ -636,6 +667,15 @@ internal class LocalPipelineCallbacks(
         emitEvent(RealtimeEvent.StreamChunk(chunk))
     }
 
+    override fun onReasoningChunk(ctx: PipelineContext, chunk: String, messageId: String) {
+        if (reasoningEffort == ReasoningEffort.NONE) return
+        if (session.sessionMode.equals("agent", ignoreCase = true)) {
+            activeAgentProgressReporter?.onThinkingContent(ctx, chunk)
+        } else {
+            emitEvent(RealtimeEvent.ReasoningChunk(chunk))
+        }
+    }
+
     override fun onStreamEnd(ctx: PipelineContext, messageId: String) {
         emitEvent(RealtimeEvent.StreamEnd(session.id))
     }
@@ -651,7 +691,7 @@ internal class LocalPipelineCallbacks(
                 emitEvent(RealtimeEvent.ThinkingCardUpdate(card))
                 onThinkingCardUpdate?.invoke(card)
             }
-        )
+        ).also { activeAgentProgressReporter = it }
     }
 
     // ---- 工具确认 ----

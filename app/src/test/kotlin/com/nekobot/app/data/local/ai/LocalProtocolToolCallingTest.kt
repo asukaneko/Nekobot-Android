@@ -78,6 +78,45 @@ class LocalProtocolToolCallingTest {
     }
 
     @Test
+    fun openAiReasoningPayloadAndStreamAreSeparatedFromAnswer() {
+        val payload = OpenAIChatProtocol.buildPayload(
+            model = "gpt-5",
+            messages = listOf(mapOf("role" to "user", "content" to "think")),
+            stream = true,
+            extra = mapOf("reasoning_effort" to "high")
+        )
+        assertEquals("high", payload["reasoning_effort"])
+        assertEquals(
+            "reasoning",
+            OpenAIChatProtocol.parseStreamThinkingChunk(
+                """{"choices":[{"delta":{"reasoning_content":"reasoning","content":null}}]}"""
+            )
+        )
+        assertEquals(
+            null,
+            OpenAIChatProtocol.parseStreamChunk(
+                """{"choices":[{"delta":{"reasoning_content":"reasoning","content":null}}]}"""
+            )
+        )
+    }
+
+    @Test
+    fun deepSeekThinkingUsesToggleAndOmitsToolChoice() {
+        val payload = OpenAIChatProtocol.buildPayload(
+            model = "deepseek-chat",
+            messages = listOf(mapOf("role" to "user", "content" to "think")),
+            stream = true,
+            extra = mapOf(
+                "reasoning_effort" to "max",
+                "deepseek_thinking" to true,
+                "tools" to listOf(toolDefinition)
+            )
+        )
+        assertEquals(mapOf("type" to "enabled"), payload["thinking"])
+        assertTrue("tool_choice" !in payload)
+    }
+
+    @Test
     fun anthropicPayloadAndResponsePreserveToolCalls() {
         val payload = AnthropicMessagesProtocol.buildPayload(
             model = "claude-test",
@@ -107,6 +146,35 @@ class LocalProtocolToolCallingTest {
 
         assertEquals("tool_use", parsed.finishReason)
         assertEquals("get_date_time", parsed.toolCalls.single()["name"])
+    }
+
+    @Test
+    fun anthropicAdaptiveThinkingParsesDeltasAndResponse() {
+        val payload = AnthropicMessagesProtocol.buildPayload(
+            model = "claude-test",
+            messages = listOf(mapOf("role" to "user", "content" to "think")),
+            stream = true,
+            extra = mapOf("reasoning_effort" to "high", "temperature" to 0.8)
+        )
+        assertEquals(mapOf("type" to "adaptive"), payload["thinking"])
+        assertEquals(mapOf("effort" to "high"), payload["output_config"])
+        assertTrue("temperature" !in payload)
+        assertEquals(
+            "analysis",
+            AnthropicMessagesProtocol.parseStreamThinkingChunk(
+                """{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"analysis"}}"""
+            )
+        )
+        val parsed = AnthropicMessagesProtocol.parseNonStreamResponse(
+            mapOf(
+                "content" to listOf(
+                    mapOf("type" to "thinking", "thinking" to "analysis"),
+                    mapOf("type" to "text", "text" to "answer")
+                )
+            )
+        )
+        assertEquals("analysis", parsed.thinkingContent)
+        assertEquals("answer", parsed.content)
     }
 
     @Test

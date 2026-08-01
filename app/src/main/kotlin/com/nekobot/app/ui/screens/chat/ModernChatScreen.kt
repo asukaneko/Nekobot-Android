@@ -56,13 +56,17 @@ import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Compress
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
 import androidx.compose.material.icons.filled.KeyboardHide
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
@@ -116,6 +120,7 @@ import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.ChatInputLayoutMode
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.model.MessageFavoriteRequest
+import com.nekobot.app.data.model.ReasoningEffort
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.NekoDialog
@@ -171,8 +176,8 @@ fun ModernChatScreen(
             plotChoicesLoading = plotChoicesLoading,
             plotMode = session?.plotMode == true,
             plotRealTimeSync = session?.plotRealTimeSync == true,
-            onSend = { text, plotChoiceId, attachments ->
-                viewModel.sendMessage(text, plotChoiceId, attachments)
+            onSend = { text, plotChoiceId, attachments, reasoningEffort ->
+                viewModel.sendMessage(text, plotChoiceId, attachments, reasoningEffort)
             },
             onStop = viewModel::stop,
             onCompress = viewModel::compressContext,
@@ -207,7 +212,7 @@ private fun ModernChatComposer(
     plotChoicesLoading: Boolean,
     plotMode: Boolean,
     plotRealTimeSync: Boolean,
-    onSend: (String, String?, List<Map<String, Any>>) -> Unit,
+    onSend: (String, String?, List<Map<String, Any>>, ReasoningEffort) -> Unit,
     onStop: () -> Unit,
     onCompress: () -> Unit,
     onClear: () -> Unit,
@@ -230,6 +235,9 @@ private fun ModernChatComposer(
         ServiceContainer.prefs.setChatInputDraft(sessionId, input)
     }
     var panelExpanded by remember { mutableStateOf(false) }
+    var reasoningEffort by remember(sessionId) {
+        mutableStateOf(ServiceContainer.prefs.getSessionReasoningEffort(sessionId))
+    }
     var inputExpanded by remember { mutableStateOf(false) }
     var chatInputLayout by remember {
         mutableStateOf(ServiceContainer.prefs.chatInputLayoutMode)
@@ -607,6 +615,11 @@ private fun ModernChatComposer(
                     fileBusy = fileBusy,
                     plotMode = plotMode,
                     plotRealTimeSync = plotRealTimeSync,
+                    reasoningEffort = reasoningEffort,
+                    onReasoningEffortChange = { effort ->
+                        reasoningEffort = effort
+                        ServiceContainer.prefs.setSessionReasoningEffort(sessionId, effort)
+                    },
                     onCompress = { onCompress() },
                     onSendFile = {
                         filePickMode = "send"
@@ -806,7 +819,7 @@ private fun ModernChatComposer(
                                             pendingImageAttachments = emptyList()
                                             closePanel()
                                             keyboard?.hide()
-                                            onSend(text, choiceId, attachments)
+                                            onSend(text, choiceId, attachments, reasoningEffort)
                                         }
                                         ModernComposerAction.VOICE -> requestMicPermission.launch(
                                             android.Manifest.permission.RECORD_AUDIO
@@ -1331,6 +1344,151 @@ private fun ModernPlotChoices(
 }
 
 @Composable
+private fun ReasoningEffortSelector(
+    selected: ReasoningEffort,
+    enabled: Boolean,
+    onSelected: (ReasoningEffort) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    fun label(effort: ReasoningEffort): String = when (effort) {
+        ReasoningEffort.NONE -> "关闭"
+        ReasoningEffort.MINIMAL -> "极低"
+        ReasoningEffort.LOW -> "低"
+        ReasoningEffort.MEDIUM -> "中"
+        ReasoningEffort.HIGH -> "高"
+        ReasoningEffort.MAX -> "最高"
+    }
+
+    fun description(effort: ReasoningEffort): String = when (effort) {
+        ReasoningEffort.NONE -> "不请求也不显示模型思考"
+        ReasoningEffort.MINIMAL -> "尽量减少推理开销"
+        ReasoningEffort.LOW -> "适合简单问题"
+        ReasoningEffort.MEDIUM -> "速度与质量平衡"
+        ReasoningEffort.HIGH -> "适合复杂任务"
+        ReasoningEffort.MAX -> "使用模型最高推理强度"
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f),
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)
+        )
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = enabled) { expanded = !expanded }
+                    .padding(horizontal = 13.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Psychology,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "思考强度",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = description(selected),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.74f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Text(
+                    text = selected.wireValue,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.width(5.dp))
+                Icon(
+                    imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                    )
+                    ReasoningEffort.entries.forEach { effort ->
+                        val active = effort == selected
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = enabled) {
+                                    onSelected(effort)
+                                    expanded = false
+                                }
+                                .background(
+                                    if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                                    else Color.Transparent
+                                )
+                                .padding(horizontal = 13.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier.size(18.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (active) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = label(effort),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal
+                                )
+                                Text(
+                                    text = description(effort),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
+                            Text(
+                                text = effort.wireValue,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (active) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ModernChatActionPanel(
     messageCount: Int,
     charCount: Int,
@@ -1341,6 +1499,8 @@ private fun ModernChatActionPanel(
     fileBusy: Boolean,
     plotMode: Boolean,
     plotRealTimeSync: Boolean,
+    reasoningEffort: ReasoningEffort,
+    onReasoningEffortChange: (ReasoningEffort) -> Unit,
     onCompress: () -> Unit,
     onSendFile: () -> Unit,
     onOpenWorkspace: () -> Unit,
@@ -1418,6 +1578,13 @@ private fun ModernChatActionPanel(
                         modifier = Modifier.weight(1f)
                     )
                 }
+            }
+            item {
+                ReasoningEffortSelector(
+                    selected = reasoningEffort,
+                    enabled = !sending,
+                    onSelected = onReasoningEffortChange
+                )
             }
             item { ModernSectionTitle(stringResource(R.string.chat_session_tools)) }
             item {

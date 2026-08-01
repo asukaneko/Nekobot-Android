@@ -147,4 +147,24 @@ class OpenAIResponsesProtocolTest {
             )
         )
     }
+
+    @Test
+    fun `reasoning effort and summary delta are supported`() {
+        val payload = OpenAIResponsesProtocol.buildPayload(
+            model = "gpt-5",
+            messages = listOf(mapOf("role" to "user", "content" to "think")),
+            stream = true,
+            extra = mapOf("reasoning_effort" to "high")
+        )
+
+        val reasoning = payload["reasoning"] as Map<*, *>
+        assertEquals("high", reasoning["effort"])
+        assertEquals("auto", reasoning["summary"])
+        assertEquals(
+            "step one",
+            OpenAIResponsesProtocol.parseStreamThinkingChunk(
+                """{"type":"response.reasoning_summary_text.delta","delta":"step one"}"""
+            )
+        )
+    }
 }

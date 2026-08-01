@@ -131,8 +131,19 @@ object AnthropicMessagesProtocol : LocalProtocol {
         )
         systemMessage?.let { payload["system"] = it }
         if (stream) payload["stream"] = true
-        (extra["temperature"] as? Number)?.let { payload["temperature"] = it.toDouble() }
-        (extra["top_p"] as? Number)?.let { payload["top_p"] = it.toDouble() }
+        val reasoningEffort = extra["reasoning_effort"] as? String
+        val thinkingEnabled = reasoningEffort != null && reasoningEffort != "none"
+        if (reasoningEffort == "none") {
+            payload["thinking"] = mapOf("type" to "disabled")
+        } else if (thinkingEnabled) {
+            payload["thinking"] = mapOf("type" to "adaptive")
+            payload["output_config"] = mapOf("effort" to reasoningEffort)
+        }
+        // Anthropic 思考模式不接受 temperature/top_p 调优参数。
+        if (!thinkingEnabled) {
+            (extra["temperature"] as? Number)?.let { payload["temperature"] = it.toDouble() }
+            (extra["top_p"] as? Number)?.let { payload["top_p"] = it.toDouble() }
+        }
         @Suppress("UNCHECKED_CAST")
         (extra["tools"] as? List<Map<String, Any>>)
             ?.takeIf { it.isNotEmpty() }
@@ -148,6 +159,18 @@ object AnthropicMessagesProtocol : LocalProtocol {
                 }
             }
         return payload
+    }
+
+    override fun parseStreamThinkingChunk(chunkJson: String): String? {
+        return try {
+            val obj = JsonParser.parseString(chunkJson).asJsonObject
+            if (obj.get("type")?.asString != "content_block_delta") return null
+            val delta = obj.getAsJsonObject("delta") ?: return null
+            if (delta.get("type")?.asString != "thinking_delta") return null
+            delta.get("thinking")?.takeIf { !it.isJsonNull }?.asString?.ifEmpty { null }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     override fun parseStreamChunk(chunkJson: String): String? {
@@ -185,6 +208,10 @@ object AnthropicMessagesProtocol : LocalProtocol {
             val b = block as? Map<*, *> ?: return@mapNotNull null
             if (b["type"] == "text") b["text"] as? String else null
         }?.joinToString("") ?: ""
+        val thinking = contentBlocks?.mapNotNull { block ->
+            val b = block as? Map<*, *> ?: return@mapNotNull null
+            if (b["type"] == "thinking") b["thinking"] as? String else null
+        }?.joinToString("") ?: ""
 
         val usage = (data["usage"] as? Map<*, *>)?.let { u ->
             val input = (u["input_tokens"] as? Number)?.toInt() ?: 0
@@ -214,7 +241,8 @@ object AnthropicMessagesProtocol : LocalProtocol {
             content = content,
             usage = usage,
             toolCalls = toolCalls,
-            finishReason = (data["stop_reason"] as? String).orEmpty()
+            finishReason = (data["stop_reason"] as? String).orEmpty(),
+            thinkingContent = thinking
         )
     }
 }

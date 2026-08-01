@@ -277,11 +277,16 @@ class UnifiedRepository(
      *
      * @param attachments 附件列表（每项含 type/name/path 等，本地模式用于图片视觉识别）
      */
-    suspend fun chatStream(id: String, message: String, attachments: List<Map<String, Any>> = emptyList()): Flow<RealtimeEvent>? {
+    suspend fun chatStream(
+        id: String,
+        message: String,
+        attachments: List<Map<String, Any>> = emptyList(),
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort = com.nekobot.app.data.model.ReasoningEffort.NONE
+    ): Flow<RealtimeEvent>? {
         if (!isLocal) return null
         val model = local.getRoutedModel(id, message, attachments) ?: return null
         // 启用角色运行时的会话走 Pipeline，否则走旧流程
-        return local.chatWithPipeline(id, message, model, attachments)
+        return local.chatWithPipeline(id, message, model, attachments, reasoningEffort = reasoningEffort)
     }
 
     /**
@@ -298,21 +303,30 @@ class UnifiedRepository(
     suspend fun chat(
         id: String,
         message: String,
-        attachments: List<Map<String, Any>> = emptyList()
+        attachments: List<Map<String, Any>> = emptyList(),
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort = com.nekobot.app.data.model.ReasoningEffort.NONE
     ): Resource<ApiResult> =
-        if (isLocal) Resource.Success(local.apiResultOk()) else remote.chat(id, message, attachments)
+        if (isLocal) Resource.Success(local.apiResultOk()) else remote.chat(id, message, attachments, reasoningEffort)
 
     /**
      * 重新生成。本地模式返回 Flow，服务器模式返回 null（走 HTTP + Socket）。
      */
-    suspend fun regenerateStream(id: String, messageId: String?): Flow<RealtimeEvent>? {
+    suspend fun regenerateStream(
+        id: String,
+        messageId: String?,
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort = com.nekobot.app.data.model.ReasoningEffort.NONE
+    ): Flow<RealtimeEvent>? {
         if (!isLocal) return null
         val model = local.getRoutedModel(id, "重新生成上一条回复") ?: return null
-        return local.regenerate(id, messageId, model)
+        return local.regenerate(id, messageId, model, reasoningEffort)
     }
 
-    suspend fun regenerate(id: String, messageId: String? = null): Resource<ApiResult> =
-        if (isLocal) Resource.Success(local.apiResultOk()) else remote.regenerate(id, messageId)
+    suspend fun regenerate(
+        id: String,
+        messageId: String? = null,
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort = com.nekobot.app.data.model.ReasoningEffort.NONE
+    ): Resource<ApiResult> =
+        if (isLocal) Resource.Success(local.apiResultOk()) else remote.regenerate(id, messageId, reasoningEffort)
 
     suspend fun stopGeneration(id: String): Resource<ApiResult> {
         return if (isLocal) {

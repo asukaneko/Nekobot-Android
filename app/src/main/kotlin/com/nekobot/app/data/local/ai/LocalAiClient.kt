@@ -5,6 +5,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.local.oauth.OAuthRuntimeCredential
+import com.nekobot.app.data.model.ReasoningEffort
 import com.nekobot.app.data.remote.RealtimeEvent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -93,6 +94,7 @@ class LocalAiClient(
         emit(RealtimeEvent.StreamStart(null))
 
         val fullContent = StringBuilder()
+        val fullThinking = StringBuilder()
         var response: Response? = null
         try {
             val (runtimeModel, credential) = resolveRuntimeModel(model)
@@ -148,8 +150,17 @@ class LocalAiClient(
                         emit(RealtimeEvent.StreamEnd(null))
                         return@flow
                     }
-                    val chunk = protocol.parseStreamChunk(data) ?: continue
-                    if (chunk.isNotEmpty()) {
+                    protocol.parseStreamThinkingChunk(data)?.takeIf(String::isNotEmpty)?.let {
+                        fullThinking.append(it)
+                        emit(RealtimeEvent.ReasoningChunk(it))
+                    }
+                    protocol.parseStreamFinalResponse(data)?.thinkingContent
+                        ?.takeIf { it.isNotBlank() && fullThinking.isEmpty() }
+                        ?.let {
+                            fullThinking.append(it)
+                            emit(RealtimeEvent.ReasoningChunk(it))
+                        }
+                    protocol.parseStreamChunk(data)?.takeIf(String::isNotEmpty)?.let { chunk ->
                         fullContent.append(chunk)
                         emit(RealtimeEvent.StreamChunk(chunk))
                     }
@@ -272,6 +283,7 @@ class LocalAiClient(
                 throw FailoverHttpException(response.code, "HTTP ${response.code}: $errorBody")
             }
             val content = StringBuilder()
+            val thinking = StringBuilder()
             var usage = emptyMap<String, Int>()
             var terminal: LocalModelResponse? = null
             val source = response.body?.byteStream()
@@ -293,6 +305,7 @@ class LocalAiClient(
                         throw IllegalStateException(it)
                     }
                     protocol.parseStreamFinalResponse(data)?.let { terminal = it }
+                    protocol.parseStreamThinkingChunk(data)?.let(thinking::append)
                     protocol.parseStreamChunk(data)?.let(content::append)
                 }
             }
@@ -305,7 +318,7 @@ class LocalAiClient(
                 usedModelActualName = model.model,
                 toolCalls = parsed?.toolCalls.orEmpty(),
                 finishReason = parsed?.finishReason.orEmpty(),
-                thinkingContent = parsed?.thinkingContent.orEmpty()
+                thinkingContent = parsed?.thinkingContent?.takeIf(String::isNotEmpty) ?: thinking.toString()
             )
         }
     }
@@ -337,10 +350,49 @@ class LocalAiClient(
     ): Map<String, Any?> {
         val isCodexSubscription = model.provider == "openai-codex" ||
             model.baseUrl.contains("chatgpt.com/backend-api/codex")
-        return if (isCodexSubscription && model.protocol == OpenAIResponsesProtocol.name) {
+        val normalized = if (isCodexSubscription && model.protocol == OpenAIResponsesProtocol.name) {
             extra - setOf("temperature", "max_tokens", "top_p")
         } else {
             extra
+        }
+        val effort = ReasoningEffort.fromValue(normalized["reasoning_effort"] as? String)
+        val provider = model.provider.orEmpty().lowercase()
+        val endpoint = model.baseUrl.lowercase()
+        val deepSeek = provider.contains("deepseek") || endpoint.contains("deepseek")
+        val mappedEffort = when {
+            deepSeek -> when (effort) {
+                ReasoningEffort.NONE -> "none"
+                ReasoningEffort.MAX -> "max"
+                else -> "high"
+            }
+            model.protocol == AnthropicMessagesProtocol.name -> when (effort) {
+                ReasoningEffort.MINIMAL -> "low"
+                else -> effort.wireValue
+            }
+            model.protocol == OpenAIResponsesProtocol.name -> when (effort) {
+                ReasoningEffort.MAX -> "xhigh"
+                else -> effort.wireValue
+            }
+            provider.contains("google") || provider.contains("gemini") || endpoint.contains("googleapis") ->
+                if (effort == ReasoningEffort.MAX) "high" else effort.wireValue
+            provider.contains("openai") ->
+                if (effort == ReasoningEffort.MAX) "xhigh" else effort.wireValue
+            else -> if (effort == ReasoningEffort.MAX) "high" else effort.wireValue
+        }
+        val modelName = model.model.lowercase()
+        val knownReasoningTarget = deepSeek ||
+            model.protocol == AnthropicMessagesProtocol.name ||
+            model.protocol == OpenAIResponsesProtocol.name ||
+            provider.contains("google") || provider.contains("gemini") || endpoint.contains("googleapis") ||
+            modelName.startsWith("o1") || modelName.startsWith("o3") || modelName.startsWith("o4") ||
+            modelName.startsWith("gpt-5")
+        return normalized.toMutableMap().apply {
+            if (effort != ReasoningEffort.NONE || knownReasoningTarget) {
+                put("reasoning_effort", mappedEffort)
+            } else {
+                remove("reasoning_effort")
+            }
+            if (deepSeek) put("deepseek_thinking", true)
         }
     }
 
@@ -514,25 +566,39 @@ class LocalAiClient(
             val modelId = (selected?.get("model_id") as? String)
             val model = models.firstOrNull { it.id == modelId } ?: models[i]
             exclude.add(model.id)
+            val (runtimeModel, credential) = resolveRuntimeModel(model)
 
             val fullContent = StringBuilder()
+            val fullThinking = StringBuilder()
             var inputTokens: Int? = null
             var outputTokens: Int? = null
             var failed = false
             var httpCode = 0
 
             // 直接复用 chatStream 的内部逻辑（避免嵌套 Flow）
-            val protocol = LocalProtocols.get(model.protocol)
-            val url = protocol.resolveUrl(model.baseUrl, model.model, model.appendBaseUrlPath)
-            val headers = protocol.buildHeaders(model.apiKey, stream = true)
-            val payload = protocol.buildPayload(model.model, messages, stream = true, extra = extra)
+            val protocol = LocalProtocols.get(runtimeModel.protocol)
+            val url = protocol.resolveUrl(
+                runtimeModel.baseUrl,
+                runtimeModel.model,
+                runtimeModel.appendBaseUrlPath
+            )
+            val headers = mergeRuntimeHeaders(
+                protocol.buildHeaders(runtimeModel.apiKey, stream = true),
+                credential
+            )
+            val payload = protocol.buildPayload(
+                runtimeModel.model,
+                messages,
+                stream = true,
+                extra = normalizeProtocolExtra(runtimeModel, extra)
+            )
             val body = gson.toJson(payload).toRequestBody(JSON_TYPE)
             val reqBuilder = Request.Builder().url(url).post(body)
             headers.forEach { (k, v) -> reqBuilder.header(k, v) }
 
             var response: Response? = null
             try {
-                response = clientFor(model).newCall(reqBuilder.build()).execute()
+                response = clientFor(runtimeModel).newCall(reqBuilder.build()).execute()
                 if (!response.isSuccessful) {
                     val errBody = response.body?.string().orEmpty().take(500)
                     httpCode = response.code
@@ -562,8 +628,17 @@ class LocalAiClient(
                             inputTokens = input
                             outputTokens = output
                         }
-                        val chunk = protocol.parseStreamChunk(data) ?: continue
-                        if (chunk.isNotEmpty()) {
+                        protocol.parseStreamThinkingChunk(data)?.takeIf(String::isNotEmpty)?.let {
+                            fullThinking.append(it)
+                            emit(RealtimeEvent.ReasoningChunk(it))
+                        }
+                        protocol.parseStreamFinalResponse(data)?.thinkingContent
+                            ?.takeIf { it.isNotBlank() && fullThinking.isEmpty() }
+                            ?.let {
+                                fullThinking.append(it)
+                                emit(RealtimeEvent.ReasoningChunk(it))
+                            }
+                        protocol.parseStreamChunk(data)?.takeIf(String::isNotEmpty)?.let { chunk ->
                             if (!streamStarted) {
                                 streamStarted = true
                             }
@@ -576,7 +651,14 @@ class LocalAiClient(
                 // 成功完成
                 failover.recordSuccess(model.id)
                 if (inputTokens != null || outputTokens != null) {
-                    emit(RealtimeEvent.Usage(inputTokens ?: 0, outputTokens ?: 0, model.model, model.name))
+                    emit(
+                        RealtimeEvent.Usage(
+                            inputTokens ?: 0,
+                            outputTokens ?: 0,
+                            runtimeModel.model,
+                            runtimeModel.name
+                        )
+                    )
                 }
                 emit(RealtimeEvent.StreamEnd(null))
                 return@flow

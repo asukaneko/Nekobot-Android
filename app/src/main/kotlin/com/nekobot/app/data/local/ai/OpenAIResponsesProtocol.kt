@@ -55,6 +55,15 @@ object OpenAIResponsesProtocol : LocalProtocol {
             extra["temperature"]?.let { put("temperature", it) }
             extra["max_tokens"]?.let { put("max_output_tokens", it) }
             extra["top_p"]?.let { put("top_p", it) }
+            extra["reasoning_effort"]?.let { effort ->
+                put(
+                    "reasoning",
+                    buildMap<String, Any> {
+                        put("effort", effort)
+                        if (effort != "none") put("summary", "auto")
+                    }
+                )
+            }
             @Suppress("UNCHECKED_CAST")
             (extra["tools"] as? List<Map<String, Any>>)
                 ?.mapNotNull(::flattenTool)
@@ -70,6 +79,15 @@ object OpenAIResponsesProtocol : LocalProtocol {
         val event = JsonParser.parseString(chunkJson).asJsonObject
         if (event.string("type") != "response.output_text.delta") return null
         event.string("delta").ifBlank { null }
+    }.getOrNull()
+
+    override fun parseStreamThinkingChunk(chunkJson: String): String? = runCatching {
+        val event = JsonParser.parseString(chunkJson).asJsonObject
+        when (event.string("type")) {
+            "response.reasoning_summary_text.delta",
+            "response.reasoning_text.delta" -> event.string("delta").ifBlank { null }
+            else -> null
+        }
     }.getOrNull()
 
     override fun parseStreamUsage(chunkJson: String): Triple<Int, Int, Int>? = runCatching {

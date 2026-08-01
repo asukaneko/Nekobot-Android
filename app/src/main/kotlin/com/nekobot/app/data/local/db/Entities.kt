@@ -93,6 +93,7 @@ data class LocalMessageEntity(
     @ColumnInfo(name = "session_id") val sessionId: String,
     val role: String,                          // user / assistant / system
     val content: String,
+    @ColumnInfo(name = "reasoning_content") val reasoningContent: String? = null,
     val sender: String? = null,
     val timestamp: String,
     val model: String? = null,

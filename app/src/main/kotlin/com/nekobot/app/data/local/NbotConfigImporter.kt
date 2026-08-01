@@ -556,6 +556,7 @@ object NbotConfigImporter {
                         sessionId = id,
                         role = role,
                         content = msg.str("content") ?: "",
+                        reasoningContent = msg.str("reasoning_content") ?: msg.str("thinking_content"),
                         sender = msg.str("sender") ?: msg.str("sender_name"),
                         timestamp = msg.str("timestamp") ?: msg.str("created_at") ?: now,
                         model = model,

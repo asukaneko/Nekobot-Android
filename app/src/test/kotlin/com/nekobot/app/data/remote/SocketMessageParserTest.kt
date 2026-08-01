@@ -161,5 +161,17 @@ class SocketMessageParserTest {
         assertEquals("session-1", payload["session_id"])
         assertEquals("看看这张图", payload["content"])
         assertEquals(listOf(attachment), payload["attachments"])
+        assertEquals("none", payload["reasoning_effort"])
+    }
+
+    @Test
+    fun buildChatMessagePayload_includesSelectedReasoningEffort() {
+        val payload = buildChatMessagePayload(
+            sessionId = "session-1",
+            content = "think",
+            reasoningEffort = "max"
+        )
+
+        assertEquals("max", payload["reasoning_effort"])
     }
 }

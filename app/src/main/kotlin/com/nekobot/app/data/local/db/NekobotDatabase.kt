@@ -38,7 +38,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalKnowledgeDocumentEntity::class,
         LocalKnowledgeChunkEntity::class
     ],
-    version = 28,
+    version = 29,
     exportSchema = false
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -619,6 +619,13 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        /** v28 → v29：助手消息保存模型思考/推理内容。 */
+        val MIGRATION_28_29 = object : Migration(28, 29) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_messages ADD COLUMN reasoning_content TEXT")
+            }
+        }
+
         fun get(context: Context): NekobotDatabase =
             get(context, com.nekobot.app.data.local.PrefsManager.DEFAULT_DB_NAME)
 
@@ -631,7 +638,7 @@ abstract class NekobotDatabase : RoomDatabase() {
                 NekobotDatabase::class.java,
                 dbName
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29)
                 // 仅当迁移脚本未覆盖的未来版本变更时才回退到破坏性迁移（保护现有数据）
                 .fallbackToDestructiveMigration()
                 .build()

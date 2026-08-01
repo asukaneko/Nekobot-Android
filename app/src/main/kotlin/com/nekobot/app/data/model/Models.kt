@@ -205,6 +205,8 @@ data class Message(
     val id: String? = null,
     val role: String? = null,
     val content: String? = null,
+    @SerializedName(value = "reasoning_content", alternate = ["thinking_content"])
+    val reasoningContent: String? = null,
     @SerializedName(value = "sender", alternate = ["sender_name", "character_name"])
     val sender: String? = null,
     @SerializedName(value = "name", alternate = ["display_name"])
@@ -296,16 +298,19 @@ data class ChatRequest(
     val message: String? = null,
     val content: String? = null,
     @SerializedName("session_id") val sessionId: String? = null,
-    val attachments: List<Map<String, Any>> = emptyList()
+    val attachments: List<Map<String, Any>> = emptyList(),
+    @SerializedName("reasoning_effort") val reasoningEffort: String? = null
 ) {
     companion object {
         fun of(
             text: String,
-            attachments: List<Map<String, Any>> = emptyList()
+            attachments: List<Map<String, Any>> = emptyList(),
+            reasoningEffort: ReasoningEffort = ReasoningEffort.NONE
         ) = ChatRequest(
             message = text,
             content = text,
-            attachments = attachments
+            attachments = attachments,
+            reasoningEffort = reasoningEffort.wireValue
         )
     }
 }

@@ -115,13 +115,15 @@ internal fun buildExecConfirmationPayload(
 internal fun buildChatMessagePayload(
     sessionId: String,
     content: String,
-    attachments: List<Map<String, Any>> = emptyList()
+    attachments: List<Map<String, Any>> = emptyList(),
+    reasoningEffort: String = "none"
 ): Map<String, Any> = linkedMapOf(
     "session_id" to sessionId,
     "message" to content,
     "content" to content,
     "sender" to "web_user",
-    "attachments" to attachments
+    "attachments" to attachments,
+    "reasoning_effort" to reasoningEffort
 )
 
 /** 解析服务端 `exec_confirm_request` 事件。缺少 request_id 时拒绝创建请求。 */
@@ -186,6 +188,8 @@ sealed class RealtimeEvent {
     data class StreamStart(val sessionId: String?) : RealtimeEvent()
     /** AI 流式分片 */
     data class StreamChunk(val chunk: String, val sessionId: String? = null) : RealtimeEvent()
+    /** AI 思考/推理内容流式分片 */
+    data class ReasoningChunk(val chunk: String, val sessionId: String? = null) : RealtimeEvent()
     /** AI 流式结束（通常已生成完整消息，可刷新列表） */
     data class StreamEnd(val sessionId: String?) : RealtimeEvent()
     /** 非流式完整 AI 响应 */
@@ -246,6 +250,7 @@ fun RealtimeEvent.targetSessionId(): String? = when (this) {
     is RealtimeEvent.NewMessage -> sessionId
     is RealtimeEvent.StreamStart -> sessionId
     is RealtimeEvent.StreamChunk -> sessionId
+    is RealtimeEvent.ReasoningChunk -> sessionId
     is RealtimeEvent.StreamEnd -> sessionId
     is RealtimeEvent.AiResponse -> sessionId
     is RealtimeEvent.Filtered -> sessionId
@@ -338,6 +343,9 @@ class SocketManager(private val prefs: PrefsManager) {
         // 流式
         s.on("ai_stream_start") { args -> handleStreamStart(args) }
         s.on("ai_stream_chunk") { args -> handleStreamChunk(args) }
+        s.on("ai_thinking_chunk") { args -> handleReasoningChunk(args) }
+        s.on("ai_reasoning_chunk") { args -> handleReasoningChunk(args) }
+        s.on("thinking_chunk") { args -> handleReasoningChunk(args) }
         s.on("ai_stream_end") { args -> handleStreamEnd(args) }
         // 消息被过滤
         s.on("message_filtered") { args -> handleFiltered(args) }
@@ -394,9 +402,12 @@ class SocketManager(private val prefs: PrefsManager) {
     fun sendMessage(
         sessionId: String,
         content: String,
-        attachments: List<Map<String, Any>> = emptyList()
+        attachments: List<Map<String, Any>> = emptyList(),
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort = com.nekobot.app.data.model.ReasoningEffort.NONE
     ) {
-        val payload = JSONObject(gson.toJson(buildChatMessagePayload(sessionId, content, attachments)))
+        val payload = JSONObject(
+            gson.toJson(buildChatMessagePayload(sessionId, content, attachments, reasoningEffort.wireValue))
+        )
         socket?.emit("send_message", payload)
     }
 
@@ -463,8 +474,12 @@ class SocketManager(private val prefs: PrefsManager) {
     }
 
     private fun handleStreamStart(args: Array<Any>) {
-        val sid = extractSessionId(args.firstOrNull()) ?: joinedSessionId
+        val raw = args.firstOrNull()
+        val sid = extractSessionId(raw) ?: joinedSessionId
         _events.tryEmit(RealtimeEvent.StreamStart(sid))
+        extractReasoningText(raw)?.takeIf(String::isNotBlank)?.let {
+            _events.tryEmit(RealtimeEvent.ReasoningChunk(it, sid))
+        }
     }
 
     private fun handleStreamChunk(args: Array<Any>) {
@@ -472,6 +487,13 @@ class SocketManager(private val prefs: PrefsManager) {
         val chunk = extractChunk(raw) ?: return
         val sid = extractSessionId(raw) ?: joinedSessionId
         _events.tryEmit(RealtimeEvent.StreamChunk(chunk, sid))
+    }
+
+    private fun handleReasoningChunk(args: Array<Any>) {
+        val raw = args.firstOrNull()
+        val sid = extractSessionId(raw) ?: joinedSessionId
+        val chunk = extractReasoningText(raw) ?: return
+        _events.tryEmit(RealtimeEvent.ReasoningChunk(chunk, sid))
     }
 
     private fun handleStreamEnd(args: Array<Any>) {
@@ -602,6 +624,22 @@ class SocketManager(private val prefs: PrefsManager) {
             }
         } catch (e: Exception) {
             raw.toString()
+        }
+    }
+
+    private fun extractReasoningText(raw: Any?): String? {
+        if (raw == null) return null
+        return try {
+            val element = JsonParser.parseString(raw.toString())
+            if (element.isJsonPrimitive) return element.asString
+            if (!element.isJsonObject) return null
+            val obj = element.asJsonObject
+            listOf("reasoning_content", "thinking_content", "reasoning", "thinking", "chunk", "delta")
+                .firstNotNullOfOrNull { key ->
+                    obj.get(key)?.takeIf { it.isJsonPrimitive && !it.isJsonNull }?.asString
+                }
+        } catch (_: Exception) {
+            null
         }
     }
 }

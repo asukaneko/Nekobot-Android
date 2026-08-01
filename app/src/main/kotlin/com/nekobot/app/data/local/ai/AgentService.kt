@@ -127,6 +127,7 @@ data class ToolLoopHooks(
 /** 工具循环结果 */
 data class ToolLoopResult(
     val finalContent: String = "",
+    val finalReasoning: String = "",
     val toolMessages: List<Map<String, Any>> = emptyList(),
     val stopped: Boolean = false,
     val iterations: Int = 0,
@@ -448,6 +449,7 @@ fun runToolCallLoop(
 ): ToolLoopResult {
     val toolMessages = initialMessages.map { it.toMutableMap() }.toMutableList()
     var finalContent = ""
+    var finalReasoning = ""
     var consecutiveErrors = 0
     val usageTotal = mutableMapOf<String, Any>()
     var currentModelId = ""
@@ -464,6 +466,7 @@ fun runToolCallLoop(
         consecutiveErrorsArg: Int? = null
     ): ToolLoopResult = ToolLoopResult(
         finalContent = finalContentArg ?: finalContent,
+        finalReasoning = finalReasoning,
         toolMessages = toolMessagesArg ?: toolMessages.map { it.toMap() },
         stopped = stopped,
         iterations = iterations,
@@ -509,7 +512,11 @@ fun runToolCallLoop(
         val toolCalls = (response["tool_calls"] as? List<Map<String, Any>>)
             .orEmpty()
             .map(::normalizeAgentToolCall)
-        val thinkingContent = (response["thinking_content"] as? String) ?: (response["content"] as? String) ?: ""
+        val responseReasoning = (response["reasoning_content"] as? String)
+            ?: (response["thinking_content"] as? String)
+            ?: ""
+        if (responseReasoning.isNotBlank()) finalReasoning = responseReasoning
+        val thinkingContent = responseReasoning.ifBlank { (response["content"] as? String).orEmpty() }
 
         if (toolCalls.isNotEmpty()) {
             // 构造 assistant 消息（含 tool_calls）
@@ -525,11 +532,15 @@ fun runToolCallLoop(
                     put("function", funcMap)
                 }
             }
-            toolMessages.add(mutableMapOf(
-                "role" to "assistant",
-                "content" to (response["content"] ?: ""),
-                "tool_calls" to toolCallEntries
-            ))
+            toolMessages.add(buildMap<String, Any> {
+                put("role", "assistant")
+                put("content", response["content"] ?: "")
+                put("tool_calls", toolCallEntries)
+                if (responseReasoning.isNotBlank()) {
+                    // DeepSeek 等提供商要求后续工具轮次原样带回 reasoning_content。
+                    put("reasoning_content", responseReasoning)
+                }
+            }.toMutableMap())
 
             // 执行每个工具调用
             var loopAbortMessage: String? = null
