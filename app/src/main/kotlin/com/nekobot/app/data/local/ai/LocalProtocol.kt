@@ -19,6 +19,15 @@ data class LocalModelResponse(
     val thinkingContent: String = ""
 )
 
+/** 流式工具调用增量；由协议层解析，客户端负责按 [index] 聚合。 */
+data class LocalToolCallDelta(
+    val index: Int,
+    val idChunk: String = "",
+    val nameChunk: String = "",
+    val argumentsChunk: String = "",
+    val initialArgumentsJson: String = ""
+)
+
 interface LocalProtocol {
     val name: String
     val requiresStreaming: Boolean
@@ -47,6 +56,12 @@ interface LocalProtocol {
 
     /** 解析模型推理/思考文本增量；协议不支持时返回 null。 */
     fun parseStreamThinkingChunk(chunkJson: String): String? = null
+
+    /** 解析流式工具调用的 id/name/arguments 增量。 */
+    fun parseStreamToolCallDeltas(chunkJson: String): List<LocalToolCallDelta> = emptyList()
+
+    /** 解析流式结束原因，如 stop/tool_calls/content_filter。 */
+    fun parseStreamFinishReason(chunkJson: String): String? = null
 
     /**
      * 解析流式 SSE chunk 中的 usage 字段（OpenAI 在最后 chunk 携带，Anthropic 在 message_delta 携带）。

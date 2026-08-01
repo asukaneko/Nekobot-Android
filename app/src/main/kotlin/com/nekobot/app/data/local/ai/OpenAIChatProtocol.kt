@@ -97,6 +97,45 @@ object OpenAIChatProtocol : LocalProtocol {
         }
     }
 
+    override fun parseStreamToolCallDeltas(chunkJson: String): List<LocalToolCallDelta> {
+        return try {
+            val obj = JsonParser.parseString(chunkJson).asJsonObject
+            val delta = obj.getAsJsonArray("choices")
+                ?.takeIf { it.size() > 0 }
+                ?.get(0)?.asJsonObject
+                ?.getAsJsonObject("delta")
+                ?: return emptyList()
+            delta.getAsJsonArray("tool_calls")?.mapNotNull { raw ->
+                val call = raw.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
+                val function = call.getAsJsonObject("function")
+                LocalToolCallDelta(
+                    index = call.get("index")?.takeIf { !it.isJsonNull }?.asInt ?: 0,
+                    idChunk = call.get("id")?.takeIf { !it.isJsonNull }?.asString.orEmpty(),
+                    nameChunk = function?.get("name")?.takeIf { !it.isJsonNull }?.asString.orEmpty(),
+                    argumentsChunk = function?.get("arguments")
+                        ?.takeIf { !it.isJsonNull }
+                        ?.asString
+                        .orEmpty()
+                )
+            }.orEmpty()
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    override fun parseStreamFinishReason(chunkJson: String): String? = try {
+        JsonParser.parseString(chunkJson).asJsonObject
+            .getAsJsonArray("choices")
+            ?.takeIf { it.size() > 0 }
+            ?.get(0)?.asJsonObject
+            ?.get("finish_reason")
+            ?.takeIf { !it.isJsonNull }
+            ?.asString
+            ?.ifBlank { null }
+    } catch (_: Exception) {
+        null
+    }
+
     override fun parseStreamUsage(chunkJson: String): Triple<Int, Int, Int>? {
         return try {
             val obj = JsonParser.parseString(chunkJson).asJsonObject

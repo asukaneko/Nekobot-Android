@@ -101,6 +101,56 @@ class LocalProtocolToolCallingTest {
     }
 
     @Test
+    fun openAiStreamParsesToolCallDeltasAndFinishReason() {
+        val first = OpenAIChatProtocol.parseStreamToolCallDeltas(
+            """{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","function":{"name":"get_date_time","arguments":"{\"time"}}]}}]}"""
+        ).single()
+        val second = OpenAIChatProtocol.parseStreamToolCallDeltas(
+            """{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"zone\":\"Asia/Shanghai\"}"}}]},"finish_reason":"tool_calls"}]}"""
+        ).single()
+
+        assertEquals("call-1", first.idChunk)
+        assertEquals("get_date_time", first.nameChunk)
+        assertEquals(
+            """{"timezone":"Asia/Shanghai"}""",
+            first.argumentsChunk + second.argumentsChunk
+        )
+        assertEquals(
+            "tool_calls",
+            OpenAIChatProtocol.parseStreamFinishReason(
+                """{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}"""
+            )
+        )
+    }
+
+    @Test
+    fun streamedToolCallDeltasAreAggregatedIntoExecutableCall() {
+        val accumulator = LocalToolCallStreamAccumulator()
+        accumulator.add(
+            LocalToolCallDelta(
+                index = 0,
+                idChunk = "call-1",
+                nameChunk = "get_date_time",
+                argumentsChunk = "{\"time"
+            )
+        )
+        accumulator.add(
+            LocalToolCallDelta(
+                index = 0,
+                argumentsChunk = "zone\":\"Asia/Shanghai\"}"
+            )
+        )
+
+        val call = accumulator.build().single()
+        @Suppress("UNCHECKED_CAST")
+        val arguments = call["arguments"] as Map<String, Any>
+
+        assertEquals("call-1", call["id"])
+        assertEquals("get_date_time", call["name"])
+        assertEquals("Asia/Shanghai", arguments["timezone"])
+    }
+
+    @Test
     fun deepSeekThinkingUsesToggleAndOmitsToolChoice() {
         val payload = OpenAIChatProtocol.buildPayload(
             model = "deepseek-chat",
@@ -175,6 +225,27 @@ class LocalProtocolToolCallingTest {
         )
         assertEquals("analysis", parsed.thinkingContent)
         assertEquals("answer", parsed.content)
+    }
+
+    @Test
+    fun anthropicStreamParsesToolUseAndInputJsonDeltas() {
+        val start = AnthropicMessagesProtocol.parseStreamToolCallDeltas(
+            """{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"tool-1","name":"get_date_time","input":{}}}"""
+        ).single()
+        val arguments = AnthropicMessagesProtocol.parseStreamToolCallDeltas(
+            """{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"timezone\":\"Asia/Shanghai\"}"}}"""
+        ).single()
+
+        assertEquals(1, start.index)
+        assertEquals("tool-1", start.idChunk)
+        assertEquals("get_date_time", start.nameChunk)
+        assertEquals("{\"timezone\":\"Asia/Shanghai\"}", arguments.argumentsChunk)
+        assertEquals(
+            "tool_use",
+            AnthropicMessagesProtocol.parseStreamFinishReason(
+                """{"type":"message_delta","delta":{"stop_reason":"tool_use"}}"""
+            )
+        )
     }
 
     @Test

@@ -182,7 +182,8 @@ sealed class RealtimeEvent {
     /** 新消息推送（完整 AI 回复或用户消息回显） */
     data class NewMessage(
         val message: Message,
-        val sessionId: String? = message.sessionId
+        val sessionId: String? = message.sessionId,
+        val completesForeground: Boolean = true
     ) : RealtimeEvent()
     /** AI 流式开始 */
     data class StreamStart(val sessionId: String?) : RealtimeEvent()
@@ -191,21 +192,33 @@ sealed class RealtimeEvent {
     /** AI 思考/推理内容流式分片 */
     data class ReasoningChunk(val chunk: String, val sessionId: String? = null) : RealtimeEvent()
     /** AI 流式结束（通常已生成完整消息，可刷新列表） */
-    data class StreamEnd(val sessionId: String?) : RealtimeEvent()
+    data class StreamEnd(
+        val sessionId: String?,
+        val completesForeground: Boolean = true
+    ) : RealtimeEvent()
     /** 非流式完整 AI 响应 */
     data class AiResponse(
         val message: Message?,
-        val sessionId: String? = message?.sessionId
+        val sessionId: String? = message?.sessionId,
+        val completesForeground: Boolean = true
     ) : RealtimeEvent()
     /** 消息被过滤 */
-    data class Filtered(val message: String?, val sessionId: String? = null) : RealtimeEvent()
+    data class Filtered(
+        val message: String?,
+        val sessionId: String? = null,
+        val completesForeground: Boolean = true
+    ) : RealtimeEvent()
     /** 剧情选项推送（AI 回复完成后服务端推送新选项） */
     data class PlotChoices(
         val choices: com.google.gson.JsonElement,
         val sessionId: String? = null
     ) : RealtimeEvent()
     /** 错误 */
-    data class Error(val message: String, val sessionId: String? = null) : RealtimeEvent()
+    data class Error(
+        val message: String,
+        val sessionId: String? = null,
+        val completesForeground: Boolean = true
+    ) : RealtimeEvent()
     /**
      * 本地模式 AI 流式结束时的 token 用量（input/output/total）
      * @param model 实际请求的模型标识（LocalAiModelEntity.model，如 gpt-4o）
@@ -241,6 +254,8 @@ sealed class RealtimeEvent {
      * UI 收到后刷新当前会话显示的标题。
      */
     data class SessionRenamed(val sessionId: String, val newName: String) : RealtimeEvent()
+    /** 一轮可见回复已经全部完成；自动命名等后台收尾不再占用聊天发送状态。 */
+    data class ForegroundComplete(val sessionId: String) : RealtimeEvent()
     /** 本地标题总结后处理已结束；TTS 必须等到此事件后才能启动，避免争用模型请求。 */
     data class ReplyPostProcessed(val sessionId: String, val contents: List<String>) : RealtimeEvent()
 }
@@ -261,6 +276,7 @@ fun RealtimeEvent.targetSessionId(): String? = when (this) {
     is RealtimeEvent.ThinkingCardUpdate -> sessionId
     is RealtimeEvent.HookNotificationEvent -> notification.conversationId
     is RealtimeEvent.SessionRenamed -> sessionId
+    is RealtimeEvent.ForegroundComplete -> sessionId
     is RealtimeEvent.ReplyPostProcessed -> sessionId
     is RealtimeEvent.Usage -> null
 }

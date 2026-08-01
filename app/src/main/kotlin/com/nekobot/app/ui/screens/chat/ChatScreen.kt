@@ -232,18 +232,18 @@ fun ChatScreen(
     val selectedIds by viewModel.selectedMessageIds.collectAsState()
     val execConfirmation by viewModel.execConfirmation.collectAsState()
     val hookNotifications by viewModel.hookNotifications.collectAsState()
-    val latestBrowserProgressCardId = remember(messages) {
-        messages.asReversed().firstNotNullOfOrNull { message ->
-            message.thinkingCards
-                ?.asReversed()
-                ?.firstOrNull { card ->
-                    card.steps.any { step ->
-                        step.name.equals("browser_use", ignoreCase = true) ||
-                            step.name?.contains("browser", ignoreCase = true) == true
-                    }
+    // 不把完整 Message 列表作为 remember key：Agent 历史可能携带较大的嵌套进度数据，
+    // Compose 对 key 做 equals 时会递归比较整棵工具结果。
+    val latestBrowserProgressCardId = messages.asReversed().firstNotNullOfOrNull { message ->
+        message.thinkingCards
+            ?.asReversed()
+            ?.firstOrNull { card ->
+                card.steps.any { step ->
+                    step.name.equals("browser_use", ignoreCase = true) ||
+                        step.name?.contains("browser", ignoreCase = true) == true
                 }
-                ?.id
-        }
+            }
+            ?.id
     }
 
     var input by remember(sessionId) {
@@ -857,7 +857,7 @@ fun ChatScreen(
                     }
                     itemsIndexed(
                         messages,
-                        key = { _, it -> it.id ?: (it.content + it.timestamp + it.hashCode()) }
+                        key = { index, message -> chatMessageItemKey(index, message) }
                     ) { index, msg ->
                         // 注意：LazyColumn 单个 item 内的多个平级节点会像 Box 一样叠放，
                         // 因此日期分隔条与气泡必须包在 Column 里纵向排布
@@ -869,17 +869,16 @@ fun ChatScreen(
                                 DateSeparatorChip(label = dayLabel(day))
                                 Spacer(Modifier.height(2.dp))
                             }
-                            // 流式占位消息且内容为空：显示骨架动画（等待第一个 chunk）
-                            if (
-                                msg.id == ChatViewModel.STREAMING_ID &&
-                                msg.displayContent.isBlank() &&
-                                msg.reasoningContent.isNullOrBlank()
-                            ) {
-                                ThinkingIndicator(
+                            if (msg.id == ChatViewModel.STREAMING_ID) {
+                                StreamingAssistantBubble(
+                                    placeholder = msg,
+                                    contentFlow = viewModel.streamingContentPreview,
+                                    reasoningFlow = viewModel.streamingReasoningPreview,
                                     portraitUrl = session?.portraitUrl,
                                     showAiAvatar = session?.sessionMode != "agent",
                                     fillAiWidth = session?.sessionMode == "agent",
-                                    fallbackIcon = if (session?.sessionMode == "group") Icons.Outlined.Group else Icons.Outlined.SmartToy
+                                    fallbackIcon = if (session?.sessionMode == "group") Icons.Outlined.Group else Icons.Outlined.SmartToy,
+                                    sessionId = sessionId
                                 )
                             } else {
                                 val groupIdentity = if (session?.sessionMode.equals("group", ignoreCase = true)) {
@@ -897,7 +896,7 @@ fun ChatScreen(
                                     onLongClick = {
                                         if (selectionMode) {
                                             msg.id?.let(viewModel::toggleSelection)
-                                        } else if (msg.id != ChatViewModel.STREAMING_ID) {
+                                        } else {
                                             messageActionTarget = msg
                                         }
                                     },
@@ -2071,6 +2070,78 @@ private fun MessageActionSheetItem(
     }
 }
 
+@Composable
+private fun StreamingAssistantBubble(
+    placeholder: Message,
+    contentFlow: StateFlow<String>,
+    reasoningFlow: StateFlow<String>,
+    portraitUrl: String?,
+    showAiAvatar: Boolean,
+    fillAiWidth: Boolean,
+    fallbackIcon: ImageVector,
+    sessionId: String
+) {
+    val content by contentFlow.collectAsState()
+    val reasoning by reasoningFlow.collectAsState()
+    if (content.isBlank() && reasoning.isBlank()) {
+        ThinkingIndicator(
+            portraitUrl = portraitUrl,
+            showAiAvatar = showAiAvatar,
+            fillAiWidth = fillAiWidth,
+            fallbackIcon = fallbackIcon
+        )
+        return
+    }
+    val liveMessage = remember(placeholder, content, reasoning) {
+        placeholder.copy(
+            content = content,
+            reasoningContent = reasoning.takeIf(String::isNotBlank)
+        )
+    }
+    MessageBubble(
+        message = liveMessage,
+        portraitUrl = portraitUrl,
+        showAiAvatar = showAiAvatar,
+        fillAiWidth = fillAiWidth,
+        onLongClick = {},
+        sessionId = sessionId
+    )
+}
+
+@Composable
+private fun SafePlainMessageText(
+    text: String,
+    color: Color,
+    isStreaming: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val pageSize = 16_000
+    var visibleChars by remember(text, isStreaming) {
+        mutableStateOf(if (isStreaming) text.length else text.length.coerceAtMost(pageSize))
+    }
+    val visibleText = remember(text, visibleChars) {
+        text.take(visibleChars)
+    }
+    Column(modifier = modifier) {
+        SelectionContainer {
+            Text(
+                text = visibleText,
+                modifier = Modifier.fillMaxWidth(),
+                color = color,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+        if (!isStreaming && visibleChars < text.length) {
+            TextButton(
+                onClick = { visibleChars = (visibleChars + pageSize).coerceAtMost(text.length) },
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text("继续显示（剩余 ${text.length - visibleChars} 字符）")
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageBubble(
@@ -2110,6 +2181,7 @@ private fun MessageBubble(
 
     // 按 <||> 拆分内容为多段（保留非空段）
     val isStreamingPlaceholder = message.id == ChatViewModel.STREAMING_ID
+    val useSafePlainText = isStreamingPlaceholder || (!isUser && message.displayContent.length > 24_000)
     val emptyMessageParen = stringResource(R.string.chat_empty_message_paren)
     val segments = remember(message.content) {
         message.displayContent
@@ -2119,8 +2191,12 @@ private fun MessageBubble(
             .let { if (it.isEmpty() && !isStreamingPlaceholder) listOf(emptyMessageParen) else it }
     }
     // 解析每段的多媒体内容段
-    val parsedSegments = remember(segments) {
-        segments.map { parseContentSegments(it) }
+    val parsedSegments = remember(segments, useSafePlainText) {
+        if (useSafePlainText) {
+            segments.map { listOf(ContentSegment(type = SegmentType.TEXT, text = it)) }
+        } else {
+            segments.map { parseContentSegments(it) }
+        }
     }
     val hasUserImage = isUser && parsedSegments.any { content ->
         content.any { it.isImageContent() }
@@ -2346,14 +2422,23 @@ private fun MessageBubble(
                     } else {
                         // 文本内容：用 Markdown 渲染
                         // 用户气泡：宽度跟随实际内容（短消息不撑满）；AI 气泡：填满最大宽度
-                        MarkdownText(
-                            text = segment,
-                            color = textColor,
-                            style = MaterialTheme.typography.bodyMedium,
-                            chatMode = true,
-                            processParens = !isUser,
-                            modifier = if (isUser) Modifier.widthIn(max = maxBubbleWidth) else Modifier.fillMaxWidth()
-                        )
+                        if (useSafePlainText) {
+                            SafePlainMessageText(
+                                text = segment,
+                                color = textColor,
+                                isStreaming = isStreamingPlaceholder,
+                                modifier = if (isUser) Modifier.widthIn(max = maxBubbleWidth) else Modifier.fillMaxWidth()
+                            )
+                        } else {
+                            MarkdownText(
+                                text = segment,
+                                color = textColor,
+                                style = MaterialTheme.typography.bodyMedium,
+                                chatMode = true,
+                                processParens = !isUser,
+                                modifier = if (isUser) Modifier.widthIn(max = maxBubbleWidth) else Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
                 if (!isLast) Spacer(Modifier.height(10.dp))
@@ -2676,13 +2761,23 @@ private fun ProgressStepRow(
     val iconSize = if (step.type?.lowercase() == "done") 14.dp else 16.dp
     val name = step.name?.stripEmoji()?.takeIf { it.isNotBlank() } ?: "步骤"
     val detail = step.detail?.stripEmoji()?.takeIf { it.isNotBlank() }
+    val isStreamingThinking = step.type.equals("thinking", ignoreCase = true) &&
+        (step.status.equals("running", ignoreCase = true) ||
+            step.status.equals("active", ignoreCase = true))
+    val liveThinkingPreview = if (isStreamingThinking) {
+        step.thinkingContent
+            ?.takeLast(1_200)
+            ?.stripEmoji()
+            ?.takeIf(String::isNotBlank)
+    } else null
     // 含任一详情字段时可点击查看详情（对齐原仓库 has-detail 判定）
     val hasDetail = step.arguments != null || step.fullResult != null || !step.thinkingContent.isNullOrBlank()
+    val canOpenDetail = hasDetail && !isStreamingThinking
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (hasDetail) Modifier.clickable { onStepClick(step) } else Modifier),
+            .then(if (canOpenDetail) Modifier.clickable { onStepClick(step) } else Modifier),
         verticalAlignment = Alignment.Top
     ) {
         Box(
@@ -2716,7 +2811,7 @@ private fun ProgressStepRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
-                if (hasDetail) {
+                if (canOpenDetail) {
                     Spacer(Modifier.width(4.dp))
                     Icon(
                         imageVector = Icons.Filled.KeyboardArrowRight,
@@ -2726,7 +2821,24 @@ private fun ProgressStepRow(
                     )
                 }
             }
-            if (!detail.isNullOrBlank()) {
+            if (!liveThinkingPreview.isNullOrBlank()) {
+                androidx.compose.material3.Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.45f)
+                ) {
+                    Text(
+                        text = liveThinkingPreview,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        maxLines = 8,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            } else if (!detail.isNullOrBlank()) {
                 Text(
                     text = detail,
                     style = MaterialTheme.typography.labelSmall,
@@ -2755,7 +2867,12 @@ private fun StepDetailDialog(
 ) {
     val name = step.name?.stripEmoji()?.takeIf { it.isNotBlank() } ?: "步骤详情"
     val detail = step.detail?.stripEmoji()?.takeIf { it.isNotBlank() }
-    val thinkingContent = step.thinkingContent?.stripEmoji()?.takeIf { it.isNotBlank() }
+    val rawThinkingContent = step.thinkingContent?.takeIf(String::isNotBlank)
+    val thinkingWasTruncated = rawThinkingContent?.length?.let { it > 20_000 } == true
+    val thinkingContent = rawThinkingContent
+        ?.takeLast(20_000)
+        ?.stripEmoji()
+        ?.takeIf(String::isNotBlank)
     val argumentsJson = step.arguments?.let { formatJson(it) }
     val fullResultJson = step.fullResult?.let { formatJson(it) }
     val hasAny = detail != null || thinkingContent != null ||
@@ -2791,7 +2908,11 @@ private fun StepDetailDialog(
                     }
                     if (!thinkingContent.isNullOrBlank()) {
                         StepDetailSection(
-                            label = "AI 思考过程",
+                            label = if (thinkingWasTruncated) {
+                                "AI 思考过程（内容过长，显示最近 20000 字符）"
+                            } else {
+                                "AI 思考过程"
+                            },
                             icon = Icons.Filled.Psychology,
                             content = thinkingContent,
                             accent = true
@@ -3533,6 +3654,19 @@ internal fun shouldShowChatInput(
     !hasPlotSurface || inputExpanded || hasDraft
 
 /**
+ * 流式阶段只向 Compose 暴露一个有界窗口；完整正文仍保留在累加器并最终写入消息。
+ * 这样长回复不会让单个 Text/Markdown 布局随 token 无限增长。
+ */
+internal fun buildStreamingDisplayPreview(
+    content: CharSequence,
+    maxChars: Int = 16_000
+): String {
+    if (content.length <= maxChars) return content.toString()
+    return "…前文仍在生成并会完整保存\n" +
+        content.subSequence(content.length - maxChars, content.length).toString()
+}
+
+/**
  * 结束流式消息时整理 UI 列表。
  *
  * 本地模式在 StreamEnd 前已写入 Room，不创建临时正式消息；服务器模式保留一条兜底消息，
@@ -3574,12 +3708,13 @@ internal fun mergeRealtimeNewMessage(
     streamingId: String = ChatViewModel.STREAMING_ID,
     fallbackPrefix: String = ChatViewModel.STREAM_FALLBACK_PREFIX
 ): List<Message> {
+    val normalizedCurrent = deduplicateMessagesById(current)
     val incomingId = incoming.id
     if (!incomingId.isNullOrBlank()) {
-        val existingIndex = current.indexOfFirst { it.id == incomingId }
+        val existingIndex = normalizedCurrent.indexOfFirst { it.id == incomingId }
         if (existingIndex >= 0) {
-            val existing = current[existingIndex]
-            return current.toMutableList().apply {
+            val existing = normalizedCurrent[existingIndex]
+            return normalizedCurrent.toMutableList().apply {
                 this[existingIndex] = incoming.copy(
                     thinkingCards = incoming.thinkingCards ?: existing.thinkingCards,
                     audioUrl = incoming.audioUrl ?: existing.audioUrl
@@ -3590,7 +3725,7 @@ internal fun mergeRealtimeNewMessage(
 
     if (incoming.isUser) {
         val optimisticIndex = if (isSending) {
-            current.indexOfLast {
+            normalizedCurrent.indexOfLast {
                 it.isUser &&
                     it.id.isNullOrBlank() &&
                     it.content == incoming.content
@@ -3599,20 +3734,39 @@ internal fun mergeRealtimeNewMessage(
             -1
         }
         if (optimisticIndex >= 0) {
-            val optimistic = current[optimisticIndex]
-            return current.toMutableList().apply {
+            val optimistic = normalizedCurrent[optimisticIndex]
+            return normalizedCurrent.toMutableList().apply {
                 this[optimisticIndex] = incoming.copy(
                     thinkingCards = incoming.thinkingCards ?: optimistic.thinkingCards
                 )
             }
         }
-        return current + incoming
+        return normalizedCurrent + incoming
     }
 
-    return current.filter {
+    return normalizedCurrent.filter {
         it.id != streamingId &&
             !(it.id?.startsWith(fallbackPrefix) == true && it.content == incoming.content)
     } + incoming
+}
+
+/**
+ * Room 主键本身唯一，但页面运行时状态与刚落库数据合并时可能短暂包含同一消息两份。
+ * 所有进入 LazyColumn 的列表都在边界处按非空 ID 去重；无 ID 的乐观消息必须保留。
+ */
+internal fun deduplicateMessagesById(messages: List<Message>): List<Message> {
+    val seenIds = HashSet<String>()
+    var changed = false
+    val result = ArrayList<Message>(messages.size)
+    messages.forEach { message ->
+        val id = message.id?.takeIf(String::isNotBlank)
+        if (id != null && !seenIds.add(id)) {
+            changed = true
+        } else {
+            result.add(message)
+        }
+    }
+    return if (changed) result else messages
 }
 
 /**
@@ -4087,6 +4241,26 @@ internal fun attachThinkingCardToMessages(
     }
 }
 
+/**
+ * 聊天列表 key 不得调用整条 Message.hashCode()：Agent 用户消息会携带完整思考卡和工具结果，
+ * 递归计算嵌套对象既昂贵，也可能在退出重进时触发异常。持久化消息使用数据库 ID；
+ * 尚未落库的乐观消息只使用轻量字段和当前位置生成页面内唯一 key。
+ */
+internal fun chatMessageItemKey(index: Int, message: Message): String {
+    // index 是最后一道防线：即使旧状态或并发合并意外产生重复数据库 ID，Compose 也不能崩溃。
+    message.id?.takeIf(String::isNotBlank)?.let { return "message:$it:$index" }
+    return buildString {
+        append("pending:")
+        append(index)
+        append(':')
+        append(message.role.orEmpty())
+        append(':')
+        append(message.timestamp.orEmpty())
+        append(':')
+        append(message.content.orEmpty().hashCode())
+    }
+}
+
 internal fun mergeThinkingCardReasoning(
     freshCards: List<ThinkingCard>?,
     currentCards: List<ThinkingCard>?
@@ -4270,6 +4444,20 @@ class ChatViewModel : BaseViewModel() {
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     private val _messages: MutableStateFlow<List<Message>> get() = runtime.messages
 
+    /** 当前流式气泡独立订阅，正文分片不再触发整份消息列表和进度卡片重组。 */
+    val streamingContentPreview: StateFlow<String> = _runtime
+        .map { it.streamingContentPreview }
+        .distinctUntilChanged()
+        .flatMapLatest { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+
+    /** 非 Agent 会话的流式思考独立预览。 */
+    val streamingReasoningPreview: StateFlow<String> = _runtime
+        .map { it.streamingReasoningPreview }
+        .distinctUntilChanged()
+        .flatMapLatest { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+
     val ttsStates: StateFlow<Map<String, MessageTtsUiState>> = _runtime
         .map { it.ttsStates }
         .distinctUntilChanged()
@@ -4418,6 +4606,38 @@ class ChatViewModel : BaseViewModel() {
         get() = runtime.generationStopRequested
         set(value) { runtime.generationStopRequested = value }
 
+    /**
+     * 启动一轮本地聊天。最终正文到达时先释放发送状态，Job 则继续承载自动命名等后台收尾。
+     * 新一轮可抢占已经完成正文的旧 Job；旧 completion 只能清理自己的状态。
+     */
+    private fun startLocalChatCollection(block: suspend (kotlinx.coroutines.Job) -> Unit): Boolean {
+        val target = runtime
+        lateinit var job: kotlinx.coroutines.Job
+        job = ServiceContainer.applicationScope.launch(
+            start = kotlinx.coroutines.CoroutineStart.LAZY
+        ) {
+            block(job)
+        }
+        if (!target.installLocalChatJob(job)) {
+            job.cancel()
+            target.sending.value = true
+            return false
+        }
+        job.invokeOnCompletion { cause ->
+            if (target.clearLocalChatJob(job)) {
+                target.sending.value = false
+                if (cause is kotlinx.coroutines.CancellationException) {
+                    target.streamingContentPreview.value = ""
+                    target.streamingReasoningPreview.value = ""
+                    target.messages.value = target.messages.value.filter { it.id != streamingId }
+                }
+            }
+            ChatSessionManager.pruneIfIdle(target.sessionId)
+        }
+        job.start()
+        return true
+    }
+
     /** 当前会话是否对用户可见（在聊天界面且应用在前台） */
     var isChatVisible: Boolean = false
         private set
@@ -4465,6 +4685,11 @@ class ChatViewModel : BaseViewModel() {
     private fun connectLocalHookEvents() {
         // 仅当没有现存的 eventsJob 时才启动，避免重复订阅
         if (eventsJob?.isActive == true) return
+        val target = runtime
+        val targetSessionId = currentSessionId
+        val hookEvents = com.nekobot.app.ServiceContainer.localRepository.hookExecutor.events
+        val confirmationEvents = com.nekobot.app.ServiceContainer.localRepository.execConfirmationEvents
+            .map { request -> RealtimeEvent.ExecConfirmationRequired(request) }
         // 同时收集两路：
         // 1. hookExecutor.events → HookNotificationEvent
         // 2. localRepository.execConfirmationEvents → 高风险工具（删除角色卡等）的确认请求
@@ -4472,10 +4697,38 @@ class ChatViewModel : BaseViewModel() {
         //    但 eventChannel 没人 collect，导致 requestAuthorization 的 runBlocking 永远等待。
         eventsJob = ServiceContainer.applicationScope.launch {
             kotlinx.coroutines.flow.merge(
-                com.nekobot.app.ServiceContainer.localRepository.hookExecutor.events,
-                com.nekobot.app.ServiceContainer.localRepository.execConfirmationEvents
-                    .map { request -> RealtimeEvent.ExecConfirmationRequired(request) }
-            ).collect { event -> handleRealtimeEvent(event) }
+                hookEvents,
+                confirmationEvents
+            ).collect { event ->
+                // 这里不能调用 ChatViewModel.handleRealtimeEvent：eventsJob 跨页面存活，捕获 this
+                // 会永久保留已经退出的 ViewModel 和 Agent 大消息列表。
+                when (event) {
+                    is RealtimeEvent.HookNotificationEvent -> {
+                        val notification = event.notification
+                        if (
+                            notification.conversationId.isNullOrBlank() ||
+                            notification.conversationId == targetSessionId
+                        ) {
+                            val next = (target.hookNotifications.value + notification).takeLast(5)
+                            target.hookNotifications.value = next
+                            launch {
+                                kotlinx.coroutines.delay(5000)
+                                target.hookNotifications.value = target.hookNotifications.value
+                                    .filter { it !== notification }
+                            }
+                        }
+                    }
+                    is RealtimeEvent.ExecConfirmationRequired -> {
+                        val request = event.request
+                        if (request.sessionId.isBlank() || request.sessionId == targetSessionId) {
+                            target.execConfirmation.value = request.copy(
+                                sessionId = request.sessionId.ifBlank { targetSessionId }
+                            )
+                        }
+                    }
+                    else -> Unit
+                }
+            }
         }
     }
 
@@ -4491,7 +4744,14 @@ class ChatViewModel : BaseViewModel() {
     }
 
     /** 处理 Socket.IO 推送的实时事件。 */
-    private fun handleRealtimeEvent(event: RealtimeEvent) {
+    private fun handleRealtimeEvent(
+        event: RealtimeEvent,
+        sourceLocalJob: kotlinx.coroutines.Job? = null
+    ) {
+        if (isLocalMode && sourceLocalJob != null && !runtime.ownsLocalChatJob(sourceLocalJob)) {
+            // 被新一轮抢占的旧后处理可能仍有少量排队事件，禁止其污染新一轮 UI。
+            return
+        }
         if (!isLocalMode && event.targetSessionId() != currentSessionId) {
             android.util.Log.d(
                 "NekoSocket",
@@ -4511,11 +4771,18 @@ class ChatViewModel : BaseViewModel() {
             // 会因为旧 generation 已停止导致用户收不到确认弹窗 → 工具卡 10 分钟。
             return
         }
+        fun completeLocalForeground() {
+            if (isLocalMode && sourceLocalJob != null) {
+                runtime.markLocalResponseComplete(sourceLocalJob)
+            }
+        }
         when (event) {
             is RealtimeEvent.StreamStart -> {
                 _sending.value = true
                 streamingContent.setLength(0)
                 streamingReasoning.setLength(0)
+                runtime.streamingContentPreview.value = ""
+                runtime.streamingReasoningPreview.value = ""
                 lastStreamUiUpdateMs = 0L
                 // 插入流式占位消息
                 val placeholder = Message(
@@ -4532,10 +4799,7 @@ class ChatViewModel : BaseViewModel() {
                 val now = System.currentTimeMillis()
                 if (now - lastStreamUiUpdateMs >= streamThrottleMs) {
                     lastStreamUiUpdateMs = now
-                    _messages.value = _messages.value.map {
-                        if (it.id == streamingId) it.copy(content = streamingContent.toString())
-                        else it
-                    }
+                    runtime.streamingContentPreview.value = buildStreamingDisplayPreview(streamingContent)
                 }
             }
             is RealtimeEvent.ReasoningChunk -> {
@@ -4548,15 +4812,11 @@ class ChatViewModel : BaseViewModel() {
                 val now = System.currentTimeMillis()
                 if (now - lastStreamUiUpdateMs >= streamThrottleMs) {
                     lastStreamUiUpdateMs = now
-                    _messages.value = _messages.value.map {
-                        if (it.id == streamingId) {
-                            it.copy(reasoningContent = streamingReasoning.toString())
-                        } else it
-                    }
+                    runtime.streamingReasoningPreview.value = buildStreamingDisplayPreview(streamingReasoning)
                 }
             }
             is RealtimeEvent.StreamEnd -> {
-                _sending.value = false
+                if (!isLocalMode) _sending.value = false
                 // 本地流程在 StreamEnd 前已完成 Room 持久化，直接刷新数据库即可。
                 // 若再生成随机 ID 的正式消息，刷新时会因时间戳不同同时保留两条相同气泡。
                 val finalContent = streamingContent.toString()
@@ -4570,6 +4830,8 @@ class ChatViewModel : BaseViewModel() {
                     finalReasoning = finalReasoning,
                     materializeFallback = !isLocalMode
                 )
+                runtime.streamingContentPreview.value = ""
+                runtime.streamingReasoningPreview.value = ""
                 // 刷新列表获取服务端持久化的真实消息（含 id/token 等）
                 loadMessages()
                 // 远程模式在流结束后触发；本地模式必须等标题总结后处理完成事件，
@@ -4601,6 +4863,7 @@ class ChatViewModel : BaseViewModel() {
                         }
                     }
                 }
+                if (event.completesForeground) completeLocalForeground()
             }
             is RealtimeEvent.PlotChoices -> {
                 // 服务端推送新剧情选项，直接解析更新
@@ -4608,7 +4871,7 @@ class ChatViewModel : BaseViewModel() {
                 _plotChoicesLoading.value = false
             }
             is RealtimeEvent.AiResponse -> {
-                _sending.value = false
+                if (!isLocalMode) _sending.value = false
                 _execConfirmation.value = null
                 val msg = event.message?.let { incoming ->
                     if (isReasoningEnabled() && !isAgentSession()) incoming
@@ -4640,6 +4903,7 @@ class ChatViewModel : BaseViewModel() {
                         if (_plotChoicesLoading.value) loadPlotChoices()
                     }
                 }
+                if (event.completesForeground) completeLocalForeground()
             }
             is RealtimeEvent.NewMessage -> {
                 val msg = event.message.let { incoming ->
@@ -4655,19 +4919,22 @@ class ChatViewModel : BaseViewModel() {
                     streamingId = streamingId
                 )
                 if (!msg.isUser) {
-                    _sending.value = false
+                    if (!isLocalMode) _sending.value = false
                     if (!isLocalMode) {
                         scheduleTtsForMessage(msg)
                     }
+                    if (event.completesForeground) completeLocalForeground()
                 }
             }
             is RealtimeEvent.Filtered -> {
-                _sending.value = false
+                if (!isLocalMode) _sending.value = false
                 showToast(event.message ?: string(R.string.chat_message_filtered))
+                if (event.completesForeground) completeLocalForeground()
             }
             is RealtimeEvent.Error -> {
-                _sending.value = false
+                if (!isLocalMode) _sending.value = false
                 showError(event.message)
+                if (event.completesForeground) completeLocalForeground()
             }
             is RealtimeEvent.Usage -> {
                 // 本地模式 token 用量已由 LocalRepository 保存到消息，UI 无需额外处理
@@ -4675,7 +4942,7 @@ class ChatViewModel : BaseViewModel() {
             is RealtimeEvent.ExecConfirmationRequired -> {
                 val request = event.request
                 if (request.sessionId.isBlank() || request.sessionId == currentSessionId) {
-                    _sending.value = false
+                    if (!isLocalMode) _sending.value = false
                     _messages.value = _messages.value.filter { it.id != streamingId }
                     _execConfirmation.value = request.copy(
                         sessionId = request.sessionId.ifBlank { currentSessionId }
@@ -4684,7 +4951,7 @@ class ChatViewModel : BaseViewModel() {
             }
             is RealtimeEvent.ExecConfirmationResolved -> {
                 if (event.sessionId.isNullOrBlank() || event.sessionId == currentSessionId) {
-                    _sending.value = false
+                    if (!isLocalMode) _sending.value = false
                     _execConfirmation.value = null
                 }
             }
@@ -4700,7 +4967,7 @@ class ChatViewModel : BaseViewModel() {
                         enrichAgentThinkingCard(event.card, streamingReasoning.toString())
                     } else event.card
                     applyThinkingCardUpdate(card)
-                    _sending.value = !event.card.isComplete
+                    if (!isLocalMode) _sending.value = !event.card.isComplete
                 }
             }
             is RealtimeEvent.HookNotificationEvent -> {
@@ -4716,6 +4983,7 @@ class ChatViewModel : BaseViewModel() {
                     _session.value = _session.value?.copy(name = event.newName)
                 }
             }
+            is RealtimeEvent.ForegroundComplete -> completeLocalForeground()
             is RealtimeEvent.ReplyPostProcessed -> {
                 if (
                     isLocalMode &&
@@ -4838,10 +5106,17 @@ class ChatViewModel : BaseViewModel() {
     /** 加载消息列表。 */
     fun loadMessages() {
         if (currentSessionId.isBlank()) return
+        val requestedSessionId = currentSessionId
+        val target = runtime
         launchResult(
-            block = { unified.listMessages(currentSessionId) },
+            block = { unified.listMessages(requestedSessionId) },
             onSuccess = { fresh ->
-                val hasAgentCards = fresh.orEmpty().any { message ->
+                if (currentSessionId == requestedSessionId && runtime === target) {
+                // tool_call_history 只供模型恢复上下文，聊天 UI 不读取也不持有这份大对象。
+                val uiFresh = fresh.orEmpty().map { message ->
+                    if (message.toolCallHistory != null) message.copy(toolCallHistory = null) else message
+                }
+                val hasAgentCards = uiFresh.any { message ->
                     message.thinkingCards.orEmpty().any(ThinkingCard::isAgent)
                 }
                 val showStandaloneReasoning =
@@ -4859,7 +5134,7 @@ class ChatViewModel : BaseViewModel() {
                     .filter { !it.isUser && it.id != streamingId && !it.content.isNullOrBlank() }
                     .associateBy { it.content to it.timestamp }
 
-                val merged = (fresh ?: emptyList())
+                val merged = uiFresh
                     .filterNot { msg -> msg.isThinkingCard }
                     .map { message ->
                         if (showStandaloneReasoning || message.isUser) message
@@ -4868,10 +5143,14 @@ class ChatViewModel : BaseViewModel() {
                     .map { newMsg ->
                     // 历史加载的 thinking_cards 必定已完成（否则为数据不一致），
                     // 强制最后一张卡片 isComplete=true，避免重进会话还在转圈
+                    var normalizedCardsChanged = false
                     val normalizedCards = newMsg.thinkingCards?.map { card ->
-                        if (!card.isComplete) card.copy(isComplete = true) else card
+                        if (!card.isComplete) {
+                            normalizedCardsChanged = true
+                            card.copy(isComplete = true)
+                        } else card
                     }
-                    val withCards = if (normalizedCards != null && normalizedCards != newMsg.thinkingCards) {
+                    val withCards = if (normalizedCardsChanged && normalizedCards != null) {
                         newMsg.copy(thinkingCards = normalizedCards)
                     } else newMsg
 
@@ -4880,7 +5159,7 @@ class ChatViewModel : BaseViewModel() {
                         freshCards = withCards.thinkingCards,
                         currentCards = existing?.thinkingCards
                     )
-                    val mergedCard = if (mergedCards != withCards.thinkingCards) {
+                    val mergedCard = if (mergedCards !== withCards.thinkingCards) {
                         withCards.copy(thinkingCards = mergedCards)
                     } else withCards
                     val mergedAudio = if (
@@ -4907,12 +5186,16 @@ class ChatViewModel : BaseViewModel() {
                     .filter { !it.isUser && !it.content.isNullOrBlank() }
                     .mapTo(mutableSetOf()) { it.content }
                 val orphanAssistants = currentAssistantByContent.values.filter { msg ->
-                    (msg.content to msg.timestamp) !in freshAssistantKeys &&
+                    val idAlreadyLoaded = !msg.id.isNullOrBlank() && merged.any { it.id == msg.id }
+                    !idAlreadyLoaded &&
+                        (msg.content to msg.timestamp) !in freshAssistantKeys &&
                         !(msg.id?.startsWith(STREAM_FALLBACK_PREFIX) == true &&
                             msg.content in freshAssistantContents)
                 }
 
-                val nextMessages = if (orphanAssistants.isEmpty()) merged else merged + orphanAssistants
+                val nextMessages = deduplicateMessagesById(
+                    if (orphanAssistants.isEmpty()) merged else merged + orphanAssistants
+                )
                 _messages.value = nextMessages
                 val nextTtsStates = _ttsStates.value.toMutableMap()
                 nextMessages.forEach { msg ->
@@ -4922,6 +5205,7 @@ class ChatViewModel : BaseViewModel() {
                     }
                 }
                 _ttsStates.value = nextTtsStates
+                }
             }
         )
     }
@@ -5084,7 +5368,10 @@ class ChatViewModel : BaseViewModel() {
             }
         }
         target.ttsJobs[lookupKey] = lookupJob
-        lookupJob.invokeOnCompletion { target.ttsJobs.remove(lookupKey, lookupJob) }
+        lookupJob.invokeOnCompletion {
+            target.ttsJobs.remove(lookupKey, lookupJob)
+            ChatSessionManager.pruneIfIdle(target.sessionId)
+        }
         lookupJob.start()
     }
 
@@ -5115,7 +5402,10 @@ class ChatViewModel : BaseViewModel() {
             startMessageTts(target, sessionId, message, config)
         }
         target.ttsJobs[prepareKey] = prepareJob
-        prepareJob.invokeOnCompletion { target.ttsJobs.remove(prepareKey, prepareJob) }
+        prepareJob.invokeOnCompletion {
+            target.ttsJobs.remove(prepareKey, prepareJob)
+            ChatSessionManager.pruneIfIdle(target.sessionId)
+        }
         prepareJob.start()
     }
 
@@ -5216,7 +5506,10 @@ class ChatViewModel : BaseViewModel() {
             }
         }
         target.ttsJobs[messageId] = ttsJob
-        ttsJob.invokeOnCompletion { target.ttsJobs.remove(messageId, ttsJob) }
+        ttsJob.invokeOnCompletion {
+            target.ttsJobs.remove(messageId, ttsJob)
+            ChatSessionManager.pruneIfIdle(target.sessionId)
+        }
         ttsJob.start()
     }
 
@@ -5243,7 +5536,10 @@ class ChatViewModel : BaseViewModel() {
             startMessageTts(target, sessionId, message, config, force = true)
         }
         target.ttsJobs[prepareKey] = prepareJob
-        prepareJob.invokeOnCompletion { target.ttsJobs.remove(prepareKey, prepareJob) }
+        prepareJob.invokeOnCompletion {
+            target.ttsJobs.remove(prepareKey, prepareJob)
+            ChatSessionManager.pruneIfIdle(target.sessionId)
+        }
         prepareJob.start()
     }
 
@@ -5262,7 +5558,7 @@ class ChatViewModel : BaseViewModel() {
         val content = text.trim()
         val messageContent = buildChatMessageContent(content, attachments)
         if (messageContent.isBlank()) return
-        if (_sending.value || currentSessionId.isBlank()) return
+        if (_sending.value || runtime.hasBlockingLocalChatJob() || currentSessionId.isBlank()) return
         if (plotChoiceId != null) {
             viewModelScope.launch {
                 commitPlotChoiceSelection(plotChoiceId)
@@ -5284,6 +5580,8 @@ class ChatViewModel : BaseViewModel() {
         // 立即创建流式占位消息，显示骨架动画（等待第一个 chunk）
         streamingContent.setLength(0)
         streamingReasoning.setLength(0)
+        runtime.streamingContentPreview.value = ""
+        runtime.streamingReasoningPreview.value = ""
         val placeholder = Message(
             id = streamingId,
             role = "assistant",
@@ -5295,29 +5593,28 @@ class ChatViewModel : BaseViewModel() {
         if (isLocalMode) {
             // 本地模式：直接收集 Flow 事件
             // 挂到 applicationScope：退出聊天界面后 AI 生成继续后台运行
-            localChatJob?.cancel()
-            localChatJob = ServiceContainer.applicationScope.launch {
+            startLocalChatCollection { chatJob ->
                 val flow = try {
                     unified.chatStream(currentSessionId, messageContent, attachments, reasoningEffort)
+                } catch (_: kotlinx.coroutines.CancellationException) {
+                    return@startLocalChatCollection
                 } catch (e: Exception) {
                     _sending.value = false
                     _messages.value = _messages.value.filter { it.id != streamingId }
                     showError(e.message ?: string(R.string.chat_send_failed))
-                    return@launch
+                    return@startLocalChatCollection
                 }
                 if (flow == null) {
                     _sending.value = false
                     _messages.value = _messages.value.filter { it.id != streamingId }
                     showError(string(R.string.chat_no_ai_model))
-                    return@launch
+                    return@startLocalChatCollection
                 }
                 try {
-                    flow.collect { event -> handleRealtimeEvent(event) }
+                    flow.collect { event -> handleRealtimeEvent(event, chatJob) }
+                } catch (_: kotlinx.coroutines.CancellationException) {
+                    // 停止生成、应用退出或会话回收都属于正常协程取消，不能显示为聊天错误。
                 } catch (e: Exception) {
-                    if (
-                        e is kotlinx.coroutines.CancellationException &&
-                        generationStopRequested
-                    ) return@launch
                     _sending.value = false
                     _messages.value = _messages.value.filter { it.id != streamingId }
                     val errMsg = e.message ?: string(R.string.chat_send_failed)
@@ -5357,6 +5654,8 @@ class ChatViewModel : BaseViewModel() {
         // 创建流式占位消息，显示骨架动画（等待第一个 chunk）
         streamingContent.setLength(0)
         streamingReasoning.setLength(0)
+        runtime.streamingContentPreview.value = ""
+        runtime.streamingReasoningPreview.value = ""
         val placeholder = Message(
             id = streamingId,
             role = "assistant",
@@ -5492,7 +5791,7 @@ class ChatViewModel : BaseViewModel() {
 
     /** 重新生成最后一条 AI 回复：先隐藏旧 AI 消息，再请求重新生成。 */
     fun regenerate() {
-        if (_sending.value || currentSessionId.isBlank()) return
+        if (_sending.value || runtime.hasBlockingLocalChatJob() || currentSessionId.isBlank()) return
         // 找到最后一条 assistant 消息的 id 传给服务器
         val lastAssistant = _messages.value.lastOrNull { !it.isUser }
         val messageId = lastAssistant?.id
@@ -5515,31 +5814,30 @@ class ChatViewModel : BaseViewModel() {
         if (isLocalMode) {
             // 本地模式：直接收集 Flow 事件
             // 挂到 applicationScope：退出聊天界面后 AI 生成继续后台运行
-            localChatJob?.cancel()
-            localChatJob = ServiceContainer.applicationScope.launch {
+            startLocalChatCollection { chatJob ->
                 val flow = try {
                     unified.regenerateStream(
                         currentSessionId,
                         messageId,
                         ServiceContainer.prefs.getSessionReasoningEffort(currentSessionId)
                     )
+                } catch (_: kotlinx.coroutines.CancellationException) {
+                    return@startLocalChatCollection
                 } catch (e: Exception) {
                     _sending.value = false
                     showError(e.message ?: string(R.string.chat_regenerate_failed))
-                    return@launch
+                    return@startLocalChatCollection
                 }
                 if (flow == null) {
                     _sending.value = false
                     showError(string(R.string.chat_no_ai_model))
-                    return@launch
+                    return@startLocalChatCollection
                 }
                 try {
-                    flow.collect { event -> handleRealtimeEvent(event) }
+                    flow.collect { event -> handleRealtimeEvent(event, chatJob) }
+                } catch (_: kotlinx.coroutines.CancellationException) {
+                    // 正常取消不显示 StandaloneCoroutine 错误。
                 } catch (e: Exception) {
-                    if (
-                        e is kotlinx.coroutines.CancellationException &&
-                        generationStopRequested
-                    ) return@launch
                     _sending.value = false
                     _messages.value = _messages.value.filter { it.id != streamingId }
                     val errMsg = e.message ?: string(R.string.chat_regenerate_failed)
@@ -5599,6 +5897,8 @@ class ChatViewModel : BaseViewModel() {
         _plotChoicesLoading.value = false
         streamingContent.setLength(0)
         streamingReasoning.setLength(0)
+        runtime.streamingContentPreview.value = ""
+        runtime.streamingReasoningPreview.value = ""
         _messages.value = _messages.value
             .filter { it.id != streamingId }
             .map { message ->

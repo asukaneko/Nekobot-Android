@@ -5,10 +5,60 @@ import com.nekobot.app.data.model.ThinkingCard
 import com.nekobot.app.data.model.ThinkingStep
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RealtimeMessageMergeTest {
+
+    @Test
+    fun pendingAgentMessageKeyDoesNotHashNestedProgressPayload() {
+        val explosiveResult = object {
+            override fun hashCode(): Int = error("不应计算 Agent 工具结果的 hashCode")
+        }
+        val message = Message(
+            role = "user",
+            content = "继续",
+            timestamp = "same-time",
+            thinkingCards = listOf(
+                ThinkingCard(
+                    id = "card",
+                    content = "处理完成",
+                    steps = listOf(ThinkingStep(fullResult = explosiveResult)),
+                    isAgent = true
+                )
+            )
+        )
+
+        val first = chatMessageItemKey(0, message)
+        val second = chatMessageItemKey(1, message)
+
+        assertNotEquals(first, second)
+        assertTrue(first.startsWith("pending:"))
+    }
+
+    @Test
+    fun duplicatePersistedMessageIdsStillReceiveUniqueComposeKeys() {
+        val message = Message(id = "same-id", role = "assistant", content = "reply")
+
+        val first = chatMessageItemKey(0, message)
+        val second = chatMessageItemKey(1, message)
+
+        assertNotEquals(first, second)
+        assertTrue(first.startsWith("message:same-id:"))
+    }
+
+    @Test
+    fun duplicatePersistedMessagesAreRemovedBeforeRendering() {
+        val first = Message(id = "same-id", role = "assistant", content = "first")
+        val duplicate = Message(id = "same-id", role = "assistant", content = "duplicate")
+        val pendingOne = Message(role = "user", content = "pending one")
+        val pendingTwo = Message(role = "user", content = "pending two")
+
+        val result = deduplicateMessagesById(listOf(first, pendingOne, duplicate, pendingTwo))
+
+        assertEquals(listOf(first, pendingOne, pendingTwo), result)
+    }
 
     @Test
     fun webUiUserMessageIsVisibleInAndroidConversation() {

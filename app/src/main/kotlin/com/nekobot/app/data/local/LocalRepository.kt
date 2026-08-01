@@ -36,6 +36,8 @@ import com.nekobot.app.data.local.ai.SmartRoutingBudgetNotifier
 import com.nekobot.app.data.local.ai.SmartRoutingRequest
 import com.nekobot.app.data.local.ai.TokenStatsManager
 import com.nekobot.app.data.local.ai.currentLocalContextTokens
+import com.nekobot.app.data.local.ai.decodeThinkingCardsForUi
+import com.nekobot.app.data.local.ai.toPersistedProgressCard
 import com.nekobot.app.data.local.ai.reconcileLocalTokenUsageRecords
 import com.nekobot.app.data.local.ai.relationshipStateFromInitial
 import com.nekobot.app.data.local.ai.resolveLocalTokenUsage
@@ -3551,6 +3553,8 @@ class LocalRepository(
                         emit(RealtimeEvent.SessionRenamed(sessionId, newName))
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 LocalLogger.w(TAG, "普通会话自动命名失败（不影响主流程）: ${e.message}", e)
             }
@@ -4053,6 +4057,8 @@ class LocalRepository(
                             com.nekobot.app.data.local.LocalLogger.i(TAG, "会话自动命名: $sessionId -> $newName")
                         }
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     com.nekobot.app.data.local.LocalLogger.w(TAG, "会话自动命名失败（不影响主流程）: ${e.message}", e)
                 }
@@ -4124,6 +4130,8 @@ class LocalRepository(
             if (stackDebug != null) {
                 try {
                     sessionDao.updatePromptStackDebug(sessionId, gson.toJson(stackDebug))
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     com.nekobot.app.data.local.LocalLogger.w(TAG, "保存 prompt_stack_debug 失败: ${e.message}")
                 }
@@ -4132,6 +4140,8 @@ class LocalRepository(
             if (!composedPrompt.isNullOrBlank()) {
                 try {
                     sessionDao.updateComposedSystemPrompt(sessionId, composedPrompt)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     com.nekobot.app.data.local.LocalLogger.w(TAG, "保存 composed_system_prompt 失败: ${e.message}")
                 }
@@ -4184,14 +4194,20 @@ class LocalRepository(
                         savePlotChoices(sessionId, payload.toString())
                         emit(RealtimeEvent.PlotChoices(payload))
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     com.nekobot.app.data.local.LocalLogger.w(TAG, "剧情选项生成失败（不影响主流程）: ${e.message}", e)
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             emit(RealtimeEvent.Error(e.message ?: "Pipeline 执行失败"))
             emit(RealtimeEvent.StreamEnd(sessionId))
         }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             emit(RealtimeEvent.Error(e.message ?: "本地聊天失败"))
             emit(RealtimeEvent.StreamEnd(sessionId))
@@ -4405,7 +4421,19 @@ class LocalRepository(
                         callbacks.eventChannel.close()
                     }
                 }
-                for (event in callbacks.eventChannel) emit(event)
+                for (event in callbacks.eventChannel) {
+                    // 群聊一轮可能有多名角色；单个角色结束只负责落下该气泡，
+                    // 不能提前释放整轮发送状态。全部角色结束后再单独发 ForegroundComplete。
+                    val groupEvent = when (event) {
+                        is RealtimeEvent.NewMessage -> event.copy(completesForeground = false)
+                        is RealtimeEvent.StreamEnd -> event.copy(completesForeground = false)
+                        is RealtimeEvent.AiResponse -> event.copy(completesForeground = false)
+                        is RealtimeEvent.Filtered -> event.copy(completesForeground = false)
+                        is RealtimeEvent.Error -> event.copy(completesForeground = false)
+                        else -> event
+                    }
+                    emit(groupEvent)
+                }
                 pipelineJob.join()
             }
 
@@ -4433,6 +4461,10 @@ class LocalRepository(
             index++
         }
 
+        // 所有可见回复均已完成。后续轮次推进、调试信息保存、自动命名和 TTS 交接
+        // 都属于后台收尾，不再让输入框显示“AI 正在回复”。
+        emit(RealtimeEvent.ForegroundComplete(session.id))
+
         if (lastCompletedSpeaker != null && !generationController.isStopped) {
             sessionDao.advanceGroupTurn(session.id, lastCompletedSpeaker.id, nowIso())
         }
@@ -4440,30 +4472,46 @@ class LocalRepository(
         // 与单角色会话一致：保存最后一名发言角色实际使用的完整提示词栈，供详情页查看。
         lastContext?.let { ctx ->
             ctx.metadata["prompt_stack_debug"]?.let { stackDebug ->
-                runCatching { sessionDao.updatePromptStackDebug(session.id, gson.toJson(stackDebug)) }
+                try {
+                    sessionDao.updatePromptStackDebug(session.id, gson.toJson(stackDebug))
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    LocalLogger.w(TAG, "保存群聊 prompt_stack_debug 失败: ${e.message}")
+                }
             }
             (ctx.metadata["composed_system_prompt"] as? String)?.takeIf { it.isNotBlank() }?.let { prompt ->
-                runCatching { sessionDao.updateComposedSystemPrompt(session.id, prompt) }
+                try {
+                    sessionDao.updateComposedSystemPrompt(session.id, prompt)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    LocalLogger.w(TAG, "保存群聊 composed_system_prompt 失败: ${e.message}")
+                }
             }
         }
 
         // 群聊同样只在一轮全部结束后尝试自动命名一次。
         if (!generationController.isStopped && lastContext?.finalContent?.isNotBlank() == true) {
-            runCatching {
-                val latestSession = sessionDao.getById(session.id) ?: return@runCatching
-                val latestMessages = listAiContextMessages(session.id)
-                val newName = sessionNameGenerator.tryAutoName(
-                    session = latestSession,
-                    messages = latestMessages,
-                    characterName = participants.joinToString("、") { it.name },
-                    characterDescription = participants.joinToString("；") { it.description }.take(500)
-                )
-                if (newName != null) {
-                    sessionDao.updateName(session.id, newName, nowIso())
-                    emit(RealtimeEvent.SessionRenamed(session.id, newName))
+            try {
+                val latestSession = sessionDao.getById(session.id)
+                if (latestSession != null) {
+                    val latestMessages = listAiContextMessages(session.id)
+                    val newName = sessionNameGenerator.tryAutoName(
+                        session = latestSession,
+                        messages = latestMessages,
+                        characterName = participants.joinToString("、") { it.name },
+                        characterDescription = participants.joinToString("；") { it.description }.take(500)
+                    )
+                    if (newName != null) {
+                        sessionDao.updateName(session.id, newName, nowIso())
+                        emit(RealtimeEvent.SessionRenamed(session.id, newName))
+                    }
                 }
-            }.onFailure { error ->
-                LocalLogger.w(TAG, "群聊会话自动命名失败（不影响主流程）: ${error.message}", error)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                LocalLogger.w(TAG, "群聊会话自动命名失败（不影响主流程）: ${e.message}", e)
             }
         }
         emit(
@@ -6096,22 +6144,16 @@ $charSection$topicSection
         // 合并 input+output 作为总 token 数，供 UI 统计使用
         tokens = listOfNotNull(inputTokens, outputTokens).takeIf { it.size == 2 }?.sum(),
         createdAt = createdAt,
-        // 反序列化进度卡片 JSON（agent 模式持久化）
-        thinkingCards = thinkingCards?.takeIf { it.isNotBlank() }?.let {
-            runCatching {
-                val type = object : TypeToken<List<ThinkingCard>>() {}.type
-                gson.fromJson<List<ThinkingCard>>(it, type)
-            }.getOrNull()
-        },
-        toolCallHistory = com.nekobot.app.data.local.ai.decodeToolCallHistory(toolCallHistory)
-            .takeIf { it.isNotEmpty() }
+        // UI 历史只加载有界进度卡。完整工具历史仅供 AI 上下文路径读取，绝不能塞进聊天状态。
+        thinkingCards = decodeThinkingCardsForUi(id, thinkingCards, gson),
+        toolCallHistory = null
     )
 
     /** 持久化指定用户消息关联的进度卡片列表（agent 模式）。 */
     suspend fun updateMessageThinkingCards(messageId: String, cards: List<ThinkingCard>?) =
         withContext(Dispatchers.IO) {
             val json = cards?.takeIf { it.isNotEmpty() }?.let {
-                runCatching { gson.toJson(it) }.getOrNull()
+                runCatching { gson.toJson(it.map(ThinkingCard::toPersistedProgressCard)) }.getOrNull()
             }
             messageDao.updateThinkingCards(messageId, json)
         }

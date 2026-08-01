@@ -148,12 +148,18 @@ internal class LocalPipelineCallbacks(
         )
     }
 
-    /** 流式事件通道（UI 层收集），UNLIMITED 避免背压阻塞 */
-    val eventChannel: Channel<RealtimeEvent> = Channel(Channel.UNLIMITED)
+    /**
+     * 流式事件通道（UI 层收集）。正文/思考分片已在生产端合并，使用有限缓冲避免 UI
+     * 短暂变慢时无限堆积事件与字符串对象。
+     */
+    val eventChannel: Channel<RealtimeEvent> = Channel(Channel.BUFFERED)
 
-    /** 非阻塞 emit：Channel.trySend 不会挂起 */
+    /** 优先无阻塞发送；极少数缓冲已满的情况等待消费者，保证正文与结束事件不丢失。 */
     private fun emitEvent(event: RealtimeEvent) {
-        eventChannel.trySend(event)
+        if (eventChannel.trySend(event).isSuccess) return
+        runCatching {
+            kotlinx.coroutines.runBlocking { eventChannel.send(event) }
+        }
     }
 
     // HookExecutor 事件由 ChatViewModel 直接收集（connectLocalHookEvents），
@@ -162,6 +168,25 @@ internal class LocalPipelineCallbacks(
     /** 流式消息 ID */
     private var streamMessageId: String = ""
     private var activeAgentProgressReporter: LocalAgentProgressReporter? = null
+
+    private fun createStreamEventCoalescer(ctx: PipelineContext): LocalStreamEventCoalescer =
+        LocalStreamEventCoalescer(
+            onEvent = { event ->
+                when (event) {
+                    is RealtimeEvent.ReasoningChunk -> {
+                        if (reasoningEffort != ReasoningEffort.NONE) {
+                            if (session.sessionMode.equals("agent", ignoreCase = true)) {
+                                ctx.metadata["agent_reasoning_streamed"] = true
+                                activeAgentProgressReporter?.onThinkingContent(ctx, event.chunk)
+                            } else {
+                                emitEvent(event)
+                            }
+                        }
+                    }
+                    else -> emitEvent(event)
+                }
+            }
+        )
 
     // ---- 会话 / 消息 I/O ----
 
@@ -479,34 +504,54 @@ internal class LocalPipelineCallbacks(
                 if (tools.isNotEmpty()) put("tools", tools)
                 put("reasoning_effort", reasoningEffort.wireValue)
             }
+            val streamRelay = if (session.sessionMode.equals("agent", ignoreCase = true)) {
+                createStreamEventCoalescer(ctx)
+            } else null
+            val streamCallbacks = streamRelay?.let { relay ->
+                LocalAiStreamCallbacks(
+                    onStart = { relay.onStart() },
+                    onContentChunk = relay::onContentChunk,
+                    onThinkingChunk = { chunk ->
+                        if (reasoningEffort != ReasoningEffort.NONE) {
+                            ctx.metadata["agent_reasoning_streamed"] = true
+                            relay.onReasoningChunk(chunk)
+                        }
+                    }
+                )
+            }
 
             // 优先走 coordinator（持久化健康状态 + token 限额 + 超时）；为空时回退到内存版
-            val result = if (coordinator != null) {
-                kotlinx.coroutines.runBlocking {
-                    try {
-                        val exec = coordinator.execute(modelQueue, activeModel.purpose.ifBlank { "chat" }) { model ->
-                            chatOnceForGeneration(model, messages, extra)
+            val result = try {
+                if (coordinator != null) {
+                    kotlinx.coroutines.runBlocking {
+                        try {
+                            val exec = coordinator.execute(modelQueue, activeModel.purpose.ifBlank { "chat" }) { model ->
+                                chatOnceForGeneration(model, messages, extra, streamCallbacks)
+                            }
+                            // 保留工具调用等结构化响应，并补充实际使用的模型。
+                            exec.value.copy(
+                                usedModelId = exec.model.id,
+                                usedModelName = exec.model.name,
+                                usedModelActualName = exec.model.model
+                            )
+                        } catch (e: FailoverAllFailedException) {
+                            LocalAiResult("", error = e.message ?: "所有模型均失败")
                         }
-                        // 保留工具调用等结构化响应，并补充实际使用的模型。
-                        exec.value.copy(
-                            usedModelId = exec.model.id,
-                            usedModelName = exec.model.name,
-                            usedModelActualName = exec.model.model
+                    }
+                } else {
+                    kotlinx.coroutines.runBlocking {
+                        aiClient.chatOnceWithFailover(
+                            modelQueue,
+                            messages,
+                            extra,
+                            requestTag = session.id,
+                            shouldStop = { generationController.isStopped },
+                            streamCallbacks = streamCallbacks
                         )
-                    } catch (e: FailoverAllFailedException) {
-                        LocalAiResult("", error = e.message ?: "所有模型均失败")
                     }
                 }
-            } else {
-                kotlinx.coroutines.runBlocking {
-                    aiClient.chatOnceWithFailover(
-                        modelQueue,
-                        messages,
-                        extra,
-                        requestTag = session.id,
-                        shouldStop = { generationController.isStopped }
-                    )
-                }
+            } finally {
+                streamRelay?.flush()
             }
 
             if (result.error != null) {
@@ -547,56 +592,66 @@ internal class LocalPipelineCallbacks(
                 put("reasoning_effort", reasoningEffort.wireValue)
             }
 
-            val chunks = mutableListOf<Map<String, Any>>()
+            val fullContent = StringBuilder()
+            val fullReasoning = StringBuilder()
             var streamError: String? = null
             var usedModelName = activeModel.name
             var usedActualModel = activeModel.model
             var usage: Map<String, Any> = emptyMap()
+            val streamRelay = createStreamEventCoalescer(ctx)
 
-            // UI 事件在网络读取时立即转发；返回的 chunk 列表仅供 Pipeline 聚合与落库，
-            // 通过 _relayed 标志避免 AIPipeline 再次推送同一分片。
-            kotlinx.coroutines.runBlocking {
-                aiClient.chatStreamWithFailover(modelQueue, messages, extra).collect { event ->
-                    if (generationController.isStopped) {
-                        throw kotlinx.coroutines.CancellationException("生成已停止")
-                    }
-                    when (event) {
-                        is RealtimeEvent.StreamStart -> emitEvent(RealtimeEvent.StreamStart(null))
-                        is RealtimeEvent.ReasoningChunk -> {
-                            if (reasoningEffort != ReasoningEffort.NONE) {
-                                if (session.sessionMode.equals("agent", ignoreCase = true)) {
-                                    activeAgentProgressReporter?.onThinkingContent(ctx, event.chunk)
-                                } else {
-                                    emitEvent(event)
+            // UI 事件在网络读取时合并转发；Pipeline 只接收最终正文/思考各一个聚合块，
+            // 避免长回复产生“每 token 一个 Map”的内存放大。
+            try {
+                kotlinx.coroutines.runBlocking {
+                    aiClient.chatStreamWithFailover(modelQueue, messages, extra).collect { event ->
+                        if (generationController.isStopped) {
+                            throw kotlinx.coroutines.CancellationException("生成已停止")
+                        }
+                        when (event) {
+                            is RealtimeEvent.StreamStart -> streamRelay.onStart()
+                            is RealtimeEvent.ReasoningChunk -> {
+                                if (reasoningEffort != ReasoningEffort.NONE) {
+                                    fullReasoning.append(event.chunk)
+                                    streamRelay.onReasoningChunk(event.chunk)
                                 }
-                                chunks += mapOf("thinking_content" to event.chunk, "_relayed" to true)
                             }
+                            is RealtimeEvent.StreamChunk -> {
+                                fullContent.append(event.chunk)
+                                streamRelay.onContentChunk(event.chunk)
+                            }
+                            is RealtimeEvent.Usage -> {
+                                usedModelName = event.modelDisplayName ?: usedModelName
+                                usedActualModel = event.model ?: usedActualModel
+                                usage = mapOf(
+                                    "prompt" to event.inputTokens,
+                                    "completion" to event.outputTokens,
+                                    "total" to event.inputTokens + event.outputTokens
+                                )
+                            }
+                            is RealtimeEvent.Error -> streamError = event.message
+                            else -> Unit
                         }
-                        is RealtimeEvent.StreamChunk -> {
-                            emitEvent(event)
-                            chunks += mapOf("content" to event.chunk, "_relayed" to true)
-                        }
-                        is RealtimeEvent.Usage -> {
-                            usedModelName = event.modelDisplayName ?: usedModelName
-                            usedActualModel = event.model ?: usedActualModel
-                            usage = mapOf(
-                                "prompt" to event.inputTokens,
-                                "completion" to event.outputTokens,
-                                "total" to event.inputTokens + event.outputTokens
-                            )
-                        }
-                        is RealtimeEvent.Error -> streamError = event.message
-                        else -> Unit
                     }
                 }
+            } finally {
+                streamRelay.flush()
             }
             streamError?.let { throw RuntimeException(it) }
-            chunks += buildMap<String, Any> {
-                if (usage.isNotEmpty()) put("usage", usage)
-                put("_model_id", activeModel.id)
-                put("_model_name", usedModelName)
-                put("_model_actual_name", usedActualModel)
-                put("_relayed", true)
+            val chunks = buildList<Map<String, Any>> {
+                if (fullReasoning.isNotEmpty()) {
+                    add(mapOf("thinking_content" to fullReasoning.toString(), "_relayed" to true))
+                }
+                if (fullContent.isNotEmpty()) {
+                    add(mapOf("content" to fullContent.toString(), "_relayed" to true))
+                }
+                add(buildMap {
+                    if (usage.isNotEmpty()) put("usage", usage)
+                    put("_model_id", activeModel.id)
+                    put("_model_name", usedModelName)
+                    put("_model_actual_name", usedActualModel)
+                    put("_relayed", true)
+                })
             }
             triggerModelAfterCallHook(ctx, usedModelName)
             chunks
@@ -606,13 +661,20 @@ internal class LocalPipelineCallbacks(
     private suspend fun chatOnceForGeneration(
         model: LocalAiModelEntity,
         messages: List<Map<String, Any>>,
-        extra: Map<String, Any?>
+        extra: Map<String, Any?>,
+        streamCallbacks: LocalAiStreamCallbacks? = null
     ): LocalAiResult {
         if (generationController.isStopped) {
             throw kotlinx.coroutines.CancellationException("生成已停止")
         }
         return try {
-            aiClient.chatOnce(model, messages, extra, requestTag = session.id)
+            aiClient.chatOnce(
+                model,
+                messages,
+                extra,
+                requestTag = session.id,
+                streamCallbacks = streamCallbacks
+            )
         } catch (error: Exception) {
             if (generationController.isStopped) {
                 throw kotlinx.coroutines.CancellationException("生成已停止").apply {
@@ -687,10 +749,8 @@ internal class LocalPipelineCallbacks(
         if (!session.sessionMode.equals("agent", ignoreCase = true)) return ProgressReporter()
         return LocalAgentProgressReporter(
             parentMessageId = parentMessageId,
-            onUpdate = { card ->
-                emitEvent(RealtimeEvent.ThinkingCardUpdate(card))
-                onThinkingCardUpdate?.invoke(card)
-            }
+            onUpdate = { card -> emitEvent(RealtimeEvent.ThinkingCardUpdate(card)) },
+            onCheckpoint = { card -> onThinkingCardUpdate?.invoke(card) }
         ).also { activeAgentProgressReporter = it }
     }
 

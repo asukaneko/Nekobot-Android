@@ -48,6 +48,52 @@ data class LocalAiResult(
     val thinkingContent: String = ""
 )
 
+/** 模型单次请求的实时回调；Agent 工具循环用它把最终文本直接推到聊天气泡。 */
+data class LocalAiStreamCallbacks(
+    val onStart: () -> Unit = {},
+    val onContentChunk: (String) -> Unit = {},
+    val onThinkingChunk: (String) -> Unit = {}
+)
+
+internal class LocalToolCallStreamAccumulator {
+    private data class Part(
+        val id: StringBuilder = StringBuilder(),
+        val name: StringBuilder = StringBuilder(),
+        val arguments: StringBuilder = StringBuilder(),
+        var initialArgumentsJson: String = ""
+    )
+
+    private val gson = Gson()
+    private val parts = linkedMapOf<Int, Part>()
+
+    fun add(delta: LocalToolCallDelta) {
+        val part = parts.getOrPut(delta.index) { Part() }
+        part.id.append(delta.idChunk)
+        part.name.append(delta.nameChunk)
+        part.arguments.append(delta.argumentsChunk)
+        if (delta.initialArgumentsJson.isNotBlank()) {
+            part.initialArgumentsJson = delta.initialArgumentsJson
+        }
+    }
+
+    fun build(): List<Map<String, Any>> = parts.values.mapNotNull { part ->
+        val name = part.name.toString()
+        if (name.isBlank()) return@mapNotNull null
+        val rawArguments = part.arguments.toString()
+            .ifBlank { part.initialArgumentsJson }
+            .ifBlank { "{}" }
+        val arguments = runCatching {
+            @Suppress("UNCHECKED_CAST")
+            gson.fromJson(rawArguments, Map::class.java) as Map<String, Any>
+        }.getOrDefault(emptyMap())
+        mapOf(
+            "id" to part.id.toString(),
+            "name" to name,
+            "arguments" to arguments
+        )
+    }
+}
+
 /** 图片生成结果：url 或 bytes 二选一 */
 data class GeneratedImage(
     val url: String?,
@@ -184,17 +230,19 @@ class LocalAiClient(
         model: LocalAiModelEntity,
         messages: List<Map<String, Any>>,
         extra: Map<String, Any?> = emptyMap(),
-        requestTag: String? = null
+        requestTag: String? = null,
+        streamCallbacks: LocalAiStreamCallbacks? = null
     ): LocalAiResult {
         val (runtimeModel, credential) = resolveRuntimeModel(model)
         val protocol = LocalProtocols.get(runtimeModel.protocol)
-        if (protocol.requiresStreaming) {
+        if (protocol.requiresStreaming || streamCallbacks != null) {
             return chatOnceViaStream(
                 model = runtimeModel,
                 credential = credential,
                 messages = messages,
                 extra = extra,
-                requestTag = requestTag
+                requestTag = requestTag,
+                streamCallbacks = streamCallbacks
             )
         }
         val url = protocol.resolveUrl(
@@ -254,7 +302,8 @@ class LocalAiClient(
         credential: OAuthRuntimeCredential?,
         messages: List<Map<String, Any>>,
         extra: Map<String, Any?>,
-        requestTag: String?
+        requestTag: String?,
+        streamCallbacks: LocalAiStreamCallbacks? = null
     ): LocalAiResult {
         val protocol = LocalProtocols.get(model.protocol)
         val url = protocol.resolveUrl(model.baseUrl, model.model, model.appendBaseUrlPath)
@@ -284,10 +333,13 @@ class LocalAiClient(
             }
             val content = StringBuilder()
             val thinking = StringBuilder()
+            val toolCallAccumulator = LocalToolCallStreamAccumulator()
             var usage = emptyMap<String, Int>()
             var terminal: LocalModelResponse? = null
+            var finishReason = ""
             val source = response.body?.byteStream()
                 ?: throw IllegalStateException("响应体为空")
+            streamCallbacks?.onStart?.invoke()
             BufferedReader(InputStreamReader(source, Charsets.UTF_8)).use { reader ->
                 while (true) {
                     val line = reader.readLine() ?: break
@@ -305,20 +357,39 @@ class LocalAiClient(
                         throw IllegalStateException(it)
                     }
                     protocol.parseStreamFinalResponse(data)?.let { terminal = it }
-                    protocol.parseStreamThinkingChunk(data)?.let(thinking::append)
-                    protocol.parseStreamChunk(data)?.let(content::append)
+                    protocol.parseStreamFinishReason(data)?.let { finishReason = it }
+                    protocol.parseStreamToolCallDeltas(data).forEach(toolCallAccumulator::add)
+                    protocol.parseStreamThinkingChunk(data)?.takeIf(String::isNotEmpty)?.let { chunk ->
+                        thinking.append(chunk)
+                        streamCallbacks?.onThinkingChunk?.invoke(chunk)
+                    }
+                    protocol.parseStreamChunk(data)?.takeIf(String::isNotEmpty)?.let { chunk ->
+                        content.append(chunk)
+                        streamCallbacks?.onContentChunk?.invoke(chunk)
+                    }
                 }
             }
             val parsed = terminal
+            val streamedToolCalls = toolCallAccumulator.build()
+            val finalContent = parsed?.content?.takeIf(String::isNotEmpty) ?: content.toString()
+            val finalThinking = parsed?.thinkingContent?.takeIf(String::isNotEmpty) ?: thinking.toString()
+            if (content.isEmpty() && finalContent.isNotEmpty()) {
+                streamCallbacks?.onContentChunk?.invoke(finalContent)
+            }
+            if (thinking.isEmpty() && finalThinking.isNotEmpty()) {
+                streamCallbacks?.onThinkingChunk?.invoke(finalThinking)
+            }
+            val toolCalls = parsed?.toolCalls?.takeIf(List<*>::isNotEmpty) ?: streamedToolCalls
             LocalAiResult(
-                content = parsed?.content?.takeIf(String::isNotEmpty) ?: content.toString(),
+                content = finalContent,
                 usage = parsed?.usage?.takeIf(Map<*, *>::isNotEmpty) ?: usage,
                 usedModelId = model.id,
                 usedModelName = model.name,
                 usedModelActualName = model.model,
-                toolCalls = parsed?.toolCalls.orEmpty(),
-                finishReason = parsed?.finishReason.orEmpty(),
-                thinkingContent = parsed?.thinkingContent?.takeIf(String::isNotEmpty) ?: thinking.toString()
+                toolCalls = toolCalls,
+                finishReason = parsed?.finishReason?.takeIf(String::isNotBlank)
+                    ?: finishReason.ifBlank { if (toolCalls.isNotEmpty()) "tool_calls" else "stop" },
+                thinkingContent = finalThinking
             )
         }
     }
@@ -493,7 +564,8 @@ class LocalAiClient(
         messages: List<Map<String, Any>>,
         extra: Map<String, Any?> = emptyMap(),
         requestTag: String? = null,
-        shouldStop: () -> Boolean = { false }
+        shouldStop: () -> Boolean = { false },
+        streamCallbacks: LocalAiStreamCallbacks? = null
     ): LocalAiResult {
         if (models.isEmpty()) return LocalAiResult("", error = "无可用模型")
         if (shouldStop()) throw CancellationException("生成已停止")
@@ -509,7 +581,7 @@ class LocalAiClient(
             exclude.add(model.id)
 
             try {
-                val result = chatOnce(model, messages, extra, requestTag)
+                val result = chatOnce(model, messages, extra, requestTag, streamCallbacks)
                 failover.recordSuccess(model.id)
                 return result.copy(usedModelId = model.id, usedModelName = model.name, usedModelActualName = model.model)
             } catch (e: FailoverHttpException) {

@@ -538,7 +538,7 @@ class AIPipeline {
         // 尝试工具循环
         if (tools.isNotEmpty()) {
             runToolLoop(ctx, callbacks, tools, maxToolIterations, progress)
-            if (ctx.finalReasoning.isNotBlank()) {
+            if (ctx.finalReasoning.isNotBlank() && ctx.metadata["agent_reasoning_streamed"] != true) {
                 progress.onThinkingContent(ctx, ctx.finalReasoning)
             }
             progress.onDone(ctx)
@@ -547,7 +547,7 @@ class AIPipeline {
 
         // 简单路径：单次模型调用
         runSimple(ctx, callbacks)
-        if (ctx.finalReasoning.isNotBlank()) {
+        if (ctx.finalReasoning.isNotBlank() && ctx.metadata["agent_reasoning_streamed"] != true) {
             progress.onThinkingContent(ctx, ctx.finalReasoning)
         }
         progress.onDone(ctx)

@@ -13,25 +13,50 @@ import java.util.UUID
 internal class LocalAgentProgressReporter(
     private val parentMessageId: String?,
     private val onUpdate: (ThinkingCard) -> Unit,
+    private val onCheckpoint: (ThinkingCard) -> Unit = {},
+    private val nowNanos: () -> Long = System::nanoTime,
+    private val streamIntervalNanos: Long = 120_000_000L,
+    private val streamCharBatch: Int = 96,
     private val cardId: String = UUID.randomUUID().toString()
 ) : ProgressReporter() {
 
     private val steps = mutableListOf<ThinkingStep>()
     private val reasoningContent = StringBuilder()
-    private var lastReasoningSegment: String = ""
+    private var lastStreamingEmitNanos: Long? = null
+    private var lastEmittedReasoningLength: Int = 0
 
-    private fun emit(content: String, isComplete: Boolean = false) {
-        onUpdate(
-            ThinkingCard(
-                id = cardId,
-                content = content,
-                steps = steps.toList(),
-                isComplete = isComplete,
-                isAgent = true,
-                timestamp = LocalRepository.nowIsoStatic(),
-                parentMessageId = parentMessageId
+    private fun syncThinkingStep() {
+        if (reasoningContent.isEmpty()) return
+        val fullReasoning = reasoningContent.toString()
+        steps.indexOfLast { it.type == "thinking" }.takeIf { it >= 0 }?.let { index ->
+            steps[index] = steps[index].copy(
+                detail = fullReasoning.takeLast(160),
+                thinkingContent = fullReasoning
             )
+        }
+    }
+
+    private fun emit(
+        content: String,
+        isComplete: Boolean = false,
+        checkpoint: Boolean = true
+    ) {
+        syncThinkingStep()
+        val card = ThinkingCard(
+            id = cardId,
+            content = content,
+            steps = steps.toList(),
+            isComplete = isComplete,
+            isAgent = true,
+            timestamp = LocalRepository.nowIsoStatic(),
+            parentMessageId = parentMessageId
         )
+        onUpdate(card)
+        if (checkpoint) onCheckpoint(card)
+        if (reasoningContent.isNotEmpty()) {
+            lastStreamingEmitNanos = nowNanos()
+            lastEmittedReasoningLength = reasoningContent.length
+        }
     }
 
     override fun onPreparingStart(ctx: PipelineContext) {
@@ -52,17 +77,18 @@ internal class LocalAgentProgressReporter(
     }
 
     override fun onThinkingContent(ctx: PipelineContext, content: String) {
-        if (content.isBlank() || content == lastReasoningSegment) return
-        lastReasoningSegment = content
+        if (content.isEmpty()) return
         reasoningContent.append(content)
-        val fullReasoning = reasoningContent.toString()
-        steps.indexOfLast { it.type == "thinking" }.takeIf { it >= 0 }?.let { index ->
-            steps[index] = steps[index].copy(
-                detail = fullReasoning.takeLast(160),
-                thinkingContent = fullReasoning
-            )
+        val now = nowNanos()
+        val elapsed = lastStreamingEmitNanos?.let { now - it } ?: Long.MAX_VALUE
+        val pendingChars = reasoningContent.length - lastEmittedReasoningLength
+        if (
+            lastStreamingEmitNanos == null ||
+            elapsed >= streamIntervalNanos ||
+            pendingChars >= streamCharBatch
+        ) {
+            emit("AI 正在思考...", checkpoint = false)
         }
-        emit("AI 正在思考...")
     }
 
     override fun onToolStart(
@@ -71,18 +97,23 @@ internal class LocalAgentProgressReporter(
         arguments: Map<String, Any>,
         thinking: String
     ) {
-        if (thinking.isNotBlank()) onThinkingContent(ctx, thinking)
-        val argumentPreview = arguments.entries
-            .joinToString(", ") { "${it.key}=${it.value}" }
-            .take(100)
+        if (thinking.isNotBlank() && ctx.metadata["agent_reasoning_streamed"] != true) {
+            onThinkingContent(ctx, thinking)
+        }
+        val argumentPreview = boundedAgentValuePreview(arguments, 100)
         steps.add(
             ThinkingStep(
                 type = "tool",
                 name = toolName,
                 status = "running",
                 detail = argumentPreview,
-                arguments = arguments,
-                thinkingContent = thinking.takeIf { it.isNotBlank() }
+                // 进度卡是展示状态，不承载模型续聊数据；完整参数仍保留在 tool_call_history。
+                arguments = mapOf(
+                    "preview" to boundedAgentValuePreview(
+                        arguments,
+                        MAX_AGENT_PROGRESS_ARGUMENT_PREVIEW_CHARS
+                    )
+                )
             )
         )
         emit("调用工具: $toolName")
@@ -94,7 +125,7 @@ internal class LocalAgentProgressReporter(
         result: Map<String, Any>,
         thinking: String
     ) {
-        val resultPreview = result.toString().take(120)
+        val resultPreview = boundedAgentValuePreview(result, 120)
         val index = steps.indexOfLast {
             it.type == "tool" && it.name == toolName && it.status != "done"
         }
@@ -102,7 +133,10 @@ internal class LocalAgentProgressReporter(
             steps[index] = steps[index].copy(
                 status = "done",
                 detail = resultPreview,
-                fullResult = result
+                fullResult = boundedAgentValuePreview(
+                    result,
+                    MAX_AGENT_PROGRESS_RESULT_PREVIEW_CHARS
+                )
             )
         } else {
             steps.add(
@@ -111,7 +145,10 @@ internal class LocalAgentProgressReporter(
                     name = toolName,
                     status = "done",
                     detail = resultPreview,
-                    fullResult = result
+                    fullResult = boundedAgentValuePreview(
+                        result,
+                        MAX_AGENT_PROGRESS_RESULT_PREVIEW_CHARS
+                    )
                 )
             )
         }

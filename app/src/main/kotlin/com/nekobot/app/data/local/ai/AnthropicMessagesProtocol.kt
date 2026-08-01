@@ -187,6 +187,60 @@ object AnthropicMessagesProtocol : LocalProtocol {
         }
     }
 
+    override fun parseStreamToolCallDeltas(chunkJson: String): List<LocalToolCallDelta> {
+        return try {
+            val obj = JsonParser.parseString(chunkJson).asJsonObject
+            val index = obj.get("index")?.takeIf { !it.isJsonNull }?.asInt ?: 0
+            when (obj.get("type")?.asString) {
+            "content_block_start" -> {
+                val block = obj.getAsJsonObject("content_block") ?: return emptyList()
+                if (block.get("type")?.asString != "tool_use") return emptyList()
+                listOf(
+                    LocalToolCallDelta(
+                        index = index,
+                        idChunk = block.get("id")?.takeIf { !it.isJsonNull }?.asString.orEmpty(),
+                        nameChunk = block.get("name")?.takeIf { !it.isJsonNull }?.asString.orEmpty(),
+                        initialArgumentsJson = block.get("input")
+                            ?.takeIf { !it.isJsonNull }
+                            ?.toString()
+                            .orEmpty()
+                    )
+                )
+            }
+            "content_block_delta" -> {
+                val delta = obj.getAsJsonObject("delta") ?: return emptyList()
+                if (delta.get("type")?.asString != "input_json_delta") return emptyList()
+                listOf(
+                    LocalToolCallDelta(
+                        index = index,
+                        argumentsChunk = delta.get("partial_json")
+                            ?.takeIf { !it.isJsonNull }
+                            ?.asString
+                            .orEmpty()
+                    )
+                )
+            }
+                else -> emptyList()
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    override fun parseStreamFinishReason(chunkJson: String): String? {
+        return try {
+            val obj = JsonParser.parseString(chunkJson).asJsonObject
+            if (obj.get("type")?.asString != "message_delta") return null
+            obj.getAsJsonObject("delta")
+                ?.get("stop_reason")
+                ?.takeIf { !it.isJsonNull }
+                ?.asString
+                ?.ifBlank { null }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     override fun parseStreamUsage(chunkJson: String): Triple<Int, Int, Int>? {
         return try {
             val obj = JsonParser.parseString(chunkJson).asJsonObject
