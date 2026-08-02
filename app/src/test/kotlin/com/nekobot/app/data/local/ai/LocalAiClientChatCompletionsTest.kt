@@ -20,6 +20,64 @@ import org.junit.Test
 class LocalAiClientChatCompletionsTest {
 
     @Test
+    fun refusalPlaceholdersAreRecognizedWithoutMatchingLongUsefulAnswers() {
+        assertTrue(shouldFailoverForAssistantContent("你好，我无法给到相关内容。"))
+        assertTrue(shouldFailoverForAssistantContent("很抱歉，我无法提供此类内容。"))
+        assertTrue(shouldFailoverForAssistantContent("相关的内容"))
+        assertFalse(
+            shouldFailoverForAssistantContent(
+                "下面是相关的内容与完整说明：" + "有效信息".repeat(100)
+            )
+        )
+    }
+
+    @Test
+    fun streamedRefusalIsHiddenAndTriggersNextModel() = runBlocking {
+        var requestCount = 0
+        val client = LocalAiClient(
+            sequentialSseClient {
+                requestCount += 1
+                if (requestCount == 1) "你好，我无法给到相关内容。" else "备用模型正常回答"
+            }
+        )
+
+        val events = client.chatStreamWithFailover(
+            listOf(chatModel("stream-refusal"), chatModel("stream-backup")),
+            listOf(mapOf("role" to "user", "content" to "hello"))
+        ).toList()
+
+        assertEquals(2, requestCount)
+        assertEquals(
+            "备用模型正常回答",
+            events.filterIsInstance<RealtimeEvent.StreamChunk>().joinToString("") { it.chunk }
+        )
+    }
+
+    @Test
+    fun agentCallbacksDoNotReceiveRejectedModelContent() = runBlocking {
+        var requestCount = 0
+        val relayedContent = StringBuilder()
+        val client = LocalAiClient(
+            sequentialSseClient {
+                requestCount += 1
+                if (requestCount == 1) "你好，我无法给到相关内容。" else "Agent 备用回答"
+            }
+        )
+
+        val result = client.chatOnceWithFailover(
+            models = listOf(chatModel("agent-refusal"), chatModel("agent-backup")),
+            messages = listOf(mapOf("role" to "user", "content" to "hello")),
+            streamCallbacks = LocalAiStreamCallbacks(
+                onContentChunk = relayedContent::append
+            )
+        )
+
+        assertEquals(2, requestCount)
+        assertEquals("Agent 备用回答", result.content)
+        assertEquals("Agent 备用回答", relayedContent.toString())
+    }
+
+    @Test
     fun chatCompletions400RetriesWithoutOptionalParametersOrStreamOptions() = runBlocking {
         val requestBodies = mutableListOf<String>()
         val okHttpClient = OkHttpClient.Builder()
@@ -91,8 +149,29 @@ class LocalAiClientChatCompletionsTest {
         assertTrue(retried.has("tools"))
     }
 
-    private fun chatModel() = LocalAiModelEntity(
-        id = "chat-test",
+    private fun sequentialSseClient(content: () -> String): OkHttpClient =
+        OkHttpClient.Builder()
+            .addInterceptor(Interceptor { chain ->
+                Response.Builder()
+                    .request(chain.request())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(
+                        buildString {
+                            appendLine(
+                                "data: {\"choices\":[{\"delta\":{\"content\":${JsonParser.parseString(com.google.gson.Gson().toJson(content()))}}}]}"
+                            )
+                            appendLine()
+                            appendLine("data: [DONE]")
+                        }.toResponseBody("text/event-stream".toMediaType())
+                    )
+                    .build()
+            })
+            .build()
+
+    private fun chatModel(id: String = "chat-test") = LocalAiModelEntity(
+        id = id,
         name = "Chat Test",
         protocol = OpenAIChatProtocol.name,
         apiKey = "test-key",

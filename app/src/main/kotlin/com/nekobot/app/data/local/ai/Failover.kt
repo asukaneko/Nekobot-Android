@@ -146,6 +146,11 @@ class FailoverAllFailedException(
 /** HTTP 失败异常，携带状态码供协调器分类冷却 */
 class FailoverHttpException(val statusCode: Int, message: String) : Exception(message)
 
+/** 模型返回了拒答占位文本；按普通模型失败处理并进入下一个候选模型。 */
+class FailoverRejectedContentException(
+    message: String = "模型返回拒答占位内容，已触发故障转移"
+) : Exception(message)
+
 /** 健康状态持久化接口（实现可委托给 Room DAO） */
 interface FailoverHealthStore {
     suspend fun get(modelId: String): com.nekobot.app.data.local.db.LocalFailoverHealthEntity?

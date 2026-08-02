@@ -122,6 +122,36 @@ internal fun mergeStreamTerminalResponse(
     )
 }
 
+/** 识别短篇、明显的供应商拒答占位文本，避免误判正常长回复。 */
+internal fun shouldFailoverForAssistantContent(content: String): Boolean {
+    val compact = content
+        .trim()
+        .replace(Regex("""[\s，,。.!！：:；;\"'“”‘’`*_#>\-]"""), "")
+    if (compact.isBlank() || compact.length > FAILOVER_REFUSAL_MAX_CHARS) return false
+    if (compact == "相关内容" || compact == "相关的内容") return true
+    return FAILOVER_REFUSAL_PREFIXES.any(compact::startsWith)
+}
+
+private const val FAILOVER_REFUSAL_MAX_CHARS = 240
+
+private val FAILOVER_REFUSAL_PREFIXES = listOf(
+    "你好我无法给到相关内容",
+    "你好我无法给到相关的内容",
+    "我无法给到相关内容",
+    "我无法给到相关的内容",
+    "你好我无法提供相关内容",
+    "很抱歉我无法提供",
+    "抱歉我无法提供",
+    "对不起我无法提供",
+    "我无法提供此类内容",
+    "我无法提供这类内容",
+    "我无法提供该内容",
+    "我不能提供此类内容",
+    "我不能提供这类内容",
+    "我不能提供该内容",
+    "我不能协助处理"
+)
+
 /** 图片生成结果：url 或 bytes 二选一 */
 data class GeneratedImage(
     val url: String?,
@@ -338,6 +368,12 @@ class LocalAiClient(
                 @Suppress("UNCHECKED_CAST")
                 val data = (gson.fromJson(raw, Map::class.java) as? Map<String, Any>) ?: emptyMap()
                 val parsed = protocol.parseNonStreamResponse(data)
+                if (
+                    parsed.toolCalls.isEmpty() &&
+                    shouldFailoverForAssistantContent(parsed.content)
+                ) {
+                    throw FailoverRejectedContentException()
+                }
                 LocalAiResult(
                     content = parsed.content,
                     usage = parsed.usage,
@@ -350,6 +386,8 @@ class LocalAiClient(
                 )
             }
         } catch (e: FailoverHttpException) {
+            throw e
+        } catch (e: FailoverRejectedContentException) {
             throw e
         } catch (e: CancellationException) {
             throw e
@@ -393,17 +431,35 @@ class LocalAiClient(
             var usage = emptyMap<String, Int>()
             var terminal: LocalModelResponse? = null
             var finishReason = ""
+            var callbacksReleased = false
+            fun releaseBufferedCallbacks() {
+                if (callbacksReleased || streamCallbacks == null) return
+                callbacksReleased = true
+                streamCallbacks.onStart()
+                thinking.takeIf { it.isNotEmpty() }?.let {
+                    streamCallbacks.onThinkingChunk(it.toString())
+                }
+                content.takeIf { it.isNotEmpty() }?.let {
+                    streamCallbacks.onContentChunk(it.toString())
+                }
+            }
             val buffered = parseBufferedJsonResponse(response, protocol)
             if (buffered != null) {
-                streamCallbacks?.onStart?.invoke()
-                buffered.content.takeIf(String::isNotBlank)?.let {
-                    streamCallbacks?.onContentChunk?.invoke(it)
+                if (buffered.content.isBlank() && buffered.toolCalls.isEmpty()) {
+                    throw IllegalStateException("模型返回了空响应")
                 }
+                if (
+                    buffered.toolCalls.isEmpty() &&
+                    shouldFailoverForAssistantContent(buffered.content)
+                ) {
+                    throw FailoverRejectedContentException()
+                }
+                streamCallbacks?.onStart?.invoke()
                 buffered.thinkingContent.takeIf(String::isNotBlank)?.let {
                     streamCallbacks?.onThinkingChunk?.invoke(it)
                 }
-                if (buffered.content.isBlank() && buffered.toolCalls.isEmpty()) {
-                    throw IllegalStateException("模型返回了空响应")
+                buffered.content.takeIf(String::isNotBlank)?.let {
+                    streamCallbacks?.onContentChunk?.invoke(it)
                 }
                 return@use LocalAiResult(
                     content = buffered.content,
@@ -420,7 +476,6 @@ class LocalAiClient(
             }
             val source = response.body?.byteStream()
                 ?: throw IllegalStateException("响应体为空")
-            streamCallbacks?.onStart?.invoke()
             BufferedReader(InputStreamReader(source, Charsets.UTF_8)).use { reader ->
                 while (true) {
                     val line = reader.readLine() ?: break
@@ -444,11 +499,15 @@ class LocalAiClient(
                     protocol.parseStreamToolCallDeltas(data).forEach(toolCallAccumulator::add)
                     protocol.parseStreamThinkingChunk(data)?.takeIf(String::isNotEmpty)?.let { chunk ->
                         thinking.append(chunk)
-                        streamCallbacks?.onThinkingChunk?.invoke(chunk)
+                        if (callbacksReleased) streamCallbacks?.onThinkingChunk?.invoke(chunk)
                     }
                     protocol.parseStreamChunk(data)?.takeIf(String::isNotEmpty)?.let { chunk ->
                         content.append(chunk)
-                        streamCallbacks?.onContentChunk?.invoke(chunk)
+                        if (callbacksReleased) {
+                            streamCallbacks?.onContentChunk?.invoke(chunk)
+                        } else if (content.length > FAILOVER_REFUSAL_MAX_CHARS) {
+                            releaseBufferedCallbacks()
+                        }
                     }
                 }
             }
@@ -456,15 +515,21 @@ class LocalAiClient(
             val streamedToolCalls = toolCallAccumulator.build()
             val finalContent = parsed?.content?.takeIf(String::isNotEmpty) ?: content.toString()
             val finalThinking = parsed?.thinkingContent?.takeIf(String::isNotEmpty) ?: thinking.toString()
-            if (content.isEmpty() && finalContent.isNotEmpty()) {
-                streamCallbacks?.onContentChunk?.invoke(finalContent)
-            }
-            if (thinking.isEmpty() && finalThinking.isNotEmpty()) {
-                streamCallbacks?.onThinkingChunk?.invoke(finalThinking)
-            }
             val toolCalls = parsed?.toolCalls?.takeIf(List<*>::isNotEmpty) ?: streamedToolCalls
             if (finalContent.isBlank() && toolCalls.isEmpty()) {
                 throw IllegalStateException("模型返回了空响应")
+            }
+            if (toolCalls.isEmpty() && shouldFailoverForAssistantContent(finalContent)) {
+                throw FailoverRejectedContentException()
+            }
+            if (!callbacksReleased) {
+                streamCallbacks?.onStart?.invoke()
+                finalThinking.takeIf(String::isNotBlank)?.let {
+                    streamCallbacks?.onThinkingChunk?.invoke(it)
+                }
+                finalContent.takeIf(String::isNotBlank)?.let {
+                    streamCallbacks?.onContentChunk?.invoke(it)
+                }
             }
             LocalAiResult(
                 content = finalContent,
@@ -749,6 +814,9 @@ class LocalAiClient(
                 failover.recordFailure(model.id, e.statusCode)
                 Log.w("LocalAiClient", "模型 ${model.name} 调用失败 (HTTP ${e.statusCode})，尝试下一个: ${e.message?.take(120)}")
                 lastError = LocalAiResult("", error = e.message, statusCode = e.statusCode)
+            } catch (e: FailoverRejectedContentException) {
+                failover.recordFailure(model.id)
+                lastError = LocalAiResult("", error = e.message)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -788,7 +856,6 @@ class LocalAiClient(
         }
         val failover = getFailoverState()
         val exclude = mutableSetOf<String>()
-        var streamStarted = false
         var lastErrorMsg: String? = null
 
         emit(RealtimeEvent.StreamStart(null))
@@ -808,6 +875,7 @@ class LocalAiClient(
             var outputTokens: Int? = null
             var failed = false
             var httpCode = 0
+            var contentReleased = false
 
             // 直接复用 chatStream 的内部逻辑（避免嵌套 Flow）
             val protocol = LocalProtocols.get(runtimeModel.protocol)
@@ -850,12 +918,21 @@ class LocalAiClient(
                         response.close()
                         continue
                     }
+                    if (
+                        buffered.toolCalls.isEmpty() &&
+                        shouldFailoverForAssistantContent(buffered.content)
+                    ) {
+                        lastErrorMsg = "模型返回拒答占位内容，已触发故障转移"
+                        failed = true
+                        failover.recordFailure(model.id)
+                        response.close()
+                        continue
+                    }
                     buffered.thinkingContent.takeIf(String::isNotBlank)?.let {
                         fullThinking.append(it)
                         emit(RealtimeEvent.ReasoningChunk(it))
                     }
                     buffered.content.takeIf(String::isNotBlank)?.let {
-                        streamStarted = true
                         fullContent.append(it)
                         emit(RealtimeEvent.StreamChunk(it))
                     }
@@ -895,7 +972,7 @@ class LocalAiClient(
                         }
                         protocol.parseStreamThinkingChunk(data)?.takeIf(String::isNotEmpty)?.let {
                             fullThinking.append(it)
-                            emit(RealtimeEvent.ReasoningChunk(it))
+                            if (contentReleased) emit(RealtimeEvent.ReasoningChunk(it))
                         }
                         protocol.parseStreamFinalResponse(data)?.let { parsed ->
                             terminal = mergeStreamTerminalResponse(terminal, parsed)
@@ -903,24 +980,26 @@ class LocalAiClient(
                                 .takeIf { it.isNotBlank() && fullThinking.isEmpty() }
                                 ?.let {
                                     fullThinking.append(it)
-                                    emit(RealtimeEvent.ReasoningChunk(it))
                                 }
                         }
                         protocol.parseStreamChunk(data)?.takeIf(String::isNotEmpty)?.let { chunk ->
-                            if (!streamStarted) {
-                                streamStarted = true
-                            }
                             fullContent.append(chunk)
-                            emit(RealtimeEvent.StreamChunk(chunk))
+                            if (contentReleased) {
+                                emit(RealtimeEvent.StreamChunk(chunk))
+                            } else if (fullContent.length > FAILOVER_REFUSAL_MAX_CHARS) {
+                                fullThinking.takeIf { it.isNotEmpty() }?.let {
+                                    emit(RealtimeEvent.ReasoningChunk(it.toString()))
+                                }
+                                emit(RealtimeEvent.StreamChunk(fullContent.toString()))
+                                contentReleased = true
+                            }
                         }
                     }
                 }
                 terminal?.content
                     ?.takeIf { it.isNotBlank() && fullContent.isEmpty() }
                     ?.let {
-                        streamStarted = true
                         fullContent.append(it)
-                        emit(RealtimeEvent.StreamChunk(it))
                     }
                 if (fullContent.isEmpty()) {
                     lastErrorMsg = "模型返回了空响应"
@@ -929,9 +1008,22 @@ class LocalAiClient(
                     response.close()
                     continue
                 }
+                if (shouldFailoverForAssistantContent(fullContent.toString())) {
+                    lastErrorMsg = "模型返回拒答占位内容，已触发故障转移"
+                    failed = true
+                    failover.recordFailure(model.id)
+                    response.close()
+                    continue
+                }
                 response.close()
                 // 成功完成
                 failover.recordSuccess(model.id)
+                if (!contentReleased) {
+                    fullThinking.takeIf { it.isNotEmpty() }?.let {
+                        emit(RealtimeEvent.ReasoningChunk(it.toString()))
+                    }
+                    emit(RealtimeEvent.StreamChunk(fullContent.toString()))
+                }
                 if (inputTokens != null || outputTokens != null) {
                     emit(
                         RealtimeEvent.Usage(
@@ -945,6 +1037,12 @@ class LocalAiClient(
                 emit(RealtimeEvent.StreamEnd(null))
                 return@flow
             } catch (e: Exception) {
+                if (contentReleased) {
+                    emit(RealtimeEvent.Error(e.message ?: "流式请求异常"))
+                    emit(RealtimeEvent.StreamEnd(null))
+                    response?.close()
+                    return@flow
+                }
                 Log.w("LocalAiClient", "模型 ${model.name} 流式异常: ${e.message}，尝试下一个")
                 lastErrorMsg = e.message ?: "流式请求异常"
                 failed = true
