@@ -149,6 +149,63 @@ class OpenAIResponsesProtocolTest {
     }
 
     @Test
+    fun `done-only stream events recover final text`() {
+        val textDone = requireNotNull(
+            OpenAIResponsesProtocol.parseStreamFinalResponse(
+                """{"type":"response.output_text.done","text":"final text"}"""
+            )
+        )
+        val itemDone = requireNotNull(
+            OpenAIResponsesProtocol.parseStreamFinalResponse(
+                """{"type":"response.output_item.done","item":{"type":"message","content":[{"type":"text","text":"item text"}]}}"""
+            )
+        )
+
+        assertEquals("final text", textDone.content)
+        assertEquals("item text", itemDone.content)
+    }
+
+    @Test
+    fun `compatible response shapes recover top-level text and chat choices`() {
+        val topLevel = OpenAIResponsesProtocol.parseNonStreamResponse(
+            mapOf("output_text" to "top-level text", "status" to "completed")
+        )
+        val chatCompatible = OpenAIResponsesProtocol.parseNonStreamResponse(
+            mapOf(
+                "choices" to listOf(
+                    mapOf(
+                        "message" to mapOf("content" to "chat-compatible text"),
+                        "finish_reason" to "stop"
+                    )
+                )
+            )
+        )
+
+        assertEquals("top-level text", topLevel.content)
+        assertEquals("chat-compatible text", chatCompatible.content)
+    }
+
+    @Test
+    fun `function call semantic events are parsed without completed event`() {
+        val added = OpenAIResponsesProtocol.parseStreamToolCallDeltas(
+            """{"type":"response.output_item.added","output_index":2,"item":{"type":"function_call","call_id":"call_2","name":"lookup","arguments":""}}"""
+        ).single()
+        val arguments = OpenAIResponsesProtocol.parseStreamToolCallDeltas(
+            """{"type":"response.function_call_arguments.done","output_index":2,"arguments":"{\"key\":\"value\"}"}"""
+        ).single()
+        val done = requireNotNull(
+            OpenAIResponsesProtocol.parseStreamFinalResponse(
+                """{"type":"response.output_item.done","item":{"type":"function_call","call_id":"call_2","name":"lookup","arguments":"{\"key\":\"value\"}"}}"""
+            )
+        )
+
+        assertEquals(2, added.index)
+        assertEquals("lookup", added.nameChunk)
+        assertEquals("{\"key\":\"value\"}", arguments.initialArgumentsJson)
+        assertEquals("lookup", done.toolCalls.single()["name"])
+    }
+
+    @Test
     fun `reasoning effort and summary delta are supported`() {
         val payload = OpenAIResponsesProtocol.buildPayload(
             model = "gpt-5",

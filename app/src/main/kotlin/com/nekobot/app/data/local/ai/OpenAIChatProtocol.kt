@@ -43,10 +43,19 @@ object OpenAIChatProtocol : LocalProtocol {
             "messages" to messages,
             "stream" to stream
         )
-        // 流式请求要求在最后一个 chunk 返回 usage
-        if (stream) payload["stream_options"] = mapOf("include_usage" to true)
+        // 部分 OpenAI 兼容端点支持 stream，但不识别 stream_options；兼容重试时可省略。
+        if (stream && extra["omit_stream_options"] != true) {
+            payload["stream_options"] = mapOf("include_usage" to true)
+        }
         extra["temperature"]?.let { payload["temperature"] = it }
-        extra["max_tokens"]?.let { payload["max_tokens"] = it }
+        extra["max_tokens"]?.let {
+            val normalizedModel = model.lowercase()
+            val usesCompletionLimit = normalizedModel.startsWith("o1") ||
+                normalizedModel.startsWith("o3") ||
+                normalizedModel.startsWith("o4") ||
+                normalizedModel.startsWith("gpt-5")
+            payload[if (usesCompletionLimit) "max_completion_tokens" else "max_tokens"] = it
+        }
         extra["top_p"]?.let { payload["top_p"] = it }
         if (extra["deepseek_thinking"] == true) {
             val effort = extra["reasoning_effort"]

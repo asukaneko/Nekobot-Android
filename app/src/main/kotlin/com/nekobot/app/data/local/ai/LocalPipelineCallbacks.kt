@@ -4,6 +4,7 @@ import android.util.Log
 import com.google.gson.Gson
 import com.nekobot.app.data.local.VISION_FAILURE_MARKER
 import com.nekobot.app.data.local.isLocalCommandMessage
+import com.nekobot.app.data.local.shouldInjectWorldBooks
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.local.db.LocalCharacterEntity
 import com.nekobot.app.data.local.db.LocalMessageEntity
@@ -213,15 +214,16 @@ internal class LocalPipelineCallbacks(
             history
         }
 
-        // 无角色的 Agent 会话沿用旧聊天流程的提示词/世界书组装规则，
-        // 仅将执行入口切换到 Pipeline，以便获得进度卡片事件。
+        // 无角色会话沿用旧提示词组装；Agent 只保留会话提示词，不得继承公共世界书。
         if (character == null) {
             return LocalPromptBuilder.build(
                 session = session,
                 character = null,
                 history = contextHistory,
                 userInput = ctx.chatRequest.content,
-                worldBookEntries = worldBookEntries
+                worldBookEntries = worldBookEntries.takeIf {
+                    shouldInjectWorldBooks(session.sessionMode)
+                }.orEmpty()
             )
         }
 

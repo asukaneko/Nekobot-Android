@@ -94,6 +94,34 @@ internal class LocalToolCallStreamAccumulator {
     }
 }
 
+/** 合并 Responses API 的多个终态事件（item.done / text.done / response.completed）。 */
+internal fun mergeStreamTerminalResponse(
+    current: LocalModelResponse?,
+    update: LocalModelResponse
+): LocalModelResponse {
+    if (current == null) return update
+
+    fun mergeText(old: String, new: String): String = when {
+        new.isBlank() -> old
+        old.isBlank() -> new
+        new.contains(old) -> new
+        old.contains(new) -> old
+        else -> old + new
+    }
+
+    val toolCalls = (current.toolCalls + update.toolCalls).distinctBy { call ->
+        val id = call["id"]?.toString().orEmpty()
+        if (id.isNotBlank()) id else listOf(call["name"], call["arguments"]).toString()
+    }
+    return LocalModelResponse(
+        content = mergeText(current.content, update.content),
+        usage = update.usage.takeIf(Map<*, *>::isNotEmpty) ?: current.usage,
+        toolCalls = toolCalls,
+        finishReason = update.finishReason.ifBlank { current.finishReason },
+        thinkingContent = mergeText(current.thinkingContent, update.thinkingContent)
+    )
+}
+
 /** 图片生成结果：url 或 bytes 二选一 */
 data class GeneratedImage(
     val url: String?,
@@ -141,6 +169,7 @@ class LocalAiClient(
 
         val fullContent = StringBuilder()
         val fullThinking = StringBuilder()
+        var terminal: LocalModelResponse? = null
         var response: Response? = null
         try {
             val (runtimeModel, credential) = resolveRuntimeModel(model)
@@ -154,20 +183,44 @@ class LocalAiClient(
                 protocol.buildHeaders(runtimeModel.apiKey, stream = true),
                 credential
             )
-            val payload = protocol.buildPayload(
-                runtimeModel.model,
-                messages,
+            response = executeChatHttpRequest(
+                model = runtimeModel,
+                protocol = protocol,
+                url = url,
+                headers = headers,
+                messages = messages,
                 stream = true,
-                extra = normalizeProtocolExtra(runtimeModel, extra)
+                extra = extra
             )
-            val body = gson.toJson(payload).toRequestBody(JSON_TYPE)
-            val reqBuilder = Request.Builder().url(url).post(body)
-            headers.forEach { (k, v) -> reqBuilder.header(k, v) }
-
-            response = clientFor(runtimeModel).newCall(reqBuilder.build()).execute()
             if (!response.isSuccessful) {
                 val errBody = response.body?.string().orEmpty().take(500)
                 emit(RealtimeEvent.Error("HTTP ${response.code}: $errBody"))
+                emit(RealtimeEvent.StreamEnd(null))
+                return@flow
+            }
+
+            parseBufferedJsonResponse(response, protocol)?.let { parsed ->
+                parsed.thinkingContent.takeIf(String::isNotBlank)?.let {
+                    fullThinking.append(it)
+                    emit(RealtimeEvent.ReasoningChunk(it))
+                }
+                parsed.content.takeIf(String::isNotBlank)?.let {
+                    fullContent.append(it)
+                    emit(RealtimeEvent.StreamChunk(it))
+                }
+                parsed.usage.takeIf(Map<*, *>::isNotEmpty)?.let { usage ->
+                    emit(
+                        RealtimeEvent.Usage(
+                            usage["prompt"] ?: 0,
+                            usage["completion"] ?: 0,
+                            runtimeModel.model,
+                            runtimeModel.name
+                        )
+                    )
+                }
+                if (parsed.content.isBlank() && parsed.toolCalls.isEmpty()) {
+                    emit(RealtimeEvent.Error("模型返回了空响应"))
+                }
                 emit(RealtimeEvent.StreamEnd(null))
                 return@flow
             }
@@ -200,17 +253,29 @@ class LocalAiClient(
                         fullThinking.append(it)
                         emit(RealtimeEvent.ReasoningChunk(it))
                     }
-                    protocol.parseStreamFinalResponse(data)?.thinkingContent
-                        ?.takeIf { it.isNotBlank() && fullThinking.isEmpty() }
-                        ?.let {
-                            fullThinking.append(it)
-                            emit(RealtimeEvent.ReasoningChunk(it))
-                        }
+                    protocol.parseStreamFinalResponse(data)?.let { parsed ->
+                        terminal = mergeStreamTerminalResponse(terminal, parsed)
+                        parsed.thinkingContent
+                            .takeIf { it.isNotBlank() && fullThinking.isEmpty() }
+                            ?.let {
+                                fullThinking.append(it)
+                                emit(RealtimeEvent.ReasoningChunk(it))
+                            }
+                    }
                     protocol.parseStreamChunk(data)?.takeIf(String::isNotEmpty)?.let { chunk ->
                         fullContent.append(chunk)
                         emit(RealtimeEvent.StreamChunk(chunk))
                     }
                 }
+            }
+            terminal?.content
+                ?.takeIf { it.isNotBlank() && fullContent.isEmpty() }
+                ?.let {
+                    fullContent.append(it)
+                    emit(RealtimeEvent.StreamChunk(it))
+                }
+            if (fullContent.isEmpty()) {
+                emit(RealtimeEvent.Error("模型返回了空响应"))
             }
             emit(RealtimeEvent.StreamEnd(null))
         } catch (e: Exception) {
@@ -254,20 +319,17 @@ class LocalAiClient(
             protocol.buildHeaders(runtimeModel.apiKey, stream = false),
             credential
         )
-        val payload = protocol.buildPayload(
-            runtimeModel.model,
-            messages,
-            stream = false,
-            extra = normalizeProtocolExtra(runtimeModel, extra)
-        )
-        val body = gson.toJson(payload).toRequestBody(JSON_TYPE)
-
-        val reqBuilder = Request.Builder().url(url).post(body)
-        headers.forEach { (k, v) -> reqBuilder.header(k, v) }
-        requestTag?.let { reqBuilder.tag(String::class.java, it) }
-
         return try {
-            clientFor(runtimeModel).newCall(reqBuilder.build()).awaitResponse().use { resp ->
+            executeChatHttpRequest(
+                model = runtimeModel,
+                protocol = protocol,
+                url = url,
+                headers = headers,
+                messages = messages,
+                stream = false,
+                extra = extra,
+                requestTag = requestTag
+            ).use { resp ->
                 if (!resp.isSuccessful) {
                     val errBody = resp.body?.string().orEmpty().take(500)
                     throw FailoverHttpException(resp.code, "HTTP ${resp.code}: $errBody")
@@ -311,22 +373,16 @@ class LocalAiClient(
             protocol.buildHeaders(model.apiKey, stream = true),
             credential
         )
-        val payload = protocol.buildPayload(
-            model.model,
-            messages,
+        return executeChatHttpRequest(
+            model = model,
+            protocol = protocol,
+            url = url,
+            headers = headers,
+            messages = messages,
             stream = true,
-            extra = normalizeProtocolExtra(model, extra)
-        )
-        val request = Request.Builder()
-            .url(url)
-            .post(gson.toJson(payload).toRequestBody(JSON_TYPE))
-            .apply {
-                headers.forEach { (name, value) -> header(name, value) }
-                requestTag?.let { tag(String::class.java, it) }
-            }
-            .build()
-
-        return clientFor(model).newCall(request).awaitResponse().use { response ->
+            extra = extra,
+            requestTag = requestTag
+        ).use { response ->
             if (!response.isSuccessful) {
                 val errorBody = response.body?.string().orEmpty().take(500)
                 throw FailoverHttpException(response.code, "HTTP ${response.code}: $errorBody")
@@ -337,6 +393,31 @@ class LocalAiClient(
             var usage = emptyMap<String, Int>()
             var terminal: LocalModelResponse? = null
             var finishReason = ""
+            val buffered = parseBufferedJsonResponse(response, protocol)
+            if (buffered != null) {
+                streamCallbacks?.onStart?.invoke()
+                buffered.content.takeIf(String::isNotBlank)?.let {
+                    streamCallbacks?.onContentChunk?.invoke(it)
+                }
+                buffered.thinkingContent.takeIf(String::isNotBlank)?.let {
+                    streamCallbacks?.onThinkingChunk?.invoke(it)
+                }
+                if (buffered.content.isBlank() && buffered.toolCalls.isEmpty()) {
+                    throw IllegalStateException("模型返回了空响应")
+                }
+                return@use LocalAiResult(
+                    content = buffered.content,
+                    usage = buffered.usage,
+                    usedModelId = model.id,
+                    usedModelName = model.name,
+                    usedModelActualName = model.model,
+                    toolCalls = buffered.toolCalls,
+                    finishReason = buffered.finishReason.ifBlank {
+                        if (buffered.toolCalls.isNotEmpty()) "tool_calls" else "stop"
+                    },
+                    thinkingContent = buffered.thinkingContent
+                )
+            }
             val source = response.body?.byteStream()
                 ?: throw IllegalStateException("响应体为空")
             streamCallbacks?.onStart?.invoke()
@@ -356,7 +437,9 @@ class LocalAiClient(
                     protocol.parseStreamError(data)?.let {
                         throw IllegalStateException(it)
                     }
-                    protocol.parseStreamFinalResponse(data)?.let { terminal = it }
+                    protocol.parseStreamFinalResponse(data)?.let {
+                        terminal = mergeStreamTerminalResponse(terminal, it)
+                    }
                     protocol.parseStreamFinishReason(data)?.let { finishReason = it }
                     protocol.parseStreamToolCallDeltas(data).forEach(toolCallAccumulator::add)
                     protocol.parseStreamThinkingChunk(data)?.takeIf(String::isNotEmpty)?.let { chunk ->
@@ -380,6 +463,9 @@ class LocalAiClient(
                 streamCallbacks?.onThinkingChunk?.invoke(finalThinking)
             }
             val toolCalls = parsed?.toolCalls?.takeIf(List<*>::isNotEmpty) ?: streamedToolCalls
+            if (finalContent.isBlank() && toolCalls.isEmpty()) {
+                throw IllegalStateException("模型返回了空响应")
+            }
             LocalAiResult(
                 content = finalContent,
                 usage = parsed?.usage?.takeIf(Map<*, *>::isNotEmpty) ?: usage,
@@ -465,6 +551,81 @@ class LocalAiClient(
             }
             if (deepSeek) put("deepseek_thinking", true)
         }
+    }
+
+    /**
+     * OpenAI 兼容端点经常只实现最小请求子集。正式聊天会携带模型采样参数，
+     * 而连通性测试和会话辅助任务不会，因此同一模型可能出现“测试成功、聊天 400”。
+     * 首次 400 时按测试请求的参数基线重试一次，同时保留 tools 等结构化能力；
+     * Chat Completions 流式重试还会省略部分兼容端点不支持的 stream_options。
+     */
+    private suspend fun executeChatHttpRequest(
+        model: LocalAiModelEntity,
+        protocol: LocalProtocol,
+        url: String,
+        headers: Map<String, String>,
+        messages: List<Map<String, Any>>,
+        stream: Boolean,
+        extra: Map<String, Any?>,
+        requestTag: String? = null
+    ): Response {
+        fun buildRequest(normalizedExtra: Map<String, Any?>): Request {
+            val payload = protocol.buildPayload(
+                model.model,
+                messages,
+                stream = stream,
+                extra = normalizedExtra
+            )
+            return Request.Builder()
+                .url(url)
+                .post(gson.toJson(payload).toRequestBody(JSON_TYPE))
+                .apply {
+                    headers.forEach { (name, value) -> header(name, value) }
+                    requestTag?.let { tag(String::class.java, it) }
+                }
+                .build()
+        }
+
+        val normalizedExtra = normalizeProtocolExtra(model, extra)
+        val response = clientFor(model).newCall(buildRequest(normalizedExtra)).awaitResponse()
+        if (response.code != 400 || protocol.name !in OPENAI_COMPATIBILITY_PROTOCOLS) {
+            return response
+        }
+
+        val fallbackSource = (extra - OPENAI_OPTIONAL_TUNING_KEYS).toMutableMap().apply {
+            if (stream && protocol.name == OpenAIChatProtocol.name) {
+                put("omit_stream_options", true)
+            }
+        }
+        val fallbackExtra = normalizeProtocolExtra(model, fallbackSource)
+        if (fallbackExtra == normalizedExtra) return response
+
+        val firstError = response.body?.string().orEmpty().take(500)
+        response.close()
+        runCatching {
+            Log.w(
+                "LocalAiClient",
+                "OpenAI 兼容请求返回 400，使用最小参数重试: ${firstError.take(160)}"
+            )
+        }
+        return clientFor(model).newCall(buildRequest(fallbackExtra)).awaitResponse()
+    }
+
+    /** 某些兼容端点即使收到 stream=true 仍返回完整 JSON；不能按 SSE 逐行直接丢弃。 */
+    private fun parseBufferedJsonResponse(
+        response: Response,
+        protocol: LocalProtocol
+    ): LocalModelResponse? {
+        val contentType = response.body?.contentType()?.toString().orEmpty().lowercase()
+        if (!contentType.contains("json") || contentType.contains("event-stream")) return null
+        val raw = response.body?.string().orEmpty()
+        if (raw.isBlank()) throw IllegalStateException("响应体为空")
+        protocol.parseStreamError(raw)?.let { throw IllegalStateException(it) }
+        protocol.parseStreamFinalResponse(raw)?.let { return it }
+        @Suppress("UNCHECKED_CAST")
+        val data = gson.fromJson(raw, Map::class.java) as? Map<String, Any>
+            ?: throw IllegalStateException("响应 JSON 格式无效")
+        return protocol.parseNonStreamResponse(data)
     }
 
     /**
@@ -642,6 +803,7 @@ class LocalAiClient(
 
             val fullContent = StringBuilder()
             val fullThinking = StringBuilder()
+            var terminal: LocalModelResponse? = null
             var inputTokens: Int? = null
             var outputTokens: Int? = null
             var failed = false
@@ -658,19 +820,17 @@ class LocalAiClient(
                 protocol.buildHeaders(runtimeModel.apiKey, stream = true),
                 credential
             )
-            val payload = protocol.buildPayload(
-                runtimeModel.model,
-                messages,
-                stream = true,
-                extra = normalizeProtocolExtra(runtimeModel, extra)
-            )
-            val body = gson.toJson(payload).toRequestBody(JSON_TYPE)
-            val reqBuilder = Request.Builder().url(url).post(body)
-            headers.forEach { (k, v) -> reqBuilder.header(k, v) }
-
             var response: Response? = null
             try {
-                response = clientFor(runtimeModel).newCall(reqBuilder.build()).execute()
+                response = executeChatHttpRequest(
+                    model = runtimeModel,
+                    protocol = protocol,
+                    url = url,
+                    headers = headers,
+                    messages = messages,
+                    stream = true,
+                    extra = extra
+                )
                 if (!response.isSuccessful) {
                     val errBody = response.body?.string().orEmpty().take(500)
                     httpCode = response.code
@@ -680,6 +840,39 @@ class LocalAiClient(
                     Log.w("LocalAiClient", "模型 ${model.name} 流式失败 (HTTP $httpCode)，尝试下一个")
                     response.close()
                     continue
+                }
+                val buffered = parseBufferedJsonResponse(response, protocol)
+                if (buffered != null) {
+                    if (buffered.content.isBlank() && buffered.toolCalls.isEmpty()) {
+                        lastErrorMsg = "模型返回了空响应"
+                        failed = true
+                        failover.recordFailure(model.id)
+                        response.close()
+                        continue
+                    }
+                    buffered.thinkingContent.takeIf(String::isNotBlank)?.let {
+                        fullThinking.append(it)
+                        emit(RealtimeEvent.ReasoningChunk(it))
+                    }
+                    buffered.content.takeIf(String::isNotBlank)?.let {
+                        streamStarted = true
+                        fullContent.append(it)
+                        emit(RealtimeEvent.StreamChunk(it))
+                    }
+                    failover.recordSuccess(model.id)
+                    buffered.usage.takeIf(Map<*, *>::isNotEmpty)?.let { usage ->
+                        emit(
+                            RealtimeEvent.Usage(
+                                usage["prompt"] ?: 0,
+                                usage["completion"] ?: 0,
+                                runtimeModel.model,
+                                runtimeModel.name
+                            )
+                        )
+                    }
+                    response.close()
+                    emit(RealtimeEvent.StreamEnd(null))
+                    return@flow
                 }
                 val src = response.body?.byteStream()
                 if (src == null) {
@@ -704,12 +897,15 @@ class LocalAiClient(
                             fullThinking.append(it)
                             emit(RealtimeEvent.ReasoningChunk(it))
                         }
-                        protocol.parseStreamFinalResponse(data)?.thinkingContent
-                            ?.takeIf { it.isNotBlank() && fullThinking.isEmpty() }
-                            ?.let {
-                                fullThinking.append(it)
-                                emit(RealtimeEvent.ReasoningChunk(it))
-                            }
+                        protocol.parseStreamFinalResponse(data)?.let { parsed ->
+                            terminal = mergeStreamTerminalResponse(terminal, parsed)
+                            parsed.thinkingContent
+                                .takeIf { it.isNotBlank() && fullThinking.isEmpty() }
+                                ?.let {
+                                    fullThinking.append(it)
+                                    emit(RealtimeEvent.ReasoningChunk(it))
+                                }
+                        }
                         protocol.parseStreamChunk(data)?.takeIf(String::isNotEmpty)?.let { chunk ->
                             if (!streamStarted) {
                                 streamStarted = true
@@ -718,6 +914,20 @@ class LocalAiClient(
                             emit(RealtimeEvent.StreamChunk(chunk))
                         }
                     }
+                }
+                terminal?.content
+                    ?.takeIf { it.isNotBlank() && fullContent.isEmpty() }
+                    ?.let {
+                        streamStarted = true
+                        fullContent.append(it)
+                        emit(RealtimeEvent.StreamChunk(it))
+                    }
+                if (fullContent.isEmpty()) {
+                    lastErrorMsg = "模型返回了空响应"
+                    failed = true
+                    failover.recordFailure(model.id)
+                    response.close()
+                    continue
                 }
                 response.close()
                 // 成功完成
@@ -1500,6 +1710,16 @@ class LocalAiClient(
 
     companion object {
         private val JSON_TYPE = "application/json; charset=utf-8".toMediaType()
+        private val OPENAI_COMPATIBILITY_PROTOCOLS = setOf(
+            OpenAIChatProtocol.name,
+            OpenAIResponsesProtocol.name
+        )
+        private val OPENAI_OPTIONAL_TUNING_KEYS = setOf(
+            "temperature",
+            "max_tokens",
+            "top_p",
+            "reasoning_effort"
+        )
 
         val defaultClient: OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)

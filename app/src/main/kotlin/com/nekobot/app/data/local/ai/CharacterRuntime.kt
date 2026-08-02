@@ -1,6 +1,7 @@
 package com.nekobot.app.data.local.ai
 
 import android.util.Log
+import com.nekobot.app.data.local.shouldInjectWorldBooks
 import java.time.Instant
 import kotlinx.coroutines.launch
 
@@ -99,14 +100,18 @@ class CharacterRuntime(
         // 6. 生成反应计划
         val plan = ReactionPlanner.plan(profile, state, relationship, memories, signals, chatRequest.content)
 
-        // 7. 世界书匹配
-        val worldBookEntries = matchWorldBooks(
-            identity,
-            chatRequest.content,
-            state,
-            relationship,
-            recentMessages
-        )
+        // 7. 世界书匹配。Agent 是通用工具会话，即使意外绑定了角色也不注入世界书。
+        val worldBookEntries = if (shouldInjectWorldBooks(chatRequest.metadata["session_mode"] as? String)) {
+            matchWorldBooks(
+                identity,
+                chatRequest.content,
+                state,
+                relationship,
+                recentMessages
+            )
+        } else {
+            emptyList()
+        }
 
         // 8. 编译提示词
         val promptStack = PromptStack()

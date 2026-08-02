@@ -3448,7 +3448,11 @@ class LocalRepository(
         val history = listAiContextMessages(sessionId)
             .filter { it.role != "system" }
             .dropLast(1)  // 最后一条是刚保存的用户消息，会在 prompt 中单独处理
-        val worldBookEntries = loadWorldBookEntries(session.characterId)
+        val worldBookEntries = if (shouldInjectWorldBooks(session.sessionMode)) {
+            loadWorldBookEntries(session.characterId)
+        } else {
+            emptyList()
+        }
 
         // 3. 构造 prompt
         val messages = LocalPromptBuilder.build(
@@ -3769,8 +3773,12 @@ class LocalRepository(
             }
         }
 
-        // 2. 加载世界书条目
-        val worldBookEntries = loadWorldBookEntries(session.characterId)
+        // 2. Agent 是通用工具会话，不注入角色世界书；无角色时也不能加载全部公共世界书。
+        val worldBookEntries = if (shouldInjectWorldBooks(session.sessionMode)) {
+            loadWorldBookEntries(session.characterId)
+        } else {
+            emptyList()
+        }
 
         // 3. 使用成员变量（跨轮次保持 turnCounters 状态）
         val runtime = character?.let { characterRuntime }

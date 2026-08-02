@@ -101,6 +101,19 @@ class LocalProtocolToolCallingTest {
     }
 
     @Test
+    fun reasoningChatModelsUseMaxCompletionTokens() {
+        val payload = OpenAIChatProtocol.buildPayload(
+            model = "o3-mini",
+            messages = listOf(mapOf("role" to "user", "content" to "hello")),
+            stream = false,
+            extra = mapOf("max_tokens" to 2048)
+        )
+
+        assertEquals(2048, payload["max_completion_tokens"])
+        assertTrue("max_tokens" !in payload)
+    }
+
+    @Test
     fun openAiStreamParsesToolCallDeltasAndFinishReason() {
         val first = OpenAIChatProtocol.parseStreamToolCallDeltas(
             """{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","function":{"name":"get_date_time","arguments":"{\"time"}}]}}]}"""

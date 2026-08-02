@@ -36,4 +36,12 @@ class LocalChatPipelineRoutingTest {
             )
         )
     }
+
+    @Test
+    fun agentSessionNeverInjectsWorldBooks() {
+        assertFalse(shouldInjectWorldBooks("agent"))
+        assertFalse(shouldInjectWorldBooks("AGENT"))
+        assertTrue(shouldInjectWorldBooks("character"))
+        assertTrue(shouldInjectWorldBooks("group"))
+    }
 }

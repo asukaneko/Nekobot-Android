@@ -12,3 +12,7 @@ internal fun shouldUseLocalPipeline(
     hasAttachments || hasCharacter ||
         sessionMode.equals("agent", ignoreCase = true) ||
         sessionMode.equals("group", ignoreCase = true)
+
+/** Agent 是通用工具会话，不继承角色世界观；世界书只属于角色/群聊链路。 */
+internal fun shouldInjectWorldBooks(sessionMode: String?): Boolean =
+    !sessionMode.equals("agent", ignoreCase = true)
