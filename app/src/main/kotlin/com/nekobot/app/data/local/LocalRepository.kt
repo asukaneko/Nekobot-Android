@@ -5211,6 +5211,13 @@ $charSection$topicSection
 
     fun observeActiveModel(): Flow<LocalAiModelEntity?> = aiModelDao.observeActive()
 
+    /** 首次升级后把 Room 中遗留的明文模型、MCP 和 API Key 凭据原位改写为 Keystore 密文。 */
+    suspend fun migrateStoredSecrets() {
+        aiModelDao.migrateStoredSecrets()
+        db.mcpServerDao().migrateStoredSecrets()
+        db.apiKeyDao().migrateStoredSecrets()
+    }
+
     suspend fun listAiModels(): List<LocalAiModelEntity> = withContext(Dispatchers.IO) {
         aiModelDao.listAll()
     }

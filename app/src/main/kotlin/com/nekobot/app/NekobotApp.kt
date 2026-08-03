@@ -107,11 +107,13 @@ object ServiceContainer {
     fun init(app: Application) {
         appContext = app.applicationContext
         prefs = PrefsManager(app)
+        prefs.migrateSensitivePreferences()
         network = NetworkClient(prefs)
         repository = NekobotRepository(network, prefs)
         val db = NekobotDatabase.get(app, prefs.activeDbName)
         localRepository = LocalRepository(db, LocalAiClient(), app)
         unified = UnifiedRepository(prefs, repository, localRepository, app)
+        unified.migrateLocalSecurePreferences()
         socket = SocketManager(prefs)
         ModelPricingCatalog.loadCached(app)
         // 初始化本地日志记录器
@@ -123,6 +125,16 @@ object ServiceContainer {
         // 初始化全局状态
         _appModeFlow.value = prefs.appMode
         _loginStateFlow.value = prefs.isLoggedIn
+        applicationScope.launch {
+            runCatching { localRepository.migrateStoredSecrets() }
+                .onFailure {
+                    com.nekobot.app.data.local.LocalLogger.e(
+                        "LocalSecrets",
+                        "本地敏感凭据迁移失败: ${it.message}",
+                        it
+                    )
+                }
+        }
         if (prefs.isLocalMode) {
             applicationScope.launch { localRepository.syncAutomationSchedules() }
         }
@@ -155,6 +167,16 @@ object ServiceContainer {
             unified = UnifiedRepository(prefs, repository, localRepository, ctx)
             com.nekobot.app.data.local.AchievementManager.switchScope(achievementScopeId())
             _dataSourceRevision.value += 1L
+            applicationScope.launch {
+                runCatching { localRepository.migrateStoredSecrets() }
+                    .onFailure {
+                        com.nekobot.app.data.local.LocalLogger.e(
+                            "LocalSecrets",
+                            "本地敏感凭据迁移失败: ${it.message}",
+                            it
+                        )
+                    }
+            }
             applicationScope.launch { localRepository.syncAutomationSchedules() }
         }
     }

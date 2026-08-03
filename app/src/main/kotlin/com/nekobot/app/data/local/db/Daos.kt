@@ -7,7 +7,9 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import com.nekobot.app.data.local.security.LocalDatabaseSecrets
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 @Dao
 interface SessionDao {
@@ -245,13 +247,22 @@ interface WorldBookDao {
 @Dao
 interface AiModelDao {
     @Query("SELECT * FROM local_ai_models ORDER BY priority ASC, created_at ASC")
-    fun observeAll(): Flow<List<LocalAiModelEntity>>
+    fun observeAllStored(): Flow<List<LocalAiModelEntity>>
+
+    fun observeAll(): Flow<List<LocalAiModelEntity>> =
+        observeAllStored().map { models -> models.map(LocalDatabaseSecrets::reveal) }
 
     @Query("SELECT * FROM local_ai_models ORDER BY priority ASC, created_at ASC")
-    suspend fun listAll(): List<LocalAiModelEntity>
+    suspend fun listAllStored(): List<LocalAiModelEntity>
+
+    suspend fun listAll(): List<LocalAiModelEntity> =
+        listAllStored().map(LocalDatabaseSecrets::reveal)
 
     @Query("SELECT * FROM local_ai_models WHERE id = :id")
-    suspend fun getById(id: String): LocalAiModelEntity?
+    suspend fun getByIdStored(id: String): LocalAiModelEntity?
+
+    suspend fun getById(id: String): LocalAiModelEntity? =
+        getByIdStored(id)?.let(LocalDatabaseSecrets::reveal)
 
     /**
      * 默认激活模型按 purpose='chat' 过滤。
@@ -261,19 +272,34 @@ interface AiModelDao {
      * 其他 purpose 的激活模型请使用 [getActiveByPurpose]。
      */
     @Query("SELECT * FROM local_ai_models WHERE purpose = 'chat' AND active = 1 LIMIT 1")
-    suspend fun getActive(): LocalAiModelEntity?
+    suspend fun getActiveStored(): LocalAiModelEntity?
+
+    suspend fun getActive(): LocalAiModelEntity? =
+        getActiveStored()?.let(LocalDatabaseSecrets::reveal)
 
     @Query("SELECT * FROM local_ai_models WHERE purpose = 'chat' AND active = 1 LIMIT 1")
-    fun observeActive(): Flow<LocalAiModelEntity?>
+    fun observeActiveStored(): Flow<LocalAiModelEntity?>
+
+    fun observeActive(): Flow<LocalAiModelEntity?> =
+        observeActiveStored().map { it?.let(LocalDatabaseSecrets::reveal) }
 
     @Query("SELECT * FROM local_ai_models WHERE purpose = :purpose AND active = 1 LIMIT 1")
-    suspend fun getActiveByPurpose(purpose: String): LocalAiModelEntity?
+    suspend fun getActiveByPurposeStored(purpose: String): LocalAiModelEntity?
+
+    suspend fun getActiveByPurpose(purpose: String): LocalAiModelEntity? =
+        getActiveByPurposeStored(purpose)?.let(LocalDatabaseSecrets::reveal)
 
     @Query("SELECT * FROM local_ai_models WHERE purpose = :purpose AND enabled = 1 ORDER BY priority ASC, created_at ASC")
-    suspend fun listByPurpose(purpose: String): List<LocalAiModelEntity>
+    suspend fun listByPurposeStored(purpose: String): List<LocalAiModelEntity>
+
+    suspend fun listByPurpose(purpose: String): List<LocalAiModelEntity> =
+        listByPurposeStored(purpose).map(LocalDatabaseSecrets::reveal)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsert(model: LocalAiModelEntity)
+    suspend fun upsertStored(model: LocalAiModelEntity)
+
+    suspend fun upsert(model: LocalAiModelEntity) =
+        upsertStored(LocalDatabaseSecrets.protect(model))
 
     @Query("UPDATE local_ai_models SET active = (id = :id)")
     suspend fun setActive(id: String)
@@ -286,10 +312,20 @@ interface AiModelDao {
     suspend fun deleteById(id: String)
 
     @Query("SELECT * FROM local_ai_models WHERE oauth_account_id = :accountId ORDER BY priority ASC, created_at ASC")
-    suspend fun listByOAuthAccount(accountId: String): List<LocalAiModelEntity>
+    suspend fun listByOAuthAccountStored(accountId: String): List<LocalAiModelEntity>
+
+    suspend fun listByOAuthAccount(accountId: String): List<LocalAiModelEntity> =
+        listByOAuthAccountStored(accountId).map(LocalDatabaseSecrets::reveal)
 
     @Query("DELETE FROM local_ai_models WHERE oauth_account_id = :accountId")
     suspend fun deleteByOAuthAccount(accountId: String)
+
+    suspend fun migrateStoredSecrets() {
+        listAllStored().forEach { stored ->
+            val protected = LocalDatabaseSecrets.protect(stored)
+            if (protected != stored) upsertStored(protected)
+        }
+    }
 }
 
 @Dao
@@ -611,13 +647,22 @@ interface ToolDao {
 @Dao
 interface McpServerDao {
     @Query("SELECT * FROM local_mcp_servers ORDER BY created_at DESC")
-    suspend fun listAll(): List<LocalMcpServerEntity>
+    suspend fun listAllStored(): List<LocalMcpServerEntity>
+
+    suspend fun listAll(): List<LocalMcpServerEntity> =
+        listAllStored().map(LocalDatabaseSecrets::reveal)
 
     @Query("SELECT * FROM local_mcp_servers WHERE id = :id")
-    suspend fun getById(id: String): LocalMcpServerEntity?
+    suspend fun getByIdStored(id: String): LocalMcpServerEntity?
+
+    suspend fun getById(id: String): LocalMcpServerEntity? =
+        getByIdStored(id)?.let(LocalDatabaseSecrets::reveal)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsert(server: LocalMcpServerEntity)
+    suspend fun upsertStored(server: LocalMcpServerEntity)
+
+    suspend fun upsert(server: LocalMcpServerEntity) =
+        upsertStored(LocalDatabaseSecrets.protect(server))
 
     @Query("DELETE FROM local_mcp_servers WHERE id = :id")
     suspend fun deleteById(id: String)
@@ -637,21 +682,44 @@ interface McpServerDao {
         toolCount: Int,
         lastConnectedAt: String?
     )
+
+    suspend fun migrateStoredSecrets() {
+        listAllStored().forEach { stored ->
+            val protected = LocalDatabaseSecrets.protect(stored)
+            if (protected != stored) upsertStored(protected)
+        }
+    }
 }
 
 @Dao
 interface ApiKeyDao {
     @Query("SELECT * FROM local_api_keys ORDER BY created_at DESC")
-    suspend fun listAll(): List<LocalApiKeyEntity>
+    suspend fun listAllStored(): List<LocalApiKeyEntity>
+
+    suspend fun listAll(): List<LocalApiKeyEntity> =
+        listAllStored().map(LocalDatabaseSecrets::reveal)
 
     @Query("SELECT * FROM local_api_keys WHERE id = :id")
-    suspend fun getById(id: String): LocalApiKeyEntity?
+    suspend fun getByIdStored(id: String): LocalApiKeyEntity?
+
+    suspend fun getById(id: String): LocalApiKeyEntity? =
+        getByIdStored(id)?.let(LocalDatabaseSecrets::reveal)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsert(key: LocalApiKeyEntity)
+    suspend fun upsertStored(key: LocalApiKeyEntity)
+
+    suspend fun upsert(key: LocalApiKeyEntity) =
+        upsertStored(LocalDatabaseSecrets.protect(key))
 
     @Query("DELETE FROM local_api_keys WHERE id = :id")
     suspend fun deleteById(id: String)
+
+    suspend fun migrateStoredSecrets() {
+        listAllStored().forEach { stored ->
+            val protected = LocalDatabaseSecrets.protect(stored)
+            if (protected != stored) upsertStored(protected)
+        }
+    }
 }
 
 @Dao

@@ -14,6 +14,8 @@ import com.nekobot.app.data.local.db.LocalSessionEntity
 import com.nekobot.app.data.local.db.LocalWorldBookEntity
 import com.nekobot.app.data.local.db.LocalWorldBookEntryEntity
 import com.nekobot.app.data.local.db.NekobotDatabase
+import com.nekobot.app.data.local.oauth.OAuthSecretStore
+import com.nekobot.app.data.local.security.SecurePreferenceStore
 import com.nekobot.app.data.model.WebDavBackupRequest
 import com.nekobot.app.data.model.WebDavConfig
 import com.nekobot.app.data.model.WebDavTestRequest
@@ -58,8 +60,10 @@ class LocalWebDavBackupManager(
 ) {
     private val appContext = context.applicationContext
     private val gson = Gson()
+    private val oauthSecrets = OAuthSecretStore()
     private val configPrefs =
         appContext.getSharedPreferences(CONFIG_PREF_NAME, Context.MODE_PRIVATE)
+    private val securePrefs = SecurePreferenceStore(appContext)
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
@@ -67,11 +71,29 @@ class LocalWebDavBackupManager(
         .followRedirects(true)
         .build()
 
+    /** 主动触发旧版 WebDAV 明文密码迁移。 */
+    fun migrateStoredSecrets() {
+        securePrefs.getString(SECURE_KEY_PASSWORD, configPrefs, KEY_PASSWORD)
+        securePrefs.getString(
+            SECURE_KEY_ENCRYPTION_PASSWORD,
+            configPrefs,
+            KEY_ENCRYPTION_PASSWORD
+        )
+    }
+
     fun getConfig(): WebDavConfig {
         val url = configPrefs.getString(KEY_URL, "").orEmpty()
-        val password = configPrefs.getString(KEY_PASSWORD, "").orEmpty()
+        val password = securePrefs.getString(
+            SECURE_KEY_PASSWORD,
+            configPrefs,
+            KEY_PASSWORD
+        ).orEmpty()
         val encryptionPassword =
-            configPrefs.getString(KEY_ENCRYPTION_PASSWORD, "").orEmpty()
+            securePrefs.getString(
+                SECURE_KEY_ENCRYPTION_PASSWORD,
+                configPrefs,
+                KEY_ENCRYPTION_PASSWORD
+            ).orEmpty()
         return WebDavConfig(
             enabled = configPrefs.getBoolean(KEY_ENABLED, false),
             url = url.takeIf { it.isNotBlank() },
@@ -102,10 +124,16 @@ class LocalWebDavBackupManager(
         config.username?.let { editor.putString(KEY_USERNAME, it.trim()) }
         config.password
             ?.takeIf { it.isNotBlank() && '*' !in it }
-            ?.let { editor.putString(KEY_PASSWORD, it) }
+            ?.let {
+                securePrefs.putString(SECURE_KEY_PASSWORD, it)
+                editor.remove(KEY_PASSWORD)
+            }
         config.encryptionPassword
             ?.takeIf { it.isNotBlank() && '*' !in it }
-            ?.let { editor.putString(KEY_ENCRYPTION_PASSWORD, it) }
+            ?.let {
+                securePrefs.putString(SECURE_KEY_ENCRYPTION_PASSWORD, it)
+                editor.remove(KEY_ENCRYPTION_PASSWORD)
+            }
         editor.apply()
         LocalWebDavSyncScheduler.configure(
             appContext,
@@ -792,10 +820,13 @@ class LocalWebDavBackupManager(
         }
     }
 
-    private fun buildArchive(includePortraits: Boolean): ByteArray {
+    private suspend fun buildArchive(includePortraits: Boolean): ByteArray {
         val profileName = prefs.activeDbName
         val dbName = "$profileName.db"
         val db = NekobotDatabase.get(appContext, profileName)
+        db.aiModelDao().migrateStoredSecrets()
+        db.mcpServerDao().migrateStoredSecrets()
+        db.apiKeyDao().migrateStoredSecrets()
         runCatching {
             var busy = 0
             db.openHelper.writableDatabase
@@ -814,9 +845,14 @@ class LocalWebDavBackupManager(
         val output = ByteArrayOutputStream()
         ZipOutputStream(output).use { zip ->
             putZipEntry(zip, ENTRY_DATABASE, dbFile.readBytes())
+            putZipEntry(
+                zip,
+                ENTRY_CREDENTIALS,
+                gson.toJson(buildCredentialBundle(db)).toByteArray()
+            )
 
             val metadata = JsonObject().apply {
-                addProperty("version", 1)
+                addProperty("version", 2)
                 addProperty("profile_name", profileName)
                 addProperty("database_name", dbName)
                 addProperty("created_at", nowIso())
@@ -861,7 +897,7 @@ class LocalWebDavBackupManager(
         return output.toByteArray()
     }
 
-    private fun restoreArchive(archive: ByteArray, includePortraits: Boolean) {
+    private suspend fun restoreArchive(archive: ByteArray, includePortraits: Boolean) {
         val entries = unzip(archive)
         val databaseBytes = entries[ENTRY_DATABASE]
             ?: error("备份包中缺少数据库")
@@ -939,7 +975,11 @@ class LocalWebDavBackupManager(
             }
 
             ServiceContainer.switchLocalDb(profileName)
-            NekobotDatabase.get(appContext, profileName).openHelper.writableDatabase
+            val restoredDb = NekobotDatabase.get(appContext, profileName)
+            restoredDb.openHelper.writableDatabase
+            entries[ENTRY_CREDENTIALS]?.let { raw ->
+                restoreCredentialBundle(restoredDb, raw)
+            }
         }.onFailure { failure ->
             runCatching {
                 NekobotDatabase.closeProfile(profileName)
@@ -954,6 +994,118 @@ class LocalWebDavBackupManager(
         rollback.delete()
         staging.delete()
     }
+
+    /**
+     * Keystore 密文是设备绑定的。WebDAV 外层已经由用户密码加密，因此在包内额外保存
+     * 一份最小化明文凭据清单，恢复到新设备时再用新设备 Keystore 重新封装。
+     */
+    private suspend fun buildCredentialBundle(db: NekobotDatabase): JsonObject =
+        JsonObject().apply {
+            add(
+                "ai_models",
+                gson.toJsonTree(
+                    db.aiModelDao().listAll().map { model ->
+                        mapOf(
+                            "id" to model.id,
+                            "api_key" to model.apiKey,
+                            "proxy_url" to model.proxyUrl,
+                            "tts_headers" to model.ttsHeaders,
+                            "tts_body_template" to model.ttsBodyTemplate,
+                            "stt_headers" to model.sttHeaders
+                        )
+                    }
+                )
+            )
+            add(
+                "api_keys",
+                gson.toJsonTree(
+                    db.apiKeyDao().listAll().map { key ->
+                        mapOf("id" to key.id, "key" to key.key)
+                    }
+                )
+            )
+            add(
+                "mcp_servers",
+                gson.toJsonTree(
+                    db.mcpServerDao().listAll().map { server ->
+                        mapOf(
+                            "id" to server.id,
+                            "url" to server.url,
+                            "headers_json" to server.headersJson,
+                            "args_json" to server.argsJson,
+                            "env_json" to server.envJson
+                        )
+                    }
+                )
+            )
+            add(
+                "oauth_accounts",
+                gson.toJsonTree(
+                    db.oauthAccountDao().listAll().mapNotNull { account ->
+                        runCatching {
+                            mapOf(
+                                "id" to account.id,
+                                "credentials" to oauthSecrets.decrypt(account.encryptedCredentials)
+                            )
+                        }.getOrNull()
+                    }
+                )
+            )
+        }
+
+    private suspend fun restoreCredentialBundle(db: NekobotDatabase, raw: ByteArray) {
+        val root = JsonParser.parseString(String(raw, Charsets.UTF_8)).asJsonObject
+        root.getAsJsonArray("ai_models")?.forEach { item ->
+            val obj = item.asJsonObject
+            val id = obj.get("id")?.asString.orEmpty()
+            val existing = db.aiModelDao().getById(id) ?: return@forEach
+            db.aiModelDao().upsert(
+                existing.copy(
+                    apiKey = obj.stringOrEmpty("api_key"),
+                    proxyUrl = obj.stringOrEmpty("proxy_url"),
+                    ttsHeaders = obj.stringOrEmpty("tts_headers"),
+                    ttsBodyTemplate = obj.stringOrEmpty("tts_body_template"),
+                    sttHeaders = obj.stringOrEmpty("stt_headers")
+                )
+            )
+        }
+        root.getAsJsonArray("api_keys")?.forEach { item ->
+            val obj = item.asJsonObject
+            val id = obj.get("id")?.asString.orEmpty()
+            val existing = db.apiKeyDao().getById(id) ?: return@forEach
+            db.apiKeyDao().upsert(existing.copy(key = obj.stringOrEmpty("key")))
+        }
+        root.getAsJsonArray("mcp_servers")?.forEach { item ->
+            val obj = item.asJsonObject
+            val id = obj.get("id")?.asString.orEmpty()
+            val existing = db.mcpServerDao().getById(id) ?: return@forEach
+            db.mcpServerDao().upsert(
+                existing.copy(
+                    url = obj.stringOrNull("url"),
+                    headersJson = obj.stringOrNull("headers_json"),
+                    argsJson = obj.stringOrNull("args_json"),
+                    envJson = obj.stringOrNull("env_json")
+                )
+            )
+        }
+        root.getAsJsonArray("oauth_accounts")?.forEach { item ->
+            val obj = item.asJsonObject
+            val id = obj.get("id")?.asString.orEmpty()
+            val credentials = obj.stringOrEmpty("credentials")
+            val existing = db.oauthAccountDao().getById(id) ?: return@forEach
+            if (credentials.isNotEmpty()) {
+                db.oauthAccountDao().upsert(
+                    existing.copy(encryptedCredentials = oauthSecrets.encrypt(credentials))
+                )
+            }
+        }
+    }
+
+    private fun JsonObject.stringOrEmpty(key: String): String =
+        get(key)?.takeUnless { it.isJsonNull }?.asString.orEmpty()
+
+    private fun JsonObject.stringOrNull(key: String): String? =
+        get(key)?.takeUnless { it.isJsonNull }?.asString
 
     private fun unzip(bytes: ByteArray): Map<String, ByteArray> {
         val entries = linkedMapOf<String, ByteArray>()
@@ -1066,9 +1218,17 @@ class LocalWebDavBackupManager(
         username = usernameOverride?.takeIf { it.isNotBlank() }
             ?: configPrefs.getString(KEY_USERNAME, "").orEmpty(),
         password = passwordOverride?.takeIf { it.isNotBlank() }
-            ?: configPrefs.getString(KEY_PASSWORD, "").orEmpty(),
+            ?: securePrefs.getString(
+                SECURE_KEY_PASSWORD,
+                configPrefs,
+                KEY_PASSWORD
+            ).orEmpty(),
         encryptionPassword =
-            configPrefs.getString(KEY_ENCRYPTION_PASSWORD, "").orEmpty()
+            securePrefs.getString(
+                SECURE_KEY_ENCRYPTION_PASSWORD,
+                configPrefs,
+                KEY_ENCRYPTION_PASSWORD
+            ).orEmpty()
     )
 
     private fun updateStatus(
@@ -1229,6 +1389,8 @@ class LocalWebDavBackupManager(
         const val KEY_USERNAME = "username"
         const val KEY_PASSWORD = "password"
         const val KEY_ENCRYPTION_PASSWORD = "encryption_password"
+        const val SECURE_KEY_PASSWORD = "webdav_password"
+        const val SECURE_KEY_ENCRYPTION_PASSWORD = "webdav_encryption_password"
         const val KEY_LAST_BACKUP_AT = "last_backup_at"
         const val KEY_LAST_SYNC_AT = "last_sync_at"
         const val KEY_LAST_ERROR = "last_error"
@@ -1242,6 +1404,7 @@ class LocalWebDavBackupManager(
         const val USER_AGENT = "NekoBot-Android-WebDAV/1.0"
 
         const val ENTRY_DATABASE = "database.sqlite"
+        const val ENTRY_CREDENTIALS = "credentials.json"
         const val ENTRY_METADATA = "metadata.json"
         const val ENTRY_TOKEN_USAGE = "token-usage.json"
         const val ENTRY_ACHIEVEMENTS = "achievements.json"

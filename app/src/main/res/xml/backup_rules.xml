@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
-    <include domain="sharedpref" path="nekobot_prefs.xml" />
-    <!-- 备份本地模式 Room 数据库（会话/消息/角色卡/世界书/AI 模型配置/角色状态/记忆） -->
-    <include domain="database" path="nekobot_local.db" />
-    <include domain="database" path="nekobot_local.db-journal" />
-    <include domain="database" path="nekobot_local.db-wal" />
-    <include domain="database" path="nekobot_local.db-shm" />
+    <!-- 仅备份非敏感界面偏好；token、Cookie 与密码位于 Keystore 加密的独立文件中。 -->
+    <include
+        domain="sharedpref"
+        path="nekobot_prefs.xml"
+        requireFlags="clientSideEncryption" />
+    <!-- 未列入白名单的安全偏好和 Room 数据库不会进入 Android 云备份。 -->
     <!-- 备份角色头像/立绘等文件（fileDir 下） -->
-    <include domain="file" path="portraits/" />
+    <include
+        domain="file"
+        path="portraits/"
+        requireFlags="clientSideEncryption" />
 </full-backup-content>

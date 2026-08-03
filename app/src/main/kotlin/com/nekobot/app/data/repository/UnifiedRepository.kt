@@ -124,6 +124,11 @@ class UnifiedRepository(
         )
     }
 
+    /** 启动时迁移独立于 Room 的本地敏感配置。 */
+    fun migrateLocalSecurePreferences() {
+        if (appContext != null) localWebDav.migrateStoredSecrets()
+    }
+
     // ==================== 认证 ====================
 
     suspend fun login(username: String, password: String): Resource<*> =

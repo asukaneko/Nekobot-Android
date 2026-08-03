@@ -240,6 +240,10 @@ class DbProfileViewModel : ViewModel() {
         _importing.value = true
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                val targetDb = NekobotDatabase.get(ctx, profileName)
+                targetDb.aiModelDao().migrateStoredSecrets()
+                targetDb.mcpServerDao().migrateStoredSecrets()
+                targetDb.apiKeyDao().migrateStoredSecrets()
                 // 关闭目标 profile 的 db 连接，确保 WAL 刷盘
                 NekobotDatabase.closeProfile(profileName)
                 Thread.sleep(100)

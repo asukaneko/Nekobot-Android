@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.reflect.TypeToken
+import com.nekobot.app.data.local.security.SecurePreferenceStore
 
 /**
  * 运行模式：本地模式直连 AI API + Room 存储；服务器模式走后端。
@@ -44,6 +45,7 @@ class PrefsManager(context: Context) {
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+    private val securePrefs = SecurePreferenceStore(context)
     private val gson = Gson()
 
     var serverUrl: String
@@ -54,9 +56,10 @@ class PrefsManager(context: Context) {
         }
 
     var token: String?
-        get() = prefs.getString(KEY_TOKEN, null)
+        get() = securePrefs.getString(KEY_TOKEN, prefs)
         set(value) {
-            prefs.edit().putString(KEY_TOKEN, value).apply()
+            securePrefs.putString(KEY_TOKEN, value)
+            prefs.edit().remove(KEY_TOKEN).apply()
         }
 
     var username: String
@@ -72,7 +75,7 @@ class PrefsManager(context: Context) {
      * 记录以 serverUrl + username 作为唯一键，重复登录会覆盖旧记录。
      */
     fun listLoginRecords(): List<LoginRecord> {
-        val raw = prefs.getString(KEY_LOGIN_RECORDS, null) ?: return emptyList()
+        val raw = securePrefs.getString(KEY_LOGIN_RECORDS, prefs) ?: return emptyList()
         return try {
             val type = object : TypeToken<List<JsonObject>>() {}.type
             val list: List<JsonObject> = gson.fromJson(raw, type)
@@ -98,19 +101,21 @@ class PrefsManager(context: Context) {
         current.add(LoginRecord(normalized, user, tkn))
         // 限制最多 10 条
         val toSave = current.sortedByDescending { it.savedAt }.take(10)
-        prefs.edit().putString(KEY_LOGIN_RECORDS, gson.toJson(toSave)).apply()
+        securePrefs.putString(KEY_LOGIN_RECORDS, gson.toJson(toSave))
+        prefs.edit().remove(KEY_LOGIN_RECORDS).apply()
     }
 
     /** 删除指定登录记录 */
     fun removeLoginRecord(server: String, user: String) {
         val normalized = normalizeServerUrl(server)
         val remaining = listLoginRecords().filterNot { it.serverUrl == normalized && it.username == user }
-        prefs.edit().putString(KEY_LOGIN_RECORDS, gson.toJson(remaining)).apply()
+        securePrefs.putString(KEY_LOGIN_RECORDS, gson.toJson(remaining))
+        prefs.edit().remove(KEY_LOGIN_RECORDS).apply()
     }
 
     /** 清空所有登录记录 */
     fun clearLoginRecords() {
-        prefs.edit().remove(KEY_LOGIN_RECORDS).apply()
+        securePrefs.remove(KEY_LOGIN_RECORDS, prefs)
     }
 
     /** 运行模式：本地 / 服务器 */
@@ -306,16 +311,25 @@ class PrefsManager(context: Context) {
         }
 
     fun clearAuth() {
-        prefs.edit().remove(KEY_TOKEN).apply()
+        securePrefs.remove(KEY_TOKEN, prefs)
+    }
+
+    /** 应用启动时主动迁移旧版本明文凭据，避免必须先打开对应页面才完成迁移。 */
+    fun migrateSensitivePreferences() {
+        token
+        listLoginRecords()
+        lastNbotcfgPassword
+        wenku8Cookie
     }
 
     // ==================== nbotcfg 导入密码记忆 ====================
 
     /** 上次使用的 nbotcfg 导出/导入密码（用于自动填充，避免每次重新输入）。 */
     var lastNbotcfgPassword: String
-        get() = prefs.getString(KEY_LAST_NBOTCFG_PWD, "") ?: ""
+        get() = securePrefs.getString(KEY_LAST_NBOTCFG_PWD, prefs).orEmpty()
         set(value) {
-            prefs.edit().putString(KEY_LAST_NBOTCFG_PWD, value).apply()
+            securePrefs.putString(KEY_LAST_NBOTCFG_PWD, value.takeIf(String::isNotEmpty))
+            prefs.edit().remove(KEY_LAST_NBOTCFG_PWD).apply()
         }
 
     // ==================== wenku8 轻小说 Cookie ====================
@@ -325,9 +339,10 @@ class PrefsManager(context: Context) {
      * 由 `/set_wenku_cookie` 命令写入；未设置时这些命令会提示先配置。
      */
     var wenku8Cookie: String
-        get() = prefs.getString(KEY_WENKU8_COOKIE, "") ?: ""
+        get() = securePrefs.getString(KEY_WENKU8_COOKIE, prefs).orEmpty()
         set(value) {
-            prefs.edit().putString(KEY_WENKU8_COOKIE, value).apply()
+            securePrefs.putString(KEY_WENKU8_COOKIE, value.takeIf(String::isNotEmpty))
+            prefs.edit().remove(KEY_WENKU8_COOKIE).apply()
         }
 
     /**
