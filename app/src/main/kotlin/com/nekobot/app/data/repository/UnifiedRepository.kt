@@ -830,6 +830,135 @@ class UnifiedRepository(
     suspend fun downloadWorkspaceFileLocal(sessionId: String, filename: String): java.io.File? =
         if (isLocal) local.downloadWorkspaceFile(sessionId, filename) else null
 
+    // ==================== 共享工作区 ====================
+
+    /** 列出共享工作区文件。 */
+    suspend fun listSharedFiles(path: String? = null): Resource<JsonElement> {
+        return if (isLocal) {
+            Resource.Success(local.listSharedFiles(path))
+        } else {
+            remote.listSharedFiles(path)
+        }
+    }
+
+    /** 上传文件到共享工作区（本地模式直接落盘；远程模式无直接上传端点，需先上传到会话再移动）。 */
+    suspend fun uploadSharedFile(file: MultipartBody.Part): Resource<JsonElement> {
+        return if (isLocal) {
+            try {
+                val body = file.body ?: return Resource.Error("文件内容为空")
+                val bytes = okio.Buffer().use { buf ->
+                    body.writeTo(buf)
+                    buf.readByteArray()
+                }
+                val name = file.headers?.get("Content-Disposition")
+                    ?.substringAfter("filename=")
+                    ?.trim('"')
+                    ?: "uploaded_${System.currentTimeMillis()}"
+                Resource.Success(local.uploadSharedFile(bytes, name))
+            } catch (e: Exception) {
+                Resource.Error(e.message ?: "上传失败")
+            }
+        } else {
+            Resource.Error("服务器模式暂不支持直接上传到共享工作区，请先上传到会话工作区再移动")
+        }
+    }
+
+    /** 删除共享工作区文件。 */
+    suspend fun deleteSharedFile(filename: String): Resource<JsonElement> {
+        return if (isLocal) {
+            Resource.Success(local.deleteSharedFile(filename))
+        } else {
+            remote.deleteSharedFile(filename)
+        }
+    }
+
+    /** 下载共享工作区文件。远程返回 Response，本地返回 null。 */
+    suspend fun downloadSharedFile(filename: String): retrofit2.Response<okhttp3.ResponseBody>? {
+        return if (isLocal) null else remote.downloadSharedFile(filename)
+    }
+
+    /** 本地模式下载共享文件：返回 File 对象。 */
+    suspend fun downloadSharedFileLocal(filename: String): java.io.File? =
+        if (isLocal) local.downloadSharedFile(filename) else null
+
+    /** 移动会话工作区文件到共享工作区。 */
+    suspend fun moveToShared(sessionId: String, filename: String): Resource<JsonElement> {
+        return if (isLocal) {
+            Resource.Success(local.moveToShared(sessionId, filename))
+        } else {
+            remote.moveToShared(sessionId, filename)
+        }
+    }
+
+    /** 移动共享文件到指定会话。 */
+    suspend fun moveSharedToPrivate(filename: String, sessionId: String): Resource<JsonElement> {
+        return if (isLocal) {
+            Resource.Success(local.moveSharedToPrivate(filename, sessionId))
+        } else {
+            val body = com.google.gson.JsonObject().apply { addProperty("session_id", sessionId) }
+            remote.moveSharedToPrivate(filename, body)
+        }
+    }
+
+    /** 创建共享工作区文件夹。 */
+    suspend fun createSharedFolder(folderPath: String): Resource<JsonElement> {
+        return if (isLocal) {
+            Resource.Success(local.createSharedFolder(folderPath))
+        } else {
+            val body = com.google.gson.JsonObject().apply { addProperty("path", folderPath) }
+            remote.createSharedFolder(body)
+        }
+    }
+
+    /** 创建会话工作区文件夹。 */
+    suspend fun createWorkspaceFolder(sessionId: String, folderPath: String): Resource<JsonElement> {
+        return if (isLocal) {
+            Resource.Success(local.createWorkspaceFolder(sessionId, folderPath))
+        } else {
+            val body = com.google.gson.JsonObject().apply { addProperty("path", folderPath) }
+            remote.createWorkspaceFolder(sessionId, body)
+        }
+    }
+
+    // ==================== Gateway 诊断（仅服务器模式） ====================
+
+    suspend fun gatewayHealth(): Resource<JsonElement> =
+        if (isLocal) localNotSupported("Gateway 诊断") else remote.gatewayHealth()
+
+    suspend fun gatewayStats(): Resource<JsonElement> =
+        if (isLocal) localNotSupported("Gateway 诊断") else remote.gatewayStats()
+
+    suspend fun gatewayQueueStatus(): Resource<JsonElement> =
+        if (isLocal) localNotSupported("Gateway 诊断") else remote.gatewayQueueStatus()
+
+    suspend fun gatewayEvents(
+        eventType: String? = null, channelId: String? = null, status: String? = null,
+        limit: Int = 50, offset: Int = 0
+    ): Resource<JsonElement> =
+        if (isLocal) localNotSupported("Gateway 诊断") else remote.gatewayEvents(eventType, channelId, status, limit, offset)
+
+    suspend fun gatewayEventsByTrace(traceId: String): Resource<JsonElement> =
+        if (isLocal) localNotSupported("Gateway 诊断") else remote.gatewayEventsByTrace(traceId)
+
+    suspend fun gatewayLogs(
+        source: String? = null, type: String? = null, level: String? = null, status: String? = null,
+        toolName: String? = null, traceId: String? = null, channelId: String? = null,
+        limit: Int = 50, offset: Int = 0
+    ): Resource<JsonElement> =
+        if (isLocal) localNotSupported("Gateway 诊断") else remote.gatewayLogs(source, type, level, status, toolName, traceId, channelId, limit, offset)
+
+    suspend fun gatewayLogsLookup(value: String): Resource<JsonElement> =
+        if (isLocal) localNotSupported("Gateway 诊断") else remote.gatewayLogsLookup(value)
+
+    suspend fun gatewayLogsTrace(traceId: String): Resource<JsonElement> =
+        if (isLocal) localNotSupported("Gateway 诊断") else remote.gatewayLogsTrace(traceId)
+
+    suspend fun sessionDebug(sessionId: String): Resource<JsonElement> =
+        if (isLocal) localNotSupported("会话调试") else remote.sessionDebug(sessionId)
+
+    suspend fun characterDebugLatestTurn(characterId: String, scopeId: String? = null): Resource<JsonElement> =
+        if (isLocal) localNotSupported("角色调试") else remote.characterDebugLatestTurn(characterId, scopeId)
+
     // ==================== 扩展功能（仅远程模式，本地模式返回错误）====================
     // 以下 12 组模块仅在远程模式可用，本地模式返回 Resource.Error
 

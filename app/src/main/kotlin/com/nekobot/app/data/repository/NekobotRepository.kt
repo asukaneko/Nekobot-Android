@@ -587,6 +587,67 @@ class NekobotRepository(
     suspend fun downloadWorkspaceFile(sessionId: String, filename: String): Response<ResponseBody> =
         api.downloadWorkspaceFile(sessionId, filename)
 
+    /** 在会话工作区内移动文件 */
+    suspend fun moveWorkspaceFile(sessionId: String, filename: String, body: JsonElement): Resource<JsonElement> =
+        safeCall { api.moveWorkspaceFile(sessionId, filename, body) }
+
+    /** 移动文件到共享工作区 */
+    suspend fun moveToShared(sessionId: String, filename: String): Resource<JsonElement> =
+        safeCall { api.moveToShared(sessionId, filename) }
+
+    /** 创建会话工作区文件夹 */
+    suspend fun createWorkspaceFolder(sessionId: String, body: JsonElement): Resource<JsonElement> =
+        safeCall { api.createWorkspaceFolder(sessionId, body) }
+
+    // ==================== 共享工作区 ====================
+    /** 列出共享工作区文件 */
+    suspend fun listSharedFiles(path: String? = null): Resource<JsonElement> =
+        safeCall { api.listSharedFiles(path) }
+
+    /** 下载共享工作区文件（流式） */
+    suspend fun downloadSharedFile(filename: String): Response<ResponseBody> =
+        api.downloadSharedFile(filename)
+
+    /** 删除共享工作区文件 */
+    suspend fun deleteSharedFile(filename: String): Resource<JsonElement> =
+        safeCall { api.deleteSharedFile(filename) }
+
+    /** 在共享工作区内移动文件 */
+    suspend fun moveSharedFile(filename: String, body: JsonElement): Resource<JsonElement> =
+        safeCall { api.moveSharedFile(filename, body) }
+
+    /** 移动共享文件到指定会话 */
+    suspend fun moveSharedToPrivate(filename: String, body: JsonElement): Resource<JsonElement> =
+        safeCall { api.moveSharedToPrivate(filename, body) }
+
+    /** 创建共享工作区文件夹 */
+    suspend fun createSharedFolder(body: JsonElement): Resource<JsonElement> =
+        safeCall { api.createSharedFolder(body) }
+
+    // ==================== Gateway 诊断 ====================
+    suspend fun gatewayHealth(): Resource<JsonElement> = safeCall { api.gatewayHealth() }
+    suspend fun gatewayStats(): Resource<JsonElement> = safeCall { api.gatewayStats() }
+    suspend fun gatewayQueueStatus(): Resource<JsonElement> = safeCall { api.gatewayQueueStatus() }
+    suspend fun gatewayEvents(
+        eventType: String? = null, channelId: String? = null, status: String? = null,
+        limit: Int = 50, offset: Int = 0
+    ): Resource<JsonElement> = safeCall { api.gatewayEvents(eventType, channelId, status, limit, offset) }
+    suspend fun gatewayEventsByTrace(traceId: String): Resource<JsonElement> =
+        safeCall { api.gatewayEventsByTrace(traceId) }
+    suspend fun gatewayLogs(
+        source: String? = null, type: String? = null, level: String? = null, status: String? = null,
+        toolName: String? = null, traceId: String? = null, channelId: String? = null,
+        limit: Int = 50, offset: Int = 0
+    ): Resource<JsonElement> = safeCall { api.gatewayLogs(source, type, level, status, toolName, traceId, channelId, limit, offset) }
+    suspend fun gatewayLogsLookup(value: String): Resource<JsonElement> =
+        safeCall { api.gatewayLogsLookup(value) }
+    suspend fun gatewayLogsTrace(traceId: String): Resource<JsonElement> =
+        safeCall { api.gatewayLogsTrace(traceId) }
+    suspend fun sessionDebug(sessionId: String): Resource<JsonElement> =
+        safeCall { api.sessionDebug(sessionId) }
+    suspend fun characterDebugLatestTurn(characterId: String, scopeId: String? = null): Resource<JsonElement> =
+        safeCall { api.characterDebugLatestTurn(characterId, scopeId) }
+
     // ==================== Hook 管理 ====================
     suspend fun listHooks(scope: String? = null, event: String? = null, enabled: String? = null): Resource<List<Hook>> =
         safeCall { api.listHooks(scope, event, enabled) }.mapData { it.hooks }

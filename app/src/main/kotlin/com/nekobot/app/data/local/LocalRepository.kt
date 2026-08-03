@@ -3970,6 +3970,8 @@ class LocalRepository(
             },
             workspaceRoot = appContext?.filesDir
                 ?.let { LocalWorkspaceStorage.resolve(it, sessionId) },
+            sharedWorkspaceRoot = appContext?.filesDir
+                ?.let { LocalWorkspaceStorage.resolveShared(it) },
             execAuthorizationManager = localExecAuthorizationManager,
             mcpToolExecutor = { toolName, args ->
                 localMcpRuntime.executeByFullName(toolName, args, session.id)
@@ -4501,6 +4503,8 @@ class LocalRepository(
                 },
                 workspaceRoot = appContext?.filesDir
                     ?.let { LocalWorkspaceStorage.resolve(it, session.id) },
+                sharedWorkspaceRoot = appContext?.filesDir
+                    ?.let { LocalWorkspaceStorage.resolveShared(it) },
                 execAuthorizationManager = localExecAuthorizationManager,
                 mcpToolExecutor = { toolName, args ->
                     localMcpRuntime.executeByFullName(toolName, args, session.id)
@@ -8422,6 +8426,178 @@ $charSection$topicSection
         "mp4" -> "video/mp4"
         "mp3" -> "audio/mpeg"
         else -> "application/octet-stream"
+    }
+
+    // ==================== 共享工作区（跨会话，本地模式） ====================
+
+    /** 共享工作区根目录：filesDir/workspace/shared/。 */
+    private fun sharedWorkspaceDir(): java.io.File? {
+        val ctx = appContext ?: return null
+        return LocalWorkspaceStorage.resolveShared(ctx.filesDir)
+    }
+
+    /** 列出共享工作区文件。 */
+    suspend fun listSharedFiles(path: String?): JsonElement = withContext(Dispatchers.IO) {
+        val dir = sharedWorkspaceDir()?.canonicalFile ?: return@withContext JsonArray()
+        val target = resolveWorkspaceEntry(dir, path, allowRoot = true)
+            ?.takeIf { it.isDirectory }
+            ?: return@withContext JsonArray()
+        val arr = JsonArray()
+        target.listFiles()
+            ?.sortedWith(compareByDescending<java.io.File> { it.isDirectory }.thenBy { it.name.lowercase() })
+            ?.forEach { f ->
+                JsonObject().also { o ->
+                    o.addProperty("name", f.name)
+                    o.addProperty("type", if (f.isDirectory) "directory" else "file")
+                    o.addProperty("size", f.length())
+                    o.addProperty("path", f.relativeTo(dir).invariantSeparatorsPath)
+                    o.addProperty("mime_type", guessMime(f.name))
+                }.also { arr.add(it) }
+            }
+        arr
+    }
+
+    /** 上传文件到共享工作区。 */
+    suspend fun uploadSharedFile(bytes: ByteArray, fileName: String): JsonElement = withContext(Dispatchers.IO) {
+        val dir = sharedWorkspaceDir() ?: return@withContext JsonObject().apply {
+            addProperty("success", false)
+            addProperty("message", "共享工作区目录不可用")
+        }
+        val safeName = fileName.substringAfterLast('/').ifBlank { UUID.randomUUID().toString() }
+        val file = java.io.File(dir, safeName)
+        file.writeBytes(bytes)
+        JsonObject().apply {
+            addProperty("success", true)
+            addProperty("name", safeName)
+            addProperty("size", bytes.size)
+            addProperty("path", safeName)
+            addProperty("mime_type", guessMime(safeName))
+        }
+    }
+
+    /** 删除共享工作区文件。 */
+    suspend fun deleteSharedFile(filename: String): JsonElement = withContext(Dispatchers.IO) {
+        val dir = sharedWorkspaceDir()?.canonicalFile ?: return@withContext JsonObject().apply {
+            addProperty("success", false)
+            addProperty("message", "共享工作区目录不可用")
+        }
+        val file = resolveWorkspaceEntry(dir, filename, allowRoot = false)
+            ?: return@withContext JsonObject().apply {
+                addProperty("success", false)
+                addProperty("message", "文件路径无效")
+            }
+        val ok = if (file.exists()) file.deleteRecursively() else false
+        JsonObject().apply {
+            addProperty("success", ok)
+            addProperty("filename", filename)
+        }
+    }
+
+    /** 下载共享工作区文件。 */
+    suspend fun downloadSharedFile(filename: String): java.io.File? = withContext(Dispatchers.IO) {
+        val dir = sharedWorkspaceDir()?.canonicalFile ?: return@withContext null
+        val file = resolveWorkspaceEntry(dir, filename, allowRoot = false)
+            ?: return@withContext null
+        if (file.exists() && file.isFile) file else null
+    }
+
+    /** 移动会话工作区文件到共享工作区。 */
+    suspend fun moveToShared(sessionId: String, filename: String): JsonElement = withContext(Dispatchers.IO) {
+        val srcDir = workspaceDir(sessionId)?.canonicalFile
+        val sharedDir = sharedWorkspaceDir()?.canonicalFile
+        if (srcDir == null || sharedDir == null) return@withContext JsonObject().apply {
+            addProperty("success", false)
+            addProperty("message", "目录不可用")
+        }
+        val src = resolveWorkspaceEntry(srcDir, filename, allowRoot = false)
+            ?: return@withContext JsonObject().apply {
+                addProperty("success", false)
+                addProperty("message", "源文件不存在")
+            }
+        if (!src.exists()) return@withContext JsonObject().apply {
+            addProperty("success", false)
+            addProperty("message", "源文件不存在")
+        }
+        val target = java.io.File(sharedDir, src.name)
+        src.copyRecursively(target, overwrite = true)
+        src.deleteRecursively()
+        JsonObject().apply {
+            addProperty("success", true)
+            addProperty("filename", src.name)
+        }
+    }
+
+    /** 移动共享工作区文件到指定会话。 */
+    suspend fun moveSharedToPrivate(filename: String, sessionId: String): JsonElement = withContext(Dispatchers.IO) {
+        val sharedDir = sharedWorkspaceDir()?.canonicalFile
+        val targetDir = workspaceDir(sessionId)?.canonicalFile
+        if (sharedDir == null || targetDir == null) return@withContext JsonObject().apply {
+            addProperty("success", false)
+            addProperty("message", "目录不可用")
+        }
+        val src = resolveWorkspaceEntry(sharedDir, filename, allowRoot = false)
+            ?: return@withContext JsonObject().apply {
+                addProperty("success", false)
+                addProperty("message", "源文件不存在")
+            }
+        if (!src.exists()) return@withContext JsonObject().apply {
+            addProperty("success", false)
+            addProperty("message", "源文件不存在")
+        }
+        val target = java.io.File(targetDir, src.name)
+        src.copyRecursively(target, overwrite = true)
+        src.deleteRecursively()
+        JsonObject().apply {
+            addProperty("success", true)
+            addProperty("filename", src.name)
+            addProperty("session_id", sessionId)
+        }
+    }
+
+    /** 创建共享工作区文件夹。 */
+    suspend fun createSharedFolder(folderPath: String): JsonElement = withContext(Dispatchers.IO) {
+        val dir = sharedWorkspaceDir()?.canonicalFile ?: return@withContext JsonObject().apply {
+            addProperty("success", false)
+            addProperty("message", "共享工作区目录不可用")
+        }
+        val safeName = folderPath.trim().replace('\\', '/').trim('/')
+        if (safeName.isBlank()) return@withContext JsonObject().apply {
+            addProperty("success", false)
+            addProperty("message", "文件夹名称不能为空")
+        }
+        val folder = resolveWorkspaceEntry(dir, safeName, allowRoot = false)
+            ?: return@withContext JsonObject().apply {
+                addProperty("success", false)
+                addProperty("message", "路径无效")
+            }
+        folder.mkdirs()
+        JsonObject().apply {
+            addProperty("success", true)
+            addProperty("path", safeName)
+        }
+    }
+
+    /** 创建会话工作区文件夹。 */
+    suspend fun createWorkspaceFolder(sessionId: String, folderPath: String): JsonElement = withContext(Dispatchers.IO) {
+        val dir = workspaceDir(sessionId)?.canonicalFile ?: return@withContext JsonObject().apply {
+            addProperty("success", false)
+            addProperty("message", "工作区目录不可用")
+        }
+        val safeName = folderPath.trim().replace('\\', '/').trim('/')
+        if (safeName.isBlank()) return@withContext JsonObject().apply {
+            addProperty("success", false)
+            addProperty("message", "文件夹名称不能为空")
+        }
+        val folder = resolveWorkspaceEntry(dir, safeName, allowRoot = false)
+            ?: return@withContext JsonObject().apply {
+                addProperty("success", false)
+                addProperty("message", "路径无效")
+            }
+        folder.mkdirs()
+        JsonObject().apply {
+            addProperty("success", true)
+            addProperty("path", safeName)
+        }
     }
 }
 

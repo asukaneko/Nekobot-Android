@@ -19,7 +19,6 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 internal val localExecutableToolIds = setOf(
-    "search_news",
     "get_weather",
     "search_web",
     "browser_use",
@@ -131,6 +130,8 @@ internal class LocalAgentToolExecutor(
     /** 视觉识别函数：传入 imageUrl（http URL 或 data URI）和问题，返回描述文本（非 suspend） */
     private val visionDescriber: ((String, String) -> String)? = null,
     private val generationController: LocalGenerationController = LocalGenerationController(),
+    /** 共享工作区根目录（跨会话），为 null 时不支持 shared:// 路径 */
+    sharedWorkspaceRoot: File? = null,
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -138,12 +139,12 @@ internal class LocalAgentToolExecutor(
 ) {
     private val gson = Gson()
     private val workspace = workspaceRoot?.canonicalFile
+    private val sharedWorkspace = sharedWorkspaceRoot?.canonicalFile
 
     fun execute(toolName: String, args: Map<String, Any>): Map<String, Any> {
         if (generationController.isStopped) return stoppedFailure()
         return try {
             when (toolName) {
-                "search_news" -> searchNews(args)
                 "get_weather" -> getWeather(args)
                 "search_web" -> searchWeb(args)
                 "get_date_time" -> getDateTime(args)
@@ -351,14 +352,6 @@ internal class LocalAgentToolExecutor(
         val url = "https://www.sogou.com/web?query=$encoded"
         val text = stripMarkup(fetchText(url)).take(12000)
         return success("query" to query, "source_url" to url, "source" to "sogou", "content" to text)
-    }
-
-    private fun searchNews(args: Map<String, Any>): Map<String, Any> {
-        val query = args.string("query").ifBlank { "热点新闻" }
-        val encoded = URLEncoder.encode(query, StandardCharsets.UTF_8.name())
-        val url = "https://news.google.com/rss/search?q=$encoded&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
-        val text = stripMarkup(fetchText(url)).take(12000)
-        return success("query" to query, "source_url" to url, "content" to text)
     }
 
     private fun httpGet(args: Map<String, Any>): Map<String, Any> {
@@ -825,9 +818,25 @@ internal class LocalAgentToolExecutor(
     }
 
     private fun resolveWorkspacePath(path: String, allowRoot: Boolean = false): File? {
+        val trimmed = path.trim()
+        // shared:// 前缀 → 解析到共享工作区
+        if (trimmed.startsWith("shared://", ignoreCase = true)) {
+            val root = sharedWorkspace ?: return null
+            root.mkdirs()
+            val relPath = trimmed.removePrefix("shared://")
+                .replace('\\', '/')
+                .removePrefix("/")
+            if (relPath.isBlank()) return root.takeIf { allowRoot }
+            val target = File(root, relPath).canonicalFile
+            val rootPath = root.path
+            return target.takeIf {
+                it.path == rootPath || it.path.startsWith(rootPath + File.separator)
+            }
+        }
+        // 普通路径 → 解析到会话工作区
         val root = workspace ?: return null
         root.mkdirs()
-        val normalizedPath = path.trim()
+        val normalizedPath = trimmed
             .replace('\\', '/')
             .removePrefix("/workspace/")
             .let { value -> if (value == "/workspace") "" else value }
@@ -840,6 +849,14 @@ internal class LocalAgentToolExecutor(
     }
 
     private fun relativeWorkspacePath(file: File): String {
+        // 共享工作区文件返回 shared:// 前缀路径
+        val shared = sharedWorkspace
+        if (shared != null) {
+            val sharedPath = shared.path
+            if (file.path == sharedPath || file.path.startsWith(sharedPath + File.separator)) {
+                return "shared://" + file.relativeTo(shared).path.replace(File.separatorChar, '/').ifBlank { "." }
+            }
+        }
         val root = workspace ?: return file.name
         return file.relativeTo(root).path.replace(File.separatorChar, '/').ifBlank { "." }
     }

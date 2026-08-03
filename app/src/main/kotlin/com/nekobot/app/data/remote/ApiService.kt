@@ -738,6 +738,136 @@ interface ApiService {
         @Path("filename") filename: String
     ): Response<ResponseBody>
 
+    /** 在会话工作区内移动文件 */
+    @POST("api/sessions/{id}/workspace/files/{filename}/move")
+    suspend fun moveWorkspaceFile(
+        @Path("id") id: String,
+        @Path("filename") filename: String,
+        @Body body: JsonElement
+    ): Response<JsonElement>
+
+    /** 移动文件到共享工作区 */
+    @POST("api/sessions/{id}/workspace/files/{filename}/move-to-shared")
+    suspend fun moveToShared(
+        @Path("id") id: String,
+        @Path("filename") filename: String
+    ): Response<JsonElement>
+
+    /** 创建会话工作区文件夹 */
+    @POST("api/sessions/{id}/workspace/folders")
+    suspend fun createWorkspaceFolder(
+        @Path("id") id: String,
+        @Body body: JsonElement
+    ): Response<JsonElement>
+
+    // ==================== 共享工作区（跨会话） ====================
+    /** 列出共享工作区文件 */
+    @GET("api/workspace/shared/files")
+    suspend fun listSharedFiles(
+        @Query("path") path: String? = null
+    ): Response<JsonElement>
+
+    /** 下载共享工作区文件 */
+    @Streaming
+    @GET("api/workspace/shared/files/{filename}")
+    suspend fun downloadSharedFile(
+        @Path("filename") filename: String
+    ): Response<ResponseBody>
+
+    /** 删除共享工作区文件 */
+    @DELETE("api/workspace/shared/files/{filename}")
+    suspend fun deleteSharedFile(
+        @Path("filename") filename: String
+    ): Response<JsonElement>
+
+    /** 在共享工作区内移动文件 */
+    @POST("api/workspace/shared/files/{filename}/move")
+    suspend fun moveSharedFile(
+        @Path("filename") filename: String,
+        @Body body: JsonElement
+    ): Response<JsonElement>
+
+    /** 移动共享文件到指定会话（私有工作区） */
+    @POST("api/workspace/shared/files/{filename}/move-to-private")
+    suspend fun moveSharedToPrivate(
+        @Path("filename") filename: String,
+        @Body body: JsonElement
+    ): Response<JsonElement>
+
+    /** 创建共享工作区文件夹 */
+    @POST("api/workspace/shared/folders")
+    suspend fun createSharedFolder(
+        @Body body: JsonElement
+    ): Response<JsonElement>
+
+    // ==================== Gateway 诊断 ====================
+    /** Gateway 健康检查 */
+    @GET("api/gateway/health")
+    suspend fun gatewayHealth(): Response<JsonElement>
+
+    /** Gateway 运行统计 */
+    @GET("api/gateway/stats")
+    suspend fun gatewayStats(): Response<JsonElement>
+
+    /** Gateway 队列状态 */
+    @GET("api/gateway/queue/status")
+    suspend fun gatewayQueueStatus(): Response<JsonElement>
+
+    /** 查询 Gateway 事件日志 */
+    @GET("api/gateway/events")
+    suspend fun gatewayEvents(
+        @Query("event_type") eventType: String? = null,
+        @Query("channel_id") channelId: String? = null,
+        @Query("status") status: String? = null,
+        @Query("limit") limit: Int = 50,
+        @Query("offset") offset: Int = 0
+    ): Response<JsonElement>
+
+    /** 查询指定 trace_id 的事件链路 */
+    @GET("api/gateway/events/{traceId}")
+    suspend fun gatewayEventsByTrace(
+        @Path("traceId") traceId: String
+    ): Response<JsonElement>
+
+    /** 查询 Gateway 统一日志 */
+    @GET("api/gateway/logs")
+    suspend fun gatewayLogs(
+        @Query("source") source: String? = null,
+        @Query("type") type: String? = null,
+        @Query("level") level: String? = null,
+        @Query("status") status: String? = null,
+        @Query("tool_name") toolName: String? = null,
+        @Query("trace_id") traceId: String? = null,
+        @Query("channel_id") channelId: String? = null,
+        @Query("limit") limit: Int = 50,
+        @Query("offset") offset: Int = 0
+    ): Response<JsonElement>
+
+    /** ID 类型识别（自动判断输入值是何种 ID） */
+    @GET("api/gateway/logs/lookup/{value}")
+    suspend fun gatewayLogsLookup(
+        @Path("value") value: String
+    ): Response<JsonElement>
+
+    /** 查询 trace 聚合 */
+    @GET("api/gateway/logs/trace/{traceId}")
+    suspend fun gatewayLogsTrace(
+        @Path("traceId") traceId: String
+    ): Response<JsonElement>
+
+    /** 会话调试信息 */
+    @GET("api/sessions/{sessionId}/debug")
+    suspend fun sessionDebug(
+        @Path("sessionId") sessionId: String
+    ): Response<JsonElement>
+
+    /** 角色最近一轮调试快照 */
+    @GET("api/characters/{characterId}/debug/latest-turn")
+    suspend fun characterDebugLatestTurn(
+        @Path("characterId") characterId: String,
+        @Query("scope_id") scopeId: String? = null
+    ): Response<JsonElement>
+
     // ==================== 会话归档 ====================
     @POST("api/sessions/{id}/archive")
     suspend fun archiveSession(@Path("id") id: String): Response<JsonElement>

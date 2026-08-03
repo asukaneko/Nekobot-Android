@@ -153,4 +153,55 @@
     <string name="login_delete_record">删除记录</string>
     <string name="login_expired">登录已过期，请重新输入密码</string>
     <string name="login_required_fields">请填写完整信息</string>
+
+    <!-- ==================== 共享工作区 ==================== -->
+    <string name="shared_workspace_tab_session">会话工作区</string>
+    <string name="shared_workspace_tab_shared">共享工作区</string>
+    <string name="shared_workspace_empty">共享工作区暂无文件</string>
+    <string name="shared_move_to_shared">移到共享工作区</string>
+    <string name="shared_move_to_private">移回当前会话</string>
+    <string name="shared_move_success">已移动文件</string>
+    <string name="shared_move_failed">移动文件失败</string>
+    <string name="shared_create_folder">新建文件夹</string>
+    <string name="shared_folder_name">文件夹名称</string>
+    <string name="shared_folder_created">已创建文件夹</string>
+    <string name="shared_file_moved_to_shared">已将 %1$s 移到共享工作区</string>
+    <string name="shared_file_moved_to_private">已将 %1$s 移回会话工作区</string>
+    <string name="shared_upload_success">已上传到共享工作区</string>
+    <string name="shared_delete_success">已删除共享文件</string>
+    <string name="shared_only_server_mode">共享工作区仅在服务器模式可用</string>
+
+    <!-- ==================== 运行诊断中心 ==================== -->
+    <string name="diagnostic_center_title">运行诊断中心</string>
+    <string name="diagnostic_center_desc">查看链路与状态</string>
+    <string name="diagnostic_gateway_health">Gateway 健康</string>
+    <string name="diagnostic_gateway_stats">Gateway 统计</string>
+    <string name="diagnostic_queue_status">队列状态</string>
+    <string name="diagnostic_socket_state">Socket 连接</string>
+    <string name="diagnostic_server_connect">服务器连通性</string>
+    <string name="diagnostic_event_log">事件日志</string>
+    <string name="diagnostic_trace_lookup">Trace 查询</string>
+    <string name="diagnostic_local_log">本地日志</string>
+    <string name="diagnostic_status_ok">正常</string>
+    <string name="diagnostic_status_error">异常</string>
+    <string name="diagnostic_status_unknown">未知</string>
+    <string name="diagnostic_status_connected">已连接</string>
+    <string name="diagnostic_status_disconnected">已断开</string>
+    <string name="diagnostic_status_connecting">连接中</string>
+    <string name="diagnostic_refresh">刷新</string>
+    <string name="diagnostic_clear_log">清空日志</string>
+    <string name="diagnostic_no_data">暂无数据</string>
+    <string name="diagnostic_trace_id_hint">输入 Trace ID 查询链路</string>
+    <string name="diagnostic_trace_search">查询</string>
+    <string name="diagnostic_event_filter">筛选</string>
+    <string name="diagnostic_latency_ms">%1$d ms</string>
+    <string name="diagnostic_ping_test">测试连通性</string>
+    <string name="diagnostic_pinging">测试中…</string>
+    <string name="diagnostic_only_server_mode">诊断中心仅在服务器模式可用</string>
+    <string name="diagnostic_log_level_all">全部</string>
+    <string name="diagnostic_log_level_error">错误</string>
+    <string name="diagnostic_log_level_warning">警告</string>
+    <string name="diagnostic_log_level_info">信息</string>
+    <string name="diagnostic_copy_log">复制日志</string>
+    <string name="diagnostic_copied">已复制到剪贴板</string>
 </resources>

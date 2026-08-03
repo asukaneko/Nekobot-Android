@@ -50,18 +50,6 @@ object BuiltinTools {
 
     private val standardTools = listOf(
         BuiltinToolSpec(
-            id = "search_news",
-            name = "搜索新闻",
-            description = "搜索最新的新闻资讯，可按关键词和类别过滤。",
-            parametersJson = params(
-                mapOf(
-                    "query" to mapOf("type" to "string", "description" to "搜索关键词"),
-                    "category" to mapOf("type" to "string", "description" to "新闻类别：科技/财经/社会/娱乐等")
-                ),
-                listOf("query")
-            )
-        ),
-        BuiltinToolSpec(
             id = "get_weather",
             name = "查询天气",
             description = "查询指定城市的当前天气与未来预报。",
@@ -373,10 +361,10 @@ object BuiltinTools {
         BuiltinToolSpec(
             id = "workspace_create_file",
             name = "工作区-创建文件",
-            description = "在当前会话工作区中创建文件。",
+            description = "在会话工作区或共享工作区中创建文件。path 使用 shared:// 前缀可写入共享工作区（跨会话复用），省略则写入当前会话工作区。",
             parametersJson = params(
                 mapOf(
-                    "path" to mapOf("type" to "string", "description" to "文件相对路径"),
+                    "path" to mapOf("type" to "string", "description" to "文件路径。使用 shared://filename 写入共享工作区，或直接使用相对路径写入当前会话工作区"),
                     "content" to mapOf("type" to "string", "description" to "文件内容")
                 ),
                 listOf("path", "content")
@@ -385,10 +373,10 @@ object BuiltinTools {
         BuiltinToolSpec(
             id = "workspace_read_file",
             name = "工作区-读取文件",
-            description = "读取工作区中指定文件的内容。支持按行范围读取（start_line/end_line，1-based 含两端）和限制返回字符数（max_chars，默认 100000，最大 500000）。重要：为节省上下文 token，读取长文本时请优先一次性读取完整内容（设置足够大的 max_chars，如 200000 或 500000，或设为 0 表示不限制），避免多次分片读取导致工具结果在上下文中重复累积。返回值含 truncated 字段标识是否因 max_chars 截断，total_chars/total_lines 为完整文件大小；若 truncated=true，hint 字段会给出一次性读取的建议 max_chars 值。",
+            description = "读取工作区中指定文件的内容。支持按行范围读取（start_line/end_line，1-based 含两端）和限制返回字符数（max_chars，默认 100000，最大 500000）。path 使用 shared:// 前缀可读取共享工作区文件。重要：为节省上下文 token，读取长文本时请优先一次性读取完整内容（设置足够大的 max_chars，如 200000 或 500000，或设为 0 表示不限制），避免多次分片读取导致工具结果在上下文中重复累积。返回值含 truncated 字段标识是否因 max_chars 截断，total_chars/total_lines 为完整文件大小；若 truncated=true，hint 字段会给出一次性读取的建议 max_chars 值。",
             parametersJson = params(
                 mapOf(
-                    "path" to mapOf("type" to "string", "description" to "文件相对路径"),
+                    "path" to mapOf("type" to "string", "description" to "文件路径。使用 shared://filename 读取共享工作区文件，或直接使用相对路径读取当前会话工作区文件"),
                     "start_line" to mapOf("type" to "integer", "description" to "起始行号（1-based，含），默认 1"),
                     "end_line" to mapOf("type" to "integer", "description" to "结束行号（1-based，含），默认读到末尾"),
                     "max_chars" to mapOf("type" to "integer", "description" to "最多返回的字符数，默认 100000，最大 500000；读取长文本时建议主动设置足够大的值一次性读完，设为 0 表示不限制；超出会被截断并置 truncated=true")
@@ -399,10 +387,10 @@ object BuiltinTools {
         BuiltinToolSpec(
             id = "workspace_edit_file",
             name = "工作区-编辑文件",
-            description = "编辑工作区中已存在的文件内容。",
+            description = "编辑工作区中已存在的文件内容。path 使用 shared:// 前缀可编辑共享工作区文件。",
             parametersJson = params(
                 mapOf(
-                    "path" to mapOf("type" to "string", "description" to "文件相对路径"),
+                    "path" to mapOf("type" to "string", "description" to "文件路径。使用 shared://filename 编辑共享工作区文件，或直接使用相对路径编辑当前会话工作区文件"),
                     "content" to mapOf("type" to "string", "description" to "新文件内容")
                 ),
                 listOf("path", "content")
@@ -411,46 +399,46 @@ object BuiltinTools {
         BuiltinToolSpec(
             id = "workspace_delete_file",
             name = "工作区-删除文件",
-            description = "删除工作区中的指定文件。",
+            description = "删除工作区中的指定文件。path 使用 shared:// 前缀可删除共享工作区文件。",
             parametersJson = params(
-                mapOf("path" to mapOf("type" to "string", "description" to "文件相对路径")),
+                mapOf("path" to mapOf("type" to "string", "description" to "文件路径。使用 shared://filename 删除共享工作区文件，或直接使用相对路径删除当前会话工作区文件")),
                 listOf("path")
             )
         ),
         BuiltinToolSpec(
             id = "workspace_list_files",
             name = "工作区-列出文件",
-            description = "列出工作区根目录或指定子目录下的文件。",
+            description = "列出工作区根目录或指定子目录下的文件。path 使用 shared:// 前缀可列出共享工作区文件，传 shared:// 列出共享工作区根目录。",
             parametersJson = params(
-                mapOf("path" to mapOf("type" to "string", "description" to "目录路径，默认根目录"))
+                mapOf("path" to mapOf("type" to "string", "description" to "目录路径。使用 shared:// 列出共享工作区根目录，shared://subdir 列出子目录；省略或直接使用相对路径列出当前会话工作区"))
             )
         ),
         BuiltinToolSpec(
             id = "workspace_send_file",
             name = "工作区-发送文件",
-            description = "将工作区中的文件作为附件发送到当前会话。",
+            description = "将工作区中的文件作为附件发送到当前会话。path 使用 shared:// 前缀可发送共享工作区文件。",
             parametersJson = params(
-                mapOf("path" to mapOf("type" to "string", "description" to "文件相对路径")),
+                mapOf("path" to mapOf("type" to "string", "description" to "文件路径。使用 shared://filename 发送共享工作区文件，或直接使用相对路径发送当前会话工作区文件")),
                 listOf("path")
             )
         ),
         BuiltinToolSpec(
             id = "workspace_parse_file",
             name = "工作区-解析文件",
-            description = "解析工作区中文件的内容（如 PDF/DOCX/TXT），返回文本。",
+            description = "解析工作区中文件的内容（如 PDF/DOCX/TXT），返回文本。path 使用 shared:// 前缀可解析共享工作区文件。",
             parametersJson = params(
-                mapOf("path" to mapOf("type" to "string", "description" to "文件相对路径")),
+                mapOf("path" to mapOf("type" to "string", "description" to "文件路径。使用 shared://filename 解析共享工作区文件，或直接使用相对路径解析当前会话工作区文件")),
                 listOf("path")
             )
         ),
         BuiltinToolSpec(
             id = "workspace_extract_epub",
             name = "工作区-提取 EPUB",
-            description = "按小说阅读顺序提取工作区中的 EPUB 正文，生成 UTF-8 TXT 到工作区。成功时返回 TXT 的相对路径和真实绝对路径。",
+            description = "按小说阅读顺序提取工作区中的 EPUB 正文，生成 UTF-8 TXT 到工作区。成功时返回 TXT 的相对路径和真实绝对路径。path 和 output_path 均支持 shared:// 前缀操作共享工作区。",
             parametersJson = params(
                 mapOf(
-                    "path" to mapOf("type" to "string", "description" to "EPUB 文件的工作区相对路径"),
-                    "output_path" to mapOf("type" to "string", "description" to "可选的 TXT 输出相对路径，默认与 EPUB 同目录同名")
+                    "path" to mapOf("type" to "string", "description" to "EPUB 文件路径。支持 shared:// 前缀"),
+                    "output_path" to mapOf("type" to "string", "description" to "可选的 TXT 输出路径，默认与 EPUB 同目录同名。支持 shared:// 前缀")
                 ),
                 listOf("path")
             )
@@ -458,9 +446,9 @@ object BuiltinTools {
         BuiltinToolSpec(
             id = "workspace_file_info",
             name = "工作区-文件信息",
-            description = "获取工作区文件的元信息（大小/类型/修改时间）。",
+            description = "获取工作区文件的元信息（大小/类型/修改时间）。path 使用 shared:// 前缀可查询共享工作区文件。",
             parametersJson = params(
-                mapOf("path" to mapOf("type" to "string", "description" to "文件相对路径")),
+                mapOf("path" to mapOf("type" to "string", "description" to "文件路径。使用 shared://filename 查询共享工作区文件，或直接使用相对路径查询当前会话工作区文件")),
                 listOf("path")
             )
         ),

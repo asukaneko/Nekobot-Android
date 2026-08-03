@@ -56,6 +56,8 @@ internal class LocalPipelineCallbacks(
     private val onThinkingCardUpdate: ((card: ThinkingCard) -> Unit)? = null,
     /** 当前会话的本地 Agent 工作区。 */
     private val workspaceRoot: java.io.File? = null,
+    /** 共享工作区根目录（跨会话），为 null 时工具不支持 shared:// 路径。 */
+    private val sharedWorkspaceRoot: java.io.File? = null,
     /** 本地命令授权状态，由 LocalRepository 在同一会话内共享。 */
     private val execAuthorizationManager: LocalExecAuthorizationManager = LocalExecAuthorizationManager(),
     /** 已连接 MCP 服务的工具执行入口。 */
@@ -130,7 +132,8 @@ internal class LocalPipelineCallbacks(
                         ?: VISION_FAILURE_MARKER + "视觉识别运行时不可用"
                 }
             },
-            generationController = generationController
+            generationController = generationController,
+            sharedWorkspaceRoot = sharedWorkspaceRoot
         )
     }
 

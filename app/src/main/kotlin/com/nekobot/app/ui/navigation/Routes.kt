@@ -91,6 +91,9 @@ object Routes {
 
     // wenku8 内置浏览器登录页（自动提取 Cookie + UA）
     const val WENKU_LOGIN = "wenku_login"
+
+    /** 运行诊断中心 */
+    const val DIAGNOSTIC_CENTER = "diagnostic_center"
 }
 
 data class BottomItem(

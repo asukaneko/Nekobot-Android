@@ -48,4 +48,30 @@ internal object LocalWorkspaceStorage {
 
     private fun File.isSameOrChildOf(parent: File): Boolean =
         path == parent.path || path.startsWith(parent.path + File.separator)
+
+    // ==================== 共享工作区（跨会话） ====================
+
+    /** 共享工作区的固定目录名 */
+    private const val SHARED_DIR_NAME = "shared"
+
+    /** 返回共享工作区根目录（filesDir/workspace/shared/），不存在则创建。 */
+    fun resolveShared(filesDir: File): File? = synchronized(migrationLock) {
+        runCatching {
+            val workspaceBase = File(filesDir, "workspace").canonicalFile
+            val shared = File(workspaceBase, SHARED_DIR_NAME).canonicalFile
+            if (!shared.isSameOrChildOf(workspaceBase)) return@runCatching null
+            shared.mkdirs()
+            shared
+        }.getOrNull()
+    }
+
+    /** 在共享工作区内解析子路径，返回安全的 File（防止目录穿越）。 */
+    fun resolveSharedPath(filesDir: File, relativePath: String): File? = synchronized(migrationLock) {
+        val shared = resolveShared(filesDir) ?: return@synchronized null
+        if (relativePath.isBlank()) return@synchronized shared
+        runCatching {
+            val target = File(shared, relativePath).canonicalFile
+            if (!target.isSameOrChildOf(shared)) null else target
+        }.getOrNull()
+    }
 }

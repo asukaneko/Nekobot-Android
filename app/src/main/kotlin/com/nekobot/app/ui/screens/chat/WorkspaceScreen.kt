@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderShared
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.*
@@ -75,6 +76,13 @@ class WorkspaceViewModel : BaseViewModel() {
 
     private val _currentPath = MutableStateFlow("")
     val currentPath: StateFlow<String> = _currentPath.asStateFlow()
+
+    // ---- 共享工作区 ----
+    private val _sharedFiles = MutableStateFlow<List<WorkspaceFile>>(emptyList())
+    val sharedFiles: StateFlow<List<WorkspaceFile>> = _sharedFiles.asStateFlow()
+
+    private val _sharedPath = MutableStateFlow("")
+    val sharedPath: StateFlow<String> = _sharedPath.asStateFlow()
 
     private var sessionId: String = ""
 
@@ -157,6 +165,184 @@ class WorkspaceViewModel : BaseViewModel() {
             block = { unified.deleteWorkspaceFile(sessionId, workspacePath) },
             onSuccess = { load() }
         )
+    }
+
+    /** 移动文件到共享工作区 */
+    fun moveToShared(workspacePath: String) {
+        if (sessionId.isBlank()) return
+        launchResult(
+            block = { unified.moveToShared(sessionId, workspacePath) },
+            onSuccess = {
+                showToast(string(R.string.shared_file_moved_to_shared, workspacePath.substringAfterLast('/')))
+                load()
+                loadShared()
+            }
+        )
+    }
+
+    // ==================== 共享工作区操作 ====================
+
+    /** 加载共享工作区文件列表 */
+    fun loadShared(path: String = _sharedPath.value) {
+        val normalizedPath = normalizeWorkspaceBrowserPath(path)
+        if (_sharedPath.value != normalizedPath) {
+            _sharedFiles.value = emptyList()
+        }
+        _sharedPath.value = normalizedPath
+        launchResult(
+            block = { unified.listSharedFiles(normalizedPath.ifBlank { null }) },
+            onSuccess = { elem ->
+                if (_sharedPath.value == normalizedPath) {
+                    _sharedFiles.value = parseFiles(elem)
+                }
+            },
+            onError = {
+                if (_sharedPath.value == normalizedPath) {
+                    _sharedFiles.value = emptyList()
+                }
+            }
+        )
+    }
+
+    fun openSharedDirectory(path: String) = loadShared(path)
+
+    fun navigateSharedUp(): Boolean {
+        val current = _sharedPath.value
+        if (current.isBlank()) return false
+        loadShared(parentWorkspaceBrowserPath(current))
+        return true
+    }
+
+    /** 上传文件到共享工作区 */
+    fun uploadShared(context: Context, uri: Uri, onDone: () -> Unit) {
+        viewModelScope.launch {
+            _uploading.value = true
+            try {
+                val (name, bytes) = withContext(Dispatchers.IO) { readUri(context, uri) } ?: run {
+                    showError(string(R.string.workspace_read_failed))
+                    return@launch
+                }
+                val mediaType = guessMime(name).toMediaTypeOrNull()
+                val body = bytes.toRequestBody(mediaType)
+                val part = MultipartBody.Part.createFormData("file", name, body)
+                when (val res = unified.uploadSharedFile(part)) {
+                    is Resource.Success -> {
+                        showToast(string(R.string.shared_upload_success))
+                        loadShared()
+                        onDone()
+                    }
+                    is Resource.Error -> showError(res.message)
+                    is Resource.Loading -> {}
+                }
+            } catch (e: Exception) {
+                showError(e.message ?: string(R.string.workspace_upload_failed))
+            } finally {
+                _uploading.value = false
+            }
+        }
+    }
+
+    /** 删除共享工作区文件 */
+    fun deleteShared(filename: String) {
+        launchResult(
+            block = { unified.deleteSharedFile(filename) },
+            onSuccess = {
+                showToast(string(R.string.shared_delete_success))
+                loadShared()
+            }
+        )
+    }
+
+    /** 把共享文件移回当前会话 */
+    fun moveSharedToPrivate(filename: String) {
+        if (sessionId.isBlank()) return
+        launchResult(
+            block = { unified.moveSharedToPrivate(filename, sessionId) },
+            onSuccess = {
+                showToast(string(R.string.shared_file_moved_to_private, filename.substringAfterLast('/')))
+                loadShared()
+                load()
+            }
+        )
+    }
+
+    /** 准备共享文件到缓存目录供预览 */
+    suspend fun prepareSharedForOpen(context: Context, sharedPath: String): File? = withContext(Dispatchers.IO) {
+        try {
+            val target = workspacePreviewCacheFile(context, sharedPath)
+            FileOutputStream(target).use { output ->
+                if (!copySharedFileTo(sharedPath, output)) {
+                    target.delete()
+                    return@withContext null
+                }
+            }
+            target
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** 把共享文件保存到 Downloads */
+    suspend fun saveSharedToDownloads(context: Context, file: WorkspaceFile): String? =
+        withContext(Dispatchers.IO) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return@withContext null
+            val resolver = context.contentResolver
+            var targetUri: Uri? = null
+            try {
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
+                    put(MediaStore.MediaColumns.MIME_TYPE, file.mimeType.ifBlank { guessMime(file.name) })
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+                targetUri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: return@withContext null
+                val copied = resolver.openOutputStream(targetUri, "w")?.use { output ->
+                    copySharedFileTo(file.path, output)
+                } == true
+                if (!copied) {
+                    resolver.delete(targetUri, null, null)
+                    return@withContext null
+                }
+                resolver.update(
+                    targetUri,
+                    ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
+                    null,
+                    null
+                )
+                file.name
+            } catch (e: Exception) {
+                targetUri?.let { runCatching { resolver.delete(it, null, null) } }
+                null
+            }
+        }
+
+    /** Android 9 及以下：写入系统选择器返回的目标 Uri */
+    suspend fun saveSharedToUri(context: Context, file: WorkspaceFile, targetUri: Uri): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                context.contentResolver.openOutputStream(targetUri, "w")?.use { output ->
+                    copySharedFileTo(file.path, output)
+                } == true
+            } catch (e: Exception) {
+                false
+            }
+        }
+
+    /** 复制共享文件到输出流 */
+    private suspend fun copySharedFileTo(sharedPath: String, output: OutputStream): Boolean {
+        val localFile = unified.downloadSharedFileLocal(sharedPath)
+        if (localFile != null && localFile.isFile) {
+            localFile.inputStream().use { input -> input.copyTo(output) }
+            return true
+        }
+        val response = unified.downloadSharedFile(sharedPath)
+        if (response == null || !response.isSuccessful) return false
+        val body = response.body() ?: return false
+        body.use { responseBody ->
+            responseBody.byteStream().use { input -> input.copyTo(output) }
+        }
+        return true
     }
 
     /** 把工作区文件准备到应用缓存目录，供预览或外部应用打开。 */
@@ -344,49 +530,62 @@ fun WorkspaceScreen(
 ) {
     val viewModel: WorkspaceViewModel = viewModel()
     val files by viewModel.files.collectAsState()
+    val sharedFiles by viewModel.sharedFiles.collectAsState()
     val loading by viewModel.loading.collectAsState()
     val error by viewModel.error.collectAsState()
     val toast by viewModel.toast.collectAsState()
     val uploading by viewModel.uploading.collectAsState()
     val currentPath by viewModel.currentPath.collectAsState()
+    val sharedPath by viewModel.sharedPath.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    var tabIndex by remember { mutableStateOf(0) } // 0=会话工作区, 1=共享工作区
     var deletingFile by remember { mutableStateOf<WorkspaceFile?>(null) }
+    var movingFile by remember { mutableStateOf<WorkspaceFile?>(null) }
     var downloading by remember { mutableStateOf<String?>(null) }
     var previewFile by remember { mutableStateOf<java.io.File?>(null) }
     var previewFileName by remember { mutableStateOf("") }
     var previewLoading by remember { mutableStateOf(false) }
-    var pendingLegacyDownload by remember { mutableStateOf<WorkspaceFile?>(null) }
+    var pendingLegacyDownload by remember { mutableStateOf<Pair<WorkspaceFile, Boolean>?>(null) } // (file, isShared)
     val snackbarHost = remember { SnackbarHostState() }
 
     LaunchedEffect(sessionId) { viewModel.init(sessionId) }
+    LaunchedEffect(tabIndex) {
+        if (tabIndex == 1 && sharedFiles.isEmpty()) viewModel.loadShared()
+    }
     LaunchedEffect(toast) {
         if (toast != null) { snackbarHost.showSnackbar(toast!!); viewModel.clearToast() }
     }
     LaunchedEffect(error) {
         if (error != null) { snackbarHost.showSnackbar(error!!); viewModel.clearError() }
     }
-    BackHandler(enabled = currentPath.isNotBlank()) {
-        viewModel.navigateUp()
+    val activePath = if (tabIndex == 0) currentPath else sharedPath
+    BackHandler(enabled = activePath.isNotBlank()) {
+        if (tabIndex == 0) viewModel.navigateUp() else viewModel.navigateSharedUp()
     }
 
-    // 文件选择器：选取要上传的文件
+    // 文件选择器：根据当前 Tab 上传到不同工作区
     val pickFile = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
-        if (uri != null) viewModel.upload(context, uri) {}
+        if (uri != null) {
+            if (tabIndex == 0) viewModel.upload(context, uri) {}
+            else viewModel.uploadShared(context, uri) {}
+        }
     }
     val createDownloadDocument = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("*/*")
     ) { uri ->
-        val file = pendingLegacyDownload
+        val pending = pendingLegacyDownload
         pendingLegacyDownload = null
-        if (uri == null || file == null) {
+        if (uri == null || pending == null) {
             downloading = null
         } else {
+            val (file, isShared) = pending
             scope.launch {
-                val saved = viewModel.saveToUri(context, file, uri)
+                val saved = if (isShared) viewModel.saveSharedToUri(context, file, uri)
+                             else viewModel.saveToUri(context, file, uri)
                 downloading = null
                 snackbarHost.showSnackbar(
                     if (saved) {
@@ -405,10 +604,10 @@ fun WorkspaceScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = if (currentPath.isBlank()) {
+                        text = if (activePath.isBlank()) {
                             stringResource(R.string.workspace_title)
                         } else {
-                            "${stringResource(R.string.workspace_title)} / $currentPath"
+                            "${stringResource(R.string.workspace_title)} / $activePath"
                         },
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
@@ -418,7 +617,11 @@ fun WorkspaceScreen(
                 navigationIcon = {
                     IconButton(
                         onClick = {
-                            if (!viewModel.navigateUp()) onBack()
+                            if (tabIndex == 0) {
+                                if (!viewModel.navigateUp()) onBack()
+                            } else {
+                                if (!viewModel.navigateSharedUp()) onBack()
+                            }
                         }
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = MaterialTheme.colorScheme.onSurface)
@@ -434,88 +637,121 @@ fun WorkspaceScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHost) }
     ) { padding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            when {
-                files.isEmpty() && loading -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            // Tab 切换栏
+            TabRow(
+                selectedTabIndex = tabIndex,
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.primary
+            ) {
+                Tab(
+                    selected = tabIndex == 0,
+                    onClick = { tabIndex = 0 },
+                    text = { Text(stringResource(R.string.shared_workspace_tab_session)) }
+                )
+                Tab(
+                    selected = tabIndex == 1,
+                    onClick = {
+                        tabIndex = 1
+                        viewModel.loadShared()
+                    },
+                    text = { Text(stringResource(R.string.shared_workspace_tab_shared)) }
+                )
+            }
+
+            Box(modifier = Modifier.fillMaxSize()) {
+                val displayFiles = if (tabIndex == 0) files else sharedFiles
+                when {
+                    displayFiles.isEmpty() && loading -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                        }
                     }
-                }
-                files.isEmpty() -> {
-                    EmptyState(
-                        title = stringResource(R.string.workspace_empty_title),
-                        hint = stringResource(R.string.workspace_empty_hint),
-                        icon = { Icon(Icons.Filled.InsertDriveFile, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    )
-                }
-                else -> {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(files, key = { it.path }) { f ->
-                            WorkspaceFileItem(
-                                file = f,
-                                downloading = downloading == f.path,
-                                previewLoading = previewLoading && previewFileName == f.path,
-                                onOpenDirectory = { viewModel.openDirectory(f.path) },
-                                onDelete = { deletingFile = f },
-                                onDownload = {
-                                    if (downloading == null) {
-                                        downloading = f.path
-                                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                                            pendingLegacyDownload = f
-                                            createDownloadDocument.launch(f.name)
-                                        } else {
-                                            scope.launch {
-                                                val savedName = viewModel.saveToDownloads(context, f)
-                                                downloading = null
-                                                snackbarHost.showSnackbar(
-                                                    if (savedName != null) {
-                                                        context.getString(R.string.workspace_downloaded_to, savedName)
-                                                    } else {
-                                                        context.getString(R.string.workspace_download_failed)
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
-                                },
-                                onPreview = {
-                                    if (!previewLoading && previewFile == null) {
-                                        previewFileName = f.path
-                                        previewLoading = true
-                                        scope.launch {
-                                            val saved = viewModel.prepareForOpen(context, f.path)
-                                            previewLoading = false
-                                            if (saved != null) {
-                                                when {
-                                                    isPlainTextWorkspaceFile(f.name, f.mimeType) -> {
-                                                        openLocalWorkspaceFile(
-                                                            context = context,
-                                                            file = saved,
-                                                            forceChooser = true
-                                                        )
-                                                        previewFileName = ""
-                                                    }
-                                                    isPdfWorkspaceFile(f.name, f.mimeType) -> {
-                                                        openLocalWorkspaceFile(context, saved)
-                                                        previewFileName = ""
-                                                    }
-                                                    else -> previewFile = saved
-                                                }
+                    displayFiles.isEmpty() -> {
+                        EmptyState(
+                            title = if (tabIndex == 0) stringResource(R.string.workspace_empty_title)
+                                    else stringResource(R.string.shared_workspace_empty),
+                            hint = stringResource(R.string.workspace_empty_hint),
+                            icon = { Icon(Icons.Filled.InsertDriveFile, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        )
+                    }
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(displayFiles, key = { it.path }) { f ->
+                                val isShared = tabIndex == 1
+                                WorkspaceFileItem(
+                                    file = f,
+                                    isSharedMode = isShared,
+                                    downloading = downloading == f.path,
+                                    previewLoading = previewLoading && previewFileName == f.path,
+                                    onOpenDirectory = {
+                                        if (isShared) viewModel.openSharedDirectory(f.path)
+                                        else viewModel.openDirectory(f.path)
+                                    },
+                                    onDelete = { deletingFile = f },
+                                    onMove = { movingFile = f },
+                                    onDownload = {
+                                        if (downloading == null) {
+                                            downloading = f.path
+                                            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                                                pendingLegacyDownload = f to isShared
+                                                createDownloadDocument.launch(f.name)
                                             } else {
-                                                snackbarHost.showSnackbar(context.getString(R.string.workspace_preview_load_failed))
+                                                scope.launch {
+                                                    val savedName = if (isShared) viewModel.saveSharedToDownloads(context, f)
+                                                                    else viewModel.saveToDownloads(context, f)
+                                                    downloading = null
+                                                    snackbarHost.showSnackbar(
+                                                        if (savedName != null) {
+                                                            context.getString(R.string.workspace_downloaded_to, savedName)
+                                                        } else {
+                                                            context.getString(R.string.workspace_download_failed)
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    },
+                                    onPreview = {
+                                        if (!previewLoading && previewFile == null) {
+                                            previewFileName = f.path
+                                            previewLoading = true
+                                            scope.launch {
+                                                val saved = if (isShared) viewModel.prepareSharedForOpen(context, f.path)
+                                                             else viewModel.prepareForOpen(context, f.path)
+                                                previewLoading = false
+                                                if (saved != null) {
+                                                    when {
+                                                        isPlainTextWorkspaceFile(f.name, f.mimeType) -> {
+                                                            openLocalWorkspaceFile(
+                                                                context = context,
+                                                                file = saved,
+                                                                forceChooser = true
+                                                            )
+                                                            previewFileName = ""
+                                                        }
+                                                        isPdfWorkspaceFile(f.name, f.mimeType) -> {
+                                                            openLocalWorkspaceFile(context, saved)
+                                                            previewFileName = ""
+                                                        }
+                                                        else -> previewFile = saved
+                                                    }
+                                                } else {
+                                                    snackbarHost.showSnackbar(context.getString(R.string.workspace_preview_load_failed))
+                                                }
                                             }
                                         }
                                     }
-                                }
-                            )
+                                )
+                            }
                         }
                     }
                 }
@@ -525,6 +761,7 @@ fun WorkspaceScreen(
 
     // 删除确认
     if (deletingFile != null) {
+        val isShared = tabIndex == 1
         NekoDialog(
             onDismiss = { deletingFile = null },
             title = stringResource(R.string.workspace_delete_file_title),
@@ -533,7 +770,26 @@ fun WorkspaceScreen(
             onConfirm = {
                 val f = deletingFile!!
                 deletingFile = null
-                viewModel.delete(f.path)
+                if (isShared) viewModel.deleteShared(f.path) else viewModel.delete(f.path)
+            }
+        )
+    }
+
+    // 移动文件确认
+    if (movingFile != null) {
+        val isShared = tabIndex == 1
+        NekoDialog(
+            onDismiss = { movingFile = null },
+            title = stringResource(if (isShared) R.string.shared_move_to_private else R.string.shared_move_to_shared),
+            message = stringResource(
+                if (isShared) R.string.shared_file_moved_to_private else R.string.shared_file_moved_to_shared,
+                movingFile!!.name
+            ),
+            confirmText = stringResource(if (isShared) R.string.shared_move_to_private else R.string.shared_move_to_shared),
+            onConfirm = {
+                val f = movingFile!!
+                movingFile = null
+                if (isShared) viewModel.moveSharedToPrivate(f.path) else viewModel.moveToShared(f.path)
             }
         )
     }
@@ -555,10 +811,12 @@ fun WorkspaceScreen(
 @Composable
 private fun WorkspaceFileItem(
     file: WorkspaceFile,
+    isSharedMode: Boolean = false,
     downloading: Boolean,
     previewLoading: Boolean,
     onOpenDirectory: () -> Unit,
     onDelete: () -> Unit,
+    onMove: () -> Unit,
     onDownload: () -> Unit,
     onPreview: () -> Unit
 ) {
@@ -601,6 +859,14 @@ private fun WorkspaceFileItem(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+            // 移动文件按钮：共享模式→移回会话，会话模式→移到共享
+            IconButton(onClick = onMove) {
+                if (isSharedMode) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.shared_move_to_private), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Icon(Icons.Filled.FolderShared, contentDescription = stringResource(R.string.shared_move_to_shared), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             if (!file.isDirectory) {
                 IconButton(onClick = onDownload, enabled = !downloading) {
