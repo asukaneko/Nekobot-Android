@@ -39,9 +39,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.R
+import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.ai.ModelPricingCatalog
 import com.nekobot.app.data.local.ai.ModelPricingEntry
 import com.nekobot.app.data.local.ai.LocalProtocols
@@ -63,7 +66,7 @@ import java.util.UUID
  * 两个模式只在协议列表和最终持久化方式上有差异。
  */
 data class AiModelEditorState(
-    val name: String = "新对话模型配置",
+    val name: String = "",
     val purpose: String = "chat",
     val provider: String = "openai",
     val protocol: String = "openai_compatible",
@@ -130,29 +133,31 @@ private val providerPresets = listOf(
     ProviderPreset("Mimo", "xiaomi", "mimo-v2.5", "https://api.xiaomimimo.com/v1", "1048576", "131072", "", "")
 )
 
-private val purposeLabels = linkedMapOf(
-    "chat" to "对话模型",
-    "vision" to "图片理解",
-    "video" to "视频理解",
-    "tts" to "TTS 语音合成",
-    "stt" to "STT 语音识别",
-    "embedding" to "向量嵌入",
-    "image_generation" to "图片生成"
+@Composable
+private fun rememberPurposeLabels(): LinkedHashMap<String, String> = linkedMapOf(
+    "chat" to stringResource(R.string.aimodel_editor_purpose_chat),
+    "vision" to stringResource(R.string.aimodel_editor_purpose_vision),
+    "video" to stringResource(R.string.aimodel_editor_purpose_video),
+    "tts" to stringResource(R.string.aimodel_editor_purpose_tts),
+    "stt" to stringResource(R.string.aimodel_editor_purpose_stt),
+    "embedding" to stringResource(R.string.aimodel_editor_purpose_embedding),
+    "image_generation" to stringResource(R.string.aimodel_editor_purpose_image_generation)
 )
 
-private val providerLabels = linkedMapOf(
-    "openai" to "OpenAI",
-    "anthropic" to "Anthropic / Claude",
-    "google" to "Google / Gemini",
-    "deepseek" to "DeepSeek",
-    "zhipu" to "智谱 GLM",
-    "minimax" to "MiniMax",
-    "grok" to "Grok (xAI)",
-    "qwen" to "通义千问",
-    "xiaomi" to "小米 MiMo",
-    "azure" to "Azure OpenAI",
-    "siliconflow" to "SiliconFlow",
-    "custom" to "自定义"
+@Composable
+private fun rememberProviderLabels(): LinkedHashMap<String, String> = linkedMapOf(
+    "openai" to stringResource(R.string.aimodel_editor_provider_openai),
+    "anthropic" to stringResource(R.string.aimodel_editor_provider_anthropic),
+    "google" to stringResource(R.string.aimodel_editor_provider_google),
+    "deepseek" to stringResource(R.string.aimodel_editor_provider_deepseek),
+    "zhipu" to stringResource(R.string.aimodel_editor_provider_zhipu),
+    "minimax" to stringResource(R.string.aimodel_editor_provider_minimax),
+    "grok" to stringResource(R.string.aimodel_editor_provider_grok),
+    "qwen" to stringResource(R.string.aimodel_editor_provider_qwen),
+    "xiaomi" to stringResource(R.string.aimodel_editor_provider_xiaomi),
+    "azure" to stringResource(R.string.aimodel_editor_provider_azure),
+    "siliconflow" to stringResource(R.string.aimodel_editor_provider_siliconflow),
+    "custom" to stringResource(R.string.aimodel_editor_provider_custom)
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -179,15 +184,20 @@ fun AiModelEditorDialog(
     val context = LocalContext.current
     val pricingViewModel: ModelPricingCatalogViewModel = viewModel()
     val pricingState by pricingViewModel.state.collectAsState()
+    val purposeLabels = rememberPurposeLabels()
+    val providerLabels = rememberProviderLabels()
+    val openaiCompatibleLabel = stringResource(R.string.aimodel_editor_protocol_openai_compatible)
     val protocolOptions = remember(protocols) {
         protocols.ifEmpty {
             LocalProtocols.names().map { ProtocolOption(it, it) }
-                .ifEmpty { listOf(ProtocolOption("openai_compatible", "OpenAI 兼容")) }
+                .ifEmpty { listOf(ProtocolOption("openai_compatible", openaiCompatibleLabel)) }
         }
     }
     val purposeOptions = remember(purposes) {
         (purposeLabels.keys + purposes).distinct()
     }
+    val presetConfigTemplate = stringResource(R.string.aimodel_editor_preset_config_name)
+    val purposeNameTemplate = stringResource(R.string.aimodel_editor_default_name_purpose)
     var state by remember(initial) { mutableStateOf(initial.ensureProtocol(protocolOptions)) }
     var validationError by remember { mutableStateOf<String?>(null) }
     var allowAutomaticPricing by remember(initial, isEditing) {
@@ -215,22 +225,23 @@ fun AiModelEditorDialog(
         if (uri == null) return@rememberLauncherForActivityResult
         runCatching {
             val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?: error("无法读取音频文件")
-            require(bytes.size <= 7.5 * 1024 * 1024) { "参考音频不能超过 7.5 MB" }
+                ?: error(context.getString(R.string.aimodel_editor_audio_read_error))
+            require(bytes.size <= 7.5 * 1024 * 1024) { context.getString(R.string.aimodel_editor_audio_too_large) }
             val mime = context.contentResolver.getType(uri) ?: "audio/mpeg"
             "data:$mime;base64,${Base64.getEncoder().encodeToString(bytes)}"
         }.onSuccess {
             state = state.copy(ttsRefAudio = it)
             validationError = null
         }.onFailure {
-            validationError = it.message ?: "参考音频读取失败"
+            validationError = it.message ?: context.getString(R.string.aimodel_editor_audio_load_failed)
         }
     }
 
     NekoDialog(
         onDismiss = onDismiss,
-        title = if (isEditing) "编辑 AI 模型" else "新建 AI 模型",
-        confirmText = "保存",
+        title = if (isEditing) stringResource(R.string.aimodel_editor_dialog_title_edit)
+               else stringResource(R.string.aimodel_editor_dialog_title_new),
+        confirmText = stringResource(R.string.common_save),
         onConfirm = {
             val proxyError = if (showProxyConfig && state.proxyUrl.isNotBlank()) {
                 runCatching { parseModelProxyUrl(state.proxyUrl) }.exceptionOrNull()?.message
@@ -238,11 +249,11 @@ fun AiModelEditorDialog(
                 null
             }
             validationError = when {
-                state.name.isBlank() -> "请填写配置名称"
-                state.baseUrl.isBlank() -> "请填写 Base URL"
-                state.model.isBlank() -> "请填写模型名称"
+                state.name.isBlank() -> context.getString(R.string.aimodel_editor_validation_name)
+                state.baseUrl.isBlank() -> context.getString(R.string.aimodel_editor_validation_base_url)
+                state.model.isBlank() -> context.getString(R.string.aimodel_editor_validation_model)
                 state.apiKey.isBlank() && !(state.purpose == "stt" && state.sttProvider == "local") ->
-                    "请填写或选择 API Key"
+                    context.getString(R.string.aimodel_editor_validation_api_key)
                 proxyError != null -> proxyError
                 else -> null
             }
@@ -256,7 +267,7 @@ fun AiModelEditorDialog(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            FormSection("快速预设")
+            FormSection(stringResource(R.string.aimodel_editor_section_quick_preset))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -267,43 +278,43 @@ fun AiModelEditorDialog(
                     AssistChip(
                         onClick = {
                             allowAutomaticPricing = true
-                            state = state.applyPreset(preset, protocolOptions)
+                            state = state.applyPreset(preset, protocolOptions, presetConfigTemplate)
                         },
                         label = { Text(preset.label) }
                     )
                 }
             }
 
-            EditorTextField("配置名称", state.name) { state = state.copy(name = it) }
+            EditorTextField(stringResource(R.string.aimodel_editor_field_config_name), state.name) { state = state.copy(name = it) }
             EditorDropdownField(
-                label = "用途",
+                label = stringResource(R.string.aimodel_editor_field_purpose),
                 value = state.purpose,
                 options = purposeOptions,
                 labelFor = { purposeLabels[it] ?: it },
-                onSelect = { state = state.applyPurpose(it, isEditing) }
+                onSelect = { state = state.applyPurpose(it, isEditing, purposeLabels, purposeNameTemplate) }
             )
             EditorDropdownField(
-                label = "服务商",
+                label = stringResource(R.string.aimodel_editor_field_provider),
                 value = state.provider,
                 options = providerLabels.keys.toList(),
                 labelFor = { providerLabels[it] ?: it },
                 onSelect = { provider ->
                     val preset = providerPresets.firstOrNull { it.provider == provider }
                     allowAutomaticPricing = true
-                    state = preset?.let { state.applyPreset(it, protocolOptions) }
+                    state = preset?.let { state.applyPreset(it, protocolOptions, presetConfigTemplate) }
                         ?: state.copy(provider = provider, protocol = protocolFor(provider, protocolOptions))
                 }
             )
 
             EditorTextField(
-                label = "API Key",
+                label = stringResource(R.string.aimodel_editor_field_api_key),
                 value = state.apiKey,
                 password = true,
-                placeholder = "输入 API Key"
+                placeholder = stringResource(R.string.aimodel_editor_field_api_key_placeholder)
             ) { state = state.copy(apiKey = it) }
             if (savedApiKeys.isNotEmpty()) {
                 EditorDropdownField(
-                    label = "选择已保存的 Key",
+                    label = stringResource(R.string.aimodel_editor_field_saved_key),
                     value = "",
                     options = savedApiKeys.mapNotNull { it.id },
                     labelFor = { id -> savedApiKeys.firstOrNull { it.id == id }?.displayName ?: id },
@@ -314,26 +325,27 @@ fun AiModelEditorDialog(
             }
             if (showProxyConfig) {
                 EditorTextField(
-                    label = "代理链接（可选）",
+                    label = stringResource(R.string.aimodel_editor_field_proxy_url),
                     value = state.proxyUrl,
                     placeholder = "http://127.0.0.1:7890"
                 ) { state = state.copy(proxyUrl = it) }
                 Text(
-                    text = "留空时该模型直连；支持 HTTP 和 SOCKS5 代理",
+                    text = stringResource(R.string.aimodel_editor_field_proxy_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
             EditorDropdownField(
-                label = "Provider 类型",
+                label = stringResource(R.string.aimodel_editor_field_provider_type),
                 value = state.protocol,
                 options = protocolOptions.map { it.key },
                 labelFor = { key -> protocolOptions.firstOrNull { it.key == key }?.displayName ?: key },
                 onSelect = { state = state.copy(protocol = it) }
             )
             EditorTextField(
-                label = if (state.purpose == "image_generation") "完整 API URL" else "API Base URL",
+                label = if (state.purpose == "image_generation") stringResource(R.string.aimodel_editor_field_full_url)
+                        else stringResource(R.string.aimodel_editor_field_base_url),
                 value = state.baseUrl,
                 placeholder = if (state.purpose == "image_generation") {
                     "https://api.openai.com/v1/images/generations"
@@ -341,7 +353,7 @@ fun AiModelEditorDialog(
                     "https://api.example.com/v1"
                 }
             ) { state = state.copy(baseUrl = it) }
-            EditorSwitch("自动补全 Base URL 后缀", state.appendBaseUrlPath) {
+            EditorSwitch(stringResource(R.string.aimodel_editor_field_append_base_url), state.appendBaseUrlPath) {
                 state = state.copy(appendBaseUrlPath = it)
             }
 
@@ -351,10 +363,10 @@ fun AiModelEditorDialog(
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 EditorTextField(
-                    label = "模型",
+                    label = stringResource(R.string.aimodel_editor_field_model),
                     value = state.model,
                     modifier = Modifier.weight(1f),
-                    placeholder = "例如：gpt-4"
+                    placeholder = stringResource(R.string.aimodel_editor_field_model_placeholder)
                 ) {
                     state = state.copy(
                         model = it,
@@ -374,12 +386,18 @@ fun AiModelEditorDialog(
                         )
                     }
                 ) {
-                    Icon(Icons.Filled.CloudDownload, contentDescription = "获取模型")
+                    Icon(
+                        Icons.Filled.CloudDownload,
+                        contentDescription = stringResource(R.string.aimodel_editor_field_fetch_models)
+                    )
                 }
             }
             if (availableModels.isNotEmpty()) {
                 EditorDropdownField(
-                    label = "从已获取列表选择（${availableModels.size}）",
+                    label = stringResource(
+                        R.string.aimodel_editor_field_select_from_fetched,
+                        availableModels.size
+                    ),
                     value = state.model,
                     options = availableModels,
                     onSelect = {
@@ -389,15 +407,15 @@ fun AiModelEditorDialog(
                 )
             }
 
-            FormSection("生成参数")
-            EditorTextField("温度", state.temperature) { state = state.copy(temperature = it) }
-            EditorTextField("最大输出 Token", state.maxTokens) { state = state.copy(maxTokens = it) }
-            EditorTextField("最大上下文长度", state.maxContextLength) {
+            FormSection(stringResource(R.string.aimodel_editor_section_generation_params))
+            EditorTextField(stringResource(R.string.aimodel_editor_field_temperature), state.temperature) { state = state.copy(temperature = it) }
+            EditorTextField(stringResource(R.string.aimodel_editor_field_max_tokens), state.maxTokens) { state = state.copy(maxTokens = it) }
+            EditorTextField(stringResource(R.string.aimodel_editor_field_max_context), state.maxContextLength) {
                 state = state.copy(maxContextLength = it)
             }
-            EditorTextField("Top P（可选）", state.topP) { state = state.copy(topP = it) }
+            EditorTextField(stringResource(R.string.aimodel_editor_field_top_p), state.topP) { state = state.copy(topP = it) }
 
-            FormSection("价格目录")
+            FormSection(stringResource(R.string.aimodel_editor_section_pricing))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -405,14 +423,17 @@ fun AiModelEditorDialog(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "当前目录 ${pricingState.snapshot.entries.size} 个模型",
+                        text = stringResource(
+                            R.string.aimodel_editor_pricing_catalog_count,
+                            pricingState.snapshot.entries.size
+                        ),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
                         text = if (pricingState.snapshot.source == ModelPricingCatalog.SOURCE_OPENROUTER) {
-                            "在线数据 · ${pricingState.snapshot.updatedAt.take(10)}"
+                            stringResource(R.string.aimodel_editor_pricing_online_data, pricingState.snapshot.updatedAt.take(10))
                         } else {
-                            "内置离线数据 · 可在线更新"
+                            stringResource(R.string.aimodel_editor_pricing_offline_data)
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -436,7 +457,8 @@ fun AiModelEditorDialog(
                             modifier = Modifier.padding(end = 4.dp)
                         )
                     }
-                    Text(if (pricingState.refreshing) "更新中" else "一键更新")
+                    Text(if (pricingState.refreshing) stringResource(R.string.aimodel_editor_pricing_updating)
+                         else stringResource(R.string.aimodel_editor_pricing_update_now))
                 }
             }
             pricingState.message?.let {
@@ -447,7 +469,14 @@ fun AiModelEditorDialog(
             }
             if (matchedPricing != null) {
                 Text(
-                    text = buildPricingMatchText(matchedPricing),
+                    text = buildPricingMatchText(
+                        entry = matchedPricing,
+                        matchedLabel = stringResource(R.string.aimodel_editor_pricing_matched),
+                        inputLabel = stringResource(R.string.aimodel_editor_pricing_input_short),
+                        outputLabel = stringResource(R.string.aimodel_editor_pricing_output_short),
+                        perMillionLabel = stringResource(R.string.aimodel_editor_pricing_per_million),
+                        contextLabel = stringResource(R.string.aimodel_editor_pricing_context)
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -457,55 +486,59 @@ fun AiModelEditorDialog(
                         state = state.applyPricing(matchedPricing, overwrite = true)
                     }
                 ) {
-                    Text("应用目录价格和上下文")
+                    Text(stringResource(R.string.aimodel_editor_pricing_apply))
                 }
             } else if (state.model.isNotBlank()) {
                 Text(
-                    text = "目录中未匹配到“${state.model}”，可保留手动价格或在线更新后重试",
+                    text = stringResource(R.string.aimodel_editor_pricing_no_match, state.model),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Text(
-                text = "目录价格为 OpenRouter 美元参考价；手动填写的服务商价格优先。",
+                text = stringResource(R.string.aimodel_editor_pricing_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            EditorTextField("输入价格 / 百万 Token（美元）", state.inputPrice) {
+            EditorTextField(stringResource(R.string.aimodel_editor_pricing_input), state.inputPrice) {
                 allowAutomaticPricing = false
                 state = state.copy(inputPrice = it)
             }
-            EditorTextField("输出价格 / 百万 Token（美元）", state.outputPrice) {
+            EditorTextField(stringResource(R.string.aimodel_editor_pricing_output), state.outputPrice) {
                 allowAutomaticPricing = false
                 state = state.copy(outputPrice = it)
             }
-            EditorTextField("优先级", state.priority) { state = state.copy(priority = it) }
+            EditorTextField(stringResource(R.string.aimodel_editor_pricing_priority), state.priority) { state = state.copy(priority = it) }
 
-            FormSection("能力")
-            EditorSwitch("启用模型", state.enabled) { state = state.copy(enabled = it) }
-            EditorSwitch("支持工具调用", state.supportsTools) { state = state.copy(supportsTools = it) }
-            EditorSwitch("支持推理 / 思考字段", state.supportsReasoning) {
+            FormSection(stringResource(R.string.aimodel_editor_section_capability))
+            EditorSwitch(stringResource(R.string.aimodel_editor_capability_enable), state.enabled) { state = state.copy(enabled = it) }
+            EditorSwitch(stringResource(R.string.aimodel_editor_capability_tools), state.supportsTools) { state = state.copy(supportsTools = it) }
+            EditorSwitch(stringResource(R.string.aimodel_editor_capability_reasoning), state.supportsReasoning) {
                 state = state.copy(supportsReasoning = it)
             }
-            EditorSwitch("支持流式响应", state.supportsStream) {
+            EditorSwitch(stringResource(R.string.aimodel_editor_capability_stream), state.supportsStream) {
                 state = state.copy(supportsStream = it)
             }
 
             when (state.purpose) {
                 "tts" -> {
-                    FormSection("TTS 语音合成")
+                    FormSection(stringResource(R.string.aimodel_editor_section_tts))
+                    val ttsProviderLabels = mapOf(
+                        "openai" to stringResource(R.string.aimodel_editor_tts_provider_openai),
+                        "xiaomi" to stringResource(R.string.aimodel_editor_tts_provider_xiaomi),
+                        "doubao" to stringResource(R.string.aimodel_editor_tts_provider_doubao)
+                    )
+                    val ttsResourceDefault = stringResource(R.string.aimodel_editor_tts_resource_default)
+                    val ttsRefNotLoaded = stringResource(R.string.aimodel_editor_tts_ref_audio_not_loaded)
+                    val ttsRefLoaded = stringResource(R.string.aimodel_editor_tts_ref_audio_loaded)
+                    val ttsSelectAudio = stringResource(R.string.aimodel_editor_tts_select_audio)
+                    val ttsChangeAudio = stringResource(R.string.aimodel_editor_tts_change_audio)
+                    val ttsRemoveAudio = stringResource(R.string.aimodel_editor_remove_audio)
                     EditorDropdownField(
-                        label = "TTS 提供商",
+                        label = stringResource(R.string.aimodel_editor_tts_provider),
                         value = state.ttsProvider,
                         options = listOf("openai", "xiaomi", "doubao"),
-                        labelFor = {
-                            when (it) {
-                                "openai" -> "OpenAI 兼容"
-                                "xiaomi" -> "小米 MiMo"
-                                "doubao" -> "豆包（火山引擎）"
-                                else -> it
-                            }
-                        },
+                        labelFor = { ttsProviderLabels[it] ?: it },
                         onSelect = { state = state.copy(ttsProvider = it) }
                     )
                     if (state.ttsProvider == "doubao") {
@@ -520,30 +553,34 @@ fun AiModelEditorDialog(
                                 "seed-icl-2.0",
                                 "seed-icl-1.0"
                             ),
-                            labelFor = { it.ifBlank { "seed-tts-2.0（默认）" } },
+                            labelFor = { it.ifBlank { ttsResourceDefault } },
                             onSelect = { state = state.copy(ttsResourceId = it) }
                         )
                     }
-                    EditorTextField("TTS 模型名", state.ttsModel, placeholder = "留空则使用上方模型") {
-                        state = state.copy(ttsModel = it)
-                    }
-                    EditorTextField("音色", state.ttsVoice, placeholder = "alloy") {
-                        state = state.copy(ttsVoice = it)
-                    }
-                    EditorTextField("语速", state.ttsSpeed) { state = state.copy(ttsSpeed = it) }
-                    EditorTextField("音调", state.ttsPitch) { state = state.copy(ttsPitch = it) }
-                    EditorTextField("音量", state.ttsVolume) { state = state.copy(ttsVolume = it) }
+                    EditorTextField(
+                        stringResource(R.string.aimodel_editor_tts_model),
+                        state.ttsModel,
+                        placeholder = stringResource(R.string.aimodel_editor_tts_model_placeholder)
+                    ) { state = state.copy(ttsModel = it) }
+                    EditorTextField(
+                        stringResource(R.string.aimodel_editor_tts_voice),
+                        state.ttsVoice,
+                        placeholder = "alloy"
+                    ) { state = state.copy(ttsVoice = it) }
+                    EditorTextField(stringResource(R.string.aimodel_editor_tts_speed), state.ttsSpeed) { state = state.copy(ttsSpeed = it) }
+                    EditorTextField(stringResource(R.string.aimodel_editor_tts_pitch), state.ttsPitch) { state = state.copy(ttsPitch = it) }
+                    EditorTextField(stringResource(R.string.aimodel_editor_tts_volume), state.ttsVolume) { state = state.copy(ttsVolume = it) }
                     EditorDropdownField(
-                        label = "输出格式",
+                        label = stringResource(R.string.aimodel_editor_tts_format),
                         value = state.ttsFormat,
                         options = listOf("mp3", "wav", "opus", "flac"),
                         onSelect = { state = state.copy(ttsFormat = it) }
                     )
                     if (state.ttsProvider == "xiaomi") {
                         EditorTextField(
-                            label = "风格控制指令（可选）",
+                            label = stringResource(R.string.aimodel_editor_tts_style),
                             value = state.ttsUser,
-                            placeholder = "例如：请用欢快的语气说话"
+                            placeholder = stringResource(R.string.aimodel_editor_tts_style_placeholder)
                         ) { state = state.copy(ttsUser = it) }
                         if (state.ttsModel.contains("voiceclone", ignoreCase = true)) {
                             Row(
@@ -551,16 +588,16 @@ fun AiModelEditorDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    if (state.ttsRefAudio.isBlank()) "尚未加载参考音频" else "已加载参考音频",
+                                    if (state.ttsRefAudio.isBlank()) ttsRefNotLoaded else ttsRefLoaded,
                                     style = MaterialTheme.typography.bodySmall,
                                     modifier = Modifier.weight(1f)
                                 )
                                 TextButton(onClick = { audioPicker.launch("audio/*") }) {
-                                    Text(if (state.ttsRefAudio.isBlank()) "选择音频" else "更换")
+                                    Text(if (state.ttsRefAudio.isBlank()) ttsSelectAudio else ttsChangeAudio)
                                 }
                                 if (state.ttsRefAudio.isNotBlank()) {
                                     TextButton(onClick = { state = state.copy(ttsRefAudio = "") }) {
-                                        Text("移除")
+                                        Text(ttsRemoveAudio)
                                     }
                                 }
                             }
@@ -569,38 +606,43 @@ fun AiModelEditorDialog(
                 }
 
                 "stt" -> {
-                    FormSection("STT 语音识别")
+                    FormSection(stringResource(R.string.aimodel_editor_section_stt))
+                    val sttProviderLabels = mapOf(
+                        "" to stringResource(R.string.aimodel_editor_stt_provider_follow),
+                        "openai" to stringResource(R.string.aimodel_editor_stt_provider_openai),
+                        "xiaomi" to stringResource(R.string.aimodel_editor_stt_provider_xiaomi),
+                        "local" to stringResource(R.string.aimodel_editor_stt_provider_local)
+                    )
+                    val sttLanguageLabels = mapOf(
+                        "zh" to stringResource(R.string.aimodel_editor_stt_language_zh),
+                        "en" to stringResource(R.string.aimodel_editor_stt_language_en),
+                        "auto" to stringResource(R.string.aimodel_editor_stt_language_auto)
+                    )
                     EditorDropdownField(
-                        label = "STT 提供商",
+                        label = stringResource(R.string.aimodel_editor_stt_provider),
                         value = state.sttProvider,
                         options = listOf("", "openai", "xiaomi", "local"),
-                        labelFor = {
-                            when (it) {
-                                "" -> "跟随 Provider 类型"
-                                "openai" -> "OpenAI 兼容"
-                                "xiaomi" -> "小米 MiMo"
-                                "local" -> "本地 faster-whisper"
-                                else -> it
-                            }
-                        },
+                        labelFor = { sttProviderLabels[it] ?: it },
                         onSelect = { state = state.copy(sttProvider = it) }
                     )
-                    EditorTextField("STT 模型名", state.sttModel, placeholder = "留空则使用上方模型") {
-                        state = state.copy(sttModel = it)
-                    }
+                    EditorTextField(
+                        stringResource(R.string.aimodel_editor_stt_model),
+                        state.sttModel,
+                        placeholder = stringResource(R.string.aimodel_editor_tts_model_placeholder)
+                    ) { state = state.copy(sttModel = it) }
                     EditorDropdownField(
-                        label = "识别语言",
+                        label = stringResource(R.string.aimodel_editor_stt_language),
                         value = state.language,
                         options = listOf("zh", "en", "auto"),
-                        labelFor = { mapOf("zh" to "中文", "en" to "英文", "auto" to "自动检测")[it] ?: it },
+                        labelFor = { sttLanguageLabels[it] ?: it },
                         onSelect = { state = state.copy(language = it) }
                     )
                 }
 
                 "embedding" -> {
-                    FormSection("Embedding 配置")
+                    FormSection(stringResource(R.string.aimodel_editor_section_embedding))
                     EditorDropdownField(
-                        label = "向量维度",
+                        label = stringResource(R.string.aimodel_editor_embedding_dimensions),
                         value = state.dimensions,
                         options = listOf("384", "768", "1024", "1536", "3072"),
                         onSelect = { state = state.copy(dimensions = it) }
@@ -608,12 +650,14 @@ fun AiModelEditorDialog(
                 }
 
                 "image_generation" -> {
-                    FormSection("图片生成")
-                    EditorTextField("图片尺寸", state.size, placeholder = "1024x1024") {
-                        state = state.copy(size = it)
-                    }
+                    FormSection(stringResource(R.string.aimodel_editor_section_image_gen))
                     EditorTextField(
-                        label = "提示词模板（可选）",
+                        stringResource(R.string.aimodel_editor_image_size),
+                        state.size,
+                        placeholder = "1024x1024"
+                    ) { state = state.copy(size = it) }
+                    EditorTextField(
+                        label = stringResource(R.string.aimodel_editor_image_prompt_template),
                         value = state.promptTemplate,
                         singleLine = false
                     ) { state = state.copy(promptTemplate = it) }
@@ -758,12 +802,20 @@ private fun AiModelEditorState.applyPricing(
     supportsReasoning = if (overwrite) entry.supportsReasoning else supportsReasoning
 )
 
-private fun buildPricingMatchText(entry: ModelPricingEntry): String = buildString {
-    append("已匹配 ${entry.name}")
-    entry.inputPricePerMillion?.let { append(" · 输入 $").append(it.toCatalogPrice()) }
-    entry.outputPricePerMillion?.let { append(" · 输出 $").append(it.toCatalogPrice()) }
-    append(" / 百万 Token")
-    entry.contextLength?.let { append(" · 上下文 ").append(it) }
+@Composable
+private fun buildPricingMatchText(
+    entry: ModelPricingEntry,
+    matchedLabel: String,
+    inputLabel: String,
+    outputLabel: String,
+    perMillionLabel: String,
+    contextLabel: String
+): String = buildString {
+    append(matchedLabel.format(entry.name))
+    entry.inputPricePerMillion?.let { append(" · ").append(inputLabel.format(it.toCatalogPrice())) }
+    entry.outputPricePerMillion?.let { append(" · ").append(outputLabel.format(it.toCatalogPrice())) }
+    append(" ").append(perMillionLabel)
+    entry.contextLength?.let { append(" · ").append(contextLabel.format(it)) }
 }
 
 private fun Double.toCatalogPrice(): String {
@@ -773,9 +825,10 @@ private fun Double.toCatalogPrice(): String {
 
 private fun AiModelEditorState.applyPreset(
     preset: ProviderPreset,
-    protocols: List<ProtocolOption>
+    protocols: List<ProtocolOption>,
+    presetConfigTemplate: String
 ): AiModelEditorState = copy(
-    name = "${preset.label} 配置",
+    name = presetConfigTemplate.format(preset.label),
     provider = preset.provider,
     protocol = protocolFor(preset.provider, protocols),
     model = preset.model,
@@ -789,9 +842,14 @@ private fun AiModelEditorState.applyPreset(
     supportsStream = true
 )
 
-private fun AiModelEditorState.applyPurpose(purpose: String, isEditing: Boolean): AiModelEditorState {
+private fun AiModelEditorState.applyPurpose(
+    purpose: String,
+    isEditing: Boolean,
+    purposeLabels: Map<String, String>,
+    purposeNameTemplate: String
+): AiModelEditorState {
     val purposeName = purposeLabels[purpose] ?: purpose
-    val renamed = if (isEditing) name else "新${purposeName}配置"
+    val renamed = if (isEditing) name else purposeNameTemplate.format(purposeName)
     return when (purpose) {
         "chat" -> copy(
             name = renamed,
@@ -858,7 +916,9 @@ private fun AiModelEditorState.applyPurpose(purpose: String, isEditing: Boolean)
 }
 
 fun AiModel?.toEditorState(protocols: List<ProtocolOption>): AiModelEditorState {
-    val model = this ?: return AiModelEditorState().ensureProtocol(protocols)
+    val model = this ?: return AiModelEditorState(
+        name = ServiceContainer.getString(R.string.aimodel_editor_default_name_chat)
+    ).ensureProtocol(protocols)
     return AiModelEditorState(
         name = model.name.orEmpty(),
         purpose = model.purpose ?: "chat",
@@ -905,7 +965,10 @@ fun AiModel?.toEditorState(protocols: List<ProtocolOption>): AiModelEditorState 
 }
 
 fun LocalAiModelEntity?.toEditorState(protocols: List<ProtocolOption>): AiModelEditorState {
-    val model = this ?: return AiModelEditorState(protocol = "openai_chat").ensureProtocol(protocols)
+    val model = this ?: return AiModelEditorState(
+        protocol = "openai_chat",
+        name = ServiceContainer.getString(R.string.aimodel_editor_default_name_chat)
+    ).ensureProtocol(protocols)
     return AiModelEditorState(
         name = model.name,
         purpose = model.purpose,

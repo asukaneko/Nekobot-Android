@@ -180,4 +180,191 @@
     <string name="localai_purpose_hint_stt">用于语音转文字，可在录音后自动调用。Provider 留空或填 openai/openai_compatible 走 OpenAI 兼容 /audio/transcriptions；填 xiaomi 或 mimo 走小米 MiMo /v1/chat/completions（录音 m4a 会自动转码为 16kHz 单声道 WAV，≤10MB）</string>
     <string name="localai_purpose_hint_embedding">用于本地知识库的语义检索；未配置时自动使用离线词法检索</string>
     <string name="localai_purpose_hint_image_generation">用于 AI 生图（本地模式暂未接入）</string>
+
+    <!-- ==================== LocalAiModelsScreen 模型列表补充 ==================== -->
+    <string name="localai_no_available_models">未获取到可用模型</string>
+    <string name="localai_fetch_models_failed">获取模型列表失败</string>
+    <string name="localai_proxy_badge">代理</string>
+
+    <!-- ==================== AI 模型编辑器（AiModelEditorDialog） ==================== -->
+    <string name="aimodel_editor_dialog_title_new">新建 AI 模型</string>
+    <string name="aimodel_editor_dialog_title_edit">编辑 AI 模型</string>
+    <string name="aimodel_editor_remove_audio">移除</string>
+    <string name="aimodel_editor_default_name_chat">新对话模型配置</string>
+    <string name="aimodel_editor_default_name_purpose">新%1$s配置</string>
+    <string name="aimodel_editor_preset_config_name">%1$s 配置</string>
+
+    <!-- 用途标签（编辑器内下拉显示） -->
+    <string name="aimodel_editor_purpose_chat">对话模型</string>
+    <string name="aimodel_editor_purpose_vision">图片理解</string>
+    <string name="aimodel_editor_purpose_video">视频理解</string>
+    <string name="aimodel_editor_purpose_tts">TTS 语音合成</string>
+    <string name="aimodel_editor_purpose_stt">STT 语音识别</string>
+    <string name="aimodel_editor_purpose_embedding">向量嵌入</string>
+    <string name="aimodel_editor_purpose_image_generation">图片生成</string>
+
+    <!-- 服务商标签 -->
+    <string name="aimodel_editor_provider_openai">OpenAI</string>
+    <string name="aimodel_editor_provider_anthropic">Anthropic / Claude</string>
+    <string name="aimodel_editor_provider_google">Google / Gemini</string>
+    <string name="aimodel_editor_provider_deepseek">DeepSeek</string>
+    <string name="aimodel_editor_provider_zhipu">智谱 GLM</string>
+    <string name="aimodel_editor_provider_minimax">MiniMax</string>
+    <string name="aimodel_editor_provider_grok">Grok (xAI)</string>
+    <string name="aimodel_editor_provider_qwen">通义千问</string>
+    <string name="aimodel_editor_provider_xiaomi">小米 MiMo</string>
+    <string name="aimodel_editor_provider_azure">Azure OpenAI</string>
+    <string name="aimodel_editor_provider_siliconflow">SiliconFlow</string>
+    <string name="aimodel_editor_provider_custom">自定义</string>
+
+    <!-- 协议回退标签 -->
+    <string name="aimodel_editor_protocol_openai_compatible">OpenAI 兼容</string>
+
+    <!-- 音频参考文件相关错误 -->
+    <string name="aimodel_editor_audio_read_error">无法读取音频文件</string>
+    <string name="aimodel_editor_audio_too_large">参考音频不能超过 7.5 MB</string>
+    <string name="aimodel_editor_audio_load_failed">参考音频读取失败</string>
+
+    <!-- 校验错误 -->
+    <string name="aimodel_editor_validation_name">请填写配置名称</string>
+    <string name="aimodel_editor_validation_base_url">请填写 Base URL</string>
+    <string name="aimodel_editor_validation_model">请填写模型名称</string>
+    <string name="aimodel_editor_validation_api_key">请填写或选择 API Key</string>
+
+    <!-- 字段标签 -->
+    <string name="aimodel_editor_section_quick_preset">快速预设</string>
+    <string name="aimodel_editor_field_config_name">配置名称</string>
+    <string name="aimodel_editor_field_purpose">用途</string>
+    <string name="aimodel_editor_field_provider">服务商</string>
+    <string name="aimodel_editor_field_api_key">API Key</string>
+    <string name="aimodel_editor_field_api_key_placeholder">输入 API Key</string>
+    <string name="aimodel_editor_field_saved_key">选择已保存的 Key</string>
+    <string name="aimodel_editor_field_proxy_url">代理链接（可选）</string>
+    <string name="aimodel_editor_field_proxy_hint">留空时该模型直连；支持 HTTP 和 SOCKS5 代理</string>
+    <string name="aimodel_editor_field_provider_type">Provider 类型</string>
+    <string name="aimodel_editor_field_base_url">API Base URL</string>
+    <string name="aimodel_editor_field_full_url">完整 API URL</string>
+    <string name="aimodel_editor_field_append_base_url">自动补全 Base URL 后缀</string>
+    <string name="aimodel_editor_field_model">模型</string>
+    <string name="aimodel_editor_field_model_placeholder">例如：gpt-4</string>
+    <string name="aimodel_editor_field_fetch_models">获取模型</string>
+    <string name="aimodel_editor_field_select_from_fetched">从已获取列表选择（%1$d）</string>
+
+    <!-- 生成参数 -->
+    <string name="aimodel_editor_section_generation_params">生成参数</string>
+    <string name="aimodel_editor_field_temperature">温度</string>
+    <string name="aimodel_editor_field_max_tokens">最大输出 Token</string>
+    <string name="aimodel_editor_field_max_context">最大上下文长度</string>
+    <string name="aimodel_editor_field_top_p">Top P（可选）</string>
+
+    <!-- 价格目录 -->
+    <string name="aimodel_editor_section_pricing">价格目录</string>
+    <string name="aimodel_editor_pricing_catalog_count">当前目录 %1$d 个模型</string>
+    <string name="aimodel_editor_pricing_online_data">在线数据 · %1$s</string>
+    <string name="aimodel_editor_pricing_offline_data">内置离线数据 · 可在线更新</string>
+    <string name="aimodel_editor_pricing_updating">更新中</string>
+    <string name="aimodel_editor_pricing_update_now">一键更新</string>
+    <string name="aimodel_editor_pricing_apply">应用目录价格和上下文</string>
+    <string name="aimodel_editor_pricing_no_match">目录中未匹配到“%1$s”，可保留手动价格或在线更新后重试</string>
+    <string name="aimodel_editor_pricing_note">目录价格为 OpenRouter 美元参考价；手动填写的服务商价格优先。</string>
+    <string name="aimodel_editor_pricing_input">输入价格 / 百万 Token（美元）</string>
+    <string name="aimodel_editor_pricing_output">输出价格 / 百万 Token（美元）</string>
+    <string name="aimodel_editor_pricing_priority">优先级</string>
+    <string name="aimodel_editor_pricing_matched">已匹配 %1$s</string>
+    <string name="aimodel_editor_pricing_input_short">输入 $%1$s</string>
+    <string name="aimodel_editor_pricing_output_short">输出 $%1$s</string>
+    <string name="aimodel_editor_pricing_per_million">/ 百万 Token</string>
+    <string name="aimodel_editor_pricing_context">上下文 %1$s</string>
+
+    <!-- 能力开关 -->
+    <string name="aimodel_editor_section_capability">能力</string>
+    <string name="aimodel_editor_capability_enable">启用模型</string>
+    <string name="aimodel_editor_capability_tools">支持工具调用</string>
+    <string name="aimodel_editor_capability_reasoning">支持推理 / 思考字段</string>
+    <string name="aimodel_editor_capability_stream">支持流式响应</string>
+
+    <!-- TTS 配置 -->
+    <string name="aimodel_editor_section_tts">TTS 语音合成</string>
+    <string name="aimodel_editor_tts_provider">TTS 提供商</string>
+    <string name="aimodel_editor_tts_provider_openai">OpenAI 兼容</string>
+    <string name="aimodel_editor_tts_provider_xiaomi">小米 MiMo</string>
+    <string name="aimodel_editor_tts_provider_doubao">豆包（火山引擎）</string>
+    <string name="aimodel_editor_tts_resource_default">seed-tts-2.0（默认）</string>
+    <string name="aimodel_editor_tts_model">TTS 模型名</string>
+    <string name="aimodel_editor_tts_model_placeholder">留空则使用上方模型</string>
+    <string name="aimodel_editor_tts_voice">音色</string>
+    <string name="aimodel_editor_tts_speed">语速</string>
+    <string name="aimodel_editor_tts_pitch">音调</string>
+    <string name="aimodel_editor_tts_volume">音量</string>
+    <string name="aimodel_editor_tts_format">输出格式</string>
+    <string name="aimodel_editor_tts_style">风格控制指令（可选）</string>
+    <string name="aimodel_editor_tts_style_placeholder">例如：请用欢快的语气说话</string>
+    <string name="aimodel_editor_tts_ref_audio_not_loaded">尚未加载参考音频</string>
+    <string name="aimodel_editor_tts_ref_audio_loaded">已加载参考音频</string>
+    <string name="aimodel_editor_tts_select_audio">选择音频</string>
+    <string name="aimodel_editor_tts_change_audio">更换</string>
+
+    <!-- STT 配置 -->
+    <string name="aimodel_editor_section_stt">STT 语音识别</string>
+    <string name="aimodel_editor_stt_provider">STT 提供商</string>
+    <string name="aimodel_editor_stt_provider_follow">跟随 Provider 类型</string>
+    <string name="aimodel_editor_stt_provider_openai">OpenAI 兼容</string>
+    <string name="aimodel_editor_stt_provider_xiaomi">小米 MiMo</string>
+    <string name="aimodel_editor_stt_provider_local">本地 faster-whisper</string>
+    <string name="aimodel_editor_stt_model">STT 模型名</string>
+    <string name="aimodel_editor_stt_language">识别语言</string>
+    <string name="aimodel_editor_stt_language_zh">中文</string>
+    <string name="aimodel_editor_stt_language_en">英文</string>
+    <string name="aimodel_editor_stt_language_auto">自动检测</string>
+
+    <!-- Embedding 配置 -->
+    <string name="aimodel_editor_section_embedding">Embedding 配置</string>
+    <string name="aimodel_editor_embedding_dimensions">向量维度</string>
+
+    <!-- 图片生成配置 -->
+    <string name="aimodel_editor_section_image_gen">图片生成</string>
+    <string name="aimodel_editor_image_size">图片尺寸</string>
+    <string name="aimodel_editor_image_prompt_template">提示词模板（可选）</string>
+
+    <!-- ==================== OAuth 账号界面 ==================== -->
+    <string name="oauth_login_start_failed">OAuth 登录启动失败</string>
+    <string name="oauth_load_models_failed">读取模型列表失败</string>
+    <string name="oauth_models_synced">已同步 %1$d 个模型到本地 AI 模型</string>
+    <string name="oauth_save_models_failed">保存模型失败</string>
+    <string name="oauth_account_deleted">已删除 AI 账号及其模型</string>
+    <string name="oauth_delete_failed">删除账号失败</string>
+    <string name="oauth_connected_select_models">账号已连接，请选择要使用的模型</string>
+    <string name="oauth_read_file_failed">无法读取所选文件</string>
+    <string name="oauth_read_qwen_failed">读取 Qwen 凭据失败</string>
+    <string name="oauth_section_login_providers">登录提供商</string>
+    <string name="oauth_login_providers_desc">通过 OAuth 或 API Key 连接账号，随后选择要自动加入“本地 AI 模型”的模型，之后可随时修改。</string>
+    <string name="oauth_section_connected_accounts">已登录账号</string>
+    <string name="oauth_device_code_copied">设备码已复制</string>
+    <string name="oauth_operation_failed">操作失败</string>
+    <string name="oauth_delete_account_title">删除 AI 账号？</string>
+    <string name="oauth_delete_account_message">将同时删除由“%1$s”添加的本地 AI 模型。</string>
+    <string name="oauth_action_import">导入</string>
+    <string name="oauth_action_input_key">输入 Key</string>
+    <string name="oauth_action_login">登录</string>
+    <string name="oauth_status_connected">已连接</string>
+    <string name="oauth_status_needs_relogin">需要重新登录</string>
+    <string name="oauth_edit_models">修改模型</string>
+    <string name="oauth_delete_account">删除账号</string>
+    <string name="oauth_connect_provider">连接 %1$s</string>
+    <string name="oauth_api_key_dialog_desc">在 OpenCode 控制台创建对应方案的 API Key，然后粘贴到下方。Key 会加密保存在本机。</string>
+    <string name="oauth_api_key_label">%1$s API Key</string>
+    <string name="oauth_open_console">打开 OpenCode Zen</string>
+    <string name="oauth_connect_and_read">连接并读取模型</string>
+    <string name="oauth_complete_anthropic">完成 Anthropic 授权</string>
+    <string name="oauth_browser_login">在浏览器中完成登录</string>
+    <string name="oauth_anthropic_code_hint">浏览器授权后，将页面显示的授权码粘贴到下方。</string>
+    <string name="oauth_authorization_code">授权码</string>
+    <string name="oauth_device_code_hint">请在已打开的浏览器页面输入设备码，应用会自动等待登录结果。</string>
+    <string name="oauth_waiting">等待授权…</string>
+    <string name="oauth_reopen_browser">重新打开浏览器</string>
+    <string name="oauth_submit">提交</string>
+    <string name="oauth_select_models">选择要添加的模型</string>
+    <string name="oauth_refresh_models">刷新模型列表</string>
+    <string name="oauth_save_count">保存（%1$d）</string>
+    <string name="oauth_later">稍后设置</string>
 </resources>

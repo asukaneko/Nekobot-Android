@@ -171,4 +171,189 @@
     <string name="localai_purpose_hint_stt">For speech-to-text, auto-invoked after recording. Leave Provider empty or set openai/openai_compatible for OpenAI-compatible /audio/transcriptions; set xiaomi or mimo for Xiaomi MiMo /v1/chat/completions (m4a recording auto-converted to 16kHz mono WAV, ≤10MB)</string>
     <string name="localai_purpose_hint_embedding">Semantic search for the local knowledge base; falls back to offline lexical search</string>
     <string name="localai_purpose_hint_image_generation">For AI image generation (not integrated in local mode yet)</string>
+
+    <!-- Smart Routing (was missing in en) -->
+    <string name="smart_routing_title">Smart Model Routing</string>
+    <string name="smart_routing_subtitle">Pick the preferred model dynamically based on cost, speed, context, success rate and task type</string>
+    <string name="smart_routing_daily_budget">Daily budget (USD)</string>
+    <string name="smart_routing_daily_budget_hint">0 means unlimited</string>
+    <string name="smart_routing_saved">Smart routing settings saved</string>
+    <string name="smart_routing_budget_channel">Model budget alerts</string>
+    <string name="smart_routing_budget_title">Today\'s model budget</string>
+    <string name="smart_routing_budget_near">Today\'s usage $%1$.2f is approaching the $%2$.2f budget</string>
+    <string name="smart_routing_budget_exceeded">Today\'s usage $%1$.2f exceeded the $%2$.2f budget</string>
+
+    <!-- ==================== LocalAiModelsScreen extras ==================== -->
+    <string name="localai_no_available_models">No models available</string>
+    <string name="localai_fetch_models_failed">Failed to fetch model list</string>
+    <string name="localai_proxy_badge">Proxy</string>
+
+    <!-- ==================== AI Model Editor (AiModelEditorDialog) ==================== -->
+    <string name="aimodel_editor_dialog_title_new">New AI Model</string>
+    <string name="aimodel_editor_dialog_title_edit">Edit AI Model</string>
+    <string name="aimodel_editor_remove_audio">Remove</string>
+    <string name="aimodel_editor_default_name_chat">New Chat Model Config</string>
+    <string name="aimodel_editor_default_name_purpose">New %1$s Config</string>
+    <string name="aimodel_editor_preset_config_name">%1$s Config</string>
+
+    <string name="aimodel_editor_purpose_chat">Chat Model</string>
+    <string name="aimodel_editor_purpose_vision">Vision</string>
+    <string name="aimodel_editor_purpose_video">Video</string>
+    <string name="aimodel_editor_purpose_tts">TTS</string>
+    <string name="aimodel_editor_purpose_stt">STT</string>
+    <string name="aimodel_editor_purpose_embedding">Embedding</string>
+    <string name="aimodel_editor_purpose_image_generation">Image Generation</string>
+
+    <string name="aimodel_editor_provider_openai">OpenAI</string>
+    <string name="aimodel_editor_provider_anthropic">Anthropic / Claude</string>
+    <string name="aimodel_editor_provider_google">Google / Gemini</string>
+    <string name="aimodel_editor_provider_deepseek">DeepSeek</string>
+    <string name="aimodel_editor_provider_zhipu">Zhipu GLM</string>
+    <string name="aimodel_editor_provider_minimax">MiniMax</string>
+    <string name="aimodel_editor_provider_grok">Grok (xAI)</string>
+    <string name="aimodel_editor_provider_qwen">Tongyi Qianwen</string>
+    <string name="aimodel_editor_provider_xiaomi">Xiaomi MiMo</string>
+    <string name="aimodel_editor_provider_azure">Azure OpenAI</string>
+    <string name="aimodel_editor_provider_siliconflow">SiliconFlow</string>
+    <string name="aimodel_editor_provider_custom">Custom</string>
+
+    <string name="aimodel_editor_protocol_openai_compatible">OpenAI Compatible</string>
+
+    <string name="aimodel_editor_audio_read_error">Cannot read audio file</string>
+    <string name="aimodel_editor_audio_too_large">Reference audio must be ≤ 7.5 MB</string>
+    <string name="aimodel_editor_audio_load_failed">Failed to load reference audio</string>
+
+    <string name="aimodel_editor_validation_name">Please enter a config name</string>
+    <string name="aimodel_editor_validation_base_url">Please enter the Base URL</string>
+    <string name="aimodel_editor_validation_model">Please enter the model name</string>
+    <string name="aimodel_editor_validation_api_key">Please enter or select an API Key</string>
+
+    <string name="aimodel_editor_section_quick_preset">Quick Presets</string>
+    <string name="aimodel_editor_field_config_name">Config Name</string>
+    <string name="aimodel_editor_field_purpose">Purpose</string>
+    <string name="aimodel_editor_field_provider">Provider</string>
+    <string name="aimodel_editor_field_api_key">API Key</string>
+    <string name="aimodel_editor_field_api_key_placeholder">Enter API Key</string>
+    <string name="aimodel_editor_field_saved_key">Select a saved key</string>
+    <string name="aimodel_editor_field_proxy_url">Proxy URL (optional)</string>
+    <string name="aimodel_editor_field_proxy_hint">Leave empty to connect directly; HTTP and SOCKS5 proxies are supported</string>
+    <string name="aimodel_editor_field_provider_type">Provider type</string>
+    <string name="aimodel_editor_field_base_url">API Base URL</string>
+    <string name="aimodel_editor_field_full_url">Full API URL</string>
+    <string name="aimodel_editor_field_append_base_url">Auto-append Base URL suffix</string>
+    <string name="aimodel_editor_field_model">Model</string>
+    <string name="aimodel_editor_field_model_placeholder">e.g. gpt-4</string>
+    <string name="aimodel_editor_field_fetch_models">Fetch models</string>
+    <string name="aimodel_editor_field_select_from_fetched">Select from fetched list (%1$d)</string>
+
+    <string name="aimodel_editor_section_generation_params">Generation Params</string>
+    <string name="aimodel_editor_field_temperature">Temperature</string>
+    <string name="aimodel_editor_field_max_tokens">Max output tokens</string>
+    <string name="aimodel_editor_field_max_context">Max context length</string>
+    <string name="aimodel_editor_field_top_p">Top P (optional)</string>
+
+    <string name="aimodel_editor_section_pricing">Pricing Catalog</string>
+    <string name="aimodel_editor_pricing_catalog_count">Catalog: %1$d models</string>
+    <string name="aimodel_editor_pricing_online_data">Online data · %1$s</string>
+    <string name="aimodel_editor_pricing_offline_data">Built-in offline data · can be updated online</string>
+    <string name="aimodel_editor_pricing_updating">Updating</string>
+    <string name="aimodel_editor_pricing_update_now">Update all</string>
+    <string name="aimodel_editor_pricing_apply">Apply catalog price and context</string>
+    <string name="aimodel_editor_pricing_no_match">No match for \"%1$s\" in the catalog. You can keep manual pricing or update online and retry.</string>
+    <string name="aimodel_editor_pricing_note">Catalog prices are OpenRouter USD reference prices; manually entered provider prices take precedence.</string>
+    <string name="aimodel_editor_pricing_input">Input price / million tokens (USD)</string>
+    <string name="aimodel_editor_pricing_output">Output price / million tokens (USD)</string>
+    <string name="aimodel_editor_pricing_priority">Priority</string>
+    <string name="aimodel_editor_pricing_matched">Matched %1$s</string>
+    <string name="aimodel_editor_pricing_input_short">Input $%1$s</string>
+    <string name="aimodel_editor_pricing_output_short">Output $%1$s</string>
+    <string name="aimodel_editor_pricing_per_million">/ million tokens</string>
+    <string name="aimodel_editor_pricing_context">Context %1$s</string>
+
+    <string name="aimodel_editor_section_capability">Capabilities</string>
+    <string name="aimodel_editor_capability_enable">Enable model</string>
+    <string name="aimodel_editor_capability_tools">Supports tool calling</string>
+    <string name="aimodel_editor_capability_reasoning">Supports reasoning / thinking field</string>
+    <string name="aimodel_editor_capability_stream">Supports streaming responses</string>
+
+    <string name="aimodel_editor_section_tts">TTS</string>
+    <string name="aimodel_editor_tts_provider">TTS Provider</string>
+    <string name="aimodel_editor_tts_provider_openai">OpenAI Compatible</string>
+    <string name="aimodel_editor_tts_provider_xiaomi">Xiaomi MiMo</string>
+    <string name="aimodel_editor_tts_provider_doubao">Doubao (Volcengine)</string>
+    <string name="aimodel_editor_tts_resource_default">seed-tts-2.0 (default)</string>
+    <string name="aimodel_editor_tts_model">TTS model name</string>
+    <string name="aimodel_editor_tts_model_placeholder">Leave empty to use the model above</string>
+    <string name="aimodel_editor_tts_voice">Voice</string>
+    <string name="aimodel_editor_tts_speed">Speed</string>
+    <string name="aimodel_editor_tts_pitch">Pitch</string>
+    <string name="aimodel_editor_tts_volume">Volume</string>
+    <string name="aimodel_editor_tts_format">Output format</string>
+    <string name="aimodel_editor_tts_style">Style instruction (optional)</string>
+    <string name="aimodel_editor_tts_style_placeholder">e.g. Speak in a cheerful tone</string>
+    <string name="aimodel_editor_tts_ref_audio_not_loaded">Reference audio not loaded</string>
+    <string name="aimodel_editor_tts_ref_audio_loaded">Reference audio loaded</string>
+    <string name="aimodel_editor_tts_select_audio">Select audio</string>
+    <string name="aimodel_editor_tts_change_audio">Change</string>
+
+    <string name="aimodel_editor_section_stt">STT</string>
+    <string name="aimodel_editor_stt_provider">STT Provider</string>
+    <string name="aimodel_editor_stt_provider_follow">Follow Provider type</string>
+    <string name="aimodel_editor_stt_provider_openai">OpenAI Compatible</string>
+    <string name="aimodel_editor_stt_provider_xiaomi">Xiaomi MiMo</string>
+    <string name="aimodel_editor_stt_provider_local">Local faster-whisper</string>
+    <string name="aimodel_editor_stt_model">STT model name</string>
+    <string name="aimodel_editor_stt_language">Recognition language</string>
+    <string name="aimodel_editor_stt_language_zh">Chinese</string>
+    <string name="aimodel_editor_stt_language_en">English</string>
+    <string name="aimodel_editor_stt_language_auto">Auto detect</string>
+
+    <string name="aimodel_editor_section_embedding">Embedding</string>
+    <string name="aimodel_editor_embedding_dimensions">Vector dimensions</string>
+
+    <string name="aimodel_editor_section_image_gen">Image Generation</string>
+    <string name="aimodel_editor_image_size">Image size</string>
+    <string name="aimodel_editor_image_prompt_template">Prompt template (optional)</string>
+
+    <!-- ==================== OAuth Accounts ==================== -->
+    <string name="oauth_login_start_failed">Failed to start OAuth login</string>
+    <string name="oauth_load_models_failed">Failed to load model list</string>
+    <string name="oauth_models_synced">Synced %1$d models to local AI models</string>
+    <string name="oauth_save_models_failed">Failed to save models</string>
+    <string name="oauth_account_deleted">AI account and its models have been deleted</string>
+    <string name="oauth_delete_failed">Failed to delete account</string>
+    <string name="oauth_connected_select_models">Account connected. Please select the models to use.</string>
+    <string name="oauth_read_file_failed">Cannot read the selected file</string>
+    <string name="oauth_read_qwen_failed">Failed to read Qwen credentials</string>
+    <string name="oauth_section_login_providers">Login Providers</string>
+    <string name="oauth_login_providers_desc">Connect an account via OAuth or API Key, then pick the models to add to \"Local AI Models\". You can edit them at any time.</string>
+    <string name="oauth_section_connected_accounts">Connected Accounts</string>
+    <string name="oauth_device_code_copied">Device code copied</string>
+    <string name="oauth_operation_failed">Operation failed</string>
+    <string name="oauth_delete_account_title">Delete AI account?</string>
+    <string name="oauth_delete_account_message">Local AI models added by \"%1$s\" will also be deleted.</string>
+    <string name="oauth_action_import">Import</string>
+    <string name="oauth_action_input_key">Enter Key</string>
+    <string name="oauth_action_login">Login</string>
+    <string name="oauth_status_connected">Connected</string>
+    <string name="oauth_status_needs_relogin">Re-login required</string>
+    <string name="oauth_edit_models">Edit models</string>
+    <string name="oauth_delete_account">Delete account</string>
+    <string name="oauth_connect_provider">Connect %1$s</string>
+    <string name="oauth_api_key_dialog_desc">Create an API Key for the chosen plan in the OpenCode console, then paste it below. The key is encrypted and stored on this device.</string>
+    <string name="oauth_api_key_label">%1$s API Key</string>
+    <string name="oauth_open_console">Open OpenCode Zen</string>
+    <string name="oauth_connect_and_read">Connect and read models</string>
+    <string name="oauth_complete_anthropic">Complete Anthropic authorization</string>
+    <string name="oauth_browser_login">Finish login in the browser</string>
+    <string name="oauth_anthropic_code_hint">After authorizing in the browser, paste the displayed code below.</string>
+    <string name="oauth_authorization_code">Authorization code</string>
+    <string name="oauth_device_code_hint">Enter the device code in the browser page that opened. The app will wait for the login result automatically.</string>
+    <string name="oauth_waiting">Waiting for authorization…</string>
+    <string name="oauth_reopen_browser">Reopen browser</string>
+    <string name="oauth_submit">Submit</string>
+    <string name="oauth_select_models">Select models to add</string>
+    <string name="oauth_refresh_models">Refresh model list</string>
+    <string name="oauth_save_count">Save (%1$d)</string>
+    <string name="oauth_later">Later</string>
 </resources>

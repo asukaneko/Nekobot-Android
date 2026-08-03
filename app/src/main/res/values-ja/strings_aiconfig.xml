@@ -171,4 +171,189 @@
     <string name="localai_purpose_hint_stt">音声認識用、録音後に自動呼び出し。Provider 空欄または openai/openai_compatible で OpenAI 互換 /audio/transcriptions、xiaomi または mimo で小米 MiMo /v1/chat/completions（m4a 録音は 16kHz モノラル WAV に自動変換、≤10MB）</string>
     <string name="localai_purpose_hint_embedding">ローカル知識ベースのセマンティック検索用（未設定時はオフライン字句検索）</string>
     <string name="localai_purpose_hint_image_generation">AI 画像生成用（ローカルモードでは未統合）</string>
+
+    <!-- Smart Routing (was missing in ja) -->
+    <string name="smart_routing_title">スマートモデルルーティング</string>
+    <string name="smart_routing_subtitle">費用・速度・コンテキスト・成功率・タスク種別に基づき優先モデルを動的に選択</string>
+    <string name="smart_routing_daily_budget">1 日あたり予算 (USD)</string>
+    <string name="smart_routing_daily_budget_hint">0 で無制限</string>
+    <string name="smart_routing_saved">スマートルーティング設定を保存しました</string>
+    <string name="smart_routing_budget_channel">モデル予算アラート</string>
+    <string name="smart_routing_budget_title">本日のモデル予算</string>
+    <string name="smart_routing_budget_near">本日の使用量 $%1$.2f が予算 $%2$.2f に接近しています</string>
+    <string name="smart_routing_budget_exceeded">本日の使用量 $%1$.2f が予算 $%2$.2f を超過しました</string>
+
+    <!-- ==================== LocalAiModelsScreen extras ==================== -->
+    <string name="localai_no_available_models">利用可能なモデルがありません</string>
+    <string name="localai_fetch_models_failed">モデル一覧の取得に失敗しました</string>
+    <string name="localai_proxy_badge">プロキシ</string>
+
+    <!-- ==================== AI モデル編集画面 ==================== -->
+    <string name="aimodel_editor_dialog_title_new">新規 AI モデル</string>
+    <string name="aimodel_editor_dialog_title_edit">AI モデルを編集</string>
+    <string name="aimodel_editor_remove_audio">削除</string>
+    <string name="aimodel_editor_default_name_chat">新規チャットモデル設定</string>
+    <string name="aimodel_editor_default_name_purpose">新規%1$s設定</string>
+    <string name="aimodel_editor_preset_config_name">%1$s 設定</string>
+
+    <string name="aimodel_editor_purpose_chat">チャットモデル</string>
+    <string name="aimodel_editor_purpose_vision">画像認識</string>
+    <string name="aimodel_editor_purpose_video">動画認識</string>
+    <string name="aimodel_editor_purpose_tts">TTS 音声合成</string>
+    <string name="aimodel_editor_purpose_stt">STT 音声認識</string>
+    <string name="aimodel_editor_purpose_embedding">ベクトル埋め込み</string>
+    <string name="aimodel_editor_purpose_image_generation">画像生成</string>
+
+    <string name="aimodel_editor_provider_openai">OpenAI</string>
+    <string name="aimodel_editor_provider_anthropic">Anthropic / Claude</string>
+    <string name="aimodel_editor_provider_google">Google / Gemini</string>
+    <string name="aimodel_editor_provider_deepseek">DeepSeek</string>
+    <string name="aimodel_editor_provider_zhipu">智譜 GLM</string>
+    <string name="aimodel_editor_provider_minimax">MiniMax</string>
+    <string name="aimodel_editor_provider_grok">Grok (xAI)</string>
+    <string name="aimodel_editor_provider_qwen">通義千問</string>
+    <string name="aimodel_editor_provider_xiaomi">Xiaomi MiMo</string>
+    <string name="aimodel_editor_provider_azure">Azure OpenAI</string>
+    <string name="aimodel_editor_provider_siliconflow">SiliconFlow</string>
+    <string name="aimodel_editor_provider_custom">カスタム</string>
+
+    <string name="aimodel_editor_protocol_openai_compatible">OpenAI 互換</string>
+
+    <string name="aimodel_editor_audio_read_error">音声ファイルを読み込めません</string>
+    <string name="aimodel_editor_audio_too_large">参照音声は 7.5 MB 以下にしてください</string>
+    <string name="aimodel_editor_audio_load_failed">参照音声の読み込みに失敗しました</string>
+
+    <string name="aimodel_editor_validation_name">設定名を入力してください</string>
+    <string name="aimodel_editor_validation_base_url">Base URL を入力してください</string>
+    <string name="aimodel_editor_validation_model">モデル名を入力してください</string>
+    <string name="aimodel_editor_validation_api_key">API Key を入力または選択してください</string>
+
+    <string name="aimodel_editor_section_quick_preset">クイックプリセット</string>
+    <string name="aimodel_editor_field_config_name">設定名</string>
+    <string name="aimodel_editor_field_purpose">用途</string>
+    <string name="aimodel_editor_field_provider">プロバイダ</string>
+    <string name="aimodel_editor_field_api_key">API Key</string>
+    <string name="aimodel_editor_field_api_key_placeholder">API Key を入力</string>
+    <string name="aimodel_editor_field_saved_key">保存済み Key を選択</string>
+    <string name="aimodel_editor_field_proxy_url">プロキシ URL (任意)</string>
+    <string name="aimodel_editor_field_proxy_hint">空欄なら直接接続。HTTP と SOCKS5 プロキシに対応します</string>
+    <string name="aimodel_editor_field_provider_type">Provider タイプ</string>
+    <string name="aimodel_editor_field_base_url">API Base URL</string>
+    <string name="aimodel_editor_field_full_url">完全な API URL</string>
+    <string name="aimodel_editor_field_append_base_url">Base URL のサフィックスを自動補完</string>
+    <string name="aimodel_editor_field_model">モデル</string>
+    <string name="aimodel_editor_field_model_placeholder">例: gpt-4</string>
+    <string name="aimodel_editor_field_fetch_models">モデルを取得</string>
+    <string name="aimodel_editor_field_select_from_fetched">取得済みリストから選択 (%1$d)</string>
+
+    <string name="aimodel_editor_section_generation_params">生成パラメータ</string>
+    <string name="aimodel_editor_field_temperature">温度</string>
+    <string name="aimodel_editor_field_max_tokens">最大出力トークン</string>
+    <string name="aimodel_editor_field_max_context">最大コンテキスト長</string>
+    <string name="aimodel_editor_field_top_p">Top P (任意)</string>
+
+    <string name="aimodel_editor_section_pricing">価格カタログ</string>
+    <string name="aimodel_editor_pricing_catalog_count">カタログ: %1$d モデル</string>
+    <string name="aimodel_editor_pricing_online_data">オンラインデータ · %1$s</string>
+    <string name="aimodel_editor_pricing_offline_data">組み込みオフラインデータ · オンライン更新可能</string>
+    <string name="aimodel_editor_pricing_updating">更新中</string>
+    <string name="aimodel_editor_pricing_update_now">一括更新</string>
+    <string name="aimodel_editor_pricing_apply">カタログ価格とコンテキストを適用</string>
+    <string name="aimodel_editor_pricing_no_match">カタログに「%1$s」の一致がありません。手動価格を維持するかオンライン更新して再試行できます</string>
+    <string name="aimodel_editor_pricing_note">カタログ価格は OpenRouter の USD 参考価格です。手動入力したプロバイダ価格が優先されます</string>
+    <string name="aimodel_editor_pricing_input">入力価格 / 百万トークン (USD)</string>
+    <string name="aimodel_editor_pricing_output">出力価格 / 百万トークン (USD)</string>
+    <string name="aimodel_editor_pricing_priority">優先度</string>
+    <string name="aimodel_editor_pricing_matched">一致 %1$s</string>
+    <string name="aimodel_editor_pricing_input_short">入力 $%1$s</string>
+    <string name="aimodel_editor_pricing_output_short">出力 $%1$s</string>
+    <string name="aimodel_editor_pricing_per_million">/ 百万トークン</string>
+    <string name="aimodel_editor_pricing_context">コンテキスト %1$s</string>
+
+    <string name="aimodel_editor_section_capability">機能</string>
+    <string name="aimodel_editor_capability_enable">モデルを有効化</string>
+    <string name="aimodel_editor_capability_tools">ツール呼び出しをサポート</string>
+    <string name="aimodel_editor_capability_reasoning">推論 / 思考フィールドをサポート</string>
+    <string name="aimodel_editor_capability_stream">ストリーミング応答をサポート</string>
+
+    <string name="aimodel_editor_section_tts">TTS 音声合成</string>
+    <string name="aimodel_editor_tts_provider">TTS プロバイダ</string>
+    <string name="aimodel_editor_tts_provider_openai">OpenAI 互換</string>
+    <string name="aimodel_editor_tts_provider_xiaomi">Xiaomi MiMo</string>
+    <string name="aimodel_editor_tts_provider_doubao">豆包 (Volcengine)</string>
+    <string name="aimodel_editor_tts_resource_default">seed-tts-2.0 (デフォルト)</string>
+    <string name="aimodel_editor_tts_model">TTS モデル名</string>
+    <string name="aimodel_editor_tts_model_placeholder">空欄なら上記モデルを使用</string>
+    <string name="aimodel_editor_tts_voice">音色</string>
+    <string name="aimodel_editor_tts_speed">速度</string>
+    <string name="aimodel_editor_tts_pitch">ピッチ</string>
+    <string name="aimodel_editor_tts_volume">音量</string>
+    <string name="aimodel_editor_tts_format">出力形式</string>
+    <string name="aimodel_editor_tts_style">スタイル指示 (任意)</string>
+    <string name="aimodel_editor_tts_style_placeholder">例: 陽気な口調で話してください</string>
+    <string name="aimodel_editor_tts_ref_audio_not_loaded">参照音声未読み込み</string>
+    <string name="aimodel_editor_tts_ref_audio_loaded">参照音声を読み込みました</string>
+    <string name="aimodel_editor_tts_select_audio">音声を選択</string>
+    <string name="aimodel_editor_tts_change_audio">変更</string>
+
+    <string name="aimodel_editor_section_stt">STT 音声認識</string>
+    <string name="aimodel_editor_stt_provider">STT プロバイダ</string>
+    <string name="aimodel_editor_stt_provider_follow">Provider タイプに従う</string>
+    <string name="aimodel_editor_stt_provider_openai">OpenAI 互換</string>
+    <string name="aimodel_editor_stt_provider_xiaomi">Xiaomi MiMo</string>
+    <string name="aimodel_editor_stt_provider_local">ローカル faster-whisper</string>
+    <string name="aimodel_editor_stt_model">STT モデル名</string>
+    <string name="aimodel_editor_stt_language">認識言語</string>
+    <string name="aimodel_editor_stt_language_zh">中国語</string>
+    <string name="aimodel_editor_stt_language_en">英語</string>
+    <string name="aimodel_editor_stt_language_auto">自動検出</string>
+
+    <string name="aimodel_editor_section_embedding">Embedding 設定</string>
+    <string name="aimodel_editor_embedding_dimensions">ベクトル次元</string>
+
+    <string name="aimodel_editor_section_image_gen">画像生成</string>
+    <string name="aimodel_editor_image_size">画像サイズ</string>
+    <string name="aimodel_editor_image_prompt_template">プロンプトテンプレート (任意)</string>
+
+    <!-- ==================== OAuth Accounts ==================== -->
+    <string name="oauth_login_start_failed">OAuth ログインの開始に失敗しました</string>
+    <string name="oauth_load_models_failed">モデル一覧の読み込みに失敗しました</string>
+    <string name="oauth_models_synced">%1$d 個のモデルをローカル AI モデルに同期しました</string>
+    <string name="oauth_save_models_failed">モデルの保存に失敗しました</string>
+    <string name="oauth_account_deleted">AI アカウントとそのモデルを削除しました</string>
+    <string name="oauth_delete_failed">アカウントの削除に失敗しました</string>
+    <string name="oauth_connected_select_models">アカウントが接続されました。使用するモデルを選択してください</string>
+    <string name="oauth_read_file_failed">選択したファイルを読み込めません</string>
+    <string name="oauth_read_qwen_failed">Qwen 認証情報の読み取りに失敗しました</string>
+    <string name="oauth_section_login_providers">ログインプロバイダ</string>
+    <string name="oauth_login_providers_desc">OAuth または API Key でアカウントを接続し、「ローカル AI モデル」に追加するモデルを選択してください。後からいつでも編集できます</string>
+    <string name="oauth_section_connected_accounts">接続済みアカウント</string>
+    <string name="oauth_device_code_copied">デバイスコードをコピーしました</string>
+    <string name="oauth_operation_failed">操作に失敗しました</string>
+    <string name="oauth_delete_account_title">AI アカウントを削除しますか？</string>
+    <string name="oauth_delete_account_message">「%1$s」によって追加されたローカル AI モデルも同時に削除されます</string>
+    <string name="oauth_action_import">インポート</string>
+    <string name="oauth_action_input_key">Key 入力</string>
+    <string name="oauth_action_login">ログイン</string>
+    <string name="oauth_status_connected">接続済み</string>
+    <string name="oauth_status_needs_relogin">再ログインが必要</string>
+    <string name="oauth_edit_models">モデルを編集</string>
+    <string name="oauth_delete_account">アカウントを削除</string>
+    <string name="oauth_connect_provider">%1$s に接続</string>
+    <string name="oauth_api_key_dialog_desc">OpenCode コンソールで該当プランの API Key を作成し、下に貼り付けてください。Key は端末に暗号化保存されます</string>
+    <string name="oauth_api_key_label">%1$s API Key</string>
+    <string name="oauth_open_console">OpenCode Zen を開く</string>
+    <string name="oauth_connect_and_read">接続してモデルを読み取る</string>
+    <string name="oauth_complete_anthropic">Anthropic 認可を完了</string>
+    <string name="oauth_browser_login">ブラウザでログインを完了</string>
+    <string name="oauth_anthropic_code_hint">ブラウザで認可後、表示されたコードを下に貼り付けてください</string>
+    <string name="oauth_authorization_code">認可コード</string>
+    <string name="oauth_device_code_hint">開いたブラウザページにデバイスコードを入力してください。アプリが自動的にログイン結果を待ちます</string>
+    <string name="oauth_waiting">認可を待っています…</string>
+    <string name="oauth_reopen_browser">ブラウザを再度開く</string>
+    <string name="oauth_submit">送信</string>
+    <string name="oauth_select_models">追加するモデルを選択</string>
+    <string name="oauth_refresh_models">モデル一覧を更新</string>
+    <string name="oauth_save_count">保存 (%1$d)</string>
+    <string name="oauth_later">後で</string>
 </resources>

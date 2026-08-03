@@ -116,7 +116,7 @@ class OAuthAccountsViewModel : BaseViewModel() {
                     startPolling(session)
                 }
             } catch (error: Exception) {
-                showError(error.message ?: "OAuth 登录启动失败")
+                showError(error.message ?: string(R.string.oauth_login_start_failed))
             } finally {
                 setLoading(false)
             }
@@ -165,7 +165,7 @@ class OAuthAccountsViewModel : BaseViewModel() {
                 val selected = manager.selectedModels(account.id).toSet()
                 _modelPicker.value = OAuthModelPickerState(account, models, selected)
             } catch (error: Exception) {
-                showError(error.message ?: "读取模型列表失败")
+                showError(error.message ?: string(R.string.oauth_load_models_failed))
             } finally {
                 setLoading(false)
             }
@@ -179,9 +179,9 @@ class OAuthAccountsViewModel : BaseViewModel() {
             try {
                 manager.syncSelectedModels(state.account.id, selected)
                 _modelPicker.value = null
-                showToast("已同步 ${selected.size} 个模型到本地 AI 模型")
+                showToast(string(R.string.oauth_models_synced, selected.size))
             } catch (error: Exception) {
-                showError(error.message ?: "保存模型失败")
+                showError(error.message ?: string(R.string.oauth_save_models_failed))
             } finally {
                 setLoading(false)
             }
@@ -193,9 +193,9 @@ class OAuthAccountsViewModel : BaseViewModel() {
             setLoading(true)
             try {
                 manager.deleteAccount(account.id)
-                showToast("已删除 AI 账号及其模型")
+                showToast(string(R.string.oauth_account_deleted))
             } catch (error: Exception) {
-                showError(error.message ?: "删除账号失败")
+                showError(error.message ?: string(R.string.oauth_delete_failed))
             } finally {
                 setLoading(false)
             }
@@ -246,7 +246,7 @@ class OAuthAccountsViewModel : BaseViewModel() {
                     models = result.models,
                     selected = emptySet()
                 )
-                showToast("账号已连接，请选择要使用的模型")
+                showToast(string(R.string.oauth_connected_select_models))
             }
         }
     }
@@ -272,6 +272,10 @@ fun OAuthAccountsScreen(onBack: () -> Unit) {
     var openedSessionId by remember { mutableStateOf<String?>(null) }
     var apiKeyProvider by remember { mutableStateOf<OAuthProviderSpec?>(null) }
 
+    val readFileFailed = stringResource(R.string.oauth_read_file_failed)
+    val readQwenFailed = stringResource(R.string.oauth_read_qwen_failed)
+    val deviceCodeCopied = stringResource(R.string.oauth_device_code_copied)
+
     val qwenFilePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -280,9 +284,9 @@ fun OAuthAccountsScreen(onBack: () -> Unit) {
                 context.contentResolver.openInputStream(uri)
                     ?.bufferedReader(Charsets.UTF_8)
                     ?.use { it.readText() }
-                    ?: error("无法读取所选文件")
+                    ?: error(readFileFailed)
             }.onSuccess(vm::importQwen)
-                .onFailure { vm.showError(it.message ?: "读取 Qwen 凭据失败") }
+                .onFailure { vm.showError(it.message ?: readQwenFailed) }
         }
     }
 
@@ -307,7 +311,7 @@ fun OAuthAccountsScreen(onBack: () -> Unit) {
                 title = { Text(stringResource(R.string.aiconfig_account_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -325,9 +329,9 @@ fun OAuthAccountsScreen(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
-                SectionHeader(title = "登录提供商")
+                SectionHeader(title = stringResource(R.string.oauth_section_login_providers))
                 Text(
-                    text = "通过 OAuth 或 API Key 连接账号，随后选择要自动加入“本地 AI 模型”的模型，之后可随时修改。",
+                    text = stringResource(R.string.oauth_login_providers_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp)
@@ -349,7 +353,7 @@ fun OAuthAccountsScreen(onBack: () -> Unit) {
                 )
             }
             if (accounts.isNotEmpty()) {
-                item { SectionHeader(title = "已登录账号") }
+                item { SectionHeader(title = stringResource(R.string.oauth_section_connected_accounts)) }
                 items(accounts, key = LocalOAuthAccountEntity::id) { account ->
                     ConnectedAccountCard(
                         account = account,
@@ -372,7 +376,7 @@ fun OAuthAccountsScreen(onBack: () -> Unit) {
             onCopyCode = {
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 clipboard.setPrimaryClip(ClipData.newPlainText("OAuth code", session.userCode))
-                Toast.makeText(context, "设备码已复制", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, deviceCodeCopied, Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -401,25 +405,25 @@ fun OAuthAccountsScreen(onBack: () -> Unit) {
     error?.let {
         AlertDialog(
             onDismissRequest = vm::clearError,
-            title = { Text("操作失败") },
+            title = { Text(stringResource(R.string.oauth_operation_failed)) },
             text = { Text(it) },
-            confirmButton = { TextButton(onClick = vm::clearError) { Text("确定") } }
+            confirmButton = { TextButton(onClick = vm::clearError) { Text(stringResource(R.string.common_confirm)) } }
         )
     }
 
     deleteTarget?.let { account ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { Text("删除 AI 账号？") },
-            text = { Text("将同时删除由“${account.label}”添加的本地 AI 模型。") },
+            title = { Text(stringResource(R.string.oauth_delete_account_title)) },
+            text = { Text(stringResource(R.string.oauth_delete_account_message, account.label)) },
             confirmButton = {
                 TextButton(onClick = {
                     vm.deleteAccount(account)
                     deleteTarget = null
-                }) { Text("删除") }
+                }) { Text(stringResource(R.string.common_delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { deleteTarget = null }) { Text("取消") }
+                TextButton(onClick = { deleteTarget = null }) { Text(stringResource(R.string.common_cancel)) }
             }
         )
     }
@@ -474,9 +478,9 @@ private fun ProviderCard(
             Button(onClick = onLogin) {
                 Text(
                     when (provider.loginMode) {
-                        OAuthLoginMode.QWEN_CREDENTIAL_IMPORT -> "导入"
-                        OAuthLoginMode.API_KEY -> "输入 Key"
-                        else -> "登录"
+                        OAuthLoginMode.QWEN_CREDENTIAL_IMPORT -> stringResource(R.string.oauth_action_import)
+                        OAuthLoginMode.API_KEY -> stringResource(R.string.oauth_action_input_key)
+                        else -> stringResource(R.string.oauth_action_login)
                     }
                 )
             }
@@ -512,7 +516,7 @@ private fun ConnectedAccountCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    if (account.status == "connected") "已连接" else "需要重新登录",
+                    if (account.status == "connected") stringResource(R.string.oauth_status_connected) else stringResource(R.string.oauth_status_needs_relogin),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (account.status == "connected") {
                         MaterialTheme.colorScheme.primary
@@ -522,12 +526,12 @@ private fun ConnectedAccountCard(
                 )
             }
             IconButton(onClick = onEditModels) {
-                Icon(Icons.Filled.Edit, contentDescription = "修改模型")
+                Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.oauth_edit_models))
             }
             IconButton(onClick = onDelete) {
                 Icon(
                     Icons.Filled.Delete,
-                    contentDescription = "删除账号",
+                    contentDescription = stringResource(R.string.oauth_delete_account),
                     tint = MaterialTheme.colorScheme.error
                 )
             }
@@ -546,29 +550,29 @@ private fun ApiKeyDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Filled.Link, contentDescription = null) },
-        title = { Text("连接 ${provider.title}") },
+        title = { Text(stringResource(R.string.oauth_connect_provider, provider.title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("在 OpenCode 控制台创建对应方案的 API Key，然后粘贴到下方。Key 会加密保存在本机。")
+                Text(stringResource(R.string.oauth_api_key_dialog_desc))
                 OutlinedTextField(
                     value = apiKey,
                     onValueChange = { apiKey = it },
-                    label = { Text("${provider.title} API Key") },
+                    label = { Text(stringResource(R.string.oauth_api_key_label, provider.title)) },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth()
                 )
-                TextButton(onClick = onOpenConsole) { Text("打开 OpenCode Zen") }
+                TextButton(onClick = onOpenConsole) { Text(stringResource(R.string.oauth_open_console)) }
             }
         },
         confirmButton = {
             TextButton(
                 onClick = { onSubmit(apiKey.trim()) },
                 enabled = apiKey.isNotBlank()
-            ) { Text("连接并读取模型") }
+            ) { Text(stringResource(R.string.oauth_connect_and_read)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         }
     )
 }
@@ -586,20 +590,20 @@ private fun LoginDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Filled.Link, contentDescription = null) },
-        title = { Text(if (isAnthropic) "完成 Anthropic 授权" else "在浏览器中完成登录") },
+        title = { Text(if (isAnthropic) stringResource(R.string.oauth_complete_anthropic) else stringResource(R.string.oauth_browser_login)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (isAnthropic) {
-                    Text("浏览器授权后，将页面显示的授权码粘贴到下方。")
+                    Text(stringResource(R.string.oauth_anthropic_code_hint))
                     OutlinedTextField(
                         value = code,
                         onValueChange = { code = it },
-                        label = { Text("授权码") },
+                        label = { Text(stringResource(R.string.oauth_authorization_code)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                 } else {
-                    Text("请在已打开的浏览器页面输入设备码，应用会自动等待登录结果。")
+                    Text(stringResource(R.string.oauth_device_code_hint))
                     if (session.userCode.isNotBlank()) {
                         Text(
                             session.userCode,
@@ -612,10 +616,10 @@ private fun LoginDialog(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(8.dp))
-                        Text("等待授权…", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.oauth_waiting), style = MaterialTheme.typography.bodySmall)
                     }
                 }
-                TextButton(onClick = onOpenBrowser) { Text("重新打开浏览器") }
+                TextButton(onClick = onOpenBrowser) { Text(stringResource(R.string.oauth_reopen_browser)) }
             }
         },
         confirmButton = {
@@ -623,11 +627,11 @@ private fun LoginDialog(
                 TextButton(
                     onClick = { onSubmitAnthropic(code) },
                     enabled = code.isNotBlank()
-                ) { Text("提交") }
+                ) { Text(stringResource(R.string.oauth_submit)) }
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         }
     )
 }
@@ -644,7 +648,7 @@ private fun ModelPickerDialog(
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("选择要添加的模型") },
+        title = { Text(stringResource(R.string.oauth_select_models)) },
         text = {
             Column {
                 Text(
@@ -678,16 +682,16 @@ private fun ModelPickerDialog(
                         }
                     }
                 }
-                TextButton(onClick = onRefresh) { Text("刷新模型列表") }
+                TextButton(onClick = onRefresh) { Text(stringResource(R.string.oauth_refresh_models)) }
             }
         },
         confirmButton = {
             TextButton(onClick = { onSave(selected) }) {
-                Text("保存（${selected.size}）")
+                Text(stringResource(R.string.oauth_save_count, selected.size))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("稍后设置") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.oauth_later)) }
         }
     )
 }

@@ -197,10 +197,10 @@ class LocalAiModelsViewModel : BaseViewModel() {
                         proxyUrl
                     )
                 if (_availableModels.value.isEmpty()) {
-                    showToast("未获取到可用模型")
+                    showToast(string(R.string.localai_no_available_models))
                 }
             } catch (e: Exception) {
-                showError(e.message ?: "获取模型列表失败")
+                showError(e.message ?: string(R.string.localai_fetch_models_failed))
             } finally {
                 setLoading(false)
             }
@@ -605,7 +605,7 @@ private fun ModelCard(
         ) {
             ModelInfoChip(text = model.protocol)
             if (model.proxyUrl.isNotBlank()) {
-                ModelInfoChip(text = "代理")
+                ModelInfoChip(text = stringResource(R.string.localai_proxy_badge))
             }
             ModelInfoChip(
                 text = purposeLabel,
