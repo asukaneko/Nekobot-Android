@@ -9,6 +9,8 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import com.nekobot.app.data.local.ai.FailoverAllFailedException
+import com.nekobot.app.data.local.ai.AgentRunStage
+import com.nekobot.app.data.local.ai.AgentRunStatus
 import com.nekobot.app.data.local.ai.FailoverCoordinator
 import com.nekobot.app.data.local.ai.FailoverExecution
 import com.nekobot.app.data.local.ai.FailoverHealthStore
@@ -37,6 +39,7 @@ import com.nekobot.app.data.local.ai.SmartRoutingRequest
 import com.nekobot.app.data.local.ai.TokenStatsManager
 import com.nekobot.app.data.local.ai.currentLocalContextTokens
 import com.nekobot.app.data.local.ai.decodeThinkingCardsForUi
+import com.nekobot.app.data.local.ai.encodeToolCallHistory
 import com.nekobot.app.data.local.ai.toPersistedProgressCard
 import com.nekobot.app.data.local.ai.reconcileLocalTokenUsageRecords
 import com.nekobot.app.data.local.ai.relationshipStateFromInitial
@@ -47,6 +50,7 @@ import com.nekobot.app.data.local.automation.LocalAutomationScheduler
 import com.nekobot.app.data.local.automation.LocalScheduleCalculator
 import com.nekobot.app.data.local.knowledge.LocalKnowledgeManager
 import com.nekobot.app.data.local.db.LocalAiModelEntity
+import com.nekobot.app.data.local.db.LocalAgentRunEntity
 import com.nekobot.app.data.local.oauth.LocalOAuthManager
 import com.nekobot.app.data.repository.SessionImportResult
 import com.nekobot.app.data.local.db.LocalApiKeyEntity
@@ -161,6 +165,7 @@ class LocalRepository(
     private val gson = Gson()
     private val sessionDao = db.sessionDao()
     private val messageDao = db.messageDao()
+    private val agentRunDao = db.agentRunDao()
     private val characterDao = db.characterDao()
     private val worldBookDao = db.worldBookDao()
     private val aiModelDao = db.aiModelDao()
@@ -1304,6 +1309,10 @@ class LocalRepository(
 
     fun observeMessages(sessionId: String): Flow<List<LocalMessageEntity>> =
         messageDao.observeBySession(sessionId)
+
+    /** 未完成的本地 Agent 运行；聊天页结合内存 Job 判断是否需要显示恢复入口。 */
+    fun observeAgentRun(sessionId: String): Flow<LocalAgentRunEntity?> =
+        agentRunDao.observeBySession(sessionId)
 
     /** 用故事图根到目标节点的消息路径替换当前会话，供本地分支切换与回溯使用。 */
     suspend fun replaceMessagesWithPlotPath(sessionId: String, nodeId: String) = withContext(Dispatchers.IO) {
@@ -3418,6 +3427,7 @@ class LocalRepository(
     }
 
     suspend fun clearMessages(sessionId: String) = withContext(Dispatchers.IO) {
+        agentRunDao.deleteBySession(sessionId)
         messageDao.deleteBySession(sessionId)
         sessionDao.touch(sessionId, "", 0, nowIso())
     }
@@ -3612,8 +3622,100 @@ class LocalRepository(
         chat(sessionId, userInput, activeModel, reasoningEffort).collect { emit(it) }
     }.flowOn(Dispatchers.IO)
 
+    /**
+     * 从最后一个 Agent 安全检查点继续；若尚无已完成工具批次，则复用原用户消息重新执行。
+     *
+     * checkpoint 不为空时通过现有“继续”协议恢复，不重放已经落入 checkpoint 的工具结果。
+     */
+    suspend fun resumeAgentRun(
+        sessionId: String,
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort =
+            com.nekobot.app.data.model.ReasoningEffort.NONE
+    ): Flow<RealtimeEvent>? = withContext(Dispatchers.IO) {
+        val run = agentRunDao.getBySession(sessionId) ?: return@withContext null
+        val session = sessionDao.getById(sessionId) ?: return@withContext null
+        if (!session.sessionMode.equals("agent", ignoreCase = true)) {
+            agentRunDao.deleteBySession(sessionId)
+            return@withContext null
+        }
+        val originalUser = messageDao.listBySession(sessionId)
+            .firstOrNull { it.id == run.userMessageId && it.role.equals("user", ignoreCase = true) }
+            ?: throw IllegalStateException("原任务消息已不存在，无法恢复")
+        val attachments = decodeAgentRunAttachments(run.attachmentsJson)
+        val model = getRoutedModel(sessionId, run.prompt, attachments) ?: return@withContext null
+
+        if (!run.checkpointHistory.isNullOrBlank()) {
+            val existingMarker = run.assistantMessageId?.let { markerId ->
+                messageDao.listBySession(sessionId).firstOrNull { it.id == markerId }
+            }
+            if (existingMarker?.toolCallHistory.isNullOrBlank()) {
+                existingMarker?.let { messageDao.deleteById(it.id) }
+                val now = nowIso()
+                val marker = LocalMessageEntity(
+                    id = UUID.randomUUID().toString(),
+                    sessionId = sessionId,
+                    role = "assistant",
+                    content = "【上次 Agent 执行被中断，已保存安全检查点】",
+                    sender = "assistant",
+                    timestamp = now,
+                    createdAt = now,
+                    toolCallHistory = run.checkpointHistory,
+                    source = "agent_recovery"
+                )
+                messageDao.upsert(marker)
+                agentRunDao.updateAssistantMessageId(
+                    sessionId = sessionId,
+                    runId = run.runId,
+                    messageId = marker.id,
+                    updatedAt = now
+                )
+                sessionDao.touch(
+                    sessionId,
+                    marker.content,
+                    messageDao.countBySession(sessionId),
+                    now
+                )
+            }
+            return@withContext chatWithPipeline(
+                sessionId = sessionId,
+                userMessage = "继续",
+                activeModel = model,
+                reasoningEffort = reasoningEffort
+            )
+        }
+
+        // 尚未到达首个工具安全边界：删除本轮失败/停止占位回复，复用原用户消息，避免重复插入。
+        run.assistantMessageId?.let { messageDao.deleteById(it) }
+        chatWithPipeline(
+            sessionId = sessionId,
+            userMessage = run.prompt.ifBlank { originalUser.content },
+            activeModel = model,
+            attachments = attachments,
+            persistUserMessage = false,
+            existingParentMessageId = originalUser.id,
+            reasoningEffort = reasoningEffort
+        )
+    }
+
+    suspend fun discardAgentRun(sessionId: String) = withContext(Dispatchers.IO) {
+        agentRunDao.deleteBySession(sessionId)
+    }
+
+    private fun decodeAgentRunAttachments(raw: String?): List<Map<String, Any>> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val type = object : TypeToken<List<Map<String, Any>>>() {}.type
+            gson.fromJson<List<Map<String, Any>>>(raw, type).orEmpty()
+        }.getOrDefault(emptyList())
+    }
+
     /** 停止生成：同时中断模型请求、工具调用、命令进程和授权等待。 */
     fun stopGeneration(sessionId: String? = null) {
+        val now = nowIso()
+        kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+            if (sessionId == null) agentRunDao.pauseAllRunning(now)
+            else agentRunDao.pauseRunning(sessionId, now)
+        }
         val sessionIds = sessionId
             ?.let(::listOf)
             ?: activeGenerations.keys.toList()
@@ -3622,10 +3724,13 @@ class LocalRepository(
             LocalLinuxSandboxCoordinator.stopSession(id)
             localExecAuthorizationManager.cancelSession(id)
             aiClient.cancelRequests(id)
+            localMcpRuntime.cancelActiveToolCall(id)
         }
-        localMcpRuntime.cancelActiveToolCall()
-        currentChatJob?.cancel()
-        currentChatJob = null
+        if (sessionId == null) {
+            localMcpRuntime.cancelActiveToolCall()
+            currentChatJob?.cancel()
+            currentChatJob = null
+        }
     }
 
     /** 释放本地仓库持有的长连接与 stdio 子进程。 */
@@ -3662,6 +3767,7 @@ class LocalRepository(
         activeModel: LocalAiModelEntity,
         attachments: List<Map<String, Any>> = emptyList(),
         persistUserMessage: Boolean = true,
+        existingParentMessageId: String? = null,
         internalMetadata: Map<String, Any> = emptyMap(),
         assistantSource: String? = null,
         allowTools: Boolean = true,
@@ -3680,7 +3786,7 @@ class LocalRepository(
         } else {
             null
         }
-        val parentMessageId = savedUserMessage?.id
+        val parentMessageId = savedUserMessage?.id ?: existingParentMessageId
 
         val session = sessionDao.getById(sessionId) ?: run {
             emit(RealtimeEvent.Error("会话不存在"))
@@ -3773,6 +3879,38 @@ class LocalRepository(
             }
         }
 
+        val agentRunId = if (
+            allowTools &&
+            assistantSource == null &&
+            session.sessionMode.equals("agent", ignoreCase = true) &&
+            !parentMessageId.isNullOrBlank()
+        ) {
+            val runId = UUID.randomUUID().toString()
+            val now = nowIso()
+            agentRunDao.upsert(
+                LocalAgentRunEntity(
+                    sessionId = sessionId,
+                    runId = runId,
+                    userMessageId = parentMessageId,
+                    prompt = userMessage,
+                    attachmentsJson = attachments.takeIf { it.isNotEmpty() }
+                        ?.let(gson::toJson),
+                    status = AgentRunStatus.RUNNING,
+                    stage = AgentRunStage.PREPARING,
+                    checkpointHistory = null,
+                    completedToolCalls = 0,
+                    lastToolName = null,
+                    lastError = null,
+                    assistantMessageId = null,
+                    createdAt = now,
+                    updatedAt = now
+                )
+            )
+            runId
+        } else {
+            null
+        }
+
         // 2. Agent 是通用工具会话，不注入角色世界书；无角色时也不能加载全部公共世界书。
         val worldBookEntries = if (shouldInjectWorldBooks(session.sessionMode)) {
             loadWorldBookEntries(session.characterId)
@@ -3833,7 +3971,9 @@ class LocalRepository(
             workspaceRoot = appContext?.filesDir
                 ?.let { LocalWorkspaceStorage.resolve(it, sessionId) },
             execAuthorizationManager = localExecAuthorizationManager,
-            mcpToolExecutor = localMcpRuntime::executeByFullName,
+            mcpToolExecutor = { toolName, args ->
+                localMcpRuntime.executeByFullName(toolName, args, session.id)
+            },
             skillToolExecutor = ::executeLocalSkillTool,
             browserToolExecutor = { args -> executeLocalBrowserTool(session.id, args) },
             failoverQueue = failoverQueue,
@@ -3848,6 +3988,7 @@ class LocalRepository(
                 )
             },
             generationController = generationController,
+            agentRunId = agentRunId,
             reasoningEffort = reasoningEffort,
             execConfirmationEmitter = { request -> _execConfirmationEvents.tryEmit(request) }
         )
@@ -4361,7 +4502,9 @@ class LocalRepository(
                 workspaceRoot = appContext?.filesDir
                     ?.let { LocalWorkspaceStorage.resolve(it, session.id) },
                 execAuthorizationManager = localExecAuthorizationManager,
-                mcpToolExecutor = localMcpRuntime::executeByFullName,
+                mcpToolExecutor = { toolName, args ->
+                    localMcpRuntime.executeByFullName(toolName, args, session.id)
+                },
                 skillToolExecutor = ::executeLocalSkillTool,
                 failoverQueue = failoverQueue,
                 coordinator = failoverCoordinator,

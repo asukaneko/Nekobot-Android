@@ -170,6 +170,8 @@ import com.nekobot.app.data.local.ChatInputLayoutMode
 import com.nekobot.app.data.local.VISION_FAILURE_MARKER
 import com.nekobot.app.data.local.isLocalCommandMessage
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
+import com.nekobot.app.data.local.ai.AgentRecoveryState
+import com.nekobot.app.data.local.ai.toRecoveryState
 import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.TtsPreviewRequest
@@ -197,6 +199,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
@@ -232,6 +235,7 @@ fun ChatScreen(
     val selectedIds by viewModel.selectedMessageIds.collectAsState()
     val execConfirmation by viewModel.execConfirmation.collectAsState()
     val hookNotifications by viewModel.hookNotifications.collectAsState()
+    val agentRecovery by viewModel.agentRecovery.collectAsState()
     // 不把完整 Message 列表作为 remember key：Agent 历史可能携带较大的嵌套进度数据，
     // Compose 对 key 做 equals 时会递归比较整棵工具结果。
     val latestBrowserProgressCardId = messages.asReversed().firstNotNullOfOrNull { message ->
@@ -699,11 +703,19 @@ fun ChatScreen(
         bottomBar = {
             // 多选模式下隐藏输入栏
             if (!selectionMode) {
-        if (customBottomBar != null) {
-            customBottomBar()
-        } else {
-                // 底部输入栏：左侧 + 按钮展开数据/操作面板，中间输入框，右侧发送
-                ChatInputBar(
+                if (customBottomBar != null) {
+                    customBottomBar()
+                } else {
+                    Column {
+                        if (agentRecovery != null && !sending) {
+                            AgentRecoveryBar(
+                                state = agentRecovery!!,
+                                onResume = viewModel::resumeAgentRun,
+                                onDiscard = viewModel::discardAgentRun
+                            )
+                        }
+                        // 底部输入栏：左侧 + 按钮展开数据/操作面板，中间输入框，右侧发送
+                        ChatInputBar(
                     input = input,
                     onInputChange = { input = it },
                     sending = sending,
@@ -758,6 +770,7 @@ fun ChatScreen(
                     onShowSearch = { showSearchDialog = true },
                     fileBusy = fileBusy
                 )
+                    }
                 }
             }
         },
@@ -3830,6 +3843,85 @@ private fun parseIsoInstant(s: String): java.time.Instant? {
     }
 }
 
+@Composable
+internal fun AgentRecoveryBar(
+    state: AgentRecoveryState,
+    onResume: () -> Unit,
+    onDiscard: () -> Unit
+) {
+    val title = when (state.status) {
+        "failed" -> stringResource(R.string.chat_agent_run_failed)
+        "paused" -> stringResource(R.string.chat_agent_run_paused)
+        else -> stringResource(R.string.chat_agent_run_interrupted)
+    }
+    val detail = when {
+        state.mayHaveUncommittedToolEffect -> stringResource(
+            R.string.chat_agent_run_tool_uncertain,
+            state.lastToolName ?: "工具"
+        )
+        state.canContinueFromCheckpoint -> stringResource(
+            R.string.chat_agent_run_checkpoint_detail,
+            state.completedToolCalls
+        )
+        !state.lastError.isNullOrBlank() -> state.lastError.take(180)
+        else -> stringResource(R.string.chat_agent_run_retry_detail)
+    }
+    androidx.compose.material3.Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 1.dp
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Spacer(Modifier.height(5.dp))
+            Text(
+                text = detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = onDiscard) {
+                    Text(stringResource(R.string.chat_agent_run_discard))
+                }
+                Spacer(Modifier.width(6.dp))
+                OutlinedButton(onClick = onResume) {
+                    Text(
+                        stringResource(
+                            if (state.canContinueFromCheckpoint) {
+                                R.string.chat_agent_run_continue
+                            } else {
+                                R.string.chat_agent_run_retry
+                            }
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
 /**
  * 底部输入栏：模仿 webui，左侧 + 按钮点击展开上下文数据与操作按钮面板。
  * - 输入框居中，支持多行
@@ -4486,6 +4578,10 @@ class ChatViewModel : BaseViewModel() {
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
     private val _execConfirmation: MutableStateFlow<ExecConfirmationRequest?> get() = runtime.execConfirmation
 
+    private val _agentRecovery = MutableStateFlow<AgentRecoveryState?>(null)
+    val agentRecovery: StateFlow<AgentRecoveryState?> = _agentRecovery.asStateFlow()
+    private var agentRecoveryJob: kotlinx.coroutines.Job? = null
+
     /** 跨 VM 共享的剧情选项列表（plot_mode 开启时从服务器获取） */
     val plotChoices: StateFlow<List<PlotChoice>> = _runtime
         .map { it.plotChoices }
@@ -4665,6 +4761,7 @@ class ChatViewModel : BaseViewModel() {
         // 获取（或创建）跨 VM 共享的运行时状态，引用计数 +1
         // 通过 _runtime.value 赋值使 Compose 的 flatMapLatest 自动切换到新 runtime
         _runtime.value = ChatSessionManager.acquire(sessionId)
+        observeAgentRecovery(sessionId)
         _groupCharacters.value = emptyList()
         loadSession(sessionId)
         // 仅当该会话没有正在进行的 AI 生成时才重新加载消息，
@@ -5284,6 +5381,24 @@ class ChatViewModel : BaseViewModel() {
         }
     }
 
+    /** Room 是事实来源；仅当该会话没有活跃内存 Job 时，把 running 记录解释为进程中断。 */
+    private fun observeAgentRecovery(sessionId: String) {
+        agentRecoveryJob?.cancel()
+        _agentRecovery.value = null
+        if (!isLocalMode) return
+        val target = runtime
+        val runFlow = unified.observeLocalAgentRun(sessionId) ?: return
+        agentRecoveryJob = viewModelScope.launch {
+            combine(runFlow, target.sending) { run, _ ->
+                run?.toRecoveryState(target.hasActiveGeneration())
+            }.collect { state ->
+                if (currentSessionId == sessionId && runtime === target) {
+                    _agentRecovery.value = state
+                }
+            }
+        }
+    }
+
     private fun updateTtsState(
         target: ChatSessionState,
         messageId: String,
@@ -5549,6 +5664,77 @@ class ChatViewModel : BaseViewModel() {
      * - 服务器模式：优先通过 Socket.IO send_message 触发 AI（服务端会推送流式回复），
      *   Socket 未连接时回退到 HTTP /chat
      */
+    fun resumeAgentRun() {
+        val recovery = _agentRecovery.value ?: return
+        if (!isLocalMode || _sending.value || runtime.hasBlockingLocalChatJob()) return
+
+        generationStopRequested = false
+        _sending.value = true
+        clearError()
+        streamingContent.setLength(0)
+        streamingReasoning.setLength(0)
+        runtime.streamingContentPreview.value = ""
+        runtime.streamingReasoningPreview.value = ""
+
+        if (recovery.canContinueFromCheckpoint) {
+            _messages.value = _messages.value + Message(
+                role = "user",
+                content = "继续",
+                timestamp = System.currentTimeMillis().toString()
+            )
+        }
+        _messages.value = _messages.value.filter { it.id != streamingId } + Message(
+            id = streamingId,
+            role = "assistant",
+            content = "",
+            timestamp = System.currentTimeMillis().toString()
+        )
+
+        startLocalChatCollection { chatJob ->
+            val flow = try {
+                unified.resumeAgentRunStream(
+                    currentSessionId,
+                    ServiceContainer.prefs.getSessionReasoningEffort(currentSessionId)
+                )
+            } catch (_: kotlinx.coroutines.CancellationException) {
+                return@startLocalChatCollection
+            } catch (error: Exception) {
+                _sending.value = false
+                _messages.value = _messages.value.filter { it.id != streamingId }
+                showError(error.message ?: string(R.string.chat_agent_run_resume_failed))
+                return@startLocalChatCollection
+            }
+            if (flow == null) {
+                _sending.value = false
+                _messages.value = _messages.value.filter { it.id != streamingId }
+                showError(string(R.string.chat_agent_run_resume_failed))
+                return@startLocalChatCollection
+            }
+            try {
+                flow.collect { event -> handleRealtimeEvent(event, chatJob) }
+            } catch (_: kotlinx.coroutines.CancellationException) {
+                // 用户再次停止属于正常取消，检查点仍由 Room 保留。
+            } catch (error: Exception) {
+                _sending.value = false
+                _messages.value = _messages.value.filter { it.id != streamingId }
+                showError(error.message ?: string(R.string.chat_agent_run_resume_failed))
+            }
+        }
+    }
+
+    fun discardAgentRun() {
+        val sessionId = currentSessionId.takeIf(String::isNotBlank) ?: return
+        viewModelScope.launch {
+            unified.discardAgentRun(sessionId)
+            _messages.value = _messages.value.map { message ->
+                val cards = message.thinkingCards?.map { card ->
+                    if (card.isComplete) card else card.copy(isComplete = true)
+                }
+                if (cards != null) message.copy(thinkingCards = cards) else message
+            }
+        }
+    }
+
     fun sendMessage(
         text: String,
         plotChoiceId: String? = null,

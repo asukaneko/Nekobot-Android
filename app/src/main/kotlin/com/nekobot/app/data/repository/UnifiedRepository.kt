@@ -14,6 +14,7 @@ import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.local.SkillPackageDownloader
 import com.nekobot.app.data.local.validateSkillNameValue
 import com.nekobot.app.data.local.db.LocalAiModelEntity
+import com.nekobot.app.data.local.db.LocalAgentRunEntity
 import com.nekobot.app.data.local.db.LocalMessageEntity
 import com.nekobot.app.data.local.db.LocalSessionEntity
 import com.nekobot.app.data.model.ApiResult
@@ -302,6 +303,21 @@ class UnifiedRepository(
         if (!isLocal) return null
         val model = local.getRoutedModel(id, message) ?: return null
         return local.chat(id, message, model)
+    }
+
+    /** 本地 Agent 从最后一个持久化安全检查点恢复；服务器模式不适用。 */
+    suspend fun resumeAgentRunStream(
+        id: String,
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort =
+            com.nekobot.app.data.model.ReasoningEffort.NONE
+    ): Flow<RealtimeEvent>? = if (isLocal) {
+        local.resumeAgentRun(id, reasoningEffort)
+    } else {
+        null
+    }
+
+    suspend fun discardAgentRun(id: String) {
+        if (isLocal) local.discardAgentRun(id)
     }
 
     /** 服务器模式：走 HTTP chat 接口（同时 Socket 推送流式分片）。 */
@@ -610,6 +626,9 @@ class UnifiedRepository(
 
     fun observeLocalMessages(sessionId: String): Flow<List<LocalMessageEntity>>? =
         if (isLocal) local.observeMessages(sessionId) else null
+
+    fun observeLocalAgentRun(sessionId: String): Flow<LocalAgentRunEntity?>? =
+        if (isLocal) local.observeAgentRun(sessionId) else null
 
     fun observeLocalAiModels(): Flow<List<LocalAiModelEntity>>? =
         if (isLocal) local.observeAiModels() else null

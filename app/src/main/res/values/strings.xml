@@ -174,4 +174,14 @@
     <string name="update_open_in_browser">在浏览器中打开</string>
     <string name="update_no_asset">此版本未附带 APK 安装包，请前往 GitHub 查看</string>
     <string name="update_view_releases">查看 Releases 页面</string>
+    <string name="chat_agent_run_interrupted">Agent 任务被中断</string>
+    <string name="chat_agent_run_paused">Agent 任务已暂停</string>
+    <string name="chat_agent_run_failed">Agent 任务执行失败</string>
+    <string name="chat_agent_run_checkpoint_detail">已保存 %1$d 个工具结果，可从安全检查点继续。</string>
+    <string name="chat_agent_run_retry_detail">尚未完成工具步骤，可以重新执行原任务。</string>
+    <string name="chat_agent_run_tool_uncertain">在执行“%1$s”时中断；该工具可能已经产生部分效果，请先检查结果。</string>
+    <string name="chat_agent_run_continue">从检查点继续</string>
+    <string name="chat_agent_run_retry">重新执行</string>
+    <string name="chat_agent_run_discard">放弃任务</string>
+    <string name="chat_agent_run_resume_failed">无法恢复 Agent 任务</string>
 </resources>

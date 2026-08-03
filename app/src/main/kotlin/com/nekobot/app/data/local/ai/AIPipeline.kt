@@ -596,6 +596,7 @@ class AIPipeline {
     ) {
         val modelCall = callbacks.buildModelCall(ctx, tools)
         ctx.toolContext = callbacks.getWorkspaceContext(ctx)
+        val preparedMessageCount = ctx.messages.size + ctx.toolCallHistory.orEmpty().size
 
         // 工具执行器
         val toolExecutor: (Map<String, Any>, String, Int, List<Map<String, Any>>) -> Map<String, Any> = { toolCall, thinking, iteration, messages ->
@@ -624,12 +625,23 @@ class AIPipeline {
 
         // 钩子
         val hooks = ToolLoopHooks(
-            onIterationStart = { iteration, _ -> progress.onToolIteration(ctx, iteration) },
+            onIterationStart = { iteration, messages ->
+                progress.onToolIteration(ctx, iteration)
+                val safeHistory = extractCurrentTurnToolCallHistory(messages, preparedMessageCount)
+                ctx.toolTrace = safeHistory
+                callbacks.saveAgentCheckpoint(
+                    ctx = ctx,
+                    toolCallHistory = safeHistory,
+                    stage = AgentRunStage.THINKING,
+                    lastToolName = lastCompletedAgentToolName(safeHistory)
+                )
+            },
             onToolStart = { toolCall, thinking, _, _ ->
                 val name = (toolCall["name"] as? String) ?: ""
                 @Suppress("UNCHECKED_CAST")
                 val args = (toolCall["arguments"] as? Map<String, Any>) ?: emptyMap()
                 progress.onToolStart(ctx, name, args, thinking)
+                callbacks.markAgentToolRunning(ctx, name)
             },
             onToolResult = { toolCall, result, thinking, _, _ ->
                 val name = (toolCall["name"] as? String) ?: ""
@@ -642,6 +654,16 @@ class AIPipeline {
                     progress.onSendFile(ctx, filePath, fileName)
                 }
                 null  // 使用默认 tool message 格式
+            },
+            onCheckpoint = { _, messages ->
+                val safeHistory = extractCurrentTurnToolCallHistory(messages, preparedMessageCount)
+                ctx.toolTrace = safeHistory
+                callbacks.saveAgentCheckpoint(
+                    ctx = ctx,
+                    toolCallHistory = safeHistory,
+                    stage = AgentRunStage.THINKING,
+                    lastToolName = lastCompletedAgentToolName(safeHistory)
+                )
             }
         )
 

@@ -162,6 +162,94 @@ interface MessageDao {
 }
 
 @Dao
+interface AgentRunDao {
+    @Query("SELECT * FROM local_agent_runs WHERE session_id = :sessionId LIMIT 1")
+    fun observeBySession(sessionId: String): Flow<LocalAgentRunEntity?>
+
+    @Query("SELECT * FROM local_agent_runs WHERE session_id = :sessionId LIMIT 1")
+    suspend fun getBySession(sessionId: String): LocalAgentRunEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(run: LocalAgentRunEntity)
+
+    @Query(
+        "UPDATE local_agent_runs SET stage = :stage, last_tool_name = :lastToolName, " +
+            "updated_at = :updatedAt WHERE session_id = :sessionId AND run_id = :runId"
+    )
+    suspend fun updateStage(
+        sessionId: String,
+        runId: String,
+        stage: String,
+        lastToolName: String?,
+        updatedAt: String
+    )
+
+    @Query(
+        "UPDATE local_agent_runs SET status = 'running', stage = :stage, " +
+            "checkpoint_history = :checkpointHistory, completed_tool_calls = :completedToolCalls, " +
+            "last_tool_name = :lastToolName, last_error = NULL, updated_at = :updatedAt " +
+            "WHERE session_id = :sessionId AND run_id = :runId"
+    )
+    suspend fun updateCheckpoint(
+        sessionId: String,
+        runId: String,
+        stage: String,
+        checkpointHistory: String?,
+        completedToolCalls: Int,
+        lastToolName: String?,
+        updatedAt: String
+    )
+
+    @Query(
+        "UPDATE local_agent_runs SET status = :status, stage = :stage, " +
+            "checkpoint_history = COALESCE(:checkpointHistory, checkpoint_history), " +
+            "completed_tool_calls = CASE WHEN :completedToolCalls >= 0 THEN :completedToolCalls ELSE completed_tool_calls END, " +
+            "last_error = :lastError, assistant_message_id = :assistantMessageId, updated_at = :updatedAt " +
+            "WHERE session_id = :sessionId AND run_id = :runId"
+    )
+    suspend fun markStatus(
+        sessionId: String,
+        runId: String,
+        status: String,
+        stage: String,
+        checkpointHistory: String?,
+        completedToolCalls: Int,
+        lastError: String?,
+        assistantMessageId: String?,
+        updatedAt: String
+    )
+
+    @Query(
+        "UPDATE local_agent_runs SET status = 'paused', updated_at = :updatedAt " +
+            "WHERE session_id = :sessionId AND status = 'running'"
+    )
+    suspend fun pauseRunning(sessionId: String, updatedAt: String)
+
+    @Query(
+        "UPDATE local_agent_runs SET status = 'paused', updated_at = :updatedAt " +
+            "WHERE status = 'running'"
+    )
+    suspend fun pauseAllRunning(updatedAt: String)
+
+    @Query(
+        "UPDATE local_agent_runs SET assistant_message_id = :messageId, updated_at = :updatedAt " +
+            "WHERE session_id = :sessionId AND run_id = :runId"
+    )
+    suspend fun updateAssistantMessageId(
+        sessionId: String,
+        runId: String,
+        messageId: String,
+        updatedAt: String
+    )
+
+    @Query("DELETE FROM local_agent_runs WHERE session_id = :sessionId")
+    suspend fun deleteBySession(sessionId: String)
+
+    @Query("DELETE FROM local_agent_runs WHERE session_id = :sessionId AND run_id = :runId")
+    suspend fun deleteRun(sessionId: String, runId: String)
+}
+
+@Dao
 interface CharacterDao {
     @Query("SELECT * FROM local_characters ORDER BY updated_at DESC")
     fun observeAll(): Flow<List<LocalCharacterEntity>>

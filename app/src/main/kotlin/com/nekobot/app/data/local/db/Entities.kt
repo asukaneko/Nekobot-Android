@@ -110,6 +110,42 @@ data class LocalMessageEntity(
 )
 
 /**
+ * 本地 Agent 单会话运行检查点。
+ *
+ * 只保留尚未正常完成的一轮任务；完整工具批次结束后更新 checkpointHistory，
+ * Android 进程被回收时可从最后一个协议安全边界继续，而不会重放已经确认完成的工具批次。
+ */
+@Entity(
+    tableName = "local_agent_runs",
+    indices = [Index("user_message_id")],
+    foreignKeys = [
+        ForeignKey(
+            entity = LocalSessionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["session_id"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class LocalAgentRunEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "session_id") val sessionId: String,
+    @ColumnInfo(name = "run_id") val runId: String,
+    @ColumnInfo(name = "user_message_id") val userMessageId: String,
+    val prompt: String,
+    @ColumnInfo(name = "attachments_json") val attachmentsJson: String?,
+    val status: String,
+    val stage: String,
+    @ColumnInfo(name = "checkpoint_history") val checkpointHistory: String?,
+    @ColumnInfo(name = "completed_tool_calls") val completedToolCalls: Int,
+    @ColumnInfo(name = "last_tool_name") val lastToolName: String?,
+    @ColumnInfo(name = "last_error") val lastError: String?,
+    @ColumnInfo(name = "assistant_message_id") val assistantMessageId: String?,
+    @ColumnInfo(name = "created_at") val createdAt: String,
+    @ColumnInfo(name = "updated_at") val updatedAt: String
+)
+
+/**
  * 本地角色卡。字段对齐后端 CharacterPreset 完整字段。
  *
  * tags / alternateGreetings / rules / state 以 JSON 字符串存储，由 Dao 层转换。

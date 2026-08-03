@@ -141,6 +141,8 @@ internal class LocalMcpRuntime(
     private val connections = linkedMapOf<String, Connection>()
     @Volatile
     private var activeToolSession: McpTransportSession? = null
+    @Volatile
+    private var activeToolRequestTag: String? = null
 
     @Synchronized
     fun connect(server: LocalMcpServerEntity): List<LocalMcpTool> {
@@ -221,7 +223,11 @@ internal class LocalMcpRuntime(
      * 返回 Map 是为了直接接入现有 AIPipeline 的工具结果消息。
      */
     @Synchronized
-    fun executeByFullName(fullName: String, arguments: Map<String, Any>): Map<String, Any> {
+    fun executeByFullName(
+        fullName: String,
+        arguments: Map<String, Any>,
+        requestTag: String? = null
+    ): Map<String, Any> {
         val parsed = parseMcpToolName(fullName)
             ?: return failure("不是有效的 MCP 工具: $fullName")
         val (serverShort, toolName) = parsed
@@ -230,6 +236,7 @@ internal class LocalMcpRuntime(
         } ?: return failure("MCP 服务未连接或已断开: $fullName")
 
         activeToolSession = connection.session
+        activeToolRequestTag = requestTag
         return try {
             val response = connection.session.request(
                 method = "tools/call",
@@ -245,13 +252,16 @@ internal class LocalMcpRuntime(
         } finally {
             if (activeToolSession === connection.session) {
                 activeToolSession = null
+                activeToolRequestTag = null
             }
         }
     }
 
     /** 中断当前 MCP 工具请求，但保留已建立的 MCP 会话供后续继续使用。 */
-    fun cancelActiveToolCall() {
-        activeToolSession?.cancelPendingRequests()
+    fun cancelActiveToolCall(requestTag: String? = null) {
+        if (requestTag == null || activeToolRequestTag == requestTag) {
+            activeToolSession?.cancelPendingRequests()
+        }
     }
 
     @Synchronized

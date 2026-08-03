@@ -76,6 +76,8 @@ internal class LocalPipelineCallbacks(
     private val visionDescriber: (suspend (imageUrl: String, question: String) -> String)? = null,
     /** 当前生成的会话级取消控制器。 */
     private val generationController: LocalGenerationController = LocalGenerationController(),
+    /** 当前 Agent 运行记录 id；用于拒绝已被新一轮替换的旧 Job 回写检查点。 */
+    private val agentRunId: String? = null,
     /** 当前会话选择的思考强度。 */
     private val reasoningEffort: ReasoningEffort = ReasoningEffort.NONE,
     /**
@@ -93,6 +95,7 @@ internal class LocalPipelineCallbacks(
     private val gson = Gson()
     private val sessionDao = db.sessionDao()
     private val messageDao = db.messageDao()
+    private val agentRunDao = db.agentRunDao()
     private val localToolExecutor by lazy {
         LocalAgentToolExecutor(
             sessionId = session.id,
@@ -441,6 +444,44 @@ internal class LocalPipelineCallbacks(
             val now = com.nekobot.app.data.local.LocalRepository.nowIsoStatic()
             val msgCount = messageDao.countBySession(session.id)
             sessionDao.touch(session.id, content.take(200), msgCount, now)
+
+            agentRunId?.let { runId ->
+                val checkpoint = toolCallHistoryJson
+                    ?: encodeToolCallHistory(ctx.toolTrace)
+                val completedTools = completedAgentToolCallCount(ctx.toolTrace)
+                val persistedStage = agentRunDao.getBySession(session.id)
+                    ?.takeIf { it.runId == runId }
+                    ?.stage
+                when {
+                    ctx.stoppedPrematurely || ctx.metadata["agent_waiting_confirmation"] == true -> {
+                        agentRunDao.markStatus(
+                            sessionId = session.id,
+                            runId = runId,
+                            status = AgentRunStatus.PAUSED,
+                            stage = persistedStage ?: AgentRunStage.PAUSED,
+                            checkpointHistory = checkpoint,
+                            completedToolCalls = completedTools,
+                            lastError = null,
+                            assistantMessageId = messageId,
+                            updatedAt = now
+                        )
+                    }
+                    ctx.error != null -> {
+                        agentRunDao.markStatus(
+                            sessionId = session.id,
+                            runId = runId,
+                            status = AgentRunStatus.FAILED,
+                            stage = persistedStage ?: AgentRunStage.FAILED,
+                            checkpointHistory = checkpoint,
+                            completedToolCalls = completedTools,
+                            lastError = ctx.error,
+                            assistantMessageId = messageId,
+                            updatedAt = now
+                        )
+                    }
+                    else -> agentRunDao.deleteRun(session.id, runId)
+                }
+            }
         }
 
         // 记录 Token 用量到 TokenStatsManager（内存统计）
@@ -756,9 +797,44 @@ internal class LocalPipelineCallbacks(
         ).also { activeAgentProgressReporter = it }
     }
 
+    override fun saveAgentCheckpoint(
+        ctx: PipelineContext,
+        toolCallHistory: List<Map<String, Any>>,
+        stage: String,
+        lastToolName: String?
+    ) {
+        val runId = agentRunId ?: return
+        val encoded = encodeToolCallHistory(toolCallHistory)
+        kotlinx.coroutines.runBlocking {
+            agentRunDao.updateCheckpoint(
+                sessionId = session.id,
+                runId = runId,
+                stage = stage,
+                checkpointHistory = encoded,
+                completedToolCalls = completedAgentToolCallCount(toolCallHistory),
+                lastToolName = lastToolName,
+                updatedAt = com.nekobot.app.data.local.LocalRepository.nowIsoStatic()
+            )
+        }
+    }
+
+    override fun markAgentToolRunning(ctx: PipelineContext, toolName: String) {
+        val runId = agentRunId ?: return
+        kotlinx.coroutines.runBlocking {
+            agentRunDao.updateStage(
+                sessionId = session.id,
+                runId = runId,
+                stage = AgentRunStage.TOOL,
+                lastToolName = toolName.takeIf(String::isNotBlank),
+                updatedAt = com.nekobot.app.data.local.LocalRepository.nowIsoStatic()
+            )
+        }
+    }
+
     // ---- 工具确认 ----
 
     override fun onConfirmationRequired(ctx: PipelineContext, requestId: String, command: String) {
+        ctx.metadata["agent_waiting_confirmation"] = true
         emitEvent(RealtimeEvent.Error("需要确认: $command [ID: $requestId]"))
     }
 

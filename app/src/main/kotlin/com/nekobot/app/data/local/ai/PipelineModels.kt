@@ -198,6 +198,22 @@ open class PipelineCallbacks {
     /** 持久化助手消息到会话存储 */
     open fun saveAssistantMessage(ctx: PipelineContext, message: Map<String, Any>) {}
 
+    /**
+     * 持久化 Agent 工具循环的协议安全检查点。
+     *
+     * [toolCallHistory] 只会在同一轮 assistant 的全部 tool_calls 都获得 tool 结果后回调，
+     * 因而恢复时不会构造缺少工具响应的非法消息序列。
+     */
+    open fun saveAgentCheckpoint(
+        ctx: PipelineContext,
+        toolCallHistory: List<Map<String, Any>>,
+        stage: String,
+        lastToolName: String? = null
+    ) {}
+
+    /** 记录当前正在执行的工具；此时仍保留上一个安全检查点。 */
+    open fun markAgentToolRunning(ctx: PipelineContext, toolName: String) {}
+
     // ---- AI 模型交互 ----
 
     /**

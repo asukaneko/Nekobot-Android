@@ -51,6 +51,19 @@ class AgentForegroundService : Service() {
                 stopSelf()
                 return START_NOT_STICKY
             }
+            ACTION_STOP_SESSION -> {
+                val sessionId = intent.getStringExtra(EXTRA_SESSION_ID).orEmpty()
+                if (sessionId.isNotBlank()) {
+                    activeSessions.remove(sessionId)
+                    runCatching { ServiceContainer.localRepository.stopGeneration(sessionId) }
+                    LocalLinuxSandboxCoordinator.stopSession(sessionId)
+                }
+                if (activeSessions.isEmpty()) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+            }
             else -> {
                 intent?.getStringExtra(EXTRA_SESSION_ID)
                     ?.takeIf(String::isNotBlank)
@@ -96,10 +109,14 @@ class AgentForegroundService : Service() {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        val sessions = synchronized(activeSessions) { activeSessions.toList() }
+        val onlySessionId = sessions.singleOrNull()
         val stopIntent = PendingIntent.getService(
             this,
             1,
-            Intent(this, AgentForegroundService::class.java).setAction(ACTION_STOP_ALL),
+            Intent(this, AgentForegroundService::class.java)
+                .setAction(if (onlySessionId != null) ACTION_STOP_SESSION else ACTION_STOP_ALL)
+                .apply { onlySessionId?.let { putExtra(EXTRA_SESSION_ID, it) } },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -117,7 +134,7 @@ class AgentForegroundService : Service() {
             .addAction(
                 Notification.Action.Builder(
                     null,
-                    "停止全部",
+                    if (onlySessionId != null) "停止此任务" else "停止全部",
                     stopIntent
                 ).build()
             )
@@ -129,6 +146,7 @@ class AgentForegroundService : Service() {
         private const val NOTIFICATION_ID = 0xA63
         private const val ACTION_ACQUIRE = "com.nekobot.app.action.AGENT_ACQUIRE"
         private const val ACTION_RELEASE = "com.nekobot.app.action.AGENT_RELEASE"
+        private const val ACTION_STOP_SESSION = "com.nekobot.app.action.AGENT_STOP_SESSION"
         private const val ACTION_STOP_ALL = "com.nekobot.app.action.AGENT_STOP_ALL"
         private const val EXTRA_SESSION_ID = "session_id"
 

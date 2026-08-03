@@ -121,7 +121,9 @@ class ToolLoopModelError(val original: Throwable, val iteration: Int) : Exceptio
 data class ToolLoopHooks(
     val onIterationStart: ((Int, List<Map<String, Any>>) -> Unit)? = null,
     val onToolStart: ((Map<String, Any>, String, Int, List<Map<String, Any>>) -> Unit)? = null,
-    val onToolResult: ((Map<String, Any>, Map<String, Any>, String, Int, List<Map<String, Any>>) -> Map<String, Any>?)? = null
+    val onToolResult: ((Map<String, Any>, Map<String, Any>, String, Int, List<Map<String, Any>>) -> Map<String, Any>?)? = null,
+    /** 一整批 tool_calls 都写入对应 tool 结果后的安全检查点。 */
+    val onCheckpoint: ((Int, List<Map<String, Any>>) -> Unit)? = null
 )
 
 /** 工具循环结果 */
@@ -589,6 +591,7 @@ fun runToolCallLoop(
 
                 toolMessages.add(toolHistoryMessage.toMutableMap())
             }
+            hooks?.onCheckpoint?.invoke(iteration, toolMessages.map { it.toMap() })
             loopAbortMessage?.let { message ->
                 return result(finalContentArg = message, iterations = iteration + 1)
             }

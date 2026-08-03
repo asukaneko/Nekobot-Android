@@ -155,6 +155,7 @@ fun ModernChatScreen(
     val plotChoices by viewModel.plotChoices.collectAsState()
     val plotChoicesLoading by viewModel.plotChoicesLoading.collectAsState()
     val session by viewModel.session.collectAsState()
+    val agentRecovery by viewModel.agentRecovery.collectAsState()
     val listState = rememberLazyListState()
     val composerScope = rememberCoroutineScope()
 
@@ -167,7 +168,15 @@ fun ModernChatScreen(
     onOpenStoryGraph = onOpenStoryGraph,
     externalListState = listState,
     customBottomBar = {
-        ModernChatComposer(
+        Column {
+            if (agentRecovery != null && !sending) {
+                AgentRecoveryBar(
+                    state = agentRecovery!!,
+                    onResume = viewModel::resumeAgentRun,
+                    onDiscard = viewModel::discardAgentRun
+                )
+            }
+            ModernChatComposer(
             modifier = Modifier.fillMaxWidth(),
             sessionId = sessionId,
             messages = messages,
@@ -192,6 +201,7 @@ fun ModernChatScreen(
                 if (idx >= 0) composerScope.launch { listState.animateScrollToItem(idx + 1) }
             }
         )
+        }
     }
 )
 }

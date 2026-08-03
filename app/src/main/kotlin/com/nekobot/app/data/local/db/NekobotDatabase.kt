@@ -16,6 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [
         LocalSessionEntity::class,
         LocalMessageEntity::class,
+        LocalAgentRunEntity::class,
         LocalCharacterEntity::class,
         LocalWorldBookEntity::class,
         LocalWorldBookEntryEntity::class,
@@ -38,12 +39,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalKnowledgeDocumentEntity::class,
         LocalKnowledgeChunkEntity::class
     ],
-    version = 29,
+    version = 30,
     exportSchema = false
 )
 abstract class NekobotDatabase : RoomDatabase() {
     abstract fun sessionDao(): SessionDao
     abstract fun messageDao(): MessageDao
+    abstract fun agentRunDao(): AgentRunDao
     abstract fun characterDao(): CharacterDao
     abstract fun worldBookDao(): WorldBookDao
     abstract fun aiModelDao(): AiModelDao
@@ -626,6 +628,37 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        /** v29 → v30：增加本地 Agent 运行检查点，支持进程中断后的安全恢复。 */
+        val MIGRATION_29_30 = object : Migration(29, 30) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_agent_runs (
+                        session_id TEXT NOT NULL PRIMARY KEY,
+                        run_id TEXT NOT NULL,
+                        user_message_id TEXT NOT NULL,
+                        prompt TEXT NOT NULL,
+                        attachments_json TEXT,
+                        status TEXT NOT NULL,
+                        stage TEXT NOT NULL,
+                        checkpoint_history TEXT,
+                        completed_tool_calls INTEGER NOT NULL,
+                        last_tool_name TEXT,
+                        last_error TEXT,
+                        assistant_message_id TEXT,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        FOREIGN KEY(session_id) REFERENCES local_sessions(id) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_local_agent_runs_user_message_id " +
+                        "ON local_agent_runs(user_message_id)"
+                )
+            }
+        }
+
         fun get(context: Context): NekobotDatabase =
             get(context, com.nekobot.app.data.local.PrefsManager.DEFAULT_DB_NAME)
 
@@ -638,7 +671,7 @@ abstract class NekobotDatabase : RoomDatabase() {
                 NekobotDatabase::class.java,
                 dbName
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30)
                 // 仅当迁移脚本未覆盖的未来版本变更时才回退到破坏性迁移（保护现有数据）
                 .fallbackToDestructiveMigration()
                 .build()
