@@ -96,6 +96,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.math.roundToInt
 
 private enum class StoryGraphView { Graph, Timeline }
@@ -537,6 +544,28 @@ private fun JsonElement?.asMessageContent(): String = try {
     }
 } catch (_: Exception) {
     ""
+}
+
+/** 将故事图节点的 UTC/带偏移时间转换为手机系统时区后显示。 */
+internal fun formatPlotNodeTimestamp(raw: String?, zoneId: ZoneId = ZoneId.systemDefault()): String {
+    val value = raw?.trim().orEmpty()
+    if (value.isBlank()) return ""
+
+    val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+    val instant = runCatching { Instant.parse(value) }.getOrNull()
+        ?: runCatching { OffsetDateTime.parse(value).toInstant() }.getOrNull()
+        ?: runCatching { ZonedDateTime.parse(value).toInstant() }.getOrNull()
+
+    return if (instant != null) {
+        instant.atZone(zoneId).format(formatter)
+    } else {
+        // 兼容旧数据中的无时区时间：按手机当前时区解释，无法凭空推断原始时区。
+        runCatching {
+            LocalDateTime.parse(value.replace(' ', 'T'), DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                .atZone(zoneId)
+                .format(formatter)
+        }.getOrDefault(value.take(19).replace('T', ' '))
+    }
 }
 
 private fun buildGraphTopology(graph: PlotGraphData): GraphTopology {
@@ -1036,8 +1065,8 @@ private fun NodeDetailDialog(
                     Text(stringResource(R.string.story_current_position), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 }
                 Spacer(Modifier.weight(1f))
-                node.createdAt?.let {
-                    Text(it.take(19), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                formatPlotNodeTimestamp(node.createdAt).takeIf(String::isNotBlank)?.let {
+                    Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
