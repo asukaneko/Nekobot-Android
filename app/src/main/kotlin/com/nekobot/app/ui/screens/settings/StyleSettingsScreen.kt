@@ -31,11 +31,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -83,6 +85,7 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
     var customFontPath by remember { mutableStateOf(prefs.customFontPath) }
     var customFontName by remember { mutableStateOf(prefs.customFontName) }
     var fontScale by remember { mutableStateOf(prefs.fontScale) }
+    var followSystemFontScale by remember { mutableStateOf(prefs.followSystemFontScale) }
     var fontColorOverride by remember { mutableStateOf(prefs.fontColorOverride) }
     var showCustomColorDialog by remember { mutableStateOf(false) }
     var showCustomThemeColorDialog by remember { mutableStateOf(false) }
@@ -133,6 +136,7 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
         prefs.customFontPath = customFontPath
         prefs.customFontName = customFontName
         prefs.fontScale = fontScale
+        prefs.followSystemFontScale = followSystemFontScale
         prefs.fontColorOverride = fontColorOverride
         (context as Activity).recreate()
     }
@@ -329,14 +333,46 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     fontScaleOptions.forEach { (value, label) ->
                         FilterChip(
-                            selected = fontScale == value,
+                            selected = !followSystemFontScale && fontScale == value,
                             onClick = {
+                                followSystemFontScale = false
+                                prefs.followSystemFontScale = false
                                 fontScale = value
                                 prefs.fontScale = value
                             },
                             label = { Text(label) }
                         )
                     }
+                }
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(12.dp))
+                // 跟随系统字号开关
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "跟随系统字号",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            "开启后应用字号将随系统设置变化",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = followSystemFontScale,
+                        onCheckedChange = { value ->
+                            followSystemFontScale = value
+                            prefs.followSystemFontScale = value
+                            // 重建 Activity 使字号设置立即生效
+                            (context as Activity).recreate()
+                        }
+                    )
                 }
             }
 

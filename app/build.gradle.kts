@@ -49,6 +49,10 @@ android {
     buildFeatures {
         compose = true
     }
+    androidResources {
+        // tom_roush pdfbox 的 afm 资源在 Windows 上压缩时会导致路径异常，跳过压缩
+        noCompress += listOf("afm", "ttf", "otf", "pfb")
+    }
     packaging {
         jniLibs {
             // PRoot 需要以真实可执行文件存在于 nativeLibraryDir。

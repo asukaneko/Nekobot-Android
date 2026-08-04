@@ -925,7 +925,21 @@ data class KnowledgeSearchResult(
     val title: String? = null,
     val content: String? = null,
     val score: Float? = null,
-    val source: String? = null
+    val source: String? = null,
+    /** 切片在文档中的序号 */
+    @SerializedName("chunk_index") val chunkIndex: Int? = null,
+    /** 切片在原文中的字符起始偏移量 */
+    @SerializedName("char_offset") val charOffset: Int? = null,
+    /** 切片在原文中的字符结束偏移量 */
+    @SerializedName("char_end") val charEnd: Int? = null,
+    /** 语义检索得分（重排前） */
+    @SerializedName("semantic_score") val semanticScore: Float? = null,
+    /** 词法检索得分（重排前） */
+    @SerializedName("lexical_score") val lexicalScore: Float? = null,
+    /** 重排后得分（如有重排） */
+    @SerializedName("rerank_score") val rerankScore: Float? = null,
+    /** 引用编号（由 searchPrompt 分配，从1开始） */
+    val citationIndex: Int? = null
 )
 
 // ==================== Skills 配置 ====================

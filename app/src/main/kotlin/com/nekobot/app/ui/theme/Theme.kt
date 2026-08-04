@@ -12,6 +12,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.nekobot.app.ServiceContainer
@@ -86,7 +87,16 @@ fun NekobotTheme(
         }
     } ?: themedScheme
 
-    val typography = buildTypography(prefs.fontFamily, prefs.fontScale)
+    // 读取系统字号缩放系数（LocalDensity.current.fontScale）
+    val systemFontScale = LocalDensity.current.fontScale
+    val followSystemFont = prefs.followSystemFontScale
+
+    val typography = buildTypography(
+        fontFamily = prefs.fontFamily,
+        fontScale = prefs.fontScale,
+        followSystemFont = followSystemFont,
+        systemFontScale = systemFontScale
+    )
 
     val view = LocalView.current
     if (!view.isInEditMode) {

@@ -53,6 +53,8 @@ import com.nekobot.app.ui.screens.settings.DataMaintenanceScreen
 import com.nekobot.app.ui.screens.settings.DbProfileScreen
 import com.nekobot.app.ui.screens.settings.DiagnosticCenterScreen
 import com.nekobot.app.ui.screens.settings.FeatureSwitchesScreen
+import com.nekobot.app.ui.screens.settings.AbTestSettingsScreen
+import com.nekobot.app.ui.screens.settings.RagSettingsScreen
 import com.nekobot.app.ui.screens.settings.SettingsScreen
 import com.nekobot.app.ui.screens.settings.StyleSettingsScreen
 import com.nekobot.app.ui.screens.settings.SystemSettingsScreen
@@ -63,6 +65,7 @@ import com.nekobot.app.ui.screens.settings.PrivacyScreen
 import com.nekobot.app.ui.screens.settings.Wenku8LoginScreen
 import com.nekobot.app.ui.screens.statehistory.StateHistoryScreen
 import com.nekobot.app.ui.screens.tokens.TokensScreen
+import com.nekobot.app.ui.screens.tokens.RoutingHistoryScreen
 import com.nekobot.app.ui.screens.worldbook.WorldBookDetailScreen
 import com.nekobot.app.ui.screens.worldbook.WorldBooksScreen
 import com.nekobot.app.ui.screens.extensions.ExtensionsScreen
@@ -237,7 +240,9 @@ fun NekobotNavGraph() {
                             navController.navigate(Routes.worldBookDetail(id))
                         })
 
-                        Routes.TOKENS -> TokensScreen()
+                        Routes.TOKENS -> TokensScreen(
+                            onNavigate = { route -> navController.navigate(route) }
+                        )
 
                         Routes.MORE -> MoreScreen(
                             onNavigate = { route -> navController.navigate(route) },
@@ -326,7 +331,11 @@ fun NekobotNavGraph() {
                     onBack = { navController.popBackStack() }
                 )
             }
-            composable(Routes.TOKENS) { TokensScreen() }
+            composable(Routes.TOKENS) {
+                TokensScreen(
+                    onNavigate = { route -> navController.navigate(route) }
+                )
+            }
             composable(Routes.MORE) {
                 MoreScreen(
                     onNavigate = { route -> navController.navigate(route) },
@@ -452,7 +461,13 @@ fun NekobotNavGraph() {
                 WorkflowsScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.KNOWLEDGE) {
-                KnowledgeScreen(onBack = { navController.popBackStack() })
+                KnowledgeScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigate = { route -> navController.navigate(route) }
+                )
+            }
+            composable(Routes.RAG_SETTINGS) {
+                RagSettingsScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.SKILLS) {
                 SkillsScreen(
@@ -503,6 +518,14 @@ fun NekobotNavGraph() {
             }
             composable(Routes.DIAGNOSTIC_CENTER) {
                 DiagnosticCenterScreen(onBack = { navController.popBackStack() })
+            }
+            // 路由决策历史
+            composable(Routes.ROUTING_HISTORY) {
+                RoutingHistoryScreen(onBack = { navController.popBackStack() })
+            }
+            // A/B 测试配置
+            composable(Routes.AB_TEST_SETTINGS) {
+                AbTestSettingsScreen(onBack = { navController.popBackStack() })
             }
         }
 

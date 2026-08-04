@@ -82,7 +82,13 @@ class FailoverCoordinator(
                     )
                 )
 
-                return FailoverExecution(result, model, attempts)
+                return FailoverExecution(
+                    value = result,
+                    model = model,
+                    attempts = attempts,
+                    failures = failures,
+                    actualDurationMs = clock() - now
+                )
             } catch (e: CancellationException) {
                 // 协程取消不应记录为失败
                 throw e

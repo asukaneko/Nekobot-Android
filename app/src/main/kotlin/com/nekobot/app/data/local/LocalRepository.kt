@@ -36,6 +36,8 @@ import com.nekobot.app.data.local.ai.SmartModelMetric
 import com.nekobot.app.data.local.ai.SmartModelRouter
 import com.nekobot.app.data.local.ai.SmartRoutingBudgetNotifier
 import com.nekobot.app.data.local.ai.SmartRoutingRequest
+import com.nekobot.app.data.local.ai.AbTestSplitter
+import com.nekobot.app.data.local.ai.RoutingDecisionLogger
 import com.nekobot.app.data.local.ai.TokenStatsManager
 import com.nekobot.app.data.local.ai.currentLocalContextTokens
 import com.nekobot.app.data.local.ai.decodeThinkingCardsForUi
@@ -188,6 +190,12 @@ class LocalRepository(
         LocalAutomationScheduler(it, db.dbName.removeSuffix(".db"))
     }
     private val knowledgeManager by lazy { LocalKnowledgeManager(db, aiClient) }
+    /** 路由决策日志记录器 */
+    val routingDecisionLogger by lazy { RoutingDecisionLogger(db) }
+    /** A/B 测试分流器 */
+    private val abTestSplitter by lazy {
+        AbTestSplitter { ServiceContainer.prefs.getAbTestConfig() }
+    }
     private val runningTaskIds = ConcurrentHashMap.newKeySet<String>()
     private val runningWorkflowIds = ConcurrentHashMap.newKeySet<String>()
     /**
@@ -223,15 +231,32 @@ class LocalRepository(
         aiModelDao.listByPurpose(purpose)
             .sortedWith(compareBy(LocalAiModelEntity::priority, LocalAiModelEntity::createdAt))
 
+    private data class RoutedChatPlan(
+        val models: List<LocalAiModelEntity>,
+        val routingDecisionId: String? = null
+    )
+
     private suspend fun routedChatQueue(
         sessionId: String,
         prompt: String,
         attachments: List<Map<String, Any>> = emptyList(),
         sessionModeOverride: String? = null
-    ): List<LocalAiModelEntity> {
+    ): List<LocalAiModelEntity> = routedChatPlan(
+        sessionId = sessionId,
+        prompt = prompt,
+        attachments = attachments,
+        sessionModeOverride = sessionModeOverride
+    ).models
+
+    private suspend fun routedChatPlan(
+        sessionId: String,
+        prompt: String,
+        attachments: List<Map<String, Any>> = emptyList(),
+        sessionModeOverride: String? = null
+    ): RoutedChatPlan {
         val models = queueFor("chat")
         val routingPrefs = ServiceContainer.prefs
-        if (!routingPrefs.smartRoutingEnabled || models.size <= 1) return models
+        if (!routingPrefs.smartRoutingEnabled || models.size <= 1) return RoutedChatPlan(models)
 
         val session = sessionId.takeIf(String::isNotBlank)?.let { sessionDao.getById(it) }
         val contextTokens = sessionId.takeIf(String::isNotBlank)
@@ -294,18 +319,57 @@ class LocalRepository(
         appContext?.let { context ->
             SmartRoutingBudgetNotifier.notifyIfNeeded(context, routingPrefs, spentToday, budget)
         }
-        return SmartModelRouter.route(
-            models,
-            SmartRoutingRequest(
-                promptChars = prompt.length,
-                estimatedContextTokens = contextTokens + (prompt.length + 2) / 3,
-                sessionMode = sessionModeOverride ?: session?.sessionMode ?: "character",
-                hasAttachments = attachments.isNotEmpty(),
-                dailyBudgetUsd = budget,
-                dailySpentUsd = spentToday
-            ),
-            metrics
+        val routingRequest = SmartRoutingRequest(
+            promptChars = prompt.length,
+            estimatedContextTokens = contextTokens + (prompt.length + 2) / 3,
+            sessionMode = sessionModeOverride ?: session?.sessionMode ?: "character",
+            hasAttachments = attachments.isNotEmpty(),
+            dailyBudgetUsd = budget,
+            dailySpentUsd = spentToday
         )
+        val scores = SmartModelRouter.scoreDetailed(models, routingRequest, metrics)
+        val routed = scores.map { it.model }
+
+        // A/B 测试分流：强制使用指定模型作为首选
+        val abConfig = routingPrefs.getAbTestConfig()
+        val abForcedModelId = abTestSplitter.resolveModelId(sessionId)
+        val finalQueue = if (abForcedModelId != null) {
+            val forced = models.find { it.id == abForcedModelId }
+            if (forced != null) listOf(forced) + routed.filter { it.id != abForcedModelId } else routed
+        } else {
+            routed
+        }
+
+        // 记录路由决策
+        val selectedId = finalQueue.firstOrNull()?.id ?: routed.firstOrNull()?.id ?: ""
+        val estimatedCost = runCatching {
+            val selectedModel = finalQueue.firstOrNull() ?: routed.firstOrNull()
+            if (selectedModel != null) {
+                val prices = ModelPricingCatalog.resolvePrices(
+                    modelName = selectedModel.model,
+                    provider = selectedModel.provider,
+                    inputPrice = selectedModel.inputPrice,
+                    outputPrice = selectedModel.outputPrice
+                )
+                val estInput = routingRequest.estimatedContextTokens.toLong()
+                val estOutput = 1500L
+                estInput / 1_000_000.0 * (prices.first ?: 0.0) +
+                    estOutput / 1_000_000.0 * (prices.second ?: 0.0)
+            } else 0.0
+        }.getOrDefault(0.0)
+
+        val routingDecisionId = runCatching {
+            routingDecisionLogger.log(
+                request = routingRequest,
+                candidates = scores,
+                selectedId = selectedId,
+                sessionId = sessionId.ifBlank { "unknown" },
+                estimatedCostUsd = estimatedCost,
+                abTestConfig = if (abForcedModelId != null) abConfig else null
+            )
+        }.getOrNull()
+
+        return RoutedChatPlan(finalQueue, routingDecisionId)
     }
 
     /**
@@ -320,28 +384,91 @@ class LocalRepository(
         requestTag: String? = null
     ): FailoverExecution<LocalAiResult> {
         val routingPrompt = messages.joinToString("\n") { it["content"]?.toString().orEmpty() }
-        val queue = routedChatQueue(
+        val routePlan = routedChatPlan(
             sessionId = requestTag ?: currentSessionId,
             prompt = routingPrompt,
             sessionModeOverride = "utility"
         )
+        val queue = routePlan.models
         if (queue.isEmpty()) {
             throw IllegalStateException("未配置可用的聊天模型，请在故障转移队列中启用 purpose=chat 的模型")
         }
-        val execution = failoverCoordinator.execute(queue, "chat") { model ->
-            val result = aiClient.chatOnce(model, messages, extra, requestTag)
-            result.error?.let { error ->
-                throw FailoverHttpException(result.statusCode, error)
+        val execution = try {
+            failoverCoordinator.execute(queue, "chat") { model ->
+                val result = aiClient.chatOnce(model, messages, extra, requestTag)
+                result.error?.let { error ->
+                    throw FailoverHttpException(result.statusCode, error)
+                }
+                result
             }
-            result
+        } catch (error: FailoverAllFailedException) {
+            updateRoutingDecision(
+                logId = routePlan.routingDecisionId,
+                actualCostUsd = 0.0,
+                actualDurationMs = 0L,
+                actualTtftMs = 0L,
+                success = false,
+                failureReason = error.failures.joinToString("；") { failure ->
+                    "${failure.modelId}: ${failure.message}"
+                }.ifBlank { error.message }
+            )
+            throw error
         }
+        updateRoutingDecision(
+            logId = routePlan.routingDecisionId,
+            actualCostUsd = actualCostUsd(execution.model, execution.value.usage),
+            actualDurationMs = execution.actualDurationMs ?: 0L,
+            actualTtftMs = execution.actualDurationMs ?: 0L,
+            success = true,
+            failureReason = execution.failures
+                .takeIf { it.isNotEmpty() }
+                ?.joinToString("；") { failure -> "故障转移 ${failure.modelId}: ${failure.message}" }
+        )
         return execution.copy(
+            routingDecisionId = routePlan.routingDecisionId,
             value = execution.value.copy(
                 usedModelId = execution.model.id,
                 usedModelName = execution.model.name,
                 usedModelActualName = execution.model.model
             )
         )
+    }
+
+    private suspend fun updateRoutingDecision(
+        logId: String?,
+        actualCostUsd: Double,
+        actualDurationMs: Long,
+        actualTtftMs: Long,
+        success: Boolean,
+        failureReason: String?
+    ) {
+        logId ?: return
+        runCatching {
+            routingDecisionLogger.updateActualResult(
+                logId = logId,
+                actualCostUsd = actualCostUsd,
+                actualDurationMs = actualDurationMs,
+                actualTtftMs = actualTtftMs,
+                success = success,
+                failureReason = failureReason
+            )
+        }
+    }
+
+    private fun actualCostUsd(
+        model: LocalAiModelEntity,
+        usage: Map<String, Int>
+    ): Double {
+        val input = usage["prompt_tokens"] ?: usage["input_tokens"] ?: usage["prompt"] ?: 0
+        val output = usage["completion_tokens"] ?: usage["output_tokens"] ?: usage["completion"] ?: 0
+        val prices = ModelPricingCatalog.resolvePrices(
+            modelName = model.model,
+            provider = model.provider,
+            inputPrice = model.inputPrice,
+            outputPrice = model.outputPrice
+        )
+        return input / 1_000_000.0 * (prices.first ?: 0.0) +
+            output / 1_000_000.0 * (prices.second ?: 0.0)
     }
 
     /** 提供给自动状态、记忆、剧情选项等后台辅助任务的同一故障转移执行器。 */
@@ -3478,7 +3605,8 @@ class LocalRepository(
         }
 
         // 5. 构造故障转移队列：activeModel 优先，附加同 purpose 其他启用模型
-        val queue = routedChatQueue(sessionId, userMessage).let { routed ->
+        val routePlan = routedChatPlan(sessionId, userMessage)
+        val queue = routePlan.models.let { routed ->
             if (routed.any { it.id == activeModel.id }) {
                 listOf(activeModel) + routed.filter { it.id != activeModel.id }
             } else {
@@ -3493,6 +3621,7 @@ class LocalRepository(
         var outputTokens: Int? = null
         var modelName: String? = null
         var modelDisplayName: String? = null
+        var streamFailureReason: String? = null
         val streamStartNano = System.nanoTime()
         var firstChunkNano: Long? = null
         aiClient.chatStreamWithFailover(queue, messages, extra).collect { event ->
@@ -3514,7 +3643,10 @@ class LocalRepository(
                     modelDisplayName = event.modelDisplayName
                     emit(event)
                 }
-                is RealtimeEvent.Error -> emit(event)
+                is RealtimeEvent.Error -> {
+                    streamFailureReason = event.message
+                    emit(event)
+                }
                 is RealtimeEvent.StreamEnd -> {
                     // 保存 assistant 消息（含 token 用量）
                     val content = fullContent.toString().trim()
@@ -3544,6 +3676,25 @@ class LocalRepository(
                             reasoningContent = fullReasoning.toString()
                         )
                     }
+                    val costModel = queue.firstOrNull {
+                        it.model == modelName || it.name == modelDisplayName
+                    } ?: activeModel
+                    updateRoutingDecision(
+                        logId = routePlan.routingDecisionId,
+                        actualCostUsd = actualCostUsd(
+                            costModel,
+                            buildMap {
+                                inputTokens?.let { put("prompt_tokens", it) }
+                                outputTokens?.let { put("completion_tokens", it) }
+                            }
+                        ),
+                        actualDurationMs = ((System.nanoTime() - streamStartNano) / 1_000_000L),
+                        actualTtftMs = firstChunkNano?.let {
+                            (it - streamStartNano) / 1_000_000L
+                        } ?: ((System.nanoTime() - streamStartNano) / 1_000_000L),
+                        success = content.isNotEmpty(),
+                        failureReason = streamFailureReason
+                    )
                     emit(RealtimeEvent.StreamEnd(sessionId))
                 }
                 else -> emit(event)
@@ -3932,13 +4083,13 @@ class LocalRepository(
         }
 
         // 4. 构建回调（传入故障转移备选队列：同 purpose 其他启用模型 + 持久化协调器）
-        val failoverQueue = routedChatQueue(
+        val routePlan = routedChatPlan(
             sessionId = sessionId,
             prompt = userMessage,
             attachments = attachments,
             sessionModeOverride = session.sessionMode
         )
-            .filter { it.id != activeModel.id }
+        val failoverQueue = routePlan.models.filter { it.id != activeModel.id }
         val callbacks = com.nekobot.app.data.local.ai.LocalPipelineCallbacks(
             db, aiClient, activeModel, session, character, worldBookEntries, runtime, identity,
             parentMessageId = parentMessageId,
@@ -3960,6 +4111,16 @@ class LocalRepository(
                     messageId = messageId,
                     durationMs = durationMs,
                     ttftMs = ttftMs
+                )
+            },
+            onRoutingCompleted = { model, usage, durationMs, ttftMs, success, failureReason ->
+                updateRoutingDecision(
+                    logId = routePlan.routingDecisionId,
+                    actualCostUsd = actualCostUsd(model, usage),
+                    actualDurationMs = durationMs?.toLong() ?: 0L,
+                    actualTtftMs = ttftMs?.toLong() ?: durationMs?.toLong() ?: 0L,
+                    success = success,
+                    failureReason = failureReason
                 )
             },
             onThinkingCardUpdate = { card ->

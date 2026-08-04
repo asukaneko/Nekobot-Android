@@ -37,9 +37,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalMessageFavoriteEntity::class,
         LocalOAuthAccountEntity::class,
         LocalKnowledgeDocumentEntity::class,
-        LocalKnowledgeChunkEntity::class
+        LocalKnowledgeChunkEntity::class,
+        RoutingDecisionLogEntity::class
     ],
-    version = 30,
+    version = 31,
     exportSchema = false
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -65,6 +66,7 @@ abstract class NekobotDatabase : RoomDatabase() {
     abstract fun oauthAccountDao(): OAuthAccountDao
     abstract fun messageFavoriteDao(): MessageFavoriteDao
     abstract fun knowledgeDao(): KnowledgeDao
+    abstract fun routingDecisionLogDao(): RoutingDecisionLogDao
 
     /**
      * 当前 db 文件名（含 .db 扩展），用于派生 SharedPreferences 文件名（如 token 用量隔离）。
@@ -659,6 +661,43 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        /** v30 → v31：RAG 引用段落定位 + 路由决策日志。 */
+        val MIGRATION_30_31 = object : Migration(30, 31) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 知识库切片增加字符偏移量
+                db.execSQL("ALTER TABLE local_knowledge_chunks ADD COLUMN char_offset INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE local_knowledge_chunks ADD COLUMN char_end INTEGER NOT NULL DEFAULT 0")
+                // 消息增加引用和路由决策关联
+                db.execSQL("ALTER TABLE local_messages ADD COLUMN knowledge_citations TEXT")
+                db.execSQL("ALTER TABLE local_messages ADD COLUMN routing_decision_id TEXT")
+                // 路由决策日志表
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS routing_decision_logs (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        session_id TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        decision_json TEXT NOT NULL,
+                        selected_model_id TEXT NOT NULL,
+                        selected_model_name TEXT NOT NULL,
+                        estimated_cost_usd REAL NOT NULL,
+                        actual_cost_usd REAL,
+                        actual_duration_ms INTEGER,
+                        actual_ttft_ms INTEGER,
+                        success INTEGER NOT NULL DEFAULT 0,
+                        failure_reason TEXT,
+                        quality_score INTEGER NOT NULL DEFAULT 0,
+                        is_ab_test INTEGER NOT NULL DEFAULT 0,
+                        ab_test_group TEXT
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_routing_decision_logs_session_id ON routing_decision_logs(session_id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_routing_decision_logs_created_at ON routing_decision_logs(created_at)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_routing_decision_logs_selected_model_id ON routing_decision_logs(selected_model_id)")
+            }
+        }
+
         fun get(context: Context): NekobotDatabase =
             get(context, com.nekobot.app.data.local.PrefsManager.DEFAULT_DB_NAME)
 
@@ -671,7 +710,7 @@ abstract class NekobotDatabase : RoomDatabase() {
                 NekobotDatabase::class.java,
                 dbName
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31)
                 // 仅当迁移脚本未覆盖的未来版本变更时才回退到破坏性迁移（保护现有数据）
                 .fallbackToDestructiveMigration()
                 .build()

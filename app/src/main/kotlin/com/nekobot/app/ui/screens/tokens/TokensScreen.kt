@@ -19,12 +19,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -58,6 +61,7 @@ import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.TokenRankings
 import com.nekobot.app.data.model.TokenStats
 import com.nekobot.app.ui.BaseViewModel
+import com.nekobot.app.ui.navigation.Routes
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
@@ -182,7 +186,7 @@ class TokensViewModel : BaseViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TokensScreen() {
+fun TokensScreen(onNavigate: (String) -> Unit = {}) {
     val vm: TokensViewModel = viewModel()
     val stats by vm.stats.collectAsState()
     val rankings by vm.rankings.collectAsState()
@@ -246,6 +250,24 @@ fun TokensScreen() {
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.tokens_title)) },
+                actions = {
+                    // 路由决策历史入口
+                    IconButton(onClick = { onNavigate(Routes.ROUTING_HISTORY) }) {
+                        Icon(
+                            Icons.Filled.Route,
+                            contentDescription = "路由决策历史",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    // A/B 测试配置入口
+                    IconButton(onClick = { onNavigate(Routes.AB_TEST_SETTINGS) }) {
+                        Icon(
+                            Icons.Filled.Science,
+                            contentDescription = "A/B 测试配置",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onSurface

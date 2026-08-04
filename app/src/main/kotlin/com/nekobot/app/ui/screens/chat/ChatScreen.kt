@@ -184,6 +184,7 @@ import com.nekobot.app.data.remote.targetSessionId
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.ui.BaseViewModel
+import com.nekobot.app.ui.adaptive.liveRegion
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.nekobot.app.ui.components.ErrorBanner
@@ -857,7 +858,9 @@ fun ChatScreen(
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .liveRegion(),
                     state = listState,
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)

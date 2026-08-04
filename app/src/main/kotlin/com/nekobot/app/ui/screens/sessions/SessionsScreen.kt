@@ -13,12 +13,14 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -101,6 +103,9 @@ import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.components.RelationshipStateSourceSelector
 import com.nekobot.app.ui.components.resolveAvatarUrl
+import com.nekobot.app.ui.adaptive.listItemSemantics
+import com.nekobot.app.ui.adaptive.rememberShouldUseTwoPane
+import com.nekobot.app.ui.screens.chat.ModernChatScreen
 import com.nekobot.app.ui.theme.BgSurface
 import com.nekobot.app.ui.theme.BgSurfaceVariant
 import com.nekobot.app.ui.theme.OnSurface
@@ -147,6 +152,83 @@ private data class DashboardMetricsLoadResults(
     val highAffectionCount: Resource<Int>,
     val worldBooks: Resource<List<WorldBook>>
 )
+
+/**
+ * 会话-聊天双栏布局包装器。
+ *
+ * - Compact 模式：直接渲染 [content]，保持现有单栏行为
+ * - Medium/Expanded 模式：Row 布局，左列显示会话列表 [content]，
+ *   右列显示选中会话的聊天（ModernChatScreen）或占位文本
+ *
+ * @param useTwoPane 是否使用双栏
+ * @param selectedSessionId 当前选中的会话 ID（null 表示未选中）
+ * @param onSessionSelected 选中会话回调
+ * @param onClearSelection 清除选中回调
+ * @param onOpenDetail 打开会话详情回调
+ * @param onOpenStoryGraph 打开剧情图回调
+ * @param content 会话列表内容（Scaffold）
+ */
+@Composable
+private fun TwoPaneSessionsWrapper(
+    useTwoPane: Boolean,
+    selectedSessionId: String?,
+    onSessionSelected: (String) -> Unit,
+    onClearSelection: () -> Unit,
+    onOpenDetail: (String) -> Unit,
+    onOpenStoryGraph: (String) -> Unit,
+    content: @Composable () -> Unit
+) {
+    if (useTwoPane) {
+        Row(modifier = Modifier.fillMaxSize()) {
+            // 左列：会话列表
+            Box(
+                modifier = Modifier
+                    .weight(0.38f)
+                    .fillMaxHeight()
+            ) {
+                content()
+            }
+            // 垂直分隔线
+            HorizontalDivider(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(1.dp)
+            )
+            // 右列：聊天或占位
+            Box(
+                modifier = Modifier
+                    .weight(0.62f)
+                    .fillMaxHeight()
+            ) {
+                val sid = selectedSessionId
+                if (sid != null) {
+                    ModernChatScreen(
+                        sessionId = sid,
+                        onBack = onClearSelection,
+                        onOpenChat = onSessionSelected,
+                        onOpenSessionDetail = onOpenDetail,
+                        onOpenWorkspace = {},
+                        onOpenStoryGraph = onOpenStoryGraph,
+                        onJumpToLatest = {}
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "选择一个会话开始聊天",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    } else {
+        content()
+    }
+}
 
 /**
  * 会话列表页：展示所有会话，支持新建、重命名、删除、收藏 / 置顶切换、筛选、搜索。
@@ -240,6 +322,24 @@ fun SessionsScreen(
         mutableStateOf(CharacterRankingMode.fromStorage(ServiceContainer.prefs.statsCharacterRankingMode))
     }
 
+    // 双栏布局状态：大屏模式下选中的会话 ID
+    val useTwoPane = rememberShouldUseTwoPane()
+    var selectedSessionId by remember { mutableStateOf<String?>(null) }
+    // 双栏模式下点击会话在右侧打开聊天，单栏模式保持原有导航行为
+    val handleOpenChat: (String) -> Unit = if (useTwoPane) {
+        { id -> selectedSessionId = id }
+    } else {
+        onOpenChat
+    }
+
+    TwoPaneSessionsWrapper(
+        useTwoPane = useTwoPane,
+        selectedSessionId = selectedSessionId,
+        onSessionSelected = { id -> selectedSessionId = id },
+        onClearSelection = { selectedSessionId = null },
+        onOpenDetail = onOpenDetail,
+        onOpenStoryGraph = onOpenStoryGraph
+    ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -317,7 +417,7 @@ fun SessionsScreen(
                         ServiceContainer.prefs.statsCharacterRankingMode = mode.name
                     },
                     onCustomize = { showDashboardLayout = true },
-                    onOpenChat = onOpenChat,
+                    onOpenChat = handleOpenChat,
                     onQuickAction = { action ->
                         when (action) {
                             DashboardQuickAction.NEW_SESSION -> showCreate = true
@@ -330,7 +430,7 @@ fun SessionsScreen(
                         viewModel.createSessionForCharacter(
                             characterId = character.id,
                             characterName = character.name,
-                            onSuccess = onOpenChat
+                            onSuccess = handleOpenChat
                         )
                     },
                     randomCharacterIdeas = randomCharacterIdeas,
@@ -345,7 +445,7 @@ fun SessionsScreen(
                             description = idea.description,
                             onSuccess = { sessionId ->
                                 showGeneratingCharacter = false
-                                onOpenChat(sessionId)
+                                handleOpenChat(sessionId)
                             },
                             onError = { showGeneratingCharacter = false }
                         )
@@ -460,7 +560,7 @@ fun SessionsScreen(
                             ) { row ->
                                 SessionItem(
                                     row = row,
-                                    onClick = { row.id?.let(onOpenChat) },
+                                    onClick = { row.id?.let(handleOpenChat) },
                                     onOpenDetail = { row.id?.let(onOpenDetail) },
                                     onRename = { if (row.id != null) renaming = row },
                                     onDelete = { if (row.id != null) deleting = row },
@@ -499,6 +599,7 @@ fun SessionsScreen(
             }
         }
     }
+    } // 结束 TwoPaneSessionsWrapper
 
     if (showDashboardLayout) {
         DashboardLayoutDialog(
@@ -1547,7 +1648,9 @@ private fun SessionItem(
 
     Surface(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .listItemSemantics("会话：${row.displayName}，${row.lastMessage ?: "无消息"}，${row.updatedAt ?: ""}"),
         shape = SessionItemShape,
         color = containerColor,
         border = BorderStroke(1.dp, borderColor),

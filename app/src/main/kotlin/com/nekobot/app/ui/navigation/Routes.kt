@@ -58,6 +58,10 @@ object Routes {
     const val CONFIG_TRANSFER = "config_transfer"
     const val FEATURE_SWITCHES = "feature_switches"
     const val DATA_MAINTENANCE = "data_maintenance"
+    /** 路由决策历史 */
+    const val ROUTING_HISTORY = "routing_history"
+    /** A/B 测试配置 */
+    const val AB_TEST_SETTINGS = "ab_test_settings"
     /** 关于页面 */
     const val ABOUT = "about"
     /** 开源许可证页面 */
@@ -74,6 +78,8 @@ object Routes {
     const val TASK_CENTER = "task_center"
     const val WORKFLOWS = "workflows"
     const val KNOWLEDGE = "knowledge"
+    /** RAG 检索设置页面 */
+    const val RAG_SETTINGS = "rag_settings"
     const val SKILLS = "skills"
     const val SKILL_DETAIL = "skill_detail/{skillId}"
     fun skillDetail(skillName: String): String {

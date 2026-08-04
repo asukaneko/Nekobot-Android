@@ -115,7 +115,10 @@ data class FailoverUsage(
 data class FailoverExecution<T>(
     val value: T,
     val model: com.nekobot.app.data.local.db.LocalAiModelEntity,
-    val attempts: List<String>
+    val attempts: List<String>,
+    val failures: List<FailoverFailure> = emptyList(),
+    val actualDurationMs: Long? = null,
+    val routingDecisionId: String? = null
 )
 
 /**

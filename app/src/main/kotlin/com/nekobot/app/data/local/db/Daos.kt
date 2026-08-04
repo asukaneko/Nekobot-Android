@@ -863,3 +863,36 @@ interface KnowledgeDao {
     @Query("DELETE FROM local_knowledge_chunks WHERE document_id = :documentId")
     suspend fun deleteChunks(documentId: String)
 }
+
+@Dao
+interface RoutingDecisionLogDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(entity: RoutingDecisionLogEntity)
+
+    @Query("UPDATE routing_decision_logs SET actual_cost_usd = :actualCostUsd, actual_duration_ms = :actualDurationMs, actual_ttft_ms = :actualTtftMs, success = :success, failure_reason = :failureReason WHERE id = :id")
+    suspend fun updateResult(id: String, actualCostUsd: Double, actualDurationMs: Long, actualTtftMs: Long, success: Boolean, failureReason: String?)
+
+    @Query("UPDATE routing_decision_logs SET quality_score = :score WHERE id = :id")
+    suspend fun updateQualityScore(id: String, score: Int)
+
+    @Query("SELECT * FROM routing_decision_logs ORDER BY created_at DESC LIMIT :limit")
+    suspend fun listRecent(limit: Int = 50): List<RoutingDecisionLogEntity>
+
+    @Query("SELECT * FROM routing_decision_logs WHERE session_id = :sessionId ORDER BY created_at DESC LIMIT :limit")
+    suspend fun listBySession(sessionId: String, limit: Int = 50): List<RoutingDecisionLogEntity>
+
+    @Query("SELECT * FROM routing_decision_logs WHERE selected_model_id = :modelId ORDER BY created_at DESC LIMIT :limit")
+    suspend fun listByModel(modelId: String, limit: Int = 100): List<RoutingDecisionLogEntity>
+
+    @Query("SELECT * FROM routing_decision_logs WHERE is_ab_test = 1 ORDER BY created_at DESC LIMIT :limit")
+    suspend fun listAbTestEntries(limit: Int = 200): List<RoutingDecisionLogEntity>
+
+    @Query("SELECT * FROM routing_decision_logs WHERE id = :id")
+    suspend fun getById(id: String): RoutingDecisionLogEntity?
+
+    @Query("DELETE FROM routing_decision_logs WHERE created_at < :beforeDate")
+    suspend fun deleteBefore(beforeDate: String)
+
+    @Query("DELETE FROM routing_decision_logs")
+    suspend fun clear()
+}

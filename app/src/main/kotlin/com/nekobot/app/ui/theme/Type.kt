@@ -46,8 +46,28 @@ private fun resolveCustomFont(path: String?): FontFamily? {
 /**
  * 根据 fontFamily 选择 FontFamily，根据 fontScale 缩放所有 fontSize 和 lineHeight。
  * 基于现有 NekobotTypography 的字号生成动态 Typography。
+ *
+ * 兼容旧签名：默认不跟随系统字号。
  */
-fun buildTypography(fontFamily: String, fontScale: Float): Typography {
+fun buildTypography(fontFamily: String, fontScale: Float): Typography =
+    buildTypography(fontFamily, fontScale, followSystemFont = false, systemFontScale = 1f)
+
+/**
+ * 根据 fontFamily 选择 FontFamily，根据最终缩放系数缩放所有 fontSize 和 lineHeight。
+ *
+ * 最终缩放 = if (followSystemFont) fontScale * systemFontScale else fontScale
+ *
+ * @param fontFamily 字体族名称
+ * @param fontScale 应用内字号缩放系数
+ * @param followSystemFont 是否跟随系统字号设置
+ * @param systemFontScale 系统字号缩放系数（通过 LocalDensity.current.fontScale 获取）
+ */
+fun buildTypography(
+    fontFamily: String,
+    fontScale: Float,
+    followSystemFont: Boolean,
+    systemFontScale: Float
+): Typography {
     val resolvedFamily = when (fontFamily) {
         PrefsManager.FONT_FAMILY_SERIF -> FontFamily.Serif
         PrefsManager.FONT_FAMILY_MONOSPACE -> FontFamily.Monospace
@@ -60,8 +80,11 @@ fun buildTypography(fontFamily: String, fontScale: Float): Typography {
         else -> FontFamily.Default
     }
 
+    // 最终缩放系数：跟随系统时叠加系统字号
+    val finalScale = if (followSystemFont) fontScale * systemFontScale else fontScale
+
     fun scale(sp: androidx.compose.ui.unit.TextUnit): androidx.compose.ui.unit.TextUnit =
-        (sp.value * fontScale).sp
+        (sp.value * finalScale).sp
 
     fun TextStyle.scaled(): TextStyle = copy(
         fontFamily = resolvedFamily,

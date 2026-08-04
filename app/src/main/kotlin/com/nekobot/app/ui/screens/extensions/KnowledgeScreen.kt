@@ -7,12 +7,14 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,10 +31,13 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.UploadFile
 import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -62,6 +67,8 @@ import com.nekobot.app.data.model.KnowledgeSearchRequest
 import com.nekobot.app.data.model.KnowledgeSearchResult
 import com.nekobot.app.data.model.KnowledgeStats
 import com.nekobot.app.ui.BaseViewModel
+import com.nekobot.app.ui.adaptive.listItemSemantics
+import com.nekobot.app.ui.adaptive.rememberShouldUseTwoPane
 import com.nekobot.app.ui.components.EmptyState
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
@@ -69,6 +76,7 @@ import com.nekobot.app.ui.components.LoadingOverlay
 import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.components.SectionHeader
 import com.nekobot.app.ui.components.StatChip
+import com.nekobot.app.ui.navigation.Routes
 import com.nekobot.app.ui.theme.ErrorRed
 import com.nekobot.app.ui.theme.SuccessGreen
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -146,7 +154,7 @@ class KnowledgeViewModel : BaseViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun KnowledgeScreen(onBack: () -> Unit) {
+fun KnowledgeScreen(onBack: () -> Unit, onNavigate: (String) -> Unit = {}) {
     val vm: KnowledgeViewModel = viewModel()
     val context = LocalContext.current
     val list by vm.list.collectAsState()
@@ -159,12 +167,17 @@ fun KnowledgeScreen(onBack: () -> Unit) {
     var editingItem by remember { mutableStateOf<KnowledgeDocument?>(null) }
     var deleteTarget by remember { mutableStateOf<KnowledgeDocument?>(null) }
     var query by remember { mutableStateOf("") }
+    // 双栏布局状态
+    val useTwoPane = rememberShouldUseTwoPane()
+    // 双栏模式下选中的文档（用于在右侧显示详情）
+    var selectedDoc by remember { mutableStateOf<KnowledgeDocument?>(null) }
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let { vm.importDocument(context.contentResolver, it) }
     }
 
+    val scaffoldContent: @Composable () -> Unit = {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -175,6 +188,10 @@ fun KnowledgeScreen(onBack: () -> Unit) {
                     }
                 },
                 actions = {
+                    // RAG 检索设置入口
+                    IconButton(onClick = { onNavigate(Routes.RAG_SETTINGS) }) {
+                        Icon(Icons.Filled.Settings, contentDescription = "RAG 检索设置")
+                    }
                     IconButton(
                         onClick = {
                             importLauncher.launch(
@@ -274,6 +291,9 @@ fun KnowledgeScreen(onBack: () -> Unit) {
                     items(list, key = { it.id ?: it.hashCode().toString() }) { doc ->
                         KnowledgeCard(
                             doc = doc,
+                            onClick = if (useTwoPane) {
+                                { selectedDoc = doc }
+                            } else null,
                             onEdit = { editingItem = doc; showForm = true },
                             onDelete = { deleteTarget = doc },
                             onReindex = { doc.id?.let { vm.indexDoc(it) } }
@@ -285,9 +305,103 @@ fun KnowledgeScreen(onBack: () -> Unit) {
             LoadingOverlay(visible = loading)
         }
     }
+    } // 结束 scaffoldContent lambda
 
-    // 新建/编辑表单弹窗
-    if (showForm) {
+    // 双栏布局：大屏时左列列表 + 右列详情/编辑
+    if (useTwoPane) {
+        Row(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .weight(0.4f)
+                    .fillMaxHeight()
+            ) {
+                scaffoldContent()
+            }
+            HorizontalDivider(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(1.dp)
+            )
+            Box(
+                modifier = Modifier
+                    .weight(0.6f)
+                    .fillMaxHeight()
+                    .padding(16.dp)
+            ) {
+                if (showForm) {
+                    // 双栏模式下内联显示编辑表单
+                    KnowledgeInlineForm(
+                        initial = editingItem,
+                        onConfirm = { req ->
+                            editingItem?.id?.let { vm.update(it, req) } ?: vm.create(req)
+                            showForm = false
+                            editingItem = null
+                        },
+                        onDismiss = {
+                            showForm = false
+                            editingItem = null
+                        }
+                    )
+                } else {
+                    selectedDoc?.let { doc ->
+                        // 显示选中文档的详情
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            Text(
+                                doc.displayName,
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                "来源：${doc.source ?: "—"}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (doc.tags.isNotEmpty()) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "标签：${doc.tags.joinToString(", ")}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "创建时间：${doc.createdAt ?: "—"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            Text(
+                                doc.content ?: "无内容",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    } ?: Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "选择一个文档查看详情",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    } else {
+        scaffoldContent()
+    }
+
+    // 新建/编辑表单弹窗（仅单栏模式使用对话框）
+    if (showForm && !useTwoPane) {
         KnowledgeFormDialog(
             initial = editingItem,
             onConfirm = { req ->
@@ -325,9 +439,17 @@ private fun KnowledgeCard(
     doc: KnowledgeDocument,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
-    onReindex: () -> Unit
+    onReindex: () -> Unit,
+    onClick: (() -> Unit)? = null
 ) {
-    GlassCard(modifier = Modifier.fillMaxWidth()) {
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (onClick != null) Modifier.clickable { onClick() } else Modifier
+            )
+            .listItemSemantics("文档：${doc.displayName}，来源：${doc.source ?: "未知"}")
+    ) {
         // 顶部行：标题 + 操作菜单
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -402,6 +524,93 @@ private fun SearchResultCard(result: KnowledgeSearchResult) {
         result.source?.let {
             Spacer(Modifier.height(2.dp))
             Text(stringResource(R.string.knowledge_source, it), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/**
+ * 双栏模式下的内联文档编辑表单（不使用对话框，直接渲染在右栏）。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun KnowledgeInlineForm(
+    initial: KnowledgeDocument?,
+    onConfirm: (KnowledgeDocumentRequest) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var title by remember { mutableStateOf(initial?.title ?: "") }
+    var content by remember { mutableStateOf(initial?.content ?: "") }
+    var source by remember { mutableStateOf(initial?.source ?: "") }
+    var tags by remember { mutableStateOf(initial?.tags?.joinToString(", ") ?: "") }
+    val context = LocalContext.current
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+    ) {
+        Text(
+            if (initial == null) stringResource(R.string.knowledge_new_doc) else stringResource(R.string.knowledge_edit_doc),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Spacer(Modifier.height(16.dp))
+        OutlinedTextField(
+            value = title,
+            onValueChange = { title = it },
+            label = { Text(stringResource(R.string.knowledge_title_required)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = content,
+            onValueChange = { content = it },
+            label = { Text(stringResource(R.string.knowledge_content_required)) },
+            minLines = 4,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = source,
+            onValueChange = { source = it },
+            label = { Text(stringResource(R.string.knowledge_source_label)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = tags,
+            onValueChange = { tags = it },
+            label = { Text(stringResource(R.string.knowledge_tags_label)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(16.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.common_cancel))
+            }
+            Spacer(Modifier.width(8.dp))
+            Button(onClick = {
+                if (title.isBlank() || content.isBlank()) {
+                    Toast.makeText(context, context.getString(R.string.knowledge_title_content_required), Toast.LENGTH_SHORT).show()
+                } else {
+                    val req = KnowledgeDocumentRequest(
+                        title = title,
+                        content = content,
+                        source = source.ifBlank { null },
+                        tags = tags.split(",", "，").map { it.trim() }.filter { it.isNotBlank() }
+                    )
+                    onConfirm(req)
+                }
+            }) {
+                Text(stringResource(R.string.common_save))
+            }
         }
     }
 }

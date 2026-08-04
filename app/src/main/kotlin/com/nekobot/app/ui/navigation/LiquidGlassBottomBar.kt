@@ -44,6 +44,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -300,13 +302,15 @@ private fun BarItem(
                 indication = null,
                 role = Role.Tab,
                 onClick = onClick
-            ),
+            )
+            // 显式设置 contentDescription，TalkBack 朗读一次即可（覆盖子节点的 text）
+            .semantics { contentDescription = item.label },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Icon(
             imageVector = item.icon,
-            contentDescription = item.label,
+            contentDescription = null,
             tint = contentColor,
             modifier = Modifier
                 .offset(y = liftUp)

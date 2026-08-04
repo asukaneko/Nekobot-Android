@@ -106,7 +106,11 @@ data class LocalMessageEntity(
     /** 该助手消息当前轮产生的完整 assistant/tool 调用历史 JSON，供后续轮次恢复 */
     @ColumnInfo(name = "tool_call_history") val toolCallHistory: String? = null,
     /** 消息来源：普通聊天为空；后台任务/主动聊天分别使用 task_center / proactive_chat。 */
-    val source: String? = null
+    val source: String? = null,
+    /** RAG 引用来源 JSON（KnowledgeSearchResult 列表序列化） */
+    @ColumnInfo(name = "knowledge_citations") val knowledgeCitations: String? = null,
+    /** 路由决策日志 ID，关联 routing_decision_logs 表 */
+    @ColumnInfo(name = "routing_decision_id") val routingDecisionId: String? = null
 )
 
 /**
@@ -640,5 +644,31 @@ data class LocalKnowledgeChunkEntity(
     @ColumnInfo(name = "document_id") val documentId: String,
     @ColumnInfo(name = "chunk_index") val chunkIndex: Int,
     val content: String,
-    @ColumnInfo(name = "embedding_json") val embeddingJson: String? = null
+    @ColumnInfo(name = "embedding_json") val embeddingJson: String? = null,
+    /** 切片在原文中的字符起始偏移量 */
+    @ColumnInfo(name = "char_offset") val charOffset: Int = 0,
+    /** 切片在原文中的字符结束偏移量 */
+    @ColumnInfo(name = "char_end") val charEnd: Int = 0
+)
+
+/** 路由决策日志，记录每次模型路由的分项得分、选择原因、费用和延迟。 */
+@Entity(tableName = "routing_decision_logs", indices = [Index("session_id"), Index("created_at"), Index("selected_model_id")])
+data class RoutingDecisionLogEntity(
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "session_id") val sessionId: String,
+    @ColumnInfo(name = "created_at") val createdAt: String,
+    /** 决策 JSON（RoutingDecision 序列化） */
+    @ColumnInfo(name = "decision_json") val decisionJson: String,
+    @ColumnInfo(name = "selected_model_id") val selectedModelId: String,
+    @ColumnInfo(name = "selected_model_name") val selectedModelName: String,
+    @ColumnInfo(name = "estimated_cost_usd") val estimatedCostUsd: Double,
+    @ColumnInfo(name = "actual_cost_usd") val actualCostUsd: Double? = null,
+    @ColumnInfo(name = "actual_duration_ms") val actualDurationMs: Long? = null,
+    @ColumnInfo(name = "actual_ttft_ms") val actualTtftMs: Long? = null,
+    val success: Boolean = false,
+    @ColumnInfo(name = "failure_reason") val failureReason: String? = null,
+    /** 用户质量评分（-1=差, 0=未评, 1=好） */
+    @ColumnInfo(name = "quality_score") val qualityScore: Int = 0,
+    @ColumnInfo(name = "is_ab_test") val isAbTest: Boolean = false,
+    @ColumnInfo(name = "ab_test_group") val abTestGroup: String? = null
 )

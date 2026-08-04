@@ -52,6 +52,8 @@ internal class LocalPipelineCallbacks(
     /** 本地知识库检索入口。 */
     private val knowledgeSearcher: ((query: String) -> String)? = null,
     private val onTokenRecorded: ((sessionId: String, messageId: String, model: String, actualModel: String, inputTokens: Int, outputTokens: Int, timestamp: String, purpose: String, estimated: Boolean, durationMs: Double?, ttftMs: Double?) -> Unit)? = null,
+    /** 路由决策完成回调：把实际费用、延迟和失败结果回写到解释性日志。 */
+    private val onRoutingCompleted: (suspend (model: LocalAiModelEntity, usage: Map<String, Int>, durationMs: Double?, ttftMs: Double?, success: Boolean, failureReason: String?) -> Unit)? = null,
     /** 进度卡片更新回调；本地模式用于持久化到父用户消息 */
     private val onThinkingCardUpdate: ((card: ThinkingCard) -> Unit)? = null,
     /** 当前会话的本地 Agent 工作区。 */
@@ -385,7 +387,23 @@ internal class LocalPipelineCallbacks(
 
     override fun saveAssistantMessage(ctx: PipelineContext, message: Map<String, Any>) {
         val content = (message["content"] as? String) ?: ""
-        if (content.isBlank()) return
+        if (content.isBlank()) {
+            try {
+                kotlinx.coroutines.runBlocking {
+                    onRoutingCompleted?.invoke(
+                        activeModel,
+                        emptyMap(),
+                        (ctx.metadata["duration_ms"] as? Number)?.toDouble(),
+                        (ctx.metadata["ttft_ms"] as? Number)?.toDouble(),
+                        false,
+                        ctx.error ?: "模型未返回有效内容"
+                    )
+                }
+            } catch (e: Exception) {
+                com.nekobot.app.data.local.LocalLogger.w(TAG, "路由失败结果回写失败: ${e.message}")
+            }
+            return
+        }
         @Suppress("UNCHECKED_CAST")
         val toolCallHistoryJson = encodeToolCallHistory(
             message["tool_call_history"] as? List<Map<String, Any>>
@@ -487,14 +505,15 @@ internal class LocalPipelineCallbacks(
             }
         }
 
+        // 从 Pipeline metadata 提取首字延迟与总耗时，路由日志和 Token 统计共用。
+        val durationMs = (ctx.metadata["duration_ms"] as? Number)?.toDouble()
+        val ttftMs = (ctx.metadata["ttft_ms"] as? Number)?.toDouble()
+        val priceModel = modelQueue.firstOrNull { model ->
+            model.model == actualModelName || model.name == modelName
+        } ?: activeModel
+
         // 记录 Token 用量到 TokenStatsManager（内存统计）
         if (inputTokens != null || outputTokens != null) {
-            // 从 Pipeline metadata 提取首字延迟与总耗时
-            val durationMs = (ctx.metadata["duration_ms"] as? Number)?.toDouble()
-            val ttftMs = (ctx.metadata["ttft_ms"] as? Number)?.toDouble()
-            val priceModel = modelQueue.firstOrNull { model ->
-                model.model == actualModelName || model.name == modelName
-            } ?: activeModel
             try {
                 getGlobalTokenStatsManager().recordUsage(
                     promptTokens = inputTokens ?: 0,
@@ -531,6 +550,24 @@ internal class LocalPipelineCallbacks(
             } catch (e: Exception) {
                 com.nekobot.app.data.local.LocalLogger.w(TAG, "持久化 Token 记录失败: ${e.message}")
             }
+        }
+
+        try {
+            kotlinx.coroutines.runBlocking {
+                onRoutingCompleted?.invoke(
+                    priceModel,
+                    buildMap {
+                        inputTokens?.let { put("prompt_tokens", it) }
+                        outputTokens?.let { put("completion_tokens", it) }
+                    },
+                    durationMs,
+                    ttftMs,
+                    ctx.error == null && content.isNotBlank(),
+                    ctx.error
+                )
+            }
+        } catch (e: Exception) {
+            com.nekobot.app.data.local.LocalLogger.w(TAG, "路由结果回写失败: ${e.message}")
         }
     }
 

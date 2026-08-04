@@ -26,6 +26,8 @@ import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.WorldBook
 import com.nekobot.app.data.model.WorldBookRequest
+import com.nekobot.app.ui.adaptive.listItemSemantics
+import com.nekobot.app.ui.adaptive.rememberShouldUseTwoPane
 import com.nekobot.app.ui.components.EmptyState
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
@@ -133,6 +135,16 @@ fun WorldBooksScreen(
     val appMode by ServiceContainer.appModeFlow.collectAsState()
     LaunchedEffect(appMode) { viewModel.load() }
 
+    // 双栏布局状态：大屏模式下选中的世界书 ID
+    val useTwoPane = rememberShouldUseTwoPane()
+    var selectedBookId by remember { mutableStateOf<String?>(null) }
+    val handleOpenBook: (String) -> Unit = if (useTwoPane) {
+        { id -> selectedBookId = id }
+    } else {
+        onOpenBook
+    }
+
+    val scaffoldContent: @Composable () -> Unit = {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -219,13 +231,55 @@ fun WorldBooksScreen(
                     items(books, key = { it.id ?: it.name ?: it.hashCode().toString() }) { book ->
                         WorldBookItem(
                             book = book,
-                            onClick = { book.id?.let { onOpenBook(it) } }
+                            onClick = { book.id?.let { handleOpenBook(it) } }
                         )
                     }
                 }
             }
             LoadingOverlay(visible = loading && books.isEmpty())
         }
+    }
+    } // 结束 scaffoldContent lambda
+
+    // 双栏布局：大屏时左列列表 + 右列详情
+    if (useTwoPane) {
+        Row(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .weight(0.38f)
+                    .fillMaxHeight()
+            ) {
+                scaffoldContent()
+            }
+            HorizontalDivider(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(1.dp)
+            )
+            Box(
+                modifier = Modifier
+                    .weight(0.62f)
+                    .fillMaxHeight()
+            ) {
+                selectedBookId?.let { bookId ->
+                    WorldBookDetailScreen(
+                        bookId = bookId,
+                        onBack = { selectedBookId = null }
+                    )
+                } ?: Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "选择一本世界书查看详情",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    } else {
+        scaffoldContent()
     }
 
     // 新建世界书对话框
@@ -250,7 +304,7 @@ fun WorldBooksScreen(
                 viewModel.aiGenerateWorldBook(name, desc, topic) { bookId ->
                     // 生成完成：关闭提示并跳转详情页
                     showAiGeneratingHint = false
-                    onOpenBook(bookId)
+                    handleOpenBook(bookId)
                 }
             }
         )
@@ -278,6 +332,7 @@ private fun WorldBookItem(book: WorldBook, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
+            .listItemSemantics("世界书：${book.displayName}，${book.description ?: ""}，${book.entries?.size ?: 0} 条条目")
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(

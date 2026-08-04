@@ -169,6 +169,85 @@ class PrefsManager(context: Context) {
             prefs.edit().putString(KEY_SMART_ROUTING_BUDGET_ALERT, value).apply()
         }
 
+    // ==================== RAG 检索配置 ====================
+
+    /** 语义检索权重（0.0~1.0） */
+    var ragSemanticWeight: Float
+        get() = prefs.getFloat(KEY_RAG_SEMANTIC_WEIGHT, 0.88f)
+        set(value) = prefs.edit().putFloat(KEY_RAG_SEMANTIC_WEIGHT, value.coerceIn(0f, 1f)).apply()
+
+    /** 最终返回结果数 */
+    var ragTopK: Int
+        get() = prefs.getInt(KEY_RAG_TOP_K, 5)
+        set(value) = prefs.edit().putInt(KEY_RAG_TOP_K, value.coerceIn(1, 20)).apply()
+
+    /** MMR 多样性系数 */
+    var ragMmrLambda: Float
+        get() = prefs.getFloat(KEY_RAG_MMR_LAMBDA, 0.7f)
+        set(value) = prefs.edit().putFloat(KEY_RAG_MMR_LAMBDA, value.coerceIn(0f, 1f)).apply()
+
+    /** 是否启用重排 */
+    var ragRerankEnabled: Boolean
+        get() = prefs.getBoolean(KEY_RAG_RERANK_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_RAG_RERANK_ENABLED, value).apply()
+
+    /** 最低得分阈值 */
+    var ragScoreThreshold: Float
+        get() = prefs.getFloat(KEY_RAG_SCORE_THRESHOLD, 0.01f)
+        set(value) = prefs.edit().putFloat(KEY_RAG_SCORE_THRESHOLD, value.coerceAtLeast(0f)).apply()
+
+    /** 是否启用引用标注 */
+    var ragCitationEnabled: Boolean
+        get() = prefs.getBoolean(KEY_RAG_CITATION_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_RAG_CITATION_ENABLED, value).apply()
+
+    /** 读取完整 RAG 配置 */
+    fun getRagConfig() = com.nekobot.app.data.local.knowledge.RagConfig(
+        semanticWeight = ragSemanticWeight,
+        topK = ragTopK,
+        mmrLambda = ragMmrLambda,
+        rerankEnabled = ragRerankEnabled,
+        scoreThreshold = ragScoreThreshold,
+        citationEnabled = ragCitationEnabled
+    )
+
+    // ==================== A/B 测试配置 ====================
+
+    var abTestEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AB_TEST_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_AB_TEST_ENABLED, value).apply()
+
+    var abTestSplitRatio: Float
+        get() = prefs.getFloat(KEY_AB_TEST_SPLIT_RATIO, 0.5f)
+        set(value) = prefs.edit().putFloat(KEY_AB_TEST_SPLIT_RATIO, value.coerceIn(0f, 1f)).apply()
+
+    var abTestControlModelId: String?
+        get() = prefs.getString(KEY_AB_TEST_CONTROL_MODEL, null)
+        set(value) = prefs.edit().putString(KEY_AB_TEST_CONTROL_MODEL, value).apply()
+
+    var abTestExperimentModelId: String?
+        get() = prefs.getString(KEY_AB_TEST_EXPERIMENT_MODEL, null)
+        set(value) = prefs.edit().putString(KEY_AB_TEST_EXPERIMENT_MODEL, value).apply()
+
+    var abTestName: String
+        get() = prefs.getString(KEY_AB_TEST_NAME, "default") ?: "default"
+        set(value) = prefs.edit().putString(KEY_AB_TEST_NAME, value).apply()
+
+    fun getAbTestConfig() = com.nekobot.app.data.local.ai.AbTestConfig(
+        enabled = abTestEnabled,
+        splitRatio = abTestSplitRatio,
+        controlModelId = abTestControlModelId,
+        experimentModelId = abTestExperimentModelId,
+        testName = abTestName
+    )
+
+    // ==================== 无障碍配置 ====================
+
+    /** 是否跟随系统字号设置 */
+    var followSystemFontScale: Boolean
+        get() = prefs.getBoolean(KEY_FOLLOW_SYSTEM_FONT, false)
+        set(value) = prefs.edit().putBoolean(KEY_FOLLOW_SYSTEM_FONT, value).apply()
+
     /** 负一屏统计组件顺序；显示状态单独保存在 [statsDashboardHiddenWidgets]。 */
     var statsDashboardWidgetOrder: List<String>
         get() {
@@ -497,6 +576,18 @@ class PrefsManager(context: Context) {
         private const val KEY_SMART_ROUTING_ENABLED = "smart_routing_enabled"
         private const val KEY_SMART_ROUTING_DAILY_BUDGET = "smart_routing_daily_budget"
         private const val KEY_SMART_ROUTING_BUDGET_ALERT = "smart_routing_budget_alert"
+        private const val KEY_RAG_SEMANTIC_WEIGHT = "rag_semantic_weight"
+        private const val KEY_RAG_TOP_K = "rag_top_k"
+        private const val KEY_RAG_MMR_LAMBDA = "rag_mmr_lambda"
+        private const val KEY_RAG_RERANK_ENABLED = "rag_rerank_enabled"
+        private const val KEY_RAG_SCORE_THRESHOLD = "rag_score_threshold"
+        private const val KEY_RAG_CITATION_ENABLED = "rag_citation_enabled"
+        private const val KEY_AB_TEST_ENABLED = "ab_test_enabled"
+        private const val KEY_AB_TEST_SPLIT_RATIO = "ab_test_split_ratio"
+        private const val KEY_AB_TEST_CONTROL_MODEL = "ab_test_control_model"
+        private const val KEY_AB_TEST_EXPERIMENT_MODEL = "ab_test_experiment_model"
+        private const val KEY_AB_TEST_NAME = "ab_test_name"
+        private const val KEY_FOLLOW_SYSTEM_FONT = "follow_system_font"
         private const val KEY_STATS_DASHBOARD_ORDER = "stats_dashboard_widget_order"
         private const val KEY_STATS_DASHBOARD_HIDDEN = "stats_dashboard_hidden_widgets"
         private const val KEY_STATS_DASHBOARD_HIDDEN_VERSION = "stats_dashboard_hidden_version"

@@ -2,16 +2,29 @@ package com.nekobot.app.data.local.knowledge
 
 import kotlin.math.sqrt
 
+/** 带字符偏移量的切片结果。 */
+data class ChunkWithOffset(
+    val content: String,
+    /** 切片在规范化后原文中的字符起始偏移量 */
+    val charOffset: Int,
+    /** 切片在规范化后原文中的字符结束偏移量 */
+    val charEnd: Int
+)
+
 /** 文档切片与纯本地检索算法；无向量模型时仍可工作。 */
 object LocalKnowledgeSearch {
     private const val DEFAULT_CHUNK_SIZE = 900
     private const val DEFAULT_OVERLAP = 140
 
-    fun chunk(
+    /**
+     * 带偏移量的文档切片，返回 [ChunkWithOffset] 列表。
+     * charOffset/charEnd 为切片在规范化后文本中的字符位置。
+     */
+    fun chunkWithOffsets(
         content: String,
         chunkSize: Int = DEFAULT_CHUNK_SIZE,
         overlap: Int = DEFAULT_OVERLAP
-    ): List<String> {
+    ): List<ChunkWithOffset> {
         val normalized = content
             .replace("\r\n", "\n")
             .replace('\r', '\n')
@@ -19,7 +32,7 @@ object LocalKnowledgeSearch {
         if (normalized.isEmpty()) return emptyList()
         val safeSize = chunkSize.coerceAtLeast(200)
         val safeOverlap = overlap.coerceIn(0, safeSize / 2)
-        val result = mutableListOf<String>()
+        val result = mutableListOf<ChunkWithOffset>()
         var start = 0
         while (start < normalized.length) {
             var end = (start + safeSize).coerceAtMost(normalized.length)
@@ -34,12 +47,32 @@ object LocalKnowledgeSearch {
                 end = ((paragraphBreak?.plus(2)) ?: (sentenceBreak?.plus(1)) ?: end)
                     .coerceAtLeast(start + 1)
             }
-            normalized.substring(start, end).trim().takeIf(String::isNotEmpty)?.let(result::add)
+            val raw = normalized.substring(start, end)
+            // 计算去除首尾空白后的实际偏移量
+            val leadingWs = raw.takeWhile { it.isWhitespace() }.length
+            val trailingWs = raw.takeLastWhile { it.isWhitespace() }.length
+            val trimmed = raw.trim()
+            if (trimmed.isNotEmpty()) {
+                result.add(
+                    ChunkWithOffset(
+                        content = trimmed,
+                        charOffset = start + leadingWs,
+                        charEnd = end - trailingWs
+                    )
+                )
+            }
             if (end >= normalized.length) break
             start = (end - safeOverlap).coerceAtLeast(start + 1)
         }
         return result
     }
+
+    /** 兼容包装：仅返回切片文本，不含偏移量。 */
+    fun chunk(
+        content: String,
+        chunkSize: Int = DEFAULT_CHUNK_SIZE,
+        overlap: Int = DEFAULT_OVERLAP
+    ): List<String> = chunkWithOffsets(content, chunkSize, overlap).map { it.content }
 
     fun lexicalScore(query: String, text: String): Float {
         val queryTerms = terms(query)
