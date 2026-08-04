@@ -67,6 +67,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
@@ -78,6 +79,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
+import android.widget.Toast
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.nekobot.app.R
@@ -769,10 +771,19 @@ fun SessionDetailScreen(
     val characters by vm.characters.collectAsState()
     val loading by vm.loading.collectAsState()
     val error by vm.error.collectAsState()
+    val toast by vm.toast.collectAsState()
+    val context = LocalContext.current
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showBindCharacterDialog by remember { mutableStateOf(false) }
     var selectedPromptStackItem by remember { mutableStateOf<PromptStackItem?>(null) }
+
+    LaunchedEffect(toast) {
+        toast?.let { message ->
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            vm.clearToast()
+        }
+    }
 
     // 通知权限请求 launcher
     val notifPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(

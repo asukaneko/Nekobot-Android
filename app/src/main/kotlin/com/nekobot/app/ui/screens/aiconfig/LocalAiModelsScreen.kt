@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
@@ -129,6 +130,21 @@ class LocalAiModelsViewModel : BaseViewModel() {
         viewModelScope.launch {
             ServiceContainer.unified.upsertLocalAiModel(model)
             showToast(string(R.string.localai_saved))
+        }
+    }
+
+    /** 复制模型配置，副本默认不激活，避免复制后改变当前聊天模型。 */
+    fun duplicateModel(model: LocalAiModelEntity) {
+        viewModelScope.launch {
+            val suffix = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val duplicate = model.copy(
+                id = UUID.randomUUID().toString(),
+                name = "${model.name} (${string(R.string.localai_copy_suffix)} $suffix)",
+                active = false,
+                createdAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+            )
+            ServiceContainer.unified.upsertLocalAiModel(duplicate)
+            showToast(string(R.string.localai_duplicated, duplicate.name))
         }
     }
 
@@ -309,6 +325,7 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
                                 editingModel = model
                                 showEditDialog = true
                             },
+                            onDuplicate = { vm.duplicateModel(model) },
                             onDelete = { deletingModel = model },
                             onTest = {
                                 testingModel = model
@@ -508,6 +525,7 @@ private fun ModelCard(
     isActive: Boolean,
     onSetActive: () -> Unit,
     onEdit: () -> Unit,
+    onDuplicate: () -> Unit,
     onDelete: () -> Unit,
     onTest: () -> Unit
 ) {
@@ -583,6 +601,14 @@ private fun ModelCard(
                         onClick = {
                             menuExpanded = false
                             onEdit()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.common_copy)) },
+                        leadingIcon = { Icon(Icons.Filled.ContentCopy, contentDescription = null) },
+                        onClick = {
+                            menuExpanded = false
+                            onDuplicate()
                         }
                     )
                     DropdownMenuItem(

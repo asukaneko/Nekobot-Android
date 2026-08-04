@@ -741,7 +741,7 @@ private suspend fun saveImageAndGetPath(
 ): String? {
     return try {
         val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
-        val ext = guessImageExt(context, uri)
+        val ext = guessImageExt(context, uri, bytes)
         if (isLocalMode) {
             // 本地模式：保存到 filesDir/portraits，返回 file:// URI
             val dir = File(context.filesDir, "portraits")
@@ -771,14 +771,32 @@ private suspend fun saveImageAndGetPath(
     }
 }
 
-/** 从 Uri 推断图片扩展名 */
-private fun guessImageExt(context: Context, uri: Uri): String {
-    val mime = context.contentResolver.getType(uri) ?: "image/png"
+/** 从 Uri、文件名和文件头推断图片扩展名，避免 WebP 被内容提供商误报成 png。 */
+private fun guessImageExt(context: Context, uri: Uri, bytes: ByteArray): String {
+    val mime = context.contentResolver.getType(uri).orEmpty().lowercase()
+    val displayName = runCatching {
+        context.contentResolver.query(
+            uri,
+            arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+        }
+    }.getOrNull().orEmpty().lowercase()
+    val nameExt = displayName.substringAfterLast('.', "").trim()
+    val isWebpHeader = bytes.size >= 12 &&
+        String(bytes, 0, 4, Charsets.US_ASCII) == "RIFF" &&
+        String(bytes, 8, 4, Charsets.US_ASCII) == "WEBP"
     return when {
-        mime.contains("png") -> "png"
+        mime.contains("webp") || nameExt == "webp" || isWebpHeader -> "webp"
+        mime.contains("png") || nameExt == "png" -> "png"
         mime.contains("jpeg") || mime.contains("jpg") -> "jpg"
-        mime.contains("webp") -> "webp"
         mime.contains("gif") -> "gif"
+        nameExt == "jpg" || nameExt == "jpeg" -> "jpg"
+        nameExt == "gif" -> "gif"
         else -> "png"
     }
 }

@@ -96,9 +96,13 @@ class CharactersViewModel : com.nekobot.app.ui.BaseViewModel() {
      * AI 生成角色卡：根据描述生成完整角色卡后调用 createCharacter 保存到库。
      * 保存成功后跳转到该角色编辑页（由 onSuccess 回调处理）。
      */
-    fun aiGenerateCharacter(description: String, onSuccess: (CharacterPreset) -> Unit) {
+    fun aiGenerateCharacter(
+        description: String,
+        language: String,
+        onSuccess: (CharacterPreset) -> Unit
+    ) {
         launchResult(
-            block = { unified.aiGenerateCharacter(description) },
+            block = { unified.aiGenerateCharacter(description, language) },
             onSuccess = { preset ->
                 // 持久化保存生成的角色
                 launchResult(
@@ -302,11 +306,11 @@ fun CharactersScreen(
     if (showAiDialog) {
         AiGenerateCharacterDialog(
             onDismiss = { showAiDialog = false },
-            onConfirm = { description ->
+            onConfirm = { description, language ->
                 showAiDialog = false
                 // 立即弹出"后台生成中"提示，AI 任务继续在后台执行
                 showAiGeneratingHint = true
-                viewModel.aiGenerateCharacter(description) { preset ->
+                viewModel.aiGenerateCharacter(description, language) { preset ->
                     // 生成完成：关闭提示并跳转编辑页
                     showAiGeneratingHint = false
                     preset.id?.let { onOpenEdit(it) }
@@ -524,9 +528,20 @@ private fun readUriToBytes(context: android.content.Context, uri: android.net.Ur
 @Composable
 private fun AiGenerateCharacterDialog(
     onDismiss: () -> Unit,
-    onConfirm: (description: String) -> Unit
+    onConfirm: (description: String, language: String) -> Unit
 ) {
     var description by remember { mutableStateOf("") }
+    var language by remember { mutableStateOf("zh") }
+    var languageMenuExpanded by remember { mutableStateOf(false) }
+    val languages = remember {
+        listOf(
+            "zh" to "中文",
+            "en" to "英文",
+            "ja" to "日文",
+            "ko" to "韩文"
+        )
+    }
+    val selectedLanguage = languages.firstOrNull { it.first == language } ?: languages.first()
 
     NekoDialog(
         onDismiss = onDismiss,
@@ -536,7 +551,7 @@ private fun AiGenerateCharacterDialog(
         confirmEnabled = description.isNotBlank(),
         onConfirm = {
             if (description.isBlank()) return@NekoDialog
-            onConfirm(description.trim())
+            onConfirm(description.trim(), language)
         },
         onCancel = onDismiss
     ) {
@@ -571,6 +586,41 @@ private fun AiGenerateCharacterDialog(
                 unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
             )
         )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            stringResource(R.string.character_ai_language_label),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(4.dp))
+        Box {
+            OutlinedButton(
+                onClick = { languageMenuExpanded = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = selectedLanguage.second,
+                    modifier = Modifier.weight(1f),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Start
+                )
+                Text("⌄", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            DropdownMenu(
+                expanded = languageMenuExpanded,
+                onDismissRequest = { languageMenuExpanded = false }
+            ) {
+                languages.forEach { (code, label) ->
+                    DropdownMenuItem(
+                        text = { Text(label) },
+                        onClick = {
+                            language = code
+                            languageMenuExpanded = false
+                        }
+                    )
+                }
+            }
+        }
         Spacer(Modifier.height(8.dp))
         Text(
             stringResource(R.string.character_ai_hint),

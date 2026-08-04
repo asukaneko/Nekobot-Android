@@ -5206,11 +5206,14 @@ class LocalRepository(
      * AI 生成角色卡：使用 chat 故障转移队列，按后端相同的 system prompt 生成。
      * @return 生成的 CharacterPreset（未持久化，由调用方决定 createCharacter 保存）
      */
-    suspend fun aiGenerateCharacter(description: String): CharacterPreset = withContext(Dispatchers.IO) {
-        val systemPrompt = buildCharacterSystemPrompt()
+    suspend fun aiGenerateCharacter(description: String, language: String = "zh"): CharacterPreset = withContext(Dispatchers.IO) {
+        val systemPrompt = buildCharacterSystemPromptForLanguage(language)
         val messages = listOf(
             mapOf("role" to "system", "content" to systemPrompt),
-            mapOf("role" to "user", "content" to "请根据以下描述创建角色卡：\n\n${description.trim()}")
+            mapOf(
+                "role" to "user",
+                "content" to "请根据以下描述创建角色卡。输出语言为${characterLanguageName(language)}：\n\n${description.trim()}"
+            )
         )
         val execution = executeChatOnceViaQueue(messages)
         val result = execution.value
@@ -5422,6 +5425,19 @@ class LocalRepository(
 10. 所有字段都用中文填写"""
 
     /** 随机角色灵感 AI 生成的 system prompt */
+    /** 在基础角色卡规则后追加语言约束，避免只改变用户描述而导致输出仍固定为中文。 */
+    private fun buildCharacterSystemPromptForLanguage(language: String): String {
+        val languageName = characterLanguageName(language)
+        return buildCharacterSystemPrompt() + "\n\n重要语言要求：JSON 字段名保持英文，但所有字段值（角色名、描述、设定、示例对话、规则和 mood）必须使用$languageName。不要混用其他语言。"
+    }
+
+    private fun characterLanguageName(language: String): String = when (language.lowercase(Locale.ROOT)) {
+        "en" -> "English"
+        "ja" -> "日本語"
+        "ko" -> "한국어"
+        else -> "中文"
+    }
+
     private fun buildRandomCharacterIdeasSystemPrompt(): String = """你是一个角色创作灵感助手。请随机生成 3 个风格迥异、有创意的角色灵感条目。
 
 你必须严格按照以下 JSON 格式返回，不要包含任何额外文字说明：

@@ -485,14 +485,17 @@ class UnifiedRepository(
      * - 服务器模式：调用 /api/personality/ai-generate，未持久化
      * @return 生成的 CharacterPreset
      */
-    suspend fun aiGenerateCharacter(description: String): Resource<CharacterPreset> =
+    suspend fun aiGenerateCharacter(
+        description: String,
+        language: String = "zh"
+    ): Resource<CharacterPreset> =
         if (isLocal) {
             try {
-                Resource.Success(local.aiGenerateCharacter(description))
+                Resource.Success(local.aiGenerateCharacter(description, language))
             } catch (e: Exception) {
                 Resource.Error(e.message ?: "AI 生成失败")
             }
-        } else remote.aiGenerateCharacter(description)
+        } else remote.aiGenerateCharacter(description, language)
 
     /**
      * 使用 AI 随机生成角色灵感条目（标题 + 描述 + 标签）。

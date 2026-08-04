@@ -140,6 +140,8 @@
 
     <!-- ==================== 本地 AI 模型 ==================== -->
     <string name="localai_saved">已保存</string>
+    <string name="localai_copy_suffix">副本</string>
+    <string name="localai_duplicated">已复制模型：%1$s</string>
     <string name="localai_deleted">已删除</string>
     <string name="localai_set_active">已设为当前模型</string>
     <string name="localai_test_failed">失败: %1$s</string>
