@@ -916,7 +916,14 @@ fun ChatScreen(
                                             messageActionTarget = msg
                                         }
                                     },
-                                    onRegenerate = { viewModel.regenerate() },
+                                    onRegenerate = {
+                                        // 首条 AI 消息（开场白）使用专用开场白重新生成
+                                        if (index == 0 && !msg.isUser) {
+                                            viewModel.regenerateGreeting()
+                                        } else {
+                                            viewModel.regenerate()
+                                        }
+                                    },
                                     onRegenerateTts = { viewModel.regenerateMessageTts(msg) },
                                     onFork = { msg.id?.let { mid -> viewModel.forkFromMessage(mid) { onOpenChat(it) } } },
                                     onCopy = { msg.displayContent },
@@ -6073,6 +6080,78 @@ class ChatViewModel : BaseViewModel() {
         }
     }
 
+    /**
+     * 重新生成开场白（首条 AI 消息）。
+     * 本地模式：删除旧开场白，用 AI 生成新的开场白，流式返回。
+     * 服务器模式：走 regenerate API（传首条消息 id）。
+     */
+    fun regenerateGreeting() {
+        if (_sending.value || runtime.hasBlockingLocalChatJob() || currentSessionId.isBlank()) return
+        // 找到首条 assistant 消息
+        val firstAssistant = _messages.value.firstOrNull { !it.isUser }
+        val messageId = firstAssistant?.id
+        if (messageId.isNullOrBlank()) {
+            showError(string(R.string.chat_no_ai_to_regenerate))
+            return
+        }
+        // 从内存列表移除旧开场白
+        _messages.value = _messages.value.filter { it.id != messageId }
+        generationStopRequested = false
+        _sending.value = true
+        if (isLocalMode) {
+            startLocalChatCollection { chatJob ->
+                val flow = try {
+                    unified.regenerateGreetingStream(
+                        currentSessionId,
+                        ServiceContainer.prefs.getSessionReasoningEffort(currentSessionId)
+                    )
+                } catch (_: kotlinx.coroutines.CancellationException) {
+                    return@startLocalChatCollection
+                } catch (e: Exception) {
+                    _sending.value = false
+                    showError(e.message ?: string(R.string.chat_regenerate_failed))
+                    return@startLocalChatCollection
+                }
+                if (flow == null) {
+                    _sending.value = false
+                    showError(string(R.string.chat_no_ai_model))
+                    return@startLocalChatCollection
+                }
+                try {
+                    flow.collect { event -> handleRealtimeEvent(event, chatJob) }
+                } catch (_: kotlinx.coroutines.CancellationException) {
+                    // 正常取消不显示错误
+                } catch (e: Exception) {
+                    _sending.value = false
+                    _messages.value = _messages.value.filter { it.id != streamingId }
+                    val errMsg = e.message ?: string(R.string.chat_regenerate_failed)
+                    showError(errMsg)
+                    trySendErrorNotification(errMsg)
+                }
+            }
+        } else {
+            launchResult(
+                block = {
+                    unified.regenerateGreeting(
+                        currentSessionId,
+                        messageId,
+                        ServiceContainer.prefs.getSessionReasoningEffort(currentSessionId)
+                    )
+                },
+                onSuccess = {
+                    ServiceContainer.applicationScope.launch {
+                        kotlinx.coroutines.delay(3000)
+                        if (_sending.value) loadMessages()
+                    }
+                },
+                onError = {
+                    _sending.value = false
+                    showError(it)
+                }
+            )
+        }
+    }
+
     /** 停止生成。 */
     fun stop() {
         val sessionId = currentSessionId.ifBlank { return }
@@ -6195,15 +6274,7 @@ class ChatViewModel : BaseViewModel() {
             // 关闭剧情模式时同步关闭实时同步，避免脏状态
             _session.value = _session.value?.copy(plotRealTimeSync = false)
         }
-        launchWith(
-            onError = {
-                // 回滚
-                _session.value = _session.value?.copy(
-                    plotMode = current,
-                    plotRealTimeSync = if (current) _session.value?.plotRealTimeSync else false
-                )
-                showToast(it)
-            },
+        launchResult(
             block = {
                 unified.updateSession(
                     sid,
@@ -6212,12 +6283,26 @@ class ChatViewModel : BaseViewModel() {
                         plotRealTimeSync = if (current) false else _session.value?.plotRealTimeSync
                     )
                 )
+            },
+            onSuccess = {
+                // 开启剧情模式后，持久化成功，立即生成/拉取一次剧情选项
+                if (!current) {
+                    if (isLocalMode) {
+                        regeneratePlotChoices()
+                    } else {
+                        loadPlotChoices()
+                    }
+                }
+            },
+            onError = {
+                // 回滚
+                _session.value = _session.value?.copy(
+                    plotMode = current,
+                    plotRealTimeSync = if (current) _session.value?.plotRealTimeSync else false
+                )
+                showToast(it)
             }
         )
-        // 远程模式开启后异步拉取一次剧情选项
-        if (!current && !isLocalMode) {
-            loadPlotChoices()
-        }
         showToast(
             string(if (!current) R.string.sessions_detail_plot_mode_on else R.string.sessions_detail_plot_mode_off)
         )

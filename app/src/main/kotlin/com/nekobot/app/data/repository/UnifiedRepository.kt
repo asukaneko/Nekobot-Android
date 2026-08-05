@@ -349,6 +349,25 @@ class UnifiedRepository(
     ): Resource<ApiResult> =
         if (isLocal) Resource.Success(local.apiResultOk()) else remote.regenerate(id, messageId, reasoningEffort)
 
+    /**
+     * 重新生成开场白。本地模式返回 Flow，服务器模式返回 null（走 HTTP regenerate）。
+     */
+    suspend fun regenerateGreetingStream(
+        id: String,
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort = com.nekobot.app.data.model.ReasoningEffort.NONE
+    ): Flow<RealtimeEvent>? {
+        if (!isLocal) return null
+        val model = local.getRoutedModel(id, "重新生成开场白") ?: return null
+        return local.regenerateGreeting(id, model, reasoningEffort)
+    }
+
+    suspend fun regenerateGreeting(
+        id: String,
+        messageId: String? = null,
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort = com.nekobot.app.data.model.ReasoningEffort.NONE
+    ): Resource<ApiResult> =
+        if (isLocal) Resource.Success(local.apiResultOk()) else remote.regenerate(id, messageId, reasoningEffort)
+
     suspend fun stopGeneration(id: String): Resource<ApiResult> {
         return if (isLocal) {
             local.stopGeneration(id)

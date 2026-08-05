@@ -3774,6 +3774,171 @@ class LocalRepository(
     }.flowOn(Dispatchers.IO)
 
     /**
+     * 重新生成开场白：删除首条 assistant 消息（旧开场白），
+     * 用角色卡信息构造 prompt 调用 AI 生成新的开场白，流式返回。
+     * 不保存任何 user 消息，仅替换首条 assistant 消息。
+     */
+    fun regenerateGreeting(
+        sessionId: String,
+        activeModel: LocalAiModelEntity,
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort = com.nekobot.app.data.model.ReasoningEffort.NONE
+    ): Flow<RealtimeEvent> = flow {
+        val session = sessionDao.getById(sessionId)
+            ?: run {
+                emit(RealtimeEvent.Error("会话不存在"))
+                emit(RealtimeEvent.StreamEnd(sessionId))
+                return@flow
+            }
+        val character = session.characterId?.let { characterDao.getById(it) }
+
+        // 找到并删除首条 assistant 消息（旧开场白）
+        val messages = messageDao.listBySession(sessionId)
+        val firstAssistant = messages.firstOrNull { it.role == "assistant" }
+        if (firstAssistant != null) {
+            messageDao.deleteById(firstAssistant.id)
+        }
+
+        // 构造开场白生成 prompt：复用 LocalPromptBuilder 的 system 构造，
+        // 但用特殊的 user 指令替代正常用户输入
+        val greetingInstruction = buildString {
+            append("请作为角色生成一个新的开场白。")
+            character?.name?.takeIf { it.isNotBlank() }?.let {
+                append("你是「$it」，请以角色的身份、语气和场景设定，自然地开启一段对话。")
+            }
+            append("直接输出开场白内容，不要加任何解释、标记或 OOC 说明。")
+            append("开场白应该简短自然，展现角色性格特点。")
+        }
+        // 用 LocalPromptBuilder 构造完整消息列表（不含历史，模拟新会话场景）
+        val promptMessages = LocalPromptBuilder.build(
+            session, character, emptyList(), greetingInstruction, emptyList()
+        )
+
+        // 构造 extra 参数
+        val extra = buildMap<String, Any?> {
+            activeModel.temperature?.let { put("temperature", it) }
+            activeModel.maxTokens?.let { put("max_tokens", it) }
+            activeModel.topP?.let { put("top_p", it) }
+            put("reasoning_effort", reasoningEffort.wireValue)
+        }
+
+        // 构造故障转移队列
+        val routePlan = routedChatPlan(sessionId, greetingInstruction)
+        val queue = routePlan.models.let { routed ->
+            if (routed.any { it.id == activeModel.id }) {
+                listOf(activeModel) + routed.filter { it.id != activeModel.id }
+            } else {
+                listOf(activeModel) + routed
+            }
+        }
+
+        val fullContent = StringBuilder()
+        val fullReasoning = StringBuilder()
+        var inputTokens: Int? = null
+        var outputTokens: Int? = null
+        var modelName: String? = null
+        var modelDisplayName: String? = null
+        val streamStartNano = System.nanoTime()
+        var firstChunkNano: Long? = null
+
+        aiClient.chatStreamWithFailover(queue, promptMessages, extra).collect { event ->
+            when (event) {
+                is RealtimeEvent.StreamChunk -> {
+                    if (fullContent.isEmpty()) firstChunkNano = System.nanoTime()
+                    fullContent.append(event.chunk)
+                    emit(event)
+                }
+                is RealtimeEvent.ReasoningChunk -> {
+                    if (reasoningEffort != com.nekobot.app.data.model.ReasoningEffort.NONE) {
+                        fullReasoning.append(event.chunk)
+                        emit(event)
+                    }
+                }
+                is RealtimeEvent.Usage -> {
+                    inputTokens = event.inputTokens
+                    outputTokens = event.outputTokens
+                    modelName = event.model
+                    modelDisplayName = event.modelDisplayName
+                    emit(event)
+                }
+                is RealtimeEvent.Error -> {
+                    emit(event)
+                }
+                is RealtimeEvent.StreamEnd -> {
+                    val content = fullContent.toString().trim()
+                    if (content.isNotEmpty()) {
+                        val usage = resolveLocalTokenUsage(
+                            usage = buildMap {
+                                inputTokens?.let { put("prompt", it) }
+                                outputTokens?.let { put("completion", it) }
+                            },
+                            messages = promptMessages,
+                            outputText = content
+                        )
+                        val durationMs = (System.nanoTime() - streamStartNano) / 1_000_000.0
+                        val ttftMs = firstChunkNano?.let { (it - streamStartNano) / 1_000_000.0 }
+                        // 保存新开场白（作为首条 assistant 消息）
+                        val now = nowIso()
+                        val msgId = UUID.randomUUID().toString()
+                        val msg = LocalMessageEntity(
+                            id = msgId,
+                            sessionId = sessionId,
+                            role = "assistant",
+                            content = content,
+                            reasoningContent = fullReasoning.toString()
+                                .takeIf(String::isNotBlank),
+                            sender = character?.name ?: "assistant",
+                            timestamp = System.currentTimeMillis().toString(),
+                            createdAt = now,
+                            model = modelDisplayName ?: activeModel.name,
+                            inputTokens = usage.inputTokens,
+                            outputTokens = usage.outputTokens
+                        )
+                        messageDao.upsert(msg)
+                        // 如果删除旧开场白后消息表为空，需要把新消息插入到最前面
+                        // Room 不保证插入顺序，但消息列表按 timestamp/createdAt 排序，
+                        // 所以给新开场白一个比所有现有消息更早的时间戳
+                        val remainingMessages = messageDao.listBySession(sessionId)
+                        if (remainingMessages.size > 1) {
+                            // 有其他消息，把开场白的时间戳设为最早
+                            val earliestTs = remainingMessages
+                                .filter { it.id != msgId }
+                                .minOfOrNull { it.timestamp?.toLongOrNull() ?: Long.MAX_VALUE }
+                                ?: System.currentTimeMillis()
+                            messageDao.upsert(msg.copy(
+                                timestamp = (earliestTs - 1).toString(),
+                                createdAt = now
+                            ))
+                        }
+                        sessionDao.touch(
+                            sessionId,
+                            lastMessage = content.take(200),
+                            count = messageDao.countBySession(sessionId),
+                            updatedAt = now
+                        )
+                        // 记录 token 用量
+                        if ((usage.inputTokens ?: 0) > 0 || (usage.outputTokens ?: 0) > 0) {
+                            appendTokenUsageRecord(
+                                sessionId = sessionId,
+                                messageId = msgId,
+                                model = modelDisplayName ?: activeModel.name,
+                                actualModel = modelName ?: activeModel.model,
+                                inputTokens = usage.inputTokens ?: 0,
+                                outputTokens = usage.outputTokens ?: 0,
+                                timestamp = now,
+                                estimated = usage.estimated,
+                                durationMs = durationMs,
+                                ttftMs = ttftMs ?: durationMs
+                            )
+                        }
+                    }
+                    emit(RealtimeEvent.StreamEnd(sessionId))
+                }
+                else -> emit(event)
+            }
+        }
+    }.flowOn(Dispatchers.IO)
+
+    /**
      * 从最后一个 Agent 安全检查点继续；若尚无已完成工具批次，则复用原用户消息重新执行。
      *
      * checkpoint 不为空时通过现有“继续”协议恢复，不重放已经落入 checkpoint 的工具结果。
