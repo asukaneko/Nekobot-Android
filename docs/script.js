@@ -337,9 +337,9 @@
 
   /* ---------- 11. 从 GitHub Releases 拉取更新日志 ---------- */
   const FALLBACK_RELEASES = [
+    { tag_name: 'v0.4.7', published_at: '2026-08-05', body: '- 新增路由可解释性、A/B 测试、RAG 检索增强及自适应 UI 系统\n- 路由决策日志与分析、A/B 测试分流\n- RAG 可调参数、MMR 多样性去重、LLM 重排及引用段落定位\n- 大屏双栏布局、无障碍辅助与跟随系统字号\n- AI 生成角色卡支持中英日韩多语言\n- 本地 AI 模型支持复制\n- 故事图节点时间戳转换为系统时区显示\n- 修复图片扩展名检测，正确识别 WebP 格式\n- 重构剧情选项生成系统与 AI 配置中心文本样式' },
     { tag_name: 'v0.4.6', published_at: '2026-08-03', body: '- 新增跨会话共享工作区与运行诊断中心\n- 实现 Agent 运行安全检查点与中断恢复机制\n- 引入 Android Keystore 加密保护敏感凭据\n- 检测模型拒答占位文本并触发故障转移至下一个模型\n- 增强 OpenAI 兼容性\n- 优化 Agent 会话世界书注入逻辑\n- 将 AI 配置界面硬编码字符串迁移至资源文件并补充多语言支持\n- 移除 search_news 工具' },
     { tag_name: 'v0.4.5', published_at: '2026-08-01', body: '- 支持模型推理/思考内容（reasoning/thinking）的端到端展示\n- 为 HTTP MCP 服务添加自定义请求头支持\n- 优化 Agent 进度卡持久化与流式事件合并机制\n- 增强 Agent 会话体验与消息操作功能' },
-    { tag_name: 'v0.4.4', published_at: '2026-07-30', body: '- 增加智能模型路由与预算提醒\n- 新增本地知识库与 RAG 检索\n- 支持本地任务与工作流后台执行\n- 支持端到端加密增量同步（WebDAV）\n- 支持世界书动态状态触发条件\n- 新增 wenku8 内置浏览器登录功能' },
   ];
   function renderReleases(releases) {
     const container = $('#changelogList');
