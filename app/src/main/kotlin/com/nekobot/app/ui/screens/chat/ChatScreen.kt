@@ -934,8 +934,15 @@ fun ChatScreen(
                                     onToggleSelection = { msg.id?.let { viewModel.toggleSelection(it) } }
                                 )
                             }
-                            // Agent 与本地耗时命令：在用户气泡下方渲染持久化进度卡片。
-                            if (msg.isUser && !msg.thinkingCards.isNullOrEmpty()) {
+                            // 远程模式只有 Agent 会话显示进度卡片；本地模式还需要支持角色/群聊的耗时命令。
+                            if (
+                                msg.isUser &&
+                                shouldRenderProgressCards(
+                                    isLocalMode = ServiceContainer.prefs.isLocalMode,
+                                    sessionMode = session?.sessionMode
+                                ) &&
+                                !msg.thinkingCards.isNullOrEmpty()
+                            ) {
                                 Spacer(Modifier.height(6.dp))
                                 msg.thinkingCards.forEach { card ->
                                     androidx.compose.runtime.key(card.id) {
@@ -2753,6 +2760,12 @@ internal fun resolveProgressCardExpanded(
     isAgent: Boolean,
     expansionOverrides: Map<String, Boolean>
 ): Boolean = expansionOverrides[cardId] ?: !isAgent
+
+/** 进度卡片只属于本地执行链路或远程 Agent 工具链路，远程角色/群聊不展示。 */
+internal fun shouldRenderProgressCards(
+    isLocalMode: Boolean,
+    sessionMode: String?
+): Boolean = isLocalMode || sessionMode.equals("agent", ignoreCase = true)
 
 /** 进度卡片单步渲染：Material Icon + 名称 + 状态色 + 详情摘要，含详情时可点击。 */
 @Composable

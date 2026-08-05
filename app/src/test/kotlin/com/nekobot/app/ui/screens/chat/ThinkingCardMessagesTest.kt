@@ -85,4 +85,12 @@ class ThinkingCardMessagesTest {
             )
         )
     }
+
+    @Test
+    fun hidesProgressCardsForRemoteCharacterAndGroupSessions() {
+        assertFalse(shouldRenderProgressCards(isLocalMode = false, sessionMode = "character"))
+        assertFalse(shouldRenderProgressCards(isLocalMode = false, sessionMode = "group"))
+        assertTrue(shouldRenderProgressCards(isLocalMode = false, sessionMode = "agent"))
+        assertTrue(shouldRenderProgressCards(isLocalMode = true, sessionMode = "character"))
+    }
 }
