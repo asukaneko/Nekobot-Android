@@ -127,7 +127,7 @@ fun AiConfigCenterScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.aiconfig_center_title)) },
+                title = { Text(stringResource(R.string.aiconfig_center_title), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -255,7 +255,7 @@ fun AiConfigCenterScreen(
     }
 }
 
-/** 分组标题：小号中等字重，使用次级文字色，营造系统设置页的分组感。字体跟随全局设置。 */
+/** 分组标题：小号半粗字重，使用次级文字色，营造系统设置页的分组感。字体跟随全局设置。 */
 @Composable
 private fun ConfigSectionTitle(
     text: String,
@@ -264,7 +264,7 @@ private fun ConfigSectionTitle(
     Text(
         text = text,
         style = MaterialTheme.typography.labelMedium.copy(
-            fontWeight = FontWeight.Medium,
+            fontWeight = FontWeight.SemiBold,
             fontSize = 13.sp,
             lineHeight = 18.sp,
             letterSpacing = 0.4.sp
@@ -314,23 +314,16 @@ private fun ConfigRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 17.sp,
-                    lineHeight = 22.sp
-                ),
+                style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Spacer(Modifier.height(2.dp))
             Text(
                 text = subtitle,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontWeight = FontWeight.Normal,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp
-                ),
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -341,10 +334,7 @@ private fun ConfigRow(
             Spacer(Modifier.width(8.dp))
             Text(
                 text = status,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontWeight = FontWeight.Normal,
-                    fontSize = 13.sp
-                ),
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
