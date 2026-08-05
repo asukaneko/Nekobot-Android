@@ -420,20 +420,20 @@ fun getGlobalPlotGraphManager(): PlotGraphManager = globalPlotGraphManager
 // AI 选项生成器
 // ============================================================================
 
-/** 默认选项 */
+/** 默认选项（与原仓库 choice_generator.py 对齐） */
 private val DEFAULT_CHOICES = listOf(
-    mapOf("level" to "normal", "text" to "继续对话", "intent" to "respond"),
-    mapOf("level" to "important", "text" to "推进当前话题", "intent" to "advance"),
-    mapOf("level" to "turning_point", "text" to "做出重大决定", "intent" to "turn")
+    mapOf("level" to "normal", "text" to "我拉起你，说走，带你去个地方。", "intent" to "顺势推进，引入一个新的去处把场景往前带"),
+    mapOf("level" to "important", "text" to "对了，我一直想跟你聊聊另一件事。", "intent" to "主动开辟新话题，把对话推向尚未触及的方向"),
+    mapOf("level" to "turning_point", "text" to "几天后，我带着一个没人知道的消息回来找你。", "intent" to "时间跳跃并引入突发事件，打破当前格局")
 )
 
 /** 风格预设 */
 private val STYLE_PRESETS = mapOf(
     "default" to "",
-    "sweet" to "风格：甜蜜温馨，选项偏向情感表达和亲密互动。",
-    "suspense" to "风格：悬疑紧张，选项偏向探索未知和冒险。",
-    "daily" to "风格：日常生活，选项偏向平凡但温暖的互动。",
-    "dramatic" to "风格：戏剧冲突，选项偏向对抗和抉择。"
+    "sweet" to "整体氛围偏甜蜜暧昧：三个选择都带上恰到好处的心动、亲近或试探，在推进剧情的同时让彼此的关系更靠近一步，语气温柔、有暖意。",
+    "suspense" to "整体氛围偏悬疑紧张：三个选择都带上不安、悬念或压迫感，引入疑点、未解之谜或潜在危机，让玩家有'接下来会发生什么'的紧张预期。",
+    "daily" to "整体氛围偏日常轻松：三个选择自然、生活化、带点小趣味，像真实相处里的闲聊与小事，不必强行制造大冲突，但仍要带来新的小进展。",
+    "dramatic" to "整体氛围偏戏剧转折：三个选择都倾向于制造强烈的情节起伏，用意外、抉择、冲突或重大事件推动剧情，让局面产生明显变化。"
 )
 
 /**
@@ -546,22 +546,50 @@ class PlotChoiceGenerator(
     }
 
     private fun buildSystemPrompt(style: String, outline: String = ""): String {
-        val base = """你是一个剧情选项生成器。根据当前对话，生成 3 个力度递增的选项。
+        val base = """你是一个互动故事分支设计师。根据当前的对话内容、角色状态和最近的剧情进展，为玩家生成 3 个能让故事向前推进的剧情选择。
 
-铁律：
-1. 必须推进剧情，不能原地踏步
-2. 三个选项力度递增：normal（日常）→ important（重要）→ turning_point（转折）
-3. 选项文本用第一人称（"我..."），可直接发送
+非常重要：每个选择的 text 会在玩家点击后，被前端原样作为玩家消息发送给角色。因此 text 必须是"玩家可以直接发出去的话或动作"，不能是给玩家看的摘要、指令或旁白。
 
-返回 JSON 数组：
-[{"level":"normal","text":"选项文本","intent":"respond"}, ...]
+【核心铁律——必须推进剧情】
+每一个选择都必须引入一个"上一轮还不存在的新东西"，从下列至少一类中取材：
+  - 新的行动目标或动作（去做一件具体的事）
+  - 一个尚未聊过的新话题
+  - 场景或地点的转移（换个地方、出门、进入新环境）
+  - 时间推移或跳跃（过了一会儿 / 几天后 / 第二天）
+  - 新出场的人物或新的关系进展
+  - 一个突发的外部事件
+严禁以下"原地打转"的写法：
+  - 复述、改写角色刚说过的话，或仅仅对刚才那句话做出情绪反应
+  - 反复追问同一件已经在聊的事
+  - 停留在同一个场景、同一个情绪里继续纠缠而不带来任何新进展
+  - 含糊的表态（"我懂你""我会陪着你"这类不推动任何事的话）
+如果你发现三个选择都还困在当前这一刻，请推翻重写，强行把故事往前带。
 
-只返回 JSON，不要其他文字。"""
+【三个选择的推进力度，从小到大】
+1. normal（顺势推进）：接着当前情境自然往下走一小步，但要带出一个新的小细节或下一步动作。
+2. important（主动开辟）：主动开启一个新话题、转移场景，或推进彼此关系到新的阶段。
+3. turning_point（打破格局）：用时间跳跃、突发事件、新人物登场或一个重大决定，彻底改变当前局面。
+
+【文本写法要求】
+- text 必须使用第一人称或直接动作，例如："我拉起你往门外走。"、"我想跟你说件事，关于……"。
+- 禁止使用"告诉她……""问她是否……""向她表达……""选择……"这类元指令句式。
+- 禁止出现"她/他/角色/玩家/选项"等面向系统或第三人称的描述；要像真实聊天消息一样自然。
+- 三个选择之间要彼此不同，分别指向不同的剧情方向，不要只是同一句话的三种语气。
+
+返回格式为 JSON 数组，每个元素包含：
+- level: 选择级别（normal / important / turning_point）
+- text: 点击后直接发送给角色的玩家消息（简短，建议 8-24 字）
+- intent: 选择的意图说明（一句话描述这个选择会把剧情带向哪个新方向）
+
+只返回 JSON 数组，不要包含其他内容。"""
         val styleHint = STYLE_PRESETS[style] ?: ""
         val outlineHint = if (outline.isNotBlank()) {
-            "\n\n【剧情大纲已启用】本次生成的 3 个选项必须契合下方「剧情大纲」的整体走向与既定目标，但每个选项仍需引入新的推进元素，禁止直接复述大纲原文。"
+            "\n\n【剧情大纲已启用】\n本次会话存在一份用户提供的剧情大纲。生成的 3 个选择必须契合该大纲的整体走向与既定目标，但每个选择仍必须引入一个新的推进元素（新动作/新话题/新场景/时间推移/新人物/突发事件），禁止直接复述大纲原文，也不要把三个选择都写成大纲的同一种实现路径。上文'必须推进剧情'的铁律与文本写法要求仍然全部适用。"
         } else ""
-        return base + outlineHint + (if (styleHint.isNotEmpty()) "\n\n$styleHint" else "")
+        val styleSection = if (styleHint.isNotEmpty()) {
+            "\n\n【本次剧情风格要求】\n$styleHint\n注意：风格只影响三个选择的语气与取向，上文'必须推进剧情'的铁律与文本写法要求仍然全部适用。"
+        } else ""
+        return base + outlineHint + styleSection
     }
 
     private fun buildUserPrompt(
@@ -572,22 +600,7 @@ class PlotChoiceGenerator(
         outline: String = ""
     ): String {
         val parts = mutableListOf<String>()
-        parts.add("角色回复:\n$responseText")
-
-        if (recentHistory.isNotEmpty()) {
-            val historyText = recentHistory.takeLast(8).joinToString("\n") { msg ->
-                val role = if (msg["role"] == "user") "玩家" else "角色"
-                "$role: ${msg["content"] ?: ""}"
-            }
-            parts.add("最近对话:\n$historyText")
-        }
-
-        (turnContext["mood"] as? String)?.let { parts.add("当前心情: $it") }
-        @Suppress("UNCHECKED_CAST")
-        (turnContext["relationship"] as? Map<String, Any>)?.let {
-            parts.add("关系: 好感${it["affection"]}/信任${it["trust"]}")
-        }
-        (sessionContext["current_arc"] as? String)?.let { if (it.isNotEmpty()) parts.add("当前剧情弧: $it") }
+        parts.add("当前对话内容：\n${responseText.take(800)}")
 
         // 剧情大纲：用户导入/粘贴，选项需围绕此走向推进
         // 上限 8000 字符（约 8k token），覆盖大多数 5k-7k 字大纲，对上下文窗口压力可控
@@ -596,6 +609,22 @@ class PlotChoiceGenerator(
             parts.add("剧情大纲（生成选项时需契合此整体走向，但每个选择仍必须引入新的推进，不要直接复述大纲原文）：\n$truncated")
         }
 
+        if (recentHistory.isNotEmpty()) {
+            val historyText = recentHistory.takeLast(8).joinToString("\n") { msg ->
+                val role = if (msg["role"] == "user") "玩家" else "角色"
+                "$role：${(msg["content"] ?: "").take(120)}"
+            }
+            parts.add("最近几轮对话（已经聊过/做过的内容，新选择必须避免重复这些，并在此基础上把剧情往前推进）：\n$historyText")
+        }
+
+        (turnContext["mood"] as? String)?.let { if (it.isNotEmpty()) parts.add("角色当前心情：$it") }
+        @Suppress("UNCHECKED_CAST")
+        (turnContext["relationship"] as? Map<String, Any>)?.let {
+            parts.add("关系状态：好感${it["affection"]}/信任${it["trust"]}")
+        }
+        (sessionContext["current_arc"] as? String)?.let { if (it.isNotEmpty()) parts.add("当前剧情线：$it") }
+
+        parts.add("\n请根据以上信息生成 3 个能推进剧情的分支选择。每个选择都必须引入一个上文还没出现过的新东西（新动作/新话题/新场景/时间推移/新人物/突发事件），不要在当前这一刻原地打转。注意：text 会被直接发给角色，必须写成玩家本人可以直接发送的消息。")
         return parts.joinToString("\n\n")
     }
 
@@ -608,7 +637,7 @@ class PlotChoiceGenerator(
                 mapOf(
                     "level" to ((item["level"] as? String) ?: "normal"),
                     "text" to ((item["text"] as? String) ?: ""),
-                    "intent" to ((item["intent"] as? String) ?: "respond")
+                    "intent" to ((item["intent"] as? String) ?: "")
                 )
             }.filter { it["text"]!!.isNotEmpty() }
         } catch (e: Exception) {
