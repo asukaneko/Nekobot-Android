@@ -88,4 +88,12 @@
     <string name="character_export_failed">导出失败</string>
     <string name="character_export_success_msg">已导出到下载目录：\n%1$s</string>
     <string name="character_export_failed_msg">导出失败，请检查存储权限后重试。</string>
+    <string name="character_translate">翻译角色卡</string>
+    <string name="character_translate_target_language">选择目标语言</string>
+    <string name="character_translate_language_zh">中文</string>
+    <string name="character_translate_language_en">English</string>
+    <string name="character_translate_language_ja">日本語</string>
+    <string name="character_translate_language_ko">한국어</string>
+    <string name="character_translate_start">开始翻译</string>
+    <string name="character_translate_success">翻译完成，请点击保存</string>
 </resources>

@@ -516,6 +516,19 @@ class UnifiedRepository(
             }
         } else remote.aiGenerateCharacter(description, language)
 
+    /** 翻译完整角色卡，按当前运行模式使用本地 AI 或服务器 AI。 */
+    suspend fun aiTranslateCharacter(
+        character: CharacterPreset,
+        targetLanguage: String
+    ): Resource<CharacterPreset> =
+        if (isLocal) {
+            try {
+                Resource.Success(local.aiTranslateCharacter(character, targetLanguage))
+            } catch (e: Exception) {
+                Resource.Error(e.message ?: "AI 翻译失败")
+            }
+        } else remote.aiTranslateCharacter(character, targetLanguage)
+
     /**
      * 使用 AI 随机生成角色灵感条目（标题 + 描述 + 标签）。
      * 本地模式直接调用 LLM；远程模式当前无对应接口，返回空列表由 UI 回退到内置种子。

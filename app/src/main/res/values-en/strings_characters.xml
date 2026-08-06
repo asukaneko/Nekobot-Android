@@ -87,4 +87,12 @@
     <string name="character_export_failed">Export failed</string>
     <string name="character_export_success_msg">Exported to Downloads:\n%1$s</string>
     <string name="character_export_failed_msg">Export failed. Please check storage permissions and retry.</string>
+    <string name="character_translate">Translate character card</string>
+    <string name="character_translate_target_language">Choose target language</string>
+    <string name="character_translate_language_zh">Chinese</string>
+    <string name="character_translate_language_en">English</string>
+    <string name="character_translate_language_ja">Japanese</string>
+    <string name="character_translate_language_ko">Korean</string>
+    <string name="character_translate_start">Translate</string>
+    <string name="character_translate_success">Translation complete. Tap save to keep it.</string>
 </resources>

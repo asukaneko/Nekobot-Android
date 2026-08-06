@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.*
@@ -187,6 +188,53 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
                 onSuccess = { onSuccess() }
             )
         }
+    }
+
+    /** 调用 AI 翻译角色卡并回填编辑字段，翻译结果由用户点击保存后持久化。 */
+    fun translate(targetLanguage: String) {
+        if (isNew) return
+        val source = (_character.value ?: CharacterPreset()).copy(
+            name = name.value,
+            description = description.value,
+            avatar = avatar.value,
+            portrait = portrait.value,
+            basicInfo = basicInfo.value,
+            personality = personality.value,
+            firstMessage = firstMessage.value,
+            scenario = scenario.value,
+            exampleDialogues = dialogExamples.value,
+            responseFormat = responseFormat.value,
+            rules = rulesText.value.lines().map { it.trim() }.filter { it.isNotEmpty() },
+            tags = tagsText.value.split(",").map { it.trim() }.filter { it.isNotEmpty() },
+            state = com.google.gson.JsonObject().apply {
+                addProperty("affection", affection.value)
+                addProperty("trust", trust.value)
+                addProperty("familiarity", familiarity.value)
+                addProperty("dependency", dependency.value)
+                addProperty("security", security.value)
+                addProperty("jealousy", jealousy.value)
+                addProperty("mood", mood.value)
+            },
+            systemPrompt = systemPrompt.value
+        )
+        launchResult(
+            block = { unified.aiTranslateCharacter(source, targetLanguage) },
+            onSuccess = { translated ->
+                _character.value = translated
+                name.value = translated.name.orEmpty()
+                description.value = translated.description.orEmpty()
+                basicInfo.value = translated.basicInfo.orEmpty()
+                personality.value = translated.personality.orEmpty()
+                firstMessage.value = translated.firstMessage.orEmpty()
+                scenario.value = translated.scenario.orEmpty()
+                dialogExamples.value = translated.exampleDialogues.orEmpty()
+                responseFormat.value = translated.responseFormat.orEmpty()
+                rulesText.value = translated.rules.orEmpty().joinToString("\n")
+                tagsText.value = translated.tags.orEmpty().joinToString(", ")
+                systemPrompt.value = translated.systemPrompt.orEmpty()
+                showToast(string(R.string.character_translate_success))
+            }
+        )
     }
 
     /** 删除当前角色 */
@@ -360,6 +408,8 @@ fun CharacterDetailScreen(
     val mood by vm.mood.collectAsState()
 
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showTranslateDialog by remember { mutableStateOf(false) }
+    var selectedLanguage by remember { mutableStateOf("en") }
 
     val isNew = characterId == "new"
     val context = LocalContext.current
@@ -437,6 +487,15 @@ fun CharacterDetailScreen(
                     }
                 },
                 actions = {
+                    if (!isNew) {
+                        IconButton(onClick = { showTranslateDialog = true }) {
+                            Icon(
+                                Icons.Filled.Language,
+                                contentDescription = stringResource(R.string.character_translate),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                     IconButton(onClick = { vm.save(onBack) }) {
                         Icon(Icons.Filled.Save, contentDescription = stringResource(R.string.common_save), tint = MaterialTheme.colorScheme.primary)
                     }
@@ -584,6 +643,50 @@ fun CharacterDetailScreen(
                 vm.delete(onBack)
             },
             onCancel = { showDeleteDialog = false }
+        )
+    }
+
+    if (showTranslateDialog) {
+        val languages = listOf(
+            "zh" to stringResource(R.string.character_translate_language_zh),
+            "en" to stringResource(R.string.character_translate_language_en),
+            "ja" to stringResource(R.string.character_translate_language_ja),
+            "ko" to stringResource(R.string.character_translate_language_ko)
+        )
+        AlertDialog(
+            onDismissRequest = { showTranslateDialog = false },
+            title = { Text(stringResource(R.string.character_translate_target_language)) },
+            text = {
+                Column {
+                    languages.forEach { (code, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedLanguage = code },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedLanguage == code,
+                                onClick = { selectedLanguage = code }
+                            )
+                            Text(label)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showTranslateDialog = false
+                    vm.translate(selectedLanguage)
+                }) {
+                    Text(stringResource(R.string.character_translate_start))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTranslateDialog = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
         )
     }
 

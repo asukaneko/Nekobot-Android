@@ -5407,6 +5407,42 @@ class LocalRepository(
         gson.fromJson(obj, CharacterPreset::class.java)
     }
 
+    /** 使用本地 AI 翻译角色卡字段，不持久化，由详情页回填后交给用户确认保存。 */
+    suspend fun aiTranslateCharacter(character: CharacterPreset, targetLanguage: String): CharacterPreset = withContext(Dispatchers.IO) {
+        val languageName = characterLanguageName(targetLanguage)
+        val translatableFields = listOf(
+            "name", "description", "basicInfo", "personality", "scenario", "firstMessage",
+            "exampleDialogues", "responseFormat", "rules", "tags", "systemPrompt"
+        )
+        val source = gson.toJsonTree(character).asJsonObject
+        source.remove("id")
+        source.remove("avatar")
+        source.remove("portrait")
+        source.remove("state")
+        val systemPrompt = """
+            你是专业的角色卡翻译器。请将输入 JSON 中的角色卡内容翻译为 $languageName。
+            只翻译字段值，不改变 JSON 字段名、数据类型或字段结构。只返回一个 JSON 对象，不要 Markdown 或解释。
+            必须翻译的字段：${translatableFields.joinToString(", ")}。
+            保留 {{user}}、{{char}}、<user>、<assistant>、Markdown 标记、变量、占位符和换行结构；不要翻译头像图标、图片路径、ID、数值状态。
+            空字段保持为空，数组字段仍然返回数组。请让名字、首条消息、示例对话和行为规则自然符合目标语言。
+        """.trimIndent()
+        val messages = listOf(
+            mapOf("role" to "system", "content" to systemPrompt),
+            mapOf("role" to "user", "content" to "请翻译以下角色卡 JSON，只返回翻译后的字段 JSON：\n\n${source}")
+        )
+        val execution = executeChatOnceViaQueue(messages)
+        val result = execution.value
+        recordFailoverTokenUsage(execution, "web", TokenStatsManager.PURPOSE_UTILITY)
+        val translated = JsonParser.parseString(stripMarkdownCodeFence(result.content)).asJsonObject
+        val merged = gson.toJsonTree(character).asJsonObject
+        translatableFields.forEach { field ->
+            if (translated.has(field) && !translated.get(field).isJsonNull) {
+                merged.add(field, translated.get(field))
+            }
+        }
+        gson.fromJson(merged, CharacterPreset::class.java)
+    }
+
     /**
      * AI 随机生成角色灵感条目（标题 + 描述 + 标签）。
      * 使用 chat 故障转移队列，生成 3 个互不重复、风格差异明显的角色灵感。

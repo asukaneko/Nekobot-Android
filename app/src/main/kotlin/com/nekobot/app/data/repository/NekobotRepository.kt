@@ -273,6 +273,31 @@ class NekobotRepository(
         }
     }
 
+    /** 使用服务器 AI 翻译角色卡，并保留服务端返回的完整字段。 */
+    suspend fun aiTranslateCharacter(character: CharacterPreset, targetLanguage: String): Resource<CharacterPreset> {
+        val body = gson.toJsonTree(
+            mapOf(
+                "character" to character,
+                "target_language" to targetLanguage
+            )
+        )
+        val raw: Resource<JsonElement> = safeCall { api.aiTranslateCharacter(body) }
+        return when (raw) {
+            is Resource.Success -> {
+                val obj = raw.data?.takeIf { it.isJsonObject }?.asJsonObject
+                val success = obj?.get("success")?.asBoolean ?: true
+                if (!success) {
+                    Resource.Error(obj?.get("error")?.asString ?: "AI 翻译失败")
+                } else {
+                    val charEl = obj?.get("character") ?: obj
+                    Resource.Success(extractPreset(charEl ?: JsonParser.parseString("{}")))
+                }
+            }
+            is Resource.Error -> raw
+            is Resource.Loading -> raw
+        }
+    }
+
     /**
      * 上传角色卡文件到 /api/personality/import 解析（不保存）。
      * 服务器返回 {"success": true, "character": {...}}，这里提取 character 对象。

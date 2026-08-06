@@ -147,6 +147,10 @@ interface ApiService {
     @POST("api/personality/ai-generate")
     suspend fun aiGenerateCharacter(@Body body: Map<String, String>): Response<JsonElement>
 
+    /** 使用 AI 翻译角色卡可翻译字段，返回完整角色卡。 */
+    @POST("api/personality/ai-translate")
+    suspend fun aiTranslateCharacter(@Body body: JsonElement): Response<JsonElement>
+
     // ==================== 世界书 ====================
     @GET("api/world-books")
     suspend fun listWorldBooks(): Response<List<WorldBook>>
