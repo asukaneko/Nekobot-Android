@@ -18,6 +18,34 @@ import java.util.zip.ZipOutputStream
 class LocalAgentToolingTest {
 
     @Test
+    fun agentBasePromptIsGlobalAndPrecedesDynamicToolInstructions() {
+        val promptStack = PromptStack().apply {
+            add(
+                key = "skills.available",
+                content = "可用技能说明",
+                priority = PromptStack.Priority.TOOL_INSTRUCTIONS,
+                scope = "global"
+            )
+            addLocalAgentBasePrompt()
+        }
+
+        val basePrompt = promptStack.get(LOCAL_AGENT_BASE_PROMPT_KEY)
+        assertNotNull(basePrompt)
+        assertEquals(PromptStack.Priority.SAFETY, basePrompt?.priority)
+        assertEquals("global", basePrompt?.scope)
+        assertTrue(basePrompt?.content.orEmpty().contains("/workspace"))
+        assertTrue(basePrompt?.content.orEmpty().contains("shared://"))
+        assertTrue(basePrompt?.content.orEmpty().contains("运行时安全策略和确认流程"))
+
+        val rendered = promptStack.render()
+        assertTrue(rendered.indexOf("## $LOCAL_AGENT_BASE_PROMPT_KEY") >= 0)
+        assertTrue(
+            rendered.indexOf("## $LOCAL_AGENT_BASE_PROMPT_KEY") <
+                rendered.indexOf("## skills.available")
+        )
+    }
+
+    @Test
     fun sendMessageToolContentBecomesVisibleReplyWhenModelEndsWithEmptyContent() {
         val result = ToolLoopResult(
             finalContent = "",

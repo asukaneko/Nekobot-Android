@@ -40,6 +40,7 @@ import com.nekobot.app.data.local.ai.AbTestSplitter
 import com.nekobot.app.data.local.ai.RoutingDecisionLogger
 import com.nekobot.app.data.local.ai.TokenStatsManager
 import com.nekobot.app.data.local.ai.currentLocalContextTokens
+import com.nekobot.app.data.local.ai.addLocalAgentBasePrompt
 import com.nekobot.app.data.local.ai.decodeThinkingCardsForUi
 import com.nekobot.app.data.local.ai.encodeToolCallHistory
 import com.nekobot.app.data.local.ai.toPersistedProgressCard
@@ -4350,6 +4351,7 @@ class LocalRepository(
         ctx.metadata["session_mode"] = session.sessionMode
         ctx.metadata.putAll(internalMetadata)
         if (session.sessionMode.equals("agent", ignoreCase = true)) {
+            ctx.promptStack.addLocalAgentBasePrompt()
             val skillsPrompt = buildEnabledSkillsPrompt()
             if (skillsPrompt.isNotBlank()) {
                 ctx.promptStack.add(
