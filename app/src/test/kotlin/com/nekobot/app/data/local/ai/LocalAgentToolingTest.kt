@@ -102,8 +102,31 @@ class LocalAgentToolingTest {
         assertTrue("read_image" in names)
         assertTrue("workspace_read_file" in names)
         assertTrue("workspace_extract_epub" in names)
+        assertTrue("android_device_info" in names)
+        assertTrue("android_battery_status" in names)
+        assertTrue("android_clipboard_read" in names)
+        assertTrue("android_clipboard_write" in names)
+        assertTrue("android_open_url" in names)
+        assertTrue("android_open_app" in names)
+        assertTrue("android_open_settings" in names)
+        assertTrue("android_create_calendar_event" in names)
+        assertTrue("android_set_alarm" in names)
+        assertTrue("android_volume" in names)
         assertFalse("save_to_memory" in names)
         assertEquals(names.distinct().size, names.size)
+
+        val calendarFunction = buildLocalAgentToolDefinitions()
+            .mapNotNull { it["function"] as? Map<*, *> }
+            .first { it["name"] == "android_create_calendar_event" }
+        val calendarParameters = calendarFunction["parameters"] as Map<*, *>
+        assertEquals(listOf("start_time", "end_time"), calendarParameters["required"])
+
+        val settingsFunction = buildLocalAgentToolDefinitions()
+            .mapNotNull { it["function"] as? Map<*, *> }
+            .first { it["name"] == "android_open_settings" }
+        val settingsProperties = (settingsFunction["parameters"] as Map<*, *>)["properties"] as Map<*, *>
+        assertTrue("target" in settingsProperties)
+        assertTrue("package_name" in settingsProperties)
 
         val browserFunction = buildLocalAgentToolDefinitions()
             .mapNotNull { it["function"] as? Map<*, *> }

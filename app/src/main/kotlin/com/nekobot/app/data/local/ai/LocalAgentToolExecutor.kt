@@ -41,7 +41,17 @@ internal val localExecutableToolIds = setOf(
     "workspace_send_file",
     "workspace_parse_file",
     "workspace_extract_epub",
-    "workspace_file_info"
+    "workspace_file_info",
+    "android_device_info",
+    "android_battery_status",
+    "android_clipboard_read",
+    "android_clipboard_write",
+    "android_open_url",
+    "android_open_app",
+    "android_open_settings",
+    "android_create_calendar_event",
+    "android_set_alarm",
+    "android_volume"
 )
 
 internal val localSkillToolIds = setOf(
@@ -140,6 +150,14 @@ internal class LocalAgentToolExecutor(
     private val gson = Gson()
     private val workspace = workspaceRoot?.canonicalFile
     private val sharedWorkspace = sharedWorkspaceRoot?.canonicalFile
+    private val androidToolExecutor by lazy {
+        LocalAndroidToolExecutor(
+            context = ServiceContainer.appContext,
+            sessionId = sessionId,
+            authorizationManager = authorizationManager,
+            onConfirmationRequired = onConfirmationRequired
+        )
+    }
 
     fun execute(toolName: String, args: Map<String, Any>): Map<String, Any> {
         if (generationController.isStopped) return stoppedFailure()
@@ -167,6 +185,16 @@ internal class LocalAgentToolExecutor(
                 "workspace_send_file" -> sendWorkspaceFile(args)
                 "workspace_extract_epub" -> extractWorkspaceEpub(args)
                 "workspace_file_info" -> workspaceFileInfo(args)
+                "android_device_info",
+                "android_battery_status",
+                "android_clipboard_read",
+                "android_clipboard_write",
+                "android_open_url",
+                "android_open_app",
+                "android_open_settings",
+                "android_create_calendar_event",
+                "android_set_alarm",
+                "android_volume" -> androidToolExecutor.execute(toolName, args)
                 else -> failure("本地模式不支持工具: $toolName")
             }
         } catch (e: Exception) {

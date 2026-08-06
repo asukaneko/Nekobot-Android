@@ -463,8 +463,109 @@ object BuiltinTools {
         )
     )
 
+    /** Android 原生能力：只通过公开 Android API 或系统确认页工作，不绕过权限。 */
+    private val androidTools = listOf(
+        BuiltinToolSpec(
+            id = "android_device_info",
+            name = "读取 Android 设备信息",
+            description = "读取当前设备型号、Android 版本、网络类型、语言、时区和省电模式等非敏感状态。",
+            parametersJson = params(emptyMap())
+        ),
+        BuiltinToolSpec(
+            id = "android_battery_status",
+            name = "读取 Android 电池状态",
+            description = "读取当前电量、充电状态、温度、电压、电池健康度和省电模式。",
+            parametersJson = params(emptyMap())
+        ),
+        BuiltinToolSpec(
+            id = "android_clipboard_read",
+            name = "读取系统剪贴板",
+            description = "在用户授权后读取 Android 系统剪贴板中的文本；可能包含敏感信息，只有任务确实需要时才能调用。",
+            parametersJson = params(emptyMap())
+        ),
+        BuiltinToolSpec(
+            id = "android_clipboard_write",
+            name = "写入系统剪贴板",
+            description = "将用户明确要求保存的文本写入 Android 系统剪贴板。",
+            parametersJson = params(
+                mapOf("text" to mapOf("type" to "string", "description" to "要写入剪贴板的文本")),
+                listOf("text")
+            )
+        ),
+        BuiltinToolSpec(
+            id = "android_open_url",
+            name = "打开 Android 链接",
+            description = "通过 Android 系统打开 http、https、mailto、tel 或 geo 链接；不会读取网页内容，也不会自动确认外部页面上的操作。",
+            parametersJson = params(
+                mapOf("url" to mapOf("type" to "string", "description" to "要打开的链接")),
+                listOf("url")
+            )
+        ),
+        BuiltinToolSpec(
+            id = "android_open_app",
+            name = "打开 Android 应用",
+            description = "按用户提供的 package_name 启动已安装应用；不会模拟点击或执行目标应用内的后续操作。",
+            parametersJson = params(
+                mapOf("package_name" to mapOf("type" to "string", "description" to "Android 应用包名")),
+                listOf("package_name")
+            )
+        ),
+        BuiltinToolSpec(
+            id = "android_open_settings",
+            name = "打开 Android 系统设置",
+            description = "打开白名单内的 Android 设置页面：main、wifi、bluetooth、display、sound、battery、location、accessibility、language、app 或 notifications。",
+            parametersJson = params(
+                mapOf(
+                    "target" to mapOf("type" to "string", "description" to "设置页面名称，默认 main"),
+                    "package_name" to mapOf("type" to "string", "description" to "target 为 app 或 notifications 时的应用包名")
+                )
+            )
+        ),
+        BuiltinToolSpec(
+            id = "android_create_calendar_event",
+            name = "创建日历事件入口",
+            description = "打开 Android 日历的创建事件页面并填入内容；最终保存由系统日历页面和用户确认完成，不直接绕过日历权限。时间使用毫秒时间戳。",
+            parametersJson = params(
+                mapOf(
+                    "title" to mapOf("type" to "string", "description" to "事件标题"),
+                    "description" to mapOf("type" to "string", "description" to "事件描述"),
+                    "location" to mapOf("type" to "string", "description" to "事件地点"),
+                    "start_time" to mapOf("type" to "integer", "description" to "开始时间，Unix 毫秒时间戳"),
+                    "end_time" to mapOf("type" to "integer", "description" to "结束时间，Unix 毫秒时间戳"),
+                    "all_day" to mapOf("type" to "boolean", "description" to "是否全天事件")
+                ),
+                listOf("start_time", "end_time")
+            )
+        ),
+        BuiltinToolSpec(
+            id = "android_set_alarm",
+            name = "设置闹钟入口",
+            description = "打开 Android 时钟的设置闹钟页面并填入时间和标签；最终保存由系统时钟页面和用户确认完成。",
+            parametersJson = params(
+                mapOf(
+                    "hour" to mapOf("type" to "integer", "description" to "小时，0-23"),
+                    "minute" to mapOf("type" to "integer", "description" to "分钟，0-59"),
+                    "message" to mapOf("type" to "string", "description" to "闹钟标签")
+                ),
+                listOf("hour", "minute")
+            )
+        ),
+        BuiltinToolSpec(
+            id = "android_volume",
+            name = "读取或设置 Android 音量",
+            description = "读取或设置 music、ring、notification、alarm、system、voice_call 音频流的音量。设置前必须确认用户确实要求改变设备音量。",
+            parametersJson = params(
+                mapOf(
+                    "action" to mapOf("type" to "string", "description" to "get 或 set，默认 get"),
+                    "stream" to mapOf("type" to "string", "description" to "音频流，默认 music"),
+                    "level" to mapOf("type" to "integer", "description" to "set 时的音量等级，范围由设备返回的 max_level 决定")
+                )
+            )
+        )
+    )
+
     /** 全部内置工具列表。 */
-    val all: List<BuiltinToolSpec> = standardTools + workspaceTools
+    val all: List<BuiltinToolSpec> = standardTools + workspaceTools + androidTools
 
     /** 判断 id 是否为内置工具。 */
     fun isBuiltin(id: String): Boolean = all.any { it.id == id }
