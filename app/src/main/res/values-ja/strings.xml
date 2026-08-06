@@ -167,4 +167,6 @@
     <string name="update_open_in_browser">ブラウザで開く</string>
     <string name="update_no_asset">このリリースには APK がありません、GitHub をご確認ください</string>
     <string name="update_view_releases">Releases ページを見る</string>
+    <string name="settings_recent_sessions_include_archived">最近のチャットにアーカイブ済みを表示</string>
+    <string name="settings_recent_sessions_include_archived_desc">有効にすると、アーカイブ済みのチャットもホーム画面の最近のチャット一覧に表示します</string>
 </resources>

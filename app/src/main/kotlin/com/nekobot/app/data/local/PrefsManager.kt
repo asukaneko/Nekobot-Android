@@ -6,6 +6,9 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.reflect.TypeToken
 import com.nekobot.app.data.local.security.SecurePreferenceStore
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * 运行模式：本地模式直连 AI API + Room 存储；服务器模式走后端。
@@ -142,6 +145,20 @@ class PrefsManager(context: Context) {
         get() = ChatInputLayoutMode.fromStorage(prefs.getString(KEY_CHAT_INPUT_LAYOUT, null))
         set(value) {
             prefs.edit().putString(KEY_CHAT_INPUT_LAYOUT, value.name).apply()
+        }
+
+    /** 首页“最近会话”是否包含手动归档的会话。 */
+    private val _recentSessionsIncludeArchived = MutableStateFlow(
+        prefs.getBoolean(KEY_RECENT_SESSIONS_INCLUDE_ARCHIVED, false)
+    )
+    val recentSessionsIncludeArchivedFlow: StateFlow<Boolean> =
+        _recentSessionsIncludeArchived.asStateFlow()
+
+    var recentSessionsIncludeArchived: Boolean
+        get() = _recentSessionsIncludeArchived.value
+        set(value) {
+            _recentSessionsIncludeArchived.value = value
+            prefs.edit().putBoolean(KEY_RECENT_SESSIONS_INCLUDE_ARCHIVED, value).apply()
         }
 
     /** 根据费用、延迟、上下文和任务复杂度动态调整本地聊天模型顺序。 */
@@ -573,6 +590,7 @@ class PrefsManager(context: Context) {
         private const val KEY_LOGIN_RECORDS = "login_records"
         private const val KEY_APP_LOCK_ENABLED = "app_lock_enabled"
         private const val KEY_CHAT_INPUT_LAYOUT = "chat_input_layout"
+        private const val KEY_RECENT_SESSIONS_INCLUDE_ARCHIVED = "recent_sessions_include_archived"
         private const val KEY_SMART_ROUTING_ENABLED = "smart_routing_enabled"
         private const val KEY_SMART_ROUTING_DAILY_BUDGET = "smart_routing_daily_budget"
         private const val KEY_SMART_ROUTING_BUDGET_ALERT = "smart_routing_budget_alert"

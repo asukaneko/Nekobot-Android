@@ -167,4 +167,6 @@
     <string name="update_open_in_browser">브라우저에서 열기</string>
     <string name="update_no_asset">이 릴리스에는 APK가 없습니다, GitHub를 확인하세요</string>
     <string name="update_view_releases">Releases 페이지 보기</string>
+    <string name="settings_recent_sessions_include_archived">최근 대화에 보관된 대화 표시</string>
+    <string name="settings_recent_sessions_include_archived_desc">켜면 보관된 대화도 홈 화면의 최근 대화 목록에 표시됩니다</string>
 </resources>

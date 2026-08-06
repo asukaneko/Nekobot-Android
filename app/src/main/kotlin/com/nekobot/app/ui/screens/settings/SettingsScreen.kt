@@ -343,6 +343,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
     val loggedOut by vm.loggedOut.collectAsState()
     val serverUrl by vm.serverUrl.collectAsState()
     val appMode by vm.appMode.collectAsState()
+    val recentSessionsIncludeArchived by ServiceContainer.prefs.recentSessionsIncludeArchivedFlow.collectAsState()
     val loading by vm.loading.collectAsState()
     val error by vm.error.collectAsState()
     val toast by vm.toast.collectAsState()
@@ -604,6 +605,16 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                             enabled = pendingAppLockState.value == null,
                             onCheckedChange = ::requestAppLockChange
                         )
+                        SettingSwitchRow(
+                            icon = Icons.Filled.Tune,
+                            iconColor = MaterialTheme.colorScheme.primary,
+                            title = stringResource(R.string.settings_recent_sessions_include_archived),
+                            subtitle = stringResource(R.string.settings_recent_sessions_include_archived_desc),
+                            checked = recentSessionsIncludeArchived,
+                            onCheckedChange = { enabled ->
+                                ServiceContainer.prefs.recentSessionsIncludeArchived = enabled
+                            }
+                        )
                         SettingNavRow(
                             icon = Icons.Filled.Tune,
                             iconColor = MaterialTheme.colorScheme.primary,
@@ -642,6 +653,16 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                             checked = appLockEnabled,
                             enabled = pendingAppLockState.value == null,
                             onCheckedChange = ::requestAppLockChange
+                        )
+                        SettingSwitchRow(
+                            icon = Icons.Filled.Tune,
+                            iconColor = MaterialTheme.colorScheme.primary,
+                            title = stringResource(R.string.settings_recent_sessions_include_archived),
+                            subtitle = stringResource(R.string.settings_recent_sessions_include_archived_desc),
+                            checked = recentSessionsIncludeArchived,
+                            onCheckedChange = { enabled ->
+                                ServiceContainer.prefs.recentSessionsIncludeArchived = enabled
+                            }
                         )
                         SettingNavRow(
                             icon = Icons.Filled.Build,

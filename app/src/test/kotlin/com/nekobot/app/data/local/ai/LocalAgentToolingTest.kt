@@ -46,6 +46,14 @@ class LocalAgentToolingTest {
     }
 
     @Test
+    fun agentBasePromptFollowsConfiguredLanguage() {
+        assertTrue(buildLocalAgentBasePrompt("en-US").startsWith("You are Nekobot"))
+        assertTrue(buildLocalAgentBasePrompt("ja").startsWith("あなたは Nekobot"))
+        assertTrue(buildLocalAgentBasePrompt("ko").startsWith("당신은 Nekobot"))
+        assertTrue(buildLocalAgentBasePrompt("zh-CN").startsWith("你是 Nekobot"))
+    }
+
+    @Test
     fun sendMessageToolContentBecomesVisibleReplyWhenModelEndsWithEmptyContent() {
         val result = ToolLoopResult(
             finalContent = "",

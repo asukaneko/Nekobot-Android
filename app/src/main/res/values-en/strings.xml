@@ -167,4 +167,6 @@
     <string name="update_open_in_browser">Open in browser</string>
     <string name="update_no_asset">No APK asset attached to this release, please check GitHub</string>
     <string name="update_view_releases">View Releases page</string>
+    <string name="settings_recent_sessions_include_archived">Show archived chats in Recent chats</string>
+    <string name="settings_recent_sessions_include_archived_desc">When enabled, archived chats also appear in the Recent chats list on the home screen</string>
 </resources>

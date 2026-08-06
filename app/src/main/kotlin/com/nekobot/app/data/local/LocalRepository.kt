@@ -4351,7 +4351,10 @@ class LocalRepository(
         ctx.metadata["session_mode"] = session.sessionMode
         ctx.metadata.putAll(internalMetadata)
         if (session.sessionMode.equals("agent", ignoreCase = true)) {
-            ctx.promptStack.addLocalAgentBasePrompt()
+            val promptLanguage = appContext?.let {
+                LocaleHelper.getEffectiveLocale(it, ServiceContainer.prefs.language).language
+            } ?: Locale.getDefault().language
+            ctx.promptStack.addLocalAgentBasePrompt(promptLanguage)
             val skillsPrompt = buildEnabledSkillsPrompt()
             if (skillsPrompt.isNotBlank()) {
                 ctx.promptStack.add(

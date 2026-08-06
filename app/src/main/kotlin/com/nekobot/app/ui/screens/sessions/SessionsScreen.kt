@@ -134,7 +134,7 @@ import com.nekobot.app.data.repository.SessionImportResult
 
 /** 会话列表筛选类型。 */
 enum class SessionFilter(val labelResId: Int) {
-    ALL(R.string.sessions_filter_all),
+    ALL(R.string.sessions_recent),
     UNARCHIVED(R.string.sessions_filter_unarchived),
     ARCHIVED(R.string.sessions_filter_archived),
     FAVORITE(R.string.sessions_filter_favorite),
@@ -257,6 +257,7 @@ fun SessionsScreen(
     val availableChannels by viewModel.availableChannels.collectAsState()
     val characterFilterId by viewModel.characterFilterId.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val recentSessionsIncludeArchived by ServiceContainer.prefs.recentSessionsIncludeArchivedFlow.collectAsState()
 
     // 提取本地化字符串
     val titleText = stringResource(R.string.sessions_title)
@@ -456,6 +457,7 @@ fun SessionsScreen(
             // 概览统计 + 快速筛选合并：每张卡显示数量并可点击筛选
             SessionStatFilters(
                 overview = overview,
+                includeArchived = recentSessionsIncludeArchived,
                 selected = filter,
                 onSelect = viewModel::setFilter
             )
@@ -731,10 +733,11 @@ private fun SessionCountBadge(count: Int) {
 @Composable
 private fun SessionStatFilters(
     overview: SessionOverview,
+    includeArchived: Boolean,
     selected: SessionFilter,
     onSelect: (SessionFilter) -> Unit
 ) {
-    val allLabel = stringResource(R.string.sessions_all)
+    val recentLabel = stringResource(R.string.sessions_recent)
     val pinLabel = stringResource(R.string.sessions_pin)
     val favoriteLabel = stringResource(R.string.sessions_favorite)
     val archiveLabel = stringResource(R.string.sessions_archive)
@@ -745,8 +748,8 @@ private fun SessionStatFilters(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         StatFilterCard(
-            label = allLabel,
-            value = overview.total,
+            label = recentLabel,
+            value = if (includeArchived) overview.total else (overview.total - overview.archived).coerceAtLeast(0),
             icon = Icons.AutoMirrored.Outlined.Chat,
             selected = selected == SessionFilter.ALL,
             onClick = { onSelect(SessionFilter.ALL) }
@@ -1908,13 +1911,33 @@ class SessionsViewModel : BaseViewModel() {
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    /** 对外展示的会话列表：频道筛选 + 置顶优先 + 应用筛选 + 应用搜索 + 非置顶按时间倒序。 */
+    /** 对外展示的最近会话列表：频道筛选 + 置顶优先 + 应用筛选 + 应用搜索 + 按时间倒序。 */
     private val displayedSessions: StateFlow<List<Session>> = combine(
-        _sessions, _filter, _channelFilterValue, _characterFilterId, _searchQuery
-    ) { all, f, chVal, charId, query ->
+        _sessions,
+        _filter,
+        _channelFilterValue,
+        _characterFilterId,
+        _searchQuery,
+        ServiceContainer.prefs.recentSessionsIncludeArchivedFlow
+    ) { values ->
+        @Suppress("UNCHECKED_CAST")
+        val all = values[0] as List<Session>
+        val f = values[1] as SessionFilter
+        val chVal = values[2] as String?
+        val charId = values[3] as String?
+        val query = values[4] as String
+        val includeArchived = values[5] as Boolean
         // 先排除压缩上下文自动创建的归档会话（is_archive == true）；
         // 手动归档的会话（archived == true 但 is_archive != true）仍可展示
-        val visible = all.filter { it.isArchive != true }
+        val visible = all
+            .filter { it.isArchive != true }
+            .let { sessions ->
+                if (f == SessionFilter.ALL && !includeArchived) {
+                    sessions.filter { it.archived != true }
+                } else {
+                    sessions
+                }
+            }
         // 先按频道筛选
         val byChannel = applyChannelFilter(visible, chVal)
         val filtered = applyFilter(byChannel, f, charId)
