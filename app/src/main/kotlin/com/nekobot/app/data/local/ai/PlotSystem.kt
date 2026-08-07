@@ -283,9 +283,7 @@ class PlotGraphManager {
             graphEdges.forEach { edge ->
                 val from = edge["from_node_id"] as? String ?: return@forEach
                 val to = edge["to_node_id"] as? String ?: return@forEach
-                val label = (edge["label"] as? String).orEmpty()
-                if (label.isBlank()) appendLine("    ${safeId(from)} --> ${safeId(to)}")
-                else appendLine("    ${safeId(from)} -- \"${safeLabel(label)}\" --> ${safeId(to)}")
+                appendLine("    ${safeId(from)} --> ${safeId(to)}")
             }
         }.trimEnd()
     }

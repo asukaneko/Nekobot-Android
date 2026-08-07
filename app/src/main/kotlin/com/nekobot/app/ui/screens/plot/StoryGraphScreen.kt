@@ -2,6 +2,7 @@ package com.nekobot.app.ui.screens.plot
 
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -30,12 +32,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Timeline
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -62,9 +64,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -182,9 +187,21 @@ class StoryGraphViewModel : BaseViewModel() {
             onSuccess = { el ->
                 val text = el?.asJsonObject?.get("mermaid")?.takeIf { !it.isJsonNull }?.asString
                     ?: el?.toString() ?: ""
-                onResult(text)
+                onResult(stripMermaidEdgeLabels(text))
             }
         )
+    }
+
+    /** 移除 Mermaid 连线上的用户消息，保留纯粹的节点关系。 */
+    private fun stripMermaidEdgeLabels(code: String): String {
+        if (code.isBlank()) return code
+        val dashLabel = Regex("""--\s*(?:\"(?:\\\\.|[^\"\\\\])*\"|'.*?'|\|.*\|)\s*-->""")
+        val pipeLabel = Regex("""-->\s*\|.*\|""")
+        return code.lineSequence()
+            .joinToString("\n") { line ->
+                line.replace(dashLabel, "-->")
+                    .replace(pipeLabel, "-->")
+            }
     }
 
     fun getBranchPreview(sessionId: String, nodeId: String, onResult: (List<BranchPreviewMessage>) -> Unit) {
@@ -299,6 +316,12 @@ fun StoryGraphScreen(
                         icon = { Icon(Icons.Filled.Timeline, contentDescription = null) }
                     )
                 }
+                if (graphView == StoryGraphView.Graph && graphData.nodes.isNotEmpty()) {
+                    GraphMetaStrip(
+                        nodeCount = graphData.nodes.size,
+                        choiceCount = graphData.choices.size
+                    )
+                }
             }
         },
         bottomBar = {
@@ -332,6 +355,7 @@ fun StoryGraphScreen(
                         graphData = graphData,
                         topology = topology,
                         activePathIds = activePathIds,
+                        selectedNodeId = selectedNode?.id,
                         onNodeClick = { node ->
                             selectedNode = node
                             previewLoading = true
@@ -364,37 +388,6 @@ fun StoryGraphScreen(
                         onRollback = { pendingAction = "rollback" to it },
                         modifier = Modifier.fillMaxSize()
                     )
-                }
-
-                // 节点统计信息（放在右上角，避免遮挡左上角内容）
-                if (graphData.nodes.isNotEmpty()) {
-                    GlassCard(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(8.dp),
-                        cornerRadius = 12
-                    ) {
-                        Text(
-                            stringResource(R.string.story_node_stats, graphData.nodes.size, graphData.choices.size),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                // 颜色图例（放在右下角，避免遮挡节点）
-                GlassCard(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(8.dp),
-                    cornerRadius = 12
-                ) {
-                    Column {
-                        LegendItem(stringResource(R.string.story_legend_normal), OnSurfaceVariant)
-                        LegendItem(stringResource(R.string.story_legend_important), WarningAmber)
-                        LegendItem(stringResource(R.string.story_legend_turning), Primary)
-                        LegendItem(stringResource(R.string.story_legend_ending), Secondary)
-                    }
                 }
 
                 error?.let {
@@ -568,6 +561,12 @@ internal fun formatPlotNodeTimestamp(raw: String?, zoneId: ZoneId = ZoneId.syste
     }
 }
 
+internal fun formatPlotNodeClock(raw: String?, zoneId: ZoneId = ZoneId.systemDefault()): String {
+    return formatPlotNodeTimestamp(raw, zoneId)
+        .substringAfterLast(' ')
+        .take(5)
+}
+
 private fun buildGraphTopology(graph: PlotGraphData): GraphTopology {
     val sorted = graph.nodes
         .filter { !it.id.isNullOrBlank() }
@@ -734,6 +733,7 @@ private fun StoryGraphCanvas(
     graphData: PlotGraphData,
     topology: GraphTopology,
     activePathIds: Set<String>,
+    selectedNodeId: String?,
     onNodeClick: (PlotNodeData) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -759,10 +759,10 @@ private fun StoryGraphCanvas(
     }
 
     val density = LocalDensity.current
-    val nodeWidthDp = 140.dp
-    val nodeHeightDp = 100.dp
-    val hGapDp = 32.dp
-    val vGapDp = 56.dp
+    val nodeWidthDp = 168.dp
+    val nodeHeightDp = 96.dp
+    val hGapDp = 40.dp
+    val vGapDp = 58.dp
 
     val nodeWidthPx = with(density) { nodeWidthDp.toPx() }
     val nodeHeightPx = with(density) { nodeHeightDp.toPx() }
@@ -781,12 +781,13 @@ private fun StoryGraphCanvas(
         modifier = modifier
             .horizontalScroll(rememberScrollState())
             .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+            .padding(horizontal = 20.dp, vertical = 14.dp)
     ) {
         Box(
             modifier = Modifier.size(width = totalWidthDp, height = totalHeightDp)
         ) {
             // 绘制边
+            val inactiveEdgeColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.42f)
             Canvas(modifier = Modifier.fillMaxSize()) {
                 for (edge in graphData.edges) {
                     val from = edge.fromNodeId?.let { layout.positions[it] }
@@ -801,41 +802,30 @@ private fun StoryGraphCanvas(
                             moveTo(startX, startY)
                             cubicTo(startX, midY, endX, midY, endX, endY)
                         }
+                        val isActiveEdge = edge.fromNodeId in activePathIds && edge.toNodeId in activePathIds
+                        val edgeColor = if (isActiveEdge) {
+                            nodeLevelColor(edge.toNodeId?.let(topology.byId::get)?.let(topology::levelFor))
+                                .copy(alpha = 0.82f)
+                        } else {
+                            inactiveEdgeColor
+                        }
                         drawPath(
                             path = path,
-                            color = if (edge.fromNodeId in activePathIds && edge.toNodeId in activePathIds) {
-                                nodeLevelColor(edge.toNodeId?.let(topology.byId::get)?.let(topology::levelFor)).copy(alpha = 0.8f)
-                            } else Color.Gray.copy(alpha = 0.3f),
-                            style = Stroke(width = if (edge.fromNodeId in activePathIds && edge.toNodeId in activePathIds) 4f else 2f)
+                            color = edgeColor,
+                            style = Stroke(
+                                width = if (isActiveEdge) 4.5f else 2.5f,
+                                cap = StrokeCap.Round
+                            )
                         )
+                        if (isActiveEdge) {
+                            drawCircle(edgeColor, radius = 5f, center = Offset(startX, startY))
+                            drawCircle(edgeColor, radius = 5f, center = Offset(endX, endY))
+                        }
                     }
                 }
             }
 
             // 绘制边标签
-            graphData.edges.forEach { edge ->
-                val from = edge.fromNodeId?.let { layout.positions[it] }
-                val to = edge.toNodeId?.let { layout.positions[it] }
-                val label = edge.label
-                if (from != null && to != null && !label.isNullOrBlank()) {
-                    val midX = (from.first + to.first) / 2 + nodeWidthPx / 2
-                    val midY = (from.second + nodeHeightPx + to.second) / 2
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .offset { IntOffset(midX.roundToInt(), midY.roundToInt()) }
-                            .width(nodeWidthDp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
-                            .padding(horizontal = 4.dp, vertical = 2.dp)
-                    )
-                }
-            }
-
             // 绘制节点
             graphData.nodes.forEach { node ->
                 val id = node.id ?: return@forEach
@@ -846,6 +836,7 @@ private fun StoryGraphCanvas(
                     displayedLevel = topology.levelFor(node),
                     isActive = isActive,
                     isOnActivePath = id in activePathIds,
+                    isSelected = id == selectedNodeId,
                     onClick = { onNodeClick(node) },
                     modifier = Modifier
                         .offset { IntOffset(pos.first.roundToInt(), pos.second.roundToInt()) }
@@ -863,70 +854,100 @@ private fun NodeCard(
     displayedLevel: String,
     isActive: Boolean,
     isOnActivePath: Boolean,
+    isSelected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val levelColor = nodeLevelColor(displayedLevel)
+    val shape = RoundedCornerShape(18.dp)
+    val borderColor = when {
+        isActive -> levelColor
+        isSelected -> MaterialTheme.colorScheme.primary
+        isOnActivePath -> levelColor.copy(alpha = 0.72f)
+        else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.32f)
+    }
+    val borderWidth = if (isActive || isSelected) 2.dp else 1.dp
+    val containerColor = MaterialTheme.colorScheme.surface
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(
-                if (isActive) levelColor.copy(alpha = 0.25f)
-                else if (isOnActivePath) levelColor.copy(alpha = 0.12f)
-                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-            )
-            .border(
-                width = if (isActive) 2.dp else 1.dp,
-                color = if (isActive) levelColor else levelColor.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(12.dp)
-            )
+            .shadow(if (isActive || isSelected) 5.dp else 1.dp, shape)
+            .clip(shape)
+            .background(containerColor)
+            .border(width = borderWidth, color = borderColor, shape = shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (isActive) {
+        Row(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .fillMaxHeight()
+                    .background(levelColor)
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = node.title ?: stringResource(R.string.story_unnamed_node),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (isActive) {
+                        Spacer(Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.Filled.CheckCircle,
+                            contentDescription = stringResource(R.string.story_current_position),
+                            tint = levelColor,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(6.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(levelColor)
-                    )
-                    Spacer(Modifier.width(4.dp))
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(levelColor.copy(alpha = 0.16f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = levelLabel(displayedLevel),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = levelColor,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 10.sp
+                        )
+                    }
+                    formatPlotNodeClock(node.createdAt)
+                        .takeIf(String::isNotBlank)
+                        ?.let { timestamp ->
+                            Spacer(Modifier.width(7.dp))
+                            Text(
+                                text = timestamp.takeLast(5),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline,
+                                fontSize = 10.sp
+                            )
+                        }
                 }
+                Spacer(Modifier.height(5.dp))
                 Text(
-                    text = node.title ?: stringResource(R.string.story_unnamed_node),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
+                    text = node.summary?.takeIf(String::isNotBlank)
+                        ?: stringResource(R.string.story_unnamed_node),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 16.sp,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                // 级别标签放在标题右侧，避免底部被裁剪
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(levelColor.copy(alpha = 0.2f))
-                        .padding(horizontal = 4.dp, vertical = 1.dp)
-                ) {
-                    Text(
-                        text = levelLabel(displayedLevel),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = levelColor,
-                        fontSize = 9.sp
-                    )
-                }
             }
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = node.summary ?: "",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
         }
     }
 }
@@ -1065,7 +1086,7 @@ private fun NodeDetailDialog(
                     Text(stringResource(R.string.story_current_position), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 }
                 Spacer(Modifier.weight(1f))
-                formatPlotNodeTimestamp(node.createdAt).takeIf(String::isNotBlank)?.let {
+                formatPlotNodeClock(node.createdAt).takeIf(String::isNotBlank)?.let {
                     Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -1599,29 +1620,142 @@ private fun BottomActionBar(
     onMermaid: () -> Unit
 ) {
     Surface(
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 8.dp
+        color = MaterialTheme.colorScheme.background,
+        shadowElevation = 2.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(horizontal = 20.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Button(
+            OutlinedButton(
                 onClick = onMermaid,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.65f)),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.primary
+                )
             ) {
                 Icon(Icons.Filled.AccountTree, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text(stringResource(R.string.story_mermaid_graph), color = MaterialTheme.colorScheme.onPrimary)
+                Text(stringResource(R.string.story_mermaid_graph))
             }
         }
     }
 }
 
 /** 颜色图例条目 */
+@Composable
+private fun GraphMetaStrip(
+    nodeCount: Int,
+    choiceCount: Int
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.story_node_stats, nodeCount, choiceCount),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = stringResource(R.string.story_tab_graph),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        Row(
+            modifier = Modifier.padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            LegendItem(stringResource(R.string.story_legend_normal), OnSurfaceVariant)
+            LegendItem(stringResource(R.string.story_legend_important), WarningAmber)
+            LegendItem(stringResource(R.string.story_legend_turning), Primary)
+            LegendItem(stringResource(R.string.story_legend_ending), Secondary)
+        }
+    }
+}
+
+@Composable
+private fun GraphStatusPanel(
+    nodeCount: Int,
+    choiceCount: Int,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+        tonalElevation = 3.dp,
+        shadowElevation = 5.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.13f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.AccountTree,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(Modifier.width(9.dp))
+            Column {
+                Text(
+                    text = stringResource(R.string.story_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = stringResource(R.string.story_node_stats, nodeCount, choiceCount),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GraphLegendPanel(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.93f),
+        tonalElevation = 2.dp,
+        shadowElevation = 4.dp
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LegendItem(stringResource(R.string.story_legend_normal), OnSurfaceVariant)
+                LegendItem(stringResource(R.string.story_legend_important), WarningAmber)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LegendItem(stringResource(R.string.story_legend_turning), Primary)
+                LegendItem(stringResource(R.string.story_legend_ending), Secondary)
+            }
+        }
+    }
+}
+
 @Composable
 private fun LegendItem(label: String, color: Color) {
     Row(
