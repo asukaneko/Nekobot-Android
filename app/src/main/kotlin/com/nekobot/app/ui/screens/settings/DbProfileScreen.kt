@@ -74,14 +74,18 @@ import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.DbProfileArchiveCodec
 import com.nekobot.app.data.local.DbProfilePortraitSource
+import com.nekobot.app.data.local.DbProfileStoryData
 import com.nekobot.app.data.local.ExtractedDbProfileArchive
 import com.nekobot.app.data.local.LoginRecord
+import com.nekobot.app.data.local.LocalPlotStoryProfileSnapshot
+import com.nekobot.app.data.local.LocalPlotStoryStore
 import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.local.db.NekobotDatabase
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
 import com.nekobot.app.ui.components.NekoDialog
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -147,9 +151,12 @@ class DbProfileViewModel : ViewModel() {
             return
         }
         viewModelScope.launch(Dispatchers.IO) {
+            val wasActive = prefs.activeDbName == profileName
             val ctx = ServiceContainer.appContext
             if (ctx != null) {
+                if (wasActive) ServiceContainer.localRepository.close()
                 NekobotDatabase.deleteProfileFile(ctx, profileName)
+                runCatching { LocalPlotStoryStore.clearProfile(ctx, profileName) }
                 clearProfileSidecarData(ctx, profileName)
                 // 清理导入的立绘目录
                 runCatching {
@@ -158,10 +165,12 @@ class DbProfileViewModel : ViewModel() {
                 }
             }
             prefs.removeDbProfile(profileName)
+            if (wasActive) {
+                ServiceContainer.switchLocalDb(PrefsManager.DEFAULT_DB_NAME)
+            }
             withContext(Dispatchers.Main) {
-                if (_activeName.value == profileName) {
+                if (wasActive) {
                     _activeName.value = PrefsManager.DEFAULT_DB_NAME
-                    ServiceContainer.switchLocalDb(PrefsManager.DEFAULT_DB_NAME)
                 }
                 reload()
                 _toast.value = ServiceContainer.localizedContext?.getString(R.string.dbprofile_deleted, profileName) ?: ""
@@ -188,6 +197,8 @@ class DbProfileViewModel : ViewModel() {
         val password = generateRandomPassword()
         _importing.value = true
         viewModelScope.launch {
+            val wasActive = prefs.activeDbName == profileName
+            if (wasActive) ServiceContainer.localRepository.close()
             val result = ServiceContainer.unified.importNbotConfigFromRemote(
                 url = record.serverUrl,
                 token = record.token,
@@ -197,6 +208,21 @@ class DbProfileViewModel : ViewModel() {
             )
             _importing.value = false
             if (result.success) {
+                val context = ServiceContainer.appContext
+                val storyPrepared = context != null && runCatching {
+                    // nbotcfg 不含故事地图；同名覆盖也必须显式清空，不能复活旧 profile 数据。
+                    LocalPlotStoryStore.replace(
+                        context = context,
+                        databaseName = profileName,
+                        allowedImportedSessionIds = emptySet(),
+                        story = null
+                    )
+                }.isSuccess
+                if (!storyPrepared) {
+                    if (wasActive) ServiceContainer.switchLocalDb(profileName)
+                    _toast.value = ServiceContainer.getString(R.string.dbprofile_import_file_failed)
+                    return@launch
+                }
                 prefs.saveDbProfile(
                     PrefsManager.DbProfile(
                         name = profileName,
@@ -212,6 +238,7 @@ class DbProfileViewModel : ViewModel() {
                 _activeName.value = profileName
                 _toast.value = result.message
             } else {
+                if (wasActive) ServiceContainer.switchLocalDb(profileName)
                 _toast.value = result.message
             }
         }
@@ -228,9 +255,9 @@ class DbProfileViewModel : ViewModel() {
      * 导出指定 profile 的数据库到下载目录。
      *
      * 流程：
-     * 1. 从数据库收集角色、会话实际引用的本地头像和立绘
+     * 1. 从数据库收集角色、会话实际引用的本地头像、立绘与故事地图
      * 2. 关闭目标 profile 的 db 连接（强制 WAL 刷盘）
-     * 3. 将 .db / .db-wal / .db-shm、图片和 URI 映射清单打包到 Downloads
+     * 3. 将 .db / .db-wal / .db-shm、图片、URI 映射与剧情状态打包到 Downloads
      * 4. 若导出的是当前激活 db，重开连接以恢复正常使用
      */
     fun exportToDownloads(profileName: String) {
@@ -262,14 +289,19 @@ class DbProfileViewModel : ViewModel() {
         _importing.value = true
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                // 活动库先停止生成，避免导出过程中继续追加 DB 行或图谱节点。
+                if (isActive) ServiceContainer.localRepository.close()
                 val targetDb = NekobotDatabase.get(ctx, profileName)
                 targetDb.aiModelDao().migrateStoredSecrets()
                 targetDb.mcpServerDao().migrateStoredSecrets()
                 targetDb.apiKeyDao().migrateStoredSecrets()
                 val portraitSources = collectPortraitSources(ctx, targetDb)
+                val sessionIds = targetDb.sessionDao().listAll().mapTo(linkedSetOf()) { it.id }
+                LocalPlotStoryStore.migrateLegacyProfile(ctx, profileName, sessionIds)
                 // 关闭目标 profile 的 db 连接，确保 WAL 刷盘
                 NekobotDatabase.closeProfile(profileName)
                 Thread.sleep(100)
+                val story = LocalPlotStoryStore.capture(ctx, profileName, sessionIds)
                 val dbName = if (profileName.endsWith(".db")) profileName else "$profileName.db"
                 val dbFile = ctx.getDatabasePath(dbName)
                 if (!dbFile.exists()) {
@@ -292,9 +324,9 @@ class DbProfileViewModel : ViewModel() {
                     ?.takeIf { it.isNotBlank() }
                     ?: buildExportFileName(displayNameStr, profileName)
                 val saved = if (destinationUri != null) {
-                    writeArchiveToUri(ctx, destinationUri, entries, portraitSources)
+                    writeArchiveToUri(ctx, destinationUri, entries, portraitSources, story)
                 } else {
-                    writeArchiveToDownloads(ctx, zipFileName, entries, portraitSources)
+                    writeArchiveToDownloads(ctx, zipFileName, entries, portraitSources, story)
                 }
                 // 恢复 db 连接：激活 db 需要走 switchLocalDb 重建 LocalRepository
                 if (isActive) {
@@ -353,8 +385,10 @@ class DbProfileViewModel : ViewModel() {
             var repositoryClosed = false
             var databaseRollback: DatabaseImportRollback? = null
             var portraitRestore: PortraitRestoreTransaction? = null
+            var storyRestore: StoryRestoreTransaction? = null
             var committed = false
             try {
+                migrateLegacyPlotStoryProfile(ctx, profileName)
                 // 只读取文件头识别格式；ZIP 直接流式解压，避免额外保留一份完整压缩包。
                 val archive = ctx.contentResolver.openInputStream(uri)?.buffered()?.use { input ->
                     input.mark(16)
@@ -398,6 +432,8 @@ class DbProfileViewModel : ViewModel() {
                 }.onFailure { e ->
                     throw IllegalStateException("数据库无法打开（可能文件损坏或版本不兼容）：${e.message}")
                 }.getOrThrow()
+                val importedSessionIds = importedDb.sessionDao().listAll()
+                    .mapTo(linkedSetOf()) { it.id }
 
                 // 图片目录替换与五个 URI 字段改写也属于同一导入事务。
                 val portraitTransaction = restoreEmbeddedPortraits(ctx, profileName, archive)
@@ -405,6 +441,20 @@ class DbProfileViewModel : ViewModel() {
                 importedDb.withTransaction {
                     rewritePortraitReferences(importedDb, portraitTransaction.references)
                 }
+
+                // 故事地图与剧情选项位于 Room 之外，按目标 profile 整体替换并纳入失败回滚。
+                val storyTransaction = StoryRestoreTransaction(
+                    context = ctx,
+                    profileName = profileName,
+                    previous = LocalPlotStoryStore.snapshot(ctx, profileName)
+                )
+                storyRestore = storyTransaction
+                LocalPlotStoryStore.replace(
+                    context = ctx,
+                    databaseName = profileName,
+                    allowedImportedSessionIds = importedSessionIds,
+                    story = archive.story
+                )
 
                 // 自动切换成功后才清理旧统计并注册新 profile。
                 ServiceContainer.switchLocalDb(profileName)
@@ -432,6 +482,7 @@ class DbProfileViewModel : ViewModel() {
             } catch (e: Exception) {
                 val rollback = databaseRollback
                 if (!committed && rollback != null) {
+                    runCatching { storyRestore?.rollback() }
                     runCatching { portraitRestore?.rollback() }
                     val databaseRestored = runCatching {
                         restoreDatabaseRollback(ctx, profileName, rollback)
@@ -447,6 +498,7 @@ class DbProfileViewModel : ViewModel() {
                 } else if (!committed && repositoryClosed) {
                     runCatching { ServiceContainer.switchLocalDb(previousActive) }
                 }
+                if (e is CancellationException) throw e
                 withContext(Dispatchers.Main) {
                     _importing.value = false
                     _toast.value = ServiceContainer.localizedContext?.getString(
@@ -492,6 +544,41 @@ class DbProfileViewModel : ViewModel() {
         fun cleanup() {
             runCatching { directory.deleteRecursively() }
         }
+    }
+
+    private data class StoryRestoreTransaction(
+        val context: Context,
+        val profileName: String,
+        val previous: LocalPlotStoryProfileSnapshot
+    ) {
+        fun rollback() {
+            LocalPlotStoryStore.restore(
+                context = context,
+                databaseName = profileName,
+                snapshot = previous
+            )
+        }
+    }
+
+    private suspend fun migrateLegacyPlotStoryProfile(context: Context, profileName: String) {
+        if (!LocalPlotStoryStore.isLegacyProfilePending(context, profileName)) return
+        val dbName = if (profileName.endsWith(".db")) profileName else "$profileName.db"
+        if (!context.getDatabasePath(dbName).isFile) {
+            LocalPlotStoryStore.clearProfile(context, profileName)
+            return
+        }
+        val sessionIds = try {
+            NekobotDatabase.get(context, profileName)
+                .sessionDao()
+                .listAll()
+                .mapTo(linkedSetOf()) { it.id }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            // 保持 pending 与 legacy 原样；只有有效备份完整写入后才允许推进迁移标记。
+            return
+        }
+        LocalPlotStoryStore.migrateLegacyProfile(context, profileName, sessionIds)
     }
 
     /** 关闭目标库后复制完整 SQLite 文件族，供同名导入失败时恢复。 */
@@ -724,7 +811,8 @@ class DbProfileViewModel : ViewModel() {
         context: Context,
         fileName: String,
         databaseFiles: List<Pair<String, File>>,
-        portraitSources: List<DbProfilePortraitSource>
+        portraitSources: List<DbProfilePortraitSource>,
+        story: DbProfileStoryData
     ): Boolean {
         var insertedUri: Uri? = null
         return try {
@@ -740,7 +828,7 @@ class DbProfileViewModel : ViewModel() {
             val uri = resolver.insert(collection, values) ?: return false
             insertedUri = uri
             resolver.openOutputStream(uri)?.use { output ->
-                DbProfileArchiveCodec.writeArchive(output, databaseFiles, portraitSources)
+                DbProfileArchiveCodec.writeArchive(output, databaseFiles, portraitSources, story)
             } ?: error("无法打开下载文件")
             resolver.update(
                 uri,
@@ -760,10 +848,11 @@ class DbProfileViewModel : ViewModel() {
         context: Context,
         destinationUri: Uri,
         databaseFiles: List<Pair<String, File>>,
-        portraitSources: List<DbProfilePortraitSource>
+        portraitSources: List<DbProfilePortraitSource>,
+        story: DbProfileStoryData
     ): Boolean = try {
         context.contentResolver.openOutputStream(destinationUri, "w")?.use { output ->
-            DbProfileArchiveCodec.writeArchive(output, databaseFiles, portraitSources)
+            DbProfileArchiveCodec.writeArchive(output, databaseFiles, portraitSources, story)
         } ?: error("无法打开导出文件")
         true
     } catch (_: Exception) {

@@ -1475,12 +1475,12 @@ class UnifiedRepository(
 
     suspend fun plotSelect(conversationId: String, req: PlotSelectRequest): Resource<JsonElement> =
         if (isLocal) {
-            val mgr = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
-            val ok = mgr.selectChoice(req.choiceId)
-            if (ok) {
-                local.persistPlotGraph()
-                Resource.Success(JsonParser.parseString("{\"success\":true,\"choice_id\":\"${req.choiceId}\"}"))
-            } else Resource.Error("剧情选项不存在")
+            withContext(Dispatchers.IO) {
+                val ok = local.selectPlotChoice(req.choiceId)
+                if (ok) {
+                    Resource.Success(JsonParser.parseString("{\"success\":true,\"choice_id\":\"${req.choiceId}\"}"))
+                } else Resource.Error("剧情选项不存在")
+            }
         } else remote.plotSelect(conversationId, req)
 
     suspend fun plotRegenerateChoices(conversationId: String): Resource<JsonElement> =
@@ -1496,14 +1496,14 @@ class UnifiedRepository(
 
     suspend fun plotRollback(conversationId: String, req: PlotRollbackRequest): Resource<JsonElement> =
         if (isLocal) {
-            val mgr = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
-            val ok = mgr.rollback(req.nodeId)
-            if (ok) {
-                local.replaceMessagesWithPlotPath(conversationId, req.nodeId)
-                local.persistPlotGraph()
-                local.syncPlotChoicesFromGraph(conversationId)
-                Resource.Success(JsonParser.parseString("{\"success\":true,\"node_id\":\"${req.nodeId}\"}"))
-            } else Resource.Error("剧情节点不存在")
+            withContext(Dispatchers.IO) {
+                val ok = local.rollbackPlotNode(req.nodeId)
+                if (ok) {
+                    local.replaceMessagesWithPlotPath(conversationId, req.nodeId)
+                    local.syncPlotChoicesFromGraph(conversationId)
+                    Resource.Success(JsonParser.parseString("{\"success\":true,\"node_id\":\"${req.nodeId}\"}"))
+                } else Resource.Error("剧情节点不存在")
+            }
         } else remote.plotRollback(conversationId, req)
 
     suspend fun plotBranchPreview(conversationId: String, nodeId: String): Resource<JsonElement> =
@@ -1516,32 +1516,38 @@ class UnifiedRepository(
 
     suspend fun plotSwitch(conversationId: String, req: PlotSwitchRequest): Resource<JsonElement> {
         return if (isLocal) {
-            val mgr = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
-            val node = mgr.getNode(req.nodeId)
-            if (node == null || node.conversationId != conversationId) return Resource.Error("剧情节点不存在")
-            mgr.setActiveNode(conversationId, req.nodeId)
-            local.replaceMessagesWithPlotPath(conversationId, req.nodeId)
-            local.persistPlotGraph()
-            local.syncPlotChoicesFromGraph(conversationId)
-            Resource.Success(JsonParser.parseString("{\"success\":true,\"node_id\":\"${req.nodeId}\"}"))
+            withContext(Dispatchers.IO) {
+                if (!local.switchPlotNode(conversationId, req.nodeId)) {
+                    return@withContext Resource.Error("剧情节点不存在")
+                }
+                local.replaceMessagesWithPlotPath(conversationId, req.nodeId)
+                local.syncPlotChoicesFromGraph(conversationId)
+                Resource.Success(JsonParser.parseString("{\"success\":true,\"node_id\":\"${req.nodeId}\"}"))
+            }
         } else remote.plotSwitch(conversationId, req)
     }
 
     suspend fun plotBranch(conversationId: String, req: PlotBranchRequest): Resource<JsonElement> {
         return if (isLocal) {
-            val manager = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
-            val choice = manager.getChoice(req.choiceId)
-                ?: return Resource.Error("剧情选项不存在")
-            if (choice.nodeId != req.nodeId) return Resource.Error("选项不属于当前节点")
-            val model = local.getActiveModel() ?: return Resource.Error("未配置激活的 AI 模型")
-            if (!manager.selectChoice(req.choiceId)) return Resource.Error("无法选择该剧情选项")
-            local.persistPlotGraph()
-            var generationError: String? = null
-            local.chatWithPipeline(conversationId, choice.text, model).collect { event ->
-                if (event is RealtimeEvent.Error) generationError = event.message
+            withContext(Dispatchers.IO) {
+                val manager = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
+                val choice = manager.getChoice(req.choiceId)
+                    ?: return@withContext Resource.Error("剧情选项不存在")
+                if (choice.nodeId != req.nodeId) {
+                    return@withContext Resource.Error("选项不属于当前节点")
+                }
+                val model = local.getActiveModel()
+                    ?: return@withContext Resource.Error("未配置激活的 AI 模型")
+                if (!local.selectPlotChoice(req.choiceId)) {
+                    return@withContext Resource.Error("无法选择该剧情选项")
+                }
+                var generationError: String? = null
+                local.chatWithPipeline(conversationId, choice.text, model).collect { event ->
+                    if (event is RealtimeEvent.Error) generationError = event.message
+                }
+                generationError?.let { Resource.Error(it) }
+                    ?: Resource.Success(JsonParser.parseString("{\"success\":true,\"choice_id\":\"${req.choiceId}\"}"))
             }
-            generationError?.let { Resource.Error(it) }
-                ?: Resource.Success(JsonParser.parseString("{\"success\":true,\"choice_id\":\"${req.choiceId}\"}"))
         } else remote.plotBranch(conversationId, req)
     }
 

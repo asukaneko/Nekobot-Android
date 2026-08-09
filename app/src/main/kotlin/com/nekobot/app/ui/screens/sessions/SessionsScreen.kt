@@ -825,7 +825,10 @@ private fun RowScope.StatFilterCard(
             text = label,
             style = MaterialTheme.typography.labelSmall,
             color = contentColor,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }

@@ -166,6 +166,8 @@ class LocalRepository(
     private val appContext: android.content.Context? = null
 ) {
     private val gson = Gson()
+    /** 每个仓库实例唯一；同名 profile 覆盖重建后，旧协程也无法通过 active 检查。 */
+    private val plotStoryOwner = Any()
     private val sessionDao = db.sessionDao()
     private val messageDao = db.messageDao()
     private val agentRunDao = db.agentRunDao()
@@ -502,19 +504,88 @@ class LocalRepository(
 
     init {
         aiClient.setOAuthCredentialResolver(oauthManager::resolveCredential)
-        val savedGraph = appContext
-            ?.getSharedPreferences("plot_graph", android.content.Context.MODE_PRIVATE)
-            ?.getString("graph", null)
-        if (!savedGraph.isNullOrBlank()) {
-            com.nekobot.app.data.local.ai.getGlobalPlotGraphManager().fromJson(savedGraph)
+        appContext?.let { context ->
+            LocalPlotStoryStore.activateProfile(db.dbName, plotStoryOwner) {
+                val manager = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
+                manager.clear()
+                val savedGraph = LocalPlotStoryStore.loadGraph(context, db.dbName)
+                if (!savedGraph.isNullOrBlank()) manager.fromJson(savedGraph)
+            }
         }
     }
 
     /** 将本地故事图整体持久化，保证重启应用后节点、边和当前分支仍可恢复。 */
     fun persistPlotGraph() {
-        val json = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager().toJson()
-        appContext?.getSharedPreferences("plot_graph", android.content.Context.MODE_PRIVATE)
-            ?.edit()?.putString("graph", json)?.apply()
+        appContext?.let { context ->
+            // 切库前创建的后台任务即使迟到，也不能把新 profile 的全局图谱写回旧 scope。
+            LocalPlotStoryStore.runIfActiveProfile(db.dbName, plotStoryOwner) {
+                check(LocalPlotStoryStore.persistGraph(context, db.dbName, synchronous = true)) {
+                    "无法保存故事地图"
+                }
+            }
+        }
+    }
+
+    /** 与 profile 激活/重载互斥地修改全局故事图，防止切库时迟到任务污染新 scope。 */
+    private fun mutateActivePlotGraph(
+        action: (com.nekobot.app.data.local.ai.PlotGraphManager) -> Unit
+    ): Boolean = LocalPlotStoryStore.runIfActiveProfile(db.dbName, plotStoryOwner) {
+        action(com.nekobot.app.data.local.ai.getGlobalPlotGraphManager())
+    }
+
+    /** 原子选择剧情选项并持久化；inactive owner 返回 false 且不接触全局图谱。 */
+    fun selectPlotChoice(choiceId: String): Boolean {
+        var selected = false
+        mutateActivePlotGraph { manager ->
+            selected = manager.selectChoice(choiceId)
+            if (selected) persistPlotGraph()
+        }
+        return selected
+    }
+
+    /** 聊天页一次提交缓存选择与图谱选择，避免切库夹在两次独立写入之间。 */
+    fun commitPlotChoiceSelection(
+        sessionId: String,
+        choiceId: String,
+        choicesJson: String
+    ): Boolean {
+        val context = appContext ?: return false
+        var committed = false
+        mutateActivePlotGraph { manager ->
+            if (manager.selectChoice(choiceId)) {
+                committed = LocalPlotStoryStore.persistGraphAndPlotChoices(
+                    context = context,
+                    databaseName = db.dbName,
+                    sessionId = sessionId,
+                    choicesJson = choicesJson
+                )
+            }
+        }
+        return committed
+    }
+
+    /** 原子回滚故事图并持久化。 */
+    fun rollbackPlotNode(nodeId: String): Boolean {
+        var rolledBack = false
+        mutateActivePlotGraph { manager ->
+            rolledBack = manager.rollback(nodeId)
+            if (rolledBack) persistPlotGraph()
+        }
+        return rolledBack
+    }
+
+    /** 原子切换活动剧情节点并持久化。 */
+    fun switchPlotNode(conversationId: String, nodeId: String): Boolean {
+        var switched = false
+        mutateActivePlotGraph { manager ->
+            val node = manager.getNode(nodeId)
+            if (node?.conversationId == conversationId) {
+                manager.setActiveNode(conversationId, nodeId)
+                persistPlotGraph()
+                switched = true
+            }
+        }
+        return switched
     }
 
     /** 当前正在进行的聊天 Job，用于 stopGeneration */
@@ -1197,8 +1268,11 @@ class LocalRepository(
 
     suspend fun deleteSession(id: String) = withContext(Dispatchers.IO) {
         // 先清理该会话的剧情选项缓存（不影响 token 用量）
-        appContext?.getSharedPreferences("plot_choices", android.content.Context.MODE_PRIVATE)
-            ?.edit()?.remove(id)?.apply()
+        appContext?.let { context ->
+            LocalPlotStoryStore.runIfActiveProfile(db.dbName, plotStoryOwner) {
+                LocalPlotStoryStore.removePlotChoices(context, db.dbName, id)
+            }
+        }
         localBrowserTools.remove(id)?.close()
         LocalLinuxSandboxCoordinator.stopSession(id)
         automationScheduler?.cancelProactive(id)
@@ -1386,15 +1460,16 @@ class LocalRepository(
     // ==================== 剧情选项持久化 ====================
 
     /** 保存剧情选项到 SharedPreferences（与 session 生命周期解耦） */
-    fun savePlotChoices(sessionId: String, choicesJson: String) {
-        appContext?.getSharedPreferences("plot_choices", android.content.Context.MODE_PRIVATE)
-            ?.edit()?.putString(sessionId, choicesJson)?.apply()
+    fun savePlotChoices(sessionId: String, choicesJson: String): Boolean {
+        val context = appContext ?: return false
+        return LocalPlotStoryStore.runIfActiveProfile(db.dbName, plotStoryOwner) {
+            LocalPlotStoryStore.savePlotChoices(context, db.dbName, sessionId, choicesJson)
+        }
     }
 
     /** 读取已保存的剧情选项 */
     fun getPlotChoices(sessionId: String): String? {
-        return appContext?.getSharedPreferences("plot_choices", android.content.Context.MODE_PRIVATE)
-            ?.getString(sessionId, null)
+        return appContext?.let { LocalPlotStoryStore.getPlotChoices(it, db.dbName, sessionId) }
     }
 
     /** 将故事图当前节点的未选择选项同步到聊天页缓存。 */
@@ -4052,6 +4127,8 @@ class LocalRepository(
 
     /** 释放本地仓库持有的长连接与 stdio 子进程。 */
     fun close() {
+        // 先失活再发取消信号，确保尚未退出的同名/旧 profile 任务无法修改全局故事图。
+        LocalPlotStoryStore.deactivateProfile(plotStoryOwner)
         stopGeneration()
         localMcpRuntime.close()
         localBrowserTools.values.forEach(LocalBrowserTool::close)
@@ -4561,50 +4638,51 @@ class LocalRepository(
                 character != null &&
                 ctx.finalContent.isNotBlank()
             ) {
-                val manager = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
-                val parent = manager.getLatestNode(sessionId)
-                val selectedChoice = parent?.selectedChoiceId?.let(manager::getChoice)
-                val turn = ctx.characterTurn
-                val node = com.nekobot.app.data.local.ai.PlotNode(
-                    conversationId = sessionId,
-                    characterId = character.id,
-                    title = selectedChoice?.text?.take(80)
-                        ?: if (persistUserMessage) {
-                            userMessage.replace('\n', ' ').take(80).ifBlank { "剧情节点" }
+                mutateActivePlotGraph { manager ->
+                    val parent = manager.getLatestNode(sessionId)
+                    val selectedChoice = parent?.selectedChoiceId?.let(manager::getChoice)
+                    val turn = ctx.characterTurn
+                    val node = com.nekobot.app.data.local.ai.PlotNode(
+                        conversationId = sessionId,
+                        characterId = character.id,
+                        title = selectedChoice?.text?.take(80)
+                            ?: if (persistUserMessage) {
+                                userMessage.replace('\n', ' ').take(80).ifBlank { "剧情节点" }
+                            } else {
+                                "主动聊天"
+                            },
+                        summary = ctx.finalContent.take(500),
+                        level = selectedChoice?.level ?: "normal",
+                        scene = turn?.state?.scene ?: emptyMap(),
+                        stateSnapshot = turn?.state?.toDict() ?: emptyMap(),
+                        relationshipSnapshot = turn?.relationship?.toDict() ?: emptyMap(),
+                        parentNodeId = parent?.id,
+                        userMessage = if (persistUserMessage) userMessage else "",
+                        assistantMessage = ctx.finalContent,
+                        activityType = if (persistUserMessage) {
+                            turn?.state?.scene?.get("current_activity") as? String ?: "chat"
                         } else {
-                            "主动聊天"
+                            "proactive_chat"
                         },
-                    summary = ctx.finalContent.take(500),
-                    level = selectedChoice?.level ?: "normal",
-                    scene = turn?.state?.scene ?: emptyMap(),
-                    stateSnapshot = turn?.state?.toDict() ?: emptyMap(),
-                    relationshipSnapshot = turn?.relationship?.toDict() ?: emptyMap(),
-                    parentNodeId = parent?.id,
-                    userMessage = if (persistUserMessage) userMessage else "",
-                    assistantMessage = ctx.finalContent,
-                    activityType = if (persistUserMessage) {
-                        turn?.state?.scene?.get("current_activity") as? String ?: "chat"
-                    } else {
-                        "proactive_chat"
-                    },
-                    location = turn?.state?.scene?.get("location") as? String ?: "",
-                    mood = turn?.state?.mood ?: ""
-                )
-                if (selectedChoice != null) manager.branchFrom(selectedChoice.id, node)
-                else {
-                    manager.addNode(node)
-                    if (parent != null) {
-                        manager.addEdge(
-                            com.nekobot.app.data.local.ai.PlotEdge(
-                                fromNodeId = parent.id,
-                                toNodeId = node.id
+                        location = turn?.state?.scene?.get("location") as? String ?: "",
+                        mood = turn?.state?.mood ?: ""
+                    )
+                    if (selectedChoice != null) manager.branchFrom(selectedChoice.id, node)
+                    else {
+                        manager.addNode(node)
+                        if (parent != null) {
+                            manager.addEdge(
+                                com.nekobot.app.data.local.ai.PlotEdge(
+                                    fromNodeId = parent.id,
+                                    toNodeId = node.id
+                                )
                             )
-                        )
-                        manager.setActiveNode(sessionId, node.id)
+                            manager.setActiveNode(sessionId, node.id)
+                        }
                     }
+                    currentPlotNode = node
+                    persistPlotGraph()
                 }
-                currentPlotNode = node
-                persistPlotGraph()
             }
 
             // Phase 5.5: 保存 prompt_stack_debug 和 composed_system_prompt 到会话（供会话详情页展示）
@@ -4653,28 +4731,42 @@ class LocalRepository(
                         val choicesWithId = choices.mapIndexed { idx, c ->
                             c.toMutableMap().apply { put("id", "plot_${System.currentTimeMillis()}_$idx") }
                         }
-                        currentPlotNode?.let { node ->
-                            val manager = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
-                            choicesWithId.forEach { choice ->
-                                manager.addChoice(
-                                    com.nekobot.app.data.local.ai.PlotChoice(
-                                        id = choice["id"].orEmpty(),
-                                        nodeId = node.id,
-                                        text = choice["text"].orEmpty(),
-                                        level = choice["level"] ?: "normal",
-                                        intent = choice["intent"].orEmpty()
-                                    )
-                                )
-                            }
-                            persistPlotGraph()
-                        }
-                        // 包装成 {"choices": [...]} 格式（parsePlotChoices 期望 JsonObject）
                         val payload = com.google.gson.JsonObject().apply {
                             add("choices", gson.toJsonTree(choicesWithId))
                         }
-                        // 持久化到 SharedPreferences，重新进入会话时可恢复
-                        savePlotChoices(sessionId, payload.toString())
-                        emit(RealtimeEvent.PlotChoices(payload))
+                        val savedForActiveProfile = currentPlotNode?.let { node ->
+                            var saved = false
+                            val active = mutateActivePlotGraph { manager ->
+                                // 选项生成期间用户可能已回滚并删除该节点，不能写入悬空 choice。
+                                if (manager.getNode(node.id)?.conversationId != sessionId) {
+                                    return@mutateActivePlotGraph
+                                }
+                                choicesWithId.forEach { choice ->
+                                    manager.addChoice(
+                                        com.nekobot.app.data.local.ai.PlotChoice(
+                                            id = choice["id"].orEmpty(),
+                                            nodeId = node.id,
+                                            text = choice["text"].orEmpty(),
+                                            level = choice["level"] ?: "normal",
+                                            intent = choice["intent"].orEmpty()
+                                        )
+                                    )
+                                }
+                                val context = requireNotNull(appContext)
+                                saved = LocalPlotStoryStore.persistGraphAndPlotChoices(
+                                    context = context,
+                                    databaseName = db.dbName,
+                                    sessionId = sessionId,
+                                    choicesJson = payload.toString()
+                                )
+                                check(saved) { "无法保存剧情选项" }
+                            }
+                            active && saved
+                        } ?: run {
+                            // 兼容没有图节点的旧会话，但仍受 owner lease 保护。
+                            savePlotChoices(sessionId, payload.toString())
+                        }
+                        if (savedForActiveProfile) emit(RealtimeEvent.PlotChoices(payload))
                     }
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
@@ -5061,27 +5153,48 @@ class LocalRepository(
                 val choicesWithId = choices.mapIndexed { idx, c ->
                     c.toMutableMap().apply { put("id", "plot_${System.currentTimeMillis()}_$idx") }
                 }
-                val manager = com.nekobot.app.data.local.ai.getGlobalPlotGraphManager()
-                manager.getLatestNode(sessionId)?.let { node ->
-                    manager.deleteChoicesForNode(node.id)
-                    choicesWithId.forEach { choice ->
-                        manager.addChoice(
-                            com.nekobot.app.data.local.ai.PlotChoice(
-                                id = choice["id"].orEmpty(),
-                                nodeId = node.id,
-                                text = choice["text"].orEmpty(),
-                                level = choice["level"] ?: "normal",
-                                intent = choice["intent"].orEmpty()
-                            )
-                        )
-                    }
-                    persistPlotGraph()
-                }
                 val payload = com.google.gson.JsonObject().apply {
                     add("choices", gson.toJsonTree(choicesWithId))
                 }
-                savePlotChoices(sessionId, payload.toString())
-                emit(RealtimeEvent.PlotChoices(payload))
+                var saved = false
+                val active = mutateActivePlotGraph { manager ->
+                    val node = manager.getLatestNode(sessionId)
+                    if (node != null) {
+                        manager.deleteChoicesForNode(node.id)
+                        choicesWithId.forEach { choice ->
+                            manager.addChoice(
+                                com.nekobot.app.data.local.ai.PlotChoice(
+                                    id = choice["id"].orEmpty(),
+                                    nodeId = node.id,
+                                    text = choice["text"].orEmpty(),
+                                    level = choice["level"] ?: "normal",
+                                    intent = choice["intent"].orEmpty()
+                                )
+                            )
+                        }
+                        saved = LocalPlotStoryStore.persistGraphAndPlotChoices(
+                            context = requireNotNull(appContext),
+                            databaseName = db.dbName,
+                            sessionId = sessionId,
+                            choicesJson = payload.toString()
+                        )
+                    } else {
+                        appContext?.let { context ->
+                            LocalPlotStoryStore.savePlotChoices(
+                                context,
+                                db.dbName,
+                                sessionId,
+                                payload.toString()
+                            )
+                            saved = true
+                        }
+                    }
+                }
+                when {
+                    !active -> return@flow
+                    saved -> emit(RealtimeEvent.PlotChoices(payload))
+                    else -> emit(RealtimeEvent.Error("无法保存剧情选项"))
+                }
             } else {
                 emit(RealtimeEvent.Error("未能生成剧情选项"))
             }

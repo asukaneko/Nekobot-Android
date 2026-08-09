@@ -6497,7 +6497,8 @@ class ChatViewModel : BaseViewModel() {
         if (isLocalMode) {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 try {
-                    val raw = ServiceContainer.localRepository
+                    val local = ServiceContainer.localRepository
+                    val raw = local
                         .getPlotChoices(currentSessionId) ?: "{\"choices\":[]}"
                     val payload = com.google.gson.JsonParser.parseString(raw).asJsonObject
                     val choicesArr = payload.get("choices")?.takeIf { it.isJsonArray }?.asJsonArray
@@ -6511,9 +6512,11 @@ class ChatViewModel : BaseViewModel() {
                             }
                         }
                     }
-                    ServiceContainer.localRepository.savePlotChoices(currentSessionId, payload.toString())
-                    com.nekobot.app.data.local.ai.getGlobalPlotGraphManager().selectChoice(choiceId)
-                    ServiceContainer.localRepository.persistPlotGraph()
+                    local.commitPlotChoiceSelection(
+                        sessionId = currentSessionId,
+                        choiceId = choiceId,
+                        choicesJson = payload.toString()
+                    )
                 } catch (_: Exception) { }
             }
             return

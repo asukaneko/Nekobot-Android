@@ -60,6 +60,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.AppMode
+import com.nekobot.app.data.local.LocalPlotStoryStore
+import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.local.db.NekobotDatabase
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.ErrorBanner
@@ -149,12 +151,23 @@ class DataMaintenanceViewModel : BaseViewModel() {
             setLoading(true)
             try {
                 withContext(Dispatchers.IO) {
-                    // 先关闭数据库连接
-                    NekobotDatabase.get(context).close()
+                    // 先让仓库 owner 失活并关闭所有已知连接，避免后台生成把剧情数据复活。
+                    ServiceContainer.localRepository.close()
+                    val profileNames = (
+                        ServiceContainer.prefs.listDbProfiles().map { it.name } +
+                            ServiceContainer.prefs.activeDbName
+                        ).distinct()
+                    profileNames.forEach { NekobotDatabase.closeProfile(it) }
+                    LocalPlotStoryStore.clearAllProfiles(
+                        context,
+                        profileNames
+                    )
                     // 删除所有数据库文件
                     context.databaseList().forEach { name ->
                         context.deleteDatabase(name)
                     }
+                    // 清空后立即重建默认空库，避免页面继续持有已关闭的 Repository。
+                    ServiceContainer.switchLocalDb(PrefsManager.DEFAULT_DB_NAME)
                 }
                 showToast(string(R.string.maintenance_all_data_cleared))
                 refreshStorageInfo(context)

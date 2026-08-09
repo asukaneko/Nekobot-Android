@@ -7,6 +7,7 @@ import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.data.local.LocaleHelper
+import com.nekobot.app.data.local.LocalPlotStoryStore
 import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.local.ai.LocalAiClient
 import com.nekobot.app.data.local.ai.ModelPricingCatalog
@@ -28,6 +29,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 
 /**
@@ -108,9 +110,11 @@ object ServiceContainer {
         appContext = app.applicationContext
         prefs = PrefsManager(app)
         prefs.migrateSensitivePreferences()
+        freezeLegacyPlotStoryProfiles(app)
         network = NetworkClient(prefs)
         repository = NekobotRepository(network, prefs)
         val db = NekobotDatabase.get(app, prefs.activeDbName)
+        migrateLegacyPlotStoryProfile(app, prefs.activeDbName, db)
         localRepository = LocalRepository(db, LocalAiClient(), app)
         unified = UnifiedRepository(prefs, repository, localRepository, app)
         unified.migrateLocalSecurePreferences()
@@ -144,6 +148,44 @@ object ServiceContainer {
         }
     }
 
+    /** 在任何新 profile 可能创建前冻结 legacy 迁移资格，不在冷启动时打开所有数据库。 */
+    private fun freezeLegacyPlotStoryProfiles(app: Application) {
+        val existingProfiles = (prefs.listDbProfiles().map { it.name } + prefs.activeDbName)
+            .distinct()
+            .filter { profileName ->
+                val dbName = if (profileName.endsWith(".db")) profileName else "$profileName.db"
+                app.getDatabasePath(dbName).isFile
+            }
+        LocalPlotStoryStore.freezeLegacyProfiles(app, existingProfiles)
+    }
+
+    /** 仅在某个旧 profile 实际打开时查询 id 并迁移，避免全库冷启动与重试覆盖。 */
+    private fun migrateLegacyPlotStoryProfile(
+        context: Context,
+        profileName: String,
+        db: NekobotDatabase
+    ) {
+        if (!LocalPlotStoryStore.isLegacyProfilePending(context, profileName)) return
+        try {
+            val sessionIds = runBlocking(Dispatchers.IO) {
+                db.openHelper.readableDatabase.query("SELECT id FROM local_sessions").use { cursor ->
+                    val idColumn = cursor.getColumnIndexOrThrow("id")
+                    buildSet {
+                        while (cursor.moveToNext()) add(cursor.getString(idColumn))
+                    }
+                }
+            }
+            LocalPlotStoryStore.migrateLegacyProfile(context, profileName, sessionIds)
+        } catch (error: Exception) {
+            // 数据库暂时不可读时继续使用 legacy 存储，避免启动循环或提前丢数据。
+            com.nekobot.app.data.local.LocalLogger.e(
+                "PlotStory",
+                "数据库 $profileName 的旧故事地图迁移失败: ${error.message}",
+                error
+            )
+        }
+    }
+
     /** 刷新本地化上下文（语言切换后调用）。 */
     fun refreshLocale() {
         appContext?.let { localizedContext = LocaleHelper.wrap(it) }
@@ -163,6 +205,7 @@ object ServiceContainer {
             localRepository.close()
             NekobotDatabase.switchProfile(ctx, profileName)
             val db = NekobotDatabase.get(ctx, profileName)
+            migrateLegacyPlotStoryProfile(ctx, profileName, db)
             localRepository = LocalRepository(db, LocalAiClient(), ctx)
             unified = UnifiedRepository(prefs, repository, localRepository, ctx)
             com.nekobot.app.data.local.AchievementManager.switchScope(achievementScopeId())

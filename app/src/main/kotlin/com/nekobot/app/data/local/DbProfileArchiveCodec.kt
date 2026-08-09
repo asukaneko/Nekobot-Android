@@ -1,6 +1,7 @@
 package com.nekobot.app.data.local
 
 import com.google.gson.Gson
+import com.google.gson.JsonParser
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -17,6 +18,12 @@ internal data class DbProfilePortraitSource(
     val file: File
 )
 
+/** 数据库 profile 对应的故事地图，以及聊天页仍在使用的剧情选项缓存。 */
+internal data class DbProfileStoryData(
+    val graphJson: String,
+    val plotChoices: Map<String, String> = emptyMap()
+)
+
 /** 从数据库备份 ZIP 中提取出的数据库文件与内嵌立绘。 */
 internal data class ExtractedDbProfileArchive(
     val main: ByteArray,
@@ -25,22 +32,28 @@ internal data class ExtractedDbProfileArchive(
     /** ZIP entry -> 图片字节。 */
     val portraits: Map<String, ByteArray> = emptyMap(),
     /** 数据库中的原始 URI -> ZIP entry。 */
-    val portraitReferences: Map<String, String> = emptyMap()
+    val portraitReferences: Map<String, String> = emptyMap(),
+    /** 旧版备份没有该条目时为 null。 */
+    val story: DbProfileStoryData? = null
 )
 
 /**
  * 数据库 profile 备份 ZIP 编解码器。
  *
  * 数据库仍保留在 ZIP 根目录，以兼容旧版导入；新增的立绘放在 [PORTRAIT_PREFIX] 下，
- * 并通过 manifest 保存完整原 URI 到 ZIP entry 的映射。导入端不能只按文件名匹配，
- * 否则不同目录中的同名图片可能被错误替换。
+ * 并通过 manifest 保存完整原 URI 到 ZIP entry 的映射。故事地图放在 [STORY_ENTRY]，
+ * 其中只包含目标数据库实际拥有的会话。导入端不能只按文件名匹配立绘，否则不同目录
+ * 中的同名图片可能被错误替换。
  */
 internal object DbProfileArchiveCodec {
     private const val MANIFEST_VERSION = 1
+    private const val STORY_VERSION = 1
     private const val PORTRAIT_PREFIX = "portraits/"
     private const val MANIFEST_ENTRY = "${PORTRAIT_PREFIX}manifest.json"
+    private const val STORY_ENTRY = "story/story.json"
     private const val MAX_ENTRY_COUNT = 4_096
     private const val MAX_MANIFEST_BYTES = 4L * 1024 * 1024
+    private const val MAX_STORY_BYTES = 16L * 1024 * 1024
     private const val MAX_PORTRAIT_BYTES = 64L * 1024 * 1024
     private const val MAX_DATABASE_ENTRY_BYTES = 512L * 1024 * 1024
     private const val MAX_TOTAL_EXPANDED_BYTES = 768L * 1024 * 1024
@@ -49,6 +62,12 @@ internal object DbProfileArchiveCodec {
     private data class PortraitManifest(
         val version: Int = MANIFEST_VERSION,
         val references: Map<String, String>? = emptyMap()
+    )
+
+    private data class StoryManifest(
+        val version: Int = STORY_VERSION,
+        val graphJson: String? = null,
+        val plotChoices: Map<String, String>? = emptyMap()
     )
 
     private data class PreparedPortrait(
@@ -61,7 +80,8 @@ internal object DbProfileArchiveCodec {
     fun writeArchive(
         output: OutputStream,
         databaseFiles: List<Pair<String, File>>,
-        portraitSources: List<DbProfilePortraitSource>
+        portraitSources: List<DbProfilePortraitSource>,
+        story: DbProfileStoryData? = null
     ) {
         val portraitsByPath = linkedMapOf<String, Pair<File, MutableSet<String>>>()
         portraitSources.forEach { source ->
@@ -112,9 +132,10 @@ internal object DbProfileArchiveCodec {
             gson.toJson(PortraitManifest(references = references)).toByteArray(Charsets.UTF_8)
                 .also { require(it.size <= MAX_MANIFEST_BYTES) { "立绘清单过大" } }
         }
+        val storyBytes = story?.let(::prepareStoryBytes)
 
         val archiveEntryCount = preparedDatabases.size + preparedPortraits.size +
-            if (manifestBytes != null) 1 else 0
+            (if (manifestBytes != null) 1 else 0) + (if (storyBytes != null) 1 else 0)
         require(archiveEntryCount <= MAX_ENTRY_COUNT) { "备份条目过多" }
         var totalBytes = 0L
         (preparedDatabases.map { it.second } + preparedPortraits.map { it.file }).forEach { file ->
@@ -122,6 +143,10 @@ internal object DbProfileArchiveCodec {
             totalBytes += file.length()
         }
         manifestBytes?.let { bytes ->
+            require(bytes.size.toLong() <= MAX_TOTAL_EXPANDED_BYTES - totalBytes) { "备份内容过大" }
+            totalBytes += bytes.size
+        }
+        storyBytes?.let { bytes ->
             require(bytes.size.toLong() <= MAX_TOTAL_EXPANDED_BYTES - totalBytes) { "备份内容过大" }
         }
 
@@ -132,15 +157,17 @@ internal object DbProfileArchiveCodec {
             }
 
             manifestBytes?.let { putBytes(zip, MANIFEST_ENTRY, it) }
+            storyBytes?.let { putBytes(zip, STORY_ENTRY, it) }
         }
     }
 
     /** 测试及小型调用使用的内存版本；正式导出应优先使用 [writeArchive]。 */
     fun createArchive(
         databaseFiles: List<Pair<String, File>>,
-        portraitSources: List<DbProfilePortraitSource>
+        portraitSources: List<DbProfilePortraitSource>,
+        story: DbProfileStoryData? = null
     ): ByteArray = ByteArrayOutputStream().also { output ->
-        writeArchive(output, databaseFiles, portraitSources)
+        writeArchive(output, databaseFiles, portraitSources, story)
     }.toByteArray()
 
     /** 提取新版或旧版数据库 ZIP；旧 ZIP 没有 manifest 时图片映射为空。 */
@@ -227,14 +254,58 @@ internal object DbProfileArchiveCodec {
             emptyMap()
         }
         val portraitEntries = references.values.distinct().associateWith { rawEntries.getValue(it) }
+        val story = rawEntries[STORY_ENTRY]?.let(::parseStoryBytes)
 
         return ExtractedDbProfileArchive(
             main = rawEntries.getValue(mainEntry),
             wal = entryWithBaseName("$mainName-wal"),
             shm = entryWithBaseName("$mainName-shm"),
             portraits = portraitEntries,
-            portraitReferences = references
+            portraitReferences = references,
+            story = story
         )
+    }
+
+    private fun prepareStoryBytes(story: DbProfileStoryData): ByteArray {
+        validateJsonObject(story.graphJson, "故事地图")
+        story.plotChoices.forEach { (sessionId, choicesJson) ->
+            require(sessionId.isNotBlank()) { "剧情选项包含空会话 ID" }
+            validateJsonObject(choicesJson, "会话 $sessionId 的剧情选项")
+        }
+        return gson.toJson(
+            StoryManifest(
+                graphJson = story.graphJson,
+                plotChoices = story.plotChoices.toSortedMap()
+            )
+        ).toByteArray(Charsets.UTF_8).also { bytes ->
+            require(bytes.size <= MAX_STORY_BYTES) { "故事地图过大" }
+        }
+    }
+
+    private fun parseStoryBytes(bytes: ByteArray): DbProfileStoryData {
+        val manifest = runCatching<StoryManifest> {
+            gson.fromJson(String(bytes, Charsets.UTF_8), StoryManifest::class.java)
+                ?: throw IllegalArgumentException("故事地图清单为空")
+        }.getOrElse { error ->
+            throw IllegalArgumentException("故事地图清单格式无效", error)
+        }
+        require(manifest.version == STORY_VERSION) {
+            "不支持的故事地图版本：${manifest.version}"
+        }
+        val graphJson = requireNotNull(manifest.graphJson) { "故事地图清单缺少图谱" }
+        validateJsonObject(graphJson, "故事地图")
+        val plotChoices = requireNotNull(manifest.plotChoices) { "故事地图清单缺少剧情选项" }
+        plotChoices.forEach { (sessionId, choicesJson) ->
+            require(sessionId.isNotBlank()) { "剧情选项包含空会话 ID" }
+            validateJsonObject(choicesJson, "会话 $sessionId 的剧情选项")
+        }
+        return DbProfileStoryData(graphJson, plotChoices.toMap(linkedMapOf()))
+    }
+
+    private fun validateJsonObject(json: String, label: String) {
+        val parsed = runCatching { JsonParser.parseString(json) }
+            .getOrElse { error -> throw IllegalArgumentException("$label JSON 格式无效", error) }
+        require(parsed.isJsonObject) { "$label 必须是 JSON 对象" }
     }
 
     private fun putFile(zip: ZipOutputStream, name: String, file: File) {
@@ -253,6 +324,7 @@ internal object DbProfileArchiveCodec {
         val name = path.substringAfterLast('/')
         return when {
             path == MANIFEST_ENTRY -> MAX_MANIFEST_BYTES
+            path == STORY_ENTRY -> MAX_STORY_BYTES
             path.startsWith(PORTRAIT_PREFIX) -> MAX_PORTRAIT_BYTES
             name.endsWith(".db", ignoreCase = true) ||
                 name.endsWith(".db-wal", ignoreCase = true) ||

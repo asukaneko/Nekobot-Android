@@ -163,6 +163,13 @@ class PlotGraphManager {
     private val edges = mutableMapOf<String, PlotEdge>()
     private val active = mutableMapOf<String, String>()  // conversation_id → active node id
 
+    private data class GraphSnapshot(
+        val nodes: List<PlotNode>,
+        val choices: List<PlotChoice>,
+        val edges: List<PlotEdge>,
+        val active: Map<String, String>
+    )
+
     // ---- Node CRUD ----
 
     fun addNode(node: PlotNode) {
@@ -355,9 +362,12 @@ class PlotGraphManager {
     fun pathToNode(nodeId: String): List<PlotNode> {
         val path = mutableListOf<PlotNode>()
         var current = nodes[nodeId] ?: return path
+        val visited = mutableSetOf<String>()
+        if (!visited.add(current.id)) return path
         path.add(0, current)
         while (current.parentNodeId != null) {
             val parent = nodes[current.parentNodeId!!] ?: break
+            if (!visited.add(parent.id)) break
             path.add(0, parent)
             current = parent
         }
@@ -367,37 +377,206 @@ class PlotGraphManager {
     // ---- 持久化 ----
 
     fun toJson(): String {
-        return plotGson.toJson(mapOf(
-            "nodes" to nodes.values.map { it.toDict() },
-            "choices" to choices.values.map { it.toDict() },
-            "edges" to edges.values.map { it.toDict() },
-            "active" to active
-        ))
+        return encodeSnapshot(
+            GraphSnapshot(
+                nodes = nodes.values.toList(),
+                choices = choices.values.toList(),
+                edges = edges.values.toList(),
+                active = active.toMap()
+            )
+        )
+    }
+
+    /**
+     * 只导出指定会话的图谱，供数据库 profile 备份使用。
+     *
+     * 全局管理器可能同时持有多个数据库 profile 的会话，不能把整张图盲目写进每个备份。
+     */
+    fun toJsonForConversations(conversationIds: Set<String>): String {
+        val selectedNodes = nodes.values.filter { it.conversationId in conversationIds }
+        val selectedNodeIds = selectedNodes.mapTo(linkedSetOf()) { it.id }
+        return encodeSnapshot(
+            GraphSnapshot(
+                nodes = selectedNodes,
+                choices = choices.values.filter { it.nodeId in selectedNodeIds },
+                edges = edges.values.filter {
+                    it.fromNodeId in selectedNodeIds && it.toNodeId in selectedNodeIds
+                },
+                active = active.filter { (conversationId, nodeId) ->
+                    conversationId in conversationIds && nodeId in selectedNodeIds
+                }
+            )
+        )
+    }
+
+    /**
+     * 原子地替换一组会话的图谱，同时保留其他 profile 的会话。
+     *
+     * [conversationIdsToReplace] 可包含同名导入前旧数据库的会话；而
+     * [allowedConversationIds] 应只包含导入后数据库实际存在的会话，用于阻止备份包
+     * 将无关图谱注入其他 profile。JSON 会先完整解析校验，失败时不会修改当前图谱。
+     */
+    fun replaceConversationsFromJson(
+        conversationIdsToReplace: Set<String>,
+        graphJson: String?,
+        allowedConversationIds: Set<String> = conversationIdsToReplace
+    ) {
+        val imported = graphJson?.let {
+            require(it.isNotBlank()) { "故事地图 JSON 为空" }
+            decodeSnapshot(it)
+        } ?: GraphSnapshot(emptyList(), emptyList(), emptyList(), emptyMap())
+        validateSnapshot(imported, allowedConversationIds)
+
+        val oldNodeIds = nodes.values
+            .filter { it.conversationId in conversationIdsToReplace }
+            .mapTo(linkedSetOf()) { it.id }
+        val oldChoiceIds = choices.values
+            .filter { it.nodeId in oldNodeIds }
+            .mapTo(linkedSetOf()) { it.id }
+        val preservedNodeIds = nodes.keys - oldNodeIds
+        val preservedChoiceIds = choices.keys - oldChoiceIds
+        val preservedEdgeIds = edges.values
+            .filterNot { it.fromNodeId in oldNodeIds || it.toNodeId in oldNodeIds }
+            .mapTo(linkedSetOf()) { it.id }
+
+        require(imported.nodes.none { it.id in preservedNodeIds }) { "故事地图节点 ID 与其他数据库冲突" }
+        require(imported.choices.none { it.id in preservedChoiceIds }) { "故事选项 ID 与其他数据库冲突" }
+        require(imported.edges.none { it.id in preservedEdgeIds }) { "故事连线 ID 与其他数据库冲突" }
+
+        nodes.keys.removeAll(oldNodeIds)
+        choices.entries.removeAll { (_, choice) -> choice.nodeId in oldNodeIds }
+        edges.entries.removeAll { (_, edge) ->
+            edge.fromNodeId in oldNodeIds || edge.toNodeId in oldNodeIds
+        }
+        active.keys.removeAll(conversationIdsToReplace)
+
+        imported.nodes.forEach { nodes[it.id] = it }
+        imported.choices.forEach { choices[it.id] = it }
+        imported.edges.forEach { edges[it.id] = it }
+        active.putAll(imported.active)
     }
 
     fun fromJson(json: String) {
         if (json.isBlank()) return
         try {
-            @Suppress("UNCHECKED_CAST")
-            val data = plotGson.fromJson(json, Map::class.java) as Map<String, Any>
+            val snapshot = decodeSnapshot(json)
+            validateSnapshot(
+                snapshot,
+                snapshot.nodes.mapTo(linkedSetOf()) { it.conversationId }
+            )
             nodes.clear(); choices.clear(); edges.clear(); active.clear()
-
-            (data["nodes"] as? List<Map<String, Any>>)?.forEach {
-                val node = PlotNode.fromDict(it)
-                nodes[node.id] = node
-            }
-            (data["choices"] as? List<Map<String, Any>>)?.forEach {
-                val choice = PlotChoice.fromDict(it)
-                choices[choice.id] = choice
-            }
-            (data["edges"] as? List<Map<String, Any>>)?.forEach {
-                val edge = PlotEdge.fromDict(it)
-                edges[edge.id] = edge
-            }
-            @Suppress("UNCHECKED_CAST")
-            (data["active"] as? Map<String, String>)?.forEach { (k, v) -> active[k] = v }
+            snapshot.nodes.forEach { nodes[it.id] = it }
+            snapshot.choices.forEach { choices[it.id] = it }
+            snapshot.edges.forEach { edges[it.id] = it }
+            active.putAll(snapshot.active)
         } catch (e: Exception) {
             // 忽略解析错误
+        }
+    }
+
+    private fun encodeSnapshot(snapshot: GraphSnapshot): String = plotGson.toJson(
+        mapOf(
+            "nodes" to snapshot.nodes.map { it.toDict() },
+            "choices" to snapshot.choices.map { it.toDict() },
+            "edges" to snapshot.edges.map { it.toDict() },
+            "active" to snapshot.active
+        )
+    )
+
+    @Suppress("UNCHECKED_CAST")
+    private fun decodeSnapshot(json: String): GraphSnapshot {
+        val data = plotGson.fromJson(json, Map::class.java) as? Map<String, Any>
+            ?: throw IllegalArgumentException("故事地图必须是 JSON 对象")
+
+        fun objectList(key: String): List<Map<String, Any>> {
+            val raw = data[key] ?: return emptyList()
+            require(raw is List<*>) { "故事地图字段 $key 必须是数组" }
+            return raw.map { item ->
+                require(item is Map<*, *>) { "故事地图字段 $key 包含无效项目" }
+                require(item.keys.all { it is String }) { "故事地图字段 $key 包含无效键" }
+                item as Map<String, Any>
+            }
+        }
+
+        val activeMap = when (val raw = data["active"]) {
+            null -> emptyMap()
+            is Map<*, *> -> raw.entries.associate { (key, value) ->
+                require(key is String && value is String) { "故事地图 active 字段无效" }
+                key to value
+            }
+            else -> throw IllegalArgumentException("故事地图字段 active 必须是对象")
+        }
+        return GraphSnapshot(
+            nodes = objectList("nodes").map { PlotNode.fromDict(it) },
+            choices = objectList("choices").map { PlotChoice.fromDict(it) },
+            edges = objectList("edges").map { PlotEdge.fromDict(it) },
+            active = activeMap
+        )
+    }
+
+    private fun validateSnapshot(snapshot: GraphSnapshot, allowedConversationIds: Set<String>) {
+        require(snapshot.nodes.map { it.id }.distinct().size == snapshot.nodes.size) {
+            "故事地图包含重复节点"
+        }
+        require(snapshot.choices.map { it.id }.distinct().size == snapshot.choices.size) {
+            "故事地图包含重复选项"
+        }
+        require(snapshot.edges.map { it.id }.distinct().size == snapshot.edges.size) {
+            "故事地图包含重复连线"
+        }
+        require(snapshot.nodes.all { it.id.isNotBlank() && it.conversationId in allowedConversationIds }) {
+            "故事地图包含不属于当前数据库的会话"
+        }
+        val importedNodes = snapshot.nodes.associateBy { it.id }
+        require(snapshot.choices.all { it.id.isNotBlank() && it.nodeId in importedNodes }) {
+            "故事地图包含无效选项"
+        }
+        val importedChoices = snapshot.choices.associateBy { it.id }
+        require(snapshot.nodes.all { node ->
+            node.parentNodeId == null || importedNodes[node.parentNodeId]?.conversationId == node.conversationId
+        }) { "故事地图包含无效父节点" }
+        require(snapshot.nodes.all { node ->
+            node.selectedChoiceId == null || importedChoices[node.selectedChoiceId]?.nodeId == node.id
+        }) { "故事地图包含无效已选选项" }
+        require(snapshot.edges.all {
+            val from = importedNodes[it.fromNodeId]
+            val to = importedNodes[it.toNodeId]
+            it.id.isNotBlank() &&
+                from != null &&
+                to != null &&
+                from.conversationId == to.conversationId &&
+                (it.choiceId.isBlank() || importedChoices[it.choiceId]?.nodeId == it.fromNodeId)
+        }) { "故事地图包含无效连线" }
+        require(snapshot.active.all { (conversationId, nodeId) ->
+            conversationId in allowedConversationIds &&
+                importedNodes[nodeId]?.conversationId == conversationId
+        }) { "故事地图包含无效活动节点" }
+        // 显式栈避免恶意备份构造超深父链导致递归栈溢出。
+        val visitState = mutableMapOf<String, Int>() // 1 = visiting, 2 = completed
+        snapshot.nodes.forEach { start ->
+            if (visitState[start.id] == 2) return@forEach
+            val stack = ArrayDeque<Pair<String, Boolean>>()
+            stack.addLast(start.id to false)
+            while (stack.isNotEmpty()) {
+                val (nodeId, exiting) = stack.removeLast()
+                if (exiting) {
+                    if (visitState[nodeId] == 1) visitState[nodeId] = 2
+                    continue
+                }
+                when (visitState[nodeId]) {
+                    2 -> continue
+                    1 -> throw IllegalArgumentException("故事地图包含父节点循环")
+                }
+                visitState[nodeId] = 1
+                stack.addLast(nodeId to true)
+                importedNodes[nodeId]?.parentNodeId?.let { parentId ->
+                    when (visitState[parentId]) {
+                        1 -> throw IllegalArgumentException("故事地图包含父节点循环")
+                        2 -> Unit
+                        else -> stack.addLast(parentId to false)
+                    }
+                }
+            }
         }
     }
 
