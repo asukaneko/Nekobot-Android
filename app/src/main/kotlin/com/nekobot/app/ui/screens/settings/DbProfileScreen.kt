@@ -56,6 +56,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,8 +69,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.room.withTransaction
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.DbProfileArchiveCodec
+import com.nekobot.app.data.local.DbProfilePortraitSource
+import com.nekobot.app.data.local.ExtractedDbProfileArchive
 import com.nekobot.app.data.local.LoginRecord
 import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.local.db.NekobotDatabase
@@ -82,15 +87,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
-import java.util.zip.ZipOutputStream
+import java.util.UUID
 
 /**
  * 本地 DB Profile 管理 ViewModel：维护 profile 列表、激活态、远程导入与切换。
@@ -150,7 +153,8 @@ class DbProfileViewModel : ViewModel() {
                 clearProfileSidecarData(ctx, profileName)
                 // 清理导入的立绘目录
                 runCatching {
-                    java.io.File(ctx.cacheDir, "portraits/$profileName").deleteRecursively()
+                    File(ctx.cacheDir, "portraits/$profileName").deleteRecursively()
+                    importedPortraitDir(ctx, profileName).deleteRecursively()
                 }
             }
             prefs.removeDbProfile(profileName)
@@ -224,12 +228,30 @@ class DbProfileViewModel : ViewModel() {
      * 导出指定 profile 的数据库到下载目录。
      *
      * 流程：
-     * 1. 关闭目标 profile 的 db 连接（强制 WAL 刷盘）
-     * 2. 收集 .db / .db-wal / .db-shm 文件
-     * 3. 打包成 ZIP 写入 Downloads（Android 10+ 走 MediaStore，9- 直接写公共目录）
+     * 1. 从数据库收集角色、会话实际引用的本地头像和立绘
+     * 2. 关闭目标 profile 的 db 连接（强制 WAL 刷盘）
+     * 3. 将 .db / .db-wal / .db-shm、图片和 URI 映射清单打包到 Downloads
      * 4. 若导出的是当前激活 db，重开连接以恢复正常使用
      */
     fun exportToDownloads(profileName: String) {
+        exportProfile(profileName, destinationUri = null, requestedFileName = null)
+    }
+
+    /** Android 8/9 通过系统文件选择器取得写入 URI，避免依赖旧存储权限。 */
+    fun exportToUri(profileName: String, destinationUri: Uri, fileName: String) {
+        exportProfile(profileName, destinationUri, fileName)
+    }
+
+    fun suggestedExportFileName(profileName: String): String {
+        val profile = _profiles.value.firstOrNull { it.name == profileName }
+        return buildExportFileName(profile?.displayName.orEmpty(), profileName)
+    }
+
+    private fun exportProfile(
+        profileName: String,
+        destinationUri: Uri?,
+        requestedFileName: String?
+    ) {
         val profile = _profiles.value.firstOrNull { it.name == profileName } ?: return
         val displayNameStr = profile.displayName
         val ctx = ServiceContainer.appContext ?: run {
@@ -244,12 +266,14 @@ class DbProfileViewModel : ViewModel() {
                 targetDb.aiModelDao().migrateStoredSecrets()
                 targetDb.mcpServerDao().migrateStoredSecrets()
                 targetDb.apiKeyDao().migrateStoredSecrets()
+                val portraitSources = collectPortraitSources(ctx, targetDb)
                 // 关闭目标 profile 的 db 连接，确保 WAL 刷盘
                 NekobotDatabase.closeProfile(profileName)
                 Thread.sleep(100)
                 val dbName = if (profileName.endsWith(".db")) profileName else "$profileName.db"
                 val dbFile = ctx.getDatabasePath(dbName)
                 if (!dbFile.exists()) {
+                    if (isActive) ServiceContainer.switchLocalDb(profileName)
                     withContext(Dispatchers.Main) {
                         _importing.value = false
                         _toast.value = ServiceContainer.getString(R.string.dbprofile_export_no_db)
@@ -263,21 +287,15 @@ class DbProfileViewModel : ViewModel() {
                     val f = ctx.getDatabasePath(suffix)
                     if (f.exists()) entries.add(f.name to f)
                 }
-                // 打包成 ZIP
-                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-                val safeName = displayNameStr.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim()
-                    .ifBlank { profileName }
-                val zipFileName = "nekobot_${safeName}_$timestamp.zip"
-                val baos = ByteArrayOutputStream()
-                ZipOutputStream(baos).use { zos ->
-                    entries.forEach { (entryName, file) ->
-                        zos.putNextEntry(ZipEntry(entryName))
-                        file.inputStream().use { it.copyTo(zos) }
-                        zos.closeEntry()
-                    }
+                // 流式打包到 Downloads，避免数据库和多张立绘同时驻留内存
+                val zipFileName = requestedFileName
+                    ?.takeIf { it.isNotBlank() }
+                    ?: buildExportFileName(displayNameStr, profileName)
+                val saved = if (destinationUri != null) {
+                    writeArchiveToUri(ctx, destinationUri, entries, portraitSources)
+                } else {
+                    writeArchiveToDownloads(ctx, zipFileName, entries, portraitSources)
                 }
-                val zipBytes = baos.toByteArray()
-                val saved = writeBytesToDownloads(ctx, zipFileName, "application/zip", zipBytes)
                 // 恢复 db 连接：激活 db 需要走 switchLocalDb 重建 LocalRepository
                 if (isActive) {
                     ServiceContainer.switchLocalDb(profileName)
@@ -305,6 +323,13 @@ class DbProfileViewModel : ViewModel() {
         }
     }
 
+    private fun buildExportFileName(displayName: String, profileName: String): String {
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val safeName = displayName.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim()
+            .ifBlank { profileName }
+        return "nekobot_${safeName}_$timestamp.zip"
+    }
+
     /**
      * 从本地文件导入数据库。支持 .zip（包含 .db 及可选的 -wal/-shm）或直接 .db 文件。
      *
@@ -323,44 +348,68 @@ class DbProfileViewModel : ViewModel() {
         val profileName = sanitizeProfileName(displayNameStr)
         _importing.value = true
         viewModelScope.launch(Dispatchers.IO) {
+            val previousActive = prefs.activeDbName
+            val previousProfile = prefs.listDbProfiles().firstOrNull { it.name == profileName }
+            var repositoryClosed = false
+            var databaseRollback: DatabaseImportRollback? = null
+            var portraitRestore: PortraitRestoreTransaction? = null
+            var committed = false
             try {
-                val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    ?: throw IllegalStateException("无法读取所选文件")
-                // 识别格式：ZIP（PK\x03\x04）或 SQLite 文件头（"SQLite format 3\0"）
-                val mainDb: ByteArray
-                val walBytes: ByteArray?
-                val shmBytes: ByteArray?
-                when {
-                    isZipBytes(bytes) -> {
-                        val extracted = extractDbFromZip(bytes)
-                            ?: throw IllegalStateException("ZIP 中未找到 .db 文件")
-                        mainDb = extracted.main
-                        walBytes = extracted.wal
-                        shmBytes = extracted.shm
+                // 只读取文件头识别格式；ZIP 直接流式解压，避免额外保留一份完整压缩包。
+                val archive = ctx.contentResolver.openInputStream(uri)?.buffered()?.use { input ->
+                    input.mark(16)
+                    val header = ByteArray(16)
+                    var headerSize = 0
+                    while (headerSize < header.size) {
+                        val count = input.read(header, headerSize, header.size - headerSize)
+                        if (count < 0) break
+                        headerSize += count
                     }
-                    isSqliteBytes(bytes) -> {
-                        mainDb = bytes
-                        walBytes = null
-                        shmBytes = null
+                    input.reset()
+                    when {
+                        isZipBytes(header) -> {
+                            DbProfileArchiveCodec.extractArchive(input)
+                                ?: throw IllegalStateException("ZIP 中未找到 .db 文件")
+                        }
+                        headerSize >= 16 && isSqliteBytes(header) -> {
+                            ExtractedDbProfileArchive(main = readBytesWithLimit(input))
+                        }
+                        else -> throw IllegalStateException("无法识别的文件格式：请选择 .zip 或 .db 文件")
                     }
-                    else -> throw IllegalStateException("无法识别的文件格式：请选择 .zip 或 .db 文件")
+                } ?: throw IllegalStateException("无法读取所选文件")
+                if (!isSqliteBytes(archive.main)) {
+                    throw IllegalStateException("备份包中的数据库格式无效")
                 }
-                // 关闭并清空目标 profile（若已存在）
-                NekobotDatabase.deleteProfileFile(ctx, profileName)
+
+                // 先完整备份同名数据库；后续任一步失败都会恢复原文件和原激活 profile。
+                if (profileName == previousActive) {
+                    ServiceContainer.localRepository.close()
+                    repositoryClosed = true
+                }
+                val rollback = prepareDatabaseRollback(ctx, profileName)
+                databaseRollback = rollback
+                replaceDatabaseFiles(ctx, profileName, archive)
+
+                // 验证 db 可打开（触发迁移），失败则抛出异常
+                val importedDb = runCatching {
+                    NekobotDatabase.get(ctx, profileName).also {
+                        it.openHelper.writableDatabase
+                    }
+                }.onFailure { e ->
+                    throw IllegalStateException("数据库无法打开（可能文件损坏或版本不兼容）：${e.message}")
+                }.getOrThrow()
+
+                // 图片目录替换与五个 URI 字段改写也属于同一导入事务。
+                val portraitTransaction = restoreEmbeddedPortraits(ctx, profileName, archive)
+                portraitRestore = portraitTransaction
+                importedDb.withTransaction {
+                    rewritePortraitReferences(importedDb, portraitTransaction.references)
+                }
+
+                // 自动切换成功后才清理旧统计并注册新 profile。
+                ServiceContainer.switchLocalDb(profileName)
                 clearProfileSidecarData(ctx, profileName)
-                Thread.sleep(100)
-                // 写入新的 db 文件
-                val mainDbName = "$profileName.db"
-                val dbFile = ctx.getDatabasePath(mainDbName)
-                dbFile.parentFile?.mkdirs()
-                dbFile.writeBytes(mainDb)
-                walBytes?.let {
-                    ctx.getDatabasePath("$mainDbName-wal").writeBytes(it)
-                }
-                shmBytes?.let {
-                    ctx.getDatabasePath("$mainDbName-shm").writeBytes(it)
-                }
-                // 注册到 PrefsManager
+
                 prefs.saveDbProfile(
                     PrefsManager.DbProfile(
                         name = profileName,
@@ -369,18 +418,9 @@ class DbProfileViewModel : ViewModel() {
                         createdAt = System.currentTimeMillis()
                     )
                 )
-                // 验证 db 可打开（触发迁移），失败则抛出异常
-                runCatching {
-                    NekobotDatabase.get(ctx, profileName).openHelper.writableDatabase
-                }.onFailure { e ->
-                    // 打开失败：清理文件并提示
-                    NekobotDatabase.deleteProfileFile(ctx, profileName)
-                    prefs.removeDbProfile(profileName)
-                    throw IllegalStateException("数据库无法打开（可能文件损坏或版本不兼容）：${e.message}")
-                }
-                // 自动切换到新导入的 db
-                prefs.activeDbName = profileName
-                ServiceContainer.switchLocalDb(profileName)
+                portraitTransaction.commit()
+                rollback.cleanup()
+                committed = true
                 withContext(Dispatchers.Main) {
                     _importing.value = false
                     _activeName.value = profileName
@@ -390,6 +430,23 @@ class DbProfileViewModel : ViewModel() {
                     ) ?: ""
                 }
             } catch (e: Exception) {
+                val rollback = databaseRollback
+                if (!committed && rollback != null) {
+                    runCatching { portraitRestore?.rollback() }
+                    val databaseRestored = runCatching {
+                        restoreDatabaseRollback(ctx, profileName, rollback)
+                    }.isSuccess
+                    if (databaseRestored) rollback.cleanup()
+                    if (previousProfile != null) {
+                        prefs.saveDbProfile(previousProfile)
+                    } else {
+                        prefs.removeDbProfile(profileName)
+                    }
+                    prefs.activeDbName = previousActive
+                    runCatching { ServiceContainer.switchLocalDb(previousActive) }
+                } else if (!committed && repositoryClosed) {
+                    runCatching { ServiceContainer.switchLocalDb(previousActive) }
+                }
                 withContext(Dispatchers.Main) {
                     _importing.value = false
                     _toast.value = ServiceContainer.localizedContext?.getString(
@@ -406,76 +463,312 @@ class DbProfileViewModel : ViewModel() {
             bytes[2] == 0x03.toByte() && bytes[3] == 0x04.toByte()
 
     /** SQLite 文件头识别："SQLite format 3\0"（前 16 字节） */
-    private fun isSqliteBytes(bytes: ByteArray): Boolean =
-        bytes.size >= 16 && String(bytes, 0, 15, Charsets.ISO_8859_1) == "SQLite format 3"
+    private fun isSqliteBytes(bytes: ByteArray): Boolean {
+        val header = "SQLite format 3\u0000".toByteArray(Charsets.ISO_8859_1)
+        return bytes.size >= header.size &&
+            bytes.copyOfRange(0, header.size).contentEquals(header)
+    }
 
-    /** 解压 ZIP 并提取 .db 主文件及同名 -wal / -shm（若有）。 */
-    private data class ExtractedDb(
-        val main: ByteArray,
-        val wal: ByteArray? = null,
-        val shm: ByteArray? = null
-    )
-
-    private fun extractDbFromZip(zipBytes: ByteArray): ExtractedDb? {
-        val rawEntries = mutableMapOf<String, ByteArray>()
-        ZipInputStream(ByteArrayInputStream(zipBytes)).use { zis ->
-            var entry: ZipEntry? = zis.nextEntry
-            while (entry != null) {
-                if (!entry.isDirectory) {
-                    val name = entry.name.substringAfterLast('/')
-                    val buf = ByteArrayOutputStream()
-                    val buffer = ByteArray(8192)
-                    while (true) {
-                        val n = zis.read(buffer)
-                        if (n <= 0) break
-                        buf.write(buffer, 0, n)
-                    }
-                    rawEntries[name] = buf.toByteArray()
-                }
-                zis.closeEntry()
-                entry = zis.nextEntry
+    private fun readBytesWithLimit(
+        input: InputStream,
+        maxBytes: Long = 512L * 1024 * 1024
+    ): ByteArray {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0L
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            if (count > 0) {
+                total += count
+                require(total <= maxBytes) { "数据库文件过大" }
+                output.write(buffer, 0, count)
             }
         }
-        // 找到主 .db 文件（不含 -wal / -shm 后缀）
-        val mainDbEntry = rawEntries.keys.firstOrNull {
-            it.endsWith(".db") && !it.endsWith(".db-wal") && !it.endsWith(".db-shm")
-        } ?: return null
-        val baseName = mainDbEntry.removeSuffix(".db")
-        return ExtractedDb(
-            main = rawEntries[mainDbEntry]!!,
-            wal = rawEntries["$baseName.db-wal"],
-            shm = rawEntries["$baseName.db-shm"]
+        return output.toByteArray()
+    }
+
+    private data class DatabaseImportRollback(val directory: File) {
+        fun cleanup() {
+            runCatching { directory.deleteRecursively() }
+        }
+    }
+
+    /** 关闭目标库后复制完整 SQLite 文件族，供同名导入失败时恢复。 */
+    private fun prepareDatabaseRollback(
+        context: Context,
+        profileName: String
+    ): DatabaseImportRollback {
+        NekobotDatabase.closeProfile(profileName)
+        val directory = File(
+            context.cacheDir,
+            "db-profile-rollback-${UUID.randomUUID()}"
+        )
+        check(directory.mkdirs()) { "无法创建数据库回滚目录" }
+        try {
+            profileDatabaseFiles(context, profileName)
+                .filter { it.isFile }
+                .forEach { file -> file.copyTo(File(directory, file.name), overwrite = true) }
+        } catch (e: Exception) {
+            directory.deleteRecursively()
+            throw e
+        }
+        return DatabaseImportRollback(directory)
+    }
+
+    private fun replaceDatabaseFiles(
+        context: Context,
+        profileName: String,
+        archive: ExtractedDbProfileArchive
+    ) {
+        NekobotDatabase.closeProfile(profileName)
+        profileDatabaseFiles(context, profileName).forEach { file ->
+            if (file.exists() && !file.delete()) error("无法替换旧数据库文件：${file.name}")
+        }
+        val mainDbName = "$profileName.db"
+        context.getDatabasePath(mainDbName).apply {
+            parentFile?.mkdirs()
+            writeBytes(archive.main)
+        }
+        archive.wal?.let { context.getDatabasePath("$mainDbName-wal").writeBytes(it) }
+        archive.shm?.let { context.getDatabasePath("$mainDbName-shm").writeBytes(it) }
+    }
+
+    private fun restoreDatabaseRollback(
+        context: Context,
+        profileName: String,
+        rollback: DatabaseImportRollback
+    ) {
+        NekobotDatabase.closeProfile(profileName)
+        profileDatabaseFiles(context, profileName).forEach { file ->
+            if (file.exists() && !file.delete()) error("无法清理导入失败的数据库：${file.name}")
+        }
+        rollback.directory.listFiles().orEmpty().forEach { backup ->
+            val destination = context.getDatabasePath(backup.name)
+            destination.parentFile?.mkdirs()
+            backup.copyTo(destination, overwrite = true)
+        }
+    }
+
+    private fun profileDatabaseFiles(context: Context, profileName: String): List<File> {
+        val dbName = "$profileName.db"
+        return listOf(
+            context.getDatabasePath(dbName),
+            context.getDatabasePath("$dbName-journal"),
+            context.getDatabasePath("$dbName-wal"),
+            context.getDatabasePath("$dbName-shm")
         )
     }
 
-    /** 写入字节到 Downloads 目录（兼容 Android 10+ 作用域存储与 9- 公共目录）。 */
-    private fun writeBytesToDownloads(
+    /** 收集角色与会话字段实际引用、且位于应用私有目录内的本地图片。 */
+    private suspend fun collectPortraitSources(
+        context: Context,
+        db: NekobotDatabase
+    ): List<DbProfilePortraitSource> {
+        val references = linkedSetOf<String>()
+        db.characterDao().listAll().forEach { character ->
+            listOf(character.avatar, character.portrait)
+                .filterNotNull()
+                .filterTo(references) { it.isNotBlank() }
+        }
+        db.sessionDao().listAll().forEach { session ->
+            listOf(session.portrait, session.senderAvatar, session.characterAvatar)
+                .filterNotNull()
+                .filterTo(references) { it.isNotBlank() }
+        }
+        return references.mapNotNull { reference ->
+            resolveAppPrivateFile(context, reference)?.let { file ->
+                DbProfilePortraitSource(reference, file)
+            }
+        }
+    }
+
+    /** 仅允许备份应用已知立绘目录内的 file URI，避免把其他私有文件带入备份。 */
+    private fun resolveAppPrivateFile(context: Context, reference: String): File? {
+        val candidate = runCatching {
+            val uri = Uri.parse(reference)
+            when {
+                uri.scheme.equals("file", ignoreCase = true) ->
+                    uri.path?.takeIf { it.isNotBlank() }?.let(::File)
+                uri.scheme.isNullOrBlank() && reference.startsWith(File.separator) -> File(reference)
+                else -> null
+            }
+        }.getOrNull()?.canonicalFile ?: return null
+        if (!candidate.isFile) return null
+
+        val candidatePath = candidate.path
+        val allowed = listOf(
+            File(context.filesDir, "portraits"),
+            File(context.cacheDir, "portraits")
+        ).any { root ->
+            val rootPath = root.canonicalFile.path
+            candidatePath == rootPath || candidatePath.startsWith(rootPath + File.separator)
+        }
+        return candidate.takeIf { allowed }
+    }
+
+    private class PortraitRestoreTransaction(
+        val references: Map<String, String>,
+        private val target: File? = null,
+        private val backup: File? = null
+    ) {
+        fun commit() {
+            runCatching { backup?.deleteRecursively() }
+        }
+
+        fun rollback() {
+            val destination = target ?: return
+            destination.deleteRecursively()
+            val original = backup
+            if (original != null && original.exists() && !original.renameTo(destination)) {
+                error("无法恢复原立绘目录")
+            }
+        }
+    }
+
+    /** 将内嵌图片恢复到持久目录；返回值会把旧目录保留至整个导入事务提交。 */
+    private fun restoreEmbeddedPortraits(
+        context: Context,
+        profileName: String,
+        archive: ExtractedDbProfileArchive
+    ): PortraitRestoreTransaction {
+        if (archive.portraits.isEmpty() || archive.portraitReferences.isEmpty()) {
+            return PortraitRestoreTransaction(emptyMap())
+        }
+
+        val target = importedPortraitDir(context, profileName)
+        val parent = target.parentFile ?: error("无法创建立绘恢复目录")
+        val staging = File(parent, ".${target.name}.restoring")
+        val backup = File(parent, ".${target.name}.backup")
+        parent.mkdirs()
+        staging.deleteRecursively()
+        staging.mkdirs()
+
+        val restoredEntries = linkedMapOf<String, String>()
+        try {
+            archive.portraits.entries.sortedBy { it.key }.forEachIndexed { index, (entry, bytes) ->
+                val rawExtension = entry.substringAfterLast('/').substringAfterLast('.', "")
+                    .lowercase(Locale.ROOT)
+                val extension = rawExtension
+                    .takeIf { it.matches(Regex("[a-z0-9]{1,10}")) }
+                    ?.let { ".$it" }
+                    .orEmpty()
+                val fileName = "${index.toString().padStart(4, '0')}$extension"
+                File(staging, fileName).writeBytes(bytes)
+                restoredEntries[entry] = Uri.fromFile(File(target, fileName)).toString()
+            }
+
+            backup.deleteRecursively()
+            if (target.exists() && !target.renameTo(backup)) {
+                error("无法替换旧立绘目录")
+            }
+            try {
+                if (!staging.renameTo(target)) {
+                    check(staging.copyRecursively(target, overwrite = true)) { "无法保存恢复的立绘" }
+                    staging.deleteRecursively()
+                }
+            } catch (e: Exception) {
+                target.deleteRecursively()
+                if (backup.exists()) backup.renameTo(target)
+                throw e
+            }
+        } finally {
+            staging.deleteRecursively()
+        }
+
+        val references = archive.portraitReferences.mapNotNull { (oldReference, entry) ->
+            restoredEntries[entry]?.let { oldReference to it }
+        }.toMap(linkedMapOf())
+        return PortraitRestoreTransaction(references, target, backup)
+    }
+
+    /** 同时改写角色表与会话快照中的全部立绘/头像字段。 */
+    private suspend fun rewritePortraitReferences(
+        db: NekobotDatabase,
+        references: Map<String, String>
+    ) {
+        if (references.isEmpty()) return
+        fun rewrite(value: String?): String? = value?.let { references[it] ?: it }
+
+        db.sessionDao().listAll().forEach { session ->
+            val portrait = rewrite(session.portrait)
+            val senderAvatar = rewrite(session.senderAvatar)
+            val characterAvatar = rewrite(session.characterAvatar)
+            if (
+                portrait != session.portrait ||
+                senderAvatar != session.senderAvatar ||
+                characterAvatar != session.characterAvatar
+            ) {
+                db.sessionDao().updatePortraits(
+                    session.id,
+                    portrait,
+                    senderAvatar,
+                    characterAvatar
+                )
+            }
+        }
+        db.characterDao().listAll().forEach { character ->
+            val portrait = rewrite(character.portrait)
+            val avatar = rewrite(character.avatar)
+            if (portrait != character.portrait || avatar != character.avatar) {
+                db.characterDao().updatePortraits(character.id, portrait, avatar)
+            }
+        }
+    }
+
+    private fun importedPortraitDir(context: Context, profileName: String): File =
+        File(context.filesDir, "portraits/profiles/$profileName")
+
+    /** Android 10+ 通过 MediaStore 流式写入 Downloads。 */
+    private fun writeArchiveToDownloads(
         context: Context,
         fileName: String,
-        mime: String,
-        bytes: ByteArray
+        databaseFiles: List<Pair<String, File>>,
+        portraitSources: List<DbProfilePortraitSource>
     ): Boolean {
+        var insertedUri: Uri? = null
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val resolver = context.contentResolver
-                val values = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, mime)
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                }
-                val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
-                val uri = resolver.insert(collection, values) ?: return false
-                resolver.openOutputStream(uri)?.use { it.write(bytes) } ?: return false
-            } else {
-                @Suppress("DEPRECATION")
-                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                if (!downloadsDir.exists()) downloadsDir.mkdirs()
-                File(downloadsDir, fileName).outputStream().use { it.write(bytes) }
+            check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) { "当前系统需要选择导出位置" }
+            val resolver = context.contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/zip")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
+            val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            val uri = resolver.insert(collection, values) ?: return false
+            insertedUri = uri
+            resolver.openOutputStream(uri)?.use { output ->
+                DbProfileArchiveCodec.writeArchive(output, databaseFiles, portraitSources)
+            } ?: error("无法打开下载文件")
+            resolver.update(
+                uri,
+                ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
+                null,
+                null
+            )
             true
-        } catch (e: Exception) {
+        } catch (_: Exception) {
+            insertedUri?.let { uri -> runCatching { context.contentResolver.delete(uri, null, null) } }
             false
         }
+    }
+
+    /** Android 8/9 使用 SAF 返回的 URI，无需申请旧版外部存储权限。 */
+    private fun writeArchiveToUri(
+        context: Context,
+        destinationUri: Uri,
+        databaseFiles: List<Pair<String, File>>,
+        portraitSources: List<DbProfilePortraitSource>
+    ): Boolean = try {
+        context.contentResolver.openOutputStream(destinationUri, "w")?.use { output ->
+            DbProfileArchiveCodec.writeArchive(output, databaseFiles, portraitSources)
+        } ?: error("无法打开导出文件")
+        true
+    } catch (_: Exception) {
+        runCatching { context.contentResolver.delete(destinationUri, null, null) }
+        false
     }
 
     private fun displayName(name: String): String =
@@ -517,6 +810,8 @@ fun DbProfileScreen(onBack: () -> Unit) {
     var deleteTarget by remember { mutableStateOf<PrefsManager.DbProfile?>(null) }
     var showImportFilePrompt by remember { mutableStateOf(false) }
     var pendingFileUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingLegacyExportProfile by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingLegacyExportFileName by rememberSaveable { mutableStateOf<String?>(null) }
 
     // 文件选择器：选择 .zip 或 .db 文件
     val pickFileLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -525,6 +820,21 @@ fun DbProfileScreen(onBack: () -> Unit) {
         if (uri != null) {
             pendingFileUri = uri
             showImportFilePrompt = true
+        }
+    }
+
+    // Android 8/9 没有 MediaStore Downloads，使用 SAF 让用户选择保存位置。
+    val createExportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.CreateDocument(
+            "application/zip"
+        )
+    ) { uri ->
+        val profileName = pendingLegacyExportProfile
+        val fileName = pendingLegacyExportFileName
+        pendingLegacyExportProfile = null
+        pendingLegacyExportFileName = null
+        if (uri != null && profileName != null && fileName != null) {
+            vm.exportToUri(profileName, uri, fileName)
         }
     }
 
@@ -623,7 +933,16 @@ fun DbProfileScreen(onBack: () -> Unit) {
                             isDefault = profile.name == PrefsManager.DEFAULT_DB_NAME,
                             onSwitch = { vm.switchTo(profile.name) },
                             onDelete = { deleteTarget = profile },
-                            onExport = { vm.exportToDownloads(profile.name) }
+                            onExport = {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                    vm.exportToDownloads(profile.name)
+                                } else {
+                                    val fileName = vm.suggestedExportFileName(profile.name)
+                                    pendingLegacyExportProfile = profile.name
+                                    pendingLegacyExportFileName = fileName
+                                    createExportLauncher.launch(fileName)
+                                }
+                            }
                         )
                     }
                 }

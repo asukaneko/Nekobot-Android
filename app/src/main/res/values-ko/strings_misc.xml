@@ -3,6 +3,11 @@
     <!-- ==================== 토큰 사용량 화면 ==================== -->
     <string name="tokens_title">토큰 사용량</string>
     <string name="tokens_load_failed">토큰 사용량을 불러오지 못했어요</string>
+    <string name="tokens_refresh">사용량 새로고침</string>
+    <string name="tokens_more_actions">더보기</string>
+    <string name="tokens_route_history">라우팅 기록</string>
+    <string name="tokens_ab_test_settings">A/B 테스트 설정</string>
+    <string name="tokens_date_filter">통계 기간 선택, 현재: %1$s</string>
     <string name="tokens_range_today">오늘</string>
     <string name="tokens_range_month">이번 달</string>
     <string name="tokens_range_total">전체</string>
@@ -19,11 +24,21 @@
     <string name="tokens_input">입력</string>
     <string name="tokens_output">출력</string>
     <string name="tokens_total">합계</string>
+    <string name="tokens_tab_overview">개요</string>
+    <string name="tokens_tab_rankings">순위</string>
+    <string name="tokens_tab_records">기록</string>
+    <string name="tokens_metrics_title">주요 지표</string>
     <string name="tokens_rankings_title">토큰 랭킹</string>
+    <string name="tokens_rankings_scope_all">순위는 전체 기간 기록을 기준으로 합니다</string>
     <string name="tokens_ranking_sessions">대화</string>
     <string name="tokens_ranking_models">모델</string>
     <string name="tokens_ranking_purposes">용도</string>
     <string name="tokens_records_title">토큰 기록</string>
+    <string name="tokens_estimated_badge">%1$s · 추정</string>
+    <string name="tokens_records_count">총 %1$d건</string>
+    <string name="tokens_load_more">더 보기(남은 %1$d건)</string>
+    <string name="tokens_expand_record">기록 상세 펼치기</string>
+    <string name="tokens_collapse_record">기록 상세 접기</string>
     <string name="tokens_records_subtitle">총 %1$d건, %2$d/%3$d페이지 · 페이지당 %4$d건</string>
     <string name="tokens_prev_page">이전</string>
     <string name="tokens_next_page">다음</string>

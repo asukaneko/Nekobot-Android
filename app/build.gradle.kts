@@ -22,17 +22,21 @@ android {
         vectorDrawables { useSupportLibrary = true }
     }
 
-    // 使用 debug 签名配置用于 release 构建，使 release APK 可直接安装
+    // Release 固定使用旧 Windows 构建证书，保证可覆盖安装已发布版本。
+    // 密钥文件仅保存在本地 .signing/ 目录，不纳入 Git。
     signingConfigs {
-        getByName("debug") {
-            // 复用默认 debug keystore
+        create("legacyRelease") {
+            storeFile = rootProject.file(".signing/legacy-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("legacyRelease")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

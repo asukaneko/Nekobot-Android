@@ -3,6 +3,7 @@
 build/
 */build/
 local.properties
+.signing/
 
 # Android Studio / IntelliJ
 .idea/

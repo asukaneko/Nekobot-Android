@@ -1,36 +1,56 @@
 package com.nekobot.app.ui.screens.tokens
 
 import android.widget.Toast
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DataUsage
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Science
-import androidx.compose.material3.AssistChip
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -39,17 +59,26 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -65,15 +94,13 @@ import com.nekobot.app.ui.navigation.Routes
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
+import com.nekobot.app.ui.components.GlassDropdownMenu
 import com.nekobot.app.ui.components.LoadingOverlay
 import com.nekobot.app.ui.components.SectionHeader
-import com.nekobot.app.ui.components.StatChip
-import com.nekobot.app.ui.theme.BgDark
-import com.nekobot.app.ui.theme.OnSurface
-import com.nekobot.app.ui.theme.OnSurfaceVariant
-import com.nekobot.app.ui.theme.Primary
-import com.nekobot.app.ui.theme.Secondary
-import com.nekobot.app.ui.theme.Tertiary
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -83,8 +110,10 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
+import java.util.concurrent.ConcurrentHashMap
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 /**
  * Token 用量页 ViewModel
@@ -98,6 +127,7 @@ internal data class TokenRecordUi(
     val purpose: String,
     val source: String,
     val sessionId: String,
+    val sessionName: String,
     val input: Long,
     val output: Long,
     val total: Long,
@@ -127,60 +157,125 @@ class TokensViewModel : BaseViewModel() {
     private val _endDate = MutableStateFlow<String?>(null)
     val endDate: StateFlow<String?> = _endDate.asStateFlow()
 
-    fun load() {
+    private val _loadedQueryKey = MutableStateFlow<String?>(null)
+    internal val loadedQueryKey: StateFlow<String?> = _loadedQueryKey.asStateFlow()
+
+    private val _loadedRankingKey = MutableStateFlow<String?>(null)
+    internal val loadedRankingKey: StateFlow<String?> = _loadedRankingKey.asStateFlow()
+
+    private var loadJob: Job? = null
+    private var loadRequestId = 0L
+    private val sessionNameCache = ConcurrentHashMap<String, String>()
+    private val pendingSessionNames = ConcurrentHashMap<String, Deferred<String?>>()
+
+    /**
+     * 仅保留最后一次筛选请求，避免用户快速切换日期时旧响应覆盖新范围。
+     * 排行榜接口是全量口径，不随日期范围变化，因此只在首次进入或主动刷新时请求。
+     */
+    fun load(refreshRankings: Boolean = false) {
         val range = _dateRange.value
         val isCustom = range == "custom"
         val start = if (isCustom) _startDate.value else null
         val end = if (isCustom) _endDate.value else null
-        val effectiveRange = if (isCustom) null else range
-        viewModelScope.launch {
+        val mode = ServiceContainer.prefs.appMode.toString()
+        val dataSourceRevision = ServiceContainer.dataSourceRevision.value
+        val queryKey = tokenUsageQueryKey(
+            mode = mode,
+            dataSourceRevision = dataSourceRevision,
+            range = range,
+            startDate = start,
+            endDate = end
+        )
+        val rankingKey = tokenUsageRankingKey(mode, dataSourceRevision)
+        val shouldLoadRankings = refreshRankings ||
+            _rankings.value == null ||
+            _loadedRankingKey.value != rankingKey
+        val requestId = ++loadRequestId
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             setLoading(true)
             clearError()
             try {
                 val (statsResult, rankingsResult) = coroutineScope {
-                    val statsRequest = async { unified.tokenStats(effectiveRange, start, end) }
-                    val rankingsRequest = async { unified.tokenRankings() }
-                    statsRequest.await() to rankingsRequest.await()
+                    val statsRequest = async { unified.tokenStats(range, start, end) }
+                    val rankingsRequest = if (shouldLoadRankings) async { unified.tokenRankings() } else null
+                    statsRequest.await() to rankingsRequest?.await()
                 }
+                if (requestId != loadRequestId) return@launch
                 when (statsResult) {
                     is Resource.Success -> {
                         val value = statsResult.data
                         val parsedRecords = withContext(Dispatchers.Default) {
                             (value.records ?: value.recentRecords ?: emptyList())
-                                .mapNotNull(::parseTokenRecord)
+                                .mapIndexedNotNull(::parseTokenRecord)
                                 // 统一把空格分隔符替换为 'T'，避免 ISO(带T) 与 "yyyy-MM-dd HH:mm:ss"(带空格)
                                 // 混合时字符串排序错乱，导致同日记录时间不降序
                                 .sortedByDescending { it.timestamp.replace(' ', 'T') }
                         }
+                        if (requestId != loadRequestId) return@launch
                         _stats.value = value
                         _records.value = parsedRecords
+                        _loadedQueryKey.value = queryKey
                     }
                     is Resource.Error -> showError(statsResult.message)
                     is Resource.Loading -> Unit
                 }
                 when (rankingsResult) {
-                    is Resource.Success -> _rankings.value = rankingsResult.data
-                    is Resource.Error -> if (_stats.value == null) showError(rankingsResult.message)
+                    is Resource.Success -> {
+                        _rankings.value = rankingsResult.data
+                        _loadedRankingKey.value = rankingKey
+                    }
+                    is Resource.Error -> showError(rankingsResult.message)
                     is Resource.Loading -> Unit
+                    null -> Unit
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                showError(e.message ?: string(R.string.tokens_load_failed))
+                if (requestId == loadRequestId) {
+                    showError(e.message ?: string(R.string.tokens_load_failed))
+                }
             } finally {
-                setLoading(false)
+                if (requestId == loadRequestId) setLoading(false)
             }
         }
     }
 
     fun setDateRange(range: String) {
+        if (_dateRange.value == range) return
         _dateRange.value = range
-        if (range != "custom") load()
+        if (range != "custom" || (_startDate.value != null && _endDate.value != null)) load()
     }
 
     fun setCustomRange(start: String, end: String) {
+        val (normalizedStart, normalizedEnd) = if (start <= end) start to end else end to start
         _dateRange.value = "custom"
-        _startDate.value = start
-        _endDate.value = end
+        _startDate.value = normalizedStart
+        _endDate.value = normalizedEnd
         load()
+    }
+
+    /** 同一模式、同一会话仅解析一次名称，避免明细滚动时重复触发网络或数据库查询。 */
+    internal suspend fun resolveSessionName(sessionId: String): String {
+        if (sessionId.isBlank()) return ""
+        val cacheKey = "${ServiceContainer.prefs.appMode}:${ServiceContainer.dataSourceRevision.value}:$sessionId"
+        sessionNameCache[cacheKey]?.let { return it }
+        val candidate = viewModelScope.async(start = CoroutineStart.LAZY) {
+            runCatching {
+                when (val result = unified.getSession(sessionId)) {
+                    is Resource.Success -> result.data?.displayName?.takeIf { it.isNotBlank() }
+                    else -> null
+                }
+            }.getOrNull()?.also { sessionNameCache.putIfAbsent(cacheKey, it) }
+        }
+        val request = pendingSessionNames.putIfAbsent(cacheKey, candidate) ?: candidate
+        if (request === candidate) {
+            candidate.invokeOnCompletion { pendingSessionNames.remove(cacheKey, candidate) }
+            candidate.start()
+        } else {
+            candidate.cancel()
+        }
+        return request.await() ?: sessionId.take(8)
     }
 }
 
@@ -194,31 +289,30 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}) {
     val dateRange by vm.dateRange.collectAsState()
     val startDate by vm.startDate.collectAsState()
     val endDate by vm.endDate.collectAsState()
+    val loadedQueryKey by vm.loadedQueryKey.collectAsState()
+    val loadedRankingKey by vm.loadedRankingKey.collectAsState()
     val loading by vm.loading.collectAsState()
     val error by vm.error.collectAsState()
     val toast by vm.toast.collectAsState()
     val context = LocalContext.current
 
-    var showStartPicker by remember { mutableStateOf(false) }
-    var showEndPicker by remember { mutableStateOf(false) }
-    var rankingTab by remember { mutableStateOf(0) }
-    var recordPage by remember(records.size, dateRange) { mutableStateOf(0) }
+    var showStartPicker by rememberSaveable { mutableStateOf(false) }
+    var showEndPicker by rememberSaveable { mutableStateOf(false) }
+    var pendingCustomStart by rememberSaveable { mutableStateOf<String?>(null) }
+    var pickEndAfterStart by rememberSaveable { mutableStateOf(false) }
+    var showMoreMenu by rememberSaveable { mutableStateOf(false) }
+    var selectedSection by rememberSaveable { mutableIntStateOf(0) }
+    var rankingTab by rememberSaveable { mutableIntStateOf(0) }
+    var expandedRecordId by rememberSaveable { mutableStateOf<String?>(null) }
+    var visibleRecordCount by rememberSaveable(records.size, dateRange) {
+        mutableIntStateOf(RECORD_BATCH_SIZE)
+    }
 
-    val rankingData = remember(rankings, stats, rankingTab) {
-        val fromRankings: List<JsonElement>? = when (rankingTab) {
+    val rankingData = remember(rankings, rankingTab) {
+        when (rankingTab) {
             0 -> rankings?.sessions
             1 -> rankings?.models
             else -> rankings?.purposes ?: rankings?.users
-        }
-        if (!fromRankings.isNullOrEmpty()) {
-            fromRankings
-        } else {
-            val fallback = when (rankingTab) {
-                0 -> stats?.sessions
-                1 -> stats?.models
-                else -> stats?.purposes ?: stats?.users
-            }
-            fallback?.takeIf { it.isJsonArray }?.asJsonArray?.toList()
         }
     }
     val parsedRanking = remember(rankingData) {
@@ -227,17 +321,28 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}) {
             .sortedByDescending { it.second }
             .take(10)
     }
-    val pageSize = 30
-    val totalPages = ((records.size + pageSize - 1) / pageSize).coerceAtLeast(1)
-    val pageRecords = records.drop(recordPage * pageSize).take(pageSize)
-    // 日期 header 仍保留，但分组键统一按日期降序排列，避免任何来源的归类顺序干扰时间线
-    val groupedRecords = remember(pageRecords) {
-        pageRecords.groupBy { it.date }.toSortedMap(reverseOrder())
+    val visibleRecords = remember(records, visibleRecordCount) {
+        records.take(visibleRecordCount)
+    }
+    val groupedRecords = remember(visibleRecords) {
+        visibleRecords.groupBy { it.date }.toSortedMap(reverseOrder())
     }
 
-    // 模式切换时自动刷新 Token 用量
+    // 模式或本地数据档案切换时自动刷新 Token 用量
     val appMode by ServiceContainer.appModeFlow.collectAsState()
-    LaunchedEffect(appMode) { vm.load() }
+    val dataSourceRevision by ServiceContainer.dataSourceRevision.collectAsState()
+    val contentIsCurrent = loadedQueryKey == tokenUsageQueryKey(
+        mode = appMode.toString(),
+        dataSourceRevision = dataSourceRevision,
+        range = dateRange,
+        startDate = startDate,
+        endDate = endDate
+    )
+    val rankingIsCurrent = loadedRankingKey == tokenUsageRankingKey(
+        mode = appMode.toString(),
+        dataSourceRevision = dataSourceRevision
+    )
+    LaunchedEffect(appMode, dataSourceRevision) { vm.load(refreshRankings = true) }
 
     LaunchedEffect(toast) {
         if (toast != null) {
@@ -249,23 +354,72 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.tokens_title)) },
+                title = {
+                    Text(
+                        stringResource(R.string.tokens_title),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
                 actions = {
-                    // 路由决策历史入口
-                    IconButton(onClick = { onNavigate(Routes.ROUTING_HISTORY) }) {
-                        Icon(
-                            Icons.Filled.Route,
-                            contentDescription = "路由决策历史",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
+                    TokenDateFilterButton(
+                        selectedRange = dateRange,
+                        startDate = startDate,
+                        endDate = endDate,
+                        onRangeSelect = vm::setDateRange,
+                        onCustomSelect = {
+                            pendingCustomStart = null
+                            pickEndAfterStart = true
+                            showStartPicker = true
+                        }
+                    )
+                    IconButton(
+                        onClick = { vm.load(refreshRankings = true) },
+                        enabled = !loading
+                    ) {
+                        if (loading && stats != null) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(19.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        } else {
+                            Icon(
+                                Icons.Filled.Refresh,
+                                contentDescription = stringResource(R.string.tokens_refresh),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
-                    // A/B 测试配置入口
-                    IconButton(onClick = { onNavigate(Routes.AB_TEST_SETTINGS) }) {
-                        Icon(
-                            Icons.Filled.Science,
-                            contentDescription = "A/B 测试配置",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
+                    Box {
+                        IconButton(onClick = { showMoreMenu = true }) {
+                            Icon(
+                                Icons.Filled.MoreVert,
+                                contentDescription = stringResource(R.string.tokens_more_actions),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        GlassDropdownMenu(
+                            expanded = showMoreMenu,
+                            onDismissRequest = { showMoreMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.tokens_route_history)) },
+                                leadingIcon = { Icon(Icons.Filled.Route, contentDescription = null) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    onNavigate(Routes.ROUTING_HISTORY)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.tokens_ab_test_settings)) },
+                                leadingIcon = { Icon(Icons.Filled.Science, contentDescription = null) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    onNavigate(Routes.AB_TEST_SETTINGS)
+                                }
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -282,151 +436,146 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}) {
                 .padding(padding)
         ) {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 110.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 110.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // 日期范围选择器
-                item(key = "date_filters", contentType = "controls") {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        FilterChip(selected = dateRange == "today", onClick = { vm.setDateRange("today") }, label = { Text(stringResource(R.string.tokens_range_today)) })
-                        FilterChip(selected = dateRange == "month", onClick = { vm.setDateRange("month") }, label = { Text(stringResource(R.string.tokens_range_month)) })
-                        FilterChip(selected = dateRange == "total", onClick = { vm.setDateRange("total") }, label = { Text(stringResource(R.string.tokens_range_total)) })
-                        FilterChip(
-                            selected = dateRange == "custom",
-                            onClick = {
-                                if (startDate == null) showStartPicker = true
-                                else vm.setDateRange("custom")
-                            },
-                            label = { Text(stringResource(R.string.tokens_range_custom)) }
-                        )
-                    }
-                }
-
-                // 自定义日期显示
-                if (dateRange == "custom") {
-                    item(key = "custom_dates", contentType = "controls") {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            AssistChip(
-                                onClick = { showStartPicker = true },
-                                label = {
-                                    val start = startDate ?: stringResource(R.string.tokens_select_date)
-                                    Text(stringResource(R.string.tokens_range_start, start))
-                                },
-                                leadingIcon = { Icon(Icons.Filled.CalendarMonth, contentDescription = null) }
-                            )
-                            AssistChip(
-                                onClick = { showEndPicker = true },
-                                label = {
-                                    val end = endDate ?: stringResource(R.string.tokens_select_date)
-                                    Text(stringResource(R.string.tokens_range_end, end))
-                                },
-                                leadingIcon = { Icon(Icons.Filled.CalendarMonth, contentDescription = null) }
-                            )
-                        }
-                    }
-                }
-
-                // 错误提示
                 error?.let {
                     item(key = "error", contentType = "status") {
                         ErrorBanner(message = it, onRetry = {
                             vm.clearError()
-                            vm.load()
+                            vm.load(refreshRankings = true)
                         })
                     }
                 }
 
-                // 统计网格
-                stats?.let { s ->
-                    item(key = "stats", contentType = "summary") {
-                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            StatChipGrid(stats = s, dateRange = dateRange, startDate = startDate, endDate = endDate)
-                            // 拆分卡片标题随选择日期变化
-                            val breakdownTitle = when (dateRange) {
-                                "today" -> stringResource(R.string.tokens_breakdown_today)
-                                "month" -> stringResource(R.string.tokens_breakdown_month)
-                                "total" -> stringResource(R.string.tokens_breakdown_total)
-                                "custom" -> {
-                                    val seg = listOfNotNull(startDate, endDate).joinToString(" ~ ")
-                                    if (seg.isBlank()) stringResource(R.string.tokens_breakdown_custom) else stringResource(R.string.tokens_breakdown_custom_range, seg)
-                                }
-                                else -> stringResource(R.string.tokens_breakdown)
-                            }
-                            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                                SectionHeader(title = breakdownTitle)
-                                Spacer(Modifier.height(8.dp))
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Column {
-                                        Text(stringResource(R.string.tokens_input), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text("${s.todayInput ?: 0L}", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                                    }
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text(stringResource(R.string.tokens_output), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text("${s.todayOutput ?: 0L}", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                        }
-                    }
+                item(key = "section_tabs", contentType = "controls") {
+                    TokenSegmentedBar(
+                        tabs = listOf(
+                            stringResource(R.string.tokens_tab_overview),
+                            stringResource(R.string.tokens_tab_rankings),
+                            stringResource(R.string.tokens_tab_records)
+                        ),
+                        selectedIndex = selectedSection,
+                        onSelect = { selectedSection = it }
+                    )
                 }
 
-                item(key = "rankings", contentType = "rankings") {
-                    GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = stringResource(R.string.tokens_rankings_title))
-                        Spacer(Modifier.height(8.dp))
-                        RankingSegmentedBar(
-                            tabs = listOf(
-                                stringResource(R.string.tokens_ranking_sessions),
-                                stringResource(R.string.tokens_ranking_models),
-                                stringResource(R.string.tokens_ranking_purposes)
-                            ),
-                            selectedIndex = rankingTab,
-                            onSelect = { rankingTab = it }
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        if (parsedRanking.isEmpty()) {
-                            Text(stringResource(R.string.common_empty_data), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        } else {
-                            val maxTokens = parsedRanking.maxOf { it.second }.coerceAtLeast(1L)
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                parsedRanking.forEachIndexed { idx, (name, tokens) ->
-                                    RankingBarRow(rank = idx + 1, name = name, tokens = tokens, maxTokens = maxTokens)
-                                }
-                            }
+                val selectedSectionIsCurrent = if (selectedSection == SECTION_RANKINGS) {
+                    rankingIsCurrent
+                } else {
+                    contentIsCurrent
+                }
+                if (!selectedSectionIsCurrent) {
+                    if (loading) {
+                        item(key = "scope_loading", contentType = "status") {
+                            TokenScopeLoading()
                         }
                     }
-                }
-
-                if (records.isNotEmpty()) {
-                    item(key = "records_header", contentType = "section_header") {
-                        GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            SectionHeader(
-                                title = stringResource(R.string.tokens_records_title),
-                                subtitle = stringResource(R.string.tokens_records_subtitle, records.size, recordPage + 1, totalPages, pageSize)
+                } else when (selectedSection) {
+                    SECTION_OVERVIEW -> stats?.let { currentStats ->
+                        item(key = "usage_hero", contentType = "summary") {
+                            TokenUsageHero(
+                                stats = currentStats,
+                                dateRange = dateRange,
+                                startDate = startDate,
+                                endDate = endDate
                             )
                         }
-                    }
-                    groupedRecords.forEach { (date, dateRecords) ->
-                        item(key = "date_$date", contentType = "date_header") {
-                            TokenRecordDateHeader(date)
+                        item(key = "key_metrics", contentType = "summary") {
+                            TokenKeyMetrics(stats = currentStats)
                         }
-                        dateRecords.forEach { record ->
-                            item(key = record.id, contentType = "token_record") {
-                                TokenRecordCard(record = record)
+                    }
+
+                    SECTION_RANKINGS -> item(key = "rankings", contentType = "rankings") {
+                        GlassCard(modifier = Modifier.fillMaxWidth()) {
+                            SectionHeader(
+                                title = stringResource(R.string.tokens_rankings_title),
+                                subtitle = stringResource(R.string.tokens_rankings_scope_all)
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            TokenSegmentedBar(
+                                tabs = listOf(
+                                    stringResource(R.string.tokens_ranking_sessions),
+                                    stringResource(R.string.tokens_ranking_models),
+                                    stringResource(R.string.tokens_ranking_purposes)
+                                ),
+                                selectedIndex = rankingTab,
+                                onSelect = { rankingTab = it }
+                            )
+                            Spacer(Modifier.height(14.dp))
+                            if (parsedRanking.isEmpty()) {
+                                Text(
+                                    stringResource(R.string.common_empty_data),
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                val maxTokens = parsedRanking.maxOf { it.second }.coerceAtLeast(1L)
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    parsedRanking.forEachIndexed { idx, (name, tokens) ->
+                                        RankingBarRow(
+                                            rank = idx + 1,
+                                            name = if (rankingTab == 2) purposeLabel(name) else name,
+                                            tokens = tokens,
+                                            maxTokens = maxTokens
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
-                    if (totalPages > 1) {
-                        item(key = "records_pagination", contentType = "controls") {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                TextButton(onClick = { if (recordPage > 0) recordPage-- }, enabled = recordPage > 0) { Text(stringResource(R.string.tokens_prev_page)) }
-                                Text("${recordPage + 1} / $totalPages", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                TextButton(onClick = { if (recordPage < totalPages - 1) recordPage++ }, enabled = recordPage < totalPages - 1) { Text(stringResource(R.string.tokens_next_page)) }
+
+                    SECTION_RECORDS -> {
+                        if (records.isEmpty()) {
+                            item(key = "records_empty", contentType = "status") {
+                                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        stringResource(R.string.common_empty_data),
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        } else {
+                            item(key = "records_header", contentType = "section_header") {
+                                SectionHeader(
+                                    title = stringResource(R.string.tokens_records_title),
+                                    subtitle = stringResource(R.string.tokens_records_count, records.size),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
+                            groupedRecords.forEach { (date, dateRecords) ->
+                                item(key = "date_$date", contentType = "date_header") {
+                                    TokenRecordDateHeader(date)
+                                }
+                                dateRecords.forEach { record ->
+                                    item(key = record.id, contentType = "token_record") {
+                                        TokenRecordCard(
+                                            record = record,
+                                            expanded = expandedRecordId == record.id,
+                                            onToggle = {
+                                                expandedRecordId = if (expandedRecordId == record.id) null else record.id
+                                            },
+                                            resolveSessionName = vm::resolveSessionName
+                                        )
+                                    }
+                                }
+                            }
+                            if (visibleRecordCount < records.size) {
+                                item(key = "records_load_more", contentType = "controls") {
+                                    OutlinedButton(
+                                        onClick = { visibleRecordCount += RECORD_BATCH_SIZE },
+                                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                                    ) {
+                                        Text(
+                                            stringResource(
+                                                R.string.tokens_load_more,
+                                                records.size - visibleRecordCount
+                                            )
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -442,86 +591,168 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}) {
     // 起始日期选择器
     if (showStartPicker) {
         NekoDatePickerDialog(
+            initialDate = startDate,
             onConfirm = { millis ->
                 val dateStr = formatDate(millis)
-                val currentEnd = endDate ?: dateStr
-                vm.setCustomRange(dateStr, currentEnd)
+                val currentEnd = endDate
                 showStartPicker = false
+                if (dateStr.isNotBlank()) {
+                    if (pickEndAfterStart || currentEnd == null) {
+                        pendingCustomStart = dateStr
+                        showEndPicker = true
+                    } else {
+                        vm.setCustomRange(dateStr, currentEnd)
+                        pickEndAfterStart = false
+                    }
+                }
             },
-            onDismiss = { showStartPicker = false }
+            onDismiss = {
+                pendingCustomStart = null
+                pickEndAfterStart = false
+                showStartPicker = false
+            }
         )
     }
 
     // 结束日期选择器
     if (showEndPicker) {
         NekoDatePickerDialog(
+            initialDate = endDate,
             onConfirm = { millis ->
                 val dateStr = formatDate(millis)
-                val currentStart = startDate ?: dateStr
-                vm.setCustomRange(currentStart, dateStr)
                 showEndPicker = false
+                if (dateStr.isNotBlank()) {
+                    val currentStart = pendingCustomStart ?: startDate ?: dateStr
+                    vm.setCustomRange(currentStart, dateStr)
+                }
+                pendingCustomStart = null
+                pickEndAfterStart = false
             },
-            onDismiss = { showEndPicker = false }
+            onDismiss = {
+                pendingCustomStart = null
+                pickEndAfterStart = false
+                showEndPicker = false
+            }
         )
     }
 }
 
-/**
- * 统计芯片网格：两列布局
- * 顶部第一张卡片随选择的日期范围变化（今日/本月/累计/自定义范围），
- * 后端 today_input/today_output 字段实际代表当前查询范围内的输入/输出，
- * 因此今日 Token 数也随选择日期变化。整体共 6 张卡片。
- */
-@Composable
-private fun StatChipGrid(
-    stats: TokenStats,
-    dateRange: String,
+private const val SECTION_OVERVIEW = 0
+private const val SECTION_RANKINGS = 1
+private const val SECTION_RECORDS = 2
+private const val RECORD_BATCH_SIZE = 20
+
+private fun tokenUsageQueryKey(
+    mode: String,
+    dataSourceRevision: Long,
+    range: String,
     startDate: String?,
     endDate: String?
-) {
-    // 根据选择的日期范围决定展示哪个时间维度的 token 数
-    val (rangeLabel, rangeValue) = when (dateRange) {
-        "today" -> stringResource(R.string.tokens_stat_today) to "${stats.today ?: stats.todayTotal}"
-        "month" -> stringResource(R.string.tokens_stat_month) to "${stats.month ?: 0L}"
-        "total" -> stringResource(R.string.tokens_stat_total) to "${stats.totalDisplay}"
-        "custom" -> {
-            stringResource(R.string.tokens_stat_custom) to "${(stats.todayInput ?: 0L) + (stats.todayOutput ?: 0L)}"
-        }
-        else -> stringResource(R.string.tokens_stat_token) to "${stats.totalDisplay}"
-    }
-    val items = listOf(
-        rangeLabel to rangeValue,
-        stringResource(R.string.tokens_stat_messages) to "${stats.messageCount ?: 0L}",
-        stringResource(R.string.tokens_stat_avg_per_msg) to String.format(Locale.US, "%.0f", stats.avgTokensPerMsg ?: 0.0),
-        stringResource(R.string.tokens_stat_estimated_cost) to (stats.estimatedCost ?: "—"),
-        stringResource(R.string.tokens_stat_active_sessions) to "${stats.activeSessions ?: 0}",
-        stringResource(R.string.tokens_stat_avg_response) to (stats.avgResponseTime ?: "—")
-    )
-    items.chunked(2).forEach { row ->
+): String {
+    val customStart = if (range == "custom") startDate.orEmpty() else ""
+    val customEnd = if (range == "custom") endDate.orEmpty() else ""
+    return listOf(mode, dataSourceRevision, range, customStart, customEnd).joinToString("|")
+}
+
+private fun tokenUsageRankingKey(mode: String, dataSourceRevision: Long): String =
+    "$mode|$dataSourceRevision"
+
+@Composable
+private fun TokenScopeLoading() {
+    GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 16) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            row.forEach { (label, value) ->
-                StatChip(
-                    label = label,
-                    value = value,
-                    modifier = Modifier.weight(1f)
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            Spacer(Modifier.width(10.dp))
+            Text(
+                stringResource(R.string.common_loading),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun TokenDateFilterButton(
+    selectedRange: String,
+    startDate: String?,
+    endDate: String?,
+    onRangeSelect: (String) -> Unit,
+    onCustomSelect: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val ranges = listOf(
+        "today" to stringResource(R.string.tokens_range_today),
+        "month" to stringResource(R.string.tokens_range_month),
+        "total" to stringResource(R.string.tokens_range_total),
+        "custom" to stringResource(R.string.tokens_range_custom)
+    )
+    val selectedLabel = ranges.firstOrNull { it.first == selectedRange }?.second.orEmpty()
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.CalendarMonth,
+                    contentDescription = stringResource(R.string.tokens_date_filter, selectedLabel),
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             }
-            if (row.size == 1) {
-                Spacer(Modifier.weight(1f))
+        }
+        GlassDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.widthIn(min = 210.dp)
+        ) {
+            ranges.forEach { (range, label) ->
+                DropdownMenuItem(
+                    modifier = Modifier.semantics {
+                        selected = range == selectedRange
+                    },
+                    text = {
+                        Column {
+                            Text(label)
+                            if (range == "custom" && startDate != null && endDate != null) {
+                                Text(
+                                    "$startDate  —  $endDate",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    },
+                    trailingIcon = if (range == selectedRange) {
+                        {
+                            Icon(
+                                Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    } else null,
+                    onClick = {
+                        expanded = false
+                        if (range == "custom") onCustomSelect() else onRangeSelect(range)
+                    }
+                )
             }
         }
     }
 }
 
-/**
- * 排行榜分段切换条：圆角药丸式 segmented control，替代默认 TabRow。
- * 选中态以主色填充胶囊 + 白色文字；未选中态透明背景 + 次级文字色。
- */
 @Composable
-private fun RankingSegmentedBar(
+private fun TokenSegmentedBar(
     tabs: List<String>,
     selectedIndex: Int,
     onSelect: (Int) -> Unit
@@ -533,19 +764,30 @@ private fun RankingSegmentedBar(
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             .padding(4.dp)
     ) {
-        Row(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             tabs.forEachIndexed { index, title ->
                 val selected = index == selectedIndex
                 Row(
                     modifier = Modifier
-                        .weight(1f)
+                        .widthIn(min = 104.dp)
+                        .heightIn(min = 44.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(
                             if (selected) MaterialTheme.colorScheme.primary
-                            else androidx.compose.ui.graphics.Color.Transparent
+                            else Color.Transparent
                         )
-                        .clickable { onSelect(index) }
-                        .padding(vertical = 8.dp),
+                        .selectable(
+                            selected = selected,
+                            onClick = { onSelect(index) },
+                            role = Role.Tab
+                        )
+                        .padding(horizontal = 6.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -554,12 +796,301 @@ private fun RankingSegmentedBar(
                         style = MaterialTheme.typography.labelLarge,
                         color = if (selected) MaterialTheme.colorScheme.onPrimary
                         else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
         }
     }
+}
+
+@Composable
+private fun TokenUsageHero(
+    stats: TokenStats,
+    dateRange: String,
+    startDate: String?,
+    endDate: String?
+) {
+    val input = stats.todayInput ?: 0L
+    val output = stats.todayOutput ?: 0L
+    val breakdownTotal = input + output
+    val inputFraction = if (breakdownTotal > 0L) input.toFloat() / breakdownTotal else 0f
+    val rangeLabel = tokenRangeLabel(dateRange)
+    val total = tokenRangeTotal(stats, dateRange)
+    val shape = RoundedCornerShape(24.dp)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.primary,
+                        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.94f),
+                        MaterialTheme.colorScheme.secondary
+                    )
+                ),
+                shape
+            )
+            .padding(20.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .size(112.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.09f))
+        )
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.DataUsage,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = Color.White
+                )
+                Spacer(Modifier.width(7.dp))
+                Text(
+                    rangeLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color.White.copy(alpha = 0.88f),
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Spacer(Modifier.height(11.dp))
+            Text(
+                formatTokenCount(total),
+                style = MaterialTheme.typography.headlineLarge,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
+            Text(
+                stringResource(R.string.tokens_stat_token),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.76f)
+            )
+            if (dateRange == "custom" && (startDate != null || endDate != null)) {
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    listOfNotNull(startDate, endDate).joinToString("  —  "),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.72f)
+                )
+            }
+            stats.estimatedCost
+                ?.takeIf { it.isNotBlank() && it != "—" }
+                ?.let { cost ->
+                    Spacer(Modifier.height(8.dp))
+                    Surface(
+                        modifier = Modifier.widthIn(max = 220.dp),
+                        shape = RoundedCornerShape(50),
+                        color = Color.White.copy(alpha = 0.16f)
+                    ) {
+                        Text(
+                            "${stringResource(R.string.tokens_stat_estimated_cost)} $cost",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            Spacer(Modifier.height(17.dp))
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color.White.copy(alpha = 0.14f)
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 11.dp)) {
+                    Row {
+                        TokenHeroMetric(
+                            label = stringResource(R.string.tokens_input),
+                            value = input,
+                            color = Color.White,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TokenHeroMetric(
+                            label = stringResource(R.string.tokens_output),
+                            value = output,
+                            color = Color.White.copy(alpha = 0.72f),
+                            modifier = Modifier.weight(1f),
+                            alignEnd = true
+                        )
+                    }
+                    Spacer(Modifier.height(9.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                if (breakdownTotal > 0L) Color.White.copy(alpha = 0.35f)
+                                else Color.White.copy(alpha = 0.16f)
+                            )
+                    ) {
+                        if (breakdownTotal > 0L) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(inputFraction)
+                                    .height(8.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(Color.White)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TokenHeroMetric(
+    label: String,
+    value: Long,
+    color: Color,
+    modifier: Modifier = Modifier,
+    alignEnd: Boolean = false
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start
+    ) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.72f))
+        Text(
+            formatTokenCount(value),
+            style = MaterialTheme.typography.titleMedium,
+            color = color,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+private fun TokenKeyMetrics(stats: TokenStats) {
+    val singleColumn = LocalConfiguration.current.screenWidthDp < 340 ||
+        LocalDensity.current.fontScale >= 1.3f
+    val items = listOf(
+        TokenStatItem(
+            label = stringResource(R.string.tokens_stat_messages),
+            value = formatTokenCount(stats.messageCount ?: 0L),
+            icon = Icons.Filled.ChatBubbleOutline,
+            tint = MaterialTheme.colorScheme.primary
+        ),
+        TokenStatItem(
+            label = stringResource(R.string.tokens_stat_avg_per_msg),
+            value = String.format(Locale.US, "%.0f", stats.avgTokensPerMsg ?: 0.0),
+            icon = Icons.Filled.DataUsage,
+            tint = MaterialTheme.colorScheme.secondary
+        ),
+        TokenStatItem(
+            label = stringResource(R.string.tokens_stat_active_sessions),
+            value = "${stats.activeSessions ?: 0}",
+            icon = Icons.Filled.Forum,
+            tint = MaterialTheme.colorScheme.tertiary
+        ),
+        TokenStatItem(
+            label = stringResource(R.string.tokens_stat_avg_response),
+            value = stats.avgResponseTime ?: "—",
+            icon = Icons.Filled.Speed,
+            tint = MaterialTheme.colorScheme.primary
+        )
+    )
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        SectionHeader(title = stringResource(R.string.tokens_metrics_title))
+        Spacer(Modifier.height(12.dp))
+        if (singleColumn) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items.forEach { item ->
+                    TokenStatTile(
+                        label = item.label,
+                        value = item.value,
+                        icon = item.icon,
+                        tint = item.tint,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 84.dp)
+                    )
+                }
+            }
+        } else {
+            items.chunked(2).forEachIndexed { index, rowItems ->
+                if (index > 0) Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    rowItems.forEach { item ->
+                        TokenStatTile(
+                            label = item.label,
+                            value = item.value,
+                            icon = item.icon,
+                            tint = item.tint,
+                            modifier = Modifier.weight(1f).heightIn(min = 100.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private data class TokenStatItem(
+    val label: String,
+    val value: String,
+    val icon: ImageVector,
+    val tint: Color
+)
+
+@Composable
+private fun TokenStatTile(
+    label: String,
+    value: String,
+    icon: ImageVector,
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(15.dp),
+        color = tint.copy(alpha = 0.09f)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(19.dp))
+            Spacer(Modifier.height(8.dp))
+            Text(
+                value,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun tokenRangeLabel(dateRange: String): String = when (dateRange) {
+    "today" -> stringResource(R.string.tokens_stat_today)
+    "month" -> stringResource(R.string.tokens_stat_month)
+    "total" -> stringResource(R.string.tokens_stat_total)
+    "custom" -> stringResource(R.string.tokens_stat_custom)
+    else -> stringResource(R.string.tokens_stat_token)
+}
+
+private fun tokenRangeTotal(stats: TokenStats, dateRange: String): Long = when (dateRange) {
+    "today" -> stats.today ?: stats.todayTotal
+    "month" -> stats.month ?: stats.todayTotal
+    "total" -> stats.totalDisplay
+    "custom" -> (stats.todayInput ?: 0L) + (stats.todayOutput ?: 0L)
+    else -> stats.totalDisplay
 }
 
 /**
@@ -642,44 +1173,67 @@ private fun formatTokenCount(tokens: Long): String {
     }
 }
 
-/**
- * 单条 Token 记录卡片：将身份信息、Token 指标和性能数据分层展示。
- */
+/** 手机端紧凑记录卡：默认保留主信息，点按后再显示拆分与性能数据。 */
 @Composable
-private fun TokenRecordCard(record: TokenRecordUi) {
+private fun TokenRecordCard(
+    record: TokenRecordUi,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    resolveSessionName: suspend (String) -> String
+) {
     val compactTs = compactTimestamp(record.timestamp)?.substringAfter(' ')
     val purposeLabel = purposeLabel(record.purpose)
     val badgeColor = purposeColor(record.purpose)
-
-    // 查询会话名，会话不存在时回退到截断的会话 ID
     val sessionId = record.sessionId
-    val sessionPrefix = stringResource(R.string.tokens_session_prefix)
-    val sessionDisplay by if (sessionId.isNotBlank()) {
-        androidx.compose.runtime.produceState(initialValue = sessionPrefix.format(sessionId.take(8)), sessionId) {
-            value = withContext(Dispatchers.IO) {
-                when (val res = ServiceContainer.unified.getSession(sessionId)) {
-                    is Resource.Success -> sessionPrefix.format(res.data?.displayName?.takeIf { it.isNotBlank() } ?: sessionId.take(8))
-                    else -> sessionPrefix.format(sessionId.take(8))
-                }
-            }
+    val sessionName by androidx.compose.runtime.produceState(
+        initialValue = record.sessionName.ifBlank { sessionId.take(8) },
+        key1 = sessionId,
+        key2 = record.sessionName
+    ) {
+        if (record.sessionName.isBlank() && sessionId.isNotBlank()) {
+            value = resolveSessionName(sessionId)
         }
-    } else {
-        androidx.compose.runtime.remember { mutableStateOf("") }
     }
+    val sessionDisplay = sessionName.takeIf { it.isNotBlank() }?.let {
+        stringResource(R.string.tokens_session_prefix, it)
+    }.orEmpty()
+    val isChatChannelSource = record.purpose.equals("chat", ignoreCase = true) &&
+        record.source.equals("web", ignoreCase = true)
+    val sourceDisplay = record.source
+        .takeIf { it.isNotBlank() && !isChatChannelSource }
+        ?.let { stringResource(R.string.tokens_source_prefix, sourceLabel(it)) }
+        .orEmpty()
+    val performanceText = listOfNotNull(
+        record.cost?.takeIf { it.isNotBlank() }?.let { stringResource(R.string.tokens_cost, it) },
+        record.durationMs?.let { stringResource(R.string.tokens_duration, formatDuration(it)) },
+        record.ttftMs?.let { stringResource(R.string.tokens_ttft, formatDuration(it)) }
+    ).joinToString(" · ")
+    val recordActionLabel = stringResource(
+        if (expanded) R.string.tokens_collapse_record else R.string.tokens_expand_record
+    )
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))
             .border(
                 width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
-                shape = RoundedCornerShape(12.dp)
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                shape = RoundedCornerShape(14.dp)
             )
-            .padding(12.dp)
+            .animateContentSize()
+            .clickable(
+                onClickLabel = recordActionLabel,
+                role = Role.Button,
+                onClick = onToggle
+            )
+            .padding(horizontal = 13.dp, vertical = 12.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     record.model.ifBlank { stringResource(R.string.tokens_unknown_model) },
@@ -689,64 +1243,108 @@ private fun TokenRecordCard(record: TokenRecordUi) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (record.source.isNotBlank() || record.sessionId.isNotBlank()) {
-                    // 对话类记录的 source 一般只是渠道标识（如 web 频道），与"联网搜索"含义不符，这里不展示
-                    val isChatChannelSource = record.purpose.equals("chat", ignoreCase = true) &&
-                        record.source.equals("web", ignoreCase = true)
-                    Text(
-                        listOfNotNull(
-                            record.source.takeIf { it.isNotBlank() && !isChatChannelSource }?.let { stringResource(R.string.tokens_source_prefix, sourceLabel(it)) },
-                            sessionDisplay.takeIf { it.isNotBlank() }
-                        ).joinToString(" · "),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                Spacer(Modifier.height(5.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(badgeColor.copy(alpha = 0.16f))
+                            .padding(horizontal = 7.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            if (record.estimated) {
+                                stringResource(R.string.tokens_estimated_badge, purposeLabel)
+                            } else {
+                                purposeLabel
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = badgeColor,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1
+                        )
+                    }
+                    if (sourceDisplay.isNotBlank()) {
+                        Spacer(Modifier.width(7.dp))
+                        Text(
+                            sourceDisplay,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
+            Spacer(Modifier.width(10.dp))
             Column(horizontalAlignment = Alignment.End) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(badgeColor.copy(alpha = 0.18f))
-                        .padding(horizontal = 7.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        if (record.estimated) stringResource(R.string.tokens_estimated_badge, purposeLabel) else purposeLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = badgeColor,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-                if (!compactTs.isNullOrBlank()) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(compactTs, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                Text(
+                    formatTokenCount(record.total),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    stringResource(R.string.tokens_stat_token),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
+            Spacer(Modifier.width(4.dp))
+            Icon(
+                if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
         }
-        Spacer(Modifier.height(10.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-        Spacer(Modifier.height(10.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TokenMetric(label = stringResource(R.string.tokens_input), value = record.input, modifier = Modifier.weight(1f))
-            TokenMetric(label = stringResource(R.string.tokens_output), value = record.output, modifier = Modifier.weight(1f))
-            TokenMetric(label = stringResource(R.string.tokens_total), value = record.total, emphasized = true, modifier = Modifier.weight(1f))
+
+        if (sessionDisplay.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = sessionDisplay,
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = if (expanded) 3 else 2,
+                overflow = TextOverflow.Ellipsis
+            )
         }
-        if (!record.cost.isNullOrBlank() || record.durationMs != null || record.ttftMs != null) {
+
+        if (expanded) {
+            Spacer(Modifier.height(11.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
             Spacer(Modifier.height(10.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
-            Spacer(Modifier.height(8.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (!record.cost.isNullOrBlank()) {
-                    Text(stringResource(R.string.tokens_cost, record.cost), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
-                }
-                record.durationMs?.let {
-                    Text(stringResource(R.string.tokens_duration, formatDuration(it)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                record.ttftMs?.let {
-                    Text(stringResource(R.string.tokens_ttft, formatDuration(it)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TokenMetric(
+                    label = stringResource(R.string.tokens_input),
+                    value = record.input,
+                    modifier = Modifier.weight(1f)
+                )
+                TokenMetric(
+                    label = stringResource(R.string.tokens_output),
+                    value = record.output,
+                    modifier = Modifier.weight(1f)
+                )
+                TokenMetric(
+                    label = stringResource(R.string.tokens_total),
+                    value = record.total,
+                    emphasized = true,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            if (!compactTs.isNullOrBlank() || performanceText.isNotBlank()) {
+                Spacer(Modifier.height(9.dp))
+                Text(
+                    listOfNotNull(
+                        compactTs?.takeIf { it.isNotBlank() },
+                        performanceText.takeIf { it.isNotBlank() }
+                    ).joinToString(" · "),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }
@@ -788,7 +1386,7 @@ private fun TokenMetric(
     }
 }
 
-private fun parseTokenRecord(elem: JsonElement): TokenRecordUi? {
+private fun parseTokenRecord(index: Int, elem: JsonElement): TokenRecordUi? {
     if (!elem.isJsonObject) return null
     val obj = elem.asJsonObject
     fun string(vararg keys: String): String = keys.firstNotNullOfOrNull { key ->
@@ -813,13 +1411,17 @@ private fun parseTokenRecord(elem: JsonElement): TokenRecordUi? {
     val input = long("input", "input_tokens") ?: 0L
     val output = long("output", "output_tokens") ?: 0L
     return TokenRecordUi(
-        id = string("id").ifBlank { "$timestamp:${string("model")}:$input:$output" },
+        id = string("id")
+            .takeIf { it.isNotBlank() }
+            ?.let { "$it:$index" }
+            ?: "$timestamp:${string("model")}:${string("session_id")}:$input:$output:${elem.hashCode()}:$index",
         timestamp = timestamp,
         date = date,
         model = string("model", "model_name"),
         purpose = string("purpose"),
         source = string("source", "channel_type"),
         sessionId = string("session_id"),
+        sessionName = string("session_name", "session_title", "conversation_name"),
         input = input,
         output = output,
         total = long("total", "total_tokens", "tokens") ?: (input + output),
@@ -954,14 +1556,19 @@ private fun extractRankEntry(elem: JsonElement): Pair<String, Long> {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NekoDatePickerDialog(
+    initialDate: String? = null,
     onConfirm: (Long?) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val state = rememberDatePickerState()
+    val initialDateMillis = remember(initialDate) { parseDateMillis(initialDate) }
+    val state = rememberDatePickerState(initialSelectedDateMillis = initialDateMillis)
     DatePickerDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
-            TextButton(onClick = { onConfirm(state.selectedDateMillis) }) {
+            TextButton(
+                onClick = { onConfirm(state.selectedDateMillis) },
+                enabled = state.selectedDateMillis != null
+            ) {
                 Text(stringResource(R.string.common_confirm))
             }
         },
@@ -980,6 +1587,19 @@ private fun NekoDatePickerDialog(
  */
 private fun formatDate(millis: Long?): String {
     if (millis == null) return ""
-    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    // Material DatePicker 的毫秒值以 UTC 午夜为基准；按 UTC 格式化可避免负时区出现前一天。
+    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply {
+        timeZone = TimeZone.getTimeZone("UTC")
+    }
     return sdf.format(Date(millis))
+}
+
+private fun parseDateMillis(date: String?): Long? {
+    if (date.isNullOrBlank()) return null
+    return runCatching {
+        SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).apply {
+            isLenient = false
+            timeZone = TimeZone.getTimeZone("UTC")
+        }.parse(date)?.time
+    }.getOrNull()
 }
