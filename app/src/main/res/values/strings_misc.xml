@@ -3,6 +3,11 @@
     <!-- ==================== Token 用量页 ==================== -->
     <string name="tokens_title">Token 用量</string>
     <string name="tokens_load_failed">加载 Token 用量失败</string>
+    <string name="tokens_refresh">刷新用量</string>
+    <string name="tokens_more_actions">更多操作</string>
+    <string name="tokens_route_history">路由决策历史</string>
+    <string name="tokens_ab_test_settings">A/B 测试配置</string>
+    <string name="tokens_date_filter">选择统计日期，当前：%1$s</string>
     <string name="tokens_range_today">今日</string>
     <string name="tokens_range_month">本月</string>
     <string name="tokens_range_total">全部</string>
@@ -19,12 +24,21 @@
     <string name="tokens_input">输入</string>
     <string name="tokens_output">输出</string>
     <string name="tokens_total">合计</string>
+    <string name="tokens_tab_overview">概览</string>
+    <string name="tokens_tab_rankings">排行</string>
+    <string name="tokens_tab_records">明细</string>
+    <string name="tokens_metrics_title">关键指标</string>
     <string name="tokens_rankings_title">Token 排行榜</string>
+    <string name="tokens_rankings_scope_all">排行榜按全部历史记录统计</string>
     <string name="tokens_ranking_sessions">会话</string>
     <string name="tokens_ranking_models">模型</string>
     <string name="tokens_ranking_purposes">用途</string>
     <string name="tokens_records_title">Token 记录</string>
     <string name="tokens_estimated_badge">%1$s · 估算</string>
+    <string name="tokens_records_count">共 %1$d 条记录</string>
+    <string name="tokens_load_more">加载更多（还剩 %1$d 条）</string>
+    <string name="tokens_expand_record">展开记录详情</string>
+    <string name="tokens_collapse_record">收起记录详情</string>
     <string name="tokens_records_subtitle">共 %1$d 条，第 %2$d/%3$d 页 · 每页 %4$d 条</string>
     <string name="tokens_prev_page">上一页</string>
     <string name="tokens_next_page">下一页</string>

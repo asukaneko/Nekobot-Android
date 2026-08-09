@@ -3,6 +3,11 @@
     <!-- ==================== トークン使用量画面 ==================== -->
     <string name="tokens_title">トークン使用量</string>
     <string name="tokens_load_failed">トークン使用量の読み込みに失敗しました</string>
+    <string name="tokens_refresh">使用量を更新</string>
+    <string name="tokens_more_actions">その他の操作</string>
+    <string name="tokens_route_history">ルーティング履歴</string>
+    <string name="tokens_ab_test_settings">A/B テスト設定</string>
+    <string name="tokens_date_filter">集計期間を選択、現在：%1$s</string>
     <string name="tokens_range_today">今日</string>
     <string name="tokens_range_month">今月</string>
     <string name="tokens_range_total">すべて</string>
@@ -19,11 +24,21 @@
     <string name="tokens_input">入力</string>
     <string name="tokens_output">出力</string>
     <string name="tokens_total">合計</string>
+    <string name="tokens_tab_overview">概要</string>
+    <string name="tokens_tab_rankings">ランキング</string>
+    <string name="tokens_tab_records">明細</string>
+    <string name="tokens_metrics_title">主要指標</string>
     <string name="tokens_rankings_title">トークンランキング</string>
+    <string name="tokens_rankings_scope_all">ランキングは全期間の履歴を集計します</string>
     <string name="tokens_ranking_sessions">セッション</string>
     <string name="tokens_ranking_models">モデル</string>
     <string name="tokens_ranking_purposes">用途</string>
     <string name="tokens_records_title">トークン記録</string>
+    <string name="tokens_estimated_badge">%1$s · 推定</string>
+    <string name="tokens_records_count">全 %1$d 件</string>
+    <string name="tokens_load_more">さらに読み込む（残り %1$d 件）</string>
+    <string name="tokens_expand_record">記録の詳細を展開</string>
+    <string name="tokens_collapse_record">記録の詳細を閉じる</string>
     <string name="tokens_records_subtitle">合計 %1$d 件、%2$d/%3$d ページ · 1 ページ %4$d 件</string>
     <string name="tokens_prev_page">前へ</string>
     <string name="tokens_next_page">次へ</string>
