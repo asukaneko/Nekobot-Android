@@ -64,6 +64,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -77,8 +78,10 @@ import com.nekobot.app.data.local.DbProfilePortraitSource
 import com.nekobot.app.data.local.DbProfileStoryData
 import com.nekobot.app.data.local.ExtractedDbProfileArchive
 import com.nekobot.app.data.local.LoginRecord
+import com.nekobot.app.data.local.LocalDatabaseCredentialBundle
 import com.nekobot.app.data.local.LocalPlotStoryProfileSnapshot
 import com.nekobot.app.data.local.LocalPlotStoryStore
+import com.nekobot.app.data.local.LocalWebDavArchiveCodec
 import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.local.db.NekobotDatabase
 import com.nekobot.app.ui.components.GlassCard
@@ -260,13 +263,23 @@ class DbProfileViewModel : ViewModel() {
      * 3. 将 .db / .db-wal / .db-shm、图片、URI 映射与剧情状态打包到 Downloads
      * 4. 若导出的是当前激活 db，重开连接以恢复正常使用
      */
-    fun exportToDownloads(profileName: String) {
-        exportProfile(profileName, destinationUri = null, requestedFileName = null)
+    fun exportToDownloads(profileName: String, backupPassword: String) {
+        exportProfile(
+            profileName,
+            destinationUri = null,
+            requestedFileName = null,
+            backupPassword = backupPassword
+        )
     }
 
     /** Android 8/9 通过系统文件选择器取得写入 URI，避免依赖旧存储权限。 */
-    fun exportToUri(profileName: String, destinationUri: Uri, fileName: String) {
-        exportProfile(profileName, destinationUri, fileName)
+    fun exportToUri(
+        profileName: String,
+        destinationUri: Uri,
+        fileName: String,
+        backupPassword: String
+    ) {
+        exportProfile(profileName, destinationUri, fileName, backupPassword)
     }
 
     fun suggestedExportFileName(profileName: String): String {
@@ -277,8 +290,13 @@ class DbProfileViewModel : ViewModel() {
     private fun exportProfile(
         profileName: String,
         destinationUri: Uri?,
-        requestedFileName: String?
+        requestedFileName: String?,
+        backupPassword: String
     ) {
+        if (backupPassword.trim().length < 8) {
+            _toast.value = ServiceContainer.getString(R.string.dbprofile_backup_password_too_short)
+            return
+        }
         val profile = _profiles.value.firstOrNull { it.name == profileName } ?: return
         val displayNameStr = profile.displayName
         val ctx = ServiceContainer.appContext ?: run {
@@ -295,6 +313,12 @@ class DbProfileViewModel : ViewModel() {
                 targetDb.aiModelDao().migrateStoredSecrets()
                 targetDb.mcpServerDao().migrateStoredSecrets()
                 targetDb.apiKeyDao().migrateStoredSecrets()
+                val credentialBundle = LocalDatabaseCredentialBundle.capture(targetDb)
+                val encryptedCredentials = LocalWebDavArchiveCodec.encrypt(
+                    archive = credentialBundle,
+                    password = backupPassword,
+                    profileName = profileName
+                )
                 val portraitSources = collectPortraitSources(ctx, targetDb)
                 val sessionIds = targetDb.sessionDao().listAll().mapTo(linkedSetOf()) { it.id }
                 LocalPlotStoryStore.migrateLegacyProfile(ctx, profileName, sessionIds)
@@ -324,9 +348,23 @@ class DbProfileViewModel : ViewModel() {
                     ?.takeIf { it.isNotBlank() }
                     ?: buildExportFileName(displayNameStr, profileName)
                 val saved = if (destinationUri != null) {
-                    writeArchiveToUri(ctx, destinationUri, entries, portraitSources, story)
+                    writeArchiveToUri(
+                        ctx,
+                        destinationUri,
+                        entries,
+                        portraitSources,
+                        story,
+                        encryptedCredentials
+                    )
                 } else {
-                    writeArchiveToDownloads(ctx, zipFileName, entries, portraitSources, story)
+                    writeArchiveToDownloads(
+                        ctx,
+                        zipFileName,
+                        entries,
+                        portraitSources,
+                        story,
+                        encryptedCredentials
+                    )
                 }
                 // 恢复 db 连接：激活 db 需要走 switchLocalDb 重建 LocalRepository
                 if (isActive) {
@@ -368,7 +406,7 @@ class DbProfileViewModel : ViewModel() {
      * @param uri 用户选择的文件 URI
      * @param displayNameStr 新 db 的显示名
      */
-    fun importFromFile(uri: Uri, displayNameStr: String) {
+    fun importFromFile(uri: Uri, displayNameStr: String, backupPassword: String) {
         if (displayNameStr.isBlank()) {
             _toast.value = ServiceContainer.getString(R.string.dbprofile_input_display_name)
             return
@@ -414,6 +452,12 @@ class DbProfileViewModel : ViewModel() {
                 if (!isSqliteBytes(archive.main)) {
                     throw IllegalStateException("备份包中的数据库格式无效")
                 }
+                val credentialBundle = archive.encryptedCredentials?.let { encrypted ->
+                    if (backupPassword.isBlank()) {
+                        throw IllegalArgumentException("此备份包含加密凭据，请输入导出时设置的备份密码")
+                    }
+                    LocalWebDavArchiveCodec.decrypt(encrypted, backupPassword)
+                }
 
                 // 先完整备份同名数据库；后续任一步失败都会恢复原文件和原激活 profile。
                 if (profileName == previousActive) {
@@ -439,6 +483,13 @@ class DbProfileViewModel : ViewModel() {
                 val portraitTransaction = restoreEmbeddedPortraits(ctx, profileName, archive)
                 portraitRestore = portraitTransaction
                 importedDb.withTransaction {
+                    if (credentialBundle != null) {
+                        LocalDatabaseCredentialBundle.restore(importedDb, credentialBundle)
+                    } else {
+                        importedDb.aiModelDao().migrateStoredSecrets()
+                        importedDb.mcpServerDao().migrateStoredSecrets()
+                        importedDb.apiKeyDao().migrateStoredSecrets()
+                    }
                     rewritePortraitReferences(importedDb, portraitTransaction.references)
                 }
 
@@ -812,7 +863,8 @@ class DbProfileViewModel : ViewModel() {
         fileName: String,
         databaseFiles: List<Pair<String, File>>,
         portraitSources: List<DbProfilePortraitSource>,
-        story: DbProfileStoryData
+        story: DbProfileStoryData,
+        encryptedCredentials: ByteArray
     ): Boolean {
         var insertedUri: Uri? = null
         return try {
@@ -828,7 +880,13 @@ class DbProfileViewModel : ViewModel() {
             val uri = resolver.insert(collection, values) ?: return false
             insertedUri = uri
             resolver.openOutputStream(uri)?.use { output ->
-                DbProfileArchiveCodec.writeArchive(output, databaseFiles, portraitSources, story)
+                DbProfileArchiveCodec.writeArchive(
+                    output,
+                    databaseFiles,
+                    portraitSources,
+                    story,
+                    encryptedCredentials
+                )
             } ?: error("无法打开下载文件")
             resolver.update(
                 uri,
@@ -849,10 +907,17 @@ class DbProfileViewModel : ViewModel() {
         destinationUri: Uri,
         databaseFiles: List<Pair<String, File>>,
         portraitSources: List<DbProfilePortraitSource>,
-        story: DbProfileStoryData
+        story: DbProfileStoryData,
+        encryptedCredentials: ByteArray
     ): Boolean = try {
         context.contentResolver.openOutputStream(destinationUri, "w")?.use { output ->
-            DbProfileArchiveCodec.writeArchive(output, databaseFiles, portraitSources, story)
+            DbProfileArchiveCodec.writeArchive(
+                output,
+                databaseFiles,
+                portraitSources,
+                story,
+                encryptedCredentials
+            )
         } ?: error("无法打开导出文件")
         true
     } catch (_: Exception) {
@@ -899,8 +964,10 @@ fun DbProfileScreen(onBack: () -> Unit) {
     var deleteTarget by remember { mutableStateOf<PrefsManager.DbProfile?>(null) }
     var showImportFilePrompt by remember { mutableStateOf(false) }
     var pendingFileUri by remember { mutableStateOf<Uri?>(null) }
+    var exportTargetProfile by remember { mutableStateOf<String?>(null) }
     var pendingLegacyExportProfile by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingLegacyExportFileName by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingLegacyExportPassword by remember { mutableStateOf<String?>(null) }
 
     // 文件选择器：选择 .zip 或 .db 文件
     val pickFileLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -920,10 +987,12 @@ fun DbProfileScreen(onBack: () -> Unit) {
     ) { uri ->
         val profileName = pendingLegacyExportProfile
         val fileName = pendingLegacyExportFileName
+        val backupPassword = pendingLegacyExportPassword
         pendingLegacyExportProfile = null
         pendingLegacyExportFileName = null
-        if (uri != null && profileName != null && fileName != null) {
-            vm.exportToUri(profileName, uri, fileName)
+        pendingLegacyExportPassword = null
+        if (uri != null && profileName != null && fileName != null && backupPassword != null) {
+            vm.exportToUri(profileName, uri, fileName, backupPassword)
         }
     }
 
@@ -1022,16 +1091,7 @@ fun DbProfileScreen(onBack: () -> Unit) {
                             isDefault = profile.name == PrefsManager.DEFAULT_DB_NAME,
                             onSwitch = { vm.switchTo(profile.name) },
                             onDelete = { deleteTarget = profile },
-                            onExport = {
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                    vm.exportToDownloads(profile.name)
-                                } else {
-                                    val fileName = vm.suggestedExportFileName(profile.name)
-                                    pendingLegacyExportProfile = profile.name
-                                    pendingLegacyExportFileName = fileName
-                                    createExportLauncher.launch(fileName)
-                                }
-                            }
+                            onExport = { exportTargetProfile = profile.name }
                         )
                     }
                 }
@@ -1072,6 +1132,71 @@ fun DbProfileScreen(onBack: () -> Unit) {
         LoadingOverlay(visible = importing)
     }
 
+    exportTargetProfile?.let { profileName ->
+        var backupPassword by remember(profileName) { mutableStateOf("") }
+        var confirmPassword by remember(profileName) { mutableStateOf("") }
+        val normalizedPassword = backupPassword.trim()
+        val passwordsMatch = normalizedPassword == confirmPassword.trim()
+        NekoDialog(
+            onDismiss = { exportTargetProfile = null },
+            title = stringResource(R.string.dbprofile_export_password_title),
+            confirmText = stringResource(R.string.dbprofile_export_to_downloads),
+            confirmEnabled = normalizedPassword.length >= 8 && passwordsMatch && !importing,
+            onConfirm = {
+                exportTargetProfile = null
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    vm.exportToDownloads(profileName, normalizedPassword)
+                } else {
+                    val fileName = vm.suggestedExportFileName(profileName)
+                    pendingLegacyExportProfile = profileName
+                    pendingLegacyExportFileName = fileName
+                    pendingLegacyExportPassword = normalizedPassword
+                    createExportLauncher.launch(fileName)
+                }
+            }
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    stringResource(R.string.dbprofile_export_password_tip),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = backupPassword,
+                    onValueChange = { backupPassword = it },
+                    label = { Text(stringResource(R.string.dbprofile_backup_password)) },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    enabled = !importing,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = confirmPassword,
+                    onValueChange = { confirmPassword = it },
+                    label = { Text(stringResource(R.string.dbprofile_backup_password_confirm)) },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    isError = confirmPassword.isNotEmpty() && !passwordsMatch,
+                    enabled = !importing,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (normalizedPassword.isNotEmpty() && normalizedPassword.length < 8) {
+                    Text(
+                        stringResource(R.string.dbprofile_backup_password_too_short),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                } else if (confirmPassword.isNotEmpty() && !passwordsMatch) {
+                    Text(
+                        stringResource(R.string.dbprofile_backup_password_mismatch),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        }
+    }
+
     if (showImportDialog) {
         ImportFromRemoteDialog(
             loginRecords = loginRecords,
@@ -1095,6 +1220,7 @@ fun DbProfileScreen(onBack: () -> Unit) {
             mutableStateOf(pendingFileUri?.lastPathSegment?.substringAfterLast('/')?.substringBeforeLast('.')
                 ?.replace(Regex("[\\\\/:*?\"<>|]"), "_")?.trim() ?: "")
         }
+        var backupPassword by remember(pendingFileUri) { mutableStateOf("") }
         NekoDialog(
             onDismiss = {
                 showImportFilePrompt = false
@@ -1106,7 +1232,7 @@ fun DbProfileScreen(onBack: () -> Unit) {
             onConfirm = {
                 val uri = pendingFileUri
                 if (uri != null && displayNameInput.isNotBlank()) {
-                    vm.importFromFile(uri, displayNameInput.trim())
+                    vm.importFromFile(uri, displayNameInput.trim(), backupPassword.trim())
                     showImportFilePrompt = false
                     pendingFileUri = null
                 }
@@ -1132,6 +1258,15 @@ fun DbProfileScreen(onBack: () -> Unit) {
                     label = { Text(stringResource(R.string.dbprofile_new_display_name)) },
                     placeholder = { Text(stringResource(R.string.dbprofile_display_name_placeholder)) },
                     singleLine = true,
+                    enabled = !importing,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = backupPassword,
+                    onValueChange = { backupPassword = it },
+                    label = { Text(stringResource(R.string.dbprofile_backup_password_import)) },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
                     enabled = !importing,
                     modifier = Modifier.fillMaxWidth()
                 )

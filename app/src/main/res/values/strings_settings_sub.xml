@@ -216,9 +216,16 @@
     <string name="dbprofile_export_failed">导出失败，请重试</string>
     <string name="dbprofile_export_failed_reason">导出失败：%1$s</string>
     <string name="dbprofile_export_no_db">数据库文件不存在，无法导出</string>
+    <string name="dbprofile_export_password_title">设置数据库备份密码</string>
+    <string name="dbprofile_export_password_tip">API Key、代理凭据和 OAuth 登录信息会用此密码加密，跨设备或重装后导入仍可恢复。请妥善保存密码。</string>
+    <string name="dbprofile_backup_password">备份密码（至少 8 位）</string>
+    <string name="dbprofile_backup_password_confirm">确认备份密码</string>
+    <string name="dbprofile_backup_password_import">备份密码（新版备份必填）</string>
+    <string name="dbprofile_backup_password_too_short">备份密码至少需要 8 位</string>
+    <string name="dbprofile_backup_password_mismatch">两次输入的备份密码不一致</string>
     <string name="dbprofile_import_file_button">从本地文件导入数据库</string>
     <string name="dbprofile_import_file_dialog_title">从文件导入数据库</string>
-    <string name="dbprofile_import_file_tip">支持选择 .zip（含 .db 文件）或 .db 文件。导入后会自动切换到新数据库。</string>
+    <string name="dbprofile_import_file_tip">新版 .zip 请输入导出时设置的备份密码；旧版 .zip 或 .db 可留空。导入后会自动切换到新数据库。</string>
     <string name="dbprofile_import_file_success">已导入数据库「%1$s」并切换</string>
     <string name="dbprofile_import_file_failed">导入失败，请重试</string>
     <string name="dbprofile_import_file_failed_reason">导入失败：%1$s</string>

@@ -52,6 +52,23 @@ class DbProfileArchiveCodecTest {
     }
 
     @Test
+    fun encryptedCredentialsRoundTrip() {
+        withTempDir { dir ->
+            val main = File(dir, "source.db").apply { writeBytes("main-db".toByteArray()) }
+            val encryptedCredentials = "encrypted-portable-credentials".toByteArray()
+
+            val archive = DbProfileArchiveCodec.createArchive(
+                databaseFiles = listOf(main.name to main),
+                portraitSources = emptyList(),
+                encryptedCredentials = encryptedCredentials
+            )
+            val extracted = requireNotNull(DbProfileArchiveCodec.extractArchive(archive))
+
+            assertArrayEquals(encryptedCredentials, extracted.encryptedCredentials)
+        }
+    }
+
+    @Test
     fun oldDatabaseOnlyZipRemainsSupported() {
         val archive = zipOf(
             "nested/legacy.db" to "legacy-main".toByteArray(),
@@ -66,6 +83,7 @@ class DbProfileArchiveCodecTest {
         assertTrue(extracted.portraits.isEmpty())
         assertTrue(extracted.portraitReferences.isEmpty())
         assertNull(extracted.story)
+        assertNull(extracted.encryptedCredentials)
     }
 
     @Test

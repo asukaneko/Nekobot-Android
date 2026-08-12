@@ -210,9 +210,16 @@
     <string name="dbprofile_export_failed">Export failed, please try again</string>
     <string name="dbprofile_export_failed_reason">Export failed: %1$s</string>
     <string name="dbprofile_export_no_db">Database file not found, cannot export</string>
+    <string name="dbprofile_export_password_title">Set database backup password</string>
+    <string name="dbprofile_export_password_tip">API keys, proxy credentials, and OAuth logins are encrypted with this password so they can be restored after reinstalling or moving devices. Keep it safe.</string>
+    <string name="dbprofile_backup_password">Backup password (8+ characters)</string>
+    <string name="dbprofile_backup_password_confirm">Confirm backup password</string>
+    <string name="dbprofile_backup_password_import">Backup password (required for new backups)</string>
+    <string name="dbprofile_backup_password_too_short">The backup password must contain at least 8 characters</string>
+    <string name="dbprofile_backup_password_mismatch">The backup passwords do not match</string>
     <string name="dbprofile_import_file_button">Import database from local file</string>
     <string name="dbprofile_import_file_dialog_title">Import database from file</string>
-    <string name="dbprofile_import_file_tip">Supports .zip (containing a .db file) or .db files. The new database will be auto-activated after import.</string>
+    <string name="dbprofile_import_file_tip">For a new .zip backup, enter the password set during export. Leave it blank for legacy .zip or .db files. The imported database will be activated automatically.</string>
     <string name="dbprofile_import_file_success">Imported database \"%1$s\" and switched</string>
     <string name="dbprofile_import_file_failed">Import failed, please try again</string>
     <string name="dbprofile_import_file_failed_reason">Import failed: %1$s</string>

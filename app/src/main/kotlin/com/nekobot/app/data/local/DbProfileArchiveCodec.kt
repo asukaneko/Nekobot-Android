@@ -34,7 +34,9 @@ internal data class ExtractedDbProfileArchive(
     /** 数据库中的原始 URI -> ZIP entry。 */
     val portraitReferences: Map<String, String> = emptyMap(),
     /** 旧版备份没有该条目时为 null。 */
-    val story: DbProfileStoryData? = null
+    val story: DbProfileStoryData? = null,
+    /** 用户密码加密的可移植凭据；旧版备份和原始 .db 没有该条目。 */
+    val encryptedCredentials: ByteArray? = null
 )
 
 /**
@@ -51,9 +53,11 @@ internal object DbProfileArchiveCodec {
     private const val PORTRAIT_PREFIX = "portraits/"
     private const val MANIFEST_ENTRY = "${PORTRAIT_PREFIX}manifest.json"
     private const val STORY_ENTRY = "story/story.json"
+    private const val CREDENTIALS_ENTRY = "credentials/credentials.nbotcfg"
     private const val MAX_ENTRY_COUNT = 4_096
     private const val MAX_MANIFEST_BYTES = 4L * 1024 * 1024
     private const val MAX_STORY_BYTES = 16L * 1024 * 1024
+    private const val MAX_CREDENTIALS_BYTES = 8L * 1024 * 1024
     private const val MAX_PORTRAIT_BYTES = 64L * 1024 * 1024
     private const val MAX_DATABASE_ENTRY_BYTES = 512L * 1024 * 1024
     private const val MAX_TOTAL_EXPANDED_BYTES = 768L * 1024 * 1024
@@ -81,7 +85,8 @@ internal object DbProfileArchiveCodec {
         output: OutputStream,
         databaseFiles: List<Pair<String, File>>,
         portraitSources: List<DbProfilePortraitSource>,
-        story: DbProfileStoryData? = null
+        story: DbProfileStoryData? = null,
+        encryptedCredentials: ByteArray? = null
     ) {
         val portraitsByPath = linkedMapOf<String, Pair<File, MutableSet<String>>>()
         portraitSources.forEach { source ->
@@ -133,9 +138,14 @@ internal object DbProfileArchiveCodec {
                 .also { require(it.size <= MAX_MANIFEST_BYTES) { "立绘清单过大" } }
         }
         val storyBytes = story?.let(::prepareStoryBytes)
+        encryptedCredentials?.let { bytes ->
+            require(bytes.isNotEmpty()) { "加密凭据不能为空" }
+            require(bytes.size <= MAX_CREDENTIALS_BYTES) { "加密凭据过大" }
+        }
 
         val archiveEntryCount = preparedDatabases.size + preparedPortraits.size +
-            (if (manifestBytes != null) 1 else 0) + (if (storyBytes != null) 1 else 0)
+            (if (manifestBytes != null) 1 else 0) + (if (storyBytes != null) 1 else 0) +
+            (if (encryptedCredentials != null) 1 else 0)
         require(archiveEntryCount <= MAX_ENTRY_COUNT) { "备份条目过多" }
         var totalBytes = 0L
         (preparedDatabases.map { it.second } + preparedPortraits.map { it.file }).forEach { file ->
@@ -148,6 +158,10 @@ internal object DbProfileArchiveCodec {
         }
         storyBytes?.let { bytes ->
             require(bytes.size.toLong() <= MAX_TOTAL_EXPANDED_BYTES - totalBytes) { "备份内容过大" }
+            totalBytes += bytes.size
+        }
+        encryptedCredentials?.let { bytes ->
+            require(bytes.size.toLong() <= MAX_TOTAL_EXPANDED_BYTES - totalBytes) { "备份内容过大" }
         }
 
         ZipOutputStream(output).use { zip ->
@@ -158,6 +172,7 @@ internal object DbProfileArchiveCodec {
 
             manifestBytes?.let { putBytes(zip, MANIFEST_ENTRY, it) }
             storyBytes?.let { putBytes(zip, STORY_ENTRY, it) }
+            encryptedCredentials?.let { putBytes(zip, CREDENTIALS_ENTRY, it) }
         }
     }
 
@@ -165,9 +180,10 @@ internal object DbProfileArchiveCodec {
     fun createArchive(
         databaseFiles: List<Pair<String, File>>,
         portraitSources: List<DbProfilePortraitSource>,
-        story: DbProfileStoryData? = null
+        story: DbProfileStoryData? = null,
+        encryptedCredentials: ByteArray? = null
     ): ByteArray = ByteArrayOutputStream().also { output ->
-        writeArchive(output, databaseFiles, portraitSources, story)
+        writeArchive(output, databaseFiles, portraitSources, story, encryptedCredentials)
     }.toByteArray()
 
     /** 提取新版或旧版数据库 ZIP；旧 ZIP 没有 manifest 时图片映射为空。 */
@@ -255,6 +271,7 @@ internal object DbProfileArchiveCodec {
         }
         val portraitEntries = references.values.distinct().associateWith { rawEntries.getValue(it) }
         val story = rawEntries[STORY_ENTRY]?.let(::parseStoryBytes)
+        val encryptedCredentials = rawEntries[CREDENTIALS_ENTRY]
 
         return ExtractedDbProfileArchive(
             main = rawEntries.getValue(mainEntry),
@@ -262,7 +279,8 @@ internal object DbProfileArchiveCodec {
             shm = entryWithBaseName("$mainName-shm"),
             portraits = portraitEntries,
             portraitReferences = references,
-            story = story
+            story = story,
+            encryptedCredentials = encryptedCredentials
         )
     }
 
@@ -325,6 +343,7 @@ internal object DbProfileArchiveCodec {
         return when {
             path == MANIFEST_ENTRY -> MAX_MANIFEST_BYTES
             path == STORY_ENTRY -> MAX_STORY_BYTES
+            path == CREDENTIALS_ENTRY -> MAX_CREDENTIALS_BYTES
             path.startsWith(PORTRAIT_PREFIX) -> MAX_PORTRAIT_BYTES
             name.endsWith(".db", ignoreCase = true) ||
                 name.endsWith(".db-wal", ignoreCase = true) ||

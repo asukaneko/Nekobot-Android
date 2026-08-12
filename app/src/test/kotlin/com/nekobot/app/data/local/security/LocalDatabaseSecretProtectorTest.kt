@@ -5,6 +5,7 @@ import com.nekobot.app.data.local.db.LocalApiKeyEntity
 import com.nekobot.app.data.local.db.LocalMcpServerEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -92,5 +93,8 @@ class LocalDatabaseSecretProtectorTest {
         )
 
         assertEquals("", protector.reveal(key).key)
+        assertThrows(IllegalStateException::class.java) {
+            protector.revealStrict(key)
+        }
     }
 }
