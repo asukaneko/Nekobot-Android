@@ -118,6 +118,8 @@ import com.google.gson.JsonObject
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.ChatInputLayoutMode
+import com.nekobot.app.data.local.LocalCommandAction
+import com.nekobot.app.data.local.LocalSlashCommands
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.ReasoningEffort
@@ -147,6 +149,7 @@ fun ModernChatScreen(
     onOpenSessionDetail: (String) -> Unit = {},
     onOpenWorkspace: (String) -> Unit = {},
     onOpenStoryGraph: (String) -> Unit = {},
+    onOpenWenku8Login: () -> Unit = {},
     onJumpToLatest: () -> Unit = {}
 ) {
     val viewModel: ChatViewModel = viewModel()
@@ -186,7 +189,16 @@ fun ModernChatScreen(
             plotMode = session?.plotMode == true,
             plotRealTimeSync = session?.plotRealTimeSync == true,
             onSend = { text, plotChoiceId, attachments, reasoningEffort ->
-                viewModel.sendMessage(text, plotChoiceId, attachments, reasoningEffort)
+                val command = LocalSlashCommands.parse(text)
+                if (
+                    command?.action == LocalCommandAction.WENKU8_LOGIN &&
+                    command.args.isEmpty() &&
+                    attachments.isEmpty()
+                ) {
+                    onOpenWenku8Login()
+                } else {
+                    viewModel.sendMessage(text, plotChoiceId, attachments, reasoningEffort)
+                }
             },
             onStop = viewModel::stop,
             onCompress = viewModel::compressContext,

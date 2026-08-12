@@ -166,6 +166,7 @@ private data class DashboardMetricsLoadResults(
  * @param onClearSelection 清除选中回调
  * @param onOpenDetail 打开会话详情回调
  * @param onOpenStoryGraph 打开剧情图回调
+ * @param onOpenWenku8Login 打开 wenku8 登录页回调
  * @param content 会话列表内容（Scaffold）
  */
 @Composable
@@ -176,6 +177,7 @@ private fun TwoPaneSessionsWrapper(
     onClearSelection: () -> Unit,
     onOpenDetail: (String) -> Unit,
     onOpenStoryGraph: (String) -> Unit,
+    onOpenWenku8Login: () -> Unit,
     content: @Composable () -> Unit
 ) {
     if (useTwoPane) {
@@ -209,6 +211,7 @@ private fun TwoPaneSessionsWrapper(
                         onOpenSessionDetail = onOpenDetail,
                         onOpenWorkspace = {},
                         onOpenStoryGraph = onOpenStoryGraph,
+                        onOpenWenku8Login = onOpenWenku8Login,
                         onJumpToLatest = {}
                     )
                 } else {
@@ -339,7 +342,8 @@ fun SessionsScreen(
         onSessionSelected = { id -> selectedSessionId = id },
         onClearSelection = { selectedSessionId = null },
         onOpenDetail = onOpenDetail,
-        onOpenStoryGraph = onOpenStoryGraph
+        onOpenStoryGraph = onOpenStoryGraph,
+        onOpenWenku8Login = { onNavigate(Routes.WENKU_LOGIN) }
     ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,

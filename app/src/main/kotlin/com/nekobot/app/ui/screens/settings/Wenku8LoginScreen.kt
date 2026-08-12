@@ -78,9 +78,7 @@ private fun hasLoginCookie(cookie: String): Boolean {
  * 用户在此页面完成登录后，自动提取 Cookie 和 WebView 的 User-Agent 并保存。
  * 这样保证了 IP、UA、Cookie 三者一致，避免 CloudFlare cf_clearance 403。
  *
- * 入口：
- * 1. 设置 → wenku8 登录（onNavigate(Routes.WENKU_LOGIN)）
- * 2. /set_wenku_cookie 命令返回的提示中引导用户前往设置页
+ * 入口：在聊天框输入 `/wenku8_login` 或 `/wenku_login`。
  */
 @SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalMaterial3Api::class)

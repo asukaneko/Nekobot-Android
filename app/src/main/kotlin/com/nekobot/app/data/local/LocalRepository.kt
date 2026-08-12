@@ -1759,6 +1759,8 @@ class LocalRepository(
                 localNovelSelectText(session.id, command.args, progressReporter)
             LocalCommandAction.NOVEL_RES ->
                 localNovelResText(session.id, command.args, progressReporter)
+            LocalCommandAction.WENKU8_LOGIN ->
+                "请在聊天框输入 `/wenku8_login` 打开 wenku8 登录界面。"
             LocalCommandAction.NOVEL_SET_COOKIE ->
                 localNovelSetCookieText(command.args)
             LocalCommandAction.PYTHON_RUNTIME_REQUIRED ->
@@ -3403,14 +3405,14 @@ class LocalRepository(
      * - `/set_wenku_cookie PHPSESSID=xxx; cf_clearance=yyy`
      * - `/set_wenku_cookie PHPSESSID=xxx; cf_clearance=yyy || Mozilla/5.0 ... Chrome/125.0.0.0`
      *
-     * CloudFlare 的 cf_clearance 绑定获取时的 IP + UA，建议使用内置浏览器登录
-     * （设置 → 轻小说 → wenku8 登录），自动保证 IP + UA + Cookie 三者一致，避免 403。
+     * CloudFlare 的 cf_clearance 绑定获取时的 IP + UA，建议通过 `/wenku8_login`
+     * 打开内置浏览器登录，自动保证 IP + UA + Cookie 三者一致，避免 403。
      */
     private fun localNovelSetCookieText(rawArgs: String): String {
         val trimmed = rawArgs.trim()
         if (trimmed.isEmpty()) {
             return "📖 wenku8 Cookie 设置喵~\n\n" +
-                "推荐方式：设置 → 轻小说 → wenku8 登录\n" +
+                "推荐方式：在聊天框输入 /wenku8_login\n" +
                 "（内置浏览器登录，自动保存 Cookie + UA，避免 403）\n\n" +
                 "手动方式（高级）：\n" +
                 "/set_wenku_cookie <Cookie>\n" +
@@ -3429,7 +3431,7 @@ class LocalRepository(
             "✅ Cookie + User-Agent 更新成功喵！\nUA: ${userAgent.take(80)}...\n现在可以尝试使用 `/hotnovel` 喵~"
         } else {
             "✅ Cookie 更新成功喵！现在可以尝试使用 `/hotnovel` 喵~\n" +
-                "提示：如遇 403，建议使用 设置 → 轻小说 → wenku8 登录\n" +
+                "提示：如遇 403，建议输入 /wenku8_login 打开内置登录\n" +
                 "（内置浏览器自动保存 Cookie + UA，避免 IP/UA 不匹配）"
         }
     }

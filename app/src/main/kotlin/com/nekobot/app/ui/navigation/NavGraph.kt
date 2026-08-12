@@ -276,6 +276,7 @@ fun NekobotNavGraph() {
                     onOpenSessionDetail = { id -> navController.navigate(Routes.sessionDetail(id)) },
                     onOpenWorkspace = { id -> navController.navigate(Routes.workspace(id)) },
                     onOpenStoryGraph = { id -> navController.navigate(Routes.storyGraph(id)) },
+                    onOpenWenku8Login = { navController.navigate(Routes.WENKU_LOGIN) },
                     onJumpToLatest = {
                         val route = Routes.chat(sessionId)
                         navController.navigate(route) {

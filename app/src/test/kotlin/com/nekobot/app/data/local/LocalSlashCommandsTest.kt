@@ -34,6 +34,11 @@ class LocalSlashCommandsTest {
             LocalCommandAction.EXPORT_CHAT,
             LocalSlashCommands.parse("/export")?.action
         )
+
+        assertEquals(
+            LocalCommandAction.WENKU8_LOGIN,
+            LocalSlashCommands.parse("/wenku_login")?.action
+        )
     }
 
     @Test
@@ -118,6 +123,7 @@ class LocalSlashCommandsTest {
         assertTrue(help.contains("/note"))
         assertTrue(help.contains("/jmrank"))
         assertTrue(help.contains("/jm <漫画ID>"))
+        assertTrue(help.contains("/wenku8_login"))
         assertTrue(help.contains("/yolo"))
         assertFalse(help.contains("依赖 Python"))
     }

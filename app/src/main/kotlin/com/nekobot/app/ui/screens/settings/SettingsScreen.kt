@@ -28,7 +28,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CloudSync
@@ -759,21 +758,6 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                             )
                         }
                         Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-
-                // 7.5. 轻小说登录（仅本地模式，wenku8 Cookie/UA 自动提取）
-                if (appMode == AppMode.LOCAL) {
-                    GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        SectionHeader(title = "轻小说")
-                        Spacer(Modifier.height(8.dp))
-                        AboutRow(
-                            icon = Icons.AutoMirrored.Filled.MenuBook,
-                            iconColor = MaterialTheme.colorScheme.tertiary,
-                            title = "wenku8 登录",
-                            subtitle = "内置浏览器登录，自动保存 Cookie + UA",
-                            onClick = { onNavigate("wenku_login") }
-                        )
                     }
                 }
 

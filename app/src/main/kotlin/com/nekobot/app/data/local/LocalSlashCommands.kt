@@ -206,9 +206,15 @@ internal object LocalSlashCommands {
             action = LocalCommandAction.NOVEL_RES
         ),
         LocalCommandSpec(
+            aliases = listOf("/wenku8_login", "/wenku_login"),
+            usage = "/wenku8_login",
+            description = "打开 wenku8 登录界面并自动保存 Cookie + UA",
+            action = LocalCommandAction.WENKU8_LOGIN
+        ),
+        LocalCommandSpec(
             aliases = listOf("/set_wenku_cookie"),
             usage = "/set_wenku_cookie <Cookie> || <UA>",
-            description = "更新文库8的 Cookie（推荐：设置 → 轻小说 → wenku8 登录）",
+            description = "手动更新文库8的 Cookie",
             action = LocalCommandAction.NOVEL_SET_COOKIE
         ),
         LocalCommandSpec(
@@ -329,6 +335,7 @@ internal enum class LocalCommandAction(val isNative: Boolean) {
     NOVEL_HOT(true),
     NOVEL_RANDOM(true),
     NOVEL_RES(true),
+    WENKU8_LOGIN(true),
     NOVEL_SET_COOKIE(true),
     PYTHON_RUNTIME_REQUIRED(false),
     REMOTE_RUNTIME_REQUIRED(false),

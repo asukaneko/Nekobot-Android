@@ -498,19 +498,19 @@ internal const val WENKU8_403_HINT: String =
     "❌ wenku8 返回 403，被 CloudFlare 拦截喵！\n" +
         "常见原因：cf_clearance 绑定了获取时的 IP + User-Agent，手机上不匹配。\n" +
         "推荐解决方法：\n" +
-        "设置 → 轻小说 → wenku8 登录\n" +
+        "在聊天框输入 /wenku8_login\n" +
         "（内置浏览器登录，自动保存 Cookie + UA，保证 IP 一致）\n\n" +
         "手动方式（高级）：\n" +
         "/set_wenku_cookie <Cookie> || <UA>"
 
 internal const val WENKU8_LOGIN_HINT: String =
     "❌ wenku8 需要登录，Cookie 可能已失效喵！\n" +
-        "推荐：设置 → 轻小说 → wenku8 登录（自动保存 Cookie + UA）\n" +
+        "推荐：在聊天框输入 /wenku8_login（自动保存 Cookie + UA）\n" +
         "或使用 `/set_wenku_cookie <Cookie>` 命令更新 Cookie 喵~"
 
 internal const val WENKU8_COOKIE_MISSING_HINT: String =
     "❌ Cookie 未设置喵！\n" +
-        "推荐：设置 → 轻小说 → wenku8 登录（自动保存 Cookie + UA）\n" +
+        "推荐：在聊天框输入 /wenku8_login（自动保存 Cookie + UA）\n" +
         "或使用 `/set_wenku_cookie <Cookie>` 命令手动设置"
 
 /**
