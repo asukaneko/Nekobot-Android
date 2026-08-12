@@ -87,6 +87,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.gson.JsonElement
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.ai.ModelPricingCatalog
 import com.nekobot.app.data.model.TokenRankings
 import com.nekobot.app.data.model.TokenStats
 import com.nekobot.app.ui.BaseViewModel
@@ -124,6 +125,7 @@ internal data class TokenRecordUi(
     val timestamp: String,
     val date: String,
     val model: String,
+    val actualModel: String,
     val purpose: String,
     val source: String,
     val sessionId: String,
@@ -132,6 +134,7 @@ internal data class TokenRecordUi(
     val output: Long,
     val total: Long,
     val cost: String?,
+    val estimatedCostUsd: Double?,
     val durationMs: Double?,
     val ttftMs: Double?,
     val estimated: Boolean
@@ -1203,8 +1206,12 @@ private fun TokenRecordCard(
         .takeIf { it.isNotBlank() && !isChatChannelSource }
         ?.let { stringResource(R.string.tokens_source_prefix, sourceLabel(it)) }
         .orEmpty()
+    val priceDisplay = record.cost?.takeIf { it.isNotBlank() }?.let {
+        stringResource(R.string.tokens_cost, it)
+    } ?: record.estimatedCostUsd?.let {
+        stringResource(R.string.tokens_estimated_price, formatUsdCost(it))
+    }
     val performanceText = listOfNotNull(
-        record.cost?.takeIf { it.isNotBlank() }?.let { stringResource(R.string.tokens_cost, it) },
         record.durationMs?.let { stringResource(R.string.tokens_duration, formatDuration(it)) },
         record.ttftMs?.let { stringResource(R.string.tokens_ttft, formatDuration(it)) }
     ).joinToString(" · ")
@@ -1333,6 +1340,17 @@ private fun TokenRecordCard(
                     modifier = Modifier.weight(1f)
                 )
             }
+            priceDisplay?.let { price ->
+                Spacer(Modifier.height(9.dp))
+                Text(
+                    price,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.tertiary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             if (!compactTs.isNullOrBlank() || performanceText.isNotBlank()) {
                 Spacer(Modifier.height(9.dp))
                 Text(
@@ -1410,6 +1428,16 @@ private fun parseTokenRecord(index: Int, elem: JsonElement): TokenRecordUi? {
     }
     val input = long("input", "input_tokens") ?: 0L
     val output = long("output", "output_tokens") ?: 0L
+    val model = string("model", "model_name")
+    val actualModel = string("actual_model", "actualModel")
+    val provider = string("provider")
+    val recordedEstimatedCost = double("estimated_cost_usd")
+    val estimatedCostUsd = recordedEstimatedCost ?: estimateTokenRecordCost(
+        modelName = actualModel.ifBlank { model },
+        provider = provider,
+        inputTokens = input,
+        outputTokens = output
+    )
     return TokenRecordUi(
         id = string("id")
             .takeIf { it.isNotBlank() }
@@ -1417,7 +1445,8 @@ private fun parseTokenRecord(index: Int, elem: JsonElement): TokenRecordUi? {
             ?: "$timestamp:${string("model")}:${string("session_id")}:$input:$output:${elem.hashCode()}:$index",
         timestamp = timestamp,
         date = date,
-        model = string("model", "model_name"),
+        model = model,
+        actualModel = actualModel,
         purpose = string("purpose"),
         source = string("source", "channel_type"),
         sessionId = string("session_id"),
@@ -1426,10 +1455,24 @@ private fun parseTokenRecord(index: Int, elem: JsonElement): TokenRecordUi? {
         output = output,
         total = long("total", "total_tokens", "tokens") ?: (input + output),
         cost = string("cost").takeIf { it.isNotBlank() },
+        estimatedCostUsd = estimatedCostUsd,
         durationMs = double("duration_ms"),
         ttftMs = double("ttft_ms"),
         estimated = bool("estimated", "usage_estimated")
     )
+}
+
+private fun estimateTokenRecordCost(
+    modelName: String,
+    provider: String,
+    inputTokens: Long,
+    outputTokens: Long
+): Double? {
+    if (modelName.isBlank()) return null
+    val prices = ModelPricingCatalog.resolvePrices(modelName = modelName, provider = provider)
+    if (prices.first == null && prices.second == null) return null
+    return (inputTokens / 1_000_000.0) * (prices.first ?: 0.0) +
+        (outputTokens / 1_000_000.0) * (prices.second ?: 0.0)
 }
 
 private fun purposeLabel(purpose: String): String = when (purpose.lowercase()) {
@@ -1478,6 +1521,13 @@ private fun sourceLabel(source: String): String = when (source.lowercase()) {
 private fun formatDuration(milliseconds: Double): String = when {
     milliseconds >= 1000 -> String.format(Locale.US, "%.1fs", milliseconds / 1000.0)
     else -> "${milliseconds.toLong()}ms"
+}
+
+private fun formatUsdCost(cost: Double): String = when {
+    !cost.isFinite() -> "—"
+    cost >= 0.01 -> String.format(Locale.US, "%.4f", cost)
+    cost >= 0.000001 -> String.format(Locale.US, "%.6f", cost)
+    else -> String.format(Locale.US, "%.8f", cost)
 }
 
 /** 精简时间戳到 MM-dd HH:mm */

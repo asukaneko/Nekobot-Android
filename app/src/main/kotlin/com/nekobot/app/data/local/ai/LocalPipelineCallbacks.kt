@@ -51,7 +51,7 @@ internal class LocalPipelineCallbacks(
     private val assistantSource: String? = null,
     /** 本地知识库检索入口。 */
     private val knowledgeSearcher: ((query: String) -> String)? = null,
-    private val onTokenRecorded: ((sessionId: String, messageId: String, model: String, actualModel: String, inputTokens: Int, outputTokens: Int, timestamp: String, purpose: String, estimated: Boolean, durationMs: Double?, ttftMs: Double?) -> Unit)? = null,
+    private val onTokenRecorded: ((sessionId: String, messageId: String, model: String, actualModel: String, inputTokens: Int, outputTokens: Int, timestamp: String, purpose: String, estimated: Boolean, durationMs: Double?, ttftMs: Double?, provider: String?, inputPricePerMillion: Double?, outputPricePerMillion: Double?) -> Unit)? = null,
     /** 路由决策完成回调：把实际费用、延迟和失败结果回写到解释性日志。 */
     private val onRoutingCompleted: (suspend (model: LocalAiModelEntity, usage: Map<String, Int>, durationMs: Double?, ttftMs: Double?, success: Boolean, failureReason: String?) -> Unit)? = null,
     /** 进度卡片更新回调；本地模式用于持久化到父用户消息 */
@@ -545,7 +545,10 @@ internal class LocalPipelineCallbacks(
                     TokenStatsManager.PURPOSE_CHAT,
                     resolvedUsage?.estimated == true,
                     durationMs,
-                    ttftMs
+                    ttftMs,
+                    priceModel.provider,
+                    priceModel.inputPrice,
+                    priceModel.outputPrice
                 )
             } catch (e: Exception) {
                 com.nekobot.app.data.local.LocalLogger.w(TAG, "持久化 Token 记录失败: ${e.message}")

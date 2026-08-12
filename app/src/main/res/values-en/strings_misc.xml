@@ -56,6 +56,7 @@
     <string name="tokens_unknown_model">Unknown model</string>
     <string name="tokens_source_prefix">Source %1$s</string>
     <string name="tokens_cost">Cost ¥%1$s</string>
+    <string name="tokens_estimated_price">Estimated price $%1$s</string>
     <string name="tokens_duration">Duration %1$s</string>
     <string name="tokens_ttft">TTFT %1$s</string>
     <string name="tokens_date_unknown">Unknown date</string>

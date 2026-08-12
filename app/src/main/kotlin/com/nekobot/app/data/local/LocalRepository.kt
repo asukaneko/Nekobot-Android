@@ -3490,7 +3490,10 @@ class LocalRepository(
         estimated: Boolean = false,
         messageId: String? = null,
         durationMs: Double? = null,
-        ttftMs: Double? = null
+        ttftMs: Double? = null,
+        provider: String? = null,
+        inputPricePerMillion: Double? = null,
+        outputPricePerMillion: Double? = null
     ) {
         val prefs = tokenUsagePrefs ?: return
         synchronized(tokenUsageLock) {
@@ -3516,6 +3519,19 @@ class LocalRepository(
                     addProperty("source", source)
                     addProperty("purpose", purpose)
                     addProperty("estimated", estimated)
+                    val prices = ModelPricingCatalog.resolvePrices(
+                        modelName = actualModel.ifBlank { model },
+                        provider = provider,
+                        inputPrice = inputPricePerMillion,
+                        outputPrice = outputPricePerMillion
+                    )
+                    if (prices.first != null || prices.second != null) {
+                        addProperty(
+                            "estimated_cost_usd",
+                            (inputTokens / 1_000_000.0) * (prices.first ?: 0.0) +
+                                (outputTokens / 1_000_000.0) * (prices.second ?: 0.0)
+                        )
+                    }
                     // 完成耗时（毫秒），主对话路径来自 AIPipeline
                     durationMs?.let { addProperty("duration_ms", it) }
                     // 首字延迟（毫秒），主对话路径来自 AIPipeline
@@ -4348,14 +4364,17 @@ class LocalRepository(
                     )
                 }
             },
-            onTokenRecorded = { sid, messageId, model, actualModel, input, output, ts, purpose, estimated, durationMs, ttftMs ->
+            onTokenRecorded = { sid, messageId, model, actualModel, input, output, ts, purpose, estimated, durationMs, ttftMs, provider, inputPrice, outputPrice ->
                 appendTokenUsageRecord(
                     sid, model, actualModel, input, output, ts,
                     purpose = purpose,
                     estimated = estimated,
                     messageId = messageId,
                     durationMs = durationMs,
-                    ttftMs = ttftMs
+                    ttftMs = ttftMs,
+                    provider = provider,
+                    inputPricePerMillion = inputPrice,
+                    outputPricePerMillion = outputPrice
                 )
             },
             onRoutingCompleted = { model, usage, durationMs, ttftMs, success, failureReason ->
@@ -4916,14 +4935,17 @@ class LocalRepository(
                         )
                     }
                 },
-                onTokenRecorded = { sid, messageId, model, actualModel, input, output, ts, purpose, estimated, durationMs, ttftMs ->
+                onTokenRecorded = { sid, messageId, model, actualModel, input, output, ts, purpose, estimated, durationMs, ttftMs, provider, inputPrice, outputPrice ->
                     appendTokenUsageRecord(
                         sid, model, actualModel, input, output, ts,
                         purpose = purpose,
                         estimated = estimated,
                         messageId = messageId,
                         durationMs = durationMs,
-                        ttftMs = ttftMs
+                        ttftMs = ttftMs,
+                        provider = provider,
+                        inputPricePerMillion = inputPrice,
+                        outputPricePerMillion = outputPrice
                     )
                 },
                 workspaceRoot = appContext?.filesDir

@@ -56,6 +56,7 @@
     <string name="tokens_unknown_model">未知模型</string>
     <string name="tokens_source_prefix">来源 %1$s</string>
     <string name="tokens_cost">费用 ¥%1$s</string>
+    <string name="tokens_estimated_price">估算价格 $%1$s</string>
     <string name="tokens_duration">耗时 %1$s</string>
     <string name="tokens_ttft">首字 %1$s</string>
     <string name="tokens_date_unknown">日期未知</string>
