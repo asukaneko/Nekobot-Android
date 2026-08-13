@@ -251,11 +251,17 @@ class WebDavBackupViewModel : BaseViewModel() {
             onSuccess = { elem ->
                 val obj = elem?.asJsonObject
                 if (obj?.get("success")?.asBoolean == true) {
-                    showToast("已恢复到修订 $revision，并创建修订 ${obj.get("new_revision")?.asLong ?: revision}")
+                    showToast(
+                        string(
+                            R.string.webdav_revision_restored,
+                            revision,
+                            obj.get("new_revision")?.asLong ?: revision
+                        )
+                    )
                     loadConfig()
                     loadHistory(password)
                 } else {
-                    showError(obj?.get("error")?.asString ?: "恢复历史修订失败")
+                    showError(obj?.get("error")?.asString ?: string(R.string.webdav_revision_restore_failed))
                 }
             }
         )
@@ -545,7 +551,7 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                             ) {
                                 Icon(Icons.Filled.History, contentDescription = null)
                                 Spacer(Modifier.width(8.dp))
-                                Text("刷新版本历史")
+                                Text(stringResource(R.string.webdav_refresh_revision_history))
                             }
 
                             val currentRevision = incrementalHistory?.get("current_revision")?.asLong ?: 0L
@@ -555,7 +561,7 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                             if (currentRevision > 0L) {
                                 Spacer(Modifier.height(12.dp))
                                 Text(
-                                    "当前修订 $currentRevision · $recordCount 条记录",
+                                    stringResource(R.string.webdav_current_revision_summary, currentRevision, recordCount),
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.SemiBold
                                 )
@@ -571,7 +577,7 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                                     )
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        "最近一次同步处理了 ${conflicts.size()} 个冲突",
+                                        stringResource(R.string.webdav_conflicts_summary, conflicts.size()),
                                         color = MaterialTheme.colorScheme.error,
                                         fontWeight = FontWeight.Medium
                                     )
@@ -580,9 +586,9 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                                     val conflict = element.asJsonObject
                                     val key = conflict.get("key")?.asString.orEmpty()
                                     val resolution = when (conflict.get("resolution")?.asString) {
-                                        "local" -> "保留本机版本"
-                                        "remote" -> "采用远端版本"
-                                        else -> "已自动解决"
+                                        "local" -> stringResource(R.string.webdav_keep_local)
+                                        "remote" -> stringResource(R.string.webdav_use_remote)
+                                        else -> stringResource(R.string.webdav_auto_resolved)
                                     }
                                     Text(
                                         "$key · $resolution",
@@ -594,7 +600,7 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                             }
                             if (revisions != null && revisions.size() > 0) {
                                 Spacer(Modifier.height(12.dp))
-                                Text("版本历史", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                Text(stringResource(R.string.webdav_revision_history), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                                 revisions.take(20).forEach { element ->
                                     val revision = element.asJsonObject
                                     val number = revision.get("revision")?.asLong ?: return@forEach
@@ -607,7 +613,8 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                "修订 $number${if (current) "（当前）" else ""}",
+                                                stringResource(R.string.webdav_revision_number, number) +
+                                                    if (current) stringResource(R.string.webdav_current_suffix) else "",
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 fontWeight = FontWeight.Medium
                                             )
@@ -625,7 +632,10 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                                         ) {
                                             Icon(Icons.Filled.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
                                             Spacer(Modifier.width(4.dp))
-                                            Text(if (current) "当前" else "恢复")
+                                            Text(
+                                                if (current) stringResource(R.string.webdav_current)
+                                                else stringResource(R.string.webdav_restore)
+                                            )
                                         }
                                     }
                                 }
@@ -765,9 +775,9 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
     restoreRevisionTarget?.let { revision ->
         AlertDialog(
             onDismissRequest = { restoreRevisionTarget = null },
-            title = { Text("恢复 WebDAV 修订 $revision？") },
+            title = { Text(stringResource(R.string.webdav_restore_revision_title, revision)) },
             text = {
-                Text("会先保存当前远端清单，再把历史快照作为一个新的修订写回，并同步恢复本机数据库。该操作不会删除历史版本。")
+                Text(stringResource(R.string.webdav_restore_revision_message))
             },
             confirmButton = {
                 TextButton(
@@ -776,7 +786,7 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                         vm.restoreRevision(revision, incrementalPassword)
                     }
                 ) {
-                    Text("确认恢复", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.webdav_confirm_restore), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {

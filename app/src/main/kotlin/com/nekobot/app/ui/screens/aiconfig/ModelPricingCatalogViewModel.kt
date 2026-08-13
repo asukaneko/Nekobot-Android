@@ -3,6 +3,7 @@ package com.nekobot.app.ui.screens.aiconfig
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.R
 import com.nekobot.app.data.local.ai.ModelPricingCatalog
 import com.nekobot.app.data.local.ai.ModelPricingSnapshot
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,7 +31,7 @@ class ModelPricingCatalogViewModel : ViewModel() {
 
     fun refresh() {
         val context = ServiceContainer.appContext ?: run {
-            _state.update { it.copy(error = "应用尚未初始化") }
+            _state.update { it.copy(error = ServiceContainer.getString(R.string.app_not_initialized)) }
             return
         }
         if (_state.value.refreshing) return
@@ -42,7 +43,10 @@ class ModelPricingCatalogViewModel : ViewModel() {
                         it.copy(
                             snapshot = snapshot,
                             refreshing = false,
-                            message = "价格目录已更新，共 ${snapshot.entries.size} 个模型"
+                            message = context.getString(
+                                R.string.model_catalog_updated_count,
+                                snapshot.entries.size
+                            )
                         )
                     }
                 }
@@ -50,7 +54,8 @@ class ModelPricingCatalogViewModel : ViewModel() {
                     _state.update {
                         it.copy(
                             refreshing = false,
-                            error = throwable.message ?: "价格目录更新失败"
+                            error = throwable.message
+                                ?: ServiceContainer.getString(R.string.model_catalog_update_failed)
                         )
                     }
                 }

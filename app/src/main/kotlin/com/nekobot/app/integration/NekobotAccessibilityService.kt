@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.nekobot.app.R
 import java.io.File
 import java.util.ArrayDeque
 import java.util.concurrent.CountDownLatch
@@ -64,26 +65,30 @@ class NekobotAccessibilityService : AccessibilityService() {
 
     internal fun click(selector: String, field: String, exact: Boolean): AccessibilityActionResult {
         val node = findNode(selector, field, exact)
-            ?: return AccessibilityActionResult(false, "未找到匹配的界面元素")
+            ?: return AccessibilityActionResult(false, getString(R.string.accessibility_element_not_found))
         val clickable = generateSequence(node) { it.parent }.firstOrNull { it.isClickable }
-            ?: return AccessibilityActionResult(false, "匹配元素不可点击")
+            ?: return AccessibilityActionResult(false, getString(R.string.accessibility_element_not_clickable))
         return AccessibilityActionResult(
             success = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK),
-            message = "已请求点击界面元素",
+            message = getString(R.string.accessibility_click_requested),
             matched = node.summary()
         )
     }
 
     internal fun setText(selector: String, text: String, field: String, exact: Boolean): AccessibilityActionResult {
         val node = findNode(selector, field, exact)
-            ?: return AccessibilityActionResult(false, "未找到匹配的输入框")
-        if (!node.isEditable) return AccessibilityActionResult(false, "匹配元素不是可编辑输入框", node.summary())
+            ?: return AccessibilityActionResult(false, getString(R.string.accessibility_input_not_found))
+        if (!node.isEditable) return AccessibilityActionResult(
+            false,
+            getString(R.string.accessibility_input_not_editable),
+            node.summary()
+        )
         val arguments = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }
         return AccessibilityActionResult(
             success = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments),
-            message = "已请求写入输入框",
+            message = getString(R.string.accessibility_input_requested),
             matched = node.summary()
         )
     }
@@ -92,15 +97,15 @@ class NekobotAccessibilityService : AccessibilityService() {
         val preferred = selector?.takeIf(String::isNotBlank)?.let { findNode(it, field, exact) }
         val scrollable = generateSequence(preferred) { it.parent }.firstOrNull { it.isScrollable }
             ?: findFirst { it.isScrollable }
-            ?: return AccessibilityActionResult(false, "当前界面没有可滚动区域")
+            ?: return AccessibilityActionResult(false, getString(R.string.accessibility_no_scrollable_area))
         val action = when (direction.lowercase()) {
             "down", "forward", "next", "right" -> AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
             "up", "backward", "previous", "left" -> AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
-            else -> return AccessibilityActionResult(false, "direction 仅支持 up/down/forward/backward/left/right")
+            else -> return AccessibilityActionResult(false, getString(R.string.accessibility_scroll_directions))
         }
         return AccessibilityActionResult(
             success = scrollable.performAction(action),
-            message = "已请求滚动界面",
+            message = getString(R.string.accessibility_scroll_requested),
             matched = scrollable.summary()
         )
     }
@@ -112,14 +117,17 @@ class NekobotAccessibilityService : AccessibilityService() {
             "recents", "overview" -> GLOBAL_ACTION_RECENTS
             "notifications" -> GLOBAL_ACTION_NOTIFICATIONS
             "quick_settings" -> GLOBAL_ACTION_QUICK_SETTINGS
-            else -> return AccessibilityActionResult(false, "action 仅支持 back/home/recents/notifications/quick_settings")
+            else -> return AccessibilityActionResult(false, getString(R.string.accessibility_global_actions))
         }
-        return AccessibilityActionResult(performGlobalAction(actionId), "已请求系统全局动作")
+        return AccessibilityActionResult(
+            performGlobalAction(actionId),
+            getString(R.string.accessibility_global_action_requested)
+        )
     }
 
     internal fun captureScreenshot(output: File): AccessibilityActionResult {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            return AccessibilityActionResult(false, "Android 11 及以上才支持辅助功能截图")
+            return AccessibilityActionResult(false, getString(R.string.accessibility_screenshot_api_required))
         }
         output.parentFile?.mkdirs()
         val latch = CountDownLatch(1)
@@ -134,13 +142,13 @@ class NekobotAccessibilityService : AccessibilityService() {
                         val hardwareBitmap = Bitmap.wrapHardwareBuffer(buffer, screenshot.colorSpace)
                         val bitmap = hardwareBitmap?.copy(Bitmap.Config.ARGB_8888, false)
                         if (bitmap == null) {
-                            result.set(AccessibilityActionResult(false, "无法读取截图缓冲区"))
+                            result.set(AccessibilityActionResult(false, getString(R.string.accessibility_screenshot_buffer_failed)))
                         } else {
                             output.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
                             result.set(
                                 AccessibilityActionResult(
                                     success = true,
-                                    message = "截图已保存",
+                                    message = getString(R.string.accessibility_screenshot_saved),
                                     metadata = mapOf(
                                         "absolute_path" to output.absolutePath,
                                         "width" to bitmap.width,
@@ -158,15 +166,15 @@ class NekobotAccessibilityService : AccessibilityService() {
                 }
 
                 override fun onFailure(errorCode: Int) {
-                    result.set(AccessibilityActionResult(false, "系统截图失败，错误码 $errorCode"))
+                    result.set(AccessibilityActionResult(false, getString(R.string.accessibility_screenshot_failed, errorCode)))
                     latch.countDown()
                 }
             }
         )
         if (!latch.await(SCREENSHOT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-            return AccessibilityActionResult(false, "等待系统截图超时")
+            return AccessibilityActionResult(false, getString(R.string.accessibility_screenshot_timeout))
         }
-        return result.get() ?: AccessibilityActionResult(false, "系统未返回截图结果")
+        return result.get() ?: AccessibilityActionResult(false, getString(R.string.accessibility_screenshot_no_result))
     }
 
     private fun findNode(selector: String, field: String, exact: Boolean): AccessibilityNodeInfo? {

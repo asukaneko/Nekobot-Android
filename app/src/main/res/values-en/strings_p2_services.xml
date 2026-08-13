@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_element_not_found">No matching UI element found</string>
+    <string name="accessibility_element_not_clickable">The matching element is not clickable</string>
+    <string name="accessibility_click_requested">UI element click requested</string>
+    <string name="accessibility_input_not_found">No matching input field found</string>
+    <string name="accessibility_input_not_editable">The matching element is not an editable input</string>
+    <string name="accessibility_input_requested">Input text update requested</string>
+    <string name="accessibility_no_scrollable_area">The current screen has no scrollable area</string>
+    <string name="accessibility_scroll_directions">direction supports only up/down/forward/backward/left/right</string>
+    <string name="accessibility_scroll_requested">Screen scroll requested</string>
+    <string name="accessibility_global_actions">action supports only back/home/recents/notifications/quick_settings</string>
+    <string name="accessibility_global_action_requested">System global action requested</string>
+    <string name="accessibility_screenshot_api_required">Accessibility screenshots require Android 11 or later</string>
+    <string name="accessibility_screenshot_buffer_failed">Could not read the screenshot buffer</string>
+    <string name="accessibility_screenshot_saved">Screenshot saved</string>
+    <string name="accessibility_screenshot_failed">System screenshot failed with error code %1$d</string>
+    <string name="accessibility_screenshot_timeout">Timed out waiting for the system screenshot</string>
+    <string name="accessibility_screenshot_no_result">The system returned no screenshot result</string>
+    <string name="notification_not_found">Notification not found</string>
+    <string name="notification_no_open_content">This notification has no content to open</string>
+    <string name="notification_opened">Notification opened</string>
+    <string name="notification_not_clearable">This notification cannot be dismissed</string>
+    <string name="notification_dismissed">Notification dismissed</string>
+    <string name="notification_action_index_invalid">action_index is outside the notification action range</string>
+    <string name="notification_action_executed">Notification action executed: %1$s</string>
+    <string name="notification_supported_actions">action supports only open/dismiss/action</string>
+    <string name="notification_operation_failed">Notification operation failed</string>
+    <string name="media_session_not_found">No active media session found</string>
+    <string name="media_supported_actions">action supports only play/pause/toggle/next/previous/stop</string>
+    <string name="media_control_sent">Media control sent to %1$s</string>
+    <string name="media_control_failed">Media control failed</string>
+    <string name="notification_reply_no_local_model">No local chat model is configured</string>
+    <string name="notification_reply_sent">Message sent</string>
+    <string name="notification_reply_failed">Quick reply failed</string>
+    <string name="notification_reply_retry">Open the app to try again</string>
+    <string name="agent_foreground_channel">Agent background execution</string>
+    <string name="agent_foreground_channel_description">Keeps Agent, browser, and Linux sandbox tasks running</string>
+    <string name="agent_foreground_title">Agent is running</string>
+    <string name="agent_foreground_task_count">Running %1$d session tasks</string>
+    <string name="agent_foreground_stop_task">Stop this task</string>
+    <string name="agent_foreground_stop_all">Stop all</string>
+    <string name="shortcut_open_session">Open session: %1$s</string>
+    <string name="incoming_share_too_large">Shared attachment exceeds 25 MB</string>
+</resources>

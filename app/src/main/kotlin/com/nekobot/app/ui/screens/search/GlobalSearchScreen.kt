@@ -1,5 +1,6 @@
 package com.nekobot.app.ui.screens.search
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -40,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -47,6 +49,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonArray
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.LegacyMemory
 import com.nekobot.app.data.model.MemoryFile
@@ -63,14 +66,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-enum class GlobalSearchKind(val label: String) {
-    COMMAND("快捷命令"),
-    SESSION("会话"),
-    MESSAGE("消息"),
-    CHARACTER("角色"),
-    WORLD_BOOK("世界书"),
-    MEMORY("记忆"),
-    WORKSPACE("工作区")
+enum class GlobalSearchKind(@StringRes val labelRes: Int) {
+    COMMAND(R.string.global_search_kind_command),
+    SESSION(R.string.global_search_kind_session),
+    MESSAGE(R.string.global_search_kind_message),
+    CHARACTER(R.string.global_search_kind_character),
+    WORLD_BOOK(R.string.global_search_kind_world_book),
+    MEMORY(R.string.global_search_kind_memory),
+    WORKSPACE(R.string.global_search_kind_workspace)
 }
 
 data class GlobalSearchResult(
@@ -148,7 +151,7 @@ class GlobalSearchViewModel : BaseViewModel() {
                     GlobalSearchResult(
                         key = "message:${message.id ?: "$sessionId:${message.timestamp}:${content.hashCode()}"}",
                         kind = GlobalSearchKind.MESSAGE,
-                        title = content.oneLine().take(90).ifBlank { "消息" },
+                        title = content.oneLine().take(90).ifBlank { string(R.string.global_search_message_fallback) },
                         subtitle = "${message.sender ?: message.role.orEmpty()} · ${message.timestamp.orEmpty()}",
                         route = Routes.chat(sessionId),
                         score = score
@@ -197,7 +200,7 @@ class GlobalSearchViewModel : BaseViewModel() {
             }
             _results.value = result
         } catch (error: Exception) {
-            showError(error.message ?: "全局搜索失败")
+            showError(error.message ?: string(R.string.global_search_failed))
         } finally {
             _searching.value = false
         }
@@ -241,7 +244,7 @@ class GlobalSearchViewModel : BaseViewModel() {
         return GlobalSearchResult(
             key = "memory:$id",
             kind = GlobalSearchKind.MEMORY,
-            title = title.ifBlank { "记忆" },
+            title = title.ifBlank { string(R.string.global_search_memory_fallback) },
             subtitle = listOf(characterName, summary.ifBlank { content.oneLine() }).filter(String::isNotBlank).joinToString(" · ").take(180),
             route = Routes.MEMORY,
             score = score
@@ -252,23 +255,23 @@ class GlobalSearchViewModel : BaseViewModel() {
         matchScore(query, title, subtitle)?.let { copy(score = it) }
 
     private fun defaultCommands(): List<GlobalSearchResult> = listOf(
-        command("打开会话列表", "查找、创建和管理会话", Routes.SESSIONS),
-        command("打开角色库", "浏览和编辑角色卡", Routes.CHARACTERS),
-        command("打开世界书", "管理世界书和条目", Routes.WORLD_BOOKS),
-        command("打开角色记忆", "搜索和维护长期记忆", Routes.MEMORY),
-        command("AI 配置中心", "模型、故障转移与 OAuth", Routes.AI_CONFIG_CENTER),
-        command("Agent 系统操作授权", "辅助功能、通知与媒体控制", Routes.SYSTEM_OPERATIONS),
-        command("数据导出中心", "按类别批量导出、预览和选择性导入", Routes.DATA_PORTABILITY),
-        command("WebDAV 版本中心", "同步历史、冲突和恢复", Routes.WEBDAV_BACKUP),
-        command("打开 Skills", "管理本地 Agent Skills", Routes.SKILLS),
-        command("打开设置", "应用模式、外观和数据", Routes.SETTINGS)
+        command(R.string.global_search_command_sessions, R.string.global_search_command_sessions_desc, Routes.SESSIONS),
+        command(R.string.global_search_command_characters, R.string.global_search_command_characters_desc, Routes.CHARACTERS),
+        command(R.string.global_search_command_world_books, R.string.global_search_command_world_books_desc, Routes.WORLD_BOOKS),
+        command(R.string.global_search_command_memories, R.string.global_search_command_memories_desc, Routes.MEMORY),
+        command(R.string.global_search_command_ai_config, R.string.global_search_command_ai_config_desc, Routes.AI_CONFIG_CENTER),
+        command(R.string.global_search_command_system_ops, R.string.global_search_command_system_ops_desc, Routes.SYSTEM_OPERATIONS),
+        command(R.string.global_search_command_data_portability, R.string.global_search_command_data_portability_desc, Routes.DATA_PORTABILITY),
+        command(R.string.global_search_command_webdav, R.string.global_search_command_webdav_desc, Routes.WEBDAV_BACKUP),
+        command(R.string.global_search_command_skills, R.string.global_search_command_skills_desc, Routes.SKILLS),
+        command(R.string.global_search_command_settings, R.string.global_search_command_settings_desc, Routes.SETTINGS)
     )
 
-    private fun command(title: String, subtitle: String, route: String) = GlobalSearchResult(
+    private fun command(@StringRes title: Int, @StringRes subtitle: Int, route: String) = GlobalSearchResult(
         key = "command:$route",
         kind = GlobalSearchKind.COMMAND,
-        title = title,
-        subtitle = subtitle,
+        title = string(title),
+        subtitle = string(subtitle),
         route = route,
         score = 50
     )
@@ -343,10 +346,10 @@ fun GlobalSearchScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("全局搜索与命令") },
+                title = { Text(stringResource(R.string.global_search_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -366,7 +369,7 @@ fun GlobalSearchScreen(
                 trailingIcon = {
                     if (searching) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                 },
-                placeholder = { Text("搜索会话、消息、角色、世界书、记忆、文件或命令") },
+                placeholder = { Text(stringResource(R.string.global_search_placeholder)) },
                 shape = RoundedCornerShape(16.dp)
             )
             Spacer(Modifier.height(12.dp))
@@ -380,7 +383,7 @@ fun GlobalSearchScreen(
                 ) {
                     Icon(Icons.Filled.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(10.dp))
-                    Text("没有找到匹配内容", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.global_search_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
                 val grouped = results.groupBy(GlobalSearchResult::kind)
@@ -393,7 +396,7 @@ fun GlobalSearchScreen(
                         if (items.isNotEmpty()) {
                             item(key = "header:${kind.name}") {
                                 Text(
-                                    kind.label,
+                                    stringResource(kind.labelRes),
                                     style = MaterialTheme.typography.labelLarge,
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.SemiBold,

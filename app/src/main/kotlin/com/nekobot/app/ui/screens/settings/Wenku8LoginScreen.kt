@@ -42,10 +42,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.nekobot.app.NekobotApp
+import com.nekobot.app.R
 import com.nekobot.app.ui.components.GlassCard
 
 private const val WENKU8_URL = "https://www.wenku8.net/login.php"
@@ -87,17 +89,19 @@ fun Wenku8LoginScreen(onBack: () -> Unit) {
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var currentUrl by remember { mutableStateOf("") }
     var cookieSaved by remember { mutableStateOf(false) }
-    var statusMessage by remember { mutableStateOf("请在下方登录 wenku8 账号喵~") }
+    val initialStatus = stringResource(R.string.wenku8_login_initial)
+    val savedStatus = stringResource(R.string.wenku8_cookie_saved)
+    var statusMessage by remember(initialStatus) { mutableStateOf(initialStatus) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("wenku8 登录", color = MaterialTheme.colorScheme.onSurface) },
+                title = { Text(stringResource(R.string.wenku8_login_title), color = MaterialTheme.colorScheme.onSurface) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.common_back),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -108,7 +112,7 @@ fun Wenku8LoginScreen(onBack: () -> Unit) {
                     }) {
                         Icon(
                             Icons.Filled.Refresh,
-                            contentDescription = "刷新",
+                            contentDescription = stringResource(R.string.diagnostic_refresh),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -154,7 +158,8 @@ fun Wenku8LoginScreen(onBack: () -> Unit) {
                         )
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = if (cookieSaved) "登录成功喵！" else "等待登录中...",
+                                text = if (cookieSaved) stringResource(R.string.wenku8_login_success)
+                                else stringResource(R.string.wenku8_login_waiting),
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -179,7 +184,7 @@ fun Wenku8LoginScreen(onBack: () -> Unit) {
                                 settings.cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
                                 // 允许混合内容（wenku8 部分资源是 HTTP）
                                 settings.mixedContentMode =
-                                    android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                    android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
 
                                 // 启用 Cookie 持久化（必须在 WebView 创建后配置）
                                 val cookieManager = CookieManager.getInstance()
@@ -212,7 +217,7 @@ fun Wenku8LoginScreen(onBack: () -> Unit) {
                                                 val saved = extractAndSaveCredentials(view)
                                                 if (saved) {
                                                     cookieSaved = true
-                                                    statusMessage = "Cookie + UA 已保存，现在可以使用 /findbook 等命令"
+                                                    statusMessage = savedStatus
                                                 }
                                             }
                                         }
@@ -237,15 +242,12 @@ fun Wenku8LoginScreen(onBack: () -> Unit) {
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
-                            text = "使用说明",
+                            text = stringResource(R.string.wenku8_login_instructions_title),
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "1. 在上方登录框输入 wenku8 账号密码并登录\n" +
-                                "2. 登录成功后 Cookie 和 User-Agent 会自动保存\n" +
-                                "3. 如遇 CloudFlare 验证，请完成验证后再登录\n" +
-                                "4. 保存后即可使用 /findbook、/hotnovel 等命令",
+                            text = stringResource(R.string.wenku8_login_instructions),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
                         )
@@ -271,7 +273,7 @@ private fun extractAndSaveCredentials(view: WebView?): Boolean {
     val prefs = (view.context.applicationContext as? NekobotApp)
         ?.let { com.nekobot.app.ServiceContainer.prefs }
     if (prefs == null) {
-        Toast.makeText(view.context, "保存失败：无法访问应用配置", Toast.LENGTH_SHORT).show()
+        Toast.makeText(view.context, R.string.wenku8_config_unavailable, Toast.LENGTH_SHORT).show()
         return false
     }
 
@@ -280,7 +282,7 @@ private fun extractAndSaveCredentials(view: WebView?): Boolean {
 
     Toast.makeText(
         view.context,
-        "✅ Cookie + UA 保存成功喵！现在可以使用 /findbook 等命令了",
+        view.context.getString(R.string.wenku8_cookie_ua_saved),
         Toast.LENGTH_LONG
     ).show()
     return true

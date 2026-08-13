@@ -87,8 +87,8 @@ fun MoreScreen(
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 MoreRow(
                     icon = Icons.Filled.Search,
-                    title = "全局搜索与命令",
-                    desc = "搜索会话、消息、角色、世界书、记忆、文件和功能入口",
+                    title = stringResource(R.string.global_search_title),
+                    desc = stringResource(R.string.more_global_search_desc),
                     onClick = { onNavigate("global_search") }
                 )
                 Spacer(Modifier.height(8.dp))
@@ -132,15 +132,15 @@ fun MoreScreen(
                 Spacer(Modifier.height(8.dp))
                 MoreRow(
                     icon = Icons.Filled.Security,
-                    title = "Agent 系统操作",
-                    desc = "辅助功能、通知读取、截图和媒体控制授权",
+                    title = stringResource(R.string.more_system_operations),
+                    desc = stringResource(R.string.more_system_operations_desc),
                     onClick = { onNavigate("system_operations") }
                 )
                 Spacer(Modifier.height(8.dp))
                 MoreRow(
                     icon = Icons.Filled.Bookmarks,
-                    title = "全局 Agent 记忆",
-                    desc = "查看和编辑跨会话自动注入的长期记忆",
+                    title = stringResource(R.string.more_global_agent_memory),
+                    desc = stringResource(R.string.more_global_agent_memory_desc),
                     onClick = { onNavigate("agent_memory") }
                 )
                 if (appMode != AppMode.LOCAL) {

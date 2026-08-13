@@ -21,11 +21,13 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.ai.GlobalAgentMemoryStore
 import kotlinx.coroutines.Dispatchers
@@ -42,7 +44,8 @@ data class GlobalAgentMemoryUiState(
     val updatedAt: String? = null,
     val loading: Boolean = true,
     val saving: Boolean = false,
-    val message: String? = null
+    val message: String? = null,
+    val messageIsError: Boolean = false
 ) {
     val hasUnsavedChanges: Boolean get() = draft != savedContent
 }
@@ -60,13 +63,13 @@ class GlobalAgentMemoryViewModel : ViewModel() {
 
     fun updateDraft(content: String) {
         if (content.length <= GlobalAgentMemoryStore.MAX_CONTENT_CHARS) {
-            _uiState.update { it.copy(draft = content, message = null) }
+            _uiState.update { it.copy(draft = content, message = null, messageIsError = false) }
         }
     }
 
     fun reload() {
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true, message = null) }
+            _uiState.update { it.copy(loading = true, message = null, messageIsError = false) }
             runCatching { withContext(Dispatchers.IO) { store.read() } }
                 .onSuccess { snapshot ->
                     _uiState.update {
@@ -79,7 +82,13 @@ class GlobalAgentMemoryViewModel : ViewModel() {
                     }
                 }
                 .onFailure { error ->
-                    _uiState.update { it.copy(loading = false, message = error.message ?: "读取失败") }
+                    _uiState.update {
+                        it.copy(
+                            loading = false,
+                            message = error.message ?: ServiceContainer.getString(R.string.global_memory_read_failed),
+                            messageIsError = true
+                        )
+                    }
                 }
         }
     }
@@ -87,7 +96,7 @@ class GlobalAgentMemoryViewModel : ViewModel() {
     fun save() {
         val content = _uiState.value.draft
         viewModelScope.launch {
-            _uiState.update { it.copy(saving = true, message = null) }
+            _uiState.update { it.copy(saving = true, message = null, messageIsError = false) }
             runCatching { withContext(Dispatchers.IO) { store.replace(content) } }
                 .onSuccess { snapshot ->
                     _uiState.update {
@@ -96,12 +105,19 @@ class GlobalAgentMemoryViewModel : ViewModel() {
                             savedContent = snapshot.content,
                             updatedAt = snapshot.updatedAt,
                             saving = false,
-                            message = "已保存，将从下一轮 Agent 请求开始生效"
+                            message = ServiceContainer.getString(R.string.global_memory_saved),
+                            messageIsError = false
                         )
                     }
                 }
                 .onFailure { error ->
-                    _uiState.update { it.copy(saving = false, message = error.message ?: "保存失败") }
+                    _uiState.update {
+                        it.copy(
+                            saving = false,
+                            message = error.message ?: ServiceContainer.getString(R.string.global_memory_save_failed),
+                            messageIsError = true
+                        )
+                    }
                 }
         }
     }
@@ -118,10 +134,10 @@ fun GlobalAgentMemoryScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("全局 Agent 记忆", fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.more_global_agent_memory), fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 }
             )
@@ -136,7 +152,7 @@ fun GlobalAgentMemoryScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
-                "这里的内容跨 Agent 会话和本地数据库 Profile 保存。每轮 Agent 请求都会自动注入；AI 可读取，修改时仍需你的授权。",
+                stringResource(R.string.global_memory_intro),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -147,15 +163,15 @@ fun GlobalAgentMemoryScreen(
                     .fillMaxWidth()
                     .weight(1f),
                 enabled = !uiState.loading && !uiState.saving,
-                label = { Text("长期偏好、背景与持续事项") },
-                placeholder = { Text("例如：我的常用语言、项目约定、长期目标……") },
+                label = { Text(stringResource(R.string.global_memory_label)) },
+                placeholder = { Text(stringResource(R.string.global_memory_placeholder)) },
                 supportingText = {
                     Text("${uiState.draft.length} / ${GlobalAgentMemoryStore.MAX_CONTENT_CHARS}")
                 }
             )
             uiState.updatedAt?.let {
                 Text(
-                    "最近保存：$it",
+                    stringResource(R.string.global_memory_last_saved, it),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -164,7 +180,7 @@ fun GlobalAgentMemoryScreen(
                 Text(
                     it,
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (it.contains("失败")) MaterialTheme.colorScheme.error
+                    color = if (uiState.messageIsError) MaterialTheme.colorScheme.error
                     else MaterialTheme.colorScheme.primary
                 )
             }
@@ -176,14 +192,14 @@ fun GlobalAgentMemoryScreen(
                     onClick = viewModel::reload,
                     enabled = !uiState.loading && !uiState.saving
                 ) {
-                    Text("放弃未保存修改")
+                    Text(stringResource(R.string.global_memory_discard))
                 }
                 Button(
                     onClick = viewModel::save,
                     modifier = Modifier.weight(1f),
                     enabled = uiState.hasUnsavedChanges && !uiState.loading && !uiState.saving
                 ) {
-                    Text(if (uiState.saving) "保存中…" else "保存")
+                    Text(if (uiState.saving) stringResource(R.string.global_memory_saving) else stringResource(R.string.common_save))
                 }
             }
         }

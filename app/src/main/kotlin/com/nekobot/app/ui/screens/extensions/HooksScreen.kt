@@ -740,7 +740,7 @@ private fun HookTemplatesDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = template.title,
+                                text = stringResource(template.titleRes),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface,
@@ -761,7 +761,7 @@ private fun HookTemplatesDialog(
                         }
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = template.desc,
+                            text = stringResource(template.descRes),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

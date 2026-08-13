@@ -222,7 +222,7 @@ private fun TwoPaneSessionsWrapper(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "选择一个会话开始聊天",
+                            stringResource(R.string.sessions_select_to_chat),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1662,7 +1662,16 @@ private fun SessionItem(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .listItemSemantics("会话：${row.displayName}，${row.lastMessage ?: "无消息"}，${row.updatedAt ?: ""}"),
+            .listItemSemantics(
+                stringResource(
+                    R.string.sessions_item_description,
+                    row.displayName,
+                    listOfNotNull(
+                        row.lastMessage ?: stringResource(R.string.sessions_no_message),
+                        row.updatedAt
+                    ).joinToString(" · ")
+                )
+            ),
         shape = SessionItemShape,
         color = containerColor,
         border = BorderStroke(1.dp, borderColor),
@@ -2297,7 +2306,7 @@ class SessionsViewModel : BaseViewModel() {
                 if (!ideas.isNullOrEmpty()) {
                     onResult(ideas)
                 } else {
-                    showToast(string(R.string.character_ai_generate_failed, "无可用模型"))
+                    showToast(string(R.string.character_ai_generate_failed, string(R.string.models_none_available)))
                 }
             },
             onError = { msg ->

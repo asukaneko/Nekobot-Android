@@ -2,6 +2,7 @@ package com.nekobot.app.ui.screens.tokens
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
+import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -55,7 +56,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -108,7 +111,7 @@ fun RoutingHistoryScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("路由可解释性", color = MaterialTheme.colorScheme.onSurface) },
+                title = { Text(stringResource(R.string.routing_title), color = MaterialTheme.colorScheme.onSurface) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -123,7 +126,7 @@ fun RoutingHistoryScreen(onBack: () -> Unit) {
                         IconButton(onClick = { showClearDialog = true }) {
                             Icon(
                                 Icons.Filled.DeleteSweep,
-                                contentDescription = "清空历史",
+                                contentDescription = stringResource(R.string.routing_clear_history),
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
@@ -144,8 +147,8 @@ fun RoutingHistoryScreen(onBack: () -> Unit) {
         ) {
             if (logs.isEmpty() && modelStats.isEmpty() && !loading) {
                 EmptyState(
-                    title = "暂无路由决策记录",
-                    hint = "智能路由在每次选择模型时会自动记录决策快照"
+                    title = stringResource(R.string.routing_empty_title),
+                    hint = stringResource(R.string.routing_empty_hint)
                 )
             } else {
                 LazyColumn(
@@ -164,8 +167,8 @@ fun RoutingHistoryScreen(onBack: () -> Unit) {
                     if (logs.isEmpty() && !loading) {
                         item(key = "empty_history", contentType = "empty_history") {
                             EmptyState(
-                                title = "暂无可展开的决策记录",
-                                hint = "完成一次智能路由请求后，这里会显示选择原因、候选模型分数和实际执行数据"
+                                title = stringResource(R.string.routing_empty_expandable_title),
+                                hint = stringResource(R.string.routing_empty_expandable_hint)
                             )
                         }
                     }
@@ -192,9 +195,9 @@ fun RoutingHistoryScreen(onBack: () -> Unit) {
     if (showClearDialog) {
         NekoDialog(
             onDismiss = { showClearDialog = false },
-            title = "清空路由决策历史",
-            message = "确定要清空全部路由决策记录吗？此操作不可撤销。",
-            confirmText = "清空",
+            title = stringResource(R.string.routing_clear_title),
+            message = stringResource(R.string.routing_clear_message),
+            confirmText = stringResource(R.string.common_clear),
             onConfirm = {
                 showClearDialog = false
                 vm.clearLogs()
@@ -214,21 +217,21 @@ private fun RoutingOverview(
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Text(
-                text = "模型评分概览",
+                text = stringResource(R.string.routing_overview_title),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.SemiBold
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "分数越低越优先。评分来自最近 200 条路由决策，点击模型卡可展开价格、速度、能力和故障惩罚。",
+                text = stringResource(R.string.routing_overview_desc),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(12.dp))
             if (modelStats.isEmpty()) {
                 Text(
-                    "暂无已配置的聊天模型",
+                    stringResource(R.string.routing_no_chat_models),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -247,14 +250,14 @@ private fun RoutingOverview(
         if (abTestStats.isNotEmpty()) {
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "A/B 测试结果",
+                    text = stringResource(R.string.routing_ab_results),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "按分组比较完成率、质量评分、平均费用和响应延迟。",
+                    text = stringResource(R.string.routing_ab_results_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -300,9 +303,9 @@ private fun ModelRoutingScoreCard(stats: RoutingModelStats) {
                 )
                 Text(
                     text = if (stats.scoreSamples > 0) {
-                        "${stats.scoreSamples} 次候选 · 选择 ${stats.selectedCount} 次"
+                        stringResource(R.string.routing_model_samples, stats.scoreSamples, stats.selectedCount)
                     } else {
-                        "尚无路由样本，等待实际请求"
+                        stringResource(R.string.routing_no_samples)
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -320,7 +323,7 @@ private fun ModelRoutingScoreCard(stats: RoutingModelStats) {
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "当前评分",
+                    text = stringResource(R.string.routing_current_score),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -346,17 +349,17 @@ private fun ModelRoutingScoreCard(stats: RoutingModelStats) {
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             RoutingMetric(
-                label = "成功率",
+                label = stringResource(R.string.routing_metric_success_rate),
                 value = formatPercent(stats.successRate),
                 modifier = Modifier.weight(1f)
             )
             RoutingMetric(
-                label = "质量",
+                label = stringResource(R.string.routing_metric_quality),
                 value = formatQuality(stats),
                 modifier = Modifier.weight(1f)
             )
             RoutingMetric(
-                label = "平均延迟",
+                label = stringResource(R.string.routing_metric_average_latency),
                 value = formatAverageDuration(stats.averageDurationMs),
                 modifier = Modifier.weight(1f)
             )
@@ -367,17 +370,17 @@ private fun ModelRoutingScoreCard(stats: RoutingModelStats) {
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             RoutingMetric(
-                label = "平均费用",
+                label = stringResource(R.string.routing_metric_average_cost),
                 value = formatCost(stats.averageActualCostUsd ?: stats.averageEstimatedCostUsd),
                 modifier = Modifier.weight(1f)
             )
             RoutingMetric(
-                label = "选择率",
+                label = stringResource(R.string.routing_metric_selection_rate),
                 value = formatPercent(stats.selectionRate),
                 modifier = Modifier.weight(1f)
             )
             RoutingMetric(
-                label = "A/B 样本",
+                label = stringResource(R.string.routing_metric_ab_samples),
                 value = "${stats.selectedCount}",
                 modifier = Modifier.weight(1f)
             )
@@ -393,21 +396,21 @@ private fun ModelRoutingScoreCard(stats: RoutingModelStats) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    text = "最近一次评分拆解",
+                    text = stringResource(R.string.routing_latest_breakdown),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.SemiBold
                 )
                 Spacer(Modifier.height(6.dp))
                 stats.latestBreakdown?.let { RoutingBreakdownGrid(it) } ?: Text(
-                    "暂无评分拆解",
+                    stringResource(R.string.routing_no_breakdown),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 stats.lastFailureReason?.takeIf { it.isNotBlank() }?.let { reason ->
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "最近失败：$reason",
+                        text = stringResource(R.string.routing_latest_failure, reason),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -440,21 +443,21 @@ private fun RoutingMetric(label: String, value: String, modifier: Modifier = Mod
 @Composable
 private fun RoutingBreakdownGrid(breakdown: RoutingScoreBreakdown) {
     val items = listOf(
-        "价格" to breakdown.priceScore,
-        "速度" to breakdown.speedScore,
-        "能力" to breakdown.capabilityBonus,
-        "优先级" to breakdown.priorityBonus,
-        "上下文" to breakdown.contextBonus,
-        "故障惩罚" to breakdown.failurePenalty,
-        "无历史" to breakdown.noHistoryPenalty
+        BreakdownDisplay(BreakdownKind.PRICE, stringResource(R.string.routing_breakdown_price), breakdown.priceScore),
+        BreakdownDisplay(BreakdownKind.SPEED, stringResource(R.string.routing_breakdown_speed), breakdown.speedScore),
+        BreakdownDisplay(BreakdownKind.CAPABILITY, stringResource(R.string.routing_breakdown_capability), breakdown.capabilityBonus),
+        BreakdownDisplay(BreakdownKind.PRIORITY, stringResource(R.string.routing_breakdown_priority), breakdown.priorityBonus),
+        BreakdownDisplay(BreakdownKind.CONTEXT, stringResource(R.string.routing_breakdown_context), breakdown.contextBonus),
+        BreakdownDisplay(BreakdownKind.FAILURE, stringResource(R.string.routing_breakdown_failure_penalty), breakdown.failurePenalty),
+        BreakdownDisplay(BreakdownKind.NO_HISTORY, stringResource(R.string.routing_breakdown_no_history), breakdown.noHistoryPenalty)
     )
     items.chunked(4).forEach { row ->
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            row.forEach { (label, value) ->
-                BreakdownChip(label, value, Modifier.weight(1f))
+            row.forEach { item ->
+                BreakdownChip(item, Modifier.weight(1f))
             }
             repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
         }
@@ -473,14 +476,14 @@ private fun AbTestStatsRow(stats: RoutingAbTestStats) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "分组 ${stats.group}",
+                text = stringResource(R.string.routing_group, stats.group),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f)
             )
             Text(
-                text = "${stats.sampleCount} 个样本",
+                text = stringResource(R.string.routing_sample_count, stats.sampleCount),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -500,10 +503,10 @@ private fun AbTestStatsRow(stats: RoutingAbTestStats) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            RoutingMetric("成功率", formatPercent(stats.successRate), Modifier.weight(1f))
-            RoutingMetric("质量", formatPercent(stats.qualityRate), Modifier.weight(1f))
-            RoutingMetric("平均延迟", formatAverageDuration(stats.averageDurationMs), Modifier.weight(1f))
-            RoutingMetric("平均费用", formatCost(stats.averageCostUsd), Modifier.weight(1f))
+            RoutingMetric(stringResource(R.string.routing_metric_success_rate), formatPercent(stats.successRate), Modifier.weight(1f))
+            RoutingMetric(stringResource(R.string.routing_metric_quality), formatPercent(stats.qualityRate), Modifier.weight(1f))
+            RoutingMetric(stringResource(R.string.routing_metric_average_latency), formatAverageDuration(stats.averageDurationMs), Modifier.weight(1f))
+            RoutingMetric(stringResource(R.string.routing_metric_average_cost), formatCost(stats.averageCostUsd), Modifier.weight(1f))
         }
     }
 }
@@ -535,7 +538,7 @@ private fun RoutingLogCard(
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = log.selectedModelName.ifBlank { "未知模型" },
+                    text = log.selectedModelName.ifBlank { stringResource(R.string.tokens_unknown_model) },
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold,
@@ -563,13 +566,13 @@ private fun RoutingLogCard(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             InfoChip(
-                label = "预估费用",
+                label = stringResource(R.string.routing_estimated_cost),
                 value = formatCost(log.estimatedCostUsd),
                 modifier = Modifier.weight(1f)
             )
             log.actualCostUsd?.let { actual ->
                 InfoChip(
-                    label = "实际费用",
+                    label = stringResource(R.string.routing_actual_cost),
                     value = formatCost(actual),
                     modifier = Modifier.weight(1f),
                     emphasized = true
@@ -584,14 +587,14 @@ private fun RoutingLogCard(
             ) {
                 log.actualDurationMs?.let { dur ->
                     InfoChip(
-                        label = "总耗时",
+                        label = stringResource(R.string.routing_total_duration),
                         value = formatDuration(dur),
                         modifier = Modifier.weight(1f)
                     )
                 } ?: Spacer(Modifier.weight(1f))
                 log.actualTtftMs?.let { ttft ->
                     InfoChip(
-                        label = "首Token",
+                        label = stringResource(R.string.routing_first_token),
                         value = formatDuration(ttft),
                         modifier = Modifier.weight(1f)
                     )
@@ -610,7 +613,7 @@ private fun RoutingLogCard(
                     .padding(horizontal = 10.dp, vertical = 6.dp)
             ) {
                 Text(
-                    text = "失败: ${log.failureReason}",
+                    text = stringResource(R.string.routing_failure, log.failureReason.orEmpty()),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
                 )
@@ -627,7 +630,7 @@ private fun RoutingLogCard(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "质量评分",
+                    text = stringResource(R.string.routing_quality_score),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -647,7 +650,11 @@ private fun RoutingLogCard(
             IconButton(onClick = { expanded = !expanded }) {
                 Icon(
                     if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                    contentDescription = if (expanded) "收起" else "展开",
+                    contentDescription = if (expanded) {
+                        stringResource(R.string.chat_collapse)
+                    } else {
+                        stringResource(R.string.chat_expand)
+                    },
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -683,7 +690,11 @@ private fun StatusIcon(success: Boolean, hasActual: Boolean) {
     }
     Icon(
         icon.first,
-        contentDescription = if (success) "成功" else "失败",
+        contentDescription = if (success) {
+            stringResource(R.string.aiconfig_test_success)
+        } else {
+            stringResource(R.string.aiconfig_test_fail)
+        },
         tint = icon.second,
         modifier = Modifier.padding(top = 2.dp)
     )
@@ -791,14 +802,16 @@ private fun QualityButton(
  */
 @Composable
 private fun DecisionDetail(decisionJson: String) {
-    val parsed = remember(decisionJson) { parseDecision(decisionJson) }
+    val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val parsed = remember(decisionJson, configuration) { parseDecision(decisionJson, context) }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         // 选择原因
         parsed.reason.takeIf { it.isNotBlank() }?.let { reason ->
             Column {
                 Text(
-                    "选择原因",
+                    stringResource(R.string.routing_selection_reason),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.SemiBold
@@ -816,7 +829,7 @@ private fun DecisionDetail(decisionJson: String) {
         parsed.requestInfo?.let { req ->
             Column {
                 Text(
-                    "请求上下文",
+                    stringResource(R.string.routing_request_context),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.SemiBold
@@ -834,7 +847,7 @@ private fun DecisionDetail(decisionJson: String) {
         if (parsed.candidates.isNotEmpty()) {
             Column {
                 Text(
-                    "候选模型得分",
+                    stringResource(R.string.routing_candidate_scores),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.SemiBold
@@ -907,21 +920,21 @@ private fun CandidateScoreRow(c: CandidateInfo) {
 private fun ScoreBreakdownGrid(c: CandidateInfo) {
     Spacer(Modifier.height(6.dp))
     val items = listOf(
-        "价格" to c.priceScore,
-        "速度" to c.speedScore,
-        "能力" to c.capabilityBonus,
-        "优先级" to c.priorityBonus,
-        "上下文" to c.contextBonus,
-        "故障惩罚" to c.failurePenalty,
-        "无历史" to c.noHistoryPenalty
+        BreakdownDisplay(BreakdownKind.PRICE, stringResource(R.string.routing_breakdown_price), c.priceScore),
+        BreakdownDisplay(BreakdownKind.SPEED, stringResource(R.string.routing_breakdown_speed), c.speedScore),
+        BreakdownDisplay(BreakdownKind.CAPABILITY, stringResource(R.string.routing_breakdown_capability), c.capabilityBonus),
+        BreakdownDisplay(BreakdownKind.PRIORITY, stringResource(R.string.routing_breakdown_priority), c.priorityBonus),
+        BreakdownDisplay(BreakdownKind.CONTEXT, stringResource(R.string.routing_breakdown_context), c.contextBonus),
+        BreakdownDisplay(BreakdownKind.FAILURE, stringResource(R.string.routing_breakdown_failure_penalty), c.failurePenalty),
+        BreakdownDisplay(BreakdownKind.NO_HISTORY, stringResource(R.string.routing_breakdown_no_history), c.noHistoryPenalty)
     )
     items.chunked(4).forEach { row ->
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            row.forEach { (label, value) ->
-                BreakdownChip(label = label, value = value, modifier = Modifier.weight(1f))
+            row.forEach { item ->
+                BreakdownChip(item = item, modifier = Modifier.weight(1f))
             }
             if (row.size < 4) repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
         }
@@ -930,12 +943,12 @@ private fun ScoreBreakdownGrid(c: CandidateInfo) {
 }
 
 @Composable
-private fun BreakdownChip(label: String, value: Double, modifier: Modifier = Modifier) {
-    val isPenalty = value > 0 && (label == "故障惩罚" || label == "无历史")
+private fun BreakdownChip(item: BreakdownDisplay, modifier: Modifier = Modifier) {
+    val isPenalty = item.value > 0 && item.kind in setOf(BreakdownKind.FAILURE, BreakdownKind.NO_HISTORY)
     val color = when {
-        value == 0.0 -> MaterialTheme.colorScheme.onSurfaceVariant
+        item.value == 0.0 -> MaterialTheme.colorScheme.onSurfaceVariant
         isPenalty -> MaterialTheme.colorScheme.error
-        label == "价格" || label == "速度" -> MaterialTheme.colorScheme.secondary
+        item.kind in setOf(BreakdownKind.PRICE, BreakdownKind.SPEED) -> MaterialTheme.colorScheme.secondary
         else -> MaterialTheme.colorScheme.primary
     }
     Column(
@@ -945,15 +958,25 @@ private fun BreakdownChip(label: String, value: Double, modifier: Modifier = Mod
             .padding(horizontal = 6.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(item.label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
-            String.format(Locale.US, "%.1f", value),
+            String.format(Locale.US, "%.1f", item.value),
             style = MaterialTheme.typography.labelMedium,
             color = color,
             fontWeight = FontWeight.SemiBold
         )
     }
 }
+
+private enum class BreakdownKind {
+    PRICE, SPEED, CAPABILITY, PRIORITY, CONTEXT, FAILURE, NO_HISTORY
+}
+
+private data class BreakdownDisplay(
+    val kind: BreakdownKind,
+    val label: String,
+    val value: Double
+)
 
 // ==================== 数据模型与解析 ====================
 
@@ -985,7 +1008,7 @@ private val decisionGson = Gson()
  * 解析 decisionJson 字符串为结构化信息。
  * decisionJson 由 RoutingDecisionLogger.log 序列化，包含 reason / candidates / request 字段。
  */
-private fun parseDecision(json: String): DecisionInfo {
+private fun parseDecision(json: String, context: Context): DecisionInfo {
     if (json.isBlank()) return DecisionInfo("", null, emptyList())
     return try {
         val obj = decisionGson.fromJson(json, JsonObject::class.java)
@@ -993,16 +1016,40 @@ private fun parseDecision(json: String): DecisionInfo {
 
         // 请求上下文
         val requestInfo = obj?.getAsJsonObject("request")?.let { req ->
-            buildString {
-                req.get("estimatedContextTokens")?.let { append("估算上下文: ${it.asInt} tokens  ") }
-                req.get("promptChars")?.let { append("提示词: ${it.asInt} 字符  ") }
-                req.get("sessionMode")?.let { append("模式: ${it.asString}  ") }
-                req.get("hasAttachments")?.takeIf { it.asBoolean }?.let { append("含附件  ") }
-                req.get("isAgent")?.takeIf { it.asBoolean }?.let { append("Agent  ") }
-                req.get("isComplex")?.takeIf { it.asBoolean }?.let { append("复杂任务  ") }
-                req.get("dailyBudgetUsd")?.let { append("日预算: \$${String.format(Locale.US, "%.2f", it.asDouble)}  ") }
-                req.get("dailySpentUsd")?.let { append("已花费: \$${String.format(Locale.US, "%.2f", it.asDouble)}") }
-            }.takeIf { it.isNotBlank() }
+            buildList {
+                req.get("estimatedContextTokens")?.let {
+                    add(context.getString(R.string.routing_request_estimated_context, it.asInt))
+                }
+                req.get("promptChars")?.let {
+                    add(context.getString(R.string.routing_request_prompt_chars, it.asInt))
+                }
+                req.get("sessionMode")?.let {
+                    add(context.getString(R.string.routing_request_mode, it.asString))
+                }
+                req.get("hasAttachments")?.takeIf { it.asBoolean }?.let {
+                    add(context.getString(R.string.routing_request_has_attachments))
+                }
+                req.get("isAgent")?.takeIf { it.asBoolean }?.let { add("Agent") }
+                req.get("isComplex")?.takeIf { it.asBoolean }?.let {
+                    add(context.getString(R.string.routing_request_complex))
+                }
+                req.get("dailyBudgetUsd")?.let {
+                    add(
+                        context.getString(
+                            R.string.routing_request_daily_budget,
+                            String.format(Locale.US, "%.2f", it.asDouble)
+                        )
+                    )
+                }
+                req.get("dailySpentUsd")?.let {
+                    add(
+                        context.getString(
+                            R.string.routing_request_daily_spent,
+                            String.format(Locale.US, "%.2f", it.asDouble)
+                        )
+                    )
+                }
+            }.joinToString(" · ").takeIf { it.isNotBlank() }
         }
 
         val candidates = obj?.getAsJsonArray("candidates")?.mapNotNull { elem ->
@@ -1025,7 +1072,11 @@ private fun parseDecision(json: String): DecisionInfo {
 
         DecisionInfo(reason = reason, requestInfo = requestInfo, candidates = candidates)
     } catch (e: Exception) {
-        DecisionInfo(reason = "解析失败: ${e.message}", requestInfo = null, candidates = emptyList())
+        DecisionInfo(
+            reason = context.getString(R.string.routing_parse_failed, e.message.orEmpty()),
+            requestInfo = null,
+            candidates = emptyList()
+        )
     }
 }
 

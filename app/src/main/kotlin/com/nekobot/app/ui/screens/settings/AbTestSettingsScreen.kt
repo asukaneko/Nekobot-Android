@@ -35,11 +35,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.ui.components.GlassCard
@@ -135,12 +137,12 @@ fun AbTestSettingsScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("A/B 测试配置", color = MaterialTheme.colorScheme.onSurface) },
+                title = { Text(stringResource(R.string.tokens_ab_test_settings), color = MaterialTheme.colorScheme.onSurface) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.common_back),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -164,13 +166,12 @@ fun AbTestSettingsScreen(onBack: () -> Unit) {
             // 说明卡片
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 SectionHeader(
-                    title = "A/B 测试",
-                    subtitle = "为模型路由启用对比实验，按比例将请求分流到实验组模型"
+                    title = stringResource(R.string.abtest_section_title),
+                    subtitle = stringResource(R.string.abtest_section_subtitle)
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "启用后，智能路由会按设定的比例将部分请求分配到实验组模型，" +
-                        "并在路由决策历史中标记 A/B 分组，便于对比两组模型的效果。",
+                    text = stringResource(R.string.abtest_explanation),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -184,13 +185,13 @@ fun AbTestSettingsScreen(onBack: () -> Unit) {
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "启用 A/B 测试",
+                            stringResource(R.string.abtest_enable),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            "关闭后所有请求走正常路由",
+                            stringResource(R.string.abtest_enable_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -204,17 +205,21 @@ fun AbTestSettingsScreen(onBack: () -> Unit) {
 
             // 分流比例
             GlassCard(modifier = Modifier.fillMaxWidth()) {
-                SectionHeader(title = "分流比例")
+                SectionHeader(title = stringResource(R.string.abtest_split_ratio))
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "实验组流量占比：${(vm.splitRatio * 100).toInt()}%",
+                    text = stringResource(R.string.abtest_experiment_ratio, (vm.splitRatio * 100).toInt()),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "对照组 ${((1 - vm.splitRatio) * 100).toInt()}% · 实验组 ${(vm.splitRatio * 100).toInt()}%",
+                    text = stringResource(
+                        R.string.abtest_ratio_summary,
+                        ((1 - vm.splitRatio) * 100).toInt(),
+                        (vm.splitRatio * 100).toInt()
+                    ),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -229,8 +234,8 @@ fun AbTestSettingsScreen(onBack: () -> Unit) {
 
             // 对照组模型选择
             ModelSelectorCard(
-                title = "对照组模型",
-                hint = "对照组使用默认路由选中模型，可不选",
+                title = stringResource(R.string.abtest_control_model),
+                hint = stringResource(R.string.abtest_control_model_hint),
                 models = models,
                 selectedId = vm.controlModelId,
                 enabled = vm.enabled,
@@ -239,8 +244,8 @@ fun AbTestSettingsScreen(onBack: () -> Unit) {
 
             // 实验组模型选择
             ModelSelectorCard(
-                title = "实验组模型",
-                hint = "被分流到实验组的请求将使用此模型",
+                title = stringResource(R.string.abtest_experiment_model),
+                hint = stringResource(R.string.abtest_experiment_model_hint),
                 models = models,
                 selectedId = vm.experimentModelId,
                 enabled = vm.enabled,
@@ -249,14 +254,14 @@ fun AbTestSettingsScreen(onBack: () -> Unit) {
 
             // 测试名称
             GlassCard(modifier = Modifier.fillMaxWidth()) {
-                SectionHeader(title = "测试名称")
+                SectionHeader(title = stringResource(R.string.abtest_name))
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = vm.testName,
                     onValueChange = { vm.updateTestName(it) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    placeholder = { Text("输入测试名称，如 gpt4o-vs-claude") },
+                    placeholder = { Text(stringResource(R.string.abtest_name_placeholder)) },
                     enabled = vm.enabled
                 )
             }
@@ -265,7 +270,7 @@ fun AbTestSettingsScreen(onBack: () -> Unit) {
             if (models.isEmpty()) {
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        text = "当前没有可用的 chat 用途模型，请先在 AI 模型管理中添加。",
+                        text = stringResource(R.string.abtest_no_chat_models),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -292,7 +297,7 @@ private fun ModelSelectorCard(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val selectedModel = models.firstOrNull { it.id == selectedId }
-    val displayText = selectedModel?.name ?: "未选择"
+    val displayText = selectedModel?.name ?: stringResource(R.string.abtest_not_selected)
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         SectionHeader(title = title)
@@ -314,7 +319,7 @@ private fun ModelSelectorCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .menuAnchor(),
-                label = { Text("选择模型") },
+                label = { Text(stringResource(R.string.abtest_select_model)) },
                 trailingIcon = {
                     ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
                 },
@@ -326,7 +331,7 @@ private fun ModelSelectorCard(
             ) {
                 // 未选择项
                 DropdownMenuItem(
-                    text = { Text("未选择") },
+                    text = { Text(stringResource(R.string.abtest_not_selected)) },
                     onClick = {
                         onSelect(null)
                         expanded = false
@@ -334,7 +339,7 @@ private fun ModelSelectorCard(
                 )
                 if (models.isEmpty()) {
                     DropdownMenuItem(
-                        text = { Text("无可用模型") },
+                        text = { Text(stringResource(R.string.abtest_no_models)) },
                         onClick = { expanded = false }
                     )
                 }
@@ -366,7 +371,7 @@ private fun ModelSelectorCard(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "模型: ${selectedModel.model}",
+                text = stringResource(R.string.abtest_model_name, selectedModel.model),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

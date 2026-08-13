@@ -100,7 +100,12 @@ class RoutingHistoryViewModel : BaseViewModel() {
                 val analyticsHistory = logger.queryHistory(limit = ANALYTICS_LIMIT)
                 _modelStats.value = aggregateRoutingModelStats(analyticsHistory)
                 _abTestStats.value = aggregateRoutingAbTestStats(analyticsHistory)
-                showToast(if (score > 0) "已记录好评" else "已记录差评")
+                showToast(
+                    string(
+                        if (score > 0) R.string.routing_rating_positive
+                        else R.string.routing_rating_negative
+                    )
+                )
             } catch (e: Exception) {
                 showError(e.message ?: string(R.string.common_unknown_error))
             }
@@ -118,7 +123,7 @@ class RoutingHistoryViewModel : BaseViewModel() {
                 _logs.value = emptyList()
                 _modelStats.value = emptyList()
                 _abTestStats.value = emptyList()
-                showToast("已清空路由决策历史")
+                showToast(string(R.string.routing_history_cleared))
             } catch (e: Exception) {
                 showError(e.message ?: string(R.string.common_unknown_error))
             } finally {

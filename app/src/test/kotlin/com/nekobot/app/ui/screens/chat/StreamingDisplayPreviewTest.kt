@@ -16,7 +16,7 @@ class StreamingDisplayPreviewTest {
         val content = "a".repeat(40) + "b".repeat(20)
         val preview = buildStreamingDisplayPreview(content, maxChars = 20)
 
-        assertTrue(preview.startsWith("…前文仍在生成并会完整保存"))
+        assertTrue(preview.startsWith("…\n"))
         assertTrue(preview.endsWith("b".repeat(20)))
         assertTrue(preview.length < content.length)
     }

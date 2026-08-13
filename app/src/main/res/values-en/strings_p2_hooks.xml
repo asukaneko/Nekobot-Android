@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hook_template_high_affection_title">High affection notice</string>
+    <string name="hook_template_high_affection_desc">Show a closeness notice in chat when affection reaches 80.</string>
+    <string name="hook_template_high_affection_name">High affection notice</string>
+    <string name="hook_template_high_affection_once_title">First high affection notice</string>
+    <string name="hook_template_high_affection_once_desc">Notify once per session when high affection is first reached.</string>
+    <string name="hook_template_high_affection_once_name">First high affection notice</string>
+    <string name="hook_template_low_energy_title">Low energy notice</string>
+    <string name="hook_template_low_energy_desc">Show the current state when character energy is low.</string>
+    <string name="hook_template_low_energy_name">Low energy notice</string>
+    <string name="hook_template_relationship_title">Relationship growth memory</string>
+    <string name="hook_template_relationship_desc">Write a short-term memory when the relationship reaches the threshold.</string>
+    <string name="hook_template_relationship_name">Relationship growth memory</string>
+    <string name="hook_template_model_log_title">Model call log</string>
+    <string name="hook_template_model_log_desc">Write a debug log after the model response completes.</string>
+    <string name="hook_template_model_log_name">Model call log</string>
+    <string name="hook_template_affection_log">Affection exceeded 80; the character feels closer to the user</string>
+    <string name="hook_template_low_energy_log">The character has low energy and will respond with more fatigue or restraint</string>
+    <string name="hook_template_relationship_memory_title">Relationship growing closer</string>
+    <string name="hook_template_relationship_memory_summary">The character feels closer to the user</string>
+    <string name="hook_template_relationship_memory_content">The relationship between the user and character is growing closer, and the character will express affection more naturally.</string>
+    <string name="hook_template_relationship_log">Relationship growth memory recorded</string>
+    <string name="hook_template_model_log">Model call completed</string>
+</resources>

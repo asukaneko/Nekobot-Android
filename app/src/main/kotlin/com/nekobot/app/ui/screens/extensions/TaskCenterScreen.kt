@@ -344,9 +344,9 @@ private fun TaskCard(
         }
         if (task.status != "idle") {
             val executionLabel = when (task.status) {
-                "running" -> "执行中"
-                "success" -> "上次执行成功"
-                "failed" -> "上次执行失败"
+                "running" -> stringResource(R.string.schedule_running)
+                "success" -> stringResource(R.string.schedule_last_success)
+                "failed" -> stringResource(R.string.schedule_last_failed)
                 else -> task.status
             }
             Text(

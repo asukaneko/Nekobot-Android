@@ -468,7 +468,8 @@ fun AudioRenderer(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (loadFailed) "语音加载失败" else "语音",
+                        text = if (loadFailed) stringResource(R.string.audio_load_failed)
+                        else stringResource(R.string.audio_label),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = if (loadFailed) {
@@ -495,7 +496,7 @@ fun AudioRenderer(
                         ) {
                             Icon(
                                 Icons.Filled.Refresh,
-                                contentDescription = "重新生成语音",
+                                contentDescription = stringResource(R.string.audio_regenerate),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(16.dp)
                             )

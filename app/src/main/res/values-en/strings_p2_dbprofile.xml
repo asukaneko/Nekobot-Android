@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dbprofile_zip_db_missing">No .db file was found in the ZIP archive</string>
+    <string name="dbprofile_unknown_file_format">Unrecognized file format. Select a .zip or .db file.</string>
+    <string name="dbprofile_read_selected_file_failed">Could not read the selected file</string>
+    <string name="dbprofile_invalid_database">The backup contains an invalid database</string>
+    <string name="dbprofile_backup_password_required">This backup contains encrypted credentials. Enter the password used when it was exported.</string>
+    <string name="dbprofile_database_open_failed">Could not open the database. It may be damaged or incompatible: %1$s</string>
+    <string name="dbprofile_database_too_large">The database file is too large</string>
+    <string name="dbprofile_rollback_dir_failed">Could not create the database rollback directory</string>
+    <string name="dbprofile_replace_old_database_failed">Could not replace the old database file: %1$s</string>
+    <string name="dbprofile_cleanup_failed_import">Could not clean up the failed database import: %1$s</string>
+    <string name="dbprofile_restore_portrait_dir_failed">Could not restore the original portrait directory</string>
+    <string name="dbprofile_create_portrait_dir_failed">Could not create the portrait restore directory</string>
+    <string name="dbprofile_replace_portrait_dir_failed">Could not replace the old portrait directory</string>
+    <string name="dbprofile_save_portrait_failed">Could not save the restored portraits</string>
+    <string name="dbprofile_export_location_required">Select an export location on this Android version</string>
+    <string name="dbprofile_open_download_failed">Could not open the download file</string>
+    <string name="dbprofile_open_export_failed">Could not open the export file</string>
+</resources>

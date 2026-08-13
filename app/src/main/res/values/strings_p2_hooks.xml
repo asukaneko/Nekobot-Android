@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hook_template_high_affection_title">高好感提示</string>
+    <string name="hook_template_high_affection_desc">好感度达到 80 后，在聊天中显示亲近提示。</string>
+    <string name="hook_template_high_affection_name">高好感度提示</string>
+    <string name="hook_template_high_affection_once_title">高好感首次提示</string>
+    <string name="hook_template_high_affection_once_desc">每个会话第一次达到高好感时提醒一次。</string>
+    <string name="hook_template_high_affection_once_name">高好感度首次提示</string>
+    <string name="hook_template_low_energy_title">低精力提醒</string>
+    <string name="hook_template_low_energy_desc">角色精力较低时提示当前状态。</string>
+    <string name="hook_template_low_energy_name">低精力提醒</string>
+    <string name="hook_template_relationship_title">关系升温记忆</string>
+    <string name="hook_template_relationship_desc">关系达到阈值后写入一条短期记忆。</string>
+    <string name="hook_template_relationship_name">关系升温记忆</string>
+    <string name="hook_template_model_log_title">模型调用日志</string>
+    <string name="hook_template_model_log_desc">模型响应完成后记录一次调试日志。</string>
+    <string name="hook_template_model_log_name">模型调用日志</string>
+    <string name="hook_template_affection_log">好感度超过 80，角色对用户更加亲近</string>
+    <string name="hook_template_low_energy_log">角色精力较低，回复会更疲惫或克制</string>
+    <string name="hook_template_relationship_memory_title">关系升温</string>
+    <string name="hook_template_relationship_memory_summary">角色对用户的亲近感上升</string>
+    <string name="hook_template_relationship_memory_content">用户与角色的关系正在升温，角色会更自然地表达亲近。</string>
+    <string name="hook_template_relationship_log">已记录关系升温记忆</string>
+    <string name="hook_template_model_log">模型调用完成</string>
+</resources>

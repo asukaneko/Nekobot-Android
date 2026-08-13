@@ -113,6 +113,8 @@ import java.util.UUID
 class DbProfileViewModel : ViewModel() {
 
     private val prefs: PrefsManager get() = ServiceContainer.prefs
+    private fun string(resId: Int, vararg args: Any): String =
+        ServiceContainer.appContext?.getString(resId, *args) ?: ServiceContainer.getString(resId)
 
     private val _profiles = MutableStateFlow<List<PrefsManager.DbProfile>>(emptyList())
     val profiles: StateFlow<List<PrefsManager.DbProfile>> = _profiles.asStateFlow()
@@ -442,20 +444,20 @@ class DbProfileViewModel : ViewModel() {
                     when {
                         isZipBytes(header) -> {
                             DbProfileArchiveCodec.extractArchive(input)
-                                ?: throw IllegalStateException("ZIP 中未找到 .db 文件")
+                                ?: throw IllegalStateException(string(R.string.dbprofile_zip_db_missing))
                         }
                         headerSize >= 16 && isSqliteBytes(header) -> {
                             ExtractedDbProfileArchive(main = readBytesWithLimit(input))
                         }
-                        else -> throw IllegalStateException("无法识别的文件格式：请选择 .zip 或 .db 文件")
+                        else -> throw IllegalStateException(string(R.string.dbprofile_unknown_file_format))
                     }
-                } ?: throw IllegalStateException("无法读取所选文件")
+                } ?: throw IllegalStateException(string(R.string.dbprofile_read_selected_file_failed))
                 if (!isSqliteBytes(archive.main)) {
-                    throw IllegalStateException("备份包中的数据库格式无效")
+                    throw IllegalStateException(string(R.string.dbprofile_invalid_database))
                 }
                 val credentialBundle = archive.encryptedCredentials?.let { encrypted ->
                     if (backupPassword.isBlank()) {
-                        throw IllegalArgumentException("此备份包含加密凭据，请输入导出时设置的备份密码")
+                        throw IllegalArgumentException(string(R.string.dbprofile_backup_password_required))
                     }
                     LocalWebDavArchiveCodec.decrypt(encrypted, backupPassword)
                 }
@@ -475,7 +477,7 @@ class DbProfileViewModel : ViewModel() {
                         it.openHelper.writableDatabase
                     }
                 }.onFailure { e ->
-                    throw IllegalStateException("数据库无法打开（可能文件损坏或版本不兼容）：${e.message}")
+                    throw IllegalStateException(string(R.string.dbprofile_database_open_failed, e.message.orEmpty()))
                 }.getOrThrow()
                 val importedSessionIds = importedDb.sessionDao().listAll()
                     .mapTo(linkedSetOf()) { it.id }
@@ -585,7 +587,7 @@ class DbProfileViewModel : ViewModel() {
             if (count < 0) break
             if (count > 0) {
                 total += count
-                require(total <= maxBytes) { "数据库文件过大" }
+                require(total <= maxBytes) { string(R.string.dbprofile_database_too_large) }
                 output.write(buffer, 0, count)
             }
         }
@@ -643,7 +645,7 @@ class DbProfileViewModel : ViewModel() {
             context.cacheDir,
             "db-profile-rollback-${UUID.randomUUID()}"
         )
-        check(directory.mkdirs()) { "无法创建数据库回滚目录" }
+        check(directory.mkdirs()) { string(R.string.dbprofile_rollback_dir_failed) }
         try {
             profileDatabaseFiles(context, profileName)
                 .filter { it.isFile }
@@ -662,7 +664,9 @@ class DbProfileViewModel : ViewModel() {
     ) {
         NekobotDatabase.closeProfile(profileName)
         profileDatabaseFiles(context, profileName).forEach { file ->
-            if (file.exists() && !file.delete()) error("无法替换旧数据库文件：${file.name}")
+            if (file.exists() && !file.delete()) {
+                error(string(R.string.dbprofile_replace_old_database_failed, file.name))
+            }
         }
         val mainDbName = "$profileName.db"
         context.getDatabasePath(mainDbName).apply {
@@ -680,7 +684,9 @@ class DbProfileViewModel : ViewModel() {
     ) {
         NekobotDatabase.closeProfile(profileName)
         profileDatabaseFiles(context, profileName).forEach { file ->
-            if (file.exists() && !file.delete()) error("无法清理导入失败的数据库：${file.name}")
+            if (file.exists() && !file.delete()) {
+                error(string(R.string.dbprofile_cleanup_failed_import, file.name))
+            }
         }
         rollback.directory.listFiles().orEmpty().forEach { backup ->
             val destination = context.getDatabasePath(backup.name)
@@ -760,7 +766,7 @@ class DbProfileViewModel : ViewModel() {
             destination.deleteRecursively()
             val original = backup
             if (original != null && original.exists() && !original.renameTo(destination)) {
-                error("无法恢复原立绘目录")
+                error(ServiceContainer.getString(R.string.dbprofile_restore_portrait_dir_failed))
             }
         }
     }
@@ -776,7 +782,7 @@ class DbProfileViewModel : ViewModel() {
         }
 
         val target = importedPortraitDir(context, profileName)
-        val parent = target.parentFile ?: error("无法创建立绘恢复目录")
+        val parent = target.parentFile ?: error(string(R.string.dbprofile_create_portrait_dir_failed))
         val staging = File(parent, ".${target.name}.restoring")
         val backup = File(parent, ".${target.name}.backup")
         parent.mkdirs()
@@ -799,11 +805,13 @@ class DbProfileViewModel : ViewModel() {
 
             backup.deleteRecursively()
             if (target.exists() && !target.renameTo(backup)) {
-                error("无法替换旧立绘目录")
+                error(string(R.string.dbprofile_replace_portrait_dir_failed))
             }
             try {
                 if (!staging.renameTo(target)) {
-                    check(staging.copyRecursively(target, overwrite = true)) { "无法保存恢复的立绘" }
+                    check(staging.copyRecursively(target, overwrite = true)) {
+                        string(R.string.dbprofile_save_portrait_failed)
+                    }
                     staging.deleteRecursively()
                 }
             } catch (e: Exception) {
@@ -869,7 +877,9 @@ class DbProfileViewModel : ViewModel() {
     ): Boolean {
         var insertedUri: Uri? = null
         return try {
-            check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) { "当前系统需要选择导出位置" }
+            check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                string(R.string.dbprofile_export_location_required)
+            }
             val resolver = context.contentResolver
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
@@ -888,7 +898,7 @@ class DbProfileViewModel : ViewModel() {
                     story,
                     encryptedCredentials
                 )
-            } ?: error("无法打开下载文件")
+            } ?: error(string(R.string.dbprofile_open_download_failed))
             resolver.update(
                 uri,
                 ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
@@ -919,7 +929,7 @@ class DbProfileViewModel : ViewModel() {
                 story,
                 encryptedCredentials
             )
-        } ?: error("无法打开导出文件")
+        } ?: error(string(R.string.dbprofile_open_export_failed))
         true
     } catch (_: Exception) {
         runCatching { context.contentResolver.delete(destinationUri, null, null) }

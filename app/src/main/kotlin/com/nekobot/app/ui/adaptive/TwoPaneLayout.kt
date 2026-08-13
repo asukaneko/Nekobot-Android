@@ -12,8 +12,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.nekobot.app.R
 
 /**
  * 通用双栏布局容器。
@@ -34,7 +36,7 @@ fun TwoPaneLayout(
     detail: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     listWidth: Dp = 360.dp,
-    emptyDetailPlaceholder: String = "选择一个项目查看详情",
+    emptyDetailPlaceholder: String? = null,
     showDetailPlaceholder: Boolean = true
 ) {
     val useTwoPane = rememberShouldUseTwoPane()
@@ -75,7 +77,7 @@ fun TwoPaneLayout(
             if (showDetailPlaceholder) {
                 // 无选中项时显示居中占位文本
                 Text(
-                    text = emptyDetailPlaceholder,
+                    text = emptyDetailPlaceholder ?: stringResource(R.string.two_pane_select_item),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

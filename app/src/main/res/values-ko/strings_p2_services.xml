@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_element_not_found">일치하는 화면 요소를 찾을 수 없습니다</string>
+    <string name="accessibility_element_not_clickable">일치한 요소를 클릭할 수 없습니다</string>
+    <string name="accessibility_click_requested">화면 요소 클릭을 요청했습니다</string>
+    <string name="accessibility_input_not_found">일치하는 입력 상자를 찾을 수 없습니다</string>
+    <string name="accessibility_input_not_editable">일치한 요소가 편집 가능한 입력 상자가 아닙니다</string>
+    <string name="accessibility_input_requested">입력 상자 쓰기를 요청했습니다</string>
+    <string name="accessibility_no_scrollable_area">현재 화면에 스크롤 가능한 영역이 없습니다</string>
+    <string name="accessibility_scroll_directions">direction은 up/down/forward/backward/left/right만 지원합니다</string>
+    <string name="accessibility_scroll_requested">화면 스크롤을 요청했습니다</string>
+    <string name="accessibility_global_actions">action은 back/home/recents/notifications/quick_settings만 지원합니다</string>
+    <string name="accessibility_global_action_requested">시스템 전역 작업을 요청했습니다</string>
+    <string name="accessibility_screenshot_api_required">접근성 스크린샷은 Android 11 이상에서 지원됩니다</string>
+    <string name="accessibility_screenshot_buffer_failed">스크린샷 버퍼를 읽을 수 없습니다</string>
+    <string name="accessibility_screenshot_saved">스크린샷을 저장했습니다</string>
+    <string name="accessibility_screenshot_failed">시스템 스크린샷 실패, 오류 코드 %1$d</string>
+    <string name="accessibility_screenshot_timeout">시스템 스크린샷 대기 시간이 초과되었습니다</string>
+    <string name="accessibility_screenshot_no_result">시스템에서 스크린샷 결과를 반환하지 않았습니다</string>
+    <string name="notification_not_found">지정한 알림을 찾을 수 없습니다</string>
+    <string name="notification_no_open_content">이 알림에는 열 수 있는 내용이 없습니다</string>
+    <string name="notification_opened">알림을 열었습니다</string>
+    <string name="notification_not_clearable">이 알림은 지울 수 없습니다</string>
+    <string name="notification_dismissed">알림을 지웠습니다</string>
+    <string name="notification_action_index_invalid">action_index가 알림 작업 범위를 벗어났습니다</string>
+    <string name="notification_action_executed">알림 작업 실행: %1$s</string>
+    <string name="notification_supported_actions">action은 open/dismiss/action만 지원합니다</string>
+    <string name="notification_operation_failed">알림 작업 실패</string>
+    <string name="media_session_not_found">활성 미디어 세션을 찾을 수 없습니다</string>
+    <string name="media_supported_actions">action은 play/pause/toggle/next/previous/stop만 지원합니다</string>
+    <string name="media_control_sent">%1$s에 미디어 제어를 전송했습니다</string>
+    <string name="media_control_failed">미디어 제어 실패</string>
+    <string name="notification_reply_no_local_model">사용 가능한 로컬 채팅 모델이 설정되지 않았습니다</string>
+    <string name="notification_reply_sent">메시지를 전송했습니다</string>
+    <string name="notification_reply_failed">빠른 답장 실패</string>
+    <string name="notification_reply_retry">앱을 열어 다시 시도하세요</string>
+    <string name="agent_foreground_channel">Agent 백그라운드 실행</string>
+    <string name="agent_foreground_channel_description">Agent, 브라우저 및 Linux 샌드박스 작업을 계속 실행합니다</string>
+    <string name="agent_foreground_title">Agent 실행 중</string>
+    <string name="agent_foreground_task_count">대화 작업 %1$d개 실행 중</string>
+    <string name="agent_foreground_stop_task">이 작업 중지</string>
+    <string name="agent_foreground_stop_all">모두 중지</string>
+    <string name="shortcut_open_session">대화 열기: %1$s</string>
+    <string name="incoming_share_too_large">공유 첨부 파일이 25 MB를 초과합니다</string>
+</resources>

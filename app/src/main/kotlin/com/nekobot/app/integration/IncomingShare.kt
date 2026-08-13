@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.nekobot.app.R
 import java.io.File
 import java.util.UUID
 
@@ -102,7 +103,9 @@ object IncomingShareParser {
                         val count = input.read(buffer)
                         if (count < 0) break
                         total += count
-                        require(total <= MAX_ATTACHMENT_BYTES) { "分享附件超过 25 MB" }
+                        require(total <= MAX_ATTACHMENT_BYTES) {
+                            context.getString(R.string.incoming_share_too_large)
+                        }
                         output.write(buffer, 0, count)
                     }
                 }

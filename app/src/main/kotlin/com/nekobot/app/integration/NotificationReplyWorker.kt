@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.R
 import com.nekobot.app.data.local.automation.LocalAutomationNotifier
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.data.remote.RealtimeEvent
@@ -30,7 +31,7 @@ class NotificationReplyWorker(
                 failure?.let { error(it) }
             } else {
                 if (ServiceContainer.prefs.isLocalMode) {
-                    error("未配置可用的本地聊天模型")
+                    error(applicationContext.getString(R.string.notification_reply_no_local_model))
                 }
                 when (val result = ServiceContainer.unified.chat(sessionId, text)) {
                     is Resource.Error -> error(result.message)
@@ -50,7 +51,7 @@ class NotificationReplyWorker(
                 context = applicationContext,
                 notificationId = sessionId.hashCode(),
                 title = "NekoBot",
-                content = latestReply.ifBlank { "消息已发送" },
+                content = latestReply.ifBlank { applicationContext.getString(R.string.notification_reply_sent) },
                 sessionId = sessionId
             )
             NekobotShortcutManager.refresh(applicationContext)
@@ -60,8 +61,8 @@ class NotificationReplyWorker(
             LocalAutomationNotifier.show(
                 context = applicationContext,
                 notificationId = sessionId.hashCode(),
-                title = "快捷回复失败",
-                content = error.message ?: "请打开应用重试",
+                title = applicationContext.getString(R.string.notification_reply_failed),
+                content = error.message ?: applicationContext.getString(R.string.notification_reply_retry),
                 sessionId = sessionId
             )
             Result.failure()

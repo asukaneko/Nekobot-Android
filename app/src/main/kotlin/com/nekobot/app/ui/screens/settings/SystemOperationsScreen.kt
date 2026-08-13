@@ -39,11 +39,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.nekobot.app.R
 import com.nekobot.app.integration.NekobotAccessibilityService
 import com.nekobot.app.integration.NekobotNotificationListenerService
 import com.nekobot.app.ui.components.GlassCard
@@ -67,10 +69,10 @@ fun SystemOperationsScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Agent 系统操作") },
+                title = { Text(stringResource(R.string.system_ops_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -87,35 +89,35 @@ fun SystemOperationsScreen(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                "这些能力默认关闭，只能由你在 Android 系统设置中手动开启。Agent 每次读取敏感内容或执行操作时仍会显示会话授权确认。",
+                stringResource(R.string.system_ops_intro),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             OperationPermissionCard(
                 icon = Icons.Filled.AccessibilityNew,
-                title = "辅助功能",
-                description = "读取当前界面树、点击、输入、滚动、返回/主页以及 Android 11+ 截图。密码字段永远不会回传。",
+                title = stringResource(R.string.system_ops_accessibility),
+                description = stringResource(R.string.system_ops_accessibility_desc),
                 enabled = status.accessibilityEnabled,
                 connected = status.accessibilityConnected,
-                buttonLabel = "打开辅助功能设置",
+                buttonLabel = stringResource(R.string.system_ops_open_accessibility),
                 onOpen = { context.openSystemSettings(Settings.ACTION_ACCESSIBILITY_SETTINGS) }
             )
 
             OperationPermissionCard(
                 icon = Icons.Filled.Notifications,
-                title = "通知与媒体控制",
-                description = "读取活动通知、打开或清除通知，以及控制系统媒体会话。通知正文和所有写操作都需要会话授权。",
+                title = stringResource(R.string.system_ops_notifications),
+                description = stringResource(R.string.system_ops_notifications_desc),
                 enabled = status.notificationEnabled,
                 connected = status.notificationConnected,
-                buttonLabel = "打开通知使用权",
+                buttonLabel = stringResource(R.string.system_ops_open_notifications),
                 onOpen = { context.openSystemSettings(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS) }
             )
 
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("安全边界", fontWeight = FontWeight.SemiBold)
-                    Text("• 系统授权可随时关闭\n• 只匹配当前可见界面，不绕过锁屏或应用权限\n• 截图只保存到当前 Agent 会话工作区\n• UI 树最多返回 800 个节点，并对密码内容脱敏",
+                    Text(stringResource(R.string.system_ops_safety_title), fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.system_ops_safety_body),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -144,9 +146,9 @@ private fun OperationPermissionCard(
                     Text(title, fontWeight = FontWeight.SemiBold)
                     Text(
                         when {
-                            connected -> "已开启并连接"
-                            enabled -> "已开启，等待服务连接"
-                            else -> "未开启"
+                            connected -> stringResource(R.string.system_ops_status_connected)
+                            enabled -> stringResource(R.string.system_ops_status_waiting)
+                            else -> stringResource(R.string.system_ops_status_disabled)
                         },
                         style = MaterialTheme.typography.labelMedium,
                         color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant

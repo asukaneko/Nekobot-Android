@@ -50,6 +50,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -58,6 +59,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import com.nekobot.app.R
 import com.nekobot.app.data.local.ai.LocalBrowserPreviewRegistry
 import com.nekobot.app.data.local.ai.LocalBrowserPreviewState
 import kotlinx.coroutines.currentCoroutineContext
@@ -185,7 +187,8 @@ private fun BrowserPreviewHeader(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = state.title.ifBlank {
-                    if (state.isLoading) "正在加载网页" else "浏览器预览"
+                    if (state.isLoading) stringResource(R.string.browser_loading_page)
+                    else stringResource(R.string.browser_preview)
                 },
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Medium,
@@ -209,7 +212,7 @@ private fun BrowserPreviewHeader(
         ) {
             Icon(
                 imageVector = Icons.Filled.Fullscreen,
-                contentDescription = "放大浏览器预览",
+                contentDescription = stringResource(R.string.browser_zoom_preview),
                 modifier = Modifier.size(20.dp)
             )
         }
@@ -232,7 +235,7 @@ private fun BrowserFrame(
         if (frame != null) {
             Image(
                 bitmap = frame,
-                contentDescription = "浏览器实时页面",
+                contentDescription = stringResource(R.string.browser_live_page),
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale,
                 alignment = Alignment.TopCenter
@@ -256,7 +259,8 @@ private fun BrowserFrame(
                     )
                 }
                 Text(
-                    text = if (isLoading) "正在获取页面画面…" else "等待浏览器页面",
+                    text = if (isLoading) stringResource(R.string.browser_fetching_frame)
+                    else stringResource(R.string.browser_waiting_for_page),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -305,13 +309,13 @@ private fun BrowserFullscreenDialog(
                     IconButton(onClick = onDismiss) {
                         Icon(
                             imageVector = Icons.Filled.Close,
-                            contentDescription = "关闭浏览器预览"
+                            contentDescription = stringResource(R.string.browser_close_preview)
                         )
                     }
                     Spacer(Modifier.width(4.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = state.title.ifBlank { "浏览器实时预览" },
+                            text = state.title.ifBlank { stringResource(R.string.browser_live_preview) },
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
@@ -352,7 +356,7 @@ private fun BrowserFullscreenDialog(
                     if (frame != null) {
                         Image(
                             bitmap = frame,
-                            contentDescription = "放大的浏览器实时页面",
+                            contentDescription = stringResource(R.string.browser_zoomed_live_page),
                             contentScale = ContentScale.Fit,
                             modifier = Modifier
                                 .fillMaxSize()
@@ -382,7 +386,7 @@ private fun BrowserFullscreenDialog(
                     }
                 }
                 Text(
-                    text = "双指缩放或拖动查看，点击右上角比例可复位",
+                    text = stringResource(R.string.browser_gesture_help),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier

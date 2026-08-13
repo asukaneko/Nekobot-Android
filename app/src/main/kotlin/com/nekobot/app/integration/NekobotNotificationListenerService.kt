@@ -6,6 +6,7 @@ import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import com.nekobot.app.R
 
 /** 用户显式开启通知使用权后，为 Agent 提供受控的通知摘要与媒体会话操作。 */
 class NekobotNotificationListenerService : NotificationListenerService() {
@@ -36,31 +37,31 @@ class NekobotNotificationListenerService : NotificationListenerService() {
 
     internal fun notificationAction(key: String, action: String, actionIndex: Int): NotificationOperationResult {
         val notification = activeNotifications.orEmpty().firstOrNull { it.key == key }
-            ?: return NotificationOperationResult(false, "未找到指定通知")
+            ?: return NotificationOperationResult(false, getString(R.string.notification_not_found))
         return try {
             when (action.lowercase()) {
                 "open" -> {
                     val pendingIntent = notification.notification.contentIntent
-                        ?: return NotificationOperationResult(false, "该通知没有可打开的内容")
+                        ?: return NotificationOperationResult(false, getString(R.string.notification_no_open_content))
                     pendingIntent.send()
-                    NotificationOperationResult(true, "已打开通知")
+                    NotificationOperationResult(true, getString(R.string.notification_opened))
                 }
                 "dismiss" -> {
-                    if (!notification.isClearable) return NotificationOperationResult(false, "该通知不可清除")
+                    if (!notification.isClearable) return NotificationOperationResult(false, getString(R.string.notification_not_clearable))
                     cancelNotification(notification.key)
-                    NotificationOperationResult(true, "已清除通知")
+                    NotificationOperationResult(true, getString(R.string.notification_dismissed))
                 }
                 "action" -> {
                     val actions = notification.notification.actions.orEmpty()
                     val selected = actions.getOrNull(actionIndex)
-                        ?: return NotificationOperationResult(false, "action_index 超出通知动作范围")
+                        ?: return NotificationOperationResult(false, getString(R.string.notification_action_index_invalid))
                     selected.actionIntent.send()
-                    NotificationOperationResult(true, "已执行通知动作：${selected.title}")
+                    NotificationOperationResult(true, getString(R.string.notification_action_executed, selected.title))
                 }
-                else -> NotificationOperationResult(false, "action 仅支持 open/dismiss/action")
+                else -> NotificationOperationResult(false, getString(R.string.notification_supported_actions))
             }
         } catch (error: Exception) {
-            NotificationOperationResult(false, error.message ?: "通知操作失败")
+            NotificationOperationResult(false, error.message ?: getString(R.string.notification_operation_failed))
         }
     }
 
@@ -82,7 +83,7 @@ class NekobotNotificationListenerService : NotificationListenerService() {
     internal fun mediaControl(action: String, packageName: String?): NotificationOperationResult {
         val controllers = activeMediaControllers()
         val controller = controllers.firstOrNull { packageName.isNullOrBlank() || it.packageName == packageName }
-            ?: return NotificationOperationResult(false, "没有找到活动媒体会话")
+            ?: return NotificationOperationResult(false, getString(R.string.media_session_not_found))
         val transport = controller.transportControls
         return try {
             when (action.lowercase()) {
@@ -95,11 +96,15 @@ class NekobotNotificationListenerService : NotificationListenerService() {
                 "next" -> transport.skipToNext()
                 "previous" -> transport.skipToPrevious()
                 "stop" -> transport.stop()
-                else -> return NotificationOperationResult(false, "action 仅支持 play/pause/toggle/next/previous/stop")
+                else -> return NotificationOperationResult(false, getString(R.string.media_supported_actions))
             }
-            NotificationOperationResult(true, "已向 ${controller.packageName} 发送媒体控制", controller.packageName)
+            NotificationOperationResult(
+                true,
+                getString(R.string.media_control_sent, controller.packageName),
+                controller.packageName
+            )
         } catch (error: Exception) {
-            NotificationOperationResult(false, error.message ?: "媒体控制失败", controller.packageName)
+            NotificationOperationResult(false, error.message ?: getString(R.string.media_control_failed), controller.packageName)
         }
     }
 

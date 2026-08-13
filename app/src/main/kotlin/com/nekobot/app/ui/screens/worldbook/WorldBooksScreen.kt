@@ -273,7 +273,7 @@ fun WorldBooksScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        "选择一本世界书查看详情",
+                        stringResource(R.string.worldbook_select_for_details),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -334,7 +334,14 @@ private fun WorldBookItem(book: WorldBook, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
-            .listItemSemantics("世界书：${book.displayName}，${book.description ?: ""}，${book.entries?.size ?: 0} 条条目")
+            .listItemSemantics(
+                stringResource(
+                    R.string.worldbook_item_description,
+                    book.displayName,
+                    book.description.orEmpty(),
+                    book.entries?.size ?: 0
+                )
+            )
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(

@@ -1,6 +1,10 @@
 package com.nekobot.app.ui.screens.extensions
 
+import androidx.annotation.StringRes
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.nekobot.app.R
+import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.HookRequest
 
 /**
@@ -10,8 +14,8 @@ import com.nekobot.app.data.model.HookRequest
  */
 data class HookTemplate(
     val key: String,
-    val title: String,
-    val desc: String,
+    @StringRes val titleRes: Int,
+    @StringRes val descRes: Int,
     val buildRequest: () -> HookRequest
 )
 
@@ -19,105 +23,108 @@ data class HookTemplate(
 val BuiltInHookTemplates: List<HookTemplate> = listOf(
     HookTemplate(
         key = "high_affection_notice",
-        title = "高好感提示",
-        desc = "好感度达到 80 后，在聊天中显示亲近提示。",
+        titleRes = R.string.hook_template_high_affection_title,
+        descRes = R.string.hook_template_high_affection_desc,
         buildRequest = {
             HookRequest(
-                name = "高好感度提示",
+                name = ServiceContainer.getString(R.string.hook_template_high_affection_name),
                 event = "character.before_turn.finished",
                 scope = "global",
                 priority = 10,
                 triggerMode = "always",
                 conditions = JsonParser.parseString("""{"affection_gte": 80}"""),
                 actions = listOf(
-                    JsonParser.parseString(
-                        """{"type":"log","level":"info","message":"好感度超过80，角色对用户更加亲近"}"""
-                    )
+                    logAction(R.string.hook_template_affection_log)
                 )
             )
         }
     ),
     HookTemplate(
         key = "high_affection_once_notice",
-        title = "高好感首次提示",
-        desc = "每个会话第一次达到高好感时提醒一次。",
+        titleRes = R.string.hook_template_high_affection_once_title,
+        descRes = R.string.hook_template_high_affection_once_desc,
         buildRequest = {
             HookRequest(
-                name = "高好感度首次提示",
+                name = ServiceContainer.getString(R.string.hook_template_high_affection_once_name),
                 event = "character.before_turn.finished",
                 scope = "global",
                 priority = 10,
                 triggerMode = "once_per_conversation",
                 conditions = JsonParser.parseString("""{"affection_gte": 80}"""),
                 actions = listOf(
-                    JsonParser.parseString(
-                        """{"type":"log","level":"info","message":"好感度超过80，角色对用户更加亲近"}"""
-                    )
+                    logAction(R.string.hook_template_affection_log)
                 )
             )
         }
     ),
     HookTemplate(
         key = "low_energy_notice",
-        title = "低精力提醒",
-        desc = "角色精力较低时提示当前状态。",
+        titleRes = R.string.hook_template_low_energy_title,
+        descRes = R.string.hook_template_low_energy_desc,
         buildRequest = {
             HookRequest(
-                name = "低精力提醒",
+                name = ServiceContainer.getString(R.string.hook_template_low_energy_name),
                 event = "character.before_turn.finished",
                 scope = "global",
                 priority = 20,
                 triggerMode = "always",
                 conditions = JsonParser.parseString("""{"energy_lte": 30}"""),
                 actions = listOf(
-                    JsonParser.parseString(
-                        """{"type":"log","level":"info","message":"角色精力较低，回复会更疲惫或克制"}"""
-                    )
+                    logAction(R.string.hook_template_low_energy_log)
                 )
             )
         }
     ),
     HookTemplate(
         key = "relationship_gain_memory",
-        title = "关系升温记忆",
-        desc = "关系达到阈值后写入一条短期记忆。",
+        titleRes = R.string.hook_template_relationship_title,
+        descRes = R.string.hook_template_relationship_desc,
         buildRequest = {
             HookRequest(
-                name = "关系升温记忆",
+                name = ServiceContainer.getString(R.string.hook_template_relationship_name),
                 event = "character.after_turn.finished",
                 scope = "global",
                 priority = 30,
                 triggerMode = "once_per_conversation",
                 conditions = JsonParser.parseString("""{"affection_gte": 60, "trust_gte": 50}"""),
                 actions = listOf(
-                    JsonParser.parseString(
-                        """{"type":"memory_write","category":"character_persona","title":"关系升温","summary":"角色对用户的亲近感上升","content":"用户与角色的关系正在升温，角色会更自然地表达亲近。","importance":0.7}"""
-                    ),
-                    JsonParser.parseString(
-                        """{"type":"log","level":"info","message":"已记录关系升温记忆"}"""
-                    )
+                    relationshipMemoryAction(),
+                    logAction(R.string.hook_template_relationship_log)
                 )
             )
         }
     ),
     HookTemplate(
         key = "model_call_logger",
-        title = "模型调用日志",
-        desc = "模型响应完成后记录一次调试日志。",
+        titleRes = R.string.hook_template_model_log_title,
+        descRes = R.string.hook_template_model_log_desc,
         buildRequest = {
             HookRequest(
-                name = "模型调用日志",
+                name = ServiceContainer.getString(R.string.hook_template_model_log_name),
                 event = "model.after_call",
                 scope = "global",
                 priority = 100,
                 triggerMode = "always",
                 conditions = JsonParser.parseString("""{}"""),
                 actions = listOf(
-                    JsonParser.parseString(
-                        """{"type":"log","level":"info","message":"模型调用完成"}"""
-                    )
+                    logAction(R.string.hook_template_model_log)
                 )
             )
         }
     )
 )
+
+private fun logAction(@StringRes messageRes: Int) = JsonObject().apply {
+    addProperty("type", "log")
+    addProperty("level", "info")
+    addProperty("message", ServiceContainer.getString(messageRes))
+}
+
+private fun relationshipMemoryAction() = JsonObject().apply {
+    addProperty("type", "memory_write")
+    addProperty("category", "character_persona")
+    addProperty("title", ServiceContainer.getString(R.string.hook_template_relationship_memory_title))
+    addProperty("summary", ServiceContainer.getString(R.string.hook_template_relationship_memory_summary))
+    addProperty("content", ServiceContainer.getString(R.string.hook_template_relationship_memory_content))
+    addProperty("importance", 0.7)
+}

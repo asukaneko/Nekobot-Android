@@ -14,8 +14,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.R
 
 @Composable
 fun ModelPricingCatalogRefreshAction() {
@@ -42,7 +44,7 @@ fun ModelPricingCatalogRefreshAction() {
         } else {
             Icon(
                 imageVector = Icons.Filled.Refresh,
-                contentDescription = "一键更新模型价格目录"
+                contentDescription = stringResource(R.string.model_catalog_update_action)
             )
         }
     }

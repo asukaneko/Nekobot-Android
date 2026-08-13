@@ -352,16 +352,16 @@ private fun WorkflowCard(
             Text(workflow.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         workflow.nextRun?.takeIf(String::isNotBlank)?.let {
-            Text("下次运行：$it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.schedule_next_run, it), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         workflow.lastRun?.takeIf(String::isNotBlank)?.let {
-            Text("上次运行：$it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.schedule_last_run, it), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (workflow.status != "idle") {
             val executionLabel = when (workflow.status) {
-                "running" -> "执行中"
-                "success" -> "上次执行成功"
-                "failed" -> "上次执行失败"
+                "running" -> stringResource(R.string.schedule_running)
+                "success" -> stringResource(R.string.schedule_last_success)
+                "failed" -> stringResource(R.string.schedule_last_failed)
                 else -> workflow.status
             }
             Text(

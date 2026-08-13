@@ -181,7 +181,7 @@ class DiagnosticViewModel : BaseViewModel() {
     /** 根据 Trace ID 查询链路日志 */
     fun searchTrace(traceId: String) {
         if (traceId.isBlank()) {
-            _traceError.value = "请输入 Trace ID"
+            _traceError.value = string(R.string.diagnostic_enter_trace_id)
             return
         }
         _traceError.value = null
@@ -211,7 +211,7 @@ class DiagnosticViewModel : BaseViewModel() {
                     is Resource.Loading -> PingState.Idle
                 }
             } catch (e: Exception) {
-                _pingState.value = PingState.Error(e.message ?: "未知错误")
+                _pingState.value = PingState.Error(e.message ?: string(R.string.common_unknown_error))
             }
         }
     }
@@ -227,7 +227,7 @@ class DiagnosticViewModel : BaseViewModel() {
     fun clearLocalLogs() {
         LocalLogger.clear()
         _localLogs.value = emptyList()
-        showToast("日志已清空")
+        showToast(string(R.string.diagnostic_logs_cleared))
     }
 }
 
@@ -424,7 +424,7 @@ private fun SocketStateCard() {
 
         Spacer(Modifier.height(8.dp))
         Text(
-            text = serverUrl.ifBlank { "(未配置)" },
+            text = serverUrl.ifBlank { stringResource(R.string.common_not_configured_parenthesized) },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontFamily = FontFamily.Monospace

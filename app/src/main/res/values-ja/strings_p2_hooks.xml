@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hook_template_high_affection_title">高好感度のお知らせ</string>
+    <string name="hook_template_high_affection_desc">好感度が 80 に達したら、チャットに親密さの通知を表示します。</string>
+    <string name="hook_template_high_affection_name">高好感度のお知らせ</string>
+    <string name="hook_template_high_affection_once_title">初回の高好感度通知</string>
+    <string name="hook_template_high_affection_once_desc">会話ごとに初めて高好感度に達したとき、一度だけ通知します。</string>
+    <string name="hook_template_high_affection_once_name">初回の高好感度通知</string>
+    <string name="hook_template_low_energy_title">低エネルギー通知</string>
+    <string name="hook_template_low_energy_desc">キャラクターのエネルギーが低いときに現在の状態を表示します。</string>
+    <string name="hook_template_low_energy_name">低エネルギー通知</string>
+    <string name="hook_template_relationship_title">関係進展の記憶</string>
+    <string name="hook_template_relationship_desc">関係がしきい値に達したら短期記憶を書き込みます。</string>
+    <string name="hook_template_relationship_name">関係進展の記憶</string>
+    <string name="hook_template_model_log_title">モデル呼び出しログ</string>
+    <string name="hook_template_model_log_desc">モデルの応答完了後にデバッグログを記録します。</string>
+    <string name="hook_template_model_log_name">モデル呼び出しログ</string>
+    <string name="hook_template_affection_log">好感度が 80 を超え、キャラクターはユーザーをより身近に感じています</string>
+    <string name="hook_template_low_energy_log">キャラクターのエネルギーが低く、より疲れた、または控えめな返答になります</string>
+    <string name="hook_template_relationship_memory_title">関係が深まる</string>
+    <string name="hook_template_relationship_memory_summary">キャラクターのユーザーへの親近感が高まりました</string>
+    <string name="hook_template_relationship_memory_content">ユーザーとキャラクターの関係が深まり、キャラクターはより自然に親しさを表現します。</string>
+    <string name="hook_template_relationship_log">関係進展の記憶を記録しました</string>
+    <string name="hook_template_model_log">モデル呼び出しが完了しました</string>
+</resources>

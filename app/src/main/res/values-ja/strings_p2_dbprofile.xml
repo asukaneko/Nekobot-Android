@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dbprofile_zip_db_missing">ZIP 内に .db ファイルがありません</string>
+    <string name="dbprofile_unknown_file_format">ファイル形式を認識できません。.zip または .db ファイルを選択してください。</string>
+    <string name="dbprofile_read_selected_file_failed">選択したファイルを読み取れません</string>
+    <string name="dbprofile_invalid_database">バックアップ内のデータベース形式が無効です</string>
+    <string name="dbprofile_backup_password_required">このバックアップには暗号化された認証情報が含まれています。エクスポート時のパスワードを入力してください。</string>
+    <string name="dbprofile_database_open_failed">データベースを開けません（破損またはバージョン非互換の可能性）：%1$s</string>
+    <string name="dbprofile_database_too_large">データベースファイルが大きすぎます</string>
+    <string name="dbprofile_rollback_dir_failed">データベースのロールバックディレクトリを作成できません</string>
+    <string name="dbprofile_replace_old_database_failed">古いデータベースファイルを置換できません：%1$s</string>
+    <string name="dbprofile_cleanup_failed_import">失敗したデータベースインポートを消去できません：%1$s</string>
+    <string name="dbprofile_restore_portrait_dir_failed">元の立ち絵ディレクトリを復元できません</string>
+    <string name="dbprofile_create_portrait_dir_failed">立ち絵の復元ディレクトリを作成できません</string>
+    <string name="dbprofile_replace_portrait_dir_failed">古い立ち絵ディレクトリを置換できません</string>
+    <string name="dbprofile_save_portrait_failed">復元した立ち絵を保存できません</string>
+    <string name="dbprofile_export_location_required">この Android バージョンではエクスポート先を選択してください</string>
+    <string name="dbprofile_open_download_failed">ダウンロードファイルを開けません</string>
+    <string name="dbprofile_open_export_failed">エクスポートファイルを開けません</string>
+</resources>

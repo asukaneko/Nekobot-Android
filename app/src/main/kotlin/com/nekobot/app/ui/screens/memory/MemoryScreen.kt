@@ -140,7 +140,9 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
     private fun buildLocalMemoryFsFiles(memories: List<LegacyMemory>): List<MemoryFile> {
         if (memories.isEmpty()) return emptyList()
         // 第一层：按角色分组（characterName 可能为空，统一归到 "未知角色"）
-        val byCharacter = memories.groupBy { it.characterName.ifBlank { "未知角色" } }
+        val byCharacter = memories.groupBy {
+            it.characterName.ifBlank { string(R.string.memory_unknown_character) }
+        }
         val result = mutableListOf<MemoryFile>()
         for ((charName, charMems) in byCharacter) {
             // 第二层：按 category 分组

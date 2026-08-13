@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hook_template_high_affection_title">높은 호감도 알림</string>
+    <string name="hook_template_high_affection_desc">호감도가 80에 도달하면 채팅에 친밀도 알림을 표시합니다.</string>
+    <string name="hook_template_high_affection_name">높은 호감도 알림</string>
+    <string name="hook_template_high_affection_once_title">첫 높은 호감도 알림</string>
+    <string name="hook_template_high_affection_once_desc">대화마다 처음 높은 호감도에 도달할 때 한 번 알립니다.</string>
+    <string name="hook_template_high_affection_once_name">첫 높은 호감도 알림</string>
+    <string name="hook_template_low_energy_title">낮은 에너지 알림</string>
+    <string name="hook_template_low_energy_desc">캐릭터 에너지가 낮을 때 현재 상태를 표시합니다.</string>
+    <string name="hook_template_low_energy_name">낮은 에너지 알림</string>
+    <string name="hook_template_relationship_title">관계 발전 기억</string>
+    <string name="hook_template_relationship_desc">관계가 기준에 도달하면 단기 기억을 기록합니다.</string>
+    <string name="hook_template_relationship_name">관계 발전 기억</string>
+    <string name="hook_template_model_log_title">모델 호출 로그</string>
+    <string name="hook_template_model_log_desc">모델 응답이 끝나면 디버그 로그를 기록합니다.</string>
+    <string name="hook_template_model_log_name">모델 호출 로그</string>
+    <string name="hook_template_affection_log">호감도가 80을 넘어 캐릭터가 사용자를 더 가깝게 느낍니다</string>
+    <string name="hook_template_low_energy_log">캐릭터 에너지가 낮아 더 피곤하거나 절제된 답변을 합니다</string>
+    <string name="hook_template_relationship_memory_title">관계가 가까워짐</string>
+    <string name="hook_template_relationship_memory_summary">캐릭터가 사용자를 더 가깝게 느낍니다</string>
+    <string name="hook_template_relationship_memory_content">사용자와 캐릭터의 관계가 가까워지고 있으며 캐릭터가 친밀감을 더 자연스럽게 표현합니다.</string>
+    <string name="hook_template_relationship_log">관계 발전 기억을 기록했습니다</string>
+    <string name="hook_template_model_log">모델 호출 완료</string>
+</resources>

@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -42,6 +43,7 @@ import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nekobot.app.R
 import com.nekobot.app.data.model.KnowledgeSearchResult
 import com.nekobot.app.ui.components.GlassCard
 
@@ -245,7 +247,7 @@ private fun CitationDetailSheet(
                 }
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = citation.title ?: "未命名文档",
+                    text = citation.title ?: stringResource(R.string.citation_unnamed_document),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold,
@@ -264,25 +266,25 @@ private fun CitationDetailSheet(
 
                     // 段落位置
                     DetailRow(
-                        label = "段落位置",
-                        value = citation.chunkIndex?.let { "第${it + 1}段" } ?: "—"
+                        label = stringResource(R.string.citation_chunk_position),
+                        value = citation.chunkIndex?.let { stringResource(R.string.citation_chunk_number, it + 1) } ?: "—"
                     )
 
                     // 相关性得分
                     DetailRow(
-                        label = "相关性得分",
+                        label = stringResource(R.string.citation_relevance_score),
                         value = citation.score?.let { "%.4f".format(it) } ?: "—"
                     )
 
                     // 语义 / 词法 / 重排得分明细
                     citation.semanticScore?.let {
-                        DetailRow(label = "语义得分", value = "%.4f".format(it))
+                        DetailRow(label = stringResource(R.string.citation_semantic_score), value = "%.4f".format(it))
                     }
                     citation.lexicalScore?.let {
-                        DetailRow(label = "词法得分", value = "%.4f".format(it))
+                        DetailRow(label = stringResource(R.string.citation_lexical_score), value = "%.4f".format(it))
                     }
                     citation.rerankScore?.let {
-                        DetailRow(label = "重排得分", value = "%.4f".format(it))
+                        DetailRow(label = stringResource(R.string.citation_rerank_score), value = "%.4f".format(it))
                     }
                 }
             }
@@ -295,7 +297,7 @@ private fun CitationDetailSheet(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                 ) {
                     Text(
-                        text = "内容预览",
+                        text = stringResource(R.string.citation_content_preview),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -337,7 +339,7 @@ private fun DetailRow(label: String, value: String) {
 private fun SourceRow(source: String?, context: android.content.Context) {
     Row(modifier = Modifier.fillMaxWidth()) {
         Text(
-            text = "来源",
+            text = stringResource(R.string.citation_source),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.width(80.dp)

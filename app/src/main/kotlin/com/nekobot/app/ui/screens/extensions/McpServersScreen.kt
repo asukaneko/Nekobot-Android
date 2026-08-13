@@ -60,6 +60,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
 import com.nekobot.app.R
+import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.McpServer
 import com.nekobot.app.data.model.McpServerRequest
 import com.nekobot.app.ui.BaseViewModel
@@ -887,10 +888,10 @@ private fun String.toHeaderObject(): JsonObject? {
         val trimmed = line.trim()
         if (trimmed.isEmpty()) return@forEach
         val separator = trimmed.indexOf(':')
-        require(separator > 0) { "HTTP 请求头格式错误" }
+        require(separator > 0) { ServiceContainer.getString(R.string.mcp_http_headers_invalid) }
         val name = trimmed.substring(0, separator).trim()
         val value = trimmed.substring(separator + 1).trim()
-        require(name.isNotEmpty()) { "HTTP 请求头名称不能为空" }
+        require(name.isNotEmpty()) { ServiceContainer.getString(R.string.mcp_http_header_name_empty) }
         headers.addProperty(name, value)
     }
     return headers.takeIf { it.size() > 0 }

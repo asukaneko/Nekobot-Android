@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dbprofile_zip_db_missing">ZIP에 .db 파일이 없습니다</string>
+    <string name="dbprofile_unknown_file_format">파일 형식을 인식할 수 없습니다. .zip 또는 .db 파일을 선택하세요.</string>
+    <string name="dbprofile_read_selected_file_failed">선택한 파일을 읽을 수 없습니다</string>
+    <string name="dbprofile_invalid_database">백업의 데이터베이스 형식이 잘못되었습니다</string>
+    <string name="dbprofile_backup_password_required">이 백업에는 암호화된 자격 증명이 있습니다. 내보낼 때 사용한 비밀번호를 입력하세요.</string>
+    <string name="dbprofile_database_open_failed">데이터베이스를 열 수 없습니다(손상 또는 버전 비호환 가능): %1$s</string>
+    <string name="dbprofile_database_too_large">데이터베이스 파일이 너무 큽니다</string>
+    <string name="dbprofile_rollback_dir_failed">데이터베이스 롤백 디렉터리를 만들 수 없습니다</string>
+    <string name="dbprofile_replace_old_database_failed">이전 데이터베이스 파일을 바꿀 수 없습니다: %1$s</string>
+    <string name="dbprofile_cleanup_failed_import">실패한 데이터베이스 가져오기를 정리할 수 없습니다: %1$s</string>
+    <string name="dbprofile_restore_portrait_dir_failed">원래 캐릭터 이미지 디렉터리를 복원할 수 없습니다</string>
+    <string name="dbprofile_create_portrait_dir_failed">캐릭터 이미지 복원 디렉터리를 만들 수 없습니다</string>
+    <string name="dbprofile_replace_portrait_dir_failed">이전 캐릭터 이미지 디렉터리를 바꿀 수 없습니다</string>
+    <string name="dbprofile_save_portrait_failed">복원한 캐릭터 이미지를 저장할 수 없습니다</string>
+    <string name="dbprofile_export_location_required">현재 Android 버전에서는 내보낼 위치를 선택해야 합니다</string>
+    <string name="dbprofile_open_download_failed">다운로드 파일을 열 수 없습니다</string>
+    <string name="dbprofile_open_export_failed">내보내기 파일을 열 수 없습니다</string>
+</resources>

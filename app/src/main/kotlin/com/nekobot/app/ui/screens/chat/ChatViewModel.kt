@@ -347,7 +347,8 @@ class ChatViewModel : BaseViewModel() {
         val status = if (card.isComplete) "done" else "active"
         val enrichedStep = if (thinkingIndex >= 0) {
             steps[thinkingIndex].copy(
-                name = steps[thinkingIndex].name?.takeIf(String::isNotBlank) ?: "AI 正在思考...",
+                name = steps[thinkingIndex].name?.takeIf(String::isNotBlank)
+                    ?: string(R.string.chat_thinking),
                 status = steps[thinkingIndex].status?.takeIf(String::isNotBlank) ?: status,
                 detail = reasoning.takeLast(160),
                 thinkingContent = reasoning
@@ -355,7 +356,7 @@ class ChatViewModel : BaseViewModel() {
         } else {
             ThinkingStep(
                 type = "thinking",
-                name = "AI 正在思考...",
+                name = string(R.string.chat_thinking),
                 status = status,
                 detail = reasoning.takeLast(160),
                 thinkingContent = reasoning
@@ -603,7 +604,10 @@ class ChatViewModel : BaseViewModel() {
                 val now = System.currentTimeMillis()
                 if (now - lastStreamUiUpdateMs >= streamThrottleMs) {
                     lastStreamUiUpdateMs = now
-                    runtime.streamingContentPreview.value = buildStreamingDisplayPreview(streamingContent)
+                    runtime.streamingContentPreview.value = buildStreamingDisplayPreview(
+                        streamingContent,
+                        omittedPrefix = string(R.string.chat_stream_prefix_omitted)
+                    )
                 }
             }
             is RealtimeEvent.ReasoningChunk -> {
@@ -616,7 +620,10 @@ class ChatViewModel : BaseViewModel() {
                 val now = System.currentTimeMillis()
                 if (now - lastStreamUiUpdateMs >= streamThrottleMs) {
                     lastStreamUiUpdateMs = now
-                    runtime.streamingReasoningPreview.value = buildStreamingDisplayPreview(streamingReasoning)
+                    runtime.streamingReasoningPreview.value = buildStreamingDisplayPreview(
+                        streamingReasoning,
+                        omittedPrefix = string(R.string.chat_stream_prefix_omitted)
+                    )
                 }
             }
             is RealtimeEvent.StreamEnd -> {
@@ -1277,7 +1284,7 @@ class ChatViewModel : BaseViewModel() {
                     ) {
                         is Resource.Success -> result.data.cacheUri
                         is Resource.Error -> throw IllegalStateException(result.message)
-                        is Resource.Loading -> throw IllegalStateException("TTS 合成未完成")
+                        is Resource.Loading -> throw IllegalStateException(string(R.string.tts_synthesis_incomplete))
                     }
                 } else {
                     when (
@@ -1295,12 +1302,12 @@ class ChatViewModel : BaseViewModel() {
                         is Resource.Success -> {
                             val response = result.data
                             if (response.success != true || response.audioUrl.isNullOrBlank()) {
-                                throw IllegalStateException(response.message ?: "TTS 服务未返回音频")
+                                throw IllegalStateException(response.message ?: string(R.string.tts_no_audio_returned))
                             }
                             response.audioUrl
                         }
                         is Resource.Error -> throw IllegalStateException(result.message)
-                        is Resource.Loading -> throw IllegalStateException("TTS 合成未完成")
+                        is Resource.Loading -> throw IllegalStateException(string(R.string.tts_synthesis_incomplete))
                     }
                 }
 
@@ -1322,7 +1329,7 @@ class ChatViewModel : BaseViewModel() {
                     messageId,
                     MessageTtsUiState(
                         status = MessageTtsStatus.Error,
-                        error = e.message ?: "TTS 合成失败"
+                        error = e.message ?: string(R.string.tts_synthesis_failed)
                     )
                 )
             }
@@ -1351,7 +1358,7 @@ class ChatViewModel : BaseViewModel() {
                 updateTtsState(
                     target,
                     messageId,
-                    MessageTtsUiState(MessageTtsStatus.Error, "当前会话未开启 TTS")
+                    MessageTtsUiState(MessageTtsStatus.Error, string(R.string.tts_session_disabled))
                 )
                 return@launch
             }
@@ -1386,7 +1393,7 @@ class ChatViewModel : BaseViewModel() {
         if (recovery.canContinueFromCheckpoint) {
             _messages.value = _messages.value + Message(
                 role = "user",
-                content = "继续",
+                content = string(R.string.common_continue),
                 timestamp = System.currentTimeMillis().toString()
             )
         }
@@ -1669,7 +1676,7 @@ class ChatViewModel : BaseViewModel() {
                 )
                 val notif = androidx.core.app.NotificationCompat.Builder(ctx, channelId)
                     .setSmallIcon(android.R.drawable.stat_notify_error)
-                    .setContentTitle("[$sessionName] 生成失败")
+                    .setContentTitle(string(R.string.chat_generation_failed_notification, sessionName))
                     .setContentText(errorMessage.take(200))
                     .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(errorMessage.take(500)))
                     .setContentIntent(pendingIntent)

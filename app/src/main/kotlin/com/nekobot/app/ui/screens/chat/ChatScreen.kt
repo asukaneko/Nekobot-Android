@@ -2198,7 +2198,7 @@ private fun SafePlainMessageText(
                 onClick = { visibleChars = (visibleChars + pageSize).coerceAtMost(text.length) },
                 modifier = Modifier.align(Alignment.End)
             ) {
-                Text("继续显示（剩余 ${text.length - visibleChars} 字符）")
+                Text(stringResource(R.string.chat_continue_remaining, text.length - visibleChars))
             }
         }
     }
@@ -2338,7 +2338,8 @@ private fun MessageBubble(
                             )
                             Spacer(Modifier.width(7.dp))
                             Text(
-                                text = if (isStreamingPlaceholder) "正在思考…" else "思考过程",
+                                text = if (isStreamingPlaceholder) stringResource(R.string.chat_thinking)
+                                else stringResource(R.string.chat_reasoning_process),
                                 modifier = Modifier.weight(1f),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -2346,7 +2347,8 @@ private fun MessageBubble(
                             )
                             Icon(
                                 imageVector = if (reasoningExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                                contentDescription = if (reasoningExpanded) "折叠" else "展开",
+                                contentDescription = if (reasoningExpanded) stringResource(R.string.common_collapse)
+                                else stringResource(R.string.common_expand),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
                                 modifier = Modifier.size(18.dp)
                             )
@@ -2729,7 +2731,7 @@ private fun ProgressCard(
             }
             Spacer(Modifier.width(10.dp))
             Text(
-                text = card.content.stripEmoji().ifBlank { "AI 正在处理..." },
+                text = card.content.stripEmoji().ifBlank { stringResource(R.string.chat_ai_processing) },
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -2827,7 +2829,8 @@ private fun ProgressStepRow(
         else -> Icons.Filled.Circle
     }
     val iconSize = if (step.type?.lowercase() == "done") 14.dp else 16.dp
-    val name = step.name?.stripEmoji()?.takeIf { it.isNotBlank() } ?: "步骤"
+    val name = step.name?.stripEmoji()?.takeIf { it.isNotBlank() }
+        ?: stringResource(R.string.chat_step)
     val detail = step.detail?.stripEmoji()?.takeIf { it.isNotBlank() }
     val isStreamingThinking = step.type.equals("thinking", ignoreCase = true) &&
         (step.status.equals("running", ignoreCase = true) ||
@@ -2933,7 +2936,8 @@ private fun StepDetailDialog(
     step: com.nekobot.app.data.model.ThinkingStep,
     onDismiss: () -> Unit
 ) {
-    val name = step.name?.stripEmoji()?.takeIf { it.isNotBlank() } ?: "步骤详情"
+    val name = step.name?.stripEmoji()?.takeIf { it.isNotBlank() }
+        ?: stringResource(R.string.chat_step_details)
     val detail = step.detail?.stripEmoji()?.takeIf { it.isNotBlank() }
     val rawThinkingContent = step.thinkingContent?.takeIf(String::isNotBlank)
     val thinkingWasTruncated = rawThinkingContent?.length?.let { it > 20_000 } == true
@@ -2962,7 +2966,7 @@ private fun StepDetailDialog(
         ) {
             if (!hasAny) {
                 Text(
-                    text = "该步骤没有详细信息",
+                    text = stringResource(R.string.chat_step_no_details),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -2970,16 +2974,16 @@ private fun StepDetailDialog(
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (!detail.isNullOrBlank()) {
                         StepDetailSection(
-                            label = "描述",
+                            label = stringResource(R.string.chat_step_description),
                             content = detail
                         )
                     }
                     if (!thinkingContent.isNullOrBlank()) {
                         StepDetailSection(
                             label = if (thinkingWasTruncated) {
-                                "AI 思考过程（内容过长，显示最近 20000 字符）"
+                                stringResource(R.string.chat_ai_reasoning_truncated)
                             } else {
-                                "AI 思考过程"
+                                stringResource(R.string.chat_ai_reasoning)
                             },
                             icon = Icons.Filled.Psychology,
                             content = thinkingContent,
@@ -2988,7 +2992,7 @@ private fun StepDetailDialog(
                     }
                     if (!argumentsJson.isNullOrBlank()) {
                         StepDetailSection(
-                            label = "参数 (Arguments)",
+                            label = stringResource(R.string.chat_step_arguments),
                             icon = Icons.Filled.Key,
                             content = argumentsJson,
                             isCode = true
@@ -2996,7 +3000,7 @@ private fun StepDetailDialog(
                     }
                     if (!fullResultJson.isNullOrBlank()) {
                         StepDetailSection(
-                            label = "返回结果 (Result)",
+                            label = stringResource(R.string.chat_step_result),
                             icon = Icons.Filled.CheckCircle,
                             content = fullResultJson,
                             isCode = true
@@ -3727,10 +3731,11 @@ internal fun shouldShowChatInput(
  */
 internal fun buildStreamingDisplayPreview(
     content: CharSequence,
-    maxChars: Int = 16_000
+    maxChars: Int = 16_000,
+    omittedPrefix: String = "…\n"
 ): String {
     if (content.length <= maxChars) return content.toString()
-    return "…前文仍在生成并会完整保存\n" +
+    return omittedPrefix +
         content.subSequence(content.length - maxChars, content.length).toString()
 }
 
@@ -3912,7 +3917,7 @@ internal fun AgentRecoveryBar(
     val detail = when {
         state.mayHaveUncommittedToolEffect -> stringResource(
             R.string.chat_agent_run_tool_uncertain,
-            state.lastToolName ?: "工具"
+            state.lastToolName ?: stringResource(R.string.chat_tool)
         )
         state.canContinueFromCheckpoint -> stringResource(
             R.string.chat_agent_run_checkpoint_detail,
@@ -4500,7 +4505,7 @@ private fun TtsGenerationBar(
                 }
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    "语音生成中…",
+                    stringResource(R.string.audio_generating),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f)
@@ -4515,7 +4520,7 @@ private fun TtsGenerationBar(
                 Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "语音生成失败",
+                        stringResource(R.string.audio_generation_failed),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -4532,7 +4537,7 @@ private fun TtsGenerationBar(
                 IconButton(onClick = onRetry, modifier = Modifier.size(36.dp)) {
                     Icon(
                         Icons.Filled.Refresh,
-                        contentDescription = "重新生成语音",
+                        contentDescription = stringResource(R.string.audio_regenerate),
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(18.dp)
                     )

@@ -133,15 +133,16 @@ class KnowledgeViewModel : BaseViewModel() {
                         null
                     )?.use { cursor ->
                         if (cursor.moveToFirst()) cursor.getString(0) else null
-                    } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "导入文档"
+                    } ?: uri.lastPathSegment?.substringAfterLast('/')
+                        ?: string(R.string.knowledge_import_document)
                     val data = contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                        ?: error("无法读取所选文件")
+                        ?: error(string(R.string.knowledge_read_file_failed))
                     Triple(displayName, contentResolver.getType(uri), data)
                 }
                 unified.importKnowledge(name, mimeType, bytes)
             },
             onSuccess = {
-                showToast("文档已导入并建立索引")
+                showToast(string(R.string.knowledge_import_indexed))
                 load()
             }
         )
@@ -452,7 +453,13 @@ private fun KnowledgeCard(
             .then(
                 if (onClick != null) Modifier.clickable { onClick() } else Modifier
             )
-            .listItemSemantics("文档：${doc.displayName}，来源：${doc.source ?: "未知"}")
+            .listItemSemantics(
+                stringResource(
+                    R.string.knowledge_document_description,
+                    doc.displayName,
+                    doc.source ?: stringResource(R.string.common_unknown)
+                )
+            )
     ) {
         // 顶部行：标题 + 操作菜单
         Row(

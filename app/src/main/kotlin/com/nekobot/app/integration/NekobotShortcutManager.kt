@@ -33,7 +33,7 @@ object NekobotShortcutManager {
                 ?: session.displayName
             ShortcutInfoCompat.Builder(context, "chat_$id")
                 .setShortLabel(label.take(18))
-                .setLongLabel("打开会话：$label")
+                .setLongLabel(context.getString(R.string.shortcut_open_session, label))
                 .setRank(index)
                 .setIcon(IconCompat.createWithResource(context, R.mipmap.ic_launcher))
                 .setIntent(

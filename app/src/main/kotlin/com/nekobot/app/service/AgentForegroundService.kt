@@ -91,10 +91,10 @@ class AgentForegroundService : Service() {
         manager.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_ID,
-                "Agent 后台执行",
+                getString(R.string.agent_foreground_channel),
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "保持 Agent、浏览器和 Linux 沙盒任务继续运行"
+                description = getString(R.string.agent_foreground_channel_description)
                 setShowBadge(false)
             }
         )
@@ -126,15 +126,16 @@ class AgentForegroundService : Service() {
             Notification.Builder(this)
         }
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("Agent 正在运行")
-            .setContentText("正在执行 ${activeSessions.size.coerceAtLeast(1)} 个会话任务")
+            .setContentTitle(getString(R.string.agent_foreground_title))
+            .setContentText(getString(R.string.agent_foreground_task_count, activeSessions.size.coerceAtLeast(1)))
             .setContentIntent(openIntent)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .addAction(
                 Notification.Action.Builder(
                     null,
-                    if (onlySessionId != null) "停止此任务" else "停止全部",
+                    if (onlySessionId != null) getString(R.string.agent_foreground_stop_task)
+                    else getString(R.string.agent_foreground_stop_all),
                     stopIntent
                 ).build()
             )

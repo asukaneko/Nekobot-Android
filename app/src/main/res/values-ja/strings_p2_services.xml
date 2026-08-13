@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_element_not_found">一致する画面要素が見つかりません</string>
+    <string name="accessibility_element_not_clickable">一致した要素はクリックできません</string>
+    <string name="accessibility_click_requested">画面要素のクリックを要求しました</string>
+    <string name="accessibility_input_not_found">一致する入力欄が見つかりません</string>
+    <string name="accessibility_input_not_editable">一致した要素は編集可能な入力欄ではありません</string>
+    <string name="accessibility_input_requested">入力欄への書き込みを要求しました</string>
+    <string name="accessibility_no_scrollable_area">現在の画面にスクロール可能な領域がありません</string>
+    <string name="accessibility_scroll_directions">direction は up/down/forward/backward/left/right のみ対応します</string>
+    <string name="accessibility_scroll_requested">画面のスクロールを要求しました</string>
+    <string name="accessibility_global_actions">action は back/home/recents/notifications/quick_settings のみ対応します</string>
+    <string name="accessibility_global_action_requested">システムのグローバル操作を要求しました</string>
+    <string name="accessibility_screenshot_api_required">アクセシビリティのスクリーンショットには Android 11 以降が必要です</string>
+    <string name="accessibility_screenshot_buffer_failed">スクリーンショットのバッファーを読み取れません</string>
+    <string name="accessibility_screenshot_saved">スクリーンショットを保存しました</string>
+    <string name="accessibility_screenshot_failed">システムのスクリーンショットに失敗しました。エラーコード %1$d</string>
+    <string name="accessibility_screenshot_timeout">システムのスクリーンショット待機がタイムアウトしました</string>
+    <string name="accessibility_screenshot_no_result">システムからスクリーンショット結果が返されませんでした</string>
+    <string name="notification_not_found">指定した通知が見つかりません</string>
+    <string name="notification_no_open_content">この通知には開ける内容がありません</string>
+    <string name="notification_opened">通知を開きました</string>
+    <string name="notification_not_clearable">この通知は消去できません</string>
+    <string name="notification_dismissed">通知を消去しました</string>
+    <string name="notification_action_index_invalid">action_index が通知アクションの範囲外です</string>
+    <string name="notification_action_executed">通知アクションを実行しました：%1$s</string>
+    <string name="notification_supported_actions">action は open/dismiss/action のみ対応します</string>
+    <string name="notification_operation_failed">通知操作に失敗しました</string>
+    <string name="media_session_not_found">アクティブなメディアセッションが見つかりません</string>
+    <string name="media_supported_actions">action は play/pause/toggle/next/previous/stop のみ対応します</string>
+    <string name="media_control_sent">%1$s にメディア操作を送信しました</string>
+    <string name="media_control_failed">メディア操作に失敗しました</string>
+    <string name="notification_reply_no_local_model">使用可能なローカルチャットモデルが設定されていません</string>
+    <string name="notification_reply_sent">メッセージを送信しました</string>
+    <string name="notification_reply_failed">クイック返信に失敗しました</string>
+    <string name="notification_reply_retry">アプリを開いて再試行してください</string>
+    <string name="agent_foreground_channel">Agent バックグラウンド実行</string>
+    <string name="agent_foreground_channel_description">Agent、ブラウザー、Linux サンドボックスのタスクを継続します</string>
+    <string name="agent_foreground_title">Agent を実行中</string>
+    <string name="agent_foreground_task_count">%1$d 件の会話タスクを実行中</string>
+    <string name="agent_foreground_stop_task">このタスクを停止</string>
+    <string name="agent_foreground_stop_all">すべて停止</string>
+    <string name="shortcut_open_session">会話を開く：%1$s</string>
+    <string name="incoming_share_too_large">共有添付ファイルが 25 MB を超えています</string>
+</resources>

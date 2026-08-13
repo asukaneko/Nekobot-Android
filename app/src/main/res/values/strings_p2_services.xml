@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_element_not_found">未找到匹配的界面元素</string>
+    <string name="accessibility_element_not_clickable">匹配元素不可点击</string>
+    <string name="accessibility_click_requested">已请求点击界面元素</string>
+    <string name="accessibility_input_not_found">未找到匹配的输入框</string>
+    <string name="accessibility_input_not_editable">匹配元素不是可编辑输入框</string>
+    <string name="accessibility_input_requested">已请求写入输入框</string>
+    <string name="accessibility_no_scrollable_area">当前界面没有可滚动区域</string>
+    <string name="accessibility_scroll_directions">direction 仅支持 up/down/forward/backward/left/right</string>
+    <string name="accessibility_scroll_requested">已请求滚动界面</string>
+    <string name="accessibility_global_actions">action 仅支持 back/home/recents/notifications/quick_settings</string>
+    <string name="accessibility_global_action_requested">已请求系统全局动作</string>
+    <string name="accessibility_screenshot_api_required">Android 11 及以上才支持辅助功能截图</string>
+    <string name="accessibility_screenshot_buffer_failed">无法读取截图缓冲区</string>
+    <string name="accessibility_screenshot_saved">截图已保存</string>
+    <string name="accessibility_screenshot_failed">系统截图失败，错误码 %1$d</string>
+    <string name="accessibility_screenshot_timeout">等待系统截图超时</string>
+    <string name="accessibility_screenshot_no_result">系统未返回截图结果</string>
+
+    <string name="notification_not_found">未找到指定通知</string>
+    <string name="notification_no_open_content">该通知没有可打开的内容</string>
+    <string name="notification_opened">已打开通知</string>
+    <string name="notification_not_clearable">该通知不可清除</string>
+    <string name="notification_dismissed">已清除通知</string>
+    <string name="notification_action_index_invalid">action_index 超出通知动作范围</string>
+    <string name="notification_action_executed">已执行通知动作：%1$s</string>
+    <string name="notification_supported_actions">action 仅支持 open/dismiss/action</string>
+    <string name="notification_operation_failed">通知操作失败</string>
+    <string name="media_session_not_found">没有找到活动媒体会话</string>
+    <string name="media_supported_actions">action 仅支持 play/pause/toggle/next/previous/stop</string>
+    <string name="media_control_sent">已向 %1$s 发送媒体控制</string>
+    <string name="media_control_failed">媒体控制失败</string>
+
+    <string name="notification_reply_no_local_model">未配置可用的本地聊天模型</string>
+    <string name="notification_reply_sent">消息已发送</string>
+    <string name="notification_reply_failed">快捷回复失败</string>
+    <string name="notification_reply_retry">请打开应用重试</string>
+    <string name="agent_foreground_channel">Agent 后台执行</string>
+    <string name="agent_foreground_channel_description">保持 Agent、浏览器和 Linux 沙盒任务继续运行</string>
+    <string name="agent_foreground_title">Agent 正在运行</string>
+    <string name="agent_foreground_task_count">正在执行 %1$d 个会话任务</string>
+    <string name="agent_foreground_stop_task">停止此任务</string>
+    <string name="agent_foreground_stop_all">停止全部</string>
+    <string name="shortcut_open_session">打开会话：%1$s</string>
+    <string name="incoming_share_too_large">分享附件超过 25 MB</string>
+</resources>
