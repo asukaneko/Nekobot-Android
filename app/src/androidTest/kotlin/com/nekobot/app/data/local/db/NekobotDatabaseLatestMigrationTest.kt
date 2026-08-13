@@ -1,0 +1,97 @@
+package com.nekobot.app.data.local.db
+
+import android.content.Context
+import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.db.SupportSQLiteOpenHelper
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class NekobotDatabaseLatestMigrationTest {
+    private val context: Context = ApplicationProvider.getApplicationContext()
+
+    @Before
+    @After
+    fun cleanDatabase() {
+        context.deleteDatabase(TEST_DB)
+    }
+
+    @Test
+    fun migration30To31_preservesRowsAndAddsRoutingSchema() {
+        open(version = 30, onCreate = { db ->
+            db.execSQL(
+                "CREATE TABLE local_knowledge_chunks " +
+                    "(id TEXT NOT NULL PRIMARY KEY, content TEXT NOT NULL)"
+            )
+            db.execSQL(
+                "CREATE TABLE local_messages " +
+                    "(id TEXT NOT NULL PRIMARY KEY, content TEXT)"
+            )
+            db.execSQL(
+                "INSERT INTO local_knowledge_chunks(id, content) VALUES ('chunk-1', '正文')"
+            )
+            db.execSQL(
+                "INSERT INTO local_messages(id, content) VALUES ('message-1', '回复')"
+            )
+        }).close()
+
+        val migrated = open(
+            version = 31,
+            onUpgrade = { db, oldVersion, newVersion ->
+                assertEquals(30, oldVersion)
+                assertEquals(31, newVersion)
+                NekobotDatabase.MIGRATION_30_31.migrate(db)
+            }
+        )
+        val db = migrated.writableDatabase
+
+        assertTrue(columnNames(db, "local_knowledge_chunks").containsAll(listOf("char_offset", "char_end")))
+        assertTrue(columnNames(db, "local_messages").containsAll(listOf("knowledge_citations", "routing_decision_id")))
+        assertTrue(tableExists(db, "routing_decision_logs"))
+        db.query("SELECT content FROM local_messages WHERE id = 'message-1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("回复", cursor.getString(0))
+        }
+        migrated.close()
+    }
+
+    private fun open(
+        version: Int,
+        onCreate: (SupportSQLiteDatabase) -> Unit = {},
+        onUpgrade: (SupportSQLiteDatabase, Int, Int) -> Unit = { _, _, _ -> }
+    ): SupportSQLiteOpenHelper = FrameworkSQLiteOpenHelperFactory().create(
+        SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(TEST_DB)
+            .callback(object : SupportSQLiteOpenHelper.Callback(version) {
+                override fun onCreate(db: SupportSQLiteDatabase) = onCreate(db)
+                override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) =
+                    onUpgrade(db, oldVersion, newVersion)
+            })
+            .build()
+    ).also { it.writableDatabase }
+
+    private fun columnNames(db: SupportSQLiteDatabase, table: String): Set<String> =
+        db.query("PRAGMA table_info(`$table`)").use { cursor ->
+            val nameIndex = cursor.getColumnIndexOrThrow("name")
+            buildSet {
+                while (cursor.moveToNext()) add(cursor.getString(nameIndex))
+            }
+        }
+
+    private fun tableExists(db: SupportSQLiteDatabase, table: String): Boolean =
+        db.query(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            arrayOf(table)
+        ).use { it.moveToFirst() }
+
+    private companion object {
+        const val TEST_DB = "migration-30-31-test.db"
+    }
+}

@@ -41,7 +41,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RoutingDecisionLogEntity::class
     ],
     version = 31,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class NekobotDatabase : RoomDatabase() {
     abstract fun sessionDao(): SessionDao
@@ -698,6 +698,21 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * 完整迁移链同时供生产数据库构建和迁移回归测试使用。
+         * 新版本必须把迁移追加到这里；缺少迁移时直接失败，绝不静默清空用户数据。
+         */
+        internal val ALL_MIGRATIONS: Array<Migration> = arrayOf(
+            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
+            MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
+            MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
+            MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17,
+            MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21,
+            MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25,
+            MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29,
+            MIGRATION_29_30, MIGRATION_30_31
+        )
+
         fun get(context: Context): NekobotDatabase =
             get(context, com.nekobot.app.data.local.PrefsManager.DEFAULT_DB_NAME)
 
@@ -710,9 +725,7 @@ abstract class NekobotDatabase : RoomDatabase() {
                 NekobotDatabase::class.java,
                 dbName
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31)
-                // 仅当迁移脚本未覆盖的未来版本变更时才回退到破坏性迁移（保护现有数据）
-                .fallbackToDestructiveMigration()
+                .addMigrations(*ALL_MIGRATIONS)
                 .build()
                 .also {
                     it.dbName = dbName

@@ -15,6 +15,7 @@ android {
         targetSdk = 35
         versionCode = 33
         versionName = "0.4.10"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             // 内置 Linux 沙盒当前使用 arm64 PRoot。
             abiFilters += "arm64-v8a"
@@ -68,6 +69,11 @@ android {
     }
 }
 
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+    arg("room.incremental", "true")
+}
+
 dependencies {
     testImplementation("junit:junit:4.13.2")
     implementation(libs.androidx.core.ktx)
@@ -100,5 +106,11 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     ksp(libs.androidx.room.compiler)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.room.testing)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
+    debugImplementation(libs.androidx.ui.test.manifest)
 }
