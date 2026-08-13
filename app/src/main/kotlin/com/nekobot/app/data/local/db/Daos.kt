@@ -95,6 +95,13 @@ interface MessageDao {
     @Query("SELECT * FROM local_messages WHERE session_id = :sessionId ORDER BY created_at ASC")
     suspend fun listBySession(sessionId: String): List<LocalMessageEntity>
 
+    @Query(
+        "SELECT * FROM local_messages " +
+            "WHERE content LIKE '%' || :query || '%' OR reasoning_content LIKE '%' || :query || '%' " +
+            "ORDER BY created_at DESC LIMIT :limit"
+    )
+    suspend fun searchContent(query: String, limit: Int): List<LocalMessageEntity>
+
     @Query("SELECT * FROM local_messages WHERE session_id = :sessionId ORDER BY created_at ASC")
     fun observeBySession(sessionId: String): Flow<List<LocalMessageEntity>>
 

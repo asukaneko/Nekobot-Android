@@ -1506,6 +1506,13 @@ class LocalRepository(
         messageDao.listBySession(sessionId).map { it.toMessage() }
     }
 
+    /** 全局搜索使用的本地消息全文匹配；限制结果数，避免把完整历史载入 UI。 */
+    suspend fun searchMessages(query: String, limit: Int = 60): List<Message> = withContext(Dispatchers.IO) {
+        val normalized = query.trim()
+        if (normalized.isBlank()) emptyList()
+        else messageDao.searchContent(normalized, limit.coerceIn(1, 200)).map { it.toMessage() }
+    }
+
     /** 仅供 AI 调用链读取；命令输入和命令结果继续保留在聊天记录中。 */
     private suspend fun listAiContextMessages(sessionId: String): List<LocalMessageEntity> =
         messageDao.listBySession(sessionId)
@@ -6829,7 +6836,8 @@ $charSection$topicSection
         createdAt = createdAt,
         // UI 历史只加载有界进度卡。完整工具历史仅供 AI 上下文路径读取，绝不能塞进聊天状态。
         thinkingCards = decodeThinkingCardsForUi(id, thinkingCards, gson),
-        toolCallHistory = null
+        toolCallHistory = null,
+        sessionId = sessionId
     )
 
     /** 持久化指定用户消息关联的进度卡片列表（agent 模式）。 */

@@ -25,6 +25,9 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -82,6 +85,13 @@ fun MoreScreen(
         ) {
             // 功能区
             GlassCard(modifier = Modifier.fillMaxWidth()) {
+                MoreRow(
+                    icon = Icons.Filled.Search,
+                    title = "全局搜索与命令",
+                    desc = "搜索会话、消息、角色、世界书、记忆、文件和功能入口",
+                    onClick = { onNavigate("global_search") }
+                )
+                Spacer(Modifier.height(8.dp))
                 MoreRow(
                     icon = Icons.Filled.Psychology,
                     title = stringResource(R.string.more_role_memory),

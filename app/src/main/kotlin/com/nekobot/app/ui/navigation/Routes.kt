@@ -18,6 +18,7 @@ object Routes {
     const val WORLD_BOOKS = "world_books"
     const val TOKENS = "tokens"
     const val MORE = "more"
+    const val GLOBAL_SEARCH = "global_search"
 
     // 详情页
     const val CHAT = "chat/{sessionId}"

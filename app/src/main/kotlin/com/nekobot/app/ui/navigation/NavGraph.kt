@@ -46,6 +46,7 @@ import com.nekobot.app.ui.screens.chat.WorkspaceScreen
 import com.nekobot.app.ui.screens.login.LoginScreen
 import com.nekobot.app.ui.screens.memory.MemoryScreen
 import com.nekobot.app.ui.screens.more.MoreScreen
+import com.nekobot.app.ui.screens.search.GlobalSearchScreen
 import com.nekobot.app.ui.screens.sessions.SessionsScreen
 import com.nekobot.app.ui.screens.sessions.SessionDetailScreen
 import com.nekobot.app.ui.screens.plot.StoryGraphScreen
@@ -347,6 +348,12 @@ fun NekobotNavGraph() {
                         ServiceContainer.repository.logoutLocal()
                         ServiceContainer.notifyLoginState(false)
                     }
+                )
+            }
+            composable(Routes.GLOBAL_SEARCH) {
+                GlobalSearchScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigate = { route -> navController.navigate(route) }
                 )
             }
             composable(Routes.SETTINGS) {
