@@ -502,12 +502,26 @@ object BuiltinTools {
             )
         ),
         BuiltinToolSpec(
+            id = "android_list_apps",
+            name = "列出可启动的 Android 应用",
+            description = "列出设备上可从桌面启动的应用，可按应用名称或包名筛选。需要打开应用但不知道准确包名时先调用。",
+            parametersJson = params(
+                mapOf(
+                    "query" to mapOf("type" to "string", "description" to "可选的应用名称或包名筛选词"),
+                    "limit" to mapOf("type" to "integer", "description" to "最多返回数量，默认 50，最大 200")
+                )
+            )
+        ),
+        BuiltinToolSpec(
             id = "android_open_app",
             name = "打开 Android 应用",
-            description = "按用户提供的 package_name 启动已安装应用；不会模拟点击或执行目标应用内的后续操作。",
+            description = "按应用名称、搜索词或包名启动已安装应用。精确名称/包名会直接启动；结果不唯一时返回候选列表，不会误开其他应用。不会执行目标应用内的后续操作。",
             parametersJson = params(
-                mapOf("package_name" to mapOf("type" to "string", "description" to "Android 应用包名")),
-                listOf("package_name")
+                mapOf(
+                    "package_name" to mapOf("type" to "string", "description" to "可选的 Android 应用包名"),
+                    "app_name" to mapOf("type" to "string", "description" to "可选的桌面应用名称"),
+                    "query" to mapOf("type" to "string", "description" to "可选的应用名称或包名搜索词")
+                )
             )
         ),
         BuiltinToolSpec(
@@ -559,6 +573,112 @@ object BuiltinTools {
                     "action" to mapOf("type" to "string", "description" to "get 或 set，默认 get"),
                     "stream" to mapOf("type" to "string", "description" to "音频流，默认 music"),
                     "level" to mapOf("type" to "integer", "description" to "set 时的音量等级，范围由设备返回的 max_level 决定")
+                )
+            )
+        ),
+        BuiltinToolSpec(
+            id = "android_accessibility_status",
+            name = "检查 Agent 系统操作权限",
+            description = "检查 Nekobot 辅助功能和通知使用权是否已由用户开启并连接。",
+            parametersJson = params(emptyMap())
+        ),
+        BuiltinToolSpec(
+            id = "android_ui_tree",
+            name = "读取当前 Android 界面",
+            description = "经用户授权后读取当前窗口的结构化界面树。密码字段始终脱敏，结果限制节点数。",
+            parametersJson = params(
+                mapOf("max_nodes" to mapOf("type" to "integer", "description" to "最多返回节点数，默认 250，最大 800"))
+            )
+        ),
+        BuiltinToolSpec(
+            id = "android_ui_click",
+            name = "点击 Android 界面元素",
+            description = "经用户授权后，按文字、内容描述或资源 ID 查找并点击当前界面元素。",
+            parametersJson = params(
+                mapOf(
+                    "selector" to mapOf("type" to "string", "description" to "要查找的文字、内容描述或资源 ID"),
+                    "field" to mapOf("type" to "string", "description" to "auto、text、description、view_id 或 class"),
+                    "exact" to mapOf("type" to "boolean", "description" to "是否要求完整匹配")
+                ),
+                listOf("selector")
+            )
+        ),
+        BuiltinToolSpec(
+            id = "android_ui_set_text",
+            name = "向 Android 输入框写入文字",
+            description = "经用户授权后，定位可编辑界面元素并写入文字。不会向密码节点回读内容。",
+            parametersJson = params(
+                mapOf(
+                    "selector" to mapOf("type" to "string", "description" to "输入框的文字、描述或资源 ID"),
+                    "text" to mapOf("type" to "string", "description" to "要写入的文字"),
+                    "field" to mapOf("type" to "string", "description" to "auto、text、description、view_id 或 class"),
+                    "exact" to mapOf("type" to "boolean", "description" to "是否要求完整匹配")
+                ),
+                listOf("selector", "text")
+            )
+        ),
+        BuiltinToolSpec(
+            id = "android_ui_scroll",
+            name = "滚动 Android 界面",
+            description = "经用户授权后滚动当前界面或指定可滚动元素。",
+            parametersJson = params(
+                mapOf(
+                    "direction" to mapOf("type" to "string", "description" to "up、down、forward、backward、left 或 right"),
+                    "selector" to mapOf("type" to "string", "description" to "可选的滚动区域选择器"),
+                    "field" to mapOf("type" to "string", "description" to "选择器字段，默认 auto"),
+                    "exact" to mapOf("type" to "boolean", "description" to "是否要求完整匹配")
+                ),
+                listOf("direction")
+            )
+        ),
+        BuiltinToolSpec(
+            id = "android_global_action",
+            name = "执行 Android 全局动作",
+            description = "经用户授权后执行返回、主页、最近任务、通知栏或快捷设置等系统动作。",
+            parametersJson = params(
+                mapOf("action" to mapOf("type" to "string", "description" to "back、home、recents、notifications 或 quick_settings")),
+                listOf("action")
+            )
+        ),
+        BuiltinToolSpec(
+            id = "android_screenshot",
+            name = "截取当前 Android 屏幕",
+            description = "经用户授权后通过辅助功能截取当前屏幕，并保存到当前 Agent 会话工作区。Android 11 及以上可用。",
+            parametersJson = params(emptyMap())
+        ),
+        BuiltinToolSpec(
+            id = "android_notifications",
+            name = "读取 Android 活动通知",
+            description = "经用户授权且已开启通知使用权后，读取当前活动通知；可按应用筛选。",
+            parametersJson = params(
+                mapOf(
+                    "package_name" to mapOf("type" to "string", "description" to "可选的应用包名"),
+                    "limit" to mapOf("type" to "integer", "description" to "最多返回数量，默认 30"),
+                    "include_content" to mapOf("type" to "boolean", "description" to "是否包含通知标题和正文，默认 true")
+                )
+            )
+        ),
+        BuiltinToolSpec(
+            id = "android_notification_action",
+            name = "操作 Android 通知",
+            description = "经用户授权后打开、清除通知，或执行通知提供的指定动作。",
+            parametersJson = params(
+                mapOf(
+                    "notification_key" to mapOf("type" to "string", "description" to "android_notifications 返回的通知 key"),
+                    "action" to mapOf("type" to "string", "description" to "open、dismiss 或 action"),
+                    "action_index" to mapOf("type" to "integer", "description" to "action 模式下的动作序号，默认 0")
+                ),
+                listOf("notification_key", "action")
+            )
+        ),
+        BuiltinToolSpec(
+            id = "android_media_control",
+            name = "读取或控制 Android 媒体播放",
+            description = "经用户授权且已开启通知使用权后，列出媒体会话或执行播放、暂停、切歌和停止。",
+            parametersJson = params(
+                mapOf(
+                    "action" to mapOf("type" to "string", "description" to "get、play、pause、toggle、next、previous 或 stop"),
+                    "package_name" to mapOf("type" to "string", "description" to "可选的目标媒体应用包名")
                 )
             )
         )

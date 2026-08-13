@@ -47,11 +47,22 @@ internal val localExecutableToolIds = setOf(
     "android_clipboard_read",
     "android_clipboard_write",
     "android_open_url",
+    "android_list_apps",
     "android_open_app",
     "android_open_settings",
     "android_create_calendar_event",
     "android_set_alarm",
-    "android_volume"
+    "android_volume",
+    "android_accessibility_status",
+    "android_ui_tree",
+    "android_ui_click",
+    "android_ui_set_text",
+    "android_ui_scroll",
+    "android_global_action",
+    "android_screenshot",
+    "android_notifications",
+    "android_notification_action",
+    "android_media_control"
 )
 
 internal val localSkillToolIds = setOf(
@@ -154,6 +165,7 @@ internal class LocalAgentToolExecutor(
         LocalAndroidToolExecutor(
             context = ServiceContainer.appContext,
             sessionId = sessionId,
+            workspaceRoot = workspace,
             authorizationManager = authorizationManager,
             onConfirmationRequired = onConfirmationRequired
         )
@@ -190,11 +202,22 @@ internal class LocalAgentToolExecutor(
                 "android_clipboard_read",
                 "android_clipboard_write",
                 "android_open_url",
+                "android_list_apps",
                 "android_open_app",
                 "android_open_settings",
                 "android_create_calendar_event",
                 "android_set_alarm",
-                "android_volume" -> androidToolExecutor.execute(toolName, args)
+                "android_volume",
+                "android_accessibility_status",
+                "android_ui_tree",
+                "android_ui_click",
+                "android_ui_set_text",
+                "android_ui_scroll",
+                "android_global_action",
+                "android_screenshot",
+                "android_notifications",
+                "android_notification_action",
+                "android_media_control" -> androidToolExecutor.execute(toolName, args)
                 else -> failure("本地模式不支持工具: $toolName")
             }
         } catch (e: Exception) {

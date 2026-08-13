@@ -45,6 +45,7 @@ object Routes {
     const val OAUTH_ACCOUNTS = "oauth_accounts"
     const val SETTINGS = "settings"
     const val SYSTEM_SETTINGS = "system_settings"
+    const val SYSTEM_OPERATIONS = "system_operations"
     const val STATE_HISTORY = "state_history"
     const val MEMORY = "memory"
     const val STYLE_SETTINGS = "style_settings"

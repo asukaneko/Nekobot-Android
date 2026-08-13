@@ -129,6 +129,13 @@ fun MoreScreen(
                         onClick = { onNavigate("db_profile") }
                     )
                 }
+                Spacer(Modifier.height(8.dp))
+                MoreRow(
+                    icon = Icons.Filled.Security,
+                    title = "Agent 系统操作",
+                    desc = "辅助功能、通知读取、截图和媒体控制授权",
+                    onClick = { onNavigate("system_operations") }
+                )
                 if (appMode != AppMode.LOCAL) {
                     // 扩展功能（仅远程模式）：Hook/任务/工作流/知识库/Skills/Tools/MCP/频道/消息过滤/TTS/令牌
                     Spacer(Modifier.height(8.dp))

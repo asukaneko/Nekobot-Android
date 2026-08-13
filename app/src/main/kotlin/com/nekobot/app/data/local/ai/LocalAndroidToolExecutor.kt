@@ -2,8 +2,10 @@ package com.nekobot.app.data.local.ai
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -16,8 +18,48 @@ import android.provider.AlarmClock
 import android.provider.Settings
 import com.nekobot.app.data.remote.ExecAuthorization
 import com.nekobot.app.data.remote.ExecConfirmationRequest
+import com.nekobot.app.integration.NekobotAccessibilityService
+import com.nekobot.app.integration.NekobotNotificationListenerService
+import java.io.File
 import java.util.Locale
 import java.util.TimeZone
+
+internal data class LaunchableAppCandidate(
+    val label: String,
+    val packageName: String,
+    val activityName: String
+)
+
+internal data class RankedLaunchableApp(
+    val app: LaunchableAppCandidate,
+    val score: Int
+)
+
+/** 与 Android API 解耦的应用名/包名排序，供 JVM 单元测试覆盖。 */
+internal fun rankLaunchableApps(
+    apps: List<LaunchableAppCandidate>,
+    query: String
+): List<RankedLaunchableApp> {
+    val normalizedQuery = query.trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), "")
+    if (normalizedQuery.isEmpty()) {
+        return apps.map { RankedLaunchableApp(it, 100) }
+            .sortedWith(compareBy({ it.app.label.lowercase(Locale.ROOT) }, { it.app.packageName }))
+    }
+    return apps.mapNotNull { app ->
+        val label = app.label.lowercase(Locale.ROOT).replace(Regex("\\s+"), "")
+        val packageName = app.packageName.lowercase(Locale.ROOT)
+        val score = when {
+            packageName == normalizedQuery -> 0
+            label == normalizedQuery -> 1
+            label.startsWith(normalizedQuery) -> 2
+            packageName.startsWith(normalizedQuery) -> 3
+            label.contains(normalizedQuery) -> 4
+            packageName.contains(normalizedQuery) -> 5
+            else -> return@mapNotNull null
+        }
+        RankedLaunchableApp(app, score)
+    }.sortedWith(compareBy({ it.score }, { it.app.label.length }, { it.app.label.lowercase(Locale.ROOT) }))
+}
 
 /**
  * Agent 可调用的 Android 原生能力。
@@ -27,6 +69,7 @@ import java.util.TimeZone
 internal class LocalAndroidToolExecutor(
     private val context: Context?,
     private val sessionId: String,
+    private val workspaceRoot: File?,
     private val authorizationManager: LocalExecAuthorizationManager,
     private val onConfirmationRequired: (ExecConfirmationRequest) -> Unit
 ) {
@@ -40,11 +83,22 @@ internal class LocalAndroidToolExecutor(
                 "android_clipboard_read" -> readClipboard(appContext)
                 "android_clipboard_write" -> writeClipboard(appContext, args)
                 "android_open_url" -> openUrl(appContext, args)
+                "android_list_apps" -> listApps(appContext, args)
                 "android_open_app" -> openApp(appContext, args)
                 "android_open_settings" -> openSettings(appContext, args)
                 "android_create_calendar_event" -> createCalendarEvent(appContext, args)
                 "android_set_alarm" -> setAlarm(appContext, args)
                 "android_volume" -> volume(appContext, args)
+                "android_accessibility_status" -> accessibilityStatus(appContext)
+                "android_ui_tree" -> uiTree(args)
+                "android_ui_click" -> uiClick(args)
+                "android_ui_set_text" -> uiSetText(args)
+                "android_ui_scroll" -> uiScroll(args)
+                "android_global_action" -> globalAction(args)
+                "android_screenshot" -> screenshot()
+                "android_notifications" -> notifications(args)
+                "android_notification_action" -> notificationAction(args)
+                "android_media_control" -> mediaControl(args)
                 else -> failure("Android 模式不支持工具: $toolName")
             }
         } catch (error: Exception) {
@@ -142,6 +196,9 @@ internal class LocalAndroidToolExecutor(
 
     private fun writeClipboard(context: Context, args: Map<String, Any>): Map<String, Any> {
         val text = args.string("text")
+        if (!authorize("android_clipboard_write", "write ${text.take(120)}")) {
+            return failure("用户拒绝写入系统剪贴板")
+        }
         if (text.isBlank()) return failure("clipboard_write 缺少非空 text")
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             ?: return failure("系统剪贴板不可用")
@@ -161,13 +218,89 @@ internal class LocalAndroidToolExecutor(
         return success("url" to url, "scheme" to scheme.orEmpty())
     }
 
+    private fun listApps(context: Context, args: Map<String, Any>): Map<String, Any> {
+        val query = args.string("query")
+        val limit = args.int("limit", 50).coerceIn(1, 200)
+        val allApps = queryLaunchableApps(context.packageManager)
+        val matches = rankLaunchableApps(allApps, query).take(limit)
+        return success(
+            "query" to query,
+            "apps" to matches.map { it.toMap() },
+            "count" to matches.size,
+            "total_launchable" to allApps.size
+        )
+    }
+
     private fun openApp(context: Context, args: Map<String, Any>): Map<String, Any> {
         val packageName = args.string("package_name").trim()
-        if (packageName.isBlank()) return failure("package_name 不能为空")
-        val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
-            ?: return failure("未找到可启动的应用: $packageName")
+        val query = packageName
+            .ifBlank { args.string("app_name").trim() }
+            .ifBlank { args.string("query").trim() }
+        if (query.isBlank()) return failure("请提供 package_name、app_name 或 query")
+
+        val ranked = rankLaunchableApps(queryLaunchableApps(context.packageManager), query)
+        val best = ranked.firstOrNull()
+        if (best == null && packageName.isNotBlank()) {
+            val fallback = context.packageManager.getLaunchIntentForPackage(packageName)
+                ?: context.packageManager.getLeanbackLaunchIntentForPackage(packageName)
+                ?: return failure("未找到可启动的应用: $packageName")
+            startActivity(context, fallback)
+            return success("package_name" to packageName, "matched_by" to "package_fallback")
+        }
+        if (best == null) return failure("没有找到与“$query”匹配的可启动应用")
+
+        val equallyRanked = ranked.takeWhile { it.score == best.score }
+        if (equallyRanked.size > 1) {
+            return failure(
+                "“$query”匹配到多个应用，请使用候选包名重试",
+                "candidates" to equallyRanked.take(10).map { it.toMap() }
+            )
+        }
+
+        val app = best.app
+        val launchIntent = Intent.makeMainActivity(ComponentName(app.packageName, app.activityName))
         startActivity(context, launchIntent)
-        return success("package_name" to packageName)
+        return success(
+            "label" to app.label,
+            "package_name" to app.packageName,
+            "activity_name" to app.activityName,
+            "matched_by" to matchType(best.score)
+        )
+    }
+
+    @Suppress("DEPRECATION")
+    private fun queryLaunchableApps(packageManager: PackageManager): List<LaunchableAppCandidate> {
+        val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        return packageManager.queryIntentActivities(launcherIntent, 0)
+            .mapNotNull { resolved ->
+                val info = resolved.activityInfo ?: return@mapNotNull null
+                val label = runCatching { resolved.loadLabel(packageManager).toString().trim() }
+                    .getOrDefault("")
+                    .ifBlank { info.packageName }
+                LaunchableAppCandidate(
+                    label = label,
+                    packageName = info.packageName,
+                    activityName = info.name
+                )
+            }
+            .distinctBy { it.packageName }
+    }
+
+    private fun RankedLaunchableApp.toMap(): Map<String, Any> = mapOf(
+        "label" to app.label,
+        "package_name" to app.packageName,
+        "activity_name" to app.activityName,
+        "match" to matchType(score)
+    )
+
+    private fun matchType(score: Int): String = when (score) {
+        0 -> "exact_package"
+        1 -> "exact_label"
+        2 -> "label_prefix"
+        3 -> "package_prefix"
+        4 -> "label_contains"
+        5 -> "package_contains"
+        else -> "all"
     }
 
     private fun openSettings(context: Context, args: Map<String, Any>): Map<String, Any> {
@@ -181,6 +314,7 @@ internal class LocalAndroidToolExecutor(
             "battery" -> Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS)
             "location" -> Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
             "accessibility" -> Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            "notification_listener", "notification_access" -> Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
             "language", "locale" -> Intent(Settings.ACTION_LOCALE_SETTINGS)
             "app", "app_details" -> {
                 val packageName = args.string("package_name")
@@ -258,6 +392,9 @@ internal class LocalAndroidToolExecutor(
         if (action == "set") {
             val level = args.int("level", -1)
             if (level !in 0..max) return failure("level 必须在 0-$max 范围内")
+            if (!authorize("android_volume", "set $streamName volume to $level")) {
+                return failure("用户拒绝更改系统音量")
+            }
             audio.setStreamVolume(stream, level, 0)
         } else if (action != "get") {
             return failure("volume action 只支持 get 或 set")
@@ -271,6 +408,173 @@ internal class LocalAndroidToolExecutor(
             "percent" to if (max == 0) 0.0 else current * 100.0 / max,
             "ringer_mode" to ringerModeName(audio.ringerMode)
         )
+    }
+
+    private fun accessibilityStatus(context: Context): Map<String, Any> {
+        val accessibilityComponent = ComponentName(context, NekobotAccessibilityService::class.java)
+        val notificationComponent = ComponentName(context, NekobotNotificationListenerService::class.java)
+        return success(
+            "accessibility_enabled" to isComponentEnabled(
+                context,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                accessibilityComponent
+            ),
+            "accessibility_connected" to (NekobotAccessibilityService.instance != null),
+            "notification_access_enabled" to isComponentEnabled(
+                context,
+                "enabled_notification_listeners",
+                notificationComponent
+            ),
+            "notification_listener_connected" to (NekobotNotificationListenerService.instance != null),
+            "accessibility_settings_target" to "accessibility",
+            "notification_settings_target" to "notification_listener"
+        )
+    }
+
+    private fun uiTree(args: Map<String, Any>): Map<String, Any> {
+        if (!authorize("android_ui_tree", "read current UI tree")) return failure("用户拒绝读取当前界面")
+        val service = accessibilityService() ?: return accessibilityUnavailable()
+        val snapshot = service.snapshot(args.int("max_nodes", NekobotAccessibilityService.DEFAULT_MAX_NODES))
+        return success(
+            "package_name" to snapshot.packageName,
+            "window_count" to snapshot.windowCount,
+            "nodes" to snapshot.nodes,
+            "node_count" to snapshot.nodes.size,
+            "truncated" to snapshot.truncated
+        )
+    }
+
+    private fun uiClick(args: Map<String, Any>): Map<String, Any> {
+        val selector = args.string("selector")
+        if (selector.isBlank()) return failure("selector 不能为空")
+        if (!authorize("android_ui_click", "click $selector")) return failure("用户拒绝点击界面元素")
+        val result = accessibilityService()?.click(
+            selector,
+            args.string("field").ifBlank { "auto" },
+            args.boolean("exact")
+        ) ?: return accessibilityUnavailable()
+        return actionResult(result.success, result.message, result.matched, result.metadata)
+    }
+
+    private fun uiSetText(args: Map<String, Any>): Map<String, Any> {
+        val selector = args.string("selector")
+        val text = args.string("text")
+        if (selector.isBlank()) return failure("selector 不能为空")
+        if (!authorize("android_ui_set_text", "set text on $selector")) return failure("用户拒绝向界面输入文字")
+        val result = accessibilityService()?.setText(
+            selector,
+            text,
+            args.string("field").ifBlank { "auto" },
+            args.boolean("exact")
+        ) ?: return accessibilityUnavailable()
+        return actionResult(result.success, result.message, result.matched, result.metadata)
+    }
+
+    private fun uiScroll(args: Map<String, Any>): Map<String, Any> {
+        val direction = args.string("direction").ifBlank { "down" }
+        if (!authorize("android_ui_scroll", "scroll $direction")) return failure("用户拒绝滚动当前界面")
+        val result = accessibilityService()?.scroll(
+            direction,
+            args.string("selector").takeIf(String::isNotBlank),
+            args.string("field").ifBlank { "auto" },
+            args.boolean("exact")
+        ) ?: return accessibilityUnavailable()
+        return actionResult(result.success, result.message, result.matched, result.metadata)
+    }
+
+    private fun globalAction(args: Map<String, Any>): Map<String, Any> {
+        val action = args.string("action")
+        if (action.isBlank()) return failure("action 不能为空")
+        if (!authorize("android_global_action", action)) return failure("用户拒绝系统全局动作")
+        val result = accessibilityService()?.runGlobalAction(action) ?: return accessibilityUnavailable()
+        return actionResult(result.success, result.message, result.matched, result.metadata)
+    }
+
+    private fun screenshot(): Map<String, Any> {
+        if (!authorize("android_screenshot", "capture current screen")) return failure("用户拒绝截取当前屏幕")
+        val service = accessibilityService() ?: return accessibilityUnavailable()
+        val root = workspaceRoot?.canonicalFile
+            ?: return failure("当前 Agent 会话工作区不可用，无法保存截图")
+        val relativePath = "screenshots/android-${System.currentTimeMillis()}.png"
+        val output = File(root, relativePath).canonicalFile
+        if (!output.path.startsWith(root.path + File.separator)) return failure("截图输出路径无效")
+        val result = service.captureScreenshot(output)
+        return actionResult(
+            result.success,
+            result.message,
+            result.matched,
+            result.metadata + mapOf("path" to relativePath, "mime_type" to "image/png")
+        )
+    }
+
+    private fun notifications(args: Map<String, Any>): Map<String, Any> {
+        if (!authorize("android_notifications", "read active notifications")) return failure("用户拒绝读取通知")
+        val service = notificationService() ?: return notificationUnavailable()
+        val entries = service.notificationSnapshot(
+            packageName = args.string("package_name").takeIf(String::isNotBlank),
+            limit = args.int("limit", 30),
+            includeContent = args.boolean("include_content", true)
+        )
+        return success("notifications" to entries, "count" to entries.size)
+    }
+
+    private fun notificationAction(args: Map<String, Any>): Map<String, Any> {
+        val key = args.string("notification_key")
+        val action = args.string("action")
+        if (key.isBlank() || action.isBlank()) return failure("notification_key 和 action 不能为空")
+        if (!authorize("android_notification_action", "$action notification $key")) {
+            return failure("用户拒绝执行通知操作")
+        }
+        val result = notificationService()?.notificationAction(key, action, args.int("action_index", 0))
+            ?: return notificationUnavailable()
+        return actionResult(result.success, result.message, metadata = mapOf("package_name" to result.packageName))
+    }
+
+    private fun mediaControl(args: Map<String, Any>): Map<String, Any> {
+        val action = args.string("action").ifBlank { "get" }
+        if (!authorize("android_media_control", action)) return failure("用户拒绝访问媒体会话")
+        val service = notificationService() ?: return notificationUnavailable()
+        if (action == "get" || action == "list") {
+            val sessions = service.mediaSessions()
+            return success("sessions" to sessions, "count" to sessions.size)
+        }
+        val result = service.mediaControl(action, args.string("package_name").takeIf(String::isNotBlank))
+        return actionResult(result.success, result.message, metadata = mapOf("package_name" to result.packageName))
+    }
+
+    private fun accessibilityService(): NekobotAccessibilityService? = NekobotAccessibilityService.instance
+
+    private fun notificationService(): NekobotNotificationListenerService? = NekobotNotificationListenerService.instance
+
+    private fun accessibilityUnavailable(): Map<String, Any> =
+        failure("Nekobot Agent 辅助功能未连接，请先通过 android_open_settings 打开 accessibility")
+
+    private fun notificationUnavailable(): Map<String, Any> =
+        failure("Nekobot 通知使用权未连接，请先通过 android_open_settings 打开 notification_listener")
+
+    private fun authorize(mainCommand: String, details: String): Boolean =
+        authorizationManager.requestAuthorization(
+            sessionId = sessionId,
+            command = "$mainCommand: $details",
+            mainCommand = mainCommand,
+            onRequest = onConfirmationRequired
+        ) != ExecAuthorization.Reject
+
+    private fun isComponentEnabled(context: Context, setting: String, component: ComponentName): Boolean {
+        val enabled = Settings.Secure.getString(context.contentResolver, setting).orEmpty()
+        return enabled.split(':').mapNotNull(ComponentName::unflattenFromString).any { it == component }
+    }
+
+    private fun actionResult(
+        succeeded: Boolean,
+        message: String,
+        matched: Map<String, Any?>? = null,
+        metadata: Map<String, Any?> = emptyMap()
+    ): Map<String, Any> = buildMap {
+        put("success", succeeded)
+        if (succeeded) put("message", message) else put("error", message)
+        matched?.let { put("matched", it) }
+        metadata.forEach { (key, value) -> if (value != null) put(key, value) }
     }
 
     private fun startActivity(context: Context, intent: Intent) {
@@ -339,10 +643,11 @@ internal class LocalAndroidToolExecutor(
         values.forEach { (key, value) -> if (value != null) put(key, value) }
     }
 
-    private fun failure(message: String): Map<String, Any> = mapOf(
-        "success" to false,
-        "error" to message
-    )
+    private fun failure(message: String, vararg values: Pair<String, Any>): Map<String, Any> = buildMap {
+        put("success", false)
+        put("error", message)
+        values.forEach { (key, value) -> put(key, value) }
+    }
 
     private companion object {
         const val MAX_CLIPBOARD_CHARS = 20_000

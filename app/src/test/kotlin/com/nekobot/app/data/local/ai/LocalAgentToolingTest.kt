@@ -54,6 +54,21 @@ class LocalAgentToolingTest {
     }
 
     @Test
+    fun launchableAppsPreferExactNameAndRejectUnrelatedResults() {
+        val apps = listOf(
+            LaunchableAppCandidate("微信", "com.tencent.mm", "MainActivity"),
+            LaunchableAppCandidate("微信读书", "com.tencent.weread", "ReaderActivity"),
+            LaunchableAppCandidate("Chrome", "com.android.chrome", "Main")
+        )
+
+        val byName = rankLaunchableApps(apps, "微信")
+        assertEquals("com.tencent.mm", byName.first().app.packageName)
+        assertEquals(1, byName.first().score)
+        assertEquals("com.android.chrome", rankLaunchableApps(apps, "com.android.chrome").single().app.packageName)
+        assertTrue(rankLaunchableApps(apps, "不存在").isEmpty())
+    }
+
+    @Test
     fun sendMessageToolContentBecomesVisibleReplyWhenModelEndsWithEmptyContent() {
         val result = ToolLoopResult(
             finalContent = "",
@@ -107,11 +122,22 @@ class LocalAgentToolingTest {
         assertTrue("android_clipboard_read" in names)
         assertTrue("android_clipboard_write" in names)
         assertTrue("android_open_url" in names)
+        assertTrue("android_list_apps" in names)
         assertTrue("android_open_app" in names)
         assertTrue("android_open_settings" in names)
         assertTrue("android_create_calendar_event" in names)
         assertTrue("android_set_alarm" in names)
         assertTrue("android_volume" in names)
+        assertTrue("android_accessibility_status" in names)
+        assertTrue("android_ui_tree" in names)
+        assertTrue("android_ui_click" in names)
+        assertTrue("android_ui_set_text" in names)
+        assertTrue("android_ui_scroll" in names)
+        assertTrue("android_global_action" in names)
+        assertTrue("android_screenshot" in names)
+        assertTrue("android_notifications" in names)
+        assertTrue("android_notification_action" in names)
+        assertTrue("android_media_control" in names)
         assertFalse("save_to_memory" in names)
         assertEquals(names.distinct().size, names.size)
 
@@ -127,6 +153,28 @@ class LocalAgentToolingTest {
         val settingsProperties = (settingsFunction["parameters"] as Map<*, *>)["properties"] as Map<*, *>
         assertTrue("target" in settingsProperties)
         assertTrue("package_name" in settingsProperties)
+
+        val openAppFunction = buildLocalAgentToolDefinitions()
+            .mapNotNull { it["function"] as? Map<*, *> }
+            .first { it["name"] == "android_open_app" }
+        val openAppParameters = openAppFunction["parameters"] as Map<*, *>
+        val openAppProperties = openAppParameters["properties"] as Map<*, *>
+        assertTrue("package_name" in openAppProperties)
+        assertTrue("app_name" in openAppProperties)
+        assertTrue("query" in openAppProperties)
+        assertFalse("required" in openAppParameters)
+
+        val clickFunction = buildLocalAgentToolDefinitions()
+            .mapNotNull { it["function"] as? Map<*, *> }
+            .first { it["name"] == "android_ui_click" }
+        val clickParameters = clickFunction["parameters"] as Map<*, *>
+        assertEquals(listOf("selector"), clickParameters["required"])
+
+        val textFunction = buildLocalAgentToolDefinitions()
+            .mapNotNull { it["function"] as? Map<*, *> }
+            .first { it["name"] == "android_ui_set_text" }
+        val textParameters = textFunction["parameters"] as Map<*, *>
+        assertEquals(listOf("selector", "text"), textParameters["required"])
 
         val browserFunction = buildLocalAgentToolDefinitions()
             .mapNotNull { it["function"] as? Map<*, *> }

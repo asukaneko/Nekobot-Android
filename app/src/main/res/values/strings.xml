@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Nekobot</string>
+    <string name="agent_accessibility_service_label">Nekobot Agent 系统操作</string>
+    <string name="agent_accessibility_service_description">在你明确授权后，让本地 Agent 读取当前界面、点击、输入、滚动和截图。密码字段会被隐藏，可随时在系统设置中关闭。</string>
+    <string name="agent_notification_listener_label">Nekobot Agent 通知与媒体控制</string>
 
     <!-- ==================== 通用操作 ==================== -->
     <string name="common_confirm">确认</string>
