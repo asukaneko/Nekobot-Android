@@ -337,9 +337,9 @@
 
   /* ---------- 11. 从 GitHub Releases 拉取更新日志 ---------- */
   const FALLBACK_RELEASES = [
+    { tag_name: 'v0.4.10', published_at: '2026-08-13', body: '- 新增聊天界面背景自定义功能（关闭/跟随立绘/自定义图片）及背景强度调节\n- 字号调节改为 12-24sp 精确滑块并支持「跟随系统字号」开关\n- Token 记录增加估算费用（USD）的计算与展示\n- 数据库备份支持密码保护凭据导入导出\n- 新增 /wenku8_login 与 /wenku_login 斜杠命令\n- 完善角色生成与 RAG 设置的多语言适配' },
     { tag_name: 'v0.4.9', published_at: '2026-08-09', body: '- 为本地 Agent 添加 Android 原生工具支持\n- 修复数据库重新导入后角色立绘丢失及故事地图未导出的问题\n- 重构剧情图谱节点卡片与连线渲染\n- 优化 Token 用量界面和多语言筛选按钮显示' },
     { tag_name: 'v0.4.8', published_at: '2026-08-06', body: '- 支持多语言 Agent 提示词和"最近会话显示归档"开关\n- 添加本地 Agent 基础行为提示词及集成\n- 添加角色卡 AI 翻译功能\n- 实现开场白重新生成功能\n- 优化进度卡片渲染条件，仅本地模式或远程 Agent 会话展示' },
-    { tag_name: 'v0.4.7', published_at: '2026-08-05', body: '- 新增路由可解释性、A/B 测试、RAG 检索增强及自适应 UI 系统\n- 路由决策日志与分析、A/B 测试分流\n- RAG 可调参数、MMR 多样性去重、LLM 重排及引用段落定位\n- 大屏双栏布局、无障碍辅助与跟随系统字号\n- AI 生成角色卡支持中英日韩多语言\n- 本地 AI 模型支持复制\n- 故事图节点时间戳转换为系统时区显示\n- 修复图片扩展名检测，正确识别 WebP 格式\n- 重构剧情选项生成系统与 AI 配置中心文本样式' },
   ];
   function renderReleases(releases) {
     const container = $('#changelogList');
