@@ -25,10 +25,31 @@
     <string name="style_font_monospace">모노스페이스</string>
     <string name="style_font_rounded">둥근 글꼴</string>
     <!-- 글꼴 크기 옵션 -->
+    <string name="style_font_size_desc">본문 기준 크기이며 제목과 보조 텍스트도 같은 비율로 조정돼요</string>
+    <string name="style_font_size_value">%1$d sp</string>
+    <string name="style_decrease_font_size">글꼴 크기 줄이기</string>
+    <string name="style_increase_font_size">글꼴 크기 늘리기</string>
+    <string name="style_follow_system_font_size">시스템 글꼴 크기 따르기</string>
+    <string name="style_follow_system_font_size_desc">선택한 기준 크기에 시스템 배율을 추가로 적용해요</string>
     <string name="style_size_small">작게</string>
     <string name="style_size_standard">표준</string>
     <string name="style_size_large">크게</string>
     <string name="style_size_xlarge">아주 크게</string>
+    <!-- 채팅 배경 -->
+    <string name="style_chat_background">채팅 화면 배경</string>
+    <string name="style_chat_background_desc">배경을 끄거나 현재 대화의 캐릭터 이미지 또는 하나의 사용자 정의 이미지를 사용할 수 있어요</string>
+    <string name="style_chat_background_none">끄기</string>
+    <string name="style_chat_background_portrait">캐릭터 이미지 따르기</string>
+    <string name="style_chat_background_portrait_desc">대화별 캐릭터 이미지를 자동으로 사용하고 이미지가 없으면 기본 배경을 유지해요</string>
+    <string name="style_chat_background_custom">사용자 정의 이미지</string>
+    <string name="style_chat_background_custom_desc">모든 채팅에서 같은 사용자 정의 배경을 사용해요</string>
+    <string name="style_choose_background">이미지 선택</string>
+    <string name="style_change_background">이미지 변경</string>
+    <string name="style_delete_background">사용자 정의 배경 삭제</string>
+    <string name="style_background_preview">사용자 정의 배경 미리보기</string>
+    <string name="style_background_strength">배경 표시 강도</string>
+    <string name="style_background_strength_value">%1$d%%</string>
+    <string name="style_custom_background_name">사용자 정의 배경</string>
     <!-- 테마 색상 옵션 -->
     <string name="style_color_purple">보라</string>
     <string name="style_color_blue">파랑</string>

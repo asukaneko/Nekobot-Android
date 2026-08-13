@@ -133,6 +133,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.FocusRequester
@@ -167,6 +168,7 @@ import com.nekobot.app.data.model.ReasoningEffort
 import com.nekobot.app.data.model.ThinkingCard
 import com.nekobot.app.data.model.ThinkingStep
 import com.nekobot.app.data.local.ChatInputLayoutMode
+import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.local.VISION_FAILURE_MARKER
 import com.nekobot.app.data.local.isLocalCommandMessage
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
@@ -547,6 +549,15 @@ fun ChatScreen(
         }
     }
 
+    val chatBackgroundModel = resolveAvatarUrl(
+        PrefsManager.selectChatBackgroundPath(
+            mode = ServiceContainer.prefs.chatBackgroundMode,
+            portraitPath = session?.portraitUrl,
+            customPath = ServiceContainer.prefs.customChatBackgroundPath
+        )
+    )
+    val chatBackgroundOpacity = ServiceContainer.prefs.chatBackgroundOpacity
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -782,6 +793,18 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            if (chatBackgroundModel != null) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(chatBackgroundModel)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    alpha = chatBackgroundOpacity,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
             // 氛围背景：顶部一抹主题色微光，向下渐隐，增加层次感
             Box(
                 modifier = Modifier

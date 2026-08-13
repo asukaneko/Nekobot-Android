@@ -25,10 +25,31 @@
     <string name="style_font_monospace">Monospace</string>
     <string name="style_font_rounded">Rounded</string>
     <!-- Font size options -->
+    <string name="style_font_size_desc">Base body size; headings and supporting text scale proportionally</string>
+    <string name="style_font_size_value">%1$d sp</string>
+    <string name="style_decrease_font_size">Decrease font size</string>
+    <string name="style_increase_font_size">Increase font size</string>
+    <string name="style_follow_system_font_size">Follow system font size</string>
+    <string name="style_follow_system_font_size_desc">Applies the system scale on top of the selected base size</string>
     <string name="style_size_small">Small</string>
     <string name="style_size_standard">Standard</string>
     <string name="style_size_large">Large</string>
     <string name="style_size_xlarge">Extra large</string>
+    <!-- Chat background -->
+    <string name="style_chat_background">Chat background</string>
+    <string name="style_chat_background_desc">Turn it off, follow the current conversation portrait, or use one custom image globally</string>
+    <string name="style_chat_background_none">Off</string>
+    <string name="style_chat_background_portrait">Follow portrait</string>
+    <string name="style_chat_background_portrait_desc">Automatically uses each conversation portrait; the default background remains when no portrait is available</string>
+    <string name="style_chat_background_custom">Custom image</string>
+    <string name="style_chat_background_custom_desc">Use the same custom background in every conversation</string>
+    <string name="style_choose_background">Choose image</string>
+    <string name="style_change_background">Change image</string>
+    <string name="style_delete_background">Delete custom background</string>
+    <string name="style_background_preview">Custom background preview</string>
+    <string name="style_background_strength">Background visibility</string>
+    <string name="style_background_strength_value">%1$d%%</string>
+    <string name="style_custom_background_name">Custom background</string>
     <!-- Theme color options -->
     <string name="style_color_purple">Purple</string>
     <string name="style_color_blue">Blue</string>

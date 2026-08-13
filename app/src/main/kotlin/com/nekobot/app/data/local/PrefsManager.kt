@@ -379,11 +379,46 @@ class PrefsManager(context: Context) {
             prefs.edit().putString(KEY_CUSTOM_FONT_NAME, value).apply()
         }
 
-    /** 字体缩放因子：0.85f / 1.0f / 1.15f / 1.3f */
+    /** 字体缩放因子：以 16sp 正文字号为 1.0，可通过样式页按 1sp 精确调整。 */
     var fontScale: Float
         get() = prefs.getFloat(KEY_FONT_SCALE, 1.0f)
         set(value) {
             prefs.edit().putFloat(KEY_FONT_SCALE, value).apply()
+        }
+
+    /** 聊天背景来源：关闭 / 跟随当前会话立绘 / 自定义图片。 */
+    var chatBackgroundMode: String
+        get() = prefs.getString(KEY_CHAT_BACKGROUND_MODE, CHAT_BACKGROUND_NONE)
+            ?.takeIf { it in CHAT_BACKGROUND_MODES }
+            ?: CHAT_BACKGROUND_NONE
+        set(value) {
+            val normalized = value.takeIf { it in CHAT_BACKGROUND_MODES } ?: CHAT_BACKGROUND_NONE
+            prefs.edit().putString(KEY_CHAT_BACKGROUND_MODE, normalized).apply()
+        }
+
+    /** 已复制到应用私有目录的自定义聊天背景路径。 */
+    var customChatBackgroundPath: String?
+        get() = prefs.getString(KEY_CUSTOM_CHAT_BACKGROUND_PATH, null)
+        set(value) {
+            prefs.edit().putString(KEY_CUSTOM_CHAT_BACKGROUND_PATH, value).apply()
+        }
+
+    /** 自定义聊天背景原始文件名，仅用于设置页展示。 */
+    var customChatBackgroundName: String?
+        get() = prefs.getString(KEY_CUSTOM_CHAT_BACKGROUND_NAME, null)
+        set(value) {
+            prefs.edit().putString(KEY_CUSTOM_CHAT_BACKGROUND_NAME, value).apply()
+        }
+
+    /** 聊天背景显示强度，限制在 10%~60%，避免图片影响消息可读性。 */
+    var chatBackgroundOpacity: Float
+        get() = prefs.getFloat(KEY_CHAT_BACKGROUND_OPACITY, DEFAULT_CHAT_BACKGROUND_OPACITY)
+            .coerceIn(MIN_CHAT_BACKGROUND_OPACITY, MAX_CHAT_BACKGROUND_OPACITY)
+        set(value) {
+            prefs.edit().putFloat(
+                KEY_CHAT_BACKGROUND_OPACITY,
+                value.coerceIn(MIN_CHAT_BACKGROUND_OPACITY, MAX_CHAT_BACKGROUND_OPACITY)
+            ).apply()
         }
 
     /** 字体颜色覆盖：null 表示跟随主题，否则为颜色 hex 值如 "#FF6B6B" */
@@ -621,6 +656,10 @@ class PrefsManager(context: Context) {
         const val KEY_THEME_COLOR = "theme_color"
         const val KEY_CUSTOM_FONT_PATH = "custom_font_path"
         const val KEY_CUSTOM_FONT_NAME = "custom_font_name"
+        const val KEY_CHAT_BACKGROUND_MODE = "chat_background_mode"
+        const val KEY_CUSTOM_CHAT_BACKGROUND_PATH = "custom_chat_background_path"
+        const val KEY_CUSTOM_CHAT_BACKGROUND_NAME = "custom_chat_background_name"
+        const val KEY_CHAT_BACKGROUND_OPACITY = "chat_background_opacity"
 
         // 字体类型可选值
         const val FONT_FAMILY_SYSTEM = "system"
@@ -628,6 +667,43 @@ class PrefsManager(context: Context) {
         const val FONT_FAMILY_MONOSPACE = "monospace"
         const val FONT_FAMILY_ROUNDED = "rounded"
         const val FONT_FAMILY_CUSTOM = "custom"
+
+        // 精确字号范围；Typography 以 16sp 正文为基准按比例缩放其他文本样式。
+        const val DEFAULT_BODY_FONT_SP = 16f
+        const val MIN_BODY_FONT_SP = 12f
+        const val MAX_BODY_FONT_SP = 24f
+
+        // 聊天背景来源可选值
+        const val CHAT_BACKGROUND_NONE = "none"
+        const val CHAT_BACKGROUND_PORTRAIT = "portrait"
+        const val CHAT_BACKGROUND_CUSTOM = "custom"
+        val CHAT_BACKGROUND_MODES = setOf(
+            CHAT_BACKGROUND_NONE,
+            CHAT_BACKGROUND_PORTRAIT,
+            CHAT_BACKGROUND_CUSTOM
+        )
+        const val DEFAULT_CHAT_BACKGROUND_OPACITY = 0.30f
+        const val MIN_CHAT_BACKGROUND_OPACITY = 0.10f
+        const val MAX_CHAT_BACKGROUND_OPACITY = 0.60f
+
+        /** 将历史 fontScale 转成设置页展示的正文 sp。 */
+        fun fontScaleToBodySp(scale: Float): Float =
+            (scale * DEFAULT_BODY_FONT_SP).coerceIn(MIN_BODY_FONT_SP, MAX_BODY_FONT_SP)
+
+        /** 将用户选择的正文 sp 转回全局 Typography 使用的缩放倍率。 */
+        fun bodySpToFontScale(bodySp: Float): Float =
+            bodySp.coerceIn(MIN_BODY_FONT_SP, MAX_BODY_FONT_SP) / DEFAULT_BODY_FONT_SP
+
+        /** 根据背景模式选择原始图片路径；路径解析由 UI 层统一处理。 */
+        fun selectChatBackgroundPath(
+            mode: String,
+            portraitPath: String?,
+            customPath: String?
+        ): String? = when (mode) {
+            CHAT_BACKGROUND_PORTRAIT -> portraitPath?.takeIf { it.isNotBlank() }
+            CHAT_BACKGROUND_CUSTOM -> customPath?.takeIf { it.isNotBlank() }
+            else -> null
+        }
 
         // DB Profile 相关 KEY
         const val KEY_ACTIVE_DB_NAME = "active_db_name"

@@ -24,7 +24,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -37,6 +39,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -51,12 +54,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import coil.compose.AsyncImage
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.PrefsManager
@@ -70,6 +75,7 @@ import kotlinx.coroutines.withContext
 import androidx.compose.runtime.rememberCoroutineScope
 import java.io.File
 import java.util.UUID
+import kotlin.math.roundToInt
 
 /**
  * 样式设置：主题色、字体类型、字体大小、字体颜色，带实时预览。
@@ -85,8 +91,15 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
     var customFontPath by remember { mutableStateOf(prefs.customFontPath) }
     var customFontName by remember { mutableStateOf(prefs.customFontName) }
     var fontScale by remember { mutableStateOf(prefs.fontScale) }
+    var bodyFontSizeSp by remember {
+        mutableStateOf(PrefsManager.fontScaleToBodySp(prefs.fontScale).roundToInt().toFloat())
+    }
     var followSystemFontScale by remember { mutableStateOf(prefs.followSystemFontScale) }
     var fontColorOverride by remember { mutableStateOf(prefs.fontColorOverride) }
+    var chatBackgroundMode by remember { mutableStateOf(prefs.chatBackgroundMode) }
+    var customChatBackgroundPath by remember { mutableStateOf(prefs.customChatBackgroundPath) }
+    var customChatBackgroundName by remember { mutableStateOf(prefs.customChatBackgroundName) }
+    var chatBackgroundOpacity by remember { mutableStateOf(prefs.chatBackgroundOpacity) }
     var showCustomColorDialog by remember { mutableStateOf(false) }
     var showCustomThemeColorDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -101,12 +114,10 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
         PrefsManager.FONT_FAMILY_CUSTOM to stringResource(R.string.style_custom)
     )
 
-    // 字体大小选项
-    val fontScaleOptions = listOf(
-        0.85f to stringResource(R.string.style_size_small),
-        1.0f to stringResource(R.string.style_size_standard),
-        1.15f to stringResource(R.string.style_size_large),
-        1.3f to stringResource(R.string.style_size_xlarge),
+    val chatBackgroundOptions = listOf(
+        PrefsManager.CHAT_BACKGROUND_NONE to stringResource(R.string.style_chat_background_none),
+        PrefsManager.CHAT_BACKGROUND_PORTRAIT to stringResource(R.string.style_chat_background_portrait),
+        PrefsManager.CHAT_BACKGROUND_CUSTOM to stringResource(R.string.style_chat_background_custom)
     )
 
     // 主题色选项：null 表示默认粉色
@@ -138,7 +149,20 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
         prefs.fontScale = fontScale
         prefs.followSystemFontScale = followSystemFontScale
         prefs.fontColorOverride = fontColorOverride
+        prefs.chatBackgroundMode = chatBackgroundMode
+        prefs.customChatBackgroundPath = customChatBackgroundPath
+        prefs.customChatBackgroundName = customChatBackgroundName
+        prefs.chatBackgroundOpacity = chatBackgroundOpacity
         (context as Activity).recreate()
+    }
+
+    fun updateBodyFontSize(value: Float) {
+        bodyFontSizeSp = value
+            .roundToInt()
+            .toFloat()
+            .coerceIn(PrefsManager.MIN_BODY_FONT_SP, PrefsManager.MAX_BODY_FONT_SP)
+        fontScale = PrefsManager.bodySpToFontScale(bodyFontSizeSp)
+        prefs.fontScale = fontScale
     }
 
     // 字体文件选择器：选择 TTF/OTF 字体文件
@@ -156,6 +180,31 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
                     prefs.customFontPath = saved.first
                     prefs.customFontName = saved.second
                     prefs.fontFamily = PrefsManager.FONT_FAMILY_CUSTOM
+                }
+            }
+        }
+    }
+
+    // 自定义聊天背景选择器：复制到私有目录，避免外部文档权限被回收后图片失效。
+    val backgroundLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val saved = withContext(Dispatchers.IO) { saveChatBackgroundFile(context, uri) }
+                if (saved != null) {
+                    val previousPath = customChatBackgroundPath
+                    customChatBackgroundPath = saved.first
+                    customChatBackgroundName = saved.second
+                    chatBackgroundMode = PrefsManager.CHAT_BACKGROUND_CUSTOM
+                    prefs.customChatBackgroundPath = saved.first
+                    prefs.customChatBackgroundName = saved.second
+                    prefs.chatBackgroundMode = PrefsManager.CHAT_BACKGROUND_CUSTOM
+                    if (previousPath != saved.first) {
+                        withContext(Dispatchers.IO) {
+                            deletePrivateFile(context, previousPath, "chat_backgrounds")
+                        }
+                    }
                 }
             }
         }
@@ -329,21 +378,48 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
             // 字体大小
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.style_font_size), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    fontScaleOptions.forEach { (value, label) ->
-                        FilterChip(
-                            selected = !followSystemFontScale && fontScale == value,
-                            onClick = {
-                                followSystemFontScale = false
-                                prefs.followSystemFontScale = false
-                                fontScale = value
-                                prefs.fontScale = value
-                            },
-                            label = { Text(label) }
+                Text(
+                    stringResource(R.string.style_font_size_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    IconButton(
+                        onClick = { updateBodyFontSize(bodyFontSizeSp - 1f) },
+                        enabled = bodyFontSizeSp > PrefsManager.MIN_BODY_FONT_SP
+                    ) {
+                        Icon(
+                            Icons.Filled.Remove,
+                            contentDescription = stringResource(R.string.style_decrease_font_size)
+                        )
+                    }
+                    Text(
+                        stringResource(R.string.style_font_size_value, bodyFontSizeSp.roundToInt()),
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    IconButton(
+                        onClick = { updateBodyFontSize(bodyFontSizeSp + 1f) },
+                        enabled = bodyFontSizeSp < PrefsManager.MAX_BODY_FONT_SP
+                    ) {
+                        Icon(
+                            Icons.Filled.Add,
+                            contentDescription = stringResource(R.string.style_increase_font_size)
                         )
                     }
                 }
+                Slider(
+                    value = bodyFontSizeSp,
+                    onValueChange =(::updateBodyFontSize),
+                    valueRange = PrefsManager.MIN_BODY_FONT_SP..PrefsManager.MAX_BODY_FONT_SP,
+                    steps = (PrefsManager.MAX_BODY_FONT_SP - PrefsManager.MIN_BODY_FONT_SP).roundToInt() - 1
+                )
                 Spacer(Modifier.height(12.dp))
                 HorizontalDivider()
                 Spacer(Modifier.height(12.dp))
@@ -354,12 +430,12 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "跟随系统字号",
+                            stringResource(R.string.style_follow_system_font_size),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            "开启后应用字号将随系统设置变化",
+                            stringResource(R.string.style_follow_system_font_size_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -369,9 +445,150 @@ fun StyleSettingsScreen(onBack: () -> Unit) {
                         onCheckedChange = { value ->
                             followSystemFontScale = value
                             prefs.followSystemFontScale = value
-                            // 重建 Activity 使字号设置立即生效
-                            (context as Activity).recreate()
                         }
+                    )
+                }
+            }
+
+            // 聊天界面背景
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    stringResource(R.string.style_chat_background),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    stringResource(R.string.style_chat_background_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    chatBackgroundOptions.forEach { (mode, label) ->
+                        FilterChip(
+                            selected = chatBackgroundMode == mode,
+                            onClick = {
+                                if (
+                                    mode == PrefsManager.CHAT_BACKGROUND_CUSTOM &&
+                                    customChatBackgroundPath.isNullOrBlank()
+                                ) {
+                                    backgroundLauncher.launch(arrayOf("image/*"))
+                                } else {
+                                    chatBackgroundMode = mode
+                                    prefs.chatBackgroundMode = mode
+                                }
+                            },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+
+                val backgroundModeDescription = when (chatBackgroundMode) {
+                    PrefsManager.CHAT_BACKGROUND_PORTRAIT -> R.string.style_chat_background_portrait_desc
+                    PrefsManager.CHAT_BACKGROUND_CUSTOM -> R.string.style_chat_background_custom_desc
+                    else -> null
+                }
+                if (backgroundModeDescription != null) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        stringResource(backgroundModeDescription),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                if (!customChatBackgroundPath.isNullOrBlank()) {
+                    Spacer(Modifier.height(10.dp))
+                    AsyncImage(
+                        model = customChatBackgroundPath,
+                        contentDescription = stringResource(R.string.style_background_preview),
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(156.dp)
+                            .clip(MaterialTheme.shapes.medium)
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            customChatBackgroundName ?: stringResource(R.string.style_custom_background_name),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1
+                        )
+                        TextButton(onClick = { backgroundLauncher.launch(arrayOf("image/*")) }) {
+                            Text(stringResource(R.string.style_change_background))
+                        }
+                        IconButton(
+                            onClick = {
+                                val oldPath = customChatBackgroundPath
+                                customChatBackgroundPath = null
+                                customChatBackgroundName = null
+                                prefs.customChatBackgroundPath = null
+                                prefs.customChatBackgroundName = null
+                                if (chatBackgroundMode == PrefsManager.CHAT_BACKGROUND_CUSTOM) {
+                                    chatBackgroundMode = PrefsManager.CHAT_BACKGROUND_NONE
+                                    prefs.chatBackgroundMode = PrefsManager.CHAT_BACKGROUND_NONE
+                                }
+                                scope.launch(Dispatchers.IO) {
+                                    deletePrivateFile(context, oldPath, "chat_backgrounds")
+                                }
+                            }
+                        ) {
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = stringResource(R.string.style_delete_background),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                } else if (chatBackgroundMode == PrefsManager.CHAT_BACKGROUND_CUSTOM) {
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = { backgroundLauncher.launch(arrayOf("image/*")) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(stringResource(R.string.style_choose_background))
+                    }
+                }
+
+                if (chatBackgroundMode != PrefsManager.CHAT_BACKGROUND_NONE) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            stringResource(R.string.style_background_strength),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            stringResource(
+                                R.string.style_background_strength_value,
+                                (chatBackgroundOpacity * 100).roundToInt()
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Slider(
+                        value = chatBackgroundOpacity,
+                        onValueChange = { value ->
+                            chatBackgroundOpacity = value
+                            prefs.chatBackgroundOpacity = value
+                        },
+                        valueRange = PrefsManager.MIN_CHAT_BACKGROUND_OPACITY..PrefsManager.MAX_CHAT_BACKGROUND_OPACITY,
+                        steps = 9
                     )
                 }
             }
@@ -556,5 +773,43 @@ private fun saveFontFile(context: Context, uri: Uri): Pair<String, String>? {
         android.net.Uri.fromFile(file).toString() to displayName
     } catch (e: Exception) {
         null
+    }
+}
+
+/** 将聊天背景复制到应用私有目录，返回 (file URI, 原始显示名)。 */
+private fun saveChatBackgroundFile(context: Context, uri: Uri): Pair<String, String>? {
+    return try {
+        val displayName = runCatching {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+            }
+        }.getOrNull() ?: "background_${UUID.randomUUID().toString().take(8)}"
+        val mime = context.contentResolver.getType(uri).orEmpty()
+        val extension = when {
+            mime.contains("png", ignoreCase = true) -> "png"
+            mime.contains("webp", ignoreCase = true) -> "webp"
+            mime.contains("gif", ignoreCase = true) -> "gif"
+            else -> "jpg"
+        }
+        val directory = File(context.filesDir, "chat_backgrounds").apply { mkdirs() }
+        val target = File(directory, "background_${UUID.randomUUID()}.$extension")
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            target.outputStream().use { output -> input.copyTo(output) }
+        } ?: return null
+        Uri.fromFile(target).toString() to displayName
+    } catch (_: Exception) {
+        null
+    }
+}
+
+/** 仅删除指定应用私有子目录中的文件，避免异常路径误删其他数据。 */
+private fun deletePrivateFile(context: Context, uriPath: String?, directoryName: String) {
+    if (uriPath.isNullOrBlank()) return
+    runCatching {
+        val rawPath = Uri.parse(uriPath).path ?: return@runCatching
+        val file = File(rawPath).canonicalFile
+        val directory = File(context.filesDir, directoryName).canonicalFile
+        if (file.parentFile == directory && file.isFile) file.delete()
     }
 }

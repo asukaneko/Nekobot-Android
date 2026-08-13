@@ -25,10 +25,31 @@
     <string name="style_font_monospace">等宽</string>
     <string name="style_font_rounded">圆角</string>
     <!-- 字体大小选项 -->
+    <string name="style_font_size_desc">正文基准字号，标题与辅助文字会同比例调整</string>
+    <string name="style_font_size_value">%1$d sp</string>
+    <string name="style_decrease_font_size">减小字号</string>
+    <string name="style_increase_font_size">增大字号</string>
+    <string name="style_follow_system_font_size">跟随系统字号</string>
+    <string name="style_follow_system_font_size_desc">开启后会在所选基准字号上叠加系统缩放</string>
     <string name="style_size_small">小</string>
     <string name="style_size_standard">标准</string>
     <string name="style_size_large">大</string>
     <string name="style_size_xlarge">超大</string>
+    <!-- 聊天背景 -->
+    <string name="style_chat_background">聊天界面背景</string>
+    <string name="style_chat_background_desc">可关闭背景、跟随当前会话的角色立绘，或使用一张全局自定义图片</string>
+    <string name="style_chat_background_none">关闭</string>
+    <string name="style_chat_background_portrait">跟随立绘</string>
+    <string name="style_chat_background_portrait_desc">进入不同角色会话时自动使用该会话立绘；无立绘时保持默认背景</string>
+    <string name="style_chat_background_custom">自定义图片</string>
+    <string name="style_chat_background_custom_desc">所有聊天会话使用同一张自定义背景</string>
+    <string name="style_choose_background">选择图片</string>
+    <string name="style_change_background">更换图片</string>
+    <string name="style_delete_background">删除自定义背景</string>
+    <string name="style_background_preview">自定义背景预览</string>
+    <string name="style_background_strength">背景显示强度</string>
+    <string name="style_background_strength_value">%1$d%%</string>
+    <string name="style_custom_background_name">自定义背景</string>
     <!-- 主题色选项 -->
     <string name="style_color_purple">紫色</string>
     <string name="style_color_blue">蓝色</string>
