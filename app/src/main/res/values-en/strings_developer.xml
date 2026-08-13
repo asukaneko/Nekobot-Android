@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="developer_options_title">Developer options</string>
+    <string name="developer_options_subtitle">Inspect app runtime status and performance</string>
+    <string name="performance_monitor_title">Performance monitor</string>
+    <string name="performance_monitor_subtitle">View frame rate, memory, CPU, and network activity in real time</string>
+    <string name="performance_monitor_live">Live sampling</string>
+    <string name="performance_monitor_live_desc">Refreshes once per second while frame times are sampled on the main thread</string>
+    <string name="performance_monitor_pause">Pause sampling</string>
+    <string name="performance_monitor_resume">Resume sampling</string>
+    <string name="performance_monitor_reset">Reset frame statistics</string>
+    <string name="performance_monitor_rendering">Rendering</string>
+    <string name="performance_monitor_memory">Memory</string>
+    <string name="performance_monitor_process">Process</string>
+    <string name="performance_monitor_network">Network</string>
+    <string name="performance_monitor_fps">Current FPS</string>
+    <string name="performance_monitor_frame_average">Average frame time</string>
+    <string name="performance_monitor_frame_p95">P95 frame time</string>
+    <string name="performance_monitor_jank">Janky frames</string>
+    <string name="performance_monitor_frames_sampled">Frames sampled</string>
+    <string name="performance_monitor_java_heap">Java heap used</string>
+    <string name="performance_monitor_native_heap">Native heap</string>
+    <string name="performance_monitor_pss">Process PSS</string>
+    <string name="performance_monitor_heap_pressure">Heap pressure</string>
+    <string name="performance_monitor_cpu">Process CPU</string>
+    <string name="performance_monitor_threads">Active threads</string>
+    <string name="performance_monitor_cores">CPU cores</string>
+    <string name="performance_monitor_uptime">Process uptime</string>
+    <string name="performance_monitor_download_total">Received total</string>
+    <string name="performance_monitor_upload_total">Sent total</string>
+    <string name="performance_monitor_download_rate">Download rate</string>
+    <string name="performance_monitor_upload_rate">Upload rate</string>
+    <string name="performance_monitor_status_good">Good</string>
+    <string name="performance_monitor_status_attention">Needs attention</string>
+    <string name="performance_monitor_status_poor">Poor performance</string>
+    <string name="performance_monitor_no_frames">Waiting for frame data…</string>
+    <string name="performance_monitor_note">Measurements cover only the current app process. Navigate, scroll, or generate a reply to observe real workload changes.</string>
+</resources>

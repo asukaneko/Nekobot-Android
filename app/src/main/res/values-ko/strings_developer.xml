@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="developer_options_title">개발자 옵션</string>
+    <string name="developer_options_subtitle">앱 실행 상태와 성능을 진단합니다</string>
+    <string name="performance_monitor_title">성능 측정</string>
+    <string name="performance_monitor_subtitle">프레임 속도, 메모리, CPU 및 네트워크를 실시간으로 확인합니다</string>
+    <string name="performance_monitor_live">실시간 샘플링</string>
+    <string name="performance_monitor_live_desc">1초마다 새로고침하며 메인 스레드에서 프레임 시간을 계속 측정합니다</string>
+    <string name="performance_monitor_pause">샘플링 일시 중지</string>
+    <string name="performance_monitor_resume">샘플링 계속</string>
+    <string name="performance_monitor_reset">프레임 통계 초기화</string>
+    <string name="performance_monitor_rendering">화면 렌더링</string>
+    <string name="performance_monitor_memory">메모리</string>
+    <string name="performance_monitor_process">프로세스</string>
+    <string name="performance_monitor_network">네트워크</string>
+    <string name="performance_monitor_fps">현재 FPS</string>
+    <string name="performance_monitor_frame_average">평균 프레임 시간</string>
+    <string name="performance_monitor_frame_p95">P95 프레임 시간</string>
+    <string name="performance_monitor_jank">버벅임 프레임 비율</string>
+    <string name="performance_monitor_frames_sampled">샘플 프레임 수</string>
+    <string name="performance_monitor_java_heap">Java 힙 사용량</string>
+    <string name="performance_monitor_native_heap">Native 힙</string>
+    <string name="performance_monitor_pss">프로세스 PSS</string>
+    <string name="performance_monitor_heap_pressure">힙 압력</string>
+    <string name="performance_monitor_cpu">프로세스 CPU</string>
+    <string name="performance_monitor_threads">활성 스레드</string>
+    <string name="performance_monitor_cores">CPU 코어</string>
+    <string name="performance_monitor_uptime">프로세스 실행 시간</string>
+    <string name="performance_monitor_download_total">누적 수신</string>
+    <string name="performance_monitor_upload_total">누적 송신</string>
+    <string name="performance_monitor_download_rate">현재 다운로드</string>
+    <string name="performance_monitor_upload_rate">현재 업로드</string>
+    <string name="performance_monitor_status_good">정상</string>
+    <string name="performance_monitor_status_attention">확인 필요</string>
+    <string name="performance_monitor_status_poor">성능 저하</string>
+    <string name="performance_monitor_no_frames">프레임 데이터 대기 중…</string>
+    <string name="performance_monitor_note">측정값은 현재 앱 프로세스만 반영합니다. 화면 이동, 스크롤 또는 답변 생성 중 실제 부하 변화를 확인할 수 있습니다.</string>
+</resources>

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="developer_options_title">开发者选项</string>
+    <string name="developer_options_subtitle">诊断应用运行状态与性能</string>
+    <string name="performance_monitor_title">性能检测</string>
+    <string name="performance_monitor_subtitle">实时查看帧率、内存、CPU 和网络</string>
+    <string name="performance_monitor_live">实时采样</string>
+    <string name="performance_monitor_live_desc">每秒刷新一次，帧时间在主线程持续采样</string>
+    <string name="performance_monitor_pause">暂停采样</string>
+    <string name="performance_monitor_resume">继续采样</string>
+    <string name="performance_monitor_reset">重置帧统计</string>
+    <string name="performance_monitor_rendering">界面渲染</string>
+    <string name="performance_monitor_memory">内存</string>
+    <string name="performance_monitor_process">进程</string>
+    <string name="performance_monitor_network">网络</string>
+    <string name="performance_monitor_fps">实时帧率</string>
+    <string name="performance_monitor_frame_average">平均帧耗时</string>
+    <string name="performance_monitor_frame_p95">P95 帧耗时</string>
+    <string name="performance_monitor_jank">卡顿帧比例</string>
+    <string name="performance_monitor_frames_sampled">已采样帧数</string>
+    <string name="performance_monitor_java_heap">Java 堆使用</string>
+    <string name="performance_monitor_native_heap">Native 堆</string>
+    <string name="performance_monitor_pss">进程 PSS</string>
+    <string name="performance_monitor_heap_pressure">堆压力</string>
+    <string name="performance_monitor_cpu">进程 CPU</string>
+    <string name="performance_monitor_threads">活动线程</string>
+    <string name="performance_monitor_cores">CPU 核心</string>
+    <string name="performance_monitor_uptime">进程运行时间</string>
+    <string name="performance_monitor_download_total">累计接收</string>
+    <string name="performance_monitor_upload_total">累计发送</string>
+    <string name="performance_monitor_download_rate">当前下行</string>
+    <string name="performance_monitor_upload_rate">当前上行</string>
+    <string name="performance_monitor_status_good">正常</string>
+    <string name="performance_monitor_status_attention">需要关注</string>
+    <string name="performance_monitor_status_poor">性能较差</string>
+    <string name="performance_monitor_no_frames">等待界面帧数据…</string>
+    <string name="performance_monitor_note">检测数据仅反映当前应用进程。切换页面、滚动列表或生成消息时更容易观察真实性能变化。</string>
+</resources>

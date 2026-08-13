@@ -68,6 +68,8 @@ object Routes {
     const val AB_TEST_SETTINGS = "ab_test_settings"
     /** 关于页面 */
     const val ABOUT = "about"
+    const val DEVELOPER_OPTIONS = "developer_options"
+    const val PERFORMANCE_MONITOR = "performance_monitor"
     /** 开源许可证页面 */
     const val LICENSE = "license"
     /** 隐私声明页面 */

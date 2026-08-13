@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="developer_options_title">開発者向けオプション</string>
+    <string name="developer_options_subtitle">アプリの実行状態と性能を診断します</string>
+    <string name="performance_monitor_title">パフォーマンス測定</string>
+    <string name="performance_monitor_subtitle">フレームレート、メモリ、CPU、ネットワークをリアルタイムで表示します</string>
+    <string name="performance_monitor_live">リアルタイム測定</string>
+    <string name="performance_monitor_live_desc">1 秒ごとに更新し、メインスレッドでフレーム時間を継続測定します</string>
+    <string name="performance_monitor_pause">測定を一時停止</string>
+    <string name="performance_monitor_resume">測定を再開</string>
+    <string name="performance_monitor_reset">フレーム統計をリセット</string>
+    <string name="performance_monitor_rendering">画面描画</string>
+    <string name="performance_monitor_memory">メモリ</string>
+    <string name="performance_monitor_process">プロセス</string>
+    <string name="performance_monitor_network">ネットワーク</string>
+    <string name="performance_monitor_fps">現在の FPS</string>
+    <string name="performance_monitor_frame_average">平均フレーム時間</string>
+    <string name="performance_monitor_frame_p95">P95 フレーム時間</string>
+    <string name="performance_monitor_jank">カクつきフレーム率</string>
+    <string name="performance_monitor_frames_sampled">測定フレーム数</string>
+    <string name="performance_monitor_java_heap">Java ヒープ使用量</string>
+    <string name="performance_monitor_native_heap">Native ヒープ</string>
+    <string name="performance_monitor_pss">プロセス PSS</string>
+    <string name="performance_monitor_heap_pressure">ヒープ負荷</string>
+    <string name="performance_monitor_cpu">プロセス CPU</string>
+    <string name="performance_monitor_threads">アクティブスレッド</string>
+    <string name="performance_monitor_cores">CPU コア</string>
+    <string name="performance_monitor_uptime">プロセス稼働時間</string>
+    <string name="performance_monitor_download_total">累計受信</string>
+    <string name="performance_monitor_upload_total">累計送信</string>
+    <string name="performance_monitor_download_rate">現在の下り速度</string>
+    <string name="performance_monitor_upload_rate">現在の上り速度</string>
+    <string name="performance_monitor_status_good">正常</string>
+    <string name="performance_monitor_status_attention">要確認</string>
+    <string name="performance_monitor_status_poor">性能低下</string>
+    <string name="performance_monitor_no_frames">フレームデータを待機中…</string>
+    <string name="performance_monitor_note">測定値は現在のアプリプロセスのみを対象とします。画面移動、スクロール、返信生成中に実際の負荷変化を確認できます。</string>
+</resources>

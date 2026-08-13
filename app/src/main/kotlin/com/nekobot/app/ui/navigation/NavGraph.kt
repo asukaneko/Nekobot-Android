@@ -65,6 +65,8 @@ import com.nekobot.app.ui.screens.settings.SystemOperationsScreen
 import com.nekobot.app.ui.screens.settings.GlobalAgentMemoryScreen
 import com.nekobot.app.ui.screens.settings.WebDavBackupScreen
 import com.nekobot.app.ui.screens.settings.AboutScreen
+import com.nekobot.app.ui.screens.settings.DeveloperOptionsScreen
+import com.nekobot.app.ui.screens.settings.PerformanceMonitorScreen
 import com.nekobot.app.ui.screens.settings.LicenseScreen
 import com.nekobot.app.ui.screens.settings.PrivacyScreen
 import com.nekobot.app.ui.screens.settings.Wenku8LoginScreen
@@ -449,9 +451,21 @@ fun NekobotNavGraph() {
             composable(Routes.ABOUT) {
                 AboutScreen(
                     onBack = { navController.popBackStack() },
+                    onNavigate = { route -> navController.navigate(route) },
                     onOpenLicense = { navController.navigate(Routes.LICENSE) },
                     onOpenPrivacy = { navController.navigate(Routes.PRIVACY) }
                 )
+            }
+            composable(Routes.DEVELOPER_OPTIONS) {
+                DeveloperOptionsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenPerformanceMonitor = {
+                        navController.navigate(Routes.PERFORMANCE_MONITOR)
+                    }
+                )
+            }
+            composable(Routes.PERFORMANCE_MONITOR) {
+                PerformanceMonitorScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.WENKU_LOGIN) {
                 Wenku8LoginScreen(onBack = { navController.popBackStack() })

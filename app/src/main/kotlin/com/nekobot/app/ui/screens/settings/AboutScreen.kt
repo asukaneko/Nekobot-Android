@@ -25,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.DeveloperMode
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Language
@@ -59,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.nekobot.app.R
+import com.nekobot.app.ui.navigation.Routes
 import com.nekobot.app.update.UpdateChecker
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
@@ -210,6 +212,13 @@ fun AboutScreen(
                         title = stringResource(R.string.about_official_website),
                         subtitle = "asukaneko.github.io",
                         onClick = { openUrl(context, "https://asukaneko.github.io/Nekobot-Android/") }
+                    )
+                    AboutRow(
+                        icon = Icons.Filled.DeveloperMode,
+                        iconColor = MaterialTheme.colorScheme.tertiary,
+                        title = stringResource(R.string.developer_options_title),
+                        subtitle = stringResource(R.string.developer_options_subtitle),
+                        onClick = { onNavigate(Routes.DEVELOPER_OPTIONS) }
                     )
                 }
 
