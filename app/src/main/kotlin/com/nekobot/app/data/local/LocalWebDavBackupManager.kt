@@ -484,6 +484,7 @@ class LocalWebDavBackupManager(
                 val outgoing = linkedMapOf<String, WebDavSyncRecord>()
                 val incoming = linkedMapOf<String, WebDavSyncRecord>()
                 var conflicts = 0
+                val conflictDetails = JsonArray()
                 val deltaCache = mutableMapOf<String, WebDavSyncDelta>()
 
                 fun localRecordFor(key: String): WebDavSyncRecord? =
@@ -554,6 +555,16 @@ class LocalWebDavBackupManager(
                                 localRecord.updatedAt < remoteIndex.updatedAt -> false
                                 else -> localRecord.hash >= remoteIndex.hash
                             }
+                            conflictDetails.add(JsonObject().apply {
+                                addProperty("key", key)
+                                addProperty("type", localRecord.type)
+                                addProperty("id", localRecord.id)
+                                addProperty("local_updated_at", localRecord.updatedAt)
+                                addProperty("remote_updated_at", remoteIndex.updatedAt)
+                                addProperty("local_hash", localRecord.hash)
+                                addProperty("remote_hash", remoteIndex.hash)
+                                addProperty("resolution", if (localWins) "local" else "remote")
+                            })
                             if (localWins) {
                                 outgoing[key] = localRecord
                             } else {
@@ -622,6 +633,7 @@ class LocalWebDavBackupManager(
 
                 configPrefs.edit()
                     .putString(baselineKey, gson.toJson(remoteManifest))
+                    .putString(KEY_LAST_CONFLICTS, gson.toJson(conflictDetails))
                     .apply()
                 updateStatus(
                     lastSyncAt = now,
@@ -635,6 +647,7 @@ class LocalWebDavBackupManager(
                     addProperty("uploaded", outgoing.size)
                     addProperty("downloaded", incoming.size)
                     addProperty("conflicts", conflicts)
+                    add("conflict_details", conflictDetails)
                     addProperty("uploaded_bytes", uploadedBytes)
                     addProperty("incremental", true)
                 }
@@ -644,6 +657,240 @@ class LocalWebDavBackupManager(
                 throw IllegalStateException(message, e)
             }
         }
+
+    /** 列出当前增量清单、历史修订以及最近一次同步的逐条冲突决策。 */
+    suspend fun incrementalHistory(request: WebDavBackupRequest): JsonObject = withContext(Dispatchers.IO) {
+        val raw = rawConfig()
+        val encryptionPassword = request.password?.trim().takeUnless { it.isNullOrBlank() }
+            ?: raw.encryptionPassword
+        require(encryptionPassword.isNotBlank()) { "未设置加密密码" }
+        val folder = ensureFolder(raw)
+        if (!folder.ok) error(folder.message)
+        ensureIncrementalFolders(raw)
+
+        val profileName = prefs.activeDbName
+        val rootUrl = resolveIncrementalRootUrl(raw.url, profileName)
+        val manifestUrl = "${rootUrl}manifest.nksync"
+        var currentManifest: WebDavSyncManifest? = null
+        execute(Request.Builder().url(manifestUrl).get(), raw).use { response ->
+            when (response.code) {
+                200 -> {
+                    val encrypted = response.body?.bytes() ?: byteArrayOf()
+                    val plain = LocalWebDavArchiveCodec.decrypt(encrypted, encryptionPassword)
+                    currentManifest = gson.fromJson(plain.toString(Charsets.UTF_8), WebDavSyncManifest::class.java)
+                }
+                404 -> Unit
+                else -> error("读取增量同步清单失败 (HTTP ${response.code})")
+            }
+        }
+
+        val historyUrl = "${rootUrl}history/"
+        val propfindBody = """
+            <?xml version="1.0" encoding="utf-8"?>
+            <D:propfind xmlns:D="DAV:">
+              <D:prop><D:getcontentlength/><D:getlastmodified/></D:prop>
+            </D:propfind>
+        """.trimIndent().toRequestBody(XML_MEDIA_TYPE)
+        val entries = linkedMapOf<Long, JsonObject>()
+        execute(
+            Request.Builder().url(historyUrl).method("PROPFIND", propfindBody).header("Depth", "1"),
+            raw
+        ).use { response ->
+            if (response.code !in listOf(200, 207, 404)) {
+                error("读取 WebDAV 历史目录失败 (HTTP ${response.code})")
+            }
+            if (response.code != 404) {
+                val xml = response.body?.string().orEmpty()
+                val responseBlocks = Regex(
+                    "<(?:[A-Za-z]+:)?response\\b[\\s\\S]*?</(?:[A-Za-z]+:)?response>",
+                    RegexOption.IGNORE_CASE
+                ).findAll(xml)
+                responseBlocks.forEach { match ->
+                    val block = match.value
+                    val revision = Regex("manifest-(\\d+)\\.nksync", RegexOption.IGNORE_CASE)
+                        .find(block)?.groupValues?.getOrNull(1)?.toLongOrNull()
+                        ?: return@forEach
+                    val size = Regex(
+                        "<(?:[A-Za-z]+:)?getcontentlength[^>]*>([^<]*)",
+                        RegexOption.IGNORE_CASE
+                    ).find(block)?.groupValues?.getOrNull(1)?.trim()?.toLongOrNull() ?: 0L
+                    val modified = Regex(
+                        "<(?:[A-Za-z]+:)?getlastmodified[^>]*>([^<]*)",
+                        RegexOption.IGNORE_CASE
+                    ).find(block)?.groupValues?.getOrNull(1)?.trim().orEmpty()
+                    entries[revision] = JsonObject().apply {
+                        addProperty("revision", revision)
+                        addProperty("current", false)
+                        addProperty("size", size)
+                        addProperty("last_modified", modified)
+                    }
+                }
+            }
+        }
+        currentManifest?.let { manifest ->
+            entries[manifest.revision] = JsonObject().apply {
+                addProperty("revision", manifest.revision)
+                addProperty("current", true)
+                addProperty("updated_at", manifest.updatedAt)
+                addProperty("record_count", manifest.records.size)
+            }
+        }
+        val revisions = JsonArray().apply {
+            entries.toSortedMap(compareByDescending<Long> { it }).values.forEach(::add)
+        }
+        val conflicts = configPrefs.getString(KEY_LAST_CONFLICTS, null)
+            ?.let { runCatching { JsonParser.parseString(it).asJsonArray }.getOrNull() }
+            ?: JsonArray()
+        successJson().apply {
+            addProperty("ok", true)
+            addProperty("profile", profileName)
+            addProperty("current_revision", currentManifest?.revision ?: 0L)
+            addProperty("current_updated_at", currentManifest?.updatedAt.orEmpty())
+            addProperty("record_count", currentManifest?.records?.size ?: 0)
+            add("revisions", revisions)
+            add("conflict_details", conflicts)
+        }
+    }
+
+    /**
+     * 把指定历史清单恢复为一个新的单调递增修订，并将同一快照应用到当前 Room 数据库。
+     * 旧清单和 delta 只读保留，因此恢复操作本身仍可再次回退。
+     */
+    suspend fun restoreIncrementalRevision(
+        revision: Long,
+        request: WebDavBackupRequest
+    ): JsonObject = withContext(Dispatchers.IO) {
+        require(revision > 0L) { "revision 必须大于 0" }
+        val raw = rawConfig()
+        val encryptionPassword = request.password?.trim().takeUnless { it.isNullOrBlank() }
+            ?: raw.encryptionPassword
+        require(encryptionPassword.isNotBlank()) { "未设置加密密码" }
+        val folder = ensureFolder(raw)
+        if (!folder.ok) error(folder.message)
+        ensureIncrementalFolders(raw)
+
+        val profileName = prefs.activeDbName
+        val rootUrl = resolveIncrementalRootUrl(raw.url, profileName)
+        val manifestUrl = "${rootUrl}manifest.nksync"
+        lateinit var currentPayload: ByteArray
+        lateinit var currentManifest: WebDavSyncManifest
+        var currentEtag: String? = null
+        execute(Request.Builder().url(manifestUrl).get(), raw).use { response ->
+            if (response.code != 200) error("读取当前增量清单失败 (HTTP ${response.code})")
+            currentPayload = response.body?.bytes() ?: byteArrayOf()
+            currentEtag = response.header("ETag")
+            val plain = LocalWebDavArchiveCodec.decrypt(currentPayload, encryptionPassword)
+            currentManifest = gson.fromJson(plain.toString(Charsets.UTF_8), WebDavSyncManifest::class.java)
+                ?: error("当前增量清单格式无效")
+        }
+        if (revision == currentManifest.revision) {
+            return@withContext successJson().apply {
+                addProperty("ok", true)
+                addProperty("revision", revision)
+                addProperty("new_revision", revision)
+                addProperty("already_current", true)
+            }
+        }
+
+        val selectedPayload = execute(
+            Request.Builder().url("${rootUrl}history/manifest-$revision.nksync").get(),
+            raw
+        ).use { response ->
+            if (response.code != 200) error("历史修订 $revision 不存在 (HTTP ${response.code})")
+            response.body?.bytes() ?: byteArrayOf()
+        }
+        val selectedPlain = LocalWebDavArchiveCodec.decrypt(selectedPayload, encryptionPassword)
+        val selectedManifest = gson.fromJson(
+            selectedPlain.toString(Charsets.UTF_8),
+            WebDavSyncManifest::class.java
+        ) ?: error("历史修订格式无效")
+        require(selectedManifest.revision == revision) { "历史修订编号不匹配" }
+
+        val deltaCache = mutableMapOf<String, WebDavSyncDelta>()
+        fun loadRecord(key: String, index: WebDavSyncIndexEntry): WebDavSyncRecord {
+            if (index.deleted) return LocalWebDavIncrementalLogic.tombstone(key, index.updatedAt)
+            require(index.delta.isNotBlank()) { "历史索引缺少 delta：$key" }
+            val delta = deltaCache.getOrPut(index.delta) {
+                val encrypted = execute(Request.Builder().url("$rootUrl${index.delta}").get(), raw).use { response ->
+                    if (response.code != 200) error("读取历史 delta 失败 (HTTP ${response.code})")
+                    response.body?.bytes() ?: byteArrayOf()
+                }
+                val plain = LocalWebDavArchiveCodec.decrypt(encrypted, encryptionPassword)
+                gson.fromJson(plain.toString(Charsets.UTF_8), WebDavSyncDelta::class.java)
+                    ?: error("历史 delta 格式无效")
+            }
+            return delta.records.firstOrNull { it.key == key }
+                ?: error("历史 delta 缺少记录：$key")
+        }
+
+        val db = NekobotDatabase.get(appContext, profileName)
+        val restoredRecords = selectedManifest.records.map { (key, index) -> loadRecord(key, index) }.toMutableList()
+        val restoredKeys = selectedManifest.records.keys
+        val now = nowIso()
+        collectIncrementalRecords(db).keys
+            .filterNot(restoredKeys::contains)
+            .forEach { restoredRecords += LocalWebDavIncrementalLogic.tombstone(it, now) }
+
+        val newRevision = currentManifest.revision + 1L
+        val restoreDeltaName = "delta-$newRevision-restore-${UUID.randomUUID()}.nksync"
+        val restoreDelta = WebDavSyncDelta(
+            revision = newRevision,
+            deviceId = getOrCreateSyncDeviceId(),
+            createdAt = now,
+            records = restoredRecords
+        )
+        val encryptedRestoreDelta = LocalWebDavArchiveCodec.encrypt(
+            gson.toJson(restoreDelta).toByteArray(Charsets.UTF_8),
+            encryptionPassword,
+            profileName
+        )
+        putIncrementalFile("$rootUrl$restoreDeltaName", encryptedRestoreDelta, raw)
+        val restoredManifest = WebDavSyncManifest(
+            revision = newRevision,
+            updatedAt = now,
+            records = linkedMapOf<String, WebDavSyncIndexEntry>().apply {
+                restoredRecords.forEach { record ->
+                    put(record.key, LocalWebDavIncrementalLogic.indexOf(record, restoreDeltaName))
+                }
+            }
+        )
+        putIncrementalFile(
+            "${rootUrl}history/manifest-${currentManifest.revision}.nksync",
+            currentPayload,
+            raw
+        )
+        val restoredPayload = LocalWebDavArchiveCodec.encrypt(
+            gson.toJson(restoredManifest).toByteArray(Charsets.UTF_8),
+            encryptionPassword,
+            profileName
+        )
+        val builder = Request.Builder().url(manifestUrl).put(restoredPayload.toRequestBody(BINARY_MEDIA_TYPE))
+        if (!currentEtag.isNullOrBlank()) builder.header("If-Match", currentEtag!!)
+        execute(builder, raw).use { response ->
+            if (response.code == 412) error("远端数据已被其他设备更新，请刷新历史后重试")
+            if (response.code !in listOf(200, 201, 204)) {
+                error("恢复历史修订失败 (HTTP ${response.code})")
+            }
+        }
+
+        applyIncrementalRecords(db, restoredRecords)
+        configPrefs.edit()
+            .putString("$KEY_SYNC_BASE_PREFIX$profileName", gson.toJson(restoredManifest))
+            .putString(KEY_LAST_CONFLICTS, "[]")
+            .apply()
+        updateStatus(
+            lastSyncAt = now,
+            lastError = "",
+            lastFileSize = (encryptedRestoreDelta.size + restoredPayload.size).toLong()
+        )
+        successJson().apply {
+            addProperty("ok", true)
+            addProperty("restored_revision", revision)
+            addProperty("new_revision", newRevision)
+            addProperty("record_count", restoredManifest.records.size)
+            addProperty("restored_at", now)
+        }
+    }
 
     private suspend fun collectIncrementalRecords(
         db: NekobotDatabase
@@ -1398,6 +1645,7 @@ class LocalWebDavBackupManager(
         const val KEY_LAST_MODIFIED = "last_modified"
         const val KEY_SYNC_DEVICE_ID = "sync_device_id"
         const val KEY_SYNC_BASE_PREFIX = "sync_base_"
+        const val KEY_LAST_CONFLICTS = "last_incremental_conflicts"
 
         const val BACKUP_FOLDER = "nekobot"
         const val BACKUP_FILENAME = "config.nbotcfg"

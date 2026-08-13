@@ -1742,6 +1742,25 @@ class UnifiedRepository(
             Resource.Error("WebDAV 增量同步仅支持本地模式")
         }
 
+    suspend fun webDavIncrementalHistory(req: WebDavBackupRequest): Resource<JsonElement> =
+        if (isLocal) {
+            runCatching { Resource.Success<JsonElement>(localWebDav.incrementalHistory(req)) }
+                .getOrElse { Resource.Error(it.message ?: "读取 WebDAV 历史失败") }
+        } else {
+            Resource.Error("WebDAV 增量历史仅支持本地模式")
+        }
+
+    suspend fun webDavRestoreIncrementalRevision(
+        revision: Long,
+        req: WebDavBackupRequest
+    ): Resource<JsonElement> = if (isLocal) {
+        runCatching {
+            Resource.Success<JsonElement>(localWebDav.restoreIncrementalRevision(revision, req))
+        }.getOrElse { Resource.Error(it.message ?: "恢复 WebDAV 历史修订失败") }
+    } else {
+        Resource.Error("WebDAV 增量历史恢复仅支持本地模式")
+    }
+
     // ==================== 配置迁移 ====================
     suspend fun exportConfig(req: ConfigExportRequest): retrofit2.Response<okhttp3.ResponseBody> =
         if (isLocal) { throw UnsupportedOperationException("本地模式不支持配置迁移") } else remote.exportConfig(req)

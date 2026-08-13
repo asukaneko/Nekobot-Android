@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.settings
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -18,6 +21,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.WifiFind
 import androidx.compose.material3.AlertDialog
@@ -37,7 +43,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,6 +84,9 @@ class WebDavBackupViewModel : BaseViewModel() {
     private val _testResult = MutableStateFlow<String?>(null)
     val testResult: StateFlow<String?> = _testResult.asStateFlow()
 
+    private val _incrementalHistory = MutableStateFlow<JsonObject?>(null)
+    val incrementalHistory: StateFlow<JsonObject?> = _incrementalHistory.asStateFlow()
+
     init {
         loadConfig()
     }
@@ -91,6 +99,7 @@ class WebDavBackupViewModel : BaseViewModel() {
                 _config.value = it
                 if (!it.url.isNullOrBlank()) {
                     loadInfo()
+                    if (isLocalMode && it.hasEncryptionPassword == true) loadHistory()
                 } else {
                     _remoteInfo.value = null
                 }
@@ -216,11 +225,37 @@ class WebDavBackupViewModel : BaseViewModel() {
                         )
                     )
                     loadConfig()
+                    loadHistory(password)
                 } else {
                     showError(
                         obj?.get("error")?.asString
                             ?: string(R.string.webdav_incremental_failed)
                     )
+                }
+            }
+        )
+    }
+
+    fun loadHistory(password: String = "") {
+        val req = WebDavBackupRequest(password = password.ifBlank { null })
+        launchResult(
+            block = { unified.webDavIncrementalHistory(req) },
+            onSuccess = { elem -> _incrementalHistory.value = elem?.asJsonObject }
+        )
+    }
+
+    fun restoreRevision(revision: Long, password: String) {
+        val req = WebDavBackupRequest(password = password.ifBlank { null })
+        launchResult(
+            block = { unified.webDavRestoreIncrementalRevision(revision, req) },
+            onSuccess = { elem ->
+                val obj = elem?.asJsonObject
+                if (obj?.get("success")?.asBoolean == true) {
+                    showToast("已恢复到修订 $revision，并创建修订 ${obj.get("new_revision")?.asLong ?: revision}")
+                    loadConfig()
+                    loadHistory(password)
+                } else {
+                    showError(obj?.get("error")?.asString ?: "恢复历史修订失败")
                 }
             }
         )
@@ -249,12 +284,13 @@ private fun formatFileSize(bytes: Long?): String {
 @Composable
 fun WebDavBackupScreen(onBack: () -> Unit) {
     val vm: WebDavBackupViewModel = viewModel()
-    val config by vm.config.collectAsState()
-    val remoteInfo by vm.remoteInfo.collectAsState()
-    val testResult by vm.testResult.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val error by vm.error.collectAsState()
-    val toast by vm.toast.collectAsState()
+    val config by vm.config.collectAsStateWithLifecycle()
+    val remoteInfo by vm.remoteInfo.collectAsStateWithLifecycle()
+    val testResult by vm.testResult.collectAsStateWithLifecycle()
+    val incrementalHistory by vm.incrementalHistory.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     // 配置输入：以已加载配置为初始值，配置刷新时同步
@@ -271,6 +307,7 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
     var syncPassword by remember { mutableStateOf("") }
     var syncIncludePortraits by remember { mutableStateOf(false) }
     var showSyncConfirm by remember { mutableStateOf(false) }
+    var restoreRevisionTarget by remember { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(toast) {
         if (toast != null) {
@@ -501,6 +538,98 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                                 Spacer(Modifier.width(8.dp))
                                 Text(stringResource(R.string.webdav_incremental_button))
                             }
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedButton(
+                                onClick = { vm.loadHistory(incrementalPassword) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Filled.History, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("刷新版本历史")
+                            }
+
+                            val currentRevision = incrementalHistory?.get("current_revision")?.asLong ?: 0L
+                            val recordCount = incrementalHistory?.get("record_count")?.asInt ?: 0
+                            val conflicts = incrementalHistory?.getAsJsonArray("conflict_details")
+                            val revisions = incrementalHistory?.getAsJsonArray("revisions")
+                            if (currentRevision > 0L) {
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    "当前修订 $currentRevision · $recordCount 条记录",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            if (conflicts != null && conflicts.size() > 0) {
+                                Spacer(Modifier.height(10.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Filled.WarningAmber,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        "最近一次同步处理了 ${conflicts.size()} 个冲突",
+                                        color = MaterialTheme.colorScheme.error,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                                conflicts.take(12).forEach { element ->
+                                    val conflict = element.asJsonObject
+                                    val key = conflict.get("key")?.asString.orEmpty()
+                                    val resolution = when (conflict.get("resolution")?.asString) {
+                                        "local" -> "保留本机版本"
+                                        "remote" -> "采用远端版本"
+                                        else -> "已自动解决"
+                                    }
+                                    Text(
+                                        "$key · $resolution",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
+                            }
+                            if (revisions != null && revisions.size() > 0) {
+                                Spacer(Modifier.height(12.dp))
+                                Text("版本历史", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                revisions.take(20).forEach { element ->
+                                    val revision = element.asJsonObject
+                                    val number = revision.get("revision")?.asLong ?: return@forEach
+                                    val current = revision.get("current")?.asBoolean == true
+                                    val updatedAt = revision.get("updated_at")?.asString.orEmpty()
+                                        .ifBlank { revision.get("last_modified")?.asString.orEmpty() }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                "修订 $number${if (current) "（当前）" else ""}",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                            if (updatedAt.isNotBlank()) {
+                                                Text(
+                                                    updatedAt,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                        OutlinedButton(
+                                            onClick = { restoreRevisionTarget = number },
+                                            enabled = !current
+                                        ) {
+                                            Icon(Icons.Filled.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(if (current) "当前" else "恢复")
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -629,6 +758,29 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                 TextButton(onClick = { showSyncConfirm = false }) {
                     Text(stringResource(R.string.common_cancel))
                 }
+            }
+        )
+    }
+
+    restoreRevisionTarget?.let { revision ->
+        AlertDialog(
+            onDismissRequest = { restoreRevisionTarget = null },
+            title = { Text("恢复 WebDAV 修订 $revision？") },
+            text = {
+                Text("会先保存当前远端清单，再把历史快照作为一个新的修订写回，并同步恢复本机数据库。该操作不会删除历史版本。")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        restoreRevisionTarget = null
+                        vm.restoreRevision(revision, incrementalPassword)
+                    }
+                ) {
+                    Text("确认恢复", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { restoreRevisionTarget = null }) { Text(stringResource(R.string.common_cancel)) }
             }
         )
     }
