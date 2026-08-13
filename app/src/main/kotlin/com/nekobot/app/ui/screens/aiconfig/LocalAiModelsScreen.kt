@@ -19,25 +19,36 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -51,14 +62,17 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -91,6 +105,16 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+
+private val localModelPurposes = listOf(
+    "chat",
+    "vision",
+    "video",
+    "tts",
+    "stt",
+    "embedding",
+    "image_generation"
+)
 
 /**
  * 本地 AI 模型管理 ViewModel：增删改查本地模型、设置激活模型、测试连通性。
@@ -244,6 +268,21 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
     var testResult by remember { mutableStateOf<String?>(null) }
     var showLogs by remember { mutableStateOf(false) }
     var logRecords by remember { mutableStateOf<List<LocalLogger.Record>>(emptyList()) }
+    var selectedPurpose by rememberSaveable { mutableStateOf<String?>(null) }
+    val purposeOptions = remember(models) {
+        val customPurposes = models
+            .map { it.purpose }
+            .filter { it.isNotBlank() && it !in localModelPurposes }
+            .distinct()
+            .sorted()
+        localModelPurposes + customPurposes
+    }
+    val purposeCounts = remember(models) { models.groupingBy { it.purpose }.eachCount() }
+    val filteredModels by remember(models, selectedPurpose) {
+        derivedStateOf {
+            selectedPurpose?.let { purpose -> models.filter { it.purpose == purpose } } ?: models
+        }
+    }
 
     LaunchedEffect(toast) {
         if (toast != null) {
@@ -313,27 +352,62 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
                     Text(stringResource(R.string.localai_empty_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(models, key = { it.id }) { model ->
-                        ModelCard(
-                            model = model,
-                            isActive = model.active,
-                            onSetActive = { vm.setActive(model.id) },
-                            onEdit = {
-                                editingModel = model
-                                showEditDialog = true
-                            },
-                            onDuplicate = { vm.duplicateModel(model) },
-                            onDelete = { deletingModel = model },
-                            onTest = {
-                                testingModel = model
-                                testResult = null
-                                vm.testModel(model) { testResult = it }
-                            }
+                LocalModelPurposeFilter(
+                    options = purposeOptions,
+                    counts = purposeCounts,
+                    totalCount = models.size,
+                    selectedPurpose = selectedPurpose,
+                    onSelect = { selectedPurpose = it }
+                )
+                Spacer(Modifier.height(10.dp))
+                if (filteredModels.isEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.Memory,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(48.dp)
                         )
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            stringResource(R.string.localai_filter_empty),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        TextButton(onClick = { selectedPurpose = null }) {
+                            Text(stringResource(R.string.localai_filter_show_all))
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(filteredModels, key = { it.id }) { model ->
+                            ModelCard(
+                                model = model,
+                                isActive = model.active,
+                                onSetActive = { vm.setActive(model.id) },
+                                onEdit = {
+                                    editingModel = model
+                                    showEditDialog = true
+                                },
+                                onDuplicate = { vm.duplicateModel(model) },
+                                onDelete = { deletingModel = model },
+                                onTest = {
+                                    testingModel = model
+                                    testResult = null
+                                    vm.testModel(model) { testResult = it }
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -351,7 +425,7 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
             initial = editingModel.toEditorState(protocolOptions),
             isEditing = editingModel != null,
             protocols = protocolOptions,
-            purposes = listOf("chat", "vision", "video", "tts", "stt", "embedding", "image_generation"),
+            purposes = localModelPurposes,
             availableModels = availableModels,
             savedApiKeys = apiKeys,
             showProxyConfig = true,
@@ -521,6 +595,90 @@ private fun LocalLogCard(record: LocalLogger.Record) {
 }
 
 @Composable
+private fun LocalModelPurposeFilter(
+    options: List<String>,
+    counts: Map<String, Int>,
+    totalCount: Int,
+    selectedPurpose: String?,
+    onSelect: (String?) -> Unit
+) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item(key = "all") {
+            val selected = selectedPurpose == null
+            FilterChip(
+                selected = selected,
+                onClick = { onSelect(null) },
+                label = { Text(stringResource(R.string.localai_filter_all)) },
+                leadingIcon = {
+                    Icon(Icons.Filled.Apps, contentDescription = null, modifier = Modifier.size(18.dp))
+                },
+                trailingIcon = { LocalModelFilterCount(totalCount, selected) }
+            )
+        }
+        items(options, key = { it }) { purpose ->
+            val selected = selectedPurpose == purpose
+            FilterChip(
+                selected = selected,
+                onClick = { onSelect(purpose) },
+                label = { Text(localModelPurposeLabel(purpose)) },
+                leadingIcon = {
+                    Icon(localModelPurposeIcon(purpose), contentDescription = null, modifier = Modifier.size(18.dp))
+                },
+                trailingIcon = { LocalModelFilterCount(counts[purpose] ?: 0, selected) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun LocalModelFilterCount(count: Int, selected: Boolean) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(
+                if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.surfaceVariant
+            )
+            .padding(horizontal = 6.dp, vertical = 1.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = count.toString(),
+            style = MaterialTheme.typography.labelSmall,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+private fun localModelPurposeIcon(purpose: String): ImageVector = when (purpose) {
+    "chat" -> Icons.Filled.ChatBubble
+    "vision" -> Icons.Filled.Image
+    "video" -> Icons.Filled.Movie
+    "tts" -> Icons.AutoMirrored.Filled.VolumeUp
+    "stt" -> Icons.Filled.Mic
+    "embedding" -> Icons.Filled.Hub
+    "image_generation" -> Icons.Filled.AutoAwesome
+    else -> Icons.Filled.Tune
+}
+
+@Composable
+private fun localModelPurposeLabel(purpose: String): String = when (purpose) {
+    "chat" -> stringResource(R.string.aimodel_editor_purpose_chat)
+    "vision" -> stringResource(R.string.aimodel_editor_purpose_vision)
+    "video" -> stringResource(R.string.aimodel_editor_purpose_video)
+    "tts" -> stringResource(R.string.aimodel_editor_purpose_tts)
+    "stt" -> stringResource(R.string.aimodel_editor_purpose_stt)
+    "embedding" -> stringResource(R.string.aimodel_editor_purpose_embedding)
+    "image_generation" -> stringResource(R.string.aimodel_editor_purpose_image_generation)
+    else -> purpose
+}
+
+@Composable
 private fun ModelCard(
     model: LocalAiModelEntity,
     isActive: Boolean,
@@ -531,16 +689,7 @@ private fun ModelCard(
     onTest: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
-    val purposeLabel = when (model.purpose) {
-        "chat" -> stringResource(R.string.localai_purpose_chat)
-        "vision" -> stringResource(R.string.localai_purpose_vision)
-        "video" -> stringResource(R.string.localai_purpose_video)
-        "tts" -> stringResource(R.string.localai_purpose_tts)
-        "stt" -> stringResource(R.string.localai_purpose_stt)
-        "embedding" -> stringResource(R.string.localai_purpose_embedding)
-        "image_generation" -> stringResource(R.string.localai_purpose_image_generation)
-        else -> model.purpose
-    }
+    val purposeLabel = localModelPurposeLabel(model.purpose)
 
     ModelCardFrame(
         isActive = isActive,

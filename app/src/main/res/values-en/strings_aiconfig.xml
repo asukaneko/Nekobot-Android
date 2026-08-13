@@ -356,4 +356,7 @@
     <string name="oauth_refresh_models">Refresh model list</string>
     <string name="oauth_save_count">Save (%1$d)</string>
     <string name="oauth_later">Later</string>
+    <string name="localai_filter_all">All</string>
+    <string name="localai_filter_empty">No models for this function</string>
+    <string name="localai_filter_show_all">Show all models</string>
 </resources>

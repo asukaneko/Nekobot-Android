@@ -356,4 +356,7 @@
     <string name="oauth_refresh_models">モデル一覧を更新</string>
     <string name="oauth_save_count">保存 (%1$d)</string>
     <string name="oauth_later">後で</string>
+    <string name="localai_filter_all">すべて</string>
+    <string name="localai_filter_empty">この機能のモデルはありません</string>
+    <string name="localai_filter_show_all">すべてのモデルを表示</string>
 </resources>

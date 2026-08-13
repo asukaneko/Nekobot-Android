@@ -356,4 +356,7 @@
     <string name="oauth_refresh_models">모델 목록 새로고침</string>
     <string name="oauth_save_count">저장 (%1$d)</string>
     <string name="oauth_later">나중에</string>
+    <string name="localai_filter_all">전체</string>
+    <string name="localai_filter_empty">이 기능의 모델이 없습니다</string>
+    <string name="localai_filter_show_all">모든 모델 보기</string>
 </resources>

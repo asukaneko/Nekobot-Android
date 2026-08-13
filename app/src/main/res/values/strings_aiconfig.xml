@@ -369,4 +369,7 @@
     <string name="oauth_refresh_models">刷新模型列表</string>
     <string name="oauth_save_count">保存（%1$d）</string>
     <string name="oauth_later">稍后设置</string>
+    <string name="localai_filter_all">全部</string>
+    <string name="localai_filter_empty">当前功能下暂无模型</string>
+    <string name="localai_filter_show_all">查看全部模型</string>
 </resources>
