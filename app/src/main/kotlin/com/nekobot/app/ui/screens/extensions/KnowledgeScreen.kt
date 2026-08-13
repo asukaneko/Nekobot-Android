@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.extensions
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.content.ContentResolver
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -48,7 +50,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -157,11 +158,11 @@ class KnowledgeViewModel : BaseViewModel() {
 fun KnowledgeScreen(onBack: () -> Unit, onNavigate: (String) -> Unit = {}) {
     val vm: KnowledgeViewModel = viewModel()
     val context = LocalContext.current
-    val list by vm.list.collectAsState()
-    val stats by vm.stats.collectAsState()
-    val searchResults by vm.searchResults.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val error by vm.error.collectAsState()
+    val list by vm.list.collectAsStateWithLifecycle()
+    val stats by vm.stats.collectAsStateWithLifecycle()
+    val searchResults by vm.searchResults.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
 
     var showForm by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<KnowledgeDocument?>(null) }

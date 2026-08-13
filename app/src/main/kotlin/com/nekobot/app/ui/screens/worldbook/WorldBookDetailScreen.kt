@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.worldbook
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -313,12 +315,12 @@ fun WorldBookDetailScreen(
         key = "wb_$bookId",
         factory = viewModelFactory { initializer { WorldBookViewModel(bookId) } }
     )
-    val book by vm.book.collectAsState()
-    val entries by vm.entries.collectAsState()
-    val characters by vm.characters.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val showEntryDialog by vm.showEntryDialog.collectAsState()
-    val editingEntry by vm.editingEntry.collectAsState()
+    val book by vm.book.collectAsStateWithLifecycle()
+    val entries by vm.entries.collectAsStateWithLifecycle()
+    val characters by vm.characters.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val showEntryDialog by vm.showEntryDialog.collectAsStateWithLifecycle()
+    val editingEntry by vm.editingEntry.collectAsStateWithLifecycle()
 
     var showEditBookDialog by remember { mutableStateOf(false) }
     var showDeleteBookDialog by remember { mutableStateOf(false) }
@@ -692,19 +694,19 @@ private fun SwitchLabel(label: String, checked: Boolean) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
-    val keys by vm.entryKeys.collectAsState()
-    val content by vm.entryContent.collectAsState()
-    val comment by vm.entryComment.collectAsState()
-    val enabled by vm.entryEnabled.collectAsState()
-    val constant by vm.entryConstant.collectAsState()
-    val selective by vm.entrySelective.collectAsState()
-    val position by vm.entryPosition.collectAsState()
-    val priority by vm.entryPriority.collectAsState()
-    val caseSensitive by vm.entryCaseSensitive.collectAsState()
-    val triggerSources by vm.entryTriggerSources.collectAsState()
-    val stateTriggers by vm.entryStateTriggers.collectAsState()
-    val matchMode by vm.entryMatchMode.collectAsState()
-    val entryType by vm.entryType.collectAsState()
+    val keys by vm.entryKeys.collectAsStateWithLifecycle()
+    val content by vm.entryContent.collectAsStateWithLifecycle()
+    val comment by vm.entryComment.collectAsStateWithLifecycle()
+    val enabled by vm.entryEnabled.collectAsStateWithLifecycle()
+    val constant by vm.entryConstant.collectAsStateWithLifecycle()
+    val selective by vm.entrySelective.collectAsStateWithLifecycle()
+    val position by vm.entryPosition.collectAsStateWithLifecycle()
+    val priority by vm.entryPriority.collectAsStateWithLifecycle()
+    val caseSensitive by vm.entryCaseSensitive.collectAsStateWithLifecycle()
+    val triggerSources by vm.entryTriggerSources.collectAsStateWithLifecycle()
+    val stateTriggers by vm.entryStateTriggers.collectAsStateWithLifecycle()
+    val matchMode by vm.entryMatchMode.collectAsStateWithLifecycle()
+    val entryType by vm.entryType.collectAsStateWithLifecycle()
 
     var positionExpanded by remember { mutableStateOf(false) }
 
@@ -920,7 +922,7 @@ private fun EditBookDialog(
     var name by remember { mutableStateOf(initialName) }
     var desc by remember { mutableStateOf(initialDesc) }
     val selectedIds = remember { mutableStateListOf<String>().apply { addAll(initialCharacterIds) } }
-    val charList by characters.collectAsState()
+    val charList by characters.collectAsStateWithLifecycle()
 
     NekoDialog(
         onDismiss = onDismiss,
@@ -1041,7 +1043,7 @@ private fun BindCharacterDialog(
 ) {
     // 用可变 Set 维护已选角色 ID
     val selectedIds = remember { mutableStateListOf<String>().apply { addAll(initialCharacterIds) } }
-    val charList by characters.collectAsState()
+    val charList by characters.collectAsStateWithLifecycle()
 
     NekoDialog(
         onDismiss = onDismiss,

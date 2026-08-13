@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.settings
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -40,7 +42,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -77,10 +78,10 @@ fun AboutScreen(
 ) {
     val vm: SettingsViewModel = viewModel()
     val context = LocalContext.current
-    val loading by vm.loading.collectAsState()
-    val updateState by vm.updateState.collectAsState()
-    val downloadState by vm.downloadState.collectAsState()
-    val toast by vm.toast.collectAsState()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val updateState by vm.updateState.collectAsStateWithLifecycle()
+    val downloadState by vm.downloadState.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
 
     val version = remember(context) { getAppVersion(context) }
 

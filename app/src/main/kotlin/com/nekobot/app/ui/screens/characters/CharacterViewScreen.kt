@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.characters
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
@@ -184,15 +186,15 @@ fun CharacterViewScreen(
         key = "char_view_$characterId",
         factory = viewModelFactory { initializer { CharacterViewModelView(characterId) } }
     )
-    val character by vm.character.collectAsState()
-    val loading by vm.loading.collectAsState()
+    val character by vm.character.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
     var showDeleteDialog by remember { mutableStateOf(false) }
     var exporting by remember { mutableStateOf(false) }
     var exportResult by remember { mutableStateOf<String?>(null) }
     var creatingSession by remember { mutableStateOf(false) }
     var showRelationshipSourceDialog by remember { mutableStateOf(false) }
     var relationshipStateSource by remember { mutableStateOf(RELATIONSHIP_STATE_SOURCE_INHERIT) }
-    val appMode by ServiceContainer.appModeFlow.collectAsState()
+    val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 

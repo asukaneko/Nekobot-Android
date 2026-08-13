@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.statehistory
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -45,7 +47,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -339,10 +340,10 @@ class StateHistoryViewModel : BaseViewModel() {
 @Composable
 fun StateHistoryScreen(onBack: () -> Unit) {
     val vm: StateHistoryViewModel = viewModel()
-    val sessions by vm.sessions.collectAsState()
-    val selected by vm.selected.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val error by vm.error.collectAsState()
+    val sessions by vm.sessions.collectAsStateWithLifecycle()
+    val selected by vm.selected.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { vm.loadFromCache() }
 

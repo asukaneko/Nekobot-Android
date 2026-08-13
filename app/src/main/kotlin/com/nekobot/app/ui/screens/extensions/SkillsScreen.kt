@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.extensions
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -39,7 +41,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -127,10 +128,10 @@ class SkillsViewModel : BaseViewModel() {
 @Composable
 fun SkillsScreen(onBack: () -> Unit, onOpenStorage: (Skill) -> Unit = {}) {
     val vm: SkillsViewModel = viewModel()
-    val list by vm.list.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val error by vm.error.collectAsState()
-    val toast by vm.toast.collectAsState()
+    val list by vm.list.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var showForm by remember { mutableStateOf(false) }
@@ -618,9 +619,9 @@ private fun isTextPreviewable(file: SkillFileInfo): Boolean {
 @Composable
 fun SkillStorageScreen(skillName: String, onBack: () -> Unit) {
     val vm: SkillsViewModel = viewModel()
-    val loading by vm.loading.collectAsState()
-    val error by vm.error.collectAsState()
-    val toast by vm.toast.collectAsState()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var skill by remember { mutableStateOf<Skill?>(null) }

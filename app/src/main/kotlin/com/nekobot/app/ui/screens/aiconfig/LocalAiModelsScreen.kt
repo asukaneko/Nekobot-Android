@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.aiconfig
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -49,7 +51,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -228,12 +229,12 @@ class LocalAiModelsViewModel : BaseViewModel() {
 @Composable
 fun LocalAiModelsScreen(onBack: () -> Unit) {
     val vm: LocalAiModelsViewModel = viewModel()
-    val models by vm.models.collectAsState()
-    val activeModel by vm.activeModel.collectAsState()
-    val availableModels by vm.availableModels.collectAsState()
-    val apiKeys by vm.apiKeys.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val toast by vm.toast.collectAsState()
+    val models by vm.models.collectAsStateWithLifecycle()
+    val activeModel by vm.activeModel.collectAsStateWithLifecycle()
+    val availableModels by vm.availableModels.collectAsStateWithLifecycle()
+    val apiKeys by vm.apiKeys.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var showEditDialog by remember { mutableStateOf(false) }

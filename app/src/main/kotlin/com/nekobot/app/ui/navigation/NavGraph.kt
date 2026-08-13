@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.navigation
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -15,7 +17,6 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -125,7 +126,7 @@ fun NekobotNavGraph() {
     }
 
     // 观察全局登录态：登出时自动跳登录页，登录时跳会话页
-    val isLoggedIn by ServiceContainer.loginStateFlow.collectAsState()
+    val isLoggedIn by ServiceContainer.loginStateFlow.collectAsStateWithLifecycle()
     LaunchedEffect(isLoggedIn) {
         if (!isLoggedIn && currentRoute != Routes.LOGIN) {
             navController.navigate(Routes.LOGIN) {
@@ -140,7 +141,7 @@ fun NekobotNavGraph() {
     }
 
     // 观察通知点击的待跳转会话 ID
-    val pendingSessionId by ServiceContainer.pendingSessionId.collectAsState()
+    val pendingSessionId by ServiceContainer.pendingSessionId.collectAsStateWithLifecycle()
     LaunchedEffect(pendingSessionId) {
         val sid = pendingSessionId ?: return@LaunchedEffect
         ServiceContainer.setPendingSessionId(null) // 消费掉
@@ -150,7 +151,7 @@ fun NekobotNavGraph() {
     }
 
     // 系统分享先回到会话页，内容在用户进入目标聊天后才会被消费。
-    val pendingShare by ServiceContainer.pendingShare.collectAsState()
+    val pendingShare by ServiceContainer.pendingShare.collectAsStateWithLifecycle()
     LaunchedEffect(pendingShare?.id, isLoggedIn) {
         if (pendingShare == null || !isLoggedIn) return@LaunchedEffect
         mainPagerState.scrollToPage(0)

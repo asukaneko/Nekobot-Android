@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.characters
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -133,9 +135,9 @@ fun CharactersScreen(
     onOpenEdit: (String) -> Unit = onOpenCharacter,
     viewModel: CharactersViewModel = viewModel()
 ) {
-    val characters by viewModel.characters.collectAsState()
-    val loading by viewModel.loading.collectAsState()
-    val error by viewModel.error.collectAsState()
+    val characters by viewModel.characters.collectAsStateWithLifecycle()
+    val loading by viewModel.loading.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
@@ -150,7 +152,7 @@ fun CharactersScreen(
     var showAiGeneratingHint by remember { mutableStateOf(false) }
 
     // 模式切换或返回页面时自动刷新角色列表
-    val appMode by ServiceContainer.appModeFlow.collectAsState()
+    val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
     LaunchedEffect(appMode) { viewModel.load() }
 
     // 文件选择器：导入角色卡（.json / .zip）

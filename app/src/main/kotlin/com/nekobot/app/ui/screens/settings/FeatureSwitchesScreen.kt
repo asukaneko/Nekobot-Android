@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.settings
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,7 +30,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -155,11 +156,11 @@ class FeatureSwitchesViewModel : BaseViewModel() {
 @Composable
 fun FeatureSwitchesScreen(onBack: () -> Unit) {
     val vm: FeatureSwitchesViewModel = viewModel()
-    val appMode by ServiceContainer.appModeFlow.collectAsState()
-    val switches by vm.switches.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val error by vm.error.collectAsState()
-    val toast by vm.toast.collectAsState()
+    val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
+    val switches by vm.switches.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     LaunchedEffect(toast) {

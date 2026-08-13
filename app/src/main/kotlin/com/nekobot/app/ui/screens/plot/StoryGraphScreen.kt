@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.plot
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.BorderStroke
@@ -23,7 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -56,7 +58,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -240,10 +241,10 @@ fun StoryGraphScreen(
     onBack: () -> Unit
 ) {
     val vm: StoryGraphViewModel = viewModel(key = "story_graph_$sessionId")
-    val graphData by vm.graphData.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val error by vm.error.collectAsState()
-    val toast by vm.toast.collectAsState()
+    val graphData by vm.graphData.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
 
     var graphView by remember { mutableStateOf(StoryGraphView.Graph) }
     var selectedNode by remember { mutableStateOf<PlotNodeData?>(null) }
@@ -979,7 +980,10 @@ private fun StoryTimeline(
                 TimelineStat(stringResource(R.string.story_stat_current_line), nodes.size, Modifier.weight(1f))
             }
         }
-        items(nodes, key = { it.id.orEmpty() }) { node ->
+        itemsIndexed(
+            nodes,
+            key = { index, node -> node.id?.takeIf(String::isNotBlank) ?: "story-node:$index" }
+        ) { _, node ->
             val choices = graphData.choices.filter { it.nodeId == node.id }
             GlassCard(
                 modifier = Modifier

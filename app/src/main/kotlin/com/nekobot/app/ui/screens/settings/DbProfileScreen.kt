@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.settings
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
@@ -52,7 +54,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -953,11 +954,11 @@ class DbProfileViewModel : ViewModel() {
 @Composable
 fun DbProfileScreen(onBack: () -> Unit) {
     val vm: DbProfileViewModel = viewModel()
-    val profiles by vm.profiles.collectAsState()
-    val activeName by vm.activeName.collectAsState()
-    val loginRecords by vm.loginRecords.collectAsState()
-    val importing by vm.importing.collectAsState()
-    val toast by vm.toast.collectAsState()
+    val profiles by vm.profiles.collectAsStateWithLifecycle()
+    val activeName by vm.activeName.collectAsStateWithLifecycle()
+    val loginRecords by vm.loginRecords.collectAsStateWithLifecycle()
+    val importing by vm.importing.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var showImportDialog by remember { mutableStateOf(false) }
@@ -997,7 +998,7 @@ fun DbProfileScreen(onBack: () -> Unit) {
     }
 
     // 模式切换时自动刷新（兜底）
-    val appMode by ServiceContainer.appModeFlow.collectAsState()
+    val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
     LaunchedEffect(appMode) { vm.reload() }
 
     LaunchedEffect(toast) {

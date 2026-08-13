@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.sessions
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -64,6 +66,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -77,7 +80,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.runtime.collectAsState
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.request.repeatCount
@@ -246,21 +248,21 @@ fun SessionsScreen(
     onNavigate: (String) -> Unit = {}
 ) {
     val viewModel: SessionsViewModel = viewModel()
-    val sessionRows by viewModel.displayedSessionRows.collectAsState()
-    val overview by viewModel.overview.collectAsState()
-    val characters by viewModel.characters.collectAsState()
-    val loading by viewModel.loading.collectAsState()
-    val error by viewModel.error.collectAsState()
-    val toast by viewModel.toast.collectAsState()
-    val dashboardData by viewModel.dashboardData.collectAsState()
-    val dashboardLoading by viewModel.dashboardLoading.collectAsState()
+    val sessionRows by viewModel.displayedSessionRows.collectAsStateWithLifecycle()
+    val overview by viewModel.overview.collectAsStateWithLifecycle()
+    val characters by viewModel.characters.collectAsStateWithLifecycle()
+    val loading by viewModel.loading.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
+    val toast by viewModel.toast.collectAsStateWithLifecycle()
+    val dashboardData by viewModel.dashboardData.collectAsStateWithLifecycle()
+    val dashboardLoading by viewModel.dashboardLoading.collectAsStateWithLifecycle()
 
-    val filter by viewModel.filter.collectAsState()
-    val channelFilterValue by viewModel.channelFilterValue.collectAsState()
-    val availableChannels by viewModel.availableChannels.collectAsState()
-    val characterFilterId by viewModel.characterFilterId.collectAsState()
-    val searchQuery by viewModel.searchQuery.collectAsState()
-    val recentSessionsIncludeArchived by ServiceContainer.prefs.recentSessionsIncludeArchivedFlow.collectAsState()
+    val filter by viewModel.filter.collectAsStateWithLifecycle()
+    val channelFilterValue by viewModel.channelFilterValue.collectAsStateWithLifecycle()
+    val availableChannels by viewModel.availableChannels.collectAsStateWithLifecycle()
+    val characterFilterId by viewModel.characterFilterId.collectAsStateWithLifecycle()
+    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val recentSessionsIncludeArchived by ServiceContainer.prefs.recentSessionsIncludeArchivedFlow.collectAsStateWithLifecycle()
 
     // 提取本地化字符串
     val titleText = stringResource(R.string.sessions_title)
@@ -295,8 +297,8 @@ fun SessionsScreen(
     val dashboardVisible = pagerState.currentPage == 0
 
     // 模式切换时自动刷新会话列表
-    val appMode by ServiceContainer.appModeFlow.collectAsState()
-    val dataSourceRevision by ServiceContainer.dataSourceRevision.collectAsState()
+    val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
+    val dataSourceRevision by ServiceContainer.dataSourceRevision.collectAsStateWithLifecycle()
     LaunchedEffect(appMode, dataSourceRevision) {
         viewModel.reloadForDataSource()
     }
@@ -309,11 +311,11 @@ fun SessionsScreen(
     }
 
     // 弹窗状态
-    var showCreate by remember { mutableStateOf(false) }
+    var showCreate by rememberSaveable { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<SessionListRow?>(null) }
     var deleting by remember { mutableStateOf<SessionListRow?>(null) }
-    var showSearchPanel by remember { mutableStateOf(false) }
-    var showDashboardLayout by remember { mutableStateOf(false) }
+    var showSearchPanel by rememberSaveable { mutableStateOf(false) }
+    var showDashboardLayout by rememberSaveable { mutableStateOf(false) }
     var showGeneratingCharacter by remember { mutableStateOf(false) }
     var randomCharacterIdeas by remember { mutableStateOf(emptyList<RandomCharacterIdea>()) }
     var dashboardWidgetOrder by remember {
@@ -328,7 +330,7 @@ fun SessionsScreen(
 
     // 双栏布局状态：大屏模式下选中的会话 ID
     val useTwoPane = rememberShouldUseTwoPane()
-    var selectedSessionId by remember { mutableStateOf<String?>(null) }
+    var selectedSessionId by rememberSaveable { mutableStateOf<String?>(null) }
     // 双栏模式下点击会话在右侧打开聊天，单栏模式保持原有导航行为
     val handleOpenChat: (String) -> Unit = if (useTwoPane) {
         { id -> selectedSessionId = id }
@@ -649,7 +651,7 @@ fun SessionsScreen(
 
     // 重命名弹窗
     renaming?.let { row ->
-        var name by remember(row.key) { mutableStateOf(row.name) }
+        var name by rememberSaveable(row.key) { mutableStateOf(row.name) }
         NekoDialog(
             onDismiss = { renaming = null },
             title = renameTitle,
@@ -1164,22 +1166,22 @@ private fun CreateSessionDialog(
     val noneSelectText = stringResource(R.string.sessions_none_select)
     val firstMessageOptional = stringResource(R.string.sessions_first_message_optional)
 
-    var sessionMode by remember { mutableStateOf("character") }
-    var name by remember { mutableStateOf(newSessionDefault) }
-    var characterName by remember { mutableStateOf("") }
-    var firstMessage by remember { mutableStateOf("") }
+    var sessionMode by rememberSaveable { mutableStateOf("character") }
+    var name by rememberSaveable { mutableStateOf(newSessionDefault) }
+    var characterName by rememberSaveable { mutableStateOf("") }
+    var firstMessage by rememberSaveable { mutableStateOf("") }
     var dropdownExpanded by remember { mutableStateOf(false) }
     /** 选中的角色对象（来自下拉或 ID 输入匹配） */
     var selectedCharacter by remember { mutableStateOf<CharacterPreset?>(null) }
-    var relationshipStateSource by remember { mutableStateOf(RELATIONSHIP_STATE_SOURCE_INHERIT) }
+    var relationshipStateSource by rememberSaveable { mutableStateOf(RELATIONSHIP_STATE_SOURCE_INHERIT) }
     /** 标记用户是否手动编辑过会话名 / 首条消息，避免被角色切换覆盖。 */
-    var nameEditedByUser by remember { mutableStateOf(false) }
-    var firstMessageEditedByUser by remember { mutableStateOf(false) }
+    var nameEditedByUser by rememberSaveable { mutableStateOf(false) }
+    var firstMessageEditedByUser by rememberSaveable { mutableStateOf(false) }
     val firstMessageScrollState = rememberScrollState()
 
     // 群聊模式：选中的角色 ID 列表 + 发言策略
     var selectedGroupCharacterIds by remember { mutableStateOf(emptyList<String>()) }
-    var speechStrategy by remember { mutableStateOf("round_robin") }
+    var speechStrategy by rememberSaveable { mutableStateOf("round_robin") }
     var speechStrategyExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {

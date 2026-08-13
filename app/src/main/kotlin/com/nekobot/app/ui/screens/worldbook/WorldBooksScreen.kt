@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.worldbook
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -122,9 +124,9 @@ fun WorldBooksScreen(
     onOpenBook: (String) -> Unit,
     viewModel: WorldBooksViewModel = viewModel()
 ) {
-    val books by viewModel.books.collectAsState()
-    val loading by viewModel.loading.collectAsState()
-    val error by viewModel.error.collectAsState()
+    val books by viewModel.books.collectAsStateWithLifecycle()
+    val loading by viewModel.loading.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
 
     var showCreateDialog by remember { mutableStateOf(false) }
     var showAddMenu by remember { mutableStateOf(false) }
@@ -132,7 +134,7 @@ fun WorldBooksScreen(
     var showAiGeneratingHint by remember { mutableStateOf(false) }
 
     // 模式切换时自动刷新世界书列表
-    val appMode by ServiceContainer.appModeFlow.collectAsState()
+    val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
     LaunchedEffect(appMode) { viewModel.load() }
 
     // 双栏布局状态：大屏模式下选中的世界书 ID

@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.settings
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -62,7 +64,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -336,18 +337,18 @@ sealed class DownloadUiState {
 @Composable
 fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: () -> Unit = onLogout) {
     val vm: SettingsViewModel = viewModel()
-    val settingsJson by vm.settingsJson.collectAsState()
-    val logs by vm.logs.collectAsState()
-    val showLogs by vm.showLogs.collectAsState()
-    val loggedOut by vm.loggedOut.collectAsState()
-    val serverUrl by vm.serverUrl.collectAsState()
-    val appMode by vm.appMode.collectAsState()
-    val recentSessionsIncludeArchived by ServiceContainer.prefs.recentSessionsIncludeArchivedFlow.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val error by vm.error.collectAsState()
-    val toast by vm.toast.collectAsState()
-    val updateState by vm.updateState.collectAsState()
-    val downloadState by vm.downloadState.collectAsState()
+    val settingsJson by vm.settingsJson.collectAsStateWithLifecycle()
+    val logs by vm.logs.collectAsStateWithLifecycle()
+    val showLogs by vm.showLogs.collectAsStateWithLifecycle()
+    val loggedOut by vm.loggedOut.collectAsStateWithLifecycle()
+    val serverUrl by vm.serverUrl.collectAsStateWithLifecycle()
+    val appMode by vm.appMode.collectAsStateWithLifecycle()
+    val recentSessionsIncludeArchived by ServiceContainer.prefs.recentSessionsIncludeArchivedFlow.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
+    val updateState by vm.updateState.collectAsStateWithLifecycle()
+    val downloadState by vm.downloadState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     // 本地编辑状态

@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.tokens
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -45,7 +47,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -85,12 +86,12 @@ import java.util.Locale
 @Composable
 fun RoutingHistoryScreen(onBack: () -> Unit) {
     val vm: RoutingHistoryViewModel = viewModel()
-    val logs by vm.logs.collectAsState()
-    val modelStats by vm.modelStats.collectAsState()
-    val abTestStats by vm.abTestStats.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val error by vm.error.collectAsState()
-    val toast by vm.toast.collectAsState()
+    val logs by vm.logs.collectAsStateWithLifecycle()
+    val modelStats by vm.modelStats.collectAsStateWithLifecycle()
+    val abTestStats by vm.abTestStats.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var showClearDialog by remember { mutableStateOf(false) }

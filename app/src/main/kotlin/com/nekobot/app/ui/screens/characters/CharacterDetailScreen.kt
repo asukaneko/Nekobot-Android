@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.characters
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.content.Context
 import android.net.Uri
 import android.widget.Toast
@@ -385,27 +387,27 @@ fun CharacterDetailScreen(
         key = "char_$characterId",
         factory = viewModelFactory { initializer { CharacterViewModel(characterId) } }
     )
-    val loading by vm.loading.collectAsState()
-    val name by vm.name.collectAsState()
-    val description by vm.description.collectAsState()
-    val avatar by vm.avatar.collectAsState()
-    val portrait by vm.portrait.collectAsState()
-    val basicInfo by vm.basicInfo.collectAsState()
-    val personality by vm.personality.collectAsState()
-    val firstMessage by vm.firstMessage.collectAsState()
-    val scenario by vm.scenario.collectAsState()
-    val dialogExamples by vm.dialogExamples.collectAsState()
-    val responseFormat by vm.responseFormat.collectAsState()
-    val rulesText by vm.rulesText.collectAsState()
-    val systemPrompt by vm.systemPrompt.collectAsState()
-    val tagsText by vm.tagsText.collectAsState()
-    val affection by vm.affection.collectAsState()
-    val trust by vm.trust.collectAsState()
-    val familiarity by vm.familiarity.collectAsState()
-    val dependency by vm.dependency.collectAsState()
-    val security by vm.security.collectAsState()
-    val jealousy by vm.jealousy.collectAsState()
-    val mood by vm.mood.collectAsState()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val name by vm.name.collectAsStateWithLifecycle()
+    val description by vm.description.collectAsStateWithLifecycle()
+    val avatar by vm.avatar.collectAsStateWithLifecycle()
+    val portrait by vm.portrait.collectAsStateWithLifecycle()
+    val basicInfo by vm.basicInfo.collectAsStateWithLifecycle()
+    val personality by vm.personality.collectAsStateWithLifecycle()
+    val firstMessage by vm.firstMessage.collectAsStateWithLifecycle()
+    val scenario by vm.scenario.collectAsStateWithLifecycle()
+    val dialogExamples by vm.dialogExamples.collectAsStateWithLifecycle()
+    val responseFormat by vm.responseFormat.collectAsStateWithLifecycle()
+    val rulesText by vm.rulesText.collectAsStateWithLifecycle()
+    val systemPrompt by vm.systemPrompt.collectAsStateWithLifecycle()
+    val tagsText by vm.tagsText.collectAsStateWithLifecycle()
+    val affection by vm.affection.collectAsStateWithLifecycle()
+    val trust by vm.trust.collectAsStateWithLifecycle()
+    val familiarity by vm.familiarity.collectAsStateWithLifecycle()
+    val dependency by vm.dependency.collectAsStateWithLifecycle()
+    val security by vm.security.collectAsStateWithLifecycle()
+    val jealousy by vm.jealousy.collectAsStateWithLifecycle()
+    val mood by vm.mood.collectAsStateWithLifecycle()
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showTranslateDialog by remember { mutableStateOf(false) }
@@ -415,9 +417,9 @@ fun CharacterDetailScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     // 订阅全局 appMode Flow，模式切换时自动刷新
-    val appMode by ServiceContainer.appModeFlow.collectAsState()
+    val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
     val isLocalMode = appMode == AppMode.LOCAL
-    val toast by vm.toast.collectAsState()
+    val toast by vm.toast.collectAsStateWithLifecycle()
     var fullscreenPortrait by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(toast) {

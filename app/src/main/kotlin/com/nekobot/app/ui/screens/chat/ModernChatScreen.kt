@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.chat
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -41,6 +43,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -90,7 +93,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -153,12 +155,12 @@ fun ModernChatScreen(
     onJumpToLatest: () -> Unit = {}
 ) {
     val viewModel: ChatViewModel = viewModel()
-    val messages by viewModel.messages.collectAsState()
-    val sending by viewModel.sending.collectAsState()
-    val plotChoices by viewModel.plotChoices.collectAsState()
-    val plotChoicesLoading by viewModel.plotChoicesLoading.collectAsState()
-    val session by viewModel.session.collectAsState()
-    val agentRecovery by viewModel.agentRecovery.collectAsState()
+    val messages by viewModel.messages.collectAsStateWithLifecycle()
+    val sending by viewModel.sending.collectAsStateWithLifecycle()
+    val plotChoices by viewModel.plotChoices.collectAsStateWithLifecycle()
+    val plotChoicesLoading by viewModel.plotChoicesLoading.collectAsStateWithLifecycle()
+    val session by viewModel.session.collectAsStateWithLifecycle()
+    val agentRecovery by viewModel.agentRecovery.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val composerScope = rememberCoroutineScope()
 
@@ -431,7 +433,7 @@ private fun ModernChatComposer(
         }
     }
 
-    val pendingShare by ServiceContainer.pendingShare.collectAsState()
+    val pendingShare by ServiceContainer.pendingShare.collectAsStateWithLifecycle()
     LaunchedEffect(sessionId, pendingShare?.id) {
         val share = pendingShare ?: return@LaunchedEffect
         fileBusy = share.attachments.isNotEmpty()
@@ -1978,7 +1980,7 @@ private fun ModernMessageListDialog(
                     modifier = Modifier.heightIn(max = 430.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(messages, key = { it.id ?: it.hashCode().toString() }) { message ->
+                    itemsIndexed(messages, key = { index, message -> chatMessageItemKey(index, message) }) { _, message ->
                         val ts = remember(message.timestamp) { compactTime(message.timestamp) }
                         Surface(
                             shape = RoundedCornerShape(14.dp),
@@ -2063,7 +2065,7 @@ private fun ModernSearchDialog(
                     modifier = Modifier.heightIn(max = 400.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(results, key = { it.id ?: it.hashCode().toString() }) { message ->
+                    itemsIndexed(results, key = { index, message -> chatMessageItemKey(index, message) }) { _, message ->
                         val role = message.role ?: "unknown"
                         val content = message.displayContent
                         val idx = content.lowercase().indexOf(query.trim().lowercase())
@@ -2220,11 +2222,11 @@ private fun ModernFavoritesDialog(
                     modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(messages, key = { msg ->
-                        msg.get("message_id")?.takeIf { !it.isJsonNull }?.asString
-                            ?: msg.get("id")?.takeIf { !it.isJsonNull }?.asString
-                            ?: msg.hashCode().toString()
-                    }) { msg ->
+                    itemsIndexed(messages, key = { index, msg ->
+                        msg.get("message_id")?.takeIf { !it.isJsonNull }?.asString?.takeIf(String::isNotBlank)
+                            ?: msg.get("id")?.takeIf { !it.isJsonNull }?.asString?.takeIf(String::isNotBlank)
+                            ?: "favorite-message:$index:${msg.get("timestamp")?.asString.orEmpty()}"
+                    }) { _, msg ->
                         ModernFavoriteMessageCard(msg)
                     }
                 }
@@ -2241,11 +2243,11 @@ private fun ModernFavoritesDialog(
                 modifier = Modifier.heightIn(max = 420.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(favorites, key = { item ->
-                    item.get("id")?.takeIf { !it.isJsonNull }?.asString
-                        ?: item.get("collection_id")?.takeIf { !it.isJsonNull }?.asString
-                        ?: item.hashCode().toString()
-                }) { collection ->
+                itemsIndexed(favorites, key = { index, item ->
+                    item.get("id")?.takeIf { !it.isJsonNull }?.asString?.takeIf(String::isNotBlank)
+                        ?: item.get("collection_id")?.takeIf { !it.isJsonNull }?.asString?.takeIf(String::isNotBlank)
+                        ?: "favorite:$index:${item.get("title")?.asString.orEmpty()}"
+                }) { _, collection ->
                     ModernFavoriteCollectionCard(
                         collection = collection,
                         onClick = { selectedCollection = collection },

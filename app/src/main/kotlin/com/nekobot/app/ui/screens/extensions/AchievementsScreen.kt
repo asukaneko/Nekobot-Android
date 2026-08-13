@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.extensions
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,7 +41,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -92,11 +93,11 @@ fun AchievementsScreen(
     onBack: () -> Unit
 ) {
     val viewModel: AchievementsViewModel = viewModel()
-    val snapshots by viewModel.snapshots.collectAsState()
-    val loading by viewModel.loading.collectAsState()
-    val error by viewModel.error.collectAsState()
-    val appMode by ServiceContainer.appModeFlow.collectAsState()
-    val dataSourceRevision by ServiceContainer.dataSourceRevision.collectAsState()
+    val snapshots by viewModel.snapshots.collectAsStateWithLifecycle()
+    val loading by viewModel.loading.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
+    val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
+    val dataSourceRevision by ServiceContainer.dataSourceRevision.collectAsStateWithLifecycle()
     val gridState = rememberLazyGridState()
     var statusFilter by remember { mutableStateOf(AchievementStatusFilter.ALL) }
     var metricFilter by remember { mutableStateOf<AchievementManager.Target.Metric?>(null) }

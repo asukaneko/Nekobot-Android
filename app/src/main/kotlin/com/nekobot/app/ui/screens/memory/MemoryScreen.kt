@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.memory
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -364,15 +366,15 @@ fun MemoryScreen(
     onBack: () -> Unit,
     viewModel: MemoryViewModel = viewModel()
 ) {
-    val files by viewModel.files.collectAsState()
-    val legacy by viewModel.legacy.collectAsState()
-    val loading by viewModel.loading.collectAsState()
-    val error by viewModel.error.collectAsState()
-    val selectedChar by viewModel.selectedCharacterId.collectAsState()
-    val searchQuery by viewModel.searchQuery.collectAsState()
-    val expandedPaths by viewModel.expandedPaths.collectAsState()
-    val showAddDialog by viewModel.showAddDialog.collectAsState()
-    val editingLegacy by viewModel.editingLegacy.collectAsState()
+    val files by viewModel.files.collectAsStateWithLifecycle()
+    val legacy by viewModel.legacy.collectAsStateWithLifecycle()
+    val loading by viewModel.loading.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
+    val selectedChar by viewModel.selectedCharacterId.collectAsStateWithLifecycle()
+    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val expandedPaths by viewModel.expandedPaths.collectAsStateWithLifecycle()
+    val showAddDialog by viewModel.showAddDialog.collectAsStateWithLifecycle()
+    val editingLegacy by viewModel.editingLegacy.collectAsStateWithLifecycle()
 
     var showExportMenu by remember { mutableStateOf(false) }
     var deleteFile by remember { mutableStateOf<MemoryFile?>(null) }

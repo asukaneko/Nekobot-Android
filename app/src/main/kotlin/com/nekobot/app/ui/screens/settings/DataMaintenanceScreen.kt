@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.settings
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.clickable
@@ -44,7 +46,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -263,12 +264,12 @@ class DataMaintenanceViewModel : BaseViewModel() {
 @Composable
 fun DataMaintenanceScreen(onBack: () -> Unit) {
     val vm: DataMaintenanceViewModel = viewModel()
-    val appMode by ServiceContainer.appModeFlow.collectAsState()
-    val storageInfo by vm.storageInfo.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val error by vm.error.collectAsState()
-    val toast by vm.toast.collectAsState()
-    val exportResult by vm.exportResult.collectAsState()
+    val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
+    val storageInfo by vm.storageInfo.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
+    val exportResult by vm.exportResult.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var showClearDataDialog by remember { mutableStateOf(false) }

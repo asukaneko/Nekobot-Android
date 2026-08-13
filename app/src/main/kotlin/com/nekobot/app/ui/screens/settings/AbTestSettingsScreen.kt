@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.settings
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,7 +29,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -129,7 +130,7 @@ class AbTestSettingsViewModel : ViewModel() {
 @Composable
 fun AbTestSettingsScreen(onBack: () -> Unit) {
     val vm: AbTestSettingsViewModel = viewModel()
-    val models by vm.models.collectAsState()
+    val models by vm.models.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {

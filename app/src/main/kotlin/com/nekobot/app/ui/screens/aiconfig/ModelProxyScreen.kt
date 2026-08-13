@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.aiconfig
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -30,7 +32,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -137,11 +138,11 @@ class ModelProxyViewModel : BaseViewModel() {
 @Composable
 fun ModelProxyScreen(onBack: () -> Unit) {
     val vm: ModelProxyViewModel = viewModel()
-    val models by vm.models.collectAsState()
-    val proxyDrafts by vm.proxyDrafts.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val error by vm.error.collectAsState()
-    val toast by vm.toast.collectAsState()
+    val models by vm.models.collectAsStateWithLifecycle()
+    val proxyDrafts by vm.proxyDrafts.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     LaunchedEffect(toast) {

@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.aiconfig
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -43,7 +45,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -310,16 +311,16 @@ private fun JsonObject.bool(key: String, fallback: Boolean): Boolean =
 @Composable
 fun FailoverQueueScreen(onBack: () -> Unit) {
     val vm: FailoverQueueViewModel = viewModel()
-    val purpose by vm.purpose.collectAsState()
-    val queue by vm.queue.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val error by vm.error.collectAsState()
-    val toast by vm.toast.collectAsState()
-    val selectedDetail by vm.selectedDetail.collectAsState()
-    val detailLoading by vm.detailLoading.collectAsState()
-    val detailSaving by vm.detailSaving.collectAsState()
-    val smartRoutingEnabled by vm.smartRoutingEnabled.collectAsState()
-    val smartRoutingBudget by vm.smartRoutingBudget.collectAsState()
+    val purpose by vm.purpose.collectAsStateWithLifecycle()
+    val queue by vm.queue.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
+    val selectedDetail by vm.selectedDetail.collectAsStateWithLifecycle()
+    val detailLoading by vm.detailLoading.collectAsStateWithLifecycle()
+    val detailSaving by vm.detailSaving.collectAsStateWithLifecycle()
+    val smartRoutingEnabled by vm.smartRoutingEnabled.collectAsStateWithLifecycle()
+    val smartRoutingBudget by vm.smartRoutingBudget.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var smartRoutingEnabledInput by remember(smartRoutingEnabled) {
         mutableStateOf(smartRoutingEnabled)

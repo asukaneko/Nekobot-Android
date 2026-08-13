@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.aiconfig
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -44,7 +46,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -261,12 +262,12 @@ class OAuthAccountsViewModel : BaseViewModel() {
 @Composable
 fun OAuthAccountsScreen(onBack: () -> Unit) {
     val vm: OAuthAccountsViewModel = viewModel()
-    val accounts by vm.accounts.collectAsState()
-    val loginSession by vm.loginSession.collectAsState()
-    val modelPicker by vm.modelPicker.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val error by vm.error.collectAsState()
-    val toast by vm.toast.collectAsState()
+    val accounts by vm.accounts.collectAsStateWithLifecycle()
+    val loginSession by vm.loginSession.collectAsStateWithLifecycle()
+    val modelPicker by vm.modelPicker.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var deleteTarget by remember { mutableStateOf<LocalOAuthAccountEntity?>(null) }
     var openedSessionId by remember { mutableStateOf<String?>(null) }

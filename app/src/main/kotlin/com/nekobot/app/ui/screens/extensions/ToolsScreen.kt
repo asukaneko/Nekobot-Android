@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.extensions
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -36,7 +38,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -93,9 +94,9 @@ class ToolsViewModel : BaseViewModel() {
 @Composable
 fun ToolsScreen(onBack: () -> Unit) {
     val vm: ToolsViewModel = viewModel()
-    val list by vm.list.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val error by vm.error.collectAsState()
+    val list by vm.list.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
 
     var showForm by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<Tool?>(null) }

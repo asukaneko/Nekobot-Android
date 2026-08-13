@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.aiconfig
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,7 +47,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -308,15 +309,15 @@ class AiModelsViewModel : BaseViewModel() {
 @Composable
 fun AiModelsScreen(onBack: () -> Unit) {
     val vm: AiModelsViewModel = viewModel()
-    val models by vm.models.collectAsState()
-    val protocols by vm.protocols.collectAsState()
-    val purposes by vm.purposes.collectAsState()
-    val availableModels by vm.availableModels.collectAsState()
-    val apiKeys by vm.apiKeys.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val error by vm.error.collectAsState()
-    val toast by vm.toast.collectAsState()
-    val testResult by vm.testResult.collectAsState()
+    val models by vm.models.collectAsStateWithLifecycle()
+    val protocols by vm.protocols.collectAsStateWithLifecycle()
+    val purposes by vm.purposes.collectAsStateWithLifecycle()
+    val availableModels by vm.availableModels.collectAsStateWithLifecycle()
+    val apiKeys by vm.apiKeys.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
+    val testResult by vm.testResult.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var showForm by remember { mutableStateOf(false) }

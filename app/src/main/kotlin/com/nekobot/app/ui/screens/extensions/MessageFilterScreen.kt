@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.extensions
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -42,7 +44,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -132,10 +133,10 @@ class MessageFilterViewModel : BaseViewModel() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessageFilterScreen(onBack: () -> Unit, viewModel: MessageFilterViewModel = viewModel()) {
-    val config by viewModel.config.collectAsState()
-    val globalEnabled by viewModel.globalEnabled.collectAsState()
-    val loading by viewModel.loading.collectAsState()
-    val error by viewModel.error.collectAsState()
+    val config by viewModel.config.collectAsStateWithLifecycle()
+    val globalEnabled by viewModel.globalEnabled.collectAsStateWithLifecycle()
+    val loading by viewModel.loading.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
 
     // 规则列表从 config.global 派生
     val list = config?.global ?: emptyList()

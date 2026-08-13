@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.aiconfig
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -31,7 +33,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -183,7 +184,7 @@ fun AiModelEditorDialog(
 ) {
     val context = LocalContext.current
     val pricingViewModel: ModelPricingCatalogViewModel = viewModel()
-    val pricingState by pricingViewModel.state.collectAsState()
+    val pricingState by pricingViewModel.state.collectAsStateWithLifecycle()
     val purposeLabels = rememberPurposeLabels()
     val providerLabels = rememberProviderLabels()
     val openaiCompatibleLabel = stringResource(R.string.aimodel_editor_protocol_openai_compatible)

@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.settings
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,7 +26,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,7 +47,7 @@ import com.nekobot.app.ui.components.GlassCard
 @Composable
 fun RagSettingsScreen(onBack: () -> Unit) {
     val vm: RagSettingsViewModel = viewModel()
-    val config by vm.config.collectAsState()
+    val config by vm.config.collectAsStateWithLifecycle()
 
     // 文本输入框的本地状态（避免输入过程中被 StateFlow 重置）
     var topKText by remember { mutableStateOf(config.topK.toString()) }

@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.settings
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -43,7 +45,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -236,18 +237,18 @@ class DiagnosticViewModel : BaseViewModel() {
 @Composable
 fun DiagnosticCenterScreen(onBack: () -> Unit) {
     val vm: DiagnosticViewModel = viewModel()
-    val appMode by ServiceContainer.appModeFlow.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val error by vm.error.collectAsState()
-    val toast by vm.toast.collectAsState()
-    val pingState by vm.pingState.collectAsState()
-    val localLogs by vm.localLogs.collectAsState()
-    val gatewayHealth by vm.gatewayHealth.collectAsState()
-    val gatewayStats by vm.gatewayStats.collectAsState()
-    val queueStatus by vm.queueStatus.collectAsState()
-    val events by vm.events.collectAsState()
-    val traceResult by vm.traceResult.collectAsState()
-    val traceError by vm.traceError.collectAsState()
+    val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
+    val pingState by vm.pingState.collectAsStateWithLifecycle()
+    val localLogs by vm.localLogs.collectAsStateWithLifecycle()
+    val gatewayHealth by vm.gatewayHealth.collectAsStateWithLifecycle()
+    val gatewayStats by vm.gatewayStats.collectAsStateWithLifecycle()
+    val queueStatus by vm.queueStatus.collectAsStateWithLifecycle()
+    val events by vm.events.collectAsStateWithLifecycle()
+    val traceResult by vm.traceResult.collectAsStateWithLifecycle()
+    val traceError by vm.traceError.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     // Trace 输入框文本
@@ -393,7 +394,7 @@ fun DiagnosticCenterScreen(onBack: () -> Unit) {
 /** Socket 连接状态卡片：显示当前连接状态 + 服务器地址 */
 @Composable
 private fun SocketStateCard() {
-    val socketState by ServiceContainer.socket.state.collectAsState()
+    val socketState by ServiceContainer.socket.state.collectAsStateWithLifecycle()
     val serverUrl = ServiceContainer.prefs.serverUrl
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {

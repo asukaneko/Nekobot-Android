@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.aiconfig
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,7 +34,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -139,12 +140,12 @@ class AiConfigViewModel : BaseViewModel() {
 @Composable
 fun AiConfigScreen(onBack: () -> Unit) {
     val vm: AiConfigViewModel = viewModel()
-    val config by vm.config.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val error by vm.error.collectAsState()
-    val toast by vm.toast.collectAsState()
-    val testResult by vm.testResult.collectAsState()
-    val navigateBack by vm.navigateBack.collectAsState()
+    val config by vm.config.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
+    val testResult by vm.testResult.collectAsStateWithLifecycle()
+    val navigateBack by vm.navigateBack.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     LaunchedEffect(toast) {

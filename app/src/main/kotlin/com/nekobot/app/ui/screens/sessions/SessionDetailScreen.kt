@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.sessions
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -58,7 +60,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -732,46 +733,46 @@ fun SessionDetailScreen(
     onBack: () -> Unit
 ) {
     val vm: SessionDetailViewModel = viewModel(key = "session_detail_$sessionId")
-    val session by vm.session.collectAsState()
-    val name by vm.name.collectAsState()
-    val tagsText by vm.tagsText.collectAsState()
-    val pinned by vm.pinned.collectAsState()
-    val favorite by vm.favorite.collectAsState()
-    val systemPrompt by vm.systemPrompt.collectAsState()
-    val autoStateInterval by vm.autoStateInterval.collectAsState()
-    val plotMode by vm.plotMode.collectAsState()
-    val plotRealTimeSync by vm.plotRealTimeSync.collectAsState()
-    val plotChoiceStyle by vm.plotChoiceStyle.collectAsState()
-    val plotOutline by vm.plotOutline.collectAsState()
-    val userPersona by vm.userPersona.collectAsState()
-    val ttsEnabled by vm.ttsEnabled.collectAsState()
-    val ttsModelId by vm.ttsModelId.collectAsState()
-    val ttsVoice by vm.ttsVoice.collectAsState()
-    val proactiveChatEnabled by vm.proactiveChatEnabled.collectAsState()
-    val proactiveChatInterval by vm.proactiveChatInterval.collectAsState()
-    val isPublic by vm.isPublic.collectAsState()
-    val notificationEnabled by vm.notificationEnabled.collectAsState()
-    val shareExpiresDays by vm.shareExpiresDays.collectAsState()
-    val sharePassword by vm.sharePassword.collectAsState()
-    val shareMessageStart by vm.shareMessageStart.collectAsState()
-    val shareMessageEnd by vm.shareMessageEnd.collectAsState()
-    val shareIncludeCharacter by vm.shareIncludeCharacter.collectAsState()
-    val shareIncludeUserMessages by vm.shareIncludeUserMessages.collectAsState()
-    val publicShareUrl by vm.publicShareUrl.collectAsState()
-    val publicSharePasswordRequired by vm.publicSharePasswordRequired.collectAsState()
-    val publicShareExpiresAt by vm.publicShareExpiresAt.collectAsState()
-    val isLoadingPublic by vm.isLoadingPublic.collectAsState()
-    val aiModels by vm.aiModels.collectAsState()
-    val ttsModelProviders by vm.ttsModelProviders.collectAsState()
-    val customPrompts by vm.customPrompts.collectAsState()
-    val promptStackDebug by vm.promptStackDebug.collectAsState()
-    val composedSystemPrompt by vm.composedSystemPrompt.collectAsState()
-    val disabledPromptKeys by vm.disabledPromptKeys.collectAsState()
-    val characterDetail by vm.characterDetail.collectAsState()
-    val characters by vm.characters.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val error by vm.error.collectAsState()
-    val toast by vm.toast.collectAsState()
+    val session by vm.session.collectAsStateWithLifecycle()
+    val name by vm.name.collectAsStateWithLifecycle()
+    val tagsText by vm.tagsText.collectAsStateWithLifecycle()
+    val pinned by vm.pinned.collectAsStateWithLifecycle()
+    val favorite by vm.favorite.collectAsStateWithLifecycle()
+    val systemPrompt by vm.systemPrompt.collectAsStateWithLifecycle()
+    val autoStateInterval by vm.autoStateInterval.collectAsStateWithLifecycle()
+    val plotMode by vm.plotMode.collectAsStateWithLifecycle()
+    val plotRealTimeSync by vm.plotRealTimeSync.collectAsStateWithLifecycle()
+    val plotChoiceStyle by vm.plotChoiceStyle.collectAsStateWithLifecycle()
+    val plotOutline by vm.plotOutline.collectAsStateWithLifecycle()
+    val userPersona by vm.userPersona.collectAsStateWithLifecycle()
+    val ttsEnabled by vm.ttsEnabled.collectAsStateWithLifecycle()
+    val ttsModelId by vm.ttsModelId.collectAsStateWithLifecycle()
+    val ttsVoice by vm.ttsVoice.collectAsStateWithLifecycle()
+    val proactiveChatEnabled by vm.proactiveChatEnabled.collectAsStateWithLifecycle()
+    val proactiveChatInterval by vm.proactiveChatInterval.collectAsStateWithLifecycle()
+    val isPublic by vm.isPublic.collectAsStateWithLifecycle()
+    val notificationEnabled by vm.notificationEnabled.collectAsStateWithLifecycle()
+    val shareExpiresDays by vm.shareExpiresDays.collectAsStateWithLifecycle()
+    val sharePassword by vm.sharePassword.collectAsStateWithLifecycle()
+    val shareMessageStart by vm.shareMessageStart.collectAsStateWithLifecycle()
+    val shareMessageEnd by vm.shareMessageEnd.collectAsStateWithLifecycle()
+    val shareIncludeCharacter by vm.shareIncludeCharacter.collectAsStateWithLifecycle()
+    val shareIncludeUserMessages by vm.shareIncludeUserMessages.collectAsStateWithLifecycle()
+    val publicShareUrl by vm.publicShareUrl.collectAsStateWithLifecycle()
+    val publicSharePasswordRequired by vm.publicSharePasswordRequired.collectAsStateWithLifecycle()
+    val publicShareExpiresAt by vm.publicShareExpiresAt.collectAsStateWithLifecycle()
+    val isLoadingPublic by vm.isLoadingPublic.collectAsStateWithLifecycle()
+    val aiModels by vm.aiModels.collectAsStateWithLifecycle()
+    val ttsModelProviders by vm.ttsModelProviders.collectAsStateWithLifecycle()
+    val customPrompts by vm.customPrompts.collectAsStateWithLifecycle()
+    val promptStackDebug by vm.promptStackDebug.collectAsStateWithLifecycle()
+    val composedSystemPrompt by vm.composedSystemPrompt.collectAsStateWithLifecycle()
+    val disabledPromptKeys by vm.disabledPromptKeys.collectAsStateWithLifecycle()
+    val characterDetail by vm.characterDetail.collectAsStateWithLifecycle()
+    val characters by vm.characters.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var showDeleteDialog by remember { mutableStateOf(false) }

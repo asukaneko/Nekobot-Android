@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.extensions
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -43,7 +45,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -151,11 +152,11 @@ class ApiKeysViewModel : BaseViewModel() {
 @Composable
 fun ApiKeysScreen(onBack: () -> Unit) {
     val vm: ApiKeysViewModel = viewModel()
-    val keys by vm.keys.collectAsState()
-    val viewedKey by vm.viewedKey.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val error by vm.error.collectAsState()
-    val toast by vm.toast.collectAsState()
+    val keys by vm.keys.collectAsStateWithLifecycle()
+    val viewedKey by vm.viewedKey.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
 
@@ -164,7 +165,7 @@ fun ApiKeysScreen(onBack: () -> Unit) {
     var deleteTarget by remember { mutableStateOf<ApiKey?>(null) }
 
     // 模式切换时自动刷新
-    val appMode by ServiceContainer.appModeFlow.collectAsState()
+    val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
     LaunchedEffect(appMode) { vm.load() }
 
     LaunchedEffect(toast) {

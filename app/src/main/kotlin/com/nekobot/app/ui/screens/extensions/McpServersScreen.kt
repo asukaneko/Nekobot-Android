@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.extensions
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,7 +43,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -164,11 +165,11 @@ class McpServersViewModel : BaseViewModel() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun McpServersScreen(onBack: () -> Unit, viewModel: McpServersViewModel = viewModel()) {
-    val list by viewModel.list.collectAsState()
-    val loading by viewModel.loading.collectAsState()
-    val error by viewModel.error.collectAsState()
-    val tools by viewModel.tools.collectAsState()
-    val testResult by viewModel.testResult.collectAsState()
+    val list by viewModel.list.collectAsStateWithLifecycle()
+    val loading by viewModel.loading.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
+    val tools by viewModel.tools.collectAsStateWithLifecycle()
+    val testResult by viewModel.testResult.collectAsStateWithLifecycle()
 
     var showForm by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<McpServer?>(null) }

@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.components
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -30,7 +32,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,7 +62,7 @@ fun AchievementUnlockHost() {
     val eventQueue = remember { Channel<AchievementManager.UnlockEvent>(Channel.UNLIMITED) }
     val dismissSignals = remember { Channel<Unit>(Channel.CONFLATED) }
     var currentEvent by remember { mutableStateOf<AchievementManager.UnlockEvent?>(null) }
-    val dataSourceRevision by ServiceContainer.dataSourceRevision.collectAsState()
+    val dataSourceRevision by ServiceContainer.dataSourceRevision.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         AchievementManager.unlockEvents.collect { event ->

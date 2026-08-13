@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.login
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -55,7 +57,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.runtime.collectAsState
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LoginRecord
 import com.nekobot.app.ui.BaseViewModel
@@ -74,12 +75,12 @@ import kotlinx.coroutines.flow.asStateFlow
 @Composable
 fun LoginScreen(onLoggedIn: () -> Unit) {
     val viewModel: LoginViewModel = viewModel()
-    val serverUrl by viewModel.serverUrl.collectAsState()
-    val username by viewModel.username.collectAsState()
-    val password by viewModel.password.collectAsState()
-    val loading by viewModel.loading.collectAsState()
-    val error by viewModel.error.collectAsState()
-    val loginRecords by viewModel.loginRecords.collectAsState()
+    val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
+    val username by viewModel.username.collectAsStateWithLifecycle()
+    val password by viewModel.password.collectAsStateWithLifecycle()
+    val loading by viewModel.loading.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
+    val loginRecords by viewModel.loginRecords.collectAsStateWithLifecycle()
 
     var passwordVisible by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current

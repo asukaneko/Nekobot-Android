@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.chat
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
@@ -529,14 +531,14 @@ fun WorkspaceScreen(
     onBack: () -> Unit
 ) {
     val viewModel: WorkspaceViewModel = viewModel()
-    val files by viewModel.files.collectAsState()
-    val sharedFiles by viewModel.sharedFiles.collectAsState()
-    val loading by viewModel.loading.collectAsState()
-    val error by viewModel.error.collectAsState()
-    val toast by viewModel.toast.collectAsState()
-    val uploading by viewModel.uploading.collectAsState()
-    val currentPath by viewModel.currentPath.collectAsState()
-    val sharedPath by viewModel.sharedPath.collectAsState()
+    val files by viewModel.files.collectAsStateWithLifecycle()
+    val sharedFiles by viewModel.sharedFiles.collectAsStateWithLifecycle()
+    val loading by viewModel.loading.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
+    val toast by viewModel.toast.collectAsStateWithLifecycle()
+    val uploading by viewModel.uploading.collectAsStateWithLifecycle()
+    val currentPath by viewModel.currentPath.collectAsStateWithLifecycle()
+    val sharedPath by viewModel.sharedPath.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 

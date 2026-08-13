@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.screens.tokens
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.widget.Toast
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
@@ -63,7 +65,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -286,17 +287,17 @@ class TokensViewModel : BaseViewModel() {
 @Composable
 fun TokensScreen(onNavigate: (String) -> Unit = {}) {
     val vm: TokensViewModel = viewModel()
-    val stats by vm.stats.collectAsState()
-    val rankings by vm.rankings.collectAsState()
-    val records by vm.records.collectAsState()
-    val dateRange by vm.dateRange.collectAsState()
-    val startDate by vm.startDate.collectAsState()
-    val endDate by vm.endDate.collectAsState()
-    val loadedQueryKey by vm.loadedQueryKey.collectAsState()
-    val loadedRankingKey by vm.loadedRankingKey.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val error by vm.error.collectAsState()
-    val toast by vm.toast.collectAsState()
+    val stats by vm.stats.collectAsStateWithLifecycle()
+    val rankings by vm.rankings.collectAsStateWithLifecycle()
+    val records by vm.records.collectAsStateWithLifecycle()
+    val dateRange by vm.dateRange.collectAsStateWithLifecycle()
+    val startDate by vm.startDate.collectAsStateWithLifecycle()
+    val endDate by vm.endDate.collectAsStateWithLifecycle()
+    val loadedQueryKey by vm.loadedQueryKey.collectAsStateWithLifecycle()
+    val loadedRankingKey by vm.loadedRankingKey.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var showStartPicker by rememberSaveable { mutableStateOf(false) }
@@ -332,8 +333,8 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}) {
     }
 
     // 模式或本地数据档案切换时自动刷新 Token 用量
-    val appMode by ServiceContainer.appModeFlow.collectAsState()
-    val dataSourceRevision by ServiceContainer.dataSourceRevision.collectAsState()
+    val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
+    val dataSourceRevision by ServiceContainer.dataSourceRevision.collectAsStateWithLifecycle()
     val contentIsCurrent = loadedQueryKey == tokenUsageQueryKey(
         mode = appMode.toString(),
         dataSourceRevision = dataSourceRevision,
