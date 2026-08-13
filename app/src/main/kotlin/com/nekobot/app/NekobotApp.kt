@@ -10,6 +10,7 @@ import com.nekobot.app.data.local.LocaleHelper
 import com.nekobot.app.data.local.LocalPlotStoryStore
 import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.local.ai.LocalAiClient
+import com.nekobot.app.data.local.ai.GlobalAgentMemoryStore
 import com.nekobot.app.data.local.ai.ModelPricingCatalog
 import com.nekobot.app.data.local.db.NekobotDatabase
 import com.nekobot.app.data.local.LocalRepository
@@ -51,6 +52,9 @@ object ServiceContainer {
     lateinit var unified: UnifiedRepository
         private set
     lateinit var localRepository: LocalRepository
+        private set
+    /** 跨会话、跨本地数据库 Profile 的 Agent 长期记忆。 */
+    lateinit var globalAgentMemory: GlobalAgentMemoryStore
         private set
     lateinit var socket: SocketManager
         private set
@@ -109,6 +113,7 @@ object ServiceContainer {
     fun init(app: Application) {
         appContext = app.applicationContext
         prefs = PrefsManager(app)
+        globalAgentMemory = GlobalAgentMemoryStore(app)
         prefs.migrateSensitivePreferences()
         freezeLegacyPlotStoryProfiles(app)
         network = NetworkClient(prefs)

@@ -61,6 +61,7 @@ import com.nekobot.app.ui.screens.settings.SettingsScreen
 import com.nekobot.app.ui.screens.settings.StyleSettingsScreen
 import com.nekobot.app.ui.screens.settings.SystemSettingsScreen
 import com.nekobot.app.ui.screens.settings.SystemOperationsScreen
+import com.nekobot.app.ui.screens.settings.GlobalAgentMemoryScreen
 import com.nekobot.app.ui.screens.settings.WebDavBackupScreen
 import com.nekobot.app.ui.screens.settings.AboutScreen
 import com.nekobot.app.ui.screens.settings.LicenseScreen
@@ -376,6 +377,9 @@ fun NekobotNavGraph() {
             }
             composable(Routes.SYSTEM_OPERATIONS) {
                 SystemOperationsScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.AGENT_MEMORY) {
+                GlobalAgentMemoryScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.AI_CONFIG_CENTER) {
                 AiConfigCenterScreen(

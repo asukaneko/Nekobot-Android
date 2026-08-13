@@ -41,6 +41,7 @@ import com.nekobot.app.data.local.ai.RoutingDecisionLogger
 import com.nekobot.app.data.local.ai.TokenStatsManager
 import com.nekobot.app.data.local.ai.currentLocalContextTokens
 import com.nekobot.app.data.local.ai.addLocalAgentBasePrompt
+import com.nekobot.app.data.local.ai.addGlobalAgentMemory
 import com.nekobot.app.data.local.ai.decodeThinkingCardsForUi
 import com.nekobot.app.data.local.ai.encodeToolCallHistory
 import com.nekobot.app.data.local.ai.toPersistedProgressCard
@@ -4461,6 +4462,15 @@ class LocalRepository(
                 LocaleHelper.getEffectiveLocale(it, ServiceContainer.prefs.language).language
             } ?: Locale.getDefault().language
             ctx.promptStack.addLocalAgentBasePrompt(promptLanguage)
+            val globalAgentMemory = runCatching { ServiceContainer.globalAgentMemory.read().content }
+                .onFailure {
+                    com.nekobot.app.data.local.LocalLogger.w(
+                        TAG,
+                        "读取全局 Agent 记忆失败: ${it.message}"
+                    )
+                }
+                .getOrDefault("")
+            ctx.promptStack.addGlobalAgentMemory(globalAgentMemory)
             val skillsPrompt = buildEnabledSkillsPrompt()
             if (skillsPrompt.isNotBlank()) {
                 ctx.promptStack.add(

@@ -42,6 +42,8 @@ internal val localExecutableToolIds = setOf(
     "workspace_parse_file",
     "workspace_extract_epub",
     "workspace_file_info",
+    "agent_memory_read",
+    "agent_memory_update",
     "android_device_info",
     "android_battery_status",
     "android_clipboard_read",
@@ -153,6 +155,8 @@ internal class LocalAgentToolExecutor(
     private val generationController: LocalGenerationController = LocalGenerationController(),
     /** 共享工作区根目录（跨会话），为 null 时不支持 shared:// 路径 */
     sharedWorkspaceRoot: File? = null,
+    private val globalAgentMemoryStore: GlobalAgentMemoryStore? =
+        runCatching { ServiceContainer.globalAgentMemory }.getOrNull(),
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -197,6 +201,8 @@ internal class LocalAgentToolExecutor(
                 "workspace_send_file" -> sendWorkspaceFile(args)
                 "workspace_extract_epub" -> extractWorkspaceEpub(args)
                 "workspace_file_info" -> workspaceFileInfo(args)
+                "agent_memory_read" -> readGlobalAgentMemory()
+                "agent_memory_update" -> updateGlobalAgentMemory(args)
                 "android_device_info",
                 "android_battery_status",
                 "android_clipboard_read",
@@ -224,6 +230,55 @@ internal class LocalAgentToolExecutor(
             if (generationController.isStopped) stoppedFailure()
             else failure(e.message ?: "工具执行失败")
         }
+    }
+
+    private fun readGlobalAgentMemory(): Map<String, Any> {
+        val store = globalAgentMemoryStore ?: return failure("全局 Agent 记忆存储不可用")
+        return memorySnapshotResult(store.read())
+    }
+
+    private fun updateGlobalAgentMemory(args: Map<String, Any>): Map<String, Any> {
+        val store = globalAgentMemoryStore ?: return failure("全局 Agent 记忆存储不可用")
+        val mode = args.string("mode").trim().lowercase(Locale.ROOT).ifBlank { "replace_text" }
+        if (mode !in setOf("replace", "append", "replace_text", "clear")) {
+            return failure("mode 只支持 replace、append、replace_text 或 clear")
+        }
+        when (mode) {
+            "replace" -> if ("content" !in args) return failure("replace 模式必须提供 content；清空请显式使用 clear")
+            "append" -> if (args.string("content").isBlank()) return failure("append 模式必须提供非空 content")
+            "replace_text" -> if (args.string("old_text").isEmpty()) return failure("replace_text 模式必须提供 old_text")
+        }
+        val size = when (mode) {
+            "replace", "append" -> args.string("content").length
+            "replace_text" -> args.string("new_text").length
+            else -> 0
+        }
+        val authorization = authorizationManager.requestAuthorization(
+            sessionId = sessionId,
+            command = "agent_memory_update: mode=$mode, chars=$size",
+            mainCommand = "agent_memory_update",
+            onRequest = onConfirmationRequired
+        )
+        if (authorization == ExecAuthorization.Reject) {
+            return failure("用户拒绝修改全局 Agent 记忆")
+        }
+        val snapshot = when (mode) {
+            "replace" -> store.replace(args.string("content"))
+            "append" -> store.append(args.string("content"))
+            "replace_text" -> store.replaceText(
+                oldText = args.string("old_text"),
+                newText = args.string("new_text")
+            )
+            else -> store.replace("")
+        }
+        return memorySnapshotResult(snapshot) + ("mode" to mode)
+    }
+
+    private fun memorySnapshotResult(snapshot: GlobalAgentMemoryStore.Snapshot): Map<String, Any> = buildMap {
+        put("success", true)
+        put("content", snapshot.content)
+        put("char_count", snapshot.charCount)
+        snapshot.updatedAt?.let { put("updated_at", it) }
     }
 
     private fun getDateTime(args: Map<String, Any>): Map<String, Any> {

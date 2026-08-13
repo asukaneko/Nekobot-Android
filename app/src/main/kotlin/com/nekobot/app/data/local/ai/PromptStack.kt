@@ -38,6 +38,8 @@ class PromptStack {
         const val CHARACTER_MEMORIES = 60
         const val WORLD_BOOK = 65
         const val KNOWLEDGE_RAG = 70
+        /** 用户维护的 Agent 长期背景；低于核心规则，高于动态工具说明。 */
+        const val AGENT_MEMORY = 75
         const val TOOL_INSTRUCTIONS = 80
     }
 
@@ -174,6 +176,7 @@ class PromptStack {
         "character.life_sim",
         "plot.real_time_sync",
         "knowledge.rag",
+        "agent.global_memory",
         "world_book",
         "memory_fs.context",
         "memory_fs_context"

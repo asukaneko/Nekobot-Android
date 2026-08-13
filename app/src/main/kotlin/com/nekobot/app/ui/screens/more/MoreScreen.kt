@@ -136,6 +136,13 @@ fun MoreScreen(
                     desc = "辅助功能、通知读取、截图和媒体控制授权",
                     onClick = { onNavigate("system_operations") }
                 )
+                Spacer(Modifier.height(8.dp))
+                MoreRow(
+                    icon = Icons.Filled.Bookmarks,
+                    title = "全局 Agent 记忆",
+                    desc = "查看和编辑跨会话自动注入的长期记忆",
+                    onClick = { onNavigate("agent_memory") }
+                )
                 if (appMode != AppMode.LOCAL) {
                     // 扩展功能（仅远程模式）：Hook/任务/工作流/知识库/Skills/Tools/MCP/频道/消息过滤/TTS/令牌
                     Spacer(Modifier.height(8.dp))
