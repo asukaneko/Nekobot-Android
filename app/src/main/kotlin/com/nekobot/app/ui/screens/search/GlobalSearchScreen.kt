@@ -258,6 +258,7 @@ class GlobalSearchViewModel : BaseViewModel() {
         command("打开角色记忆", "搜索和维护长期记忆", Routes.MEMORY),
         command("AI 配置中心", "模型、故障转移与 OAuth", Routes.AI_CONFIG_CENTER),
         command("Agent 系统操作授权", "辅助功能、通知与媒体控制", Routes.SYSTEM_OPERATIONS),
+        command("数据导出中心", "按类别批量导出、预览和选择性导入", Routes.DATA_PORTABILITY),
         command("WebDAV 版本中心", "同步历史、冲突和恢复", Routes.WEBDAV_BACKUP),
         command("打开 Skills", "管理本地 Agent Skills", Routes.SKILLS),
         command("打开设置", "应用模式、外观和数据", Routes.SETTINGS)

@@ -591,7 +591,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                     }
                 }
 
-                // 4.5 高级功能：本地模式仅显示"数据维护"，服务器模式显示全部
+                // 4.5 高级功能：数据导出中心与数据维护全模式可用，其余能力按模式展示。
                 if (appMode != AppMode.LOCAL) {
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         SectionHeader(title = stringResource(R.string.settings_advanced))
@@ -622,6 +622,12 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                             subtitle = stringResource(R.string.settings_feature_switches_desc)
                         ) { onNavigate("feature_switches") }
                         SettingNavRow(
+                            icon = Icons.Filled.ImportExport,
+                            iconColor = MaterialTheme.colorScheme.secondary,
+                            title = stringResource(R.string.settings_data_portability),
+                            subtitle = stringResource(R.string.settings_data_portability_desc)
+                        ) { onNavigate("data_portability") }
+                        SettingNavRow(
                             icon = Icons.Filled.Build,
                             iconColor = MaterialTheme.colorScheme.tertiary,
                             title = stringResource(R.string.settings_data_maintenance),
@@ -641,7 +647,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                         ) { onNavigate("webdav_backup") }
                     }
                 } else {
-                    // 本地模式：仅显示"数据维护"入口（其他高级功能依赖服务器）
+                    // 本地模式：保留本地可用的数据能力与 WebDAV 备份。
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         SectionHeader(title = stringResource(R.string.settings_advanced))
                         Spacer(Modifier.height(12.dp))
@@ -664,6 +670,12 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                                 ServiceContainer.prefs.recentSessionsIncludeArchived = enabled
                             }
                         )
+                        SettingNavRow(
+                            icon = Icons.Filled.ImportExport,
+                            iconColor = MaterialTheme.colorScheme.secondary,
+                            title = stringResource(R.string.settings_data_portability),
+                            subtitle = stringResource(R.string.settings_data_portability_desc)
+                        ) { onNavigate("data_portability") }
                         SettingNavRow(
                             icon = Icons.Filled.Build,
                             iconColor = MaterialTheme.colorScheme.tertiary,

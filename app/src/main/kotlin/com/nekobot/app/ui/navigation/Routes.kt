@@ -59,6 +59,7 @@ object Routes {
 
     const val WEBDAV_BACKUP = "webdav_backup"
     const val CONFIG_TRANSFER = "config_transfer"
+    const val DATA_PORTABILITY = "data_portability"
     const val FEATURE_SWITCHES = "feature_switches"
     const val DATA_MAINTENANCE = "data_maintenance"
     /** 路由决策历史 */
