@@ -10,6 +10,19 @@
     <string name="extensions_workflows_desc">多步骤自动化流程</string>
     <string name="extensions_knowledge">知识库</string>
     <string name="extensions_knowledge_desc">RAG 文档与向量检索</string>
+    <string name="rag_settings_title">RAG 检索设置</string>
+    <string name="rag_semantic_weight_title">语义检索权重</string>
+    <string name="rag_semantic_weight_desc">控制语义检索与词法检索的权重比例，值越大越依赖语义理解</string>
+    <string name="rag_top_k_title">返回结果数</string>
+    <string name="rag_top_k_desc">检索后返回给 AI 的知识片段数量（1–20）</string>
+    <string name="rag_mmr_lambda_title">MMR 多样性系数</string>
+    <string name="rag_mmr_lambda_desc">0 = 最大多样性，1 = 最大相关性</string>
+    <string name="rag_rerank_title">重排</string>
+    <string name="rag_rerank_desc">启用后对检索结果进行二次排序，提升相关性但增加耗时</string>
+    <string name="rag_score_threshold_title">得分阈值</string>
+    <string name="rag_score_threshold_desc">低于此分数的知识片段将被过滤（0.0–1.0）</string>
+    <string name="rag_citation_title">引用标注</string>
+    <string name="rag_citation_desc">在 AI 回答中显示引用来源角标，点击可查看来源详情</string>
     <string name="extensions_skills">Skills 配置</string>
     <string name="extensions_skills_desc">技能目录、SKILL.md 与仓库安装</string>
     <string name="extensions_tools">Tools 配置</string>

@@ -190,7 +190,10 @@ fun KnowledgeScreen(onBack: () -> Unit, onNavigate: (String) -> Unit = {}) {
                 actions = {
                     // RAG 检索设置入口
                     IconButton(onClick = { onNavigate(Routes.RAG_SETTINGS) }) {
-                        Icon(Icons.Filled.Settings, contentDescription = "RAG 检索设置")
+                        Icon(
+                            Icons.Filled.Settings,
+                            contentDescription = stringResource(R.string.rag_settings_title)
+                        )
                     }
                     IconButton(
                         onClick = {

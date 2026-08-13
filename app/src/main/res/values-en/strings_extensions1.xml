@@ -10,6 +10,19 @@
     <string name="extensions_workflows_desc">Multi-step automation flows</string>
     <string name="extensions_knowledge">Knowledge Base</string>
     <string name="extensions_knowledge_desc">RAG documents and vector retrieval</string>
+    <string name="rag_settings_title">RAG retrieval settings</string>
+    <string name="rag_semantic_weight_title">Semantic retrieval weight</string>
+    <string name="rag_semantic_weight_desc">Controls the balance between semantic and lexical retrieval; higher values rely more on semantic understanding</string>
+    <string name="rag_top_k_title">Result count</string>
+    <string name="rag_top_k_desc">Number of knowledge chunks returned to the AI after retrieval (1–20)</string>
+    <string name="rag_mmr_lambda_title">MMR diversity factor</string>
+    <string name="rag_mmr_lambda_desc">0 = maximum diversity, 1 = maximum relevance</string>
+    <string name="rag_rerank_title">Reranking</string>
+    <string name="rag_rerank_desc">Reorders retrieval results to improve relevance, but takes longer</string>
+    <string name="rag_score_threshold_title">Score threshold</string>
+    <string name="rag_score_threshold_desc">Knowledge chunks scoring below this value are filtered out (0.0–1.0)</string>
+    <string name="rag_citation_title">Citation markers</string>
+    <string name="rag_citation_desc">Show source markers in AI responses; tap one to view source details</string>
     <string name="extensions_skills">Skills</string>
     <string name="extensions_skills_desc">Skill folders, SKILL.md, and repository installs</string>
     <string name="extensions_tools">Tools</string>

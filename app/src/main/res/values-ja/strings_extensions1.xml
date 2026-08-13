@@ -10,6 +10,19 @@
     <string name="extensions_workflows_desc">複数ステップの自動化フロー</string>
     <string name="extensions_knowledge">ナレッジベース</string>
     <string name="extensions_knowledge_desc">RAG ドキュメントとベクトル検索</string>
+    <string name="rag_settings_title">RAG 検索設定</string>
+    <string name="rag_semantic_weight_title">セマンティック検索の重み</string>
+    <string name="rag_semantic_weight_desc">セマンティック検索とキーワード検索の比率を調整します。値が大きいほど意味理解を重視します</string>
+    <string name="rag_top_k_title">返す結果数</string>
+    <string name="rag_top_k_desc">検索後に AI へ返すナレッジ断片の数（1–20）</string>
+    <string name="rag_mmr_lambda_title">MMR 多様性係数</string>
+    <string name="rag_mmr_lambda_desc">0 = 多様性最大、1 = 関連性最大</string>
+    <string name="rag_rerank_title">再ランキング</string>
+    <string name="rag_rerank_desc">検索結果を再度並べ替えて関連性を高めますが、処理時間が増えます</string>
+    <string name="rag_score_threshold_title">スコアしきい値</string>
+    <string name="rag_score_threshold_desc">このスコア未満のナレッジ断片を除外します（0.0–1.0）</string>
+    <string name="rag_citation_title">引用表示</string>
+    <string name="rag_citation_desc">AI の回答に引用元マーカーを表示し、タップすると詳細を確認できます</string>
     <string name="extensions_skills">Skills</string>
     <string name="extensions_skills_desc">スキルフォルダー、SKILL.md、リポジトリ導入</string>
     <string name="extensions_tools">Tools</string>

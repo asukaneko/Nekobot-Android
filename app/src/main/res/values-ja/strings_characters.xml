@@ -22,6 +22,7 @@
     <string name="character_ai_generated">AI 生成キャラクター: %1$s</string>
     <string name="character_ai_generate_failed">キャラクター生成に失敗: %1$s</string>
     <string name="character_ai_generate_card">キャラクターカードを生成</string>
+    <string name="character_ai_language_label">生成言語</string>
     <string name="character_description_label">キャラクター説明</string>
     <string name="character_ai_placeholder">例：異世界から来たエルフの弓使い、外見は冷淡ですが内面は優しく、口は悪いけれど月光の下でハチミツ茶を飲むのが好き…</string>
     <string name="character_ai_hint">ヒント：説明（性格、外見、背景、話し方）を具体的にするほど品質が向上します。</string>

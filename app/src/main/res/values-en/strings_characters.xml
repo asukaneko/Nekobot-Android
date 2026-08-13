@@ -22,6 +22,7 @@
     <string name="character_ai_generated">AI generated character: %1$s</string>
     <string name="character_ai_generate_failed">Failed to generate character: %1$s</string>
     <string name="character_ai_generate_card">Generate character card</string>
+    <string name="character_ai_language_label">Generation language</string>
     <string name="character_description_label">Character description</string>
     <string name="character_ai_placeholder">e.g., an elf archer from another world, aloof on the outside but gentle inside, sharp-tongued, fond of drinking honey tea under the moonlight…</string>
     <string name="character_ai_hint">Tip: The more specific the description (personality, appearance, background, speech style), the higher the quality.</string>

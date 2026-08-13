@@ -39,6 +39,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.LocaleHelper
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.ui.components.EmptyState
 import com.nekobot.app.ui.components.ErrorBanner
@@ -531,16 +532,24 @@ private fun AiGenerateCharacterDialog(
     onConfirm: (description: String, language: String) -> Unit
 ) {
     var description by remember { mutableStateOf("") }
-    var language by remember { mutableStateOf("zh") }
-    var languageMenuExpanded by remember { mutableStateOf(false) }
-    val languages = remember {
-        listOf(
-            "zh" to "中文",
-            "en" to "英文",
-            "ja" to "日文",
-            "ko" to "韩文"
-        )
+    val context = LocalContext.current
+    val defaultLanguage = remember(context) {
+        val effectiveLanguage = LocaleHelper
+            .getEffectiveLocale(context, ServiceContainer.prefs.language)
+            .language
+        when (effectiveLanguage) {
+            "zh", "en", "ja", "ko" -> effectiveLanguage
+            else -> "en"
+        }
     }
+    var language by remember(defaultLanguage) { mutableStateOf(defaultLanguage) }
+    var languageMenuExpanded by remember { mutableStateOf(false) }
+    val languages = listOf(
+        "zh" to stringResource(R.string.language_chinese),
+        "en" to stringResource(R.string.language_english),
+        "ja" to stringResource(R.string.language_japanese),
+        "ko" to stringResource(R.string.language_korean)
+    )
     val selectedLanguage = languages.firstOrNull { it.first == language } ?: languages.first()
 
     NekoDialog(

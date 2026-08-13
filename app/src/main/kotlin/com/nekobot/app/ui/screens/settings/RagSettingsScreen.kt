@@ -31,9 +31,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nekobot.app.R
 import com.nekobot.app.ui.components.GlassCard
 
 /**
@@ -55,7 +57,7 @@ fun RagSettingsScreen(onBack: () -> Unit) {
             TopAppBar(
                 title = {
                     Text(
-                        text = "RAG 检索设置",
+                        text = stringResource(R.string.rag_settings_title),
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -64,7 +66,7 @@ fun RagSettingsScreen(onBack: () -> Unit) {
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.common_back),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -88,7 +90,7 @@ fun RagSettingsScreen(onBack: () -> Unit) {
             // ==================== 语义检索权重 ====================
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "语义检索权重",
+                    text = stringResource(R.string.rag_semantic_weight_title),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold
@@ -108,7 +110,7 @@ fun RagSettingsScreen(onBack: () -> Unit) {
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = "控制语义检索与词法检索的权重比例，值越大越依赖语义理解",
+                    text = stringResource(R.string.rag_semantic_weight_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -117,14 +119,14 @@ fun RagSettingsScreen(onBack: () -> Unit) {
             // ==================== 返回结果数 ====================
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "返回结果数",
+                    text = stringResource(R.string.rag_top_k_title),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "检索后返回给 AI 的知识片段数量（1~20）",
+                    text = stringResource(R.string.rag_top_k_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -149,7 +151,7 @@ fun RagSettingsScreen(onBack: () -> Unit) {
             // ==================== MMR 多样性系数 ====================
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "MMR 多样性系数",
+                    text = stringResource(R.string.rag_mmr_lambda_title),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold
@@ -169,7 +171,7 @@ fun RagSettingsScreen(onBack: () -> Unit) {
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = "0=最大多样性，1=最大相关性",
+                    text = stringResource(R.string.rag_mmr_lambda_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -183,14 +185,14 @@ fun RagSettingsScreen(onBack: () -> Unit) {
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "重排",
+                            text = stringResource(R.string.rag_rerank_title),
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.SemiBold
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            text = "启用后对检索结果进行二次排序，提升相关性但增加耗时",
+                            text = stringResource(R.string.rag_rerank_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -205,14 +207,14 @@ fun RagSettingsScreen(onBack: () -> Unit) {
             // ==================== 得分阈值 ====================
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "得分阈值",
+                    text = stringResource(R.string.rag_score_threshold_title),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "低于此分数的知识片段将被过滤（0.0~1.0）",
+                    text = stringResource(R.string.rag_score_threshold_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -242,14 +244,14 @@ fun RagSettingsScreen(onBack: () -> Unit) {
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "引用标注",
+                            text = stringResource(R.string.rag_citation_title),
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.SemiBold
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            text = "在 AI 回答中显示引用来源角标，点击可查看来源详情",
+                            text = stringResource(R.string.rag_citation_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

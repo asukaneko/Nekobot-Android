@@ -10,6 +10,19 @@
     <string name="extensions_workflows_desc">다단계 자동화 흐름</string>
     <string name="extensions_knowledge">지식 베이스</string>
     <string name="extensions_knowledge_desc">RAG 문서 및 벡터 검색</string>
+    <string name="rag_settings_title">RAG 검색 설정</string>
+    <string name="rag_semantic_weight_title">의미 검색 가중치</string>
+    <string name="rag_semantic_weight_desc">의미 검색과 어휘 검색의 비율을 조절하며, 값이 클수록 의미 이해에 더 의존해요</string>
+    <string name="rag_top_k_title">결과 수</string>
+    <string name="rag_top_k_desc">검색 후 AI에 반환할 지식 조각 수예요(1–20)</string>
+    <string name="rag_mmr_lambda_title">MMR 다양성 계수</string>
+    <string name="rag_mmr_lambda_desc">0 = 최대 다양성, 1 = 최대 관련성</string>
+    <string name="rag_rerank_title">재순위화</string>
+    <string name="rag_rerank_desc">검색 결과를 다시 정렬해 관련성을 높이지만 처리 시간이 늘어나요</string>
+    <string name="rag_score_threshold_title">점수 임계값</string>
+    <string name="rag_score_threshold_desc">이 점수보다 낮은 지식 조각은 제외해요(0.0–1.0)</string>
+    <string name="rag_citation_title">인용 표시</string>
+    <string name="rag_citation_desc">AI 답변에 출처 표시를 보여 주며 누르면 출처 상세 정보를 볼 수 있어요</string>
     <string name="extensions_skills">Skills</string>
     <string name="extensions_skills_desc">스킬 폴더, SKILL.md 및 저장소 설치</string>
     <string name="extensions_tools">Tools</string>
