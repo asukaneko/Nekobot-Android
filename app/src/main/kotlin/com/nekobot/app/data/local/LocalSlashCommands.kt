@@ -258,6 +258,9 @@ internal object LocalSlashCommands {
             .drop(commandName.length)
             .trim()
 
+        // /skill 是面向 Agent 的显式 Skill 调用语法，需要继续进入 AI Pipeline。
+        if (commandName == "/skill") return null
+
         val spec = aliases[commandName]
         return if (spec != null) {
             LocalParsedCommand(
@@ -274,6 +277,27 @@ internal object LocalSlashCommands {
                 known = false
             )
         }
+    }
+
+    fun suggestions(query: String): List<LocalCommandSuggestion> {
+        val normalized = query.trim().lowercase()
+        return commands
+            .asSequence()
+            .filter { spec ->
+                normalized.isBlank() || normalized == "/" ||
+                    spec.aliases.any { alias ->
+                        alias.startsWith(normalized) || alias.contains(normalized.removePrefix("/"))
+                    }
+            }
+            .map { spec ->
+                LocalCommandSuggestion(
+                    command = spec.aliases.first(),
+                    aliases = spec.aliases,
+                    takesArguments = '<' in spec.usage || '[' in spec.usage
+                )
+            }
+            .distinctBy(LocalCommandSuggestion::command)
+            .toList()
     }
 
     fun helpText(): String = buildString {
@@ -307,6 +331,12 @@ internal data class LocalParsedCommand(
     val args: String,
     val action: LocalCommandAction,
     val known: Boolean
+)
+
+internal data class LocalCommandSuggestion(
+    val command: String,
+    val aliases: List<String>,
+    val takesArguments: Boolean
 )
 
 internal enum class LocalCommandAction(val isNative: Boolean) {

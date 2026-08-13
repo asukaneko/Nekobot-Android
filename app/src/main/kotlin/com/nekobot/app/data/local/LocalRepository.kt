@@ -8043,6 +8043,7 @@ $charSection$topicSection
             appendLine("## 可用技能 (Skills)")
             appendLine()
             appendLine("当用户任务与某个技能匹配时，先调用 skill_read 读取该技能的 SKILL.md，再严格按其中说明执行。")
+            appendLine("用户输入 `/skill <名称> <请求>` 时，视为明确指定该 Skill；先读取对应 SKILL.md，再用其流程处理后续请求。")
             appendLine("可使用 skill_list、skill_view、skill_read 查看技能目录和参考资源。不要直接执行下载 Skill 中的脚本，除非用户明确要求且命令执行已通过授权。")
             skills.forEach { skill ->
                 appendLine()

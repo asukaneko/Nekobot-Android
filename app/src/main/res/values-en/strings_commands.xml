@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="command_suggestion_command">Command</string>
+    <string name="command_suggestion_skill">Skill</string>
+    <string name="command_suggestion_hint">Tap to complete</string>
+    <string name="command_suggestion_skill_hint">Use this Skill for your request</string>
+    <string name="command_suggestion_skill_prefix">/skill %1$s</string>
+</resources>

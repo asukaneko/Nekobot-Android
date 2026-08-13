@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="command_suggestion_command">명령</string>
+    <string name="command_suggestion_skill">Skill</string>
+    <string name="command_suggestion_hint">눌러서 자동 완성</string>
+    <string name="command_suggestion_skill_hint">이 Skill로 요청을 처리합니다</string>
+    <string name="command_suggestion_skill_prefix">/skill %1$s</string>
+</resources>

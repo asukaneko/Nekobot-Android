@@ -10,6 +10,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LocalSlashCommandsTest {
+
+    @Test
+    fun skill_command_is_forwarded_to_agent_pipeline() {
+        assertNull(LocalSlashCommands.parse("/skill writing-assistant draft a reply"))
+    }
+
+    @Test
+    fun suggestions_match_primary_and_alias_names() {
+        assertEquals("/local_status", LocalSlashCommands.suggestions("/stat").single().command)
+        assertTrue(LocalSlashCommands.suggestions("/").isNotEmpty())
+    }
     @Test
     fun ignoresOrdinaryChatMessages() {
         assertNull(LocalSlashCommands.parse("你好"))

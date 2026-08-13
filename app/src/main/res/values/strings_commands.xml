@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="command_suggestion_command">命令</string>
+    <string name="command_suggestion_skill">Skill</string>
+    <string name="command_suggestion_hint">点击补全</string>
+    <string name="command_suggestion_skill_hint">选择后使用此 Skill 处理请求</string>
+    <string name="command_suggestion_skill_prefix">/skill %1$s</string>
+</resources>

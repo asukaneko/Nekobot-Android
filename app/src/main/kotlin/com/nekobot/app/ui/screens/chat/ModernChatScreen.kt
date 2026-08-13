@@ -75,8 +75,10 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.VerticalSplit
 import androidx.compose.material.icons.filled.ViewAgenda
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.AlertDialog
@@ -121,10 +123,12 @@ import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.ChatInputLayoutMode
 import com.nekobot.app.data.local.LocalCommandAction
+import com.nekobot.app.data.local.LocalCommandSuggestion
 import com.nekobot.app.data.local.LocalSlashCommands
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.ReasoningEffort
+import com.nekobot.app.data.model.Skill
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.NekoDialog
@@ -190,6 +194,7 @@ fun ModernChatScreen(
             plotChoicesLoading = plotChoicesLoading,
             plotMode = session?.plotMode == true,
             plotRealTimeSync = session?.plotRealTimeSync == true,
+            skillsEnabled = session?.sessionMode.equals("agent", ignoreCase = true),
             onSend = { text, plotChoiceId, attachments, reasoningEffort ->
                 val command = LocalSlashCommands.parse(text)
                 if (
@@ -226,6 +231,141 @@ private enum class ModernComposerAction {
     STOP
 }
 
+private sealed interface ChatCommandCandidate {
+    val key: String
+    val insertion: String
+
+    data class Command(val suggestion: LocalCommandSuggestion) : ChatCommandCandidate {
+        override val key: String = "command:${suggestion.command}"
+        override val insertion: String = suggestion.command + if (suggestion.takesArguments) " " else ""
+    }
+
+    data class SkillCommand(val skill: Skill) : ChatCommandCandidate {
+        override val key: String = "skill:${skill.id ?: skill.name}"
+        override val insertion: String = "/skill \"${skill.name.replace("\"", "\\\"")}\" "
+    }
+}
+
+private fun buildChatCommandCandidates(
+    input: String,
+    skills: List<Skill>,
+    skillsEnabled: Boolean
+): List<ChatCommandCandidate> {
+    val value = input.trimStart()
+    if (!value.startsWith('/') || '\n' in value) return emptyList()
+    val token = value.substringBefore(' ').lowercase()
+    if (token == "/skill") {
+        if (!skillsEnabled) return emptyList()
+        val query = value.substringAfter(' ', "").trim().trim('"').lowercase()
+        return skills.asSequence()
+            .filter { skill ->
+                query.isBlank() || skill.name.contains(query, ignoreCase = true) ||
+                    skill.aliases.any { it.contains(query, ignoreCase = true) }
+            }
+            .take(8)
+            .map { ChatCommandCandidate.SkillCommand(it) }
+            .toList()
+    }
+    if (' ' in value) return emptyList()
+
+    val commands = LocalSlashCommands.suggestions(token)
+        .map(ChatCommandCandidate::Command)
+    if (!skillsEnabled) return commands.take(8)
+    val skillQuery = token.removePrefix("/")
+    val skillCommands = skills.asSequence()
+        .filter { skill ->
+            skillQuery.isBlank() || skill.name.contains(skillQuery, ignoreCase = true) ||
+                skill.aliases.any { it.contains(skillQuery, ignoreCase = true) }
+        }
+        .map { ChatCommandCandidate.SkillCommand(it) }
+        .toList()
+    return if (skillQuery.isBlank() && skillCommands.isNotEmpty()) {
+        (commands.take(5) + skillCommands.take(3)).take(8)
+    } else {
+        (commands + skillCommands).take(8)
+    }
+}
+
+@Composable
+private fun CommandSuggestionPanel(
+    candidates: List<ChatCommandCandidate>,
+    onPick: (ChatCommandCandidate) -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 3.dp,
+        shadowElevation = 8.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+    ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 288.dp),
+            contentPadding = PaddingValues(vertical = 6.dp)
+        ) {
+            items(candidates, key = ChatCommandCandidate::key) { candidate ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onPick(candidate) }
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val isSkill = candidate is ChatCommandCandidate.SkillCommand
+                    Icon(
+                        imageVector = if (isSkill) Icons.Filled.Extension else Icons.Filled.Terminal,
+                        contentDescription = null,
+                        tint = if (isSkill) MaterialTheme.colorScheme.tertiary
+                        else MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = when (candidate) {
+                                is ChatCommandCandidate.Command -> candidate.suggestion.command
+                                is ChatCommandCandidate.SkillCommand -> stringResource(
+                                    R.string.command_suggestion_skill_prefix,
+                                    candidate.skill.name
+                                )
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = when (candidate) {
+                                is ChatCommandCandidate.Command -> stringResource(R.string.command_suggestion_hint)
+                                is ChatCommandCandidate.SkillCommand -> candidate.skill.description
+                                    ?.takeIf(String::isNotBlank)
+                                    ?: stringResource(R.string.command_suggestion_skill_hint)
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Text(
+                        text = stringResource(
+                            if (isSkill) R.string.command_suggestion_skill
+                            else R.string.command_suggestion_command
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isSkill) MaterialTheme.colorScheme.tertiary
+                        else MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun ModernChatComposer(
     modifier: Modifier,
@@ -236,6 +376,7 @@ private fun ModernChatComposer(
     plotChoicesLoading: Boolean,
     plotMode: Boolean,
     plotRealTimeSync: Boolean,
+    skillsEnabled: Boolean,
     onSend: (String, String?, List<Map<String, Any>>, ReasoningEffort) -> Unit,
     onStop: () -> Unit,
     onCompress: () -> Unit,
@@ -280,6 +421,21 @@ private fun ModernChatComposer(
     var favoritesLoading by remember { mutableStateOf(false) }
     var favorites by remember { mutableStateOf<List<JsonObject>>(emptyList()) }
     var favoritesVersion by remember { mutableStateOf(0) }
+    var enabledSkills by remember(sessionId) { mutableStateOf<List<Skill>>(emptyList()) }
+    var dismissedCommandCandidateInput by remember(sessionId) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(sessionId, skillsEnabled) {
+        enabledSkills = if (skillsEnabled) {
+            when (val result = ServiceContainer.unified.listSkills()) {
+                is Resource.Success -> result.data.orEmpty()
+                    .filter { it.enabled && it.name.isNotBlank() }
+                    .sortedBy { it.name.lowercase() }
+                else -> emptyList()
+            }
+        } else {
+            emptyList()
+        }
+    }
 
     var isRecording by remember { mutableStateOf(false) }
     var recordingDuration by remember { mutableStateOf(0) }
@@ -580,6 +736,18 @@ private fun ModernChatComposer(
         }
         ServiceContainer.prefs.chatInputLayoutMode = chatInputLayout
     }
+    val commandCandidates = remember(
+        input,
+        enabledSkills,
+        skillsEnabled,
+        dismissedCommandCandidateInput
+    ) {
+        if (input == dismissedCommandCandidateInput) {
+            emptyList()
+        } else {
+            buildChatCommandCandidates(input, enabledSkills, skillsEnabled)
+        }
+    }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -696,9 +864,24 @@ private fun ModernChatComposer(
                         )
                     }
 
+                    if (commandCandidates.isNotEmpty()) {
+                        CommandSuggestionPanel(
+                            candidates = commandCandidates,
+                            onPick = { candidate ->
+                                input = candidate.insertion
+                                dismissedCommandCandidateInput = candidate.insertion
+                                inputExpanded = true
+                                pendingPlotChoiceId = null
+                            }
+                        )
+                    }
+
                     // 草稿统计：胶囊样式，右对齐悬浮于输入框上方
                     // 剧情选项开启时挪到选项栏按钮排，这里不再显示
-                    if (input.isNotBlank() && plotChoices.isEmpty() && !plotChoicesLoading) {
+                    if (
+                        input.isNotBlank() && commandCandidates.isEmpty() &&
+                        plotChoices.isEmpty() && !plotChoicesLoading
+                    ) {
                         Surface(
                             modifier = Modifier
                                 .align(Alignment.End)
@@ -773,6 +956,9 @@ private fun ModernChatComposer(
                                     value = input,
                                     onValueChange = {
                                         if (panelExpanded) closePanel()
+                                        if (it != dismissedCommandCandidateInput) {
+                                            dismissedCommandCandidateInput = null
+                                        }
                                         input = it
                                         if (pendingPlotChoiceId != null && it != plotChoices.firstOrNull { c -> c.id == pendingPlotChoiceId }?.title) {
                                             pendingPlotChoiceId = null
@@ -1375,22 +1561,24 @@ private fun ReasoningEffortSelector(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
+    @Composable
     fun label(effort: ReasoningEffort): String = when (effort) {
-        ReasoningEffort.NONE -> "关闭"
-        ReasoningEffort.MINIMAL -> "极低"
-        ReasoningEffort.LOW -> "低"
-        ReasoningEffort.MEDIUM -> "中"
-        ReasoningEffort.HIGH -> "高"
-        ReasoningEffort.MAX -> "最高"
+        ReasoningEffort.NONE -> stringResource(R.string.reasoning_effort_none)
+        ReasoningEffort.MINIMAL -> stringResource(R.string.reasoning_effort_minimal)
+        ReasoningEffort.LOW -> stringResource(R.string.reasoning_effort_low)
+        ReasoningEffort.MEDIUM -> stringResource(R.string.reasoning_effort_medium)
+        ReasoningEffort.HIGH -> stringResource(R.string.reasoning_effort_high)
+        ReasoningEffort.MAX -> stringResource(R.string.reasoning_effort_max)
     }
 
+    @Composable
     fun description(effort: ReasoningEffort): String = when (effort) {
-        ReasoningEffort.NONE -> "不请求也不显示模型思考"
-        ReasoningEffort.MINIMAL -> "尽量减少推理开销"
-        ReasoningEffort.LOW -> "适合简单问题"
-        ReasoningEffort.MEDIUM -> "速度与质量平衡"
-        ReasoningEffort.HIGH -> "适合复杂任务"
-        ReasoningEffort.MAX -> "使用模型最高推理强度"
+        ReasoningEffort.NONE -> stringResource(R.string.reasoning_effort_none_desc)
+        ReasoningEffort.MINIMAL -> stringResource(R.string.reasoning_effort_minimal_desc)
+        ReasoningEffort.LOW -> stringResource(R.string.reasoning_effort_low_desc)
+        ReasoningEffort.MEDIUM -> stringResource(R.string.reasoning_effort_medium_desc)
+        ReasoningEffort.HIGH -> stringResource(R.string.reasoning_effort_high_desc)
+        ReasoningEffort.MAX -> stringResource(R.string.reasoning_effort_max_desc)
     }
 
     Surface(
@@ -1419,7 +1607,7 @@ private fun ReasoningEffortSelector(
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "思考强度",
+                        text = stringResource(R.string.reasoning_effort_title),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium
                     )

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="command_suggestion_command">コマンド</string>
+    <string name="command_suggestion_skill">Skill</string>
+    <string name="command_suggestion_hint">タップして補完</string>
+    <string name="command_suggestion_skill_hint">この Skill で依頼を処理します</string>
+    <string name="command_suggestion_skill_prefix">/skill %1$s</string>
+</resources>
