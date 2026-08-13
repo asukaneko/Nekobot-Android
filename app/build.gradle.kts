@@ -13,8 +13,8 @@ android {
         applicationId = "com.nekobot.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 33
-        versionName = "0.4.10"
+        versionCode = 34
+        versionName = "0.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             // 内置 Linux 沙盒当前使用 arm64 PRoot。
