@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="login_server_placeholder">https://server.example.com または localhost:5000</string>
+    <string name="server_https_default_hint">スキームを省略すると HTTPS を使用します。HTTP URL を明示的に入力することもできます。</string>
+    <string name="server_http_insecure_warning">HTTP 接続は暗号化されません。同じネットワーク上の第三者にアカウント、パスワード、チャット内容を傍受される可能性があります。信頼できるローカルネットワークでのみ使用してください。</string>
+</resources>

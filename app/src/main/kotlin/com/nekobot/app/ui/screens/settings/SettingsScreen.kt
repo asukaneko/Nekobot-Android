@@ -534,6 +534,21 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                             modifier = Modifier.fillMaxWidth()
                         )
 
+                        Text(
+                            text = stringResource(R.string.server_https_default_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                        if (serverUrlInput.trimStart().startsWith("http://", ignoreCase = true)) {
+                            Text(
+                                text = stringResource(R.string.server_http_insecure_warning),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                        }
+
                         Spacer(Modifier.height(8.dp))
 
                         Button(

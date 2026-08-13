@@ -81,6 +81,7 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
     val loading by viewModel.loading.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val loginRecords by viewModel.loginRecords.collectAsStateWithLifecycle()
+    val usesInsecureHttp = serverUrl.trimStart().startsWith("http://", ignoreCase = true)
 
     var passwordVisible by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
@@ -126,7 +127,7 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
                     value = serverUrl,
                     onValueChange = viewModel::onServerUrlChange,
                     label = { Text(stringResource(R.string.login_server_address)) },
-                    placeholder = { Text("http://IP:5000 或 [::1]:5000") },
+                    placeholder = { Text(stringResource(R.string.login_server_placeholder)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Uri,
@@ -137,6 +138,24 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
+                Text(
+                    text = stringResource(R.string.server_https_default_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp)
+                )
+                if (usesInsecureHttp) {
+                    Text(
+                        text = stringResource(R.string.server_http_insecure_warning),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp)
+                    )
+                }
                 Spacer(Modifier.height(12.dp))
 
                 // 用户名

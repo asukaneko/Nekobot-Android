@@ -647,7 +647,7 @@ class PrefsManager(context: Context) {
         private const val KEY_STATS_CHARACTER_RANKING_MODE = "stats_character_ranking_mode"
         private const val KEY_CHARACTER_VIEW_MODE = "character_view_mode"
         private const val KEY_ACHIEVEMENT_VIEW_MODE = "achievement_view_mode"
-        private const val DEFAULT_SERVER = "http://localhost:5000"
+        private const val DEFAULT_SERVER = "https://localhost:5000"
 
         // 样式相关 KEY
         const val KEY_FONT_FAMILY = "font_family"
@@ -773,13 +773,13 @@ class PrefsManager(context: Context) {
         /**
          * 规范化服务器地址：
          * - 去掉首尾空白与末尾斜杠
-         * - 自动补全缺失的 http:// scheme（防止 Retrofit baseUrl 解析崩溃）
+         * - 自动补全缺失的 https:// scheme（防止 Retrofit baseUrl 解析崩溃并默认使用加密传输）
          * - 自动为未加方括号的 IPv6 主机添加方括号（RFC 3986 要求）
          *
          * 例如：
-         *   ::1:5000               → http://[::1]:5000
-         *   192.168.1.1:5000       → http://192.168.1.1:5000
-         *   example.com            → http://example.com
+         *   ::1:5000               → https://[::1]:5000
+         *   192.168.1.1:5000       → https://192.168.1.1:5000
+         *   example.com            → https://example.com
          *   http://::1:5000         → http://[::1]:5000
          *   http://2001:db8::1:5000 → http://[2001:db8::1]:5000
          *   http://[::1]:5000       → 保持不变
@@ -797,7 +797,7 @@ class PrefsManager(context: Context) {
             val withScheme = if (Regex("^(https?)://", RegexOption.IGNORE_CASE).containsMatchIn(trimmed)) {
                 trimmed
             } else {
-                "http://$trimmed"
+                "https://$trimmed"
             }
             if (withScheme.contains("[")) return withScheme
             // 提取 scheme:// 后的部分

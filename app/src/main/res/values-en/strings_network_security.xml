@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="login_server_placeholder">https://server.example.com or localhost:5000</string>
+    <string name="server_https_default_hint">HTTPS is used when no scheme is specified. You can also enter an HTTP URL explicitly.</string>
+    <string name="server_http_insecure_warning">HTTP connections are not encrypted. Accounts, passwords, and chat content may be intercepted by others on the same network. Use HTTP only on trusted local networks.</string>
+</resources>

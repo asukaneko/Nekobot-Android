@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="login_server_placeholder">https://server.example.com 또는 localhost:5000</string>
+    <string name="server_https_default_hint">스킴을 생략하면 HTTPS를 사용합니다. HTTP URL을 명시적으로 입력할 수도 있습니다.</string>
+    <string name="server_http_insecure_warning">HTTP 연결은 암호화되지 않습니다. 같은 네트워크의 다른 사용자가 계정, 비밀번호 및 채팅 내용을 가로챌 수 있습니다. 신뢰할 수 있는 로컬 네트워크에서만 사용하세요.</string>
+</resources>

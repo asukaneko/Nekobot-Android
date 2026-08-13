@@ -74,29 +74,29 @@ class NormalizeServerUrlTest {
 
     @Test
     fun auto_prepends_scheme_for_bare_ipv6_with_port() {
-        assertEquals("http://[::1]:5000", PrefsManager.normalizeServerUrl("::1:5000"))
+        assertEquals("https://[::1]:5000", PrefsManager.normalizeServerUrl("::1:5000"))
         assertEquals(
-            "http://[2001:db8::1]:5000",
+            "https://[2001:db8::1]:5000",
             PrefsManager.normalizeServerUrl("2001:db8::1:5000")
         )
     }
 
     @Test
     fun auto_prepends_scheme_for_bare_ipv6_without_port() {
-        assertEquals("http://[::1]", PrefsManager.normalizeServerUrl("::1"))
-        assertEquals("http://[2001:db8::1]", PrefsManager.normalizeServerUrl("2001:db8::1"))
+        assertEquals("https://[::1]", PrefsManager.normalizeServerUrl("::1"))
+        assertEquals("https://[2001:db8::1]", PrefsManager.normalizeServerUrl("2001:db8::1"))
     }
 
     @Test
     fun auto_prepends_scheme_for_ipv4() {
-        assertEquals("http://192.168.1.1:5000", PrefsManager.normalizeServerUrl("192.168.1.1:5000"))
-        assertEquals("http://10.0.0.1", PrefsManager.normalizeServerUrl("10.0.0.1"))
+        assertEquals("https://192.168.1.1:5000", PrefsManager.normalizeServerUrl("192.168.1.1:5000"))
+        assertEquals("https://10.0.0.1", PrefsManager.normalizeServerUrl("10.0.0.1"))
     }
 
     @Test
     fun auto_prepends_scheme_for_hostname() {
-        assertEquals("http://example.com:5000", PrefsManager.normalizeServerUrl("example.com:5000"))
-        assertEquals("http://nekobot.app", PrefsManager.normalizeServerUrl("nekobot.app"))
+        assertEquals("https://example.com:5000", PrefsManager.normalizeServerUrl("example.com:5000"))
+        assertEquals("https://nekobot.app", PrefsManager.normalizeServerUrl("nekobot.app"))
     }
 
     @Test
