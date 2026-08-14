@@ -68,6 +68,18 @@ internal class LocalWorkspaceRepository(
         }
     }
 
+    suspend fun moveSessionFile(sessionId: String, path: String, targetPath: String): JsonElement =
+        withContext(Dispatchers.IO) {
+            val root = sessionRoot(sessionId)?.canonicalFile
+                ?: return@withContext unavailable("工作区目录不可用")
+            move(root, root, path, targetPath)
+        }
+
+    suspend fun moveSharedFile(path: String, targetPath: String): JsonElement = withContext(Dispatchers.IO) {
+        val root = sharedRoot()?.canonicalFile ?: return@withContext unavailable("共享工作区目录不可用")
+        move(root, root, path, targetPath)
+    }
+
     suspend fun moveSharedToSession(path: String, sessionId: String): JsonElement = withContext(Dispatchers.IO) {
         val sourceRoot = sharedRoot()?.canonicalFile
         val targetRoot = sessionRoot(sessionId)?.canonicalFile
@@ -134,12 +146,18 @@ internal class LocalWorkspaceRepository(
         }
     }
 
-    private fun move(sourceRoot: File, targetRoot: File, path: String): JsonObject {
+    private fun move(sourceRoot: File, targetRoot: File, path: String, targetPath: String = ""): JsonObject {
         val source = resolve(sourceRoot, path, allowRoot = false)
             ?.takeIf(File::exists)
             ?: return unavailable("源文件不存在")
-        val target = resolve(targetRoot, source.name, allowRoot = false)
-            ?: return unavailable("目标路径无效")
+        val targetDirectory = resolve(targetRoot, targetPath, allowRoot = true)
+            ?.takeIf(File::isDirectory)
+            ?: return unavailable("目标文件夹不存在")
+        if (targetDirectory == source || targetDirectory.path.startsWith(source.path + File.separator)) {
+            return unavailable("不能移动到自身或子文件夹")
+        }
+        val target = File(targetDirectory, source.name).canonicalFile
+        if (!target.path.startsWith(targetRoot.path + File.separator)) return unavailable("目标路径无效")
         source.copyRecursively(target, overwrite = true)
         val removed = source.deleteRecursively()
         return JsonObject().apply {

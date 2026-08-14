@@ -13,6 +13,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -122,6 +124,29 @@ class WorkspaceViewModel : BaseViewModel() {
     }
 
     fun openDirectory(path: String) = load(path)
+
+    /** 长按后在当前工作区内把文件或文件夹放入目标文件夹。 */
+    fun moveWithinPrivate(sourcePath: String, targetPath: String) {
+        if (sessionId.isBlank() || sourcePath == targetPath) return
+        launchResult(
+            block = { unified.moveWorkspaceFile(sessionId, sourcePath, targetPath) },
+            onSuccess = {
+                showToast("已移动到 $targetPath")
+                load()
+            }
+        )
+    }
+
+    fun moveWithinShared(sourcePath: String, targetPath: String) {
+        if (sourcePath == targetPath) return
+        launchResult(
+            block = { unified.moveSharedFile(sourcePath, targetPath) },
+            onSuccess = {
+                showToast("已移动到 $targetPath")
+                loadShared()
+            }
+        )
+    }
 
     fun navigateUp(): Boolean {
         val current = _currentPath.value
@@ -545,6 +570,7 @@ fun WorkspaceScreen(
     var tabIndex by remember { mutableStateOf(0) } // 0=会话工作区, 1=共享工作区
     var deletingFile by remember { mutableStateOf<WorkspaceFile?>(null) }
     var movingFile by remember { mutableStateOf<WorkspaceFile?>(null) }
+    var draggingFile by remember { mutableStateOf<WorkspaceFile?>(null) }
     var downloading by remember { mutableStateOf<String?>(null) }
     var previewFile by remember { mutableStateOf<java.io.File?>(null) }
     var previewFileName by remember { mutableStateOf("") }
@@ -665,6 +691,25 @@ fun WorkspaceScreen(
                 )
             }
 
+            draggingFile?.let { source ->
+                GlassCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "正在移动：${source.name}，点击目标文件夹放置",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        TextButton(onClick = { draggingFile = null }) {
+                            Text(stringResource(R.string.common_cancel))
+                        }
+                    }
+                }
+            }
+
             Box(modifier = Modifier.fillMaxSize()) {
                 val displayFiles = if (tabIndex == 0) files else sharedFiles
                 when {
@@ -695,9 +740,17 @@ fun WorkspaceScreen(
                                     downloading = downloading == f.path,
                                     previewLoading = previewLoading && previewFileName == f.path,
                                     onOpenDirectory = {
-                                        if (isShared) viewModel.openSharedDirectory(f.path)
+                                        val source = draggingFile
+                                        if (source != null) {
+                                            draggingFile = null
+                                            if (source.path != f.path && !f.path.startsWith("${source.path}/")) {
+                                                if (isShared) viewModel.moveWithinShared(source.path, f.path)
+                                                else viewModel.moveWithinPrivate(source.path, f.path)
+                                            }
+                                        } else if (isShared) viewModel.openSharedDirectory(f.path)
                                         else viewModel.openDirectory(f.path)
                                     },
+                                    onLongClick = { draggingFile = f },
                                     onDelete = { deletingFile = f },
                                     onMove = { movingFile = f },
                                     onDownload = {
@@ -811,12 +864,14 @@ fun WorkspaceScreen(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun WorkspaceFileItem(
     file: WorkspaceFile,
     isSharedMode: Boolean = false,
     downloading: Boolean,
     previewLoading: Boolean,
     onOpenDirectory: () -> Unit,
+    onLongClick: () -> Unit,
     onDelete: () -> Unit,
     onMove: () -> Unit,
     onDownload: () -> Unit,
@@ -827,9 +882,11 @@ private fun WorkspaceFileItem(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(enabled = !previewLoading) {
-                    if (file.isDirectory) onOpenDirectory() else onPreview()
-                }
+                .combinedClickable(
+                    enabled = !previewLoading,
+                    onClick = { if (file.isDirectory) onOpenDirectory() else onPreview() },
+                    onLongClick = onLongClick
+                )
         ) {
             Icon(
                 if (file.isDirectory) Icons.Filled.Folder else Icons.Filled.InsertDriveFile,

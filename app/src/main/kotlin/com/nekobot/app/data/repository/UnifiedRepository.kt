@@ -1844,6 +1844,26 @@ class UnifiedRepository(
         Resource.Error("WebDAV 增量历史恢复仅支持本地模式")
     }
 
+    /** 在当前工作区内移动文件或文件夹到目标目录。 */
+    suspend fun moveWorkspaceFile(sessionId: String, filename: String, targetPath: String): Resource<JsonElement> {
+        val body = com.google.gson.JsonObject().apply { addProperty("target", targetPath) }
+        return if (isLocal) {
+            Resource.Success(local.moveWorkspaceFile(sessionId, filename, targetPath))
+        } else {
+            remote.moveWorkspaceFile(sessionId, filename, body)
+        }
+    }
+
+    /** 在共享工作区内移动文件或文件夹到目标目录。 */
+    suspend fun moveSharedFile(filename: String, targetPath: String): Resource<JsonElement> {
+        val body = com.google.gson.JsonObject().apply { addProperty("target", targetPath) }
+        return if (isLocal) {
+            Resource.Success(local.moveSharedFile(filename, targetPath))
+        } else {
+            remote.moveSharedFile(filename, body)
+        }
+    }
+
     // ==================== 配置迁移 ====================
     suspend fun exportConfig(req: ConfigExportRequest): retrofit2.Response<okhttp3.ResponseBody> =
         if (isLocal) { throw UnsupportedOperationException("本地模式不支持配置迁移") } else remote.exportConfig(req)
