@@ -571,6 +571,7 @@ class UnifiedRepository(
             val book = WorldBook(
                 name = req.name,
                 description = req.description,
+                coverUrl = req.coverUrl,
                 characterIds = req.characterIds,
                 enabled = req.enabled ?: true
             )
@@ -583,6 +584,7 @@ class UnifiedRepository(
             val book = existing.copy(
                 name = req.name,
                 description = req.description,
+                coverUrl = req.coverUrl ?: existing.coverUrl,
                 characterIds = req.characterIds,
                 enabled = req.enabled ?: existing.enabled
             )
@@ -591,6 +593,9 @@ class UnifiedRepository(
 
     suspend fun deleteWorldBook(id: String): Resource<Unit> =
         if (isLocal) { local.deleteWorldBook(id); Resource.Success(Unit) } else remote.deleteWorldBook(id)
+
+    suspend fun uploadWorldBookCover(bookId: String, file: okhttp3.MultipartBody.Part): Resource<String> =
+        if (isLocal) Resource.Error("本地模式无需上传封面") else remote.uploadWorldBookCover(bookId, file)
 
     suspend fun listEntries(bookId: String): Resource<List<WorldBookEntry>> =
         if (isLocal) Resource.Success(local.listEntries(bookId)) else remote.listEntries(bookId)

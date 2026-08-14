@@ -185,6 +185,7 @@ data class LocalWorldBookEntity(
     @PrimaryKey val id: String,
     val name: String,
     val description: String? = null,
+    @ColumnInfo(name = "cover_url") val coverUrl: String? = null,
     @ColumnInfo(name = "character_id") val characterId: String? = null,
     val enabled: Boolean = true,
     @ColumnInfo(name = "created_at") val createdAt: String,

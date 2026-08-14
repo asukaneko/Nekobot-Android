@@ -276,7 +276,8 @@ class PortableDataArchiveManager(private val context: Context) {
                         category = category,
                         raw = raw,
                         preserveExistingSecrets = PortableDataCategory.CREDENTIALS !in selected,
-                        rewriteMediaReferences = PortableDataCategory.MEDIA in selected
+                        rewriteMediaReferences = PortableDataCategory.MEDIA in selected ||
+                            PortableDataCategory.WORLD_BOOKS in selected
                     )
                 }
                 if (PortableDataCategory.CREDENTIALS in selected) {
@@ -434,6 +435,7 @@ class PortableDataArchiveManager(private val context: Context) {
         val supported = when (table) {
             "local_sessions" -> column in setOf("portrait", "sender_avatar", "character_avatar")
             "local_characters" -> column in setOf("portrait", "avatar")
+            "local_world_books" -> column == "cover_url"
             else -> false
         }
         if (!supported || value.isJsonNull || !value.isJsonPrimitive) return value
@@ -448,6 +450,10 @@ class PortableDataArchiveManager(private val context: Context) {
             "/cache/portraits/" in normalized -> {
                 val relative = normalized.substringAfter("/cache/portraits/")
                 resolvePortablePath(File(appContext.cacheDir, "portraits"), relative)
+            }
+            "/files/worldbook_covers/" in normalized -> {
+                val relative = normalized.substringAfter("/files/worldbook_covers/")
+                resolvePortablePath(File(appContext.filesDir, "worldbook_covers"), relative)
             }
             else -> null
         } ?: return value
@@ -628,6 +634,9 @@ class PortableDataArchiveManager(private val context: Context) {
     }
 
     private fun attachmentRoots(category: PortableDataCategory): List<Pair<String, File>> = when (category) {
+        PortableDataCategory.WORLD_BOOKS -> listOf(
+            "worldbook_covers" to File(appContext.filesDir, "worldbook_covers")
+        )
         PortableDataCategory.MEDIA -> listOf(
             "portraits" to File(appContext.filesDir, "portraits"),
             "cached_portraits" to File(appContext.cacheDir, "portraits"),

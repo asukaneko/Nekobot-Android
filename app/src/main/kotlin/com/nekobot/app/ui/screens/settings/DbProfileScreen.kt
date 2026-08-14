@@ -721,6 +721,9 @@ class DbProfileViewModel : ViewModel() {
                 .filterNotNull()
                 .filterTo(references) { it.isNotBlank() }
         }
+        db.worldBookDao().listAll().forEach { book ->
+            book.coverUrl?.takeIf { it.isNotBlank() }?.let(references::add)
+        }
         return references.mapNotNull { reference ->
             resolveAppPrivateFile(context, reference)?.let { file ->
                 DbProfilePortraitSource(reference, file)
@@ -744,7 +747,8 @@ class DbProfileViewModel : ViewModel() {
         val candidatePath = candidate.path
         val allowed = listOf(
             File(context.filesDir, "portraits"),
-            File(context.cacheDir, "portraits")
+            File(context.cacheDir, "portraits"),
+            File(context.filesDir, "worldbook_covers")
         ).any { root ->
             val rootPath = root.canonicalFile.path
             candidatePath == rootPath || candidatePath.startsWith(rootPath + File.separator)
@@ -859,6 +863,12 @@ class DbProfileViewModel : ViewModel() {
             val avatar = rewrite(character.avatar)
             if (portrait != character.portrait || avatar != character.avatar) {
                 db.characterDao().updatePortraits(character.id, portrait, avatar)
+            }
+        }
+        db.worldBookDao().listAll().forEach { book ->
+            val coverUrl = rewrite(book.coverUrl)
+            if (coverUrl != book.coverUrl) {
+                db.worldBookDao().update(book.copy(coverUrl = coverUrl))
             }
         }
     }

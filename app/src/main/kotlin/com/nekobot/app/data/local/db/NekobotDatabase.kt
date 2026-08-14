@@ -40,7 +40,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalKnowledgeChunkEntity::class,
         RoutingDecisionLogEntity::class
     ],
-    version = 31,
+    version = 32,
     exportSchema = true
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -698,6 +698,13 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        /** v31 → v32：本地世界书新增封面地址。 */
+        val MIGRATION_31_32 = object : Migration(31, 32) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_world_books ADD COLUMN cover_url TEXT")
+            }
+        }
+
         /**
          * 完整迁移链同时供生产数据库构建和迁移回归测试使用。
          * 新版本必须把迁移追加到这里；缺少迁移时直接失败，绝不静默清空用户数据。
@@ -710,7 +717,7 @@ abstract class NekobotDatabase : RoomDatabase() {
             MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21,
             MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25,
             MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29,
-            MIGRATION_29_30, MIGRATION_30_31
+            MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32
         )
 
         fun get(context: Context): NekobotDatabase =

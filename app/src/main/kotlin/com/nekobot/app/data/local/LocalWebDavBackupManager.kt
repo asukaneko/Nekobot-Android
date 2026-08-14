@@ -1139,6 +1139,17 @@ class LocalWebDavBackupManager(
                             ?: return@forEach
                         putZipEntry(zip, "$ENTRY_PORTRAITS_PREFIX$relative", file.readBytes())
                     }
+
+                val coverDir = File(appContext.filesDir, "worldbook_covers")
+                coverDir.walkTopDown()
+                    .filter { it.isFile }
+                    .forEach { file ->
+                        val relative = file.relativeTo(coverDir)
+                            .invariantSeparatorsPath
+                            .takeIf { isSafeRelativePath(it) }
+                            ?: return@forEach
+                        putZipEntry(zip, "$ENTRY_WORLD_BOOK_COVERS_PREFIX$relative", file.readBytes())
+                    }
             }
         }
         return output.toByteArray()
@@ -1214,6 +1225,23 @@ class LocalWebDavBackupManager(
                     val relative = path.removePrefix(ENTRY_PORTRAITS_PREFIX)
                     if (isSafeRelativePath(relative)) {
                         File(portraitDir, relative).apply {
+                            parentFile?.mkdirs()
+                            writeBytes(bytes)
+                        }
+                    }
+                }
+            }
+
+            val worldBookCoverEntries = entries.filterKeys {
+                it.startsWith(ENTRY_WORLD_BOOK_COVERS_PREFIX)
+            }
+            if (includePortraits && worldBookCoverEntries.isNotEmpty()) {
+                val coverDir = File(appContext.filesDir, "worldbook_covers")
+                if (coverDir.exists()) coverDir.deleteRecursively()
+                worldBookCoverEntries.forEach { (path, bytes) ->
+                    val relative = path.removePrefix(ENTRY_WORLD_BOOK_COVERS_PREFIX)
+                    if (isSafeRelativePath(relative)) {
+                        File(coverDir, relative).apply {
                             parentFile?.mkdirs()
                             writeBytes(bytes)
                         }
@@ -1657,6 +1685,7 @@ class LocalWebDavBackupManager(
         const val ENTRY_TOKEN_USAGE = "token-usage.json"
         const val ENTRY_ACHIEVEMENTS = "achievements.json"
         const val ENTRY_PORTRAITS_PREFIX = "portraits/"
+        const val ENTRY_WORLD_BOOK_COVERS_PREFIX = "worldbook-covers/"
         const val ACHIEVEMENT_PREF_NAME = "nekobot_achievements"
         const val TYPE_SESSION = "session"
         const val TYPE_MESSAGE = "message"

@@ -367,6 +367,13 @@ class PrefsManager(context: Context) {
             prefs.edit().putString(KEY_CHARACTER_VIEW_MODE, value).apply()
         }
 
+    /** 世界书列表视图模式：LIST / GRID，持久化用户选择 */
+    var worldBookViewMode: String
+        get() = prefs.getString(KEY_WORLD_BOOK_VIEW_MODE, "LIST") ?: "LIST"
+        set(value) {
+            prefs.edit().putString(KEY_WORLD_BOOK_VIEW_MODE, if (value == "GRID") "GRID" else "LIST").apply()
+        }
+
     /** 成就收藏视图模式：STANDARD / GRID_2X2，持久化用户选择。 */
     var achievementViewMode: String
         get() = prefs.getString(KEY_ACHIEVEMENT_VIEW_MODE, "STANDARD") ?: "STANDARD"
@@ -664,6 +671,7 @@ class PrefsManager(context: Context) {
         private const val KEY_STATS_DASHBOARD_HIDDEN_VERSION = "stats_dashboard_hidden_version"
         private const val KEY_STATS_CHARACTER_RANKING_MODE = "stats_character_ranking_mode"
         private const val KEY_CHARACTER_VIEW_MODE = "character_view_mode"
+        private const val KEY_WORLD_BOOK_VIEW_MODE = "world_book_view_mode"
         private const val KEY_ACHIEVEMENT_VIEW_MODE = "achievement_view_mode"
         private const val DEFAULT_SERVER = "https://localhost:5000"
 

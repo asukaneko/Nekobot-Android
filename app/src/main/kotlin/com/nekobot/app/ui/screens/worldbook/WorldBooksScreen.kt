@@ -7,12 +7,17 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.*
 import com.nekobot.app.ui.components.GlassDropdownMenu as DropdownMenu
 import androidx.compose.runtime.*
@@ -43,14 +48,12 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * 世界书列表页 ViewModel：管理世界书列表的加载、创建、删除。
  */
+private enum class WorldBookViewMode { LIST, GRID }
+
 class WorldBooksViewModel : com.nekobot.app.ui.BaseViewModel() {
 
     private val _books = MutableStateFlow<List<WorldBook>>(emptyList())
     val books: StateFlow<List<WorldBook>> = _books.asStateFlow()
-
-    init {
-        load()
-    }
 
     /** 加载世界书列表 */
     fun load() {
@@ -132,6 +135,12 @@ fun WorldBooksScreen(
     var showAddMenu by remember { mutableStateOf(false) }
     var showAiDialog by remember { mutableStateOf(false) }
     var showAiGeneratingHint by remember { mutableStateOf(false) }
+    var viewMode by remember {
+        mutableStateOf(
+            runCatching { WorldBookViewMode.valueOf(ServiceContainer.prefs.worldBookViewMode) }
+                .getOrDefault(WorldBookViewMode.LIST)
+        )
+    }
 
     // 模式切换时自动刷新世界书列表
     val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
@@ -193,6 +202,24 @@ fun WorldBooksScreen(
                             )
                         }
                     }
+                    IconButton(onClick = {
+                        val newMode = if (viewMode == WorldBookViewMode.LIST) {
+                            WorldBookViewMode.GRID
+                        } else {
+                            WorldBookViewMode.LIST
+                        }
+                        viewMode = newMode
+                        ServiceContainer.prefs.worldBookViewMode = newMode.name
+                    }) {
+                        Icon(
+                            if (viewMode == WorldBookViewMode.LIST) Icons.Filled.Apps else Icons.Filled.ViewList,
+                            contentDescription = stringResource(
+                                if (viewMode == WorldBookViewMode.LIST) R.string.worldbook_view_grid
+                                else R.string.worldbook_view_list
+                            ),
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
             )
         }
@@ -217,24 +244,43 @@ fun WorldBooksScreen(
                     }
                 )
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 110.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    if (error != null) {
-                        item {
-                            ErrorBanner(message = error!!, onRetry = {
-                                viewModel.clearError()
-                                viewModel.load()
-                            })
+                if (viewMode == WorldBookViewMode.LIST) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 110.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (error != null) {
+                            item {
+                                ErrorBanner(message = error!!, onRetry = {
+                                    viewModel.clearError()
+                                    viewModel.load()
+                                })
+                            }
+                        }
+                        items(books, key = { it.id ?: it.name ?: it.hashCode().toString() }) { book ->
+                            WorldBookItem(book = book, onClick = { book.id?.let { handleOpenBook(it) } })
                         }
                     }
-                    items(books, key = { it.id ?: it.name ?: it.hashCode().toString() }) { book ->
-                        WorldBookItem(
-                            book = book,
-                            onClick = { book.id?.let { handleOpenBook(it) } }
-                        )
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 156.dp),
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 110.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (error != null) {
+                            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                                ErrorBanner(message = error!!, onRetry = {
+                                    viewModel.clearError()
+                                    viewModel.load()
+                                })
+                            }
+                        }
+                        gridItems(books, key = { it.id ?: it.name ?: it.hashCode().toString() }) { book ->
+                            WorldBookGridItem(book = book, onClick = { book.id?.let { handleOpenBook(it) } })
+                        }
                     }
                 }
             }
@@ -339,17 +385,12 @@ private fun WorldBookItem(book: WorldBook, onClick: () -> Unit) {
                     R.string.worldbook_item_description,
                     book.displayName,
                     book.description.orEmpty(),
-                    book.entries?.size ?: 0
+                    book.resolvedEntryCount
                 )
             )
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                Icons.Filled.Book,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(36.dp)
-            )
+            WorldBookCover(book.coverUrl, book.displayName, Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)))
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -372,7 +413,7 @@ private fun WorldBookItem(book: WorldBook, onClick: () -> Unit) {
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = stringResource(R.string.worldbook_entry_count, book.entries?.size ?: 0),
+                    text = stringResource(R.string.worldbook_entry_count, book.resolvedEntryCount),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -390,6 +431,40 @@ private fun WorldBookItem(book: WorldBook, onClick: () -> Unit) {
                 )
             )
         }
+    }
+}
+
+@Composable
+private fun WorldBookGridItem(book: WorldBook, onClick: () -> Unit) {
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .listItemSemantics(book.displayName)
+    ) {
+        WorldBookCover(
+            coverUrl = book.coverUrl,
+            contentDescription = book.displayName,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.78f)
+                .clip(RoundedCornerShape(14.dp))
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = book.displayName,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = stringResource(R.string.worldbook_entry_count, book.resolvedEntryCount),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

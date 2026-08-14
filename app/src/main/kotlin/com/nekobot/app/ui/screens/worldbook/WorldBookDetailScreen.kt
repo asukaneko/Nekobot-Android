@@ -2,6 +2,11 @@ package com.nekobot.app.ui.screens.worldbook
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
+import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -19,6 +24,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.*
 import com.nekobot.app.ui.components.GlassExposedDropdownMenu as ExposedDropdownMenu
 import androidx.compose.runtime.*
@@ -30,10 +36,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.lifecycle.viewModelScope
 import com.nekobot.app.R
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.model.WorldBook
@@ -41,12 +49,20 @@ import com.nekobot.app.data.model.WorldBookEntry
 import com.nekobot.app.data.model.WorldBookEntryRequest
 import com.nekobot.app.data.model.WorldBookRequest
 import com.nekobot.app.ui.components.GlassCard
+import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.LoadingOverlay
 import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.components.SectionHeader
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
+import java.util.UUID
 
 // 条目位置可选项
 private val POSITION_OPTIONS = listOf("before_char", "after_char", "before_an", "after_an")
@@ -143,6 +159,7 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
                     WorldBookRequest(
                         name = name,
                         description = b.description,
+                        coverUrl = b.coverUrl,
                         characterIds = b.characterIds,
                         enabled = enabled
                     )
@@ -153,7 +170,7 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
     }
 
     /** 更新世界书信息（名称、描述、绑定角色列表） */
-    fun updateBook(name: String, description: String?, characterIds: List<String>?) {
+    fun updateBook(name: String, description: String?, characterIds: List<String>?, coverUrl: String? = null) {
         val b = _book.value
         launchResult(
             block = {
@@ -162,6 +179,7 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
                     WorldBookRequest(
                         name = name,
                         description = description,
+                        coverUrl = coverUrl ?: b?.coverUrl,
                         characterIds = characterIds,
                         enabled = b?.enabled
                     )
@@ -172,6 +190,116 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
                 showToast(string(R.string.worldbook_updated))
             }
         )
+    }
+
+    /** 上传或保存封面：本地模式保存到应用私有目录，服务器模式上传到世界书封面接口。 */
+    fun setCover(context: Context, source: Uri) {
+        clearError()
+        viewModelScope.launch {
+            setLoading(true)
+            try {
+                val bytes = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    context.contentResolver.openInputStream(source)?.use { it.readBytes() }
+                        ?: throw IllegalStateException("无法读取封面文件")
+                }
+                val mime = context.contentResolver.getType(source) ?: "image/png"
+                val ext = when (mime.lowercase()) {
+                    "image/jpeg" -> "jpg"
+                    "image/webp" -> "webp"
+                    "image/gif" -> "gif"
+                    else -> "png"
+                }
+                val coverUrl = if (isLocalMode) {
+                    val dir = File(context.filesDir, "worldbook_covers").apply { mkdirs() }
+                    val file = File(dir, "cover_${UUID.randomUUID().toString().take(16)}.$ext")
+                    withContext(kotlinx.coroutines.Dispatchers.IO) { file.writeBytes(bytes) }
+                    Uri.fromFile(file).toString()
+                } else {
+                    val part = MultipartBody.Part.createFormData(
+                        "file",
+                        "worldbook_cover_${UUID.randomUUID().toString().take(12)}.$ext",
+                        bytes.toRequestBody(mime.toMediaTypeOrNull())
+                    )
+                    when (val result = unified.uploadWorldBookCover(currentBookId, part)) {
+                        is com.nekobot.app.data.repository.Resource.Success -> result.data
+                        is com.nekobot.app.data.repository.Resource.Error -> throw IllegalStateException(result.message)
+                        is com.nekobot.app.data.repository.Resource.Loading -> throw IllegalStateException("封面上传中")
+                    }
+                }
+                saveCoverUrl(coverUrl)
+                showToast(string(R.string.worldbook_cover_updated))
+            } catch (e: Exception) {
+                showError(e.message ?: string(R.string.worldbook_cover_update_failed))
+            } finally {
+                setLoading(false)
+            }
+        }
+    }
+
+    fun generateCover(context: Context) {
+        val current = _book.value ?: return
+        clearError()
+        val prompt = "为世界书《${current.displayName}》生成一张无文字、适合作为书籍封面的艺术插画。" +
+            current.description.orEmpty().takeIf { it.isNotBlank() }?.let { "主题：$it" }.orEmpty()
+        viewModelScope.launch {
+            setLoading(true)
+            try {
+                val result = unified.generateImages(prompt = prompt, size = "1024x1024", n = 1)
+                val image = when (result) {
+                    is com.nekobot.app.data.repository.Resource.Success -> result.data?.firstOrNull()
+                    is com.nekobot.app.data.repository.Resource.Error -> throw IllegalStateException(result.message)
+                    is com.nekobot.app.data.repository.Resource.Loading -> null
+                } ?: throw IllegalStateException("AI 未返回封面")
+                setCoverFromGenerated(context, Uri.parse(image.cacheUri))
+            } catch (e: Exception) {
+                showError(e.message?.takeIf { it.isNotBlank() } ?: string(R.string.worldbook_cover_generate_failed))
+            } finally {
+                setLoading(false)
+            }
+        }
+    }
+
+    private suspend fun setCoverFromGenerated(context: Context, source: Uri) {
+        val file = source.path?.let(::File) ?: throw IllegalStateException("无法读取生成的封面")
+        val bytes = withContext(kotlinx.coroutines.Dispatchers.IO) { file.readBytes() }
+        val coverUrl = if (isLocalMode) {
+            val dir = File(context.filesDir, "worldbook_covers").apply { mkdirs() }
+            val target = File(dir, "cover_${UUID.randomUUID().toString().take(16)}.png")
+            withContext(kotlinx.coroutines.Dispatchers.IO) { target.writeBytes(bytes) }
+            Uri.fromFile(target).toString()
+        } else {
+            val part = MultipartBody.Part.createFormData(
+                "file",
+                "worldbook_ai_cover_${UUID.randomUUID().toString().take(12)}.png",
+                bytes.toRequestBody("image/png".toMediaTypeOrNull())
+            )
+            when (val result = unified.uploadWorldBookCover(currentBookId, part)) {
+                is com.nekobot.app.data.repository.Resource.Success -> result.data
+                is com.nekobot.app.data.repository.Resource.Error -> throw IllegalStateException(result.message)
+                is com.nekobot.app.data.repository.Resource.Loading -> throw IllegalStateException("封面上传中")
+            }
+        }
+        saveCoverUrl(coverUrl)
+        clearError()
+        showToast(string(R.string.worldbook_cover_generated))
+    }
+
+    private suspend fun saveCoverUrl(coverUrl: String) {
+        val current = _book.value ?: return
+        when (val result = unified.updateWorldBook(
+            currentBookId,
+            WorldBookRequest(
+                name = current.name.orEmpty(),
+                description = current.description,
+                coverUrl = coverUrl,
+                characterIds = current.characterIds,
+                enabled = current.enabled
+            )
+        )) {
+            is com.nekobot.app.data.repository.Resource.Success -> _book.value = result.data
+            is com.nekobot.app.data.repository.Resource.Error -> throw IllegalStateException(result.message)
+            is com.nekobot.app.data.repository.Resource.Loading -> Unit
+        }
     }
 
     /** 删除世界书 */
@@ -319,6 +447,7 @@ fun WorldBookDetailScreen(
     val entries by vm.entries.collectAsStateWithLifecycle()
     val characters by vm.characters.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
     val showEntryDialog by vm.showEntryDialog.collectAsStateWithLifecycle()
     val editingEntry by vm.editingEntry.collectAsStateWithLifecycle()
 
@@ -327,6 +456,10 @@ fun WorldBookDetailScreen(
     var deleteEntryId by remember { mutableStateOf<String?>(null) }
     var showAiEntriesDialog by remember { mutableStateOf(false) }
     var showBindCharacterDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val coverPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { vm.setCover(context, it) }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -374,6 +507,11 @@ fun WorldBookDetailScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                error?.takeIf { it.isNotBlank() }?.let { message ->
+                    item {
+                        ErrorBanner(message = message)
+                    }
+                }
                 // 书信息卡片
                 item {
                     // 根据当前 book.characterIds 和已加载的角色列表，解析出绑定角色名列表
@@ -389,24 +527,33 @@ fun WorldBookDetailScreen(
                         book = book,
                         boundCharacterNames = boundNames,
                         onToggleEnabled = { vm.toggleEnabled(it) },
-                        onBindCharacter = { showBindCharacterDialog = true }
+                        onBindCharacter = { showBindCharacterDialog = true },
+                        onUploadCover = { coverPicker.launch("image/*") },
+                        onGenerateCover = { vm.generateCover(context) }
                     )
                 }
                 // 条目列表标题 + 新建按钮 + AI 生成按钮
                 item {
-                    SectionHeader(
-                        title = stringResource(R.string.worldbook_entries_title),
-                        subtitle = stringResource(R.string.worldbook_entries_subtitle, entries.size)
-                    ) {
-                        TextButton(onClick = { vm.startNewEntry() }) {
-                            Icon(Icons.Filled.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(4.dp))
-                            Text(stringResource(R.string.worldbook_new_entry), color = MaterialTheme.colorScheme.primary)
-                        }
-                        TextButton(onClick = { showAiEntriesDialog = true }) {
-                            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(4.dp))
-                            Text(stringResource(R.string.worldbook_ai_generate_entry), color = MaterialTheme.colorScheme.primary)
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        SectionHeader(
+                            title = stringResource(R.string.worldbook_entries_title),
+                            subtitle = stringResource(R.string.worldbook_entries_subtitle, entries.size)
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(onClick = { vm.startNewEntry() }) {
+                                Icon(Icons.Filled.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(4.dp))
+                                Text(stringResource(R.string.worldbook_new_entry), color = MaterialTheme.colorScheme.primary)
+                            }
+                            TextButton(onClick = { showAiEntriesDialog = true }) {
+                                Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(4.dp))
+                                Text(stringResource(R.string.worldbook_ai_generate_entry), color = MaterialTheme.colorScheme.primary)
+                            }
                         }
                     }
                 }
@@ -521,17 +668,52 @@ private fun BookInfoCard(
     book: WorldBook?,
     boundCharacterNames: List<String>,
     onToggleEnabled: (Boolean) -> Unit,
-    onBindCharacter: () -> Unit
+    onBindCharacter: () -> Unit,
+    onUploadCover: () -> Unit,
+    onGenerateCover: () -> Unit
 ) {
-    GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .wrapContentHeight(),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Column(modifier = Modifier.wrapContentHeight()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top
+            ) {
+            WorldBookCover(
+                coverUrl = book?.coverUrl,
+                contentDescription = book?.displayName,
+                modifier = Modifier
+                    .size(width = 76.dp, height = 100.dp)
+                    .clip(RoundedCornerShape(14.dp))
+            )
+            Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = book?.displayName ?: stringResource(R.string.worldbook_unnamed),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = book?.displayName ?: stringResource(R.string.worldbook_unnamed),
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Switch(
+                        checked = book?.enabled == true,
+                        onCheckedChange = onToggleEnabled,
+                        modifier = Modifier.scale(0.82f),
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            uncheckedTrackColor = MaterialTheme.colorScheme.outline
+                        )
+                    )
+                }
                 if (!book?.description.isNullOrBlank()) {
                     Spacer(Modifier.height(6.dp))
                     Text(
@@ -566,17 +748,31 @@ private fun BookInfoCard(
                     )
                 }
             }
-            Spacer(Modifier.width(8.dp))
-            Switch(
-                checked = book?.enabled == true,
-                onCheckedChange = onToggleEnabled,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                    checkedTrackColor = MaterialTheme.colorScheme.primary,
-                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    uncheckedTrackColor = MaterialTheme.colorScheme.outline
-                )
-            )
+        }
+        Spacer(Modifier.height(4.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+                    TextButton(
+                        onClick = onUploadCover,
+                        modifier = Modifier.weight(1f).height(36.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp)
+                    ) {
+                        Icon(Icons.Filled.Upload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.worldbook_upload_cover))
+                    }
+                    TextButton(
+                        onClick = onGenerateCover,
+                        modifier = Modifier.weight(1f).height(36.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp)
+                    ) {
+                        Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.worldbook_ai_generate_cover))
+                    }
+        }
         }
     }
 }

@@ -5468,11 +5468,8 @@ class LocalRepository(
     // ==================== 世界书 ====================
 
     suspend fun listWorldBooks(): List<WorldBook> = withContext(Dispatchers.IO) {
-        // 列表页用 book.entries.size 显示条目数，所以每个 book 都要附带 entries
         worldBookDao.listAll().map { entity ->
-            entity.toWorldBook().copy(
-                entries = worldBookDao.listEntries(entity.id).map { it.toEntry() }
-            )
+            entity.toWorldBook().copy(entryCount = worldBookDao.countEntries(entity.id))
         }
     }
 
@@ -6944,6 +6941,7 @@ $charSection$topicSection
         id = id,
         name = name,
         description = description,
+        coverUrl = coverUrl,
         // 兼容多角色绑定：character_id 列以英文逗号分隔存储多个角色 ID
         characterIds = characterId
             ?.split(",")
@@ -6959,6 +6957,7 @@ $charSection$topicSection
         id = id ?: UUID.randomUUID().toString(),
         name = name ?: "未命名世界书",
         description = description,
+        coverUrl = coverUrl,
         // 多角色 ID 以英文逗号拼接存入单列，便于本地 SQLite 查询
         characterId = characterIds
             ?.takeIf { it.isNotEmpty() }

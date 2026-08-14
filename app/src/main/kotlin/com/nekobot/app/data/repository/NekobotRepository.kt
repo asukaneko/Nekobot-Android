@@ -402,6 +402,16 @@ class NekobotRepository(
             }
         }
     suspend fun deleteWorldBook(id: String): Resource<Unit> = safeCall { api.deleteWorldBook(id) }.map { }
+    suspend fun uploadWorldBookCover(bookId: String, file: MultipartBody.Part): Resource<String> =
+        safeCall { api.uploadWorldBookCover(bookId, file) }.let { res ->
+            when (res) {
+                is Resource.Success -> res.data?.url?.takeIf { it.isNotBlank() }
+                    ?.let { Resource.Success(it) }
+                    ?: Resource.Error(res.data?.error ?: "封面上传失败")
+                is Resource.Error -> res
+                is Resource.Loading -> res
+            }
+        }
     suspend fun listEntries(bookId: String): Resource<List<WorldBookEntry>> = safeCall { api.listEntries(bookId) }
     suspend fun createEntry(bookId: String, req: WorldBookEntryRequest): Resource<WorldBookEntry> =
         safeCall { api.createEntry(bookId, req) }.let { res ->

@@ -326,6 +326,9 @@ interface WorldBookDao {
     @Query("SELECT * FROM local_world_book_entries WHERE book_id = :bookId ORDER BY display_index ASC, insertion_order ASC")
     suspend fun listEntries(bookId: String): List<LocalWorldBookEntryEntity>
 
+    @Query("SELECT COUNT(*) FROM local_world_book_entries WHERE book_id = :bookId")
+    suspend fun countEntries(bookId: String): Int
+
     @Query("SELECT * FROM local_world_book_entries ORDER BY book_id ASC, display_index ASC, insertion_order ASC")
     suspend fun listAllEntries(): List<LocalWorldBookEntryEntity>
 

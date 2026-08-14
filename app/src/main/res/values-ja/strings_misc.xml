@@ -84,8 +84,16 @@
     <!-- ==================== 世界観帳画面 ==================== -->
     <string name="worldbook_title">世界観帳</string>
     <string name="worldbook_refresh">更新</string>
+    <string name="worldbook_view_grid">グリッド表示</string>
+    <string name="worldbook_view_list">リスト表示</string>
     <string name="worldbook_new">新規世界観帳</string>
     <string name="worldbook_ai_generate">AI 世界観帳生成</string>
+    <string name="worldbook_upload_cover">表紙をアップロード</string>
+    <string name="worldbook_ai_generate_cover">AI で表紙を生成</string>
+    <string name="worldbook_cover_updated">表紙を更新しました</string>
+    <string name="worldbook_cover_generated">AI 表紙を生成しました</string>
+    <string name="worldbook_cover_update_failed">表紙の更新に失敗しました</string>
+    <string name="worldbook_cover_generate_failed">AI 表紙の生成に失敗しました</string>
     <string name="worldbook_empty_title">世界観帳がありません</string>
     <string name="worldbook_empty_hint">右上のボタンをタップして世界観帳を作成</string>
     <string name="worldbook_entry_count">エントリー数: %1$d</string>

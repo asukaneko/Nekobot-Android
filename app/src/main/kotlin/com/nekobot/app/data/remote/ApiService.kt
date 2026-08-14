@@ -167,6 +167,13 @@ interface ApiService {
         @Body body: WorldBookRequest
     ): Response<JsonElement>
 
+    @Multipart
+    @POST("api/world-books/{id}/cover")
+    suspend fun uploadWorldBookCover(
+        @Path("id") bookId: String,
+        @Part file: MultipartBody.Part
+    ): Response<PortraitUploadResponse>
+
     @DELETE("api/world-books/{id}")
     suspend fun deleteWorldBook(@Path("id") id: String): Response<ApiResult>
 

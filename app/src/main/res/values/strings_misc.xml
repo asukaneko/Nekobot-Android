@@ -85,8 +85,16 @@
     <!-- ==================== 世界书页 ==================== -->
     <string name="worldbook_title">世界书</string>
     <string name="worldbook_refresh">刷新</string>
+    <string name="worldbook_view_grid">卡片视图</string>
+    <string name="worldbook_view_list">列表视图</string>
     <string name="worldbook_new">新建世界书</string>
     <string name="worldbook_ai_generate">AI 生成世界书</string>
+    <string name="worldbook_upload_cover">上传封面</string>
+    <string name="worldbook_ai_generate_cover">AI 生成封面</string>
+    <string name="worldbook_cover_updated">封面已更新</string>
+    <string name="worldbook_cover_generated">AI 封面已生成</string>
+    <string name="worldbook_cover_update_failed">封面更新失败</string>
+    <string name="worldbook_cover_generate_failed">AI 封面生成失败</string>
     <string name="worldbook_empty_title">暂无世界书</string>
     <string name="worldbook_empty_hint">点击右上角新建一本世界书</string>
     <string name="worldbook_entry_count">条目数：%1$d</string>

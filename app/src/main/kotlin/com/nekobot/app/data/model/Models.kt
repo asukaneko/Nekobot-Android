@@ -437,9 +437,13 @@ data class WorldBook(
     val id: String? = null,
     val name: String? = null,
     val description: String? = null,
+    @SerializedName(value = "cover_url", alternate = ["coverUrl", "cover"])
+    val coverUrl: String? = null,
     @SerializedName(value = "character_ids", alternate = ["character_id", "characterId", "characterIds"])
     val characterIds: List<String>? = null,
     val enabled: Boolean? = null,
+    @SerializedName(value = "entry_count", alternate = ["entryCount"])
+    val entryCount: Int? = null,
     val entries: List<WorldBookEntry>? = null,
     @SerializedName("created_at") val createdAt: String? = null,
     @SerializedName("updated_at") val updatedAt: String? = null
@@ -447,6 +451,7 @@ data class WorldBook(
     val displayName: String get() = name?.takeIf { it.isNotBlank() } ?: "未命名世界书"
     /** 兼容旧代码：取首个绑定角色 ID */
     val characterId: String? get() = characterIds?.firstOrNull()
+    val resolvedEntryCount: Int get() = entryCount ?: entries?.size ?: 0
 }
 
 data class WorldBookEntry(
@@ -476,6 +481,7 @@ data class WorldBookEntry(
 data class WorldBookRequest(
     val name: String,
     val description: String? = null,
+    @SerializedName("cover_url") val coverUrl: String? = null,
     @SerializedName(value = "character_ids", alternate = ["character_id", "characterId", "characterIds"])
     val characterIds: List<String>? = null,
     val enabled: Boolean? = null

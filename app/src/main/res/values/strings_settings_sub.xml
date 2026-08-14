@@ -182,12 +182,12 @@
     <string name="webdav_backup_upload_title">备份上传</string>
     <string name="webdav_backup_upload_subtitle">将本地配置打包上传到 WebDAV</string>
     <string name="webdav_encryption_password_optional_override">加密密码（可选，覆盖配置）</string>
-    <string name="webdav_include_portraits">包含角色立绘</string>
-    <string name="webdav_upload_portraits">同时上传立绘图片文件</string>
+    <string name="webdav_include_portraits">包含角色立绘和世界书封面</string>
+    <string name="webdav_upload_portraits">同时上传立绘与世界书封面图片文件</string>
     <string name="webdav_upload_backup">上传备份</string>
     <string name="webdav_sync_pull_title">同步拉取</string>
     <string name="webdav_sync_pull_subtitle">从 WebDAV 恢复配置到本地</string>
-    <string name="webdav_pull_portraits">同时拉取立绘图片文件</string>
+    <string name="webdav_pull_portraits">同时拉取立绘与世界书封面图片文件</string>
     <string name="webdav_sync_pull_button">同步拉取</string>
     <string name="webdav_sync_confirm_title">从 WebDAV 恢复本地数据</string>
     <string name="webdav_sync_confirm_message">远程备份将覆盖当前本地数据库、Token 用量和成就记录。恢复前会保留临时回滚副本，确定继续吗？</string>

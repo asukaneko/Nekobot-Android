@@ -84,8 +84,16 @@
     <!-- ==================== 세계관 설정 화면 ==================== -->
     <string name="worldbook_title">세계관 설정</string>
     <string name="worldbook_refresh">새로고침</string>
+    <string name="worldbook_view_grid">그리드 보기</string>
+    <string name="worldbook_view_list">목록 보기</string>
     <string name="worldbook_new">새 세계관 설정</string>
     <string name="worldbook_ai_generate">AI 세계관 설정 생성</string>
+    <string name="worldbook_upload_cover">표지 업로드</string>
+    <string name="worldbook_ai_generate_cover">AI 표지 생성</string>
+    <string name="worldbook_cover_updated">표지가 업데이트되었어요</string>
+    <string name="worldbook_cover_generated">AI 표지가 생성되었어요</string>
+    <string name="worldbook_cover_update_failed">표지 업데이트 실패</string>
+    <string name="worldbook_cover_generate_failed">AI 표지 생성 실패</string>
     <string name="worldbook_empty_title">세계관 설정 없음</string>
     <string name="worldbook_empty_hint">오른쪽 위 버튼을 눌러 세계관 설정을 생성해 보세요</string>
     <string name="worldbook_entry_count">항목: %1$d</string>

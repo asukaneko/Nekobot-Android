@@ -85,8 +85,16 @@
     <!-- ==================== Lorebook screen ==================== -->
     <string name="worldbook_title">Lorebook</string>
     <string name="worldbook_refresh">Refresh</string>
+    <string name="worldbook_view_grid">Grid view</string>
+    <string name="worldbook_view_list">List view</string>
     <string name="worldbook_new">New lorebook</string>
     <string name="worldbook_ai_generate">AI generate lorebook</string>
+    <string name="worldbook_upload_cover">Upload cover</string>
+    <string name="worldbook_ai_generate_cover">AI generate cover</string>
+    <string name="worldbook_cover_updated">Cover updated</string>
+    <string name="worldbook_cover_generated">AI cover generated</string>
+    <string name="worldbook_cover_update_failed">Failed to update cover</string>
+    <string name="worldbook_cover_generate_failed">Failed to generate AI cover</string>
     <string name="worldbook_empty_title">No lorebooks</string>
     <string name="worldbook_empty_hint">Tap the top-right button to create a lorebook</string>
     <string name="worldbook_entry_count">Entries: %1$d</string>
