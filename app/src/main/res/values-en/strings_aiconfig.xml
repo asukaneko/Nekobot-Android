@@ -216,6 +216,7 @@
     <string name="aimodel_editor_provider_grok">Grok (xAI)</string>
     <string name="aimodel_editor_provider_qwen">Tongyi Qianwen</string>
     <string name="aimodel_editor_provider_xiaomi">Xiaomi MiMo</string>
+    <string name="aimodel_editor_provider_doubao">Doubao Seed</string>
     <string name="aimodel_editor_provider_azure">Azure OpenAI</string>
     <string name="aimodel_editor_provider_siliconflow">SiliconFlow</string>
     <string name="aimodel_editor_provider_custom">Custom</string>
@@ -288,6 +289,10 @@
     <string name="aimodel_editor_tts_provider_openai">OpenAI Compatible</string>
     <string name="aimodel_editor_tts_provider_xiaomi">Xiaomi MiMo</string>
     <string name="aimodel_editor_tts_provider_doubao">Doubao (Volcengine)</string>
+    <string name="aimodel_editor_tts_provider_gemini">Gemini Native TTS</string>
+    <string name="aimodel_editor_tts_provider_glm">GLM-TTS</string>
+    <string name="aimodel_editor_tts_provider_minimax">MiniMax TTS</string>
+    <string name="aimodel_editor_tts_provider_qwen">Qwen TTS</string>
     <string name="aimodel_editor_tts_resource_default">seed-tts-2.0 (default)</string>
     <string name="aimodel_editor_tts_model">TTS model name</string>
     <string name="aimodel_editor_tts_model_placeholder">Leave empty to use the model above</string>
@@ -307,6 +312,9 @@
     <string name="aimodel_editor_stt_provider">STT Provider</string>
     <string name="aimodel_editor_stt_provider_follow">Follow Provider type</string>
     <string name="aimodel_editor_stt_provider_openai">OpenAI Compatible</string>
+    <string name="aimodel_editor_stt_provider_gemini">Gemini Native STT</string>
+    <string name="aimodel_editor_stt_provider_glm">GLM-ASR</string>
+    <string name="aimodel_editor_stt_provider_qwen">Qwen ASR</string>
     <string name="aimodel_editor_stt_provider_xiaomi">Xiaomi MiMo</string>
     <string name="aimodel_editor_stt_provider_local">Local faster-whisper</string>
     <string name="aimodel_editor_stt_model">STT model name</string>

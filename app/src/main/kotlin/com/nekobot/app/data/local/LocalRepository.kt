@@ -6241,7 +6241,8 @@ $charSection$topicSection
                     modelName = modelName,
                     prompt = prompt,
                     size = size,
-                    n = n
+                    n = n,
+                    provider = model.provider ?: model.protocol.orEmpty()
                 )
                 if (images.isNotEmpty()) {
                     return@withContext images.mapNotNull { img ->

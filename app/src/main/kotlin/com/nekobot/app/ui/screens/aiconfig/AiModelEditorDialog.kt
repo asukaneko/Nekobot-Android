@@ -128,10 +128,11 @@ private val providerPresets = listOf(
     ProviderPreset("Gemini", "google", "gemini-3.5-flash", "", "1048576", "65536", "", ""),
     ProviderPreset("DeepSeek", "deepseek", "deepseek-v4-flash", "https://api.deepseek.com", "1000000", "131072", "", ""),
     ProviderPreset("GLM", "zhipu", "glm-5.1", "https://open.bigmodel.cn/api/paas/v4", "200000", "128000", "", ""),
-    ProviderPreset("MiniMax", "minimax", "minimax-m2.7", "https://api.minimax.chat/v1", "204800", "131072", "", ""),
+    ProviderPreset("MiniMax", "minimax", "minimax-m2.7", "https://api.minimaxi.com/v1", "204800", "131072", "", ""),
     ProviderPreset("Grok", "grok", "grok-4.20", "https://api.x.ai/v1", "1000000", "131072", "", ""),
     ProviderPreset("Qwen", "qwen", "qwen3.7-max", "https://dashscope.aliyuncs.com/compatible-mode/v1", "1000000", "65536", "", ""),
-    ProviderPreset("Mimo", "xiaomi", "mimo-v2.5", "https://api.xiaomimimo.com/v1", "1048576", "131072", "", "")
+    ProviderPreset("Mimo", "xiaomi", "mimo-v2.5", "https://api.xiaomimimo.com/v1", "1048576", "131072", "", ""),
+    ProviderPreset("豆包 Seed", "doubao", "doubao-seedream-4-0-250828", "https://ark.cn-beijing.volces.com/api/v3", "", "", "", "")
 )
 
 @Composable
@@ -157,6 +158,7 @@ private fun rememberProviderLabels(): LinkedHashMap<String, String> = linkedMapO
     "grok" to stringResource(R.string.aimodel_editor_provider_grok),
     "qwen" to stringResource(R.string.aimodel_editor_provider_qwen),
     "xiaomi" to stringResource(R.string.aimodel_editor_provider_xiaomi),
+    "doubao" to stringResource(R.string.aimodel_editor_provider_doubao),
     "azure" to stringResource(R.string.aimodel_editor_provider_azure),
     "siliconflow" to stringResource(R.string.aimodel_editor_provider_siliconflow),
     "custom" to stringResource(R.string.aimodel_editor_provider_custom)
@@ -559,7 +561,11 @@ fun AiModelEditorDialog(
                     val ttsProviderLabels = mapOf(
                         "openai" to stringResource(R.string.aimodel_editor_tts_provider_openai),
                         "xiaomi" to stringResource(R.string.aimodel_editor_tts_provider_xiaomi),
-                        "doubao" to stringResource(R.string.aimodel_editor_tts_provider_doubao)
+                        "doubao" to stringResource(R.string.aimodel_editor_tts_provider_doubao),
+                        "gemini" to stringResource(R.string.aimodel_editor_tts_provider_gemini),
+                        "glm" to stringResource(R.string.aimodel_editor_tts_provider_glm),
+                        "minimax" to stringResource(R.string.aimodel_editor_tts_provider_minimax),
+                        "qwen" to stringResource(R.string.aimodel_editor_tts_provider_qwen)
                     )
                     val ttsResourceDefault = stringResource(R.string.aimodel_editor_tts_resource_default)
                     val ttsRefNotLoaded = stringResource(R.string.aimodel_editor_tts_ref_audio_not_loaded)
@@ -570,7 +576,7 @@ fun AiModelEditorDialog(
                     EditorDropdownField(
                         label = stringResource(R.string.aimodel_editor_tts_provider),
                         value = state.ttsProvider,
-                        options = listOf("openai", "xiaomi", "doubao"),
+                        options = listOf("openai", "gemini", "glm", "minimax", "qwen", "doubao", "xiaomi"),
                         labelFor = { ttsProviderLabels[it] ?: it },
                         onSelect = { state = state.copy(ttsProvider = it) }
                     )
@@ -643,6 +649,9 @@ fun AiModelEditorDialog(
                     val sttProviderLabels = mapOf(
                         "" to stringResource(R.string.aimodel_editor_stt_provider_follow),
                         "openai" to stringResource(R.string.aimodel_editor_stt_provider_openai),
+                        "gemini" to stringResource(R.string.aimodel_editor_stt_provider_gemini),
+                        "glm" to stringResource(R.string.aimodel_editor_stt_provider_glm),
+                        "qwen" to stringResource(R.string.aimodel_editor_stt_provider_qwen),
                         "xiaomi" to stringResource(R.string.aimodel_editor_stt_provider_xiaomi),
                         "local" to stringResource(R.string.aimodel_editor_stt_provider_local)
                     )
@@ -654,7 +663,7 @@ fun AiModelEditorDialog(
                     EditorDropdownField(
                         label = stringResource(R.string.aimodel_editor_stt_provider),
                         value = state.sttProvider,
-                        options = listOf("", "openai", "xiaomi", "local"),
+                        options = listOf("", "openai", "gemini", "glm", "qwen", "xiaomi", "local"),
                         labelFor = { sttProviderLabels[it] ?: it },
                         onSelect = { state = state.copy(sttProvider = it) }
                     )

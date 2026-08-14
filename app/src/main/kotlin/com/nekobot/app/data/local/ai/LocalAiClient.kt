@@ -9,6 +9,7 @@ import com.nekobot.app.data.model.ReasoningEffort
 import com.nekobot.app.data.remote.RealtimeEvent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
@@ -1177,15 +1178,156 @@ class LocalAiClient(
         pitch: Float? = null,
         volume: Float? = null
     ): ByteArray {
-        val provider = model.ttsProvider.ifBlank {
-            model.provider?.takeIf { it.isNotBlank() } ?: model.protocol
-        }.lowercase()
+        val provider = MultimodalProviderSupport.ttsProvider(model)
         return when (provider) {
             "xiaomi", "mimo" -> synthesizeSpeechXiaomi(model, text, voice)
             "doubao", "volcengine", "bytedance" ->
                 synthesizeSpeechDoubao(model, text, voice, speed, volume)
+            "gemini", "google", "google_gemini" -> synthesizeSpeechGemini(model, text, voice)
+            "glm", "zhipu", "bigmodel" -> synthesizeSpeechGlm(model, text, voice, speed, volume)
+            "minimax" -> synthesizeSpeechMiniMax(model, text, voice, speed, pitch, volume)
+            "qwen", "dashscope", "tongyi" -> synthesizeSpeechQwen(model, text, voice)
             else -> synthesizeSpeechOpenAi(model, text, voice, speed, pitch, volume)
         }
+    }
+
+    private suspend fun synthesizeSpeechGemini(
+        model: LocalAiModelEntity,
+        text: String,
+        voiceOverride: String?
+    ): ByteArray {
+        val url = model.ttsUrl.takeIf { it.isNotBlank() }
+            ?: MultimodalProviderSupport.endpoint(
+                model.baseUrl,
+                "/models/${model.ttsModel.ifBlank { model.model.ifBlank { "gemini-2.5-flash-preview-tts" } }}:generateContent",
+                "https://generativelanguage.googleapis.com/v1beta/models/${model.ttsModel.ifBlank { model.model.ifBlank { "gemini-2.5-flash-preview-tts" } }}:generateContent"
+            )
+        val payload = mapOf(
+            "contents" to listOf(mapOf("parts" to listOf(mapOf("text" to text)))),
+            "generationConfig" to mapOf(
+                "responseModalities" to listOf("AUDIO"),
+                "speechConfig" to mapOf(
+                    "voiceConfig" to mapOf(
+                        "prebuiltVoiceConfig" to mapOf(
+                            "voiceName" to ((voiceOverride ?: model.ttsVoice).takeUnless { it.isBlank() || it == "default" }
+                                ?: "Kore")
+                        )
+                    ),
+                    "languageCode" to model.language.takeIf { it.isNotBlank() && it != "auto" }
+                        ?.let { if (it == "zh") "cmn-CN" else it }
+                )
+            )
+        )
+        val request = Request.Builder()
+            .url(url)
+            .post(gson.toJson(payload).toRequestBody(JSON_TYPE))
+            .header("x-goog-api-key", model.apiKey)
+            .header("Content-Type", "application/json")
+            .build()
+        return executeTtsRequest(model, request, "Gemini").let { MultimodalProviderSupport.pcmToWav(it) }
+    }
+
+    private suspend fun synthesizeSpeechGlm(
+        model: LocalAiModelEntity,
+        text: String,
+        voiceOverride: String?,
+        speedOverride: Float?,
+        volumeOverride: Float?
+    ): ByteArray {
+        val url = if (model.ttsUrl.isNotBlank()) {
+            model.ttsUrl
+        } else {
+            val base = model.baseUrl.trimEnd('/')
+            if (base.isNotBlank()) "$base/audio/speech"
+            else "https://open.bigmodel.cn/api/paas/v4/audio/speech"
+        }
+        val payload = linkedMapOf<String, Any>(
+            "model" to model.ttsModel.ifBlank { model.model.ifBlank { "glm-tts" } },
+            "input" to text,
+            "voice" to ((voiceOverride ?: model.ttsVoice).takeUnless { it.isBlank() || it == "default" } ?: "tongtong"),
+            "response_format" to model.ttsFormat.ifBlank { "wav" },
+            "speed" to (speedOverride ?: model.ttsSpeed),
+            "volume" to (volumeOverride ?: model.ttsVolume)
+        )
+        val request = Request.Builder().url(url)
+            .post(gson.toJson(payload).toRequestBody(JSON_TYPE))
+            .header("Authorization", "Bearer ${model.apiKey}")
+            .header("Content-Type", "application/json")
+            .build()
+        return executeTtsRequest(model, request, "GLM")
+    }
+
+    private suspend fun synthesizeSpeechMiniMax(
+        model: LocalAiModelEntity,
+        text: String,
+        voiceOverride: String?,
+        speedOverride: Float?,
+        pitchOverride: Float?,
+        volumeOverride: Float?
+    ): ByteArray {
+        val url = model.ttsUrl.takeIf { it.isNotBlank() }
+            ?: MultimodalProviderSupport.endpoint(
+                model.baseUrl,
+                "/t2a_v2",
+                "https://api.minimaxi.com/v1/t2a_v2"
+            )
+        val payload = mapOf(
+            "model" to model.ttsModel.ifBlank { model.model.ifBlank { "speech-2.8-hd" } },
+            "text" to text,
+            "stream" to false,
+            "voice_setting" to mapOf(
+                "voice_id" to ((voiceOverride ?: model.ttsVoice).takeUnless { it.isBlank() || it == "default" } ?: "male-qn-qingse"),
+                "speed" to (speedOverride ?: model.ttsSpeed),
+                "vol" to (volumeOverride ?: model.ttsVolume),
+                "pitch" to (pitchOverride ?: model.ttsPitch)
+            ),
+            "audio_setting" to mapOf(
+                "audio_sample_rate" to 32_000,
+                "bitrate" to 128_000,
+                "format" to model.ttsFormat.ifBlank { "mp3" },
+                "channel" to 1
+            )
+        )
+        val request = Request.Builder().url(url)
+            .post(gson.toJson(payload).toRequestBody(JSON_TYPE))
+            .header("Authorization", "Bearer ${model.apiKey}")
+            .header("Content-Type", "application/json")
+            .build()
+        return executeTtsRequest(model, request, "MiniMax")
+    }
+
+    private suspend fun synthesizeSpeechQwen(
+        model: LocalAiModelEntity,
+        text: String,
+        voiceOverride: String?
+    ): ByteArray {
+        val url = model.ttsUrl.takeIf { it.isNotBlank() }
+            ?: MultimodalProviderSupport.dashscopeEndpoint(
+                model.baseUrl,
+                "/services/aigc/multimodal-generation/generation",
+                "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+            )
+        val language = when (model.language.lowercase()) {
+            "zh" -> "Chinese"
+            "en" -> "English"
+            "ja" -> "Japanese"
+            "ko" -> "Korean"
+            else -> "Auto"
+        }
+        val payload = mapOf(
+            "model" to model.ttsModel.ifBlank { model.model.ifBlank { "qwen3-tts-flash" } },
+            "input" to mapOf(
+                "text" to text,
+                "voice" to ((voiceOverride ?: model.ttsVoice).takeUnless { it.isBlank() || it == "default" } ?: "Cherry"),
+                "language_type" to language
+            )
+        )
+        val request = Request.Builder().url(url)
+            .post(gson.toJson(payload).toRequestBody(JSON_TYPE))
+            .header("Authorization", "Bearer ${model.apiKey}")
+            .header("Content-Type", "application/json")
+            .build()
+        return executeTtsRequest(model, request, "Qwen")
     }
 
     private suspend fun synthesizeSpeechOpenAi(
@@ -1390,10 +1532,42 @@ class LocalAiClient(
                 response.code,
                 "$provider TTS 未返回音频: ${responseBytes.toString(Charsets.UTF_8).take(200)}"
             )
-            val audioUrl = listOf("audio_url", "url")
-                .firstNotNullOfOrNull { key -> json.get(key)?.takeIf { !it.isJsonNull }?.asString }
-            val audioData = listOf("audio", "data")
-                .firstNotNullOfOrNull { key -> json.get(key)?.takeIf { it.isJsonPrimitive }?.asString }
+            val audioUrl = sequenceOf(
+                json.get("audio_url"),
+                json.get("url"),
+                json.get("output")?.takeIf { it.isJsonObject }?.asJsonObject
+                    ?.get("audio")?.takeIf { it.isJsonObject }?.asJsonObject?.get("url"),
+                json.get("data")?.takeIf { it.isJsonObject }?.asJsonObject
+                    ?.get("audio")?.takeIf { it.isJsonArray }?.asJsonArray?.firstOrNull()
+            ).firstNotNullOfOrNull { it?.takeIf { value -> !value.isJsonNull }?.asString }
+            val audioData = sequenceOf(
+                json.get("data"),
+                json.get("audio"),
+                json.get("output")?.takeIf { it.isJsonObject }?.asJsonObject
+                    ?.get("audio")?.takeIf { it.isJsonObject }?.asJsonObject?.get("data"),
+                json.get("data")?.takeIf { it.isJsonObject }?.asJsonObject?.get("audio")
+            ).firstNotNullOfOrNull { it?.takeIf { value -> value.isJsonPrimitive }?.asString }
+                ?: json.getAsJsonArray("candidates")
+                    ?.flatMap { candidate ->
+                        candidate.asJsonObject.getAsJsonObject("content")?.getAsJsonArray("parts")
+                            ?.mapNotNull { part ->
+                                val inline = part.asJsonObject.getAsJsonObject("inlineData")
+                                    ?: part.asJsonObject.getAsJsonObject("inline_data")
+                                inline?.get("data")?.takeIf { !it.isJsonNull }?.asString
+                            }
+                            .orEmpty()
+                    }
+                    ?.firstOrNull()
+                ?: json.get("choices")?.takeIf { it.isJsonArray }?.asJsonArray?.firstOrNull()
+                    ?.takeIf { it.isJsonObject }?.asJsonObject?.let { choice ->
+                        val message = choice.get("message")?.takeIf { it.isJsonObject }?.asJsonObject
+                        val delta = choice.get("delta")?.takeIf { it.isJsonObject }?.asJsonObject
+                        sequenceOf(message, delta).filterNotNull().firstNotNullOfOrNull { item ->
+                            sequenceOf(item.get("audio"), item.get("content"))
+                                .firstOrNull { value -> value?.isJsonPrimitive == true }
+                                ?.asString
+                        }
+                    }
             when {
                 !audioUrl.isNullOrBlank() -> downloadAudio(model, audioUrl)
                 !audioData.isNullOrBlank() -> decodeAudioBase64(audioData)
@@ -1455,11 +1629,107 @@ class LocalAiClient(
         filename: String = "audio.mp3",
         language: String? = null
     ): LocalAiResult {
-        val provider = (model.provider ?: "").trim().lowercase()
+        val provider = MultimodalProviderSupport.sttProvider(model)
         return when (provider) {
             "xiaomi", "mimo" -> transcribeSpeechXiaomi(model, audioBytes, filename, language)
+            "gemini", "google", "google_gemini" -> transcribeSpeechGemini(model, audioBytes, filename, language)
+            "qwen", "dashscope", "tongyi" -> transcribeSpeechQwen(model, audioBytes, filename, language)
             else -> transcribeSpeechOpenAI(model, audioBytes, filename, language)
         }
+    }
+
+    private suspend fun transcribeSpeechGemini(
+        model: LocalAiModelEntity,
+        audioBytes: ByteArray,
+        filename: String,
+        language: String?
+    ): LocalAiResult {
+        val modelName = model.sttModel.ifBlank { model.model.ifBlank { "gemini-2.5-flash" } }
+        val url = model.sttUrl.takeIf { it.isNotBlank() }
+            ?: MultimodalProviderSupport.endpoint(
+                model.baseUrl,
+                "/models/$modelName:generateContent",
+                "https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent"
+            )
+        val languageHint = language?.takeIf { it.isNotBlank() && it != "auto" }?.let { " in $it" }.orEmpty()
+        val payload = mapOf(
+            "contents" to listOf(
+                mapOf(
+                    "role" to "user",
+                    "parts" to listOf(
+                        mapOf("text" to "请准确转录这段音频，只输出转录文本，不要解释。$languageHint"),
+                        mapOf(
+                            "inlineData" to mapOf(
+                                "mimeType" to guessAudioMediaType(filename),
+                                "data" to Base64.getEncoder().encodeToString(audioBytes)
+                            )
+                        )
+                    )
+                )
+            )
+        )
+        val request = Request.Builder().url(url)
+            .post(gson.toJson(payload).toRequestBody(JSON_TYPE))
+            .header("x-goog-api-key", model.apiKey)
+            .header("Content-Type", "application/json")
+            .build()
+        return executeTextRequest(model, request, "Gemini STT")
+    }
+
+    private suspend fun transcribeSpeechQwen(
+        model: LocalAiModelEntity,
+        audioBytes: ByteArray,
+        filename: String,
+        language: String?
+    ): LocalAiResult {
+        val url = model.sttUrl.takeIf { it.isNotBlank() }
+            ?: MultimodalProviderSupport.endpoint(
+                model.baseUrl,
+                "/chat/completions",
+                "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+            )
+        val format = filename.substringAfterLast('.', "wav").lowercase()
+        val audioData = Base64.getEncoder().encodeToString(audioBytes)
+        val inputAudio = mapOf(
+            "data" to "data:${guessAudioMediaType(filename)};base64,$audioData",
+            "format" to format
+        )
+        val content = mutableListOf<Map<String, Any>>(mapOf("type" to "input_audio", "input_audio" to inputAudio))
+        val body = linkedMapOf<String, Any>(
+            "model" to model.sttModel.ifBlank { model.model.ifBlank { "qwen3-asr-flash" } },
+            "messages" to listOf(mapOf("role" to "user", "content" to content)),
+            "stream" to false
+        )
+        language?.takeIf { it.isNotBlank() && it != "auto" }?.let { body["language"] = it }
+        val request = Request.Builder().url(url)
+            .post(gson.toJson(body).toRequestBody(JSON_TYPE))
+            .header("Authorization", "Bearer ${model.apiKey}")
+            .header("Content-Type", "application/json")
+            .build()
+        return executeTextRequest(model, request, "Qwen STT")
+    }
+
+    private suspend fun executeTextRequest(
+        model: LocalAiModelEntity,
+        request: Request,
+        provider: String
+    ): LocalAiResult = clientFor(model).newCall(request).awaitResponse().use { response ->
+        val raw = response.body?.string().orEmpty()
+        if (!response.isSuccessful) {
+            throw FailoverHttpException(response.code, "$provider HTTP ${response.code}: ${raw.take(500)}")
+        }
+        val text = runCatching {
+            val root = JsonParser.parseString(raw).asJsonObject
+            root.get("text")?.takeIf { !it.isJsonNull }?.asString
+                ?: root.getAsJsonArray("candidates")?.firstOrNull()
+                    ?.asJsonObject?.getAsJsonObject("content")?.getAsJsonArray("parts")
+                    ?.mapNotNull { it.asJsonObject.get("text")?.takeIf { value -> !value.isJsonNull }?.asString }
+                    ?.joinToString("")
+                ?: root.getAsJsonArray("choices")?.firstOrNull()
+                    ?.asJsonObject?.getAsJsonObject("message")?.get("content")
+                    ?.takeIf { !it.isJsonNull }?.asString
+        }.getOrNull().orEmpty().ifBlank { raw.trim() }
+        LocalAiResult(text, usedModelId = model.id, usedModelName = model.name, usedModelActualName = model.model)
     }
 
     /**
@@ -1472,20 +1742,23 @@ class LocalAiClient(
         filename: String,
         language: String?
     ): LocalAiResult {
-        val url = resolveAudioUrl(model.baseUrl, model.appendBaseUrlPath, "audio/transcriptions")
+        val url = model.sttUrl.takeIf { it.isNotBlank() }
+            ?: resolveAudioUrl(model.baseUrl, model.appendBaseUrlPath, "audio/transcriptions")
         val audioMediaType = guessAudioMediaType(filename).toMediaType()
+        val sttModel = model.sttModel.ifBlank { model.model }
         Log.i("LocalAiClient", "STT(openai) 请求: url=$url, model=${model.model}, file=$filename, size=${audioBytes.size}, mime=$audioMediaType")
         val audioPart = okhttp3.MultipartBody.Builder()
             .setType(okhttp3.MultipartBody.FORM)
-            .addFormDataPart("model", model.model)
+            .addFormDataPart("model", sttModel)
             .addFormDataPart("file", filename, audioBytes.toRequestBody(audioMediaType))
             .apply {
                 if (!language.isNullOrBlank()) addFormDataPart("language", language)
             }
             .build()
-        val req = Request.Builder().url(url).post(audioPart)
+        val reqBuilder = Request.Builder().url(url).post(audioPart)
             .header("Authorization", "Bearer ${model.apiKey}")
-            .build()
+        parseTtsHeaders(model.sttHeaders).forEach { (name, value) -> reqBuilder.header(name, value) }
+        val req = reqBuilder.build()
         return try {
             clientFor(model).newCall(req).awaitResponse().use { resp ->
                 if (!resp.isSuccessful) {
@@ -1556,7 +1829,7 @@ class LocalAiClient(
             }
         }
 
-        val b64 = android.util.Base64.encodeToString(effectiveBytes, android.util.Base64.NO_WRAP)
+        val b64 = Base64.getEncoder().encodeToString(effectiveBytes)
         val dataUrl = "data:$effectiveMime;base64,$b64"
         val lang = language?.takeIf { it.isNotBlank() } ?: "auto"
 
@@ -1653,7 +1926,8 @@ class LocalAiClient(
             size = size,
             n = n,
             appendBaseUrlPath = model.appendBaseUrlPath,
-            proxyUrl = model.proxyUrl
+            proxyUrl = model.proxyUrl,
+            provider = MultimodalProviderSupport.imageProvider(model)
         )
         return images.map { image ->
             val url = image.url
@@ -1751,8 +2025,24 @@ class LocalAiClient(
         size: String = "1024x1024",
         n: Int = 1,
         appendBaseUrlPath: Boolean = true,
-        proxyUrl: String = ""
+        proxyUrl: String = "",
+        provider: String = ""
     ): List<GeneratedImage> {
+        val normalizedProvider = provider.trim().lowercase()
+        when (normalizedProvider) {
+            "gemini", "google", "google_gemini" -> return generateImageGemini(
+                baseUrl, apiKey, modelName, prompt, appendBaseUrlPath, proxyUrl
+            )
+            "minimax" -> return generateImageMiniMax(
+                baseUrl, apiKey, modelName, prompt, size, appendBaseUrlPath, proxyUrl
+            )
+            "qwen", "dashscope", "tongyi" -> return generateImageQwen(
+                baseUrl, apiKey, modelName, prompt, size, n, appendBaseUrlPath, proxyUrl
+            )
+            "doubao", "seed", "seedream", "volcengine", "ark", "volces" -> return generateImageDoubao(
+                baseUrl, apiKey, modelName, prompt, size, n, appendBaseUrlPath, proxyUrl
+            )
+        }
         val url = resolveImageUrl(baseUrl, appendBaseUrlPath)
         val payload = mapOf(
             "model" to modelName,
@@ -1781,7 +2071,7 @@ class LocalAiClient(
                     if (urlStr != null) {
                         GeneratedImage(url = urlStr, bytes = null)
                     } else if (b64 != null) {
-                        GeneratedImage(url = null, bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT))
+                        GeneratedImage(url = null, bytes = Base64.getDecoder().decode(b64))
                     } else null
                 }
             }
@@ -1793,6 +2083,209 @@ class LocalAiClient(
             Log.e("LocalAiClient", "generateImage failed: ${e.message}")
             throw e
         }
+    }
+
+    private suspend fun generateImageGemini(
+        baseUrl: String,
+        apiKey: String,
+        modelName: String,
+        prompt: String,
+        appendBaseUrlPath: Boolean,
+        proxyUrl: String
+    ): List<GeneratedImage> {
+        val model = modelName.ifBlank { "gemini-3.1-flash-image" }
+        val url = MultimodalProviderSupport.endpoint(
+            baseUrl,
+            "/models/$model:generateContent",
+            "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent",
+            appendBaseUrlPath
+        )
+        val body = mapOf(
+            "contents" to listOf(mapOf("parts" to listOf(mapOf("text" to prompt)))),
+            "generationConfig" to mapOf("responseModalities" to listOf("IMAGE"))
+        )
+        val request = Request.Builder().url(url)
+            .post(gson.toJson(body).toRequestBody(JSON_TYPE))
+            .header("x-goog-api-key", apiKey)
+            .header("Content-Type", "application/json")
+            .build()
+        return executeImageJsonRequest(request, proxyUrl, "Gemini image")
+    }
+
+    private suspend fun generateImageMiniMax(
+        baseUrl: String,
+        apiKey: String,
+        modelName: String,
+        prompt: String,
+        size: String,
+        appendBaseUrlPath: Boolean,
+        proxyUrl: String
+    ): List<GeneratedImage> {
+        val url = MultimodalProviderSupport.endpoint(
+            baseUrl,
+            "/image_generation",
+            "https://api.minimaxi.com/v1/image_generation",
+            appendBaseUrlPath
+        )
+        val body = mapOf(
+            "model" to modelName.ifBlank { "image-01" },
+            "prompt" to prompt,
+            "aspect_ratio" to MultimodalProviderSupport.imageAspectRatio(size),
+            "response_format" to "base64"
+        )
+        val request = Request.Builder().url(url)
+            .post(gson.toJson(body).toRequestBody(JSON_TYPE))
+            .header("Authorization", "Bearer $apiKey")
+            .header("Content-Type", "application/json")
+            .build()
+        return executeImageJsonRequest(request, proxyUrl, "MiniMax image")
+    }
+
+    private suspend fun generateImageDoubao(
+        baseUrl: String,
+        apiKey: String,
+        modelName: String,
+        prompt: String,
+        size: String,
+        n: Int,
+        appendBaseUrlPath: Boolean,
+        proxyUrl: String
+    ): List<GeneratedImage> {
+        val url = MultimodalProviderSupport.endpoint(
+            baseUrl,
+            "/images/generations",
+            "https://ark.cn-beijing.volces.com/api/v3/images/generations",
+            appendBaseUrlPath
+        )
+        val normalizedSize = when (size.uppercase()) {
+            "2K", "4K" -> size.uppercase()
+            else -> if (size.contains("x")) "2K" else size
+        }
+        val body = mapOf(
+            "model" to modelName,
+            "prompt" to prompt,
+            "size" to normalizedSize,
+            "sequential_image_generation" to "disabled",
+            "stream" to false,
+            "response_format" to "url",
+            "watermark" to false
+        )
+        val request = Request.Builder().url(url)
+            .post(gson.toJson(body).toRequestBody(JSON_TYPE))
+            .header("Authorization", "Bearer $apiKey")
+            .header("Content-Type", "application/json")
+            .build()
+        return executeImageJsonRequest(request, proxyUrl, "豆包 Seed image")
+    }
+
+    private suspend fun generateImageQwen(
+        baseUrl: String,
+        apiKey: String,
+        modelName: String,
+        prompt: String,
+        size: String,
+        n: Int,
+        appendBaseUrlPath: Boolean,
+        proxyUrl: String
+    ): List<GeneratedImage> {
+        val submitUrl = MultimodalProviderSupport.dashscopeEndpoint(
+            baseUrl,
+            "/services/aigc/text2image/image-synthesis",
+            "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+            appendBaseUrlPath
+        )
+        val body = mapOf(
+            "model" to modelName,
+            "input" to mapOf("prompt" to prompt),
+            "parameters" to mapOf(
+                "size" to size.replace('x', '*'),
+                "n" to n.coerceIn(1, 4),
+                "watermark" to false
+            )
+        )
+        val request = Request.Builder().url(submitUrl)
+            .post(gson.toJson(body).toRequestBody(JSON_TYPE))
+            .header("Authorization", "Bearer $apiKey")
+            .header("X-DashScope-Async", "enable")
+            .header("Content-Type", "application/json")
+            .build()
+        val task = executeJson(request, proxyUrl, "Qwen image submit")
+        val taskId = task.getAsJsonObject("output")?.get("task_id")?.asString
+            ?: throw IllegalStateException("Qwen image 未返回 task_id")
+        val base = baseUrl.trim().trimEnd('/').replace("/compatible-mode/v1", "/api/v1")
+            .ifBlank { "https://dashscope.aliyuncs.com/api/v1" }
+        val taskUrl = task.getAsJsonObject("output")?.get("task_url")?.asString
+            ?: "$base/tasks/$taskId"
+        repeat(90) {
+            delay(2_000)
+            val pollRequest = Request.Builder().url(taskUrl)
+                .get()
+                .header("Authorization", "Bearer $apiKey")
+                .build()
+            val result = executeJson(pollRequest, proxyUrl, "Qwen image query")
+            val output = result.getAsJsonObject("output") ?: return@repeat
+            when (output.get("task_status")?.asString?.uppercase()) {
+                "SUCCEEDED" -> return parseImageJson(output)
+                "FAILED", "CANCELED", "UNKNOWN" ->
+                    throw IllegalStateException("Qwen image 任务失败: ${output.get("message")?.asString.orEmpty()}")
+            }
+        }
+        throw IllegalStateException("Qwen image 任务轮询超时")
+    }
+
+    private suspend fun executeImageJsonRequest(
+        request: Request,
+        proxyUrl: String,
+        provider: String
+    ): List<GeneratedImage> = parseImageJson(executeJson(request, proxyUrl, provider))
+
+    private suspend fun executeJson(request: Request, proxyUrl: String, provider: String): com.google.gson.JsonObject =
+        clientFor(proxyUrl).newCall(request).awaitResponse().use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw FailoverHttpException(response.code, "$provider HTTP ${response.code}: ${raw.take(500)}")
+            }
+            runCatching { JsonParser.parseString(raw).asJsonObject }
+                .getOrElse { throw IllegalStateException("$provider 返回了无法解析的 JSON") }
+        }
+
+    private fun parseImageJson(root: com.google.gson.JsonObject): List<GeneratedImage> {
+        val result = mutableListOf<GeneratedImage>()
+        root.get("data")?.takeIf { it.isJsonArray }?.asJsonArray?.forEach { item ->
+            val obj = item.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
+            val url = obj.get("url")?.takeIf { !it.isJsonNull }?.asString
+            val b64 = obj.get("b64_json")?.takeIf { !it.isJsonNull }?.asString
+            when {
+                !url.isNullOrBlank() -> result += GeneratedImage(url, null)
+                !b64.isNullOrBlank() -> result += GeneratedImage(null, Base64.getDecoder().decode(b64))
+            }
+        }
+        root.get("images")?.takeIf { it.isJsonArray }?.asJsonArray?.forEach { item ->
+            val obj = item.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
+            val url = obj.get("url")?.takeIf { !it.isJsonNull }?.asString
+            val b64 = obj.get("b64_json")?.takeIf { !it.isJsonNull }?.asString
+            when {
+                !url.isNullOrBlank() -> result += GeneratedImage(url, null)
+                !b64.isNullOrBlank() -> result += GeneratedImage(null, Base64.getDecoder().decode(b64))
+            }
+        }
+        root.get("data")?.takeIf { it.isJsonObject }?.asJsonObject?.getAsJsonArray("image_base64")?.forEach { value ->
+            if (!value.isJsonNull) result += GeneratedImage(null, Base64.getDecoder().decode(value.asString))
+        }
+        root.get("results")?.takeIf { it.isJsonArray }?.asJsonArray?.forEach { item ->
+            val obj = item.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
+            obj.get("url")?.takeIf { !it.isJsonNull }?.asString?.let { result += GeneratedImage(it, null) }
+        }
+        root.getAsJsonArray("candidates")?.forEach { candidate ->
+            candidate.asJsonObject.getAsJsonObject("content")?.getAsJsonArray("parts")?.forEach { part ->
+                val inline = part.asJsonObject.getAsJsonObject("inlineData")
+                    ?: part.asJsonObject.getAsJsonObject("inline_data")
+                inline?.get("data")?.takeIf { !it.isJsonNull }?.let {
+                    result += GeneratedImage(null, Base64.getDecoder().decode(it.asString))
+                }
+            }
+        }
+        return result
     }
 
     private fun clientFor(model: LocalAiModelEntity): OkHttpClient =

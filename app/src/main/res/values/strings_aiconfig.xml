@@ -218,6 +218,7 @@
     <string name="aimodel_editor_provider_grok">Grok (xAI)</string>
     <string name="aimodel_editor_provider_qwen">通义千问</string>
     <string name="aimodel_editor_provider_xiaomi">小米 MiMo</string>
+    <string name="aimodel_editor_provider_doubao">豆包 Seed</string>
     <string name="aimodel_editor_provider_azure">Azure OpenAI</string>
     <string name="aimodel_editor_provider_siliconflow">SiliconFlow</string>
     <string name="aimodel_editor_provider_custom">自定义</string>
@@ -298,6 +299,10 @@
     <string name="aimodel_editor_tts_provider_openai">OpenAI 兼容</string>
     <string name="aimodel_editor_tts_provider_xiaomi">小米 MiMo</string>
     <string name="aimodel_editor_tts_provider_doubao">豆包（火山引擎）</string>
+    <string name="aimodel_editor_tts_provider_gemini">Gemini 原生 TTS</string>
+    <string name="aimodel_editor_tts_provider_glm">智谱 GLM-TTS</string>
+    <string name="aimodel_editor_tts_provider_minimax">MiniMax TTS</string>
+    <string name="aimodel_editor_tts_provider_qwen">通义千问 TTS</string>
     <string name="aimodel_editor_tts_resource_default">seed-tts-2.0（默认）</string>
     <string name="aimodel_editor_tts_model">TTS 模型名</string>
     <string name="aimodel_editor_tts_model_placeholder">留空则使用上方模型</string>
@@ -318,6 +323,9 @@
     <string name="aimodel_editor_stt_provider">STT 提供商</string>
     <string name="aimodel_editor_stt_provider_follow">跟随 Provider 类型</string>
     <string name="aimodel_editor_stt_provider_openai">OpenAI 兼容</string>
+    <string name="aimodel_editor_stt_provider_gemini">Gemini 原生识别</string>
+    <string name="aimodel_editor_stt_provider_glm">智谱 GLM-ASR</string>
+    <string name="aimodel_editor_stt_provider_qwen">通义千问 ASR</string>
     <string name="aimodel_editor_stt_provider_xiaomi">小米 MiMo</string>
     <string name="aimodel_editor_stt_provider_local">本地 faster-whisper</string>
     <string name="aimodel_editor_stt_model">STT 模型名</string>
