@@ -164,7 +164,7 @@
     <string name="localai_purpose_embedding">📊 Embedding</string>
     <string name="localai_purpose_image_generation">🎨 Image Generation</string>
     <string name="localai_purpose_chat_model">💬 Chat Model</string>
-    <string name="localai_purpose_hint_live">Native voice pipeline for Live. Supports OpenAI gpt-realtime and Alibaba Cloud DashScope qwen3.5-omni-flash-realtime / qwen3-omni-flash-realtime. Configure the base URL, voice, and input transcription model to stream audio and subtitles together. For Qwen Realtime, set the base URL to https://dashscope.aliyuncs.com/api-ws/v1 and enable \"Append base URL path\". Note: old snapshots like qwen-omni-turbo-realtime-2025-03-26 are decommissioned and will return ModelNotFound.</string>
+    <string name="localai_purpose_hint_live">Native voice pipeline for Live. Supports OpenAI gpt-realtime, Alibaba Cloud DashScope Qwen Realtime, Volcengine Ark SeedRealtime, and Zhipu GLM-Realtime. Configure the base URL, voice, and input transcription model to stream audio and subtitles together.</string>
     <string name="localai_purpose_hint_vision">For image message understanding, used as fallback for image description</string>
     <string name="localai_purpose_hint_video">For video message understanding (not auto-invoked in local mode yet)</string>
     <string name="localai_purpose_hint_tts">For text-to-speech, can be triggered manually in chat</string>
@@ -283,6 +283,8 @@
     <string name="aimodel_editor_live_hint">Audio output includes streaming audio plus a transcript. The Realtime model understands input audio natively; the transcription model is only used to save user subtitles.</string>
     <string name="aimodel_editor_live_voice">Realtime voice</string>
     <string name="aimodel_editor_live_qwen_hint">Qwen Realtime detected: default voice is Tina (Qwen3.5-Omni no longer supports legacy voices like Cherry and will auto-correct), transcription model defaults to paraformer-realtime-v2. Set the base URL to https://dashscope.aliyuncs.com/api-ws/v1 and enable \"Append base URL path\".</string>
+    <string name="aimodel_editor_live_seed_hint">SeedRealtime detected: defaults are doubao-seed-1.6-flash-realtime, voice zh_female_shuangkuaisisi_moon_bigtts, and transcription model doubao-1.5-asr-pro. Set the base URL to https://ark.cn-beijing.volces.com/api/v3 and enable \"Append base URL path\".</string>
+    <string name="aimodel_editor_live_glm_hint">GLM-Realtime detected: defaults are glm-realtime, voice tongtong, and transcription model glm-asr. Set the base URL to https://open.bigmodel.cn/api/paas/v4 and enable \"Append base URL path\".</string>
     <string name="aimodel_editor_live_transcription_model">Input transcription model</string>
     <string name="aimodel_editor_tts_provider">TTS Provider</string>
     <string name="aimodel_editor_tts_provider_openai">OpenAI Compatible</string>

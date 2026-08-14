@@ -90,6 +90,31 @@ class RealtimeVoiceClientTest {
     }
 
     @Test
+    fun seedAndGlmProviderDetectionFlagsConfigs() {
+        val seed = RealtimeModelConfig(
+            id = "live",
+            name = "Seed Live",
+            apiKey = "test",
+            baseUrl = REALTIME_SEED_DEFAULT_BASE_URL,
+            model = REALTIME_SEED_DEFAULT_MODEL,
+            provider = "doubao"
+        )
+        val glm = RealtimeModelConfig(
+            id = "live",
+            name = "GLM Live",
+            apiKey = "test",
+            baseUrl = REALTIME_GLM_DEFAULT_BASE_URL,
+            model = REALTIME_GLM_DEFAULT_MODEL,
+            provider = "zhipu"
+        )
+
+        assertTrue(seed.isSeedRealtime)
+        assertFalse(seed.isQwenRealtime)
+        assertTrue(glm.isGlmRealtime)
+        assertFalse(glm.isQwenRealtime)
+    }
+
+    @Test
     fun sessionUpdateFallsBackToQwenVoiceAndTranscriptionWhenBlank() {
         val event = buildRealtimeSessionUpdate(
             config = RealtimeModelConfig(
@@ -161,6 +186,69 @@ class RealtimeVoiceClientTest {
                 qwenRealtime = false
             )
         )
+    }
+
+    @Test
+    fun websocketUrlsUseArkAndZhipuRealtimeEndpoints() {
+        assertEquals(
+            "wss://ark.cn-beijing.volces.com/api/v3/realtime?model=$REALTIME_SEED_DEFAULT_MODEL",
+            buildRealtimeWebSocketUrl(
+                baseUrl = REALTIME_SEED_DEFAULT_BASE_URL,
+                appendRealtimePath = true,
+                model = REALTIME_SEED_DEFAULT_MODEL
+            )
+        )
+        assertEquals(
+            "wss://open.bigmodel.cn/api/paas/v4/realtime?model=$REALTIME_GLM_DEFAULT_MODEL",
+            buildRealtimeWebSocketUrl(
+                baseUrl = REALTIME_GLM_DEFAULT_BASE_URL,
+                appendRealtimePath = true,
+                model = REALTIME_GLM_DEFAULT_MODEL
+            )
+        )
+    }
+
+    @Test
+    fun seedAndGlmUseFlatRealtimeSessionAndResponsePayloads() {
+        val configs = listOf(
+            RealtimeModelConfig(
+                id = "seed",
+                name = "Seed Live",
+                apiKey = "test",
+                baseUrl = REALTIME_SEED_DEFAULT_BASE_URL,
+                model = REALTIME_SEED_DEFAULT_MODEL,
+                voice = "",
+                transcriptionModel = "",
+                provider = "doubao"
+            ) to Pair(REALTIME_SEED_DEFAULT_VOICE, REALTIME_SEED_DEFAULT_TRANSCRIPTION_MODEL),
+            RealtimeModelConfig(
+                id = "glm",
+                name = "GLM Live",
+                apiKey = "test",
+                baseUrl = REALTIME_GLM_DEFAULT_BASE_URL,
+                model = REALTIME_GLM_DEFAULT_MODEL,
+                voice = "",
+                transcriptionModel = "",
+                provider = "zhipu"
+            ) to Pair(REALTIME_GLM_DEFAULT_VOICE, REALTIME_GLM_DEFAULT_TRANSCRIPTION_MODEL)
+        )
+
+        configs.forEach { (config, defaults) ->
+            val event = buildRealtimeSessionUpdate(config, "保持角色设定")
+            val session = event.getAsJsonObject("session")
+            val response = buildRealtimeResponseCreate(config).getAsJsonObject("response")
+
+            assertEquals("session.update", event.get("type").asString)
+            assertEquals(config.model, session.get("model").asString)
+            assertEquals("pcm16", session.get("input_audio_format").asString)
+            assertEquals("pcm16", session.get("output_audio_format").asString)
+            assertEquals(defaults.first, session.get("voice").asString)
+            assertEquals(
+                defaults.second,
+                session.getAsJsonObject("input_audio_transcription").get("model").asString
+            )
+            assertEquals("audio", response.getAsJsonArray("modalities")[1].asString)
+        }
     }
 
     @Test

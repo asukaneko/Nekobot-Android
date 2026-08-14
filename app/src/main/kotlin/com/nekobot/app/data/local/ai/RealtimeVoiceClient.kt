@@ -40,11 +40,47 @@ data class RealtimeModelConfig(
     /** 模型供应商标识，用于在 Realtime 协议层做差异化处理（如 qwen / dashscope 走阿里云 DashScope Realtime）。 */
     val provider: String? = null
 ) {
+    private val realtimeProtocol: RealtimeProtocol
+        get() = RealtimeProtocol.resolve(provider, model)
+
     /** 是否走阿里云 DashScope Qwen Realtime 协议。 */
     val isQwenRealtime: Boolean
-        get() = provider.equals("qwen", ignoreCase = true) ||
-            provider.equals("dashscope", ignoreCase = true) ||
-            model.contains("qwen", ignoreCase = true) && model.contains("realtime", ignoreCase = true)
+        get() = realtimeProtocol == RealtimeProtocol.QWEN
+
+    /** 是否走火山引擎 Ark SeedRealtime 协议。 */
+    val isSeedRealtime: Boolean
+        get() = realtimeProtocol == RealtimeProtocol.SEED
+
+    /** 是否走智谱 GLM-Realtime 协议。 */
+    val isGlmRealtime: Boolean
+        get() = realtimeProtocol == RealtimeProtocol.GLM
+
+    /** 国内 Realtime 服务采用兼容旧版 OpenAI Realtime 的扁平会话字段。 */
+    internal val usesFlatSessionUpdate: Boolean
+        get() = realtimeProtocol != RealtimeProtocol.OPENAI
+}
+
+private enum class RealtimeProtocol {
+    OPENAI,
+    QWEN,
+    SEED,
+    GLM;
+
+    companion object {
+        fun resolve(provider: String?, model: String): RealtimeProtocol {
+            val normalizedProvider = provider.orEmpty().trim().lowercase()
+            val normalizedModel = model.trim().lowercase()
+            return when {
+                normalizedProvider in setOf("qwen", "dashscope", "tongyi") ||
+                    normalizedModel.contains("qwen") && normalizedModel.contains("realtime") -> QWEN
+                normalizedProvider in setOf("doubao", "seed", "volcengine", "bytedance", "ark", "volces") ||
+                    normalizedModel.contains("seed") && normalizedModel.contains("realtime") -> SEED
+                normalizedProvider in setOf("glm", "zhipu", "bigmodel") ||
+                    normalizedModel.contains("glm") && normalizedModel.contains("realtime") -> GLM
+                else -> OPENAI
+            }
+        }
+    }
 }
 
 data class RealtimeContextMessage(
@@ -65,11 +101,9 @@ sealed interface RealtimeVoiceEvent {
 }
 
 fun LocalAiModelEntity.toRealtimeModelConfig(): RealtimeModelConfig {
-    val isQwen = provider.equals("qwen", ignoreCase = true) ||
-        provider.equals("dashscope", ignoreCase = true)
-    val resolvedModel = model.ifBlank { if (isQwen) REALTIME_QWEN_DEFAULT_MODEL else "gpt-realtime" }
-    val qwenByModel = resolvedModel.contains("qwen", ignoreCase = true) &&
-        resolvedModel.contains("realtime", ignoreCase = true)
+    val initialProtocol = RealtimeProtocol.resolve(provider, model)
+    val resolvedModel = model.ifBlank { initialProtocol.defaultModel }
+    val protocol = RealtimeProtocol.resolve(provider, resolvedModel)
     return RealtimeModelConfig(
         id = id,
         name = name,
@@ -79,10 +113,9 @@ fun LocalAiModelEntity.toRealtimeModelConfig(): RealtimeModelConfig {
         appendBaseUrlPath = appendBaseUrlPath,
         proxyUrl = proxyUrl,
         voice = ttsVoice.takeUnless { it.isBlank() || it == "default" }
-            ?: if (isQwen || qwenByModel) REALTIME_QWEN_DEFAULT_VOICE else "marin",
+            ?: protocol.defaultVoice,
         transcriptionModel = sttModel.ifBlank {
-            if (isQwen || qwenByModel) REALTIME_QWEN_DEFAULT_TRANSCRIPTION_MODEL
-            else "gpt-4o-mini-transcribe"
+            protocol.defaultTranscriptionModel
         },
         language = language,
         maxOutputTokens = (maxTokens ?: 4096).coerceIn(1, 4096),
@@ -91,13 +124,11 @@ fun LocalAiModelEntity.toRealtimeModelConfig(): RealtimeModelConfig {
 }
 
 fun AiModel.toRealtimeModelConfig(): RealtimeModelConfig {
-    val isQwen = provider.equals("qwen", ignoreCase = true) ||
-        provider.equals("dashscope", ignoreCase = true)
+    val initialProtocol = RealtimeProtocol.resolve(provider, model.orEmpty())
     val resolvedModel = model.orEmpty().ifBlank {
-        if (isQwen) REALTIME_QWEN_DEFAULT_MODEL else "gpt-realtime"
+        initialProtocol.defaultModel
     }
-    val qwenByModel = resolvedModel.contains("qwen", ignoreCase = true) &&
-        resolvedModel.contains("realtime", ignoreCase = true)
+    val protocol = RealtimeProtocol.resolve(provider, resolvedModel)
     return RealtimeModelConfig(
         id = id.orEmpty(),
         name = displayName,
@@ -106,10 +137,9 @@ fun AiModel.toRealtimeModelConfig(): RealtimeModelConfig {
         model = resolvedModel,
         appendBaseUrlPath = appendBaseUrlPath ?: true,
         voice = ttsVoice.takeUnless { it.isNullOrBlank() || it == "default" }
-            ?: if (isQwen || qwenByModel) REALTIME_QWEN_DEFAULT_VOICE else "marin",
+            ?: protocol.defaultVoice,
         transcriptionModel = sttModel.orEmpty().ifBlank {
-            if (isQwen || qwenByModel) REALTIME_QWEN_DEFAULT_TRANSCRIPTION_MODEL
-            else "gpt-4o-mini-transcribe"
+            protocol.defaultTranscriptionModel
         },
         language = sttLanguage ?: language ?: "zh",
         maxOutputTokens = (maxTokens ?: 4096).coerceIn(1, 4096),
@@ -289,16 +319,7 @@ class RealtimeVoiceClient(
                     "input_audio_buffer.committed" -> {
                         if (!terminal.get() && !responseCreateSent && !responseActive) {
                             responseCreateSent = true
-                            val responseCreate = if (config.isQwenRealtime) {
-                                "{\"type\":\"response.create\"}"
-                            } else {
-                                gson.toJson(JsonObject().apply {
-                                    addProperty("type", "response.create")
-                                    add("response", JsonObject().apply {
-                                        add("output_modalities", JsonArray().apply { add("audio") })
-                                    })
-                                })
-                            }
+                            val responseCreate = gson.toJson(buildRealtimeResponseCreate(config))
                             if (!webSocket.send(responseCreate) && terminal.compareAndSet(false, true)) {
                                 trySend(RealtimeVoiceEvent.Failure("Realtime 响应创建失败"))
                                 webSocket.cancel()
@@ -463,6 +484,9 @@ internal fun buildRealtimeSessionUpdate(
     if (config.isQwenRealtime) {
         return buildQwenRealtimeSessionUpdate(config, instructions, context)
     }
+    if (config.usesFlatSessionUpdate) {
+        return buildFlatRealtimeSessionUpdate(config, instructions)
+    }
     val defaultVoice = "marin"
     val defaultTranscription = "gpt-4o-mini-transcribe"
     return JsonObject().apply {
@@ -495,6 +519,62 @@ internal fun buildRealtimeSessionUpdate(
                     addProperty("voice", config.voice.ifBlank { defaultVoice })
                 })
             })
+        })
+    }
+}
+
+/**
+ * SeedRealtime 与 GLM-Realtime 采用 OpenAI Realtime 的扁平字段版本；
+ * 与 OpenAI 新版嵌套的 audio.input/audio.output 结构不能混用。
+ */
+private fun buildFlatRealtimeSessionUpdate(
+    config: RealtimeModelConfig,
+    instructions: String
+): JsonObject = JsonObject().apply {
+    addProperty("type", "session.update")
+    add("session", JsonObject().apply {
+        addProperty("model", config.model)
+        add("modalities", JsonArray().apply {
+            add("text")
+            add("audio")
+        })
+        addProperty(
+            "instructions",
+            instructions.trim().take(REALTIME_MAX_INSTRUCTIONS_CHARS).ifBlank {
+                "自然地进行简洁的语音对话，并使用用户当前使用的语言回答。"
+            }
+        )
+        addProperty("voice", config.voice.ifBlank { RealtimeProtocol.resolve(config.provider, config.model).defaultVoice })
+        addProperty("input_audio_format", "pcm16")
+        addProperty("output_audio_format", "pcm16")
+        add("input_audio_transcription", JsonObject().apply {
+            addProperty(
+                "model",
+                config.transcriptionModel.ifBlank {
+                    RealtimeProtocol.resolve(config.provider, config.model).defaultTranscriptionModel
+                }
+            )
+            config.language.takeUnless { it.isBlank() || it.equals("auto", true) }
+                ?.let { addProperty("language", it) }
+        })
+        // 由客户端在音频上传完毕后显式 commit，避免自动切轮与 UI 的录音边界冲突。
+        add("turn_detection", null)
+        addProperty("max_output_tokens", config.maxOutputTokens.coerceIn(1, 4096))
+    })
+}
+
+internal fun buildRealtimeResponseCreate(config: RealtimeModelConfig): JsonObject = JsonObject().apply {
+    addProperty("type", "response.create")
+    when {
+        config.isQwenRealtime -> Unit
+        config.usesFlatSessionUpdate -> add("response", JsonObject().apply {
+            add("modalities", JsonArray().apply {
+                add("text")
+                add("audio")
+            })
+        })
+        else -> add("response", JsonObject().apply {
+            add("output_modalities", JsonArray().apply { add("audio") })
         })
     }
 }
@@ -656,6 +736,30 @@ private fun JsonObject.string(key: String): String? =
 private fun JsonObject.objectOrNull(key: String): JsonObject? =
     get(key)?.takeIf { it.isJsonObject }?.asJsonObject
 
+private val RealtimeProtocol.defaultModel: String
+    get() = when (this) {
+        RealtimeProtocol.QWEN -> REALTIME_QWEN_DEFAULT_MODEL
+        RealtimeProtocol.SEED -> REALTIME_SEED_DEFAULT_MODEL
+        RealtimeProtocol.GLM -> REALTIME_GLM_DEFAULT_MODEL
+        RealtimeProtocol.OPENAI -> "gpt-realtime"
+    }
+
+private val RealtimeProtocol.defaultVoice: String
+    get() = when (this) {
+        RealtimeProtocol.QWEN -> REALTIME_QWEN_DEFAULT_VOICE
+        RealtimeProtocol.SEED -> REALTIME_SEED_DEFAULT_VOICE
+        RealtimeProtocol.GLM -> REALTIME_GLM_DEFAULT_VOICE
+        RealtimeProtocol.OPENAI -> "marin"
+    }
+
+private val RealtimeProtocol.defaultTranscriptionModel: String
+    get() = when (this) {
+        RealtimeProtocol.QWEN -> REALTIME_QWEN_DEFAULT_TRANSCRIPTION_MODEL
+        RealtimeProtocol.SEED -> REALTIME_SEED_DEFAULT_TRANSCRIPTION_MODEL
+        RealtimeProtocol.GLM -> REALTIME_GLM_DEFAULT_TRANSCRIPTION_MODEL
+        RealtimeProtocol.OPENAI -> "gpt-4o-mini-transcribe"
+    }
+
 const val REALTIME_SAMPLE_RATE = 24_000
 /** Qwen Realtime 输入采样率（官方默认 16000Hz，更稳定；输出保持 24000Hz）。 */
 const val REALTIME_INPUT_SAMPLE_RATE = 16_000
@@ -683,6 +787,27 @@ const val REALTIME_QWEN_DEFAULT_TRANSCRIPTION_MODEL = "paraformer-realtime-v2"
 /** Qwen Realtime 支持的内置音色列表，用于 AI 配置中心下拉选项。
  *  Qwen3.5-Omni-Realtime 支持 55 种音色，此处列出官方文档示例常用的几个。 */
 val REALTIME_QWEN_VOICES = listOf("Tina", "Ethan", "Cherry", "Serena", "Chelsie")
+
+/** SeedRealtime 默认模型（火山引擎 Ark Realtime API）。 */
+const val REALTIME_SEED_DEFAULT_MODEL = "doubao-seed-1.6-flash-realtime"
+/** SeedRealtime 默认 Base URL，自动拼接后为 /api/v3/realtime。 */
+const val REALTIME_SEED_DEFAULT_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
+/** SeedRealtime 默认音色。 */
+const val REALTIME_SEED_DEFAULT_VOICE = "zh_female_shuangkuaisisi_moon_bigtts"
+/** SeedRealtime 输入转写模型。 */
+const val REALTIME_SEED_DEFAULT_TRANSCRIPTION_MODEL = "doubao-1.5-asr-pro"
+val REALTIME_SEED_VOICES = listOf(REALTIME_SEED_DEFAULT_VOICE)
+
+/** GLM-Realtime 默认模型（智谱开放平台 Realtime API）。 */
+const val REALTIME_GLM_DEFAULT_MODEL = "glm-realtime"
+/** GLM-Realtime 默认 Base URL，自动拼接后为 /api/paas/v4/realtime。 */
+const val REALTIME_GLM_DEFAULT_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
+/** GLM-Realtime 默认音色。 */
+const val REALTIME_GLM_DEFAULT_VOICE = "tongtong"
+/** GLM-Realtime 输入转写模型。 */
+const val REALTIME_GLM_DEFAULT_TRANSCRIPTION_MODEL = "glm-asr"
+val REALTIME_GLM_VOICES = listOf(REALTIME_GLM_DEFAULT_VOICE)
+
 /** OpenAI Realtime 默认音色列表，用于 AI 配置中心下拉选项。 */
 val REALTIME_OPENAI_VOICES = listOf(
     "marin", "cedar", "alloy", "ash", "ballad",

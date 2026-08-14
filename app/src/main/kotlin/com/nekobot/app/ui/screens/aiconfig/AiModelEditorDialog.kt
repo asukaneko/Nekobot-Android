@@ -51,11 +51,21 @@ import com.nekobot.app.data.local.ai.ModelPricingEntry
 import com.nekobot.app.data.local.ai.LocalProtocols
 import com.nekobot.app.data.local.ai.parseModelProxyUrl
 import com.nekobot.app.data.local.ai.REALTIME_OPENAI_VOICES
+import com.nekobot.app.data.local.ai.REALTIME_GLM_DEFAULT_BASE_URL
+import com.nekobot.app.data.local.ai.REALTIME_GLM_DEFAULT_MODEL
+import com.nekobot.app.data.local.ai.REALTIME_GLM_DEFAULT_TRANSCRIPTION_MODEL
+import com.nekobot.app.data.local.ai.REALTIME_GLM_DEFAULT_VOICE
+import com.nekobot.app.data.local.ai.REALTIME_GLM_VOICES
 import com.nekobot.app.data.local.ai.REALTIME_QWEN_VOICES
 import com.nekobot.app.data.local.ai.REALTIME_QWEN_DEFAULT_MODEL
 import com.nekobot.app.data.local.ai.REALTIME_QWEN_DEFAULT_BASE_URL
 import com.nekobot.app.data.local.ai.REALTIME_QWEN_DEFAULT_VOICE
 import com.nekobot.app.data.local.ai.REALTIME_QWEN_DEFAULT_TRANSCRIPTION_MODEL
+import com.nekobot.app.data.local.ai.REALTIME_SEED_DEFAULT_BASE_URL
+import com.nekobot.app.data.local.ai.REALTIME_SEED_DEFAULT_MODEL
+import com.nekobot.app.data.local.ai.REALTIME_SEED_DEFAULT_TRANSCRIPTION_MODEL
+import com.nekobot.app.data.local.ai.REALTIME_SEED_DEFAULT_VOICE
+import com.nekobot.app.data.local.ai.REALTIME_SEED_VOICES
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.model.AiModel
 import com.nekobot.app.data.model.AiModelRequest
@@ -127,6 +137,48 @@ private data class ProviderPreset(
     val inputPrice: String,
     val outputPrice: String
 )
+
+private val LIVE_SEED_PROVIDERS = setOf("doubao", "seed", "volcengine", "bytedance", "ark", "volces")
+private val LIVE_GLM_PROVIDERS = setOf("glm", "zhipu", "bigmodel")
+
+private data class LiveRealtimeDefaults(
+    val provider: String,
+    val model: String,
+    val baseUrl: String,
+    val voice: String,
+    val transcriptionModel: String
+)
+
+private fun liveRealtimeDefaults(provider: String): LiveRealtimeDefaults = when (provider.lowercase()) {
+    "qwen", "dashscope", "tongyi" -> LiveRealtimeDefaults(
+        provider = provider,
+        model = REALTIME_QWEN_DEFAULT_MODEL,
+        baseUrl = REALTIME_QWEN_DEFAULT_BASE_URL,
+        voice = REALTIME_QWEN_DEFAULT_VOICE,
+        transcriptionModel = REALTIME_QWEN_DEFAULT_TRANSCRIPTION_MODEL
+    )
+    in LIVE_SEED_PROVIDERS -> LiveRealtimeDefaults(
+        provider = provider,
+        model = REALTIME_SEED_DEFAULT_MODEL,
+        baseUrl = REALTIME_SEED_DEFAULT_BASE_URL,
+        voice = REALTIME_SEED_DEFAULT_VOICE,
+        transcriptionModel = REALTIME_SEED_DEFAULT_TRANSCRIPTION_MODEL
+    )
+    in LIVE_GLM_PROVIDERS -> LiveRealtimeDefaults(
+        provider = provider,
+        model = REALTIME_GLM_DEFAULT_MODEL,
+        baseUrl = REALTIME_GLM_DEFAULT_BASE_URL,
+        voice = REALTIME_GLM_DEFAULT_VOICE,
+        transcriptionModel = REALTIME_GLM_DEFAULT_TRANSCRIPTION_MODEL
+    )
+    else -> LiveRealtimeDefaults(
+        provider = "openai",
+        model = "gpt-realtime",
+        baseUrl = "https://api.openai.com/v1",
+        voice = "marin",
+        transcriptionModel = "gpt-4o-mini-transcribe"
+    )
+}
 
 private val providerPresets = listOf(
     ProviderPreset("OpenAI", "openai", "gpt-5.5", "", "1050000", "128000", "", ""),
@@ -539,9 +591,24 @@ fun AiModelEditorDialog(
                         state.provider.equals("dashscope", ignoreCase = true) ||
                         state.model.contains("qwen", ignoreCase = true) &&
                             state.model.contains("realtime", ignoreCase = true)
-                    val liveVoiceOptions = if (isQwenRealtime) REALTIME_QWEN_VOICES else REALTIME_OPENAI_VOICES
-                    val liveTranscriptionPlaceholder =
-                        if (isQwenRealtime) REALTIME_QWEN_DEFAULT_TRANSCRIPTION_MODEL else "gpt-4o-mini-transcribe"
+                    val isSeedRealtime = state.provider.lowercase() in LIVE_SEED_PROVIDERS ||
+                        state.model.contains("seed", ignoreCase = true) &&
+                            state.model.contains("realtime", ignoreCase = true)
+                    val isGlmRealtime = state.provider.lowercase() in LIVE_GLM_PROVIDERS ||
+                        state.model.contains("glm", ignoreCase = true) &&
+                            state.model.contains("realtime", ignoreCase = true)
+                    val liveVoiceOptions = when {
+                        isQwenRealtime -> REALTIME_QWEN_VOICES
+                        isSeedRealtime -> REALTIME_SEED_VOICES
+                        isGlmRealtime -> REALTIME_GLM_VOICES
+                        else -> REALTIME_OPENAI_VOICES
+                    }
+                    val liveTranscriptionPlaceholder = when {
+                        isQwenRealtime -> REALTIME_QWEN_DEFAULT_TRANSCRIPTION_MODEL
+                        isSeedRealtime -> REALTIME_SEED_DEFAULT_TRANSCRIPTION_MODEL
+                        isGlmRealtime -> REALTIME_GLM_DEFAULT_TRANSCRIPTION_MODEL
+                        else -> "gpt-4o-mini-transcribe"
+                    }
                     Text(
                         text = stringResource(R.string.aimodel_editor_live_hint),
                         style = MaterialTheme.typography.bodySmall,
@@ -567,6 +634,18 @@ fun AiModelEditorDialog(
                     if (isQwenRealtime) {
                         Text(
                             text = stringResource(R.string.aimodel_editor_live_qwen_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else if (isSeedRealtime) {
+                        Text(
+                            text = stringResource(R.string.aimodel_editor_live_seed_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else if (isGlmRealtime) {
+                        Text(
+                            text = stringResource(R.string.aimodel_editor_live_glm_hint),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -890,17 +969,13 @@ private fun AiModelEditorState.applyPreset(
     // Live purpose + Qwen/DashScope 必须用 api-ws/v1 端点与 realtime 模型，不能用预设默认的
     // compatible-mode/v1（文本对话端点）和 qwen3.x-max（非 realtime 模型），否则 Realtime 连接会报
     // "URL does not appear to be valid" 或服务端 fallback 到已下线的旧模型快照。
-    val isQwenRealtimePreset = purpose == "live" && preset.provider in setOf("qwen", "dashscope")
-    val resolvedModel = if (isQwenRealtimePreset) REALTIME_QWEN_DEFAULT_MODEL else preset.model
-    val resolvedBaseUrl = if (isQwenRealtimePreset) REALTIME_QWEN_DEFAULT_BASE_URL else preset.baseUrl
-    val resolvedVoice = if (isQwenRealtimePreset) REALTIME_QWEN_DEFAULT_VOICE else ttsVoice
-    val resolvedSttModel = if (isQwenRealtimePreset) REALTIME_QWEN_DEFAULT_TRANSCRIPTION_MODEL else sttModel
+    val liveDefaults = liveRealtimeDefaults(preset.provider).takeIf { purpose == "live" }
     return copy(
         name = presetConfigTemplate.format(preset.label),
-        provider = preset.provider,
+        provider = liveDefaults?.provider ?: preset.provider,
         protocol = protocolFor(preset.provider, protocols),
-        model = resolvedModel,
-        baseUrl = resolvedBaseUrl,
+        model = liveDefaults?.model ?: preset.model,
+        baseUrl = liveDefaults?.baseUrl ?: preset.baseUrl,
         maxContextLength = preset.maxContextLength,
         maxTokens = preset.maxTokens,
         inputPrice = preset.inputPrice,
@@ -908,8 +983,8 @@ private fun AiModelEditorState.applyPreset(
         supportsTools = preset.provider != "google",
         supportsReasoning = preset.provider !in setOf("google", "minimax"),
         supportsStream = true,
-        ttsVoice = resolvedVoice,
-        sttModel = resolvedSttModel
+        ttsVoice = liveDefaults?.voice ?: ttsVoice,
+        sttModel = liveDefaults?.transcriptionModel ?: sttModel
     )
 }
 
@@ -934,26 +1009,21 @@ private fun AiModelEditorState.applyPurpose(
         "live" -> {
             // 保留当前 provider：若已是 qwen/dashscope 则沿用 Qwen Realtime 默认配置，
             // 否则回退 OpenAI Realtime 默认配置。避免一刀切写死 openai 导致 Qwen 用户被重置。
-            val isQwenLive = provider in setOf("qwen", "dashscope")
-            val liveProvider = if (isQwenLive) provider else "openai"
-            val liveBaseUrl = if (isQwenLive) REALTIME_QWEN_DEFAULT_BASE_URL else "https://api.openai.com/v1"
-            val liveModel = if (isQwenLive) REALTIME_QWEN_DEFAULT_MODEL else "gpt-realtime"
-            val liveVoice = if (isQwenLive) REALTIME_QWEN_DEFAULT_VOICE else "marin"
-            val liveSttModel = if (isQwenLive) REALTIME_QWEN_DEFAULT_TRANSCRIPTION_MODEL else "gpt-4o-mini-transcribe"
+            val defaults = liveRealtimeDefaults(provider)
             copy(
                 name = renamed,
                 purpose = purpose,
-                provider = liveProvider,
-                baseUrl = liveBaseUrl,
-                model = liveModel,
+                provider = defaults.provider,
+                baseUrl = defaults.baseUrl,
+                model = defaults.model,
                 temperature = "0.8",
                 maxTokens = "4096",
                 maxContextLength = "32000",
                 supportsTools = false,
                 supportsReasoning = false,
                 supportsStream = true,
-                ttsVoice = liveVoice,
-                sttModel = liveSttModel,
+                ttsVoice = defaults.voice,
+                sttModel = defaults.transcriptionModel,
                 language = language.ifBlank { "zh" }
             )
         }
