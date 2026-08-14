@@ -91,8 +91,6 @@
     <string name="failover_empty_title">No available models for this purpose</string>
     <string name="failover_empty_hint">Please enable and set the purpose in AI Models first</string>
     <string name="failover_loading_queue">Loading queue…</string>
-    <string name="failover_primary">Primary</string>
-    <string name="failover_current">Current</string>
     <string name="failover_available">Available</string>
     <string name="failover_cooling">Cooling down</string>
     <string name="failover_today_failures">Today failures: %1$d</string>

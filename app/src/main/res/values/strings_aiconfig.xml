@@ -100,8 +100,6 @@
     <string name="failover_empty_title">该用途暂无可用模型</string>
     <string name="failover_empty_hint">请先在 AI 模型中启用并设置对应用途</string>
     <string name="failover_loading_queue">正在加载队列…</string>
-    <string name="failover_primary">首选</string>
-    <string name="failover_current">当前</string>
     <string name="failover_available">可用</string>
     <string name="failover_cooling">冷却中</string>
     <string name="failover_today_failures">今日失败 %1$d 次</string>

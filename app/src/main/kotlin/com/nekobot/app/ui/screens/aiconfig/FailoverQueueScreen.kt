@@ -20,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -124,6 +125,9 @@ internal class FailoverQueueViewModel : BaseViewModel() {
     private val _queue = MutableStateFlow<List<FailoverQueueItem>>(emptyList())
     val queue: StateFlow<List<FailoverQueueItem>> = _queue.asStateFlow()
 
+    private val _movedModelId = MutableStateFlow<String?>(null)
+    val movedModelId: StateFlow<String?> = _movedModelId.asStateFlow()
+
     /** 当前打开的详情对话框数据；null 表示对话框关闭 */
     private val _selectedDetail = MutableStateFlow<FailoverModelDetail?>(null)
     val selectedDetail: StateFlow<FailoverModelDetail?> = _selectedDetail.asStateFlow()
@@ -178,6 +182,7 @@ internal class FailoverQueueViewModel : BaseViewModel() {
             block = { unified.reorderFailover(_purpose.value, reordered.map { it.id }) },
             onSuccess = {
                 _queue.value = reordered
+                _movedModelId.value = reordered[target].id
                 showToast(string(R.string.failover_order_saved))
             },
             onError = { msg ->
@@ -186,6 +191,10 @@ internal class FailoverQueueViewModel : BaseViewModel() {
                 load()
             }
         )
+    }
+
+    fun clearMovedModel() {
+        _movedModelId.value = null
     }
 
     fun reset(modelId: String? = null) {
@@ -313,6 +322,7 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
     val vm: FailoverQueueViewModel = viewModel()
     val purpose by vm.purpose.collectAsStateWithLifecycle()
     val queue by vm.queue.collectAsStateWithLifecycle()
+    val movedModelId by vm.movedModelId.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val toast by vm.toast.collectAsStateWithLifecycle()
@@ -322,6 +332,8 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
     val smartRoutingEnabled by vm.smartRoutingEnabled.collectAsStateWithLifecycle()
     val smartRoutingBudget by vm.smartRoutingBudget.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val listState = rememberLazyListState()
+    var movedCardOffset by remember { mutableStateOf(0) }
     var smartRoutingEnabledInput by remember(smartRoutingEnabled) {
         mutableStateOf(smartRoutingEnabled)
     }
@@ -336,6 +348,15 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
             Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
             vm.clearToast()
         }
+    }
+
+    LaunchedEffect(movedModelId, queue) {
+        val modelId = movedModelId ?: return@LaunchedEffect
+        val index = queue.indexOfFirst { it.id == modelId }
+        if (index >= 0) {
+            listState.animateScrollToItem(index, scrollOffset = -movedCardOffset)
+        }
+        vm.clearMovedModel()
     }
 
     Scaffold(
@@ -441,6 +462,7 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
+                        state = listState,
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         itemsIndexed(queue, key = { _, item -> item.id }) { index, item ->
@@ -448,8 +470,18 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
                                 item = item,
                                 canMoveUp = index > 0,
                                 canMoveDown = index < queue.lastIndex,
-                                onMoveUp = { vm.move(index, -1) },
-                                onMoveDown = { vm.move(index, 1) },
+                                onMoveUp = {
+                                    movedCardOffset = listState.layoutInfo.visibleItemsInfo
+                                        .firstOrNull { it.key == item.id }
+                                        ?.offset ?: 0
+                                    vm.move(index, -1)
+                                },
+                                onMoveDown = {
+                                    movedCardOffset = listState.layoutInfo.visibleItemsInfo
+                                        .firstOrNull { it.key == item.id }
+                                        ?.offset ?: 0
+                                    vm.move(index, 1)
+                                },
                                 onReset = { vm.reset(item.id) },
                                 onClick = { vm.openDetail(item.id) }
                             )
@@ -485,11 +517,19 @@ private fun FailoverModelCard(
     onReset: () -> Unit,
     onClick: () -> Unit
 ) {
+    val isHighlighted = item.isPrimary || item.active
+    val borderColor = when {
+        item.active -> MaterialTheme.colorScheme.tertiary
+        item.isPrimary -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+    }
     GlassCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        cornerRadius = 16
+        cornerRadius = 16,
+        borderWidth = if (isHighlighted) 2 else 1,
+        borderColor = borderColor
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
@@ -519,34 +559,6 @@ private fun FailoverModelCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    if (item.isPrimary) {
-                        Spacer(Modifier.size(6.dp))
-                        Surface(
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Text(
-                                stringResource(R.string.failover_primary),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                    if (item.active) {
-                        Spacer(Modifier.size(6.dp))
-                        Surface(
-                            color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.18f),
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Text(
-                                stringResource(R.string.failover_current),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.tertiary
-                            )
-                        }
-                    }
                 }
                 Text(
                     listOf(item.provider, item.model).filter { it.isNotBlank() }.joinToString(" · "),

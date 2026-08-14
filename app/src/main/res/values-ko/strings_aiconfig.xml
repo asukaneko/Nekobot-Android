@@ -91,8 +91,6 @@
     <string name="failover_empty_title">이 용도로 사용 가능한 모델이 없어요</string>
     <string name="failover_empty_hint">먼저 AI 모델에서 활성화하고 용도를 설정해 주세요</string>
     <string name="failover_loading_queue">큐를 불러오는 중…</string>
-    <string name="failover_primary">주 모델</string>
-    <string name="failover_current">현재</string>
     <string name="failover_available">사용 가능</string>
     <string name="failover_cooling">냉각 중</string>
     <string name="failover_today_failures">오늘 실패: %1$d</string>
