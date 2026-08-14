@@ -52,25 +52,38 @@ object LocalLogger {
     )
 
     fun d(tag: String, msg: String) {
-        Log.d(tag, msg)
+        writeToLog { Log.d(tag, msg) }
         append(LEVEL_DEBUG, tag, msg)
     }
 
     fun i(tag: String, msg: String) {
-        Log.i(tag, msg)
+        writeToLog { Log.i(tag, msg) }
         append(LEVEL_INFO, tag, msg)
     }
 
     fun w(tag: String, msg: String, throwable: Throwable? = null) {
-        if (throwable != null) Log.w(tag, msg, throwable) else Log.w(tag, msg)
+        writeToLog {
+            if (throwable != null) Log.w(tag, msg, throwable) else Log.w(tag, msg)
+        }
         val full = if (throwable != null) "$msg | ${throwable.javaClass.simpleName}: ${throwable.message}" else msg
         append(LEVEL_WARNING, tag, full)
     }
 
     fun e(tag: String, msg: String, throwable: Throwable? = null) {
-        if (throwable != null) Log.e(tag, msg, throwable) else Log.e(tag, msg)
+        writeToLog {
+            if (throwable != null) Log.e(tag, msg, throwable) else Log.e(tag, msg)
+        }
         val full = if (throwable != null) "$msg | ${throwable.javaClass.simpleName}: ${throwable.message}" else msg
         append(LEVEL_ERROR, tag, full)
+    }
+
+    /** JVM 单测没有 Android Log 实现，日志输出失败不能中断业务流程。 */
+    private inline fun writeToLog(block: () -> Int) {
+        try {
+            block()
+        } catch (_: RuntimeException) {
+            // Android 运行时始终可用；这里只为纯 JVM 测试环境降级。
+        }
     }
 
     private fun append(level: String, tag: String, message: String) {

@@ -102,6 +102,21 @@ class AIPipeline {
         return result.copy(metadata = resultMeta)
     }
 
+    /**
+     * 仅准备会话上下文与 PromptStack，不触发模型生成、工具调用或消息持久化。
+     *
+     * Live/Reatime 在收到首段音频前尚无可用的文本输入，但仍需要以普通聊天
+     * 相同的角色状态、记忆、世界书和会话提示词启动连接。
+     */
+    suspend fun prepareContext(
+        ctx: PipelineContext,
+        callbacks: PipelineCallbacks,
+        tools: List<Map<String, Any>> = emptyList(),
+        maxContextChars: Int = 100000
+    ) {
+        phasePrepareContext(ctx, callbacks, tools, maxContextChars)
+    }
+
     // ------------------------------------------------------------------
     // Phase 1: 附件解析
     // ------------------------------------------------------------------

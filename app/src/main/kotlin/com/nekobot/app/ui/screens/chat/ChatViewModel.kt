@@ -1481,16 +1481,21 @@ class ChatViewModel : BaseViewModel() {
                 )
             }
             .toList()
-        val instructions = buildString {
-            val systemPrompt = currentSession?.composedSystemPrompt
-                ?.takeIf(String::isNotBlank)
-                ?: currentSession?.systemPrompt?.takeIf(String::isNotBlank)
-            if (systemPrompt != null) appendLine(systemPrompt)
-            append("你正在与用户进行实时语音通话。延续上述角色设定与完整会话上下文，使用用户当前的语言自然、简洁地回答。")
-        }
-
         val job = viewModelScope.launch {
             try {
+                val preparedPrompt = currentSession?.composedSystemPrompt
+                    ?.takeIf(String::isNotBlank)
+                    ?: when (val result = unified.prepareRealtimeLivePrompt(sessionId)) {
+                        is Resource.Success -> result.data.takeIf(String::isNotBlank)
+                        is Resource.Error -> throw IllegalStateException(result.message)
+                        is Resource.Loading -> null
+                    }
+                val instructions = buildString {
+                    val systemPrompt = preparedPrompt
+                        ?: currentSession?.systemPrompt?.takeIf(String::isNotBlank)
+                    if (systemPrompt != null) appendLine(systemPrompt)
+                    append("你正在与用户进行实时语音通话。延续上述角色设定与完整会话上下文，使用用户当前的语言自然、简洁地回答。")
+                }
                 val config = when (val result = unified.getRealtimeLiveModel()) {
                     is Resource.Success -> result.data
                     is Resource.Error -> throw IllegalStateException(result.message)

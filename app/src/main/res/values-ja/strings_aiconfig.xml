@@ -166,7 +166,7 @@
     <string name="localai_purpose_embedding">📊 Embedding</string>
     <string name="localai_purpose_image_generation">🎨 画像生成</string>
     <string name="localai_purpose_chat_model">💬 チャットモデル</string>
-    <string name="localai_purpose_hint_live">Live 用のネイティブ音声パイプラインです。gpt-realtime、OpenAI Base URL、音色、入力文字起こしモデルを設定すると、音声と字幕を同時にストリーミングできます。</string>
+    <string name="localai_purpose_hint_live">Live 用のネイティブ音声パイプラインです。OpenAI gpt-realtime および Alibaba Cloud DashScope qwen3.5-omni-flash-realtime / qwen3-omni-flash-realtime に対応。Base URL、音色、入力文字起こしモデルを設定すると、音声と字幕を同時にストリーミングできます。Qwen Realtime の場合は Base URL を https://dashscope.aliyuncs.com/api-ws/v1 とし、「自動パス付与」を有効にしてください。注意：qwen-omni-turbo-realtime-2025-03-26 等の旧スナップショットは提供終了し、ModelNotFound が返ります。</string>
     <string name="localai_purpose_hint_vision">画像メッセージの理解用、画像説明のフォールバックとして使用</string>
     <string name="localai_purpose_hint_video">動画メッセージの理解用（ローカルモードでは自動呼び出し未対応）</string>
     <string name="localai_purpose_hint_tts">音声合成用、チャットで手動トリガー可能</string>
@@ -282,6 +282,7 @@
     <string name="aimodel_editor_section_tts">TTS 音声合成</string>
     <string name="aimodel_editor_section_live">Realtime 音声</string>
     <string name="aimodel_editor_live_hint">音声出力にはストリーミング音声と字幕が含まれます。入力音声は Realtime モデルが直接理解し、文字起こしモデルはユーザー字幕の保存にのみ使用します。</string>
+    <string name="aimodel_editor_live_qwen_hint">Qwen Realtime を検出：デフォルト音色は Tina（Qwen3.5-Omni は Cherry などの旧音色をサポートせず、自動補正されます）、文字起こしモデルは paraformer-realtime-v2 が既定。Base URL を https://dashscope.aliyuncs.com/api-ws/v1 とし、「自動パス付与」を有効にしてください。</string>
     <string name="aimodel_editor_live_voice">Realtime 音色</string>
     <string name="aimodel_editor_live_transcription_model">入力文字起こしモデル</string>
     <string name="aimodel_editor_tts_provider">TTS プロバイダ</string>

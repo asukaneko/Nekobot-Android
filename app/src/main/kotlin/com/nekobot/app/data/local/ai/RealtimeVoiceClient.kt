@@ -36,8 +36,16 @@ data class RealtimeModelConfig(
     val voice: String = "marin",
     val transcriptionModel: String = "gpt-4o-mini-transcribe",
     val language: String = "zh",
-    val maxOutputTokens: Int = 4096
-)
+    val maxOutputTokens: Int = 4096,
+    /** 模型供应商标识，用于在 Realtime 协议层做差异化处理（如 qwen / dashscope 走阿里云 DashScope Realtime）。 */
+    val provider: String? = null
+) {
+    /** 是否走阿里云 DashScope Qwen Realtime 协议。 */
+    val isQwenRealtime: Boolean
+        get() = provider.equals("qwen", ignoreCase = true) ||
+            provider.equals("dashscope", ignoreCase = true) ||
+            model.contains("qwen", ignoreCase = true) && model.contains("realtime", ignoreCase = true)
+}
 
 data class RealtimeContextMessage(
     val role: String,
@@ -56,32 +64,58 @@ sealed interface RealtimeVoiceEvent {
     data class Failure(val message: String) : RealtimeVoiceEvent
 }
 
-fun LocalAiModelEntity.toRealtimeModelConfig(): RealtimeModelConfig = RealtimeModelConfig(
-    id = id,
-    name = name,
-    apiKey = apiKey,
-    baseUrl = baseUrl,
-    model = model.ifBlank { "gpt-realtime" },
-    appendBaseUrlPath = appendBaseUrlPath,
-    proxyUrl = proxyUrl,
-    voice = ttsVoice.takeUnless { it.isBlank() || it == "default" } ?: "marin",
-    transcriptionModel = sttModel.ifBlank { "gpt-4o-mini-transcribe" },
-    language = language,
-    maxOutputTokens = (maxTokens ?: 4096).coerceIn(1, 4096)
-)
+fun LocalAiModelEntity.toRealtimeModelConfig(): RealtimeModelConfig {
+    val isQwen = provider.equals("qwen", ignoreCase = true) ||
+        provider.equals("dashscope", ignoreCase = true)
+    val resolvedModel = model.ifBlank { if (isQwen) REALTIME_QWEN_DEFAULT_MODEL else "gpt-realtime" }
+    val qwenByModel = resolvedModel.contains("qwen", ignoreCase = true) &&
+        resolvedModel.contains("realtime", ignoreCase = true)
+    return RealtimeModelConfig(
+        id = id,
+        name = name,
+        apiKey = apiKey,
+        baseUrl = baseUrl,
+        model = resolvedModel,
+        appendBaseUrlPath = appendBaseUrlPath,
+        proxyUrl = proxyUrl,
+        voice = ttsVoice.takeUnless { it.isBlank() || it == "default" }
+            ?: if (isQwen || qwenByModel) REALTIME_QWEN_DEFAULT_VOICE else "marin",
+        transcriptionModel = sttModel.ifBlank {
+            if (isQwen || qwenByModel) REALTIME_QWEN_DEFAULT_TRANSCRIPTION_MODEL
+            else "gpt-4o-mini-transcribe"
+        },
+        language = language,
+        maxOutputTokens = (maxTokens ?: 4096).coerceIn(1, 4096),
+        provider = provider
+    )
+}
 
-fun AiModel.toRealtimeModelConfig(): RealtimeModelConfig = RealtimeModelConfig(
-    id = id.orEmpty(),
-    name = displayName,
-    apiKey = apiKey.orEmpty(),
-    baseUrl = baseUrl.orEmpty(),
-    model = model.orEmpty().ifBlank { "gpt-realtime" },
-    appendBaseUrlPath = appendBaseUrlPath ?: true,
-    voice = ttsVoice.takeUnless { it.isNullOrBlank() || it == "default" } ?: "marin",
-    transcriptionModel = sttModel.orEmpty().ifBlank { "gpt-4o-mini-transcribe" },
-    language = sttLanguage ?: language ?: "zh",
-    maxOutputTokens = (maxTokens ?: 4096).coerceIn(1, 4096)
-)
+fun AiModel.toRealtimeModelConfig(): RealtimeModelConfig {
+    val isQwen = provider.equals("qwen", ignoreCase = true) ||
+        provider.equals("dashscope", ignoreCase = true)
+    val resolvedModel = model.orEmpty().ifBlank {
+        if (isQwen) REALTIME_QWEN_DEFAULT_MODEL else "gpt-realtime"
+    }
+    val qwenByModel = resolvedModel.contains("qwen", ignoreCase = true) &&
+        resolvedModel.contains("realtime", ignoreCase = true)
+    return RealtimeModelConfig(
+        id = id.orEmpty(),
+        name = displayName,
+        apiKey = apiKey.orEmpty(),
+        baseUrl = baseUrl.orEmpty(),
+        model = resolvedModel,
+        appendBaseUrlPath = appendBaseUrlPath ?: true,
+        voice = ttsVoice.takeUnless { it.isNullOrBlank() || it == "default" }
+            ?: if (isQwen || qwenByModel) REALTIME_QWEN_DEFAULT_VOICE else "marin",
+        transcriptionModel = sttModel.orEmpty().ifBlank {
+            if (isQwen || qwenByModel) REALTIME_QWEN_DEFAULT_TRANSCRIPTION_MODEL
+            else "gpt-4o-mini-transcribe"
+        },
+        language = sttLanguage ?: language ?: "zh",
+        maxOutputTokens = (maxTokens ?: 4096).coerceIn(1, 4096),
+        provider = provider
+    )
+}
 
 class RealtimeVoiceClient(
     private val baseClient: OkHttpClient = OkHttpClient.Builder()
@@ -102,63 +136,120 @@ class RealtimeVoiceClient(
             "Realtime 模型缺少可用的 API Key"
         }
         require(pcm16.isNotEmpty()) { "没有可发送的语音数据" }
+        // Qwen Realtime 手动 commit 模式下，音频过短会触发 "buffer too small, or have no audio"。
+        // 至少需要约 0.5 秒音频（24000Hz × 0.5s × 2 bytes = 24000 bytes）。
+        val minAudioBytes = if (config.isQwenRealtime) REALTIME_QWEN_MIN_AUDIO_BYTES else 1
+        require(pcm16.size >= minAudioBytes) {
+            "语音太短，请至少说 0.5 秒"
+        }
 
         val client = baseClient.withModelProxy(config.proxyUrl)
         val request = Request.Builder()
-            .url(buildRealtimeWebSocketUrl(config.baseUrl, config.appendBaseUrlPath, config.model))
+            .url(buildRealtimeWebSocketUrl(config.baseUrl, config.appendBaseUrlPath, config.model, config.isQwenRealtime))
             .header("Authorization", "Bearer ${config.apiKey}")
             .build()
         val userTranscript = StringBuilder()
         val assistantTranscript = StringBuilder()
         val terminal = AtomicBoolean(false)
         var responseDone = false
+        var responseActive = false
+        var responseCreateSent = false
+        var inputTranscriptDone = false
+        var completionEmitted = false
+        var closeRequested = false
         var completionJob: Job? = null
+        var closeTimeoutJob: Job? = null
         lateinit var socket: WebSocket
 
-        fun finishAfter(delayMs: Long) {
-            completionJob?.cancel()
-            completionJob = launch {
-                delay(delayMs)
-                if (terminal.compareAndSet(false, true)) {
-                    trySend(
-                        RealtimeVoiceEvent.Completed(
-                            userTranscript = userTranscript.toString().trim(),
-                            assistantTranscript = assistantTranscript.toString().trim()
-                        )
+        fun emitCompletedAndClose() {
+            if (terminal.get() || closeRequested) return
+            if (!completionEmitted) {
+                completionEmitted = true
+                trySend(
+                    RealtimeVoiceEvent.Completed(
+                        userTranscript = userTranscript.toString().trim(),
+                        assistantTranscript = assistantTranscript.toString().trim()
                     )
-                    socket.close(1000, "turn completed")
+                )
+            }
+            // response.done 已表示 Omni Realtime 本轮生成完成。仅请求 WebSocket 正常关闭，
+            // 必须等待 onClosed 才关闭 callbackFlow，避免 awaitClose 立即 cancel() 中断握手。
+            closeRequested = true
+            if (!socket.close(1000, "turn completed")) {
+                terminal.set(true)
+                close()
+                return
+            }
+            closeTimeoutJob = launch {
+                delay(5_000)
+                if (terminal.compareAndSet(false, true)) {
+                    socket.cancel()
                     close()
                 }
             }
         }
 
+        fun finishOpenAiAfter(delayMs: Long) {
+            completionJob?.cancel()
+            completionJob = launch {
+                delay(delayMs)
+                emitCompletedAndClose()
+            }
+        }
+
+        fun scheduleQwenClose() {
+            if (!responseDone || terminal.get()) return
+            completionJob?.cancel()
+            completionJob = launch {
+                // input_audio_transcription.completed 通常紧随 response.done；给它一个
+                // 明确的窗口，避免在最终识别结果到达前提交不完整字幕。
+                delay(if (inputTranscriptDone) 80L else 5_000L)
+                emitCompletedAndClose()
+            }
+        }
+
         val listener = object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                webSocket.send(gson.toJson(buildRealtimeSessionUpdate(config, instructions)))
-                buildRealtimeContextEvents(context).forEach { event ->
-                    webSocket.send(gson.toJson(event))
+                // Qwen Realtime 的 conversation.item.create 仅支持 function_call_output 类型，
+                // 不支持 message 类型，因此上下文需拼接到 instructions 中传递。
+                val sessionUpdate = buildRealtimeSessionUpdate(config, instructions, context)
+                webSocket.send(gson.toJson(sessionUpdate))
+                if (!config.isQwenRealtime) {
+                    buildRealtimeContextEvents(context).forEach { event ->
+                        webSocket.send(gson.toJson(event))
+                    }
                 }
-                var offset = 0
-                while (offset < pcm16.size) {
-                    val end = minOf(offset + REALTIME_INPUT_CHUNK_BYTES, pcm16.size)
-                    val bytes = pcm16.copyOfRange(offset, end)
-                    webSocket.send(
-                        gson.toJson(JsonObject().apply {
-                            addProperty("type", "input_audio_buffer.append")
-                            addProperty("audio", Base64.getEncoder().encodeToString(bytes))
-                        })
-                    )
-                    offset = end
+                // 官方建议实时音频约每 100ms 一包；手动模式也使用这个粒度，避免一次
+                // 大包和不规则延迟让服务端的输入缓冲区出现空提交或处理滞后。
+                launch {
+                    var offset = 0
+                    while (offset < pcm16.size) {
+                        val end = minOf(offset + REALTIME_INPUT_CHUNK_BYTES, pcm16.size)
+                        val bytes = pcm16.copyOfRange(offset, end)
+                        if (!webSocket.send(
+                            gson.toJson(JsonObject().apply {
+                                addProperty("type", "input_audio_buffer.append")
+                                addProperty("audio", Base64.getEncoder().encodeToString(bytes))
+                            })
+                        )) {
+                            if (terminal.compareAndSet(false, true)) {
+                                trySend(RealtimeVoiceEvent.Failure("Realtime 音频发送失败"))
+                                webSocket.cancel()
+                                close()
+                            }
+                            return@launch
+                        }
+                        offset = end
+                    }
+                    // 必须等待 input_audio_buffer.committed 后再 response.create。
+                    if (!webSocket.send("{\"type\":\"input_audio_buffer.commit\"}")) {
+                        if (terminal.compareAndSet(false, true)) {
+                            trySend(RealtimeVoiceEvent.Failure("Realtime 音频提交失败"))
+                            webSocket.cancel()
+                            close()
+                        }
+                    }
                 }
-                webSocket.send("{\"type\":\"input_audio_buffer.commit\"}")
-                webSocket.send(
-                    gson.toJson(JsonObject().apply {
-                        addProperty("type", "response.create")
-                        add("response", JsonObject().apply {
-                            add("output_modalities", JsonArray().apply { add("audio") })
-                        })
-                    })
-                )
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -167,9 +258,18 @@ class RealtimeVoiceClient(
                     "session.created", "session.updated" -> trySend(RealtimeVoiceEvent.Connected)
 
                     "conversation.item.input_audio_transcription.delta" -> {
-                        val delta = event.string("delta").orEmpty()
-                        if (delta.isNotEmpty()) {
-                            userTranscript.append(delta)
+                        // Qwen 返回 text（已确认前缀）+ stash（暂存后缀），不能把每次
+                        // 回调的 delta 直接累加，否则会重复或丢失识别文本。
+                        val confirmed = event.string("text")
+                        val stash = event.string("stash")
+                        val transcript = if (confirmed != null || stash != null) {
+                            confirmed.orEmpty() + stash.orEmpty()
+                        } else {
+                            userTranscript.toString() + event.string("delta").orEmpty()
+                        }
+                        if (transcript.isNotEmpty()) {
+                            userTranscript.clear()
+                            userTranscript.append(transcript)
                             trySend(RealtimeVoiceEvent.UserTranscript(userTranscript.toString(), false))
                         }
                     }
@@ -181,8 +281,33 @@ class RealtimeVoiceClient(
                             userTranscript.append(transcript)
                             trySend(RealtimeVoiceEvent.UserTranscript(transcript, true))
                         }
-                        if (responseDone) finishAfter(80)
+                        inputTranscriptDone = true
+                        if (config.isQwenRealtime) scheduleQwenClose()
+                        else if (responseDone) finishOpenAiAfter(80)
                     }
+
+                    "input_audio_buffer.committed" -> {
+                        if (!terminal.get() && !responseCreateSent && !responseActive) {
+                            responseCreateSent = true
+                            val responseCreate = if (config.isQwenRealtime) {
+                                "{\"type\":\"response.create\"}"
+                            } else {
+                                gson.toJson(JsonObject().apply {
+                                    addProperty("type", "response.create")
+                                    add("response", JsonObject().apply {
+                                        add("output_modalities", JsonArray().apply { add("audio") })
+                                    })
+                                })
+                            }
+                            if (!webSocket.send(responseCreate) && terminal.compareAndSet(false, true)) {
+                                trySend(RealtimeVoiceEvent.Failure("Realtime 响应创建失败"))
+                                webSocket.cancel()
+                                close()
+                            }
+                        }
+                    }
+
+                    "response.created" -> responseActive = true
 
                     "response.output_audio.delta", "response.audio.delta" -> {
                         event.string("delta")
@@ -232,14 +357,25 @@ class RealtimeVoiceClient(
                             }
                             return
                         }
+                        responseActive = false
                         responseDone = true
-                        finishAfter(if (userTranscript.isBlank()) 1_500 else 80)
+                        if (config.isQwenRealtime) scheduleQwenClose()
+                        else finishOpenAiAfter(if (userTranscript.isBlank()) 1_500L else 80L)
                     }
 
                     "error" -> {
                         val message = event.objectOrNull("error")?.string("message")
                             ?: event.string("message")
                             ?: "Realtime 服务返回错误"
+                        if (
+                            config.isQwenRealtime &&
+                            message.contains("conversation already has an active response", ignoreCase = true)
+                        ) {
+                            // 服务端已经自动开始了这一轮响应时，重复 response.create 只会返回该错误；
+                            // 保留当前 WebSocket，继续等待已有响应的 response.done。
+                            responseActive = true
+                            return
+                        }
                         if (terminal.compareAndSet(false, true)) {
                             trySend(RealtimeVoiceEvent.Failure(message))
                             webSocket.close(1011, message.take(100))
@@ -257,7 +393,11 @@ class RealtimeVoiceClient(
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                if (!terminal.get() && terminal.compareAndSet(false, true)) {
+                if (!terminal.get() && closeRequested) {
+                    terminal.set(true)
+                    closeTimeoutJob?.cancel()
+                    close()
+                } else if (!terminal.get() && terminal.compareAndSet(false, true)) {
                     trySend(RealtimeVoiceEvent.Failure(reason.ifBlank { "Realtime 连接已关闭" }))
                     close()
                 }
@@ -267,8 +407,9 @@ class RealtimeVoiceClient(
         socket = client.newWebSocket(request, listener)
         awaitClose {
             completionJob?.cancel()
+            closeTimeoutJob?.cancel()
             terminal.set(true)
-            socket.cancel()
+            if (!closeRequested) socket.cancel()
         }
     }
 
@@ -281,7 +422,7 @@ class RealtimeVoiceClient(
                 val completed = AtomicBoolean(false)
                 val client = baseClient.withModelProxy(config.proxyUrl)
                 val request = Request.Builder()
-                    .url(buildRealtimeWebSocketUrl(config.baseUrl, config.appendBaseUrlPath, config.model))
+                    .url(buildRealtimeWebSocketUrl(config.baseUrl, config.appendBaseUrlPath, config.model, config.isQwenRealtime))
                     .header("Authorization", "Bearer ${config.apiKey}")
                     .build()
                 val socket = client.newWebSocket(request, object : WebSocketListener() {
@@ -316,38 +457,119 @@ class RealtimeVoiceClient(
 
 internal fun buildRealtimeSessionUpdate(
     config: RealtimeModelConfig,
-    instructions: String
-): JsonObject = JsonObject().apply {
-    addProperty("type", "session.update")
-    add("session", JsonObject().apply {
-        addProperty("type", "realtime")
-        addProperty(
-            "instructions",
-            instructions.trim().take(REALTIME_MAX_INSTRUCTIONS_CHARS).ifBlank {
-                "自然地进行简洁的语音对话，并使用用户当前使用的语言回答。"
-            }
-        )
-        add("output_modalities", JsonArray().apply { add("audio") })
-        addProperty("max_output_tokens", config.maxOutputTokens.coerceIn(1, 4096))
-        add("audio", JsonObject().apply {
-            add("input", JsonObject().apply {
-                add("format", realtimePcmFormat())
-                add("transcription", JsonObject().apply {
-                    addProperty(
-                        "model",
-                        config.transcriptionModel.ifBlank { "gpt-4o-mini-transcribe" }
-                    )
-                    config.language.takeUnless { it.isBlank() || it.equals("auto", true) }
-                        ?.let { addProperty("language", it) }
+    instructions: String,
+    context: List<RealtimeContextMessage> = emptyList()
+): JsonObject {
+    if (config.isQwenRealtime) {
+        return buildQwenRealtimeSessionUpdate(config, instructions, context)
+    }
+    val defaultVoice = "marin"
+    val defaultTranscription = "gpt-4o-mini-transcribe"
+    return JsonObject().apply {
+        addProperty("type", "session.update")
+        add("session", JsonObject().apply {
+            addProperty("type", "realtime")
+            addProperty(
+                "instructions",
+                instructions.trim().take(REALTIME_MAX_INSTRUCTIONS_CHARS).ifBlank {
+                    "自然地进行简洁的语音对话，并使用用户当前使用的语言回答。"
+                }
+            )
+            add("output_modalities", JsonArray().apply { add("audio") })
+            addProperty("max_output_tokens", config.maxOutputTokens.coerceIn(1, 4096))
+            add("audio", JsonObject().apply {
+                add("input", JsonObject().apply {
+                    add("format", realtimePcmFormat())
+                    add("transcription", JsonObject().apply {
+                        addProperty(
+                            "model",
+                            config.transcriptionModel.ifBlank { defaultTranscription }
+                        )
+                        config.language.takeUnless { it.isBlank() || it.equals("auto", true) }
+                            ?.let { addProperty("language", it) }
+                    })
+                    add("turn_detection", null)
                 })
-                add("turn_detection", null)
-            })
-            add("output", JsonObject().apply {
-                add("format", realtimePcmFormat())
-                addProperty("voice", config.voice.ifBlank { "marin" })
+                add("output", JsonObject().apply {
+                    add("format", realtimePcmFormat())
+                    addProperty("voice", config.voice.ifBlank { defaultVoice })
+                })
             })
         })
+    }
+}
+
+/**
+ * Qwen/DashScope Realtime 使用扁平化的 session.update 结构，与 OpenAI Realtime 的嵌套 audio.input/audio.output
+ * 不同。参考 dashscope SDK OmniRealtimeConversation.update_session 的参数：
+ * model、voice、output_modalities、input_audio_format、output_audio_format、
+ * enable_input_audio_transcription、input_audio_transcription_model、enable_turn_detection。
+ * 模型名通过 session.model 字段传递（URL 不支持 ?model= 查询）。
+ *
+ * 注意：Qwen Realtime 的 conversation.item.create 仅支持 function_call_output 类型，
+ * 不支持 message 类型，因此上下文需拼接到 instructions 中传递。
+ */
+private fun buildQwenRealtimeSessionUpdate(
+    config: RealtimeModelConfig,
+    instructions: String,
+    context: List<RealtimeContextMessage> = emptyList()
+): JsonObject = JsonObject().apply {
+    // Qwen3.5-Omni-Realtime 不再支持 Cherry/Serena/Chelsie 等旧音色，自动纠正为默认音色
+    val resolvedVoice = config.voice.ifBlank { REALTIME_QWEN_DEFAULT_VOICE }
+        .takeUnless { it in REALTIME_QWEN_DEPRECATED_VOICES } ?: REALTIME_QWEN_DEFAULT_VOICE
+    // Qwen 不支持 conversation.item.create 的 message 类型，把上下文拼接到 instructions
+    val mergedInstructions = buildQwenInstructions(instructions, context)
+    addProperty("type", "session.update")
+    add("session", JsonObject().apply {
+        addProperty("model", config.model)
+        addProperty("voice", resolvedVoice)
+        add("modalities", JsonArray().apply {
+            add("text")
+            add("audio")
+        })
+        addProperty("input_audio_format", "pcm16")
+        addProperty("output_audio_format", "pcm24")
+        add("input_audio_transcription", JsonObject().apply {
+            addProperty(
+                "model",
+                config.transcriptionModel.ifBlank { REALTIME_QWEN_DEFAULT_TRANSCRIPTION_MODEL }
+            )
+        })
+        // 关闭服务端 VAD，使用手动 commit + response.create 触发回复，与 OpenAI 路径保持一致
+        add("turn_detection", null)
+        addProperty("instructions", mergedInstructions)
     })
+}
+
+/** 将上下文拼接到 instructions 中，用于 Qwen Realtime（不支持 conversation.item.create 的 message 类型）。 */
+private fun buildQwenInstructions(
+    instructions: String,
+    context: List<RealtimeContextMessage>
+): String {
+    val base = instructions.trim().take(REALTIME_MAX_INSTRUCTIONS_CHARS).ifBlank {
+        "自然地进行简洁的语音对话，并使用用户当前使用的语言回答。"
+    }
+    val trimmed = trimRealtimeContext(context)
+    if (trimmed.isEmpty()) return base
+    val conversation = trimmed.joinToString("\n") { msg ->
+        val role = if (msg.role.equals("user", true) || msg.role.equals("human", true)) "用户" else "AI"
+        "$role: ${msg.content.trim()}"
+    }
+    val suffix = "以下是之前的对话记录，请在此基础上延续对话：\n$conversation"
+    val combined = "$base\n\n$suffix"
+    // 限制总长度，避免超过 instructions 上限
+    return if (combined.length > REALTIME_MAX_INSTRUCTIONS_CHARS) {
+        // 优先保留基础指令，截断较早的对话历史
+        val remaining = REALTIME_MAX_INSTRUCTIONS_CHARS - base.length - 100
+        if (remaining > 0) {
+            val truncatedConv = suffix.takeLast(remaining)
+            "$base\n\n$truncatedConv"
+        } else {
+            base
+        }
+    } else {
+        combined
+    }
 }
 
 internal fun buildRealtimeContextEvents(
@@ -390,12 +612,20 @@ internal fun trimRealtimeContext(
 internal fun buildRealtimeWebSocketUrl(
     baseUrl: String,
     appendRealtimePath: Boolean,
-    model: String
+    model: String,
+    qwenRealtime: Boolean = false
 ): String {
-    val raw = baseUrl.trim().ifBlank { "https://api.openai.com/v1" }.trimEnd('/')
+    // Qwen/DashScope Realtime 必须使用 api-ws/v1 端点；若用户误填 compatible-mode/v1（Qwen 预设默认的文本对话
+    // baseurl），会导致 "URL does not appear to be valid" 或服务端 fallback 到已下线的旧模型快照。
+    val correctedBase = if (qwenRealtime) {
+        baseUrl.replace(Regex("/compatible-mode/v1/?$", RegexOption.IGNORE_CASE), "/api-ws/v1")
+    } else {
+        baseUrl
+    }
+    val raw = correctedBase.trim().ifBlank { "https://api.openai.com/v1" }.trimEnd('/')
     val websocketBase = when {
-        raw.startsWith("https://", true) -> "wss://${raw.substringAfter("://")}" 
-        raw.startsWith("http://", true) -> "ws://${raw.substringAfter("://")}" 
+        raw.startsWith("https://", true) -> "wss://${raw.substringAfter("://")}"
+        raw.startsWith("http://", true) -> "ws://${raw.substringAfter("://")}"
         raw.startsWith("wss://", true) || raw.startsWith("ws://", true) -> raw
         else -> "wss://$raw"
     }
@@ -407,10 +637,12 @@ internal fun buildRealtimeWebSocketUrl(
     } else {
         path
     }
-    val queryParts = existingQuery.split('&').filter { it.isNotBlank() && !it.startsWith("model=") }
-        .toMutableList()
-    queryParts += "model=${URLEncoder.encode(model.ifBlank { "gpt-realtime" }, Charsets.UTF_8.name())}"
-    return "$endpoint?${queryParts.joinToString("&")}" 
+    val existingParts = existingQuery.split('&').filter { it.isNotBlank() }.toMutableList()
+    // DashScope Realtime 端点需要 ?model= 查询参数指定模型（参考 dashscope SDK 与官方示例），
+    // 不带会导致服务端使用默认模型（可能是已下线的旧快照，触发 ModelNotFound）。
+    val queryParts = existingParts.filter { !it.startsWith("model=") }.toMutableList()
+    queryParts += "model=${URLEncoder.encode(model.ifBlank { if (qwenRealtime) REALTIME_QWEN_DEFAULT_MODEL else "gpt-realtime" }, Charsets.UTF_8.name())}"
+    return "$endpoint?${queryParts.joinToString("&")}"
 }
 
 private fun realtimePcmFormat(): JsonObject = JsonObject().apply {
@@ -425,6 +657,34 @@ private fun JsonObject.objectOrNull(key: String): JsonObject? =
     get(key)?.takeIf { it.isJsonObject }?.asJsonObject
 
 const val REALTIME_SAMPLE_RATE = 24_000
-private const val REALTIME_INPUT_CHUNK_BYTES = 24_000
+/** Qwen Realtime 输入采样率（官方默认 16000Hz，更稳定；输出保持 24000Hz）。 */
+const val REALTIME_INPUT_SAMPLE_RATE = 16_000
+/** Qwen Realtime 输出采样率（官方默认 24000Hz）。 */
+const val REALTIME_OUTPUT_SAMPLE_RATE = 24_000
+private const val REALTIME_INPUT_CHUNK_BYTES = 3_200
 private const val REALTIME_MAX_INSTRUCTIONS_CHARS = 12_000
 private const val REALTIME_MAX_CONTEXT_CHARS = 48_000
+/** Qwen Realtime 手动 commit 模式下最小音频长度（约 0.5 秒，16000Hz × 0.5s × 2 bytes）。 */
+private const val REALTIME_QWEN_MIN_AUDIO_BYTES = 16_000
+
+/** Qwen Realtime 默认模型名（阿里云 DashScope qwen3.5-omni-flash-realtime，快照 2026-03-15）。
+ *  注意：qwen-omni-turbo-realtime-2025-03-26 等旧快照已下线，会触发 ModelNotFound。 */
+const val REALTIME_QWEN_DEFAULT_MODEL = "qwen3.5-omni-flash-realtime"
+/** Qwen Realtime 默认 Base URL（DashScope WebSocket 端点，注意是 api-ws/v1 不是 compatible-mode/v1）。 */
+const val REALTIME_QWEN_DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/api-ws/v1"
+/** Qwen Realtime 默认音色（阿里云 DashScope qwen3.5-omni-*-realtime 系列官方默认）。
+ *  注意：Cherry 是 Qwen3-Omni-Flash-Realtime 的默认音色，Qwen3.5-Omni-Realtime 已不再支持，
+ *  会触发 "Voice 'Cherry' is not supported" 错误。 */
+const val REALTIME_QWEN_DEFAULT_VOICE = "Tina"
+/** Qwen3.5-Omni-Realtime 不再支持的旧音色，检测到时自动纠正为 [REALTIME_QWEN_DEFAULT_VOICE]。 */
+val REALTIME_QWEN_DEPRECATED_VOICES = setOf("Cherry", "Serena", "Chelsie")
+/** Qwen Realtime 默认输入转写模型（paraformer-realtime-v2 / gummy-realtime-v1 均可，前者覆盖更广）。 */
+const val REALTIME_QWEN_DEFAULT_TRANSCRIPTION_MODEL = "paraformer-realtime-v2"
+/** Qwen Realtime 支持的内置音色列表，用于 AI 配置中心下拉选项。
+ *  Qwen3.5-Omni-Realtime 支持 55 种音色，此处列出官方文档示例常用的几个。 */
+val REALTIME_QWEN_VOICES = listOf("Tina", "Ethan", "Cherry", "Serena", "Chelsie")
+/** OpenAI Realtime 默认音色列表，用于 AI 配置中心下拉选项。 */
+val REALTIME_OPENAI_VOICES = listOf(
+    "marin", "cedar", "alloy", "ash", "ballad",
+    "coral", "echo", "sage", "shimmer", "verse"
+)

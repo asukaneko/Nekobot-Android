@@ -177,7 +177,7 @@
     <string name="localai_purpose_embedding">📊 向量嵌入</string>
     <string name="localai_purpose_image_generation">🎨 图片生成</string>
     <string name="localai_purpose_chat_model">💬 对话模型</string>
-    <string name="localai_purpose_hint_live">用于 Live 的原生语音链路。配置 gpt-realtime、OpenAI Base URL、音色和输入转写模型后，可同时流式播放音频并显示字幕。</string>
+    <string name="localai_purpose_hint_live">用于 Live 的原生语音链路。支持 OpenAI gpt-realtime 与阿里云 DashScope qwen3.5-omni-flash-realtime / qwen3-omni-flash-realtime；配置 Base URL、音色和输入转写模型后，可同时流式播放音频并显示字幕。Qwen Realtime 推荐 Base URL 填 https://dashscope.aliyuncs.com/api-ws/v1 并启用「自动拼接路径」。注意：qwen-omni-turbo-realtime-2025-03-26 等旧快照已下线，会触发 ModelNotFound。</string>
     <string name="localai_purpose_hint_vision">用于图片消息理解，将作为图片描述的回退模型</string>
     <string name="localai_purpose_hint_video">用于视频消息理解（暂未在本地模式自动调用）</string>
     <string name="localai_purpose_hint_tts">用于文本转语音，可在聊天界面手动触发</string>
@@ -295,6 +295,7 @@
     <string name="aimodel_editor_live_hint">音频输出模式会同时返回流式音频和转写字幕；输入语音由 Realtime 模型原生理解，转写模型仅用于保存用户字幕。</string>
     <string name="aimodel_editor_live_voice">Realtime 音色</string>
     <string name="aimodel_editor_live_transcription_model">输入转写模型</string>
+    <string name="aimodel_editor_live_qwen_hint">检测到 Qwen Realtime：默认音色 Tina（Qwen3.5-Omni 不再支持 Cherry 等旧音色，会自动纠正），转写模型默认 paraformer-realtime-v2。请将 Base URL 配为 https://dashscope.aliyuncs.com/api-ws/v1 并启用「自动拼接路径」。</string>
     <string name="aimodel_editor_tts_provider">TTS 提供商</string>
     <string name="aimodel_editor_tts_provider_openai">OpenAI 兼容</string>
     <string name="aimodel_editor_tts_provider_xiaomi">小米 MiMo</string>

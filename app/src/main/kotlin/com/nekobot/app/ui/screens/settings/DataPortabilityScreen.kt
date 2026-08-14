@@ -699,40 +699,43 @@ private fun categoryDescription(category: PortableDataCategory): String = string
     }
 )
 
+@Composable
 private fun portableDetailLabel(detail: PortableCategoryDetail): String {
     val key = detail.key.substringAfter(':')
-    return when (key) {
-        "local_sessions" -> "会话"
-        "local_messages" -> "消息"
-        "local_agent_runs" -> "Agent 运行记录"
-        "local_message_favorites" -> "消息收藏"
-        "local_characters" -> "角色卡"
-        "local_world_books" -> "世界书"
-        "local_world_book_entries" -> "世界书条目"
-        "local_character_states" -> "角色状态"
-        "local_relationship_states" -> "关系状态"
-        "local_character_memories" -> "角色记忆"
-        "local_state_snapshots" -> "状态快照"
-        "local_ai_models" -> "AI 模型"
-        "local_failover_health" -> "故障转移状态"
-        "local_hooks" -> "Hooks"
-        "local_hook_logs" -> "Hook 日志"
-        "local_tasks" -> "任务"
-        "local_workflows" -> "工作流"
-        "local_skills" -> "Skills"
-        "local_tools" -> "工具"
-        "local_mcp_servers" -> "MCP 服务器"
-        "local_knowledge_documents" -> "知识文档"
-        "local_knowledge_chunks" -> "知识分块"
-        "routing_decision_logs" -> "路由决策记录"
-        "portraits" -> "角色立绘"
-        "cached_portraits" -> "立绘缓存"
-        "chat_backgrounds" -> "聊天背景"
-        "fonts" -> "自定义字体"
-        "workspace" -> "工作区文件"
-        "global_memory" -> "全局 Agent 记忆"
-        "app_settings" -> "应用设置"
-        "credentials_bundle" -> "加密账号与凭据"
-        else -> key
+    val resourceId = when (key) {
+        "local_sessions" -> R.string.portability_detail_local_sessions
+        "local_messages" -> R.string.portability_detail_local_messages
+        "local_agent_runs" -> R.string.portability_detail_local_agent_runs
+        "local_message_favorites" -> R.string.portability_detail_local_message_favorites
+        "local_characters" -> R.string.portability_detail_local_characters
+        "local_world_books" -> R.string.portability_detail_local_world_books
+        "local_world_book_entries" -> R.string.portability_detail_local_world_book_entries
+        "local_character_states" -> R.string.portability_detail_local_character_states
+        "local_relationship_states" -> R.string.portability_detail_local_relationship_states
+        "local_character_memories" -> R.string.portability_detail_local_character_memories
+        "local_state_snapshots" -> R.string.portability_detail_local_state_snapshots
+        "local_ai_models" -> R.string.portability_detail_local_ai_models
+        "local_failover_health" -> R.string.portability_detail_local_failover_health
+        "local_hooks" -> R.string.portability_detail_local_hooks
+        "local_hook_logs" -> R.string.portability_detail_local_hook_logs
+        "local_tasks" -> R.string.portability_detail_local_tasks
+        "local_workflows" -> R.string.portability_detail_local_workflows
+        "local_skills" -> R.string.portability_detail_local_skills
+        "local_tools" -> R.string.portability_detail_local_tools
+        "local_mcp_servers" -> R.string.portability_detail_local_mcp_servers
+        "local_knowledge_documents" -> R.string.portability_detail_local_knowledge_documents
+        "local_knowledge_chunks" -> R.string.portability_detail_local_knowledge_chunks
+        "routing_decision_logs" -> R.string.portability_detail_routing_decision_logs
+        "portraits" -> R.string.portability_detail_portraits
+        "cached_portraits" -> R.string.portability_detail_cached_portraits
+        "worldbook_covers" -> R.string.portability_detail_worldbook_covers
+        "chat_backgrounds" -> R.string.portability_detail_chat_backgrounds
+        "fonts" -> R.string.portability_detail_fonts
+        "workspace" -> R.string.portability_detail_workspace
+        "global_memory" -> R.string.portability_detail_global_memory
+        "app_settings" -> R.string.portability_detail_app_settings
+        "credentials_bundle" -> R.string.portability_detail_credentials_bundle
+        else -> null
     }
+    return if (resourceId != null) stringResource(resourceId) else key
 }

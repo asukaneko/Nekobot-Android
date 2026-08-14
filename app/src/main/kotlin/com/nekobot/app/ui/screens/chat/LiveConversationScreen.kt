@@ -7,6 +7,9 @@ import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaPlayer
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.AutomaticGainControl
+import android.media.audiofx.NoiseSuppressor
 import android.media.audiofx.Visualizer
 import android.net.Uri
 import android.os.Build
@@ -799,6 +802,9 @@ private class LiveAudioController(
 ) {
     private var recorder: MediaRecorder? = null
     private var realtimeRecorder: AudioRecord? = null
+    private var realtimeAgc: AutomaticGainControl? = null
+    private var realtimeNs: NoiseSuppressor? = null
+    private var realtimeAec: AcousticEchoCanceler? = null
     private var realtimeRecordingBuffer: ByteArrayOutputStream? = null
     private val realtimeRecordingLock = Any()
     private var recordingFile: File? = null
@@ -846,19 +852,31 @@ private class LiveAudioController(
         stopPlayback()
         cancelRecording()
         return try {
+            // 录音使用 16000Hz（Qwen Realtime 官方默认输入采样率，更稳定）
             val minBuffer = AudioRecord.getMinBufferSize(
-                REALTIME_AUDIO_SAMPLE_RATE,
+                REALTIME_AUDIO_INPUT_SAMPLE_RATE,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT
             ).coerceAtLeast(4_096)
             val active = AudioRecord(
                 MediaRecorder.AudioSource.VOICE_RECOGNITION,
-                REALTIME_AUDIO_SAMPLE_RATE,
+                REALTIME_AUDIO_INPUT_SAMPLE_RATE,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,
                 minBuffer * 2
             )
             check(active.state == AudioRecord.STATE_INITIALIZED) { "无法初始化 Realtime 录音器" }
+            // 应用音频增强效果：自动增益、噪声抑制、回声消除
+            val audioSessionId = active.audioSessionId
+            if (AutomaticGainControl.isAvailable()) {
+                realtimeAgc = AutomaticGainControl.create(audioSessionId)?.apply { enabled = true }
+            }
+            if (NoiseSuppressor.isAvailable()) {
+                realtimeNs = NoiseSuppressor.create(audioSessionId)?.apply { enabled = true }
+            }
+            if (AcousticEchoCanceler.isAvailable()) {
+                realtimeAec = AcousticEchoCanceler.create(audioSessionId)?.apply { enabled = true }
+            }
             val output = ByteArrayOutputStream()
             realtimeRecorder = active
             synchronized(realtimeRecordingLock) { realtimeRecordingBuffer = output }
@@ -924,11 +942,19 @@ private class LiveAudioController(
         amplitudeJob?.cancel()
         amplitudeJob = null
         runCatching { active?.release() }
+        // 释放音频增强效果
+        runCatching { realtimeAgc?.release() }
+        runCatching { realtimeNs?.release() }
+        runCatching { realtimeAec?.release() }
+        realtimeAgc = null
+        realtimeNs = null
+        realtimeAec = null
         val bytes = synchronized(realtimeRecordingLock) {
             realtimeRecordingBuffer?.toByteArray().also { realtimeRecordingBuffer = null }
         }
         onSpectrum(FloatArray(LIVE_SPECTRUM_BARS) { 0.08f })
-        return bytes?.takeIf { it.size >= REALTIME_AUDIO_SAMPLE_RATE / 4 }
+        // 最小音频长度约 0.25 秒（16000Hz × 0.25s × 2 bytes = 8000 bytes）
+        return bytes?.takeIf { it.size >= REALTIME_AUDIO_INPUT_SAMPLE_RATE / 2 }
     }
 
     fun cancelRecording() {
@@ -944,6 +970,13 @@ private class LiveAudioController(
             runCatching { active.release() }
         }
         realtimeRecorder = null
+        // 释放音频增强效果
+        runCatching { realtimeAgc?.release() }
+        runCatching { realtimeNs?.release() }
+        runCatching { realtimeAec?.release() }
+        realtimeAgc = null
+        realtimeNs = null
+        realtimeAec = null
         synchronized(realtimeRecordingLock) { realtimeRecordingBuffer = null }
         recordingFile?.delete()
         recordingFile = null
@@ -999,8 +1032,9 @@ private class LiveAudioController(
     fun startRealtimePlayback(): Boolean {
         stopPlayback()
         return try {
+            // 播放使用 24000Hz（Qwen Realtime 官方默认输出采样率）
             val minBuffer = AudioTrack.getMinBufferSize(
-                REALTIME_AUDIO_SAMPLE_RATE,
+                REALTIME_AUDIO_OUTPUT_SAMPLE_RATE,
                 AudioFormat.CHANNEL_OUT_MONO,
                 AudioFormat.ENCODING_PCM_16BIT
             ).coerceAtLeast(8_192)
@@ -1014,7 +1048,7 @@ private class LiveAudioController(
                 .setAudioFormat(
                     AudioFormat.Builder()
                         .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .setSampleRate(REALTIME_AUDIO_SAMPLE_RATE)
+                        .setSampleRate(REALTIME_AUDIO_OUTPUT_SAMPLE_RATE)
                         .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                         .build()
                 )
@@ -1041,7 +1075,7 @@ private class LiveAudioController(
                     }
                     val totalFrames = totalBytes / 2L
                     val timeoutAt = SystemClock.elapsedRealtime() +
-                        (totalFrames * 1_000L / REALTIME_AUDIO_SAMPLE_RATE) + 1_500L
+                        (totalFrames * 1_000L / REALTIME_AUDIO_OUTPUT_SAMPLE_RATE) + 1_500L
                     while (
                         isActive && realtimePlayer === track &&
                         track.playbackHeadPosition.toLong() < totalFrames &&
@@ -1244,4 +1278,7 @@ private const val LIVE_VOICE_THRESHOLD = 0.075f
 private const val LIVE_MIN_RECORDING_MS = 900L
 private const val LIVE_SILENCE_MS = 1_250L
 private const val LIVE_MAX_RECORDING_MS = 60_000L
-private const val REALTIME_AUDIO_SAMPLE_RATE = 24_000
+/** Realtime 录音采样率（Qwen 官方默认输入 16000Hz，更稳定）。 */
+private const val REALTIME_AUDIO_INPUT_SAMPLE_RATE = 16_000
+/** Realtime 播放采样率（Qwen 官方默认输出 24000Hz）。 */
+private const val REALTIME_AUDIO_OUTPUT_SAMPLE_RATE = 24_000

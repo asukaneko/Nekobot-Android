@@ -50,6 +50,12 @@ import com.nekobot.app.data.local.ai.ModelPricingCatalog
 import com.nekobot.app.data.local.ai.ModelPricingEntry
 import com.nekobot.app.data.local.ai.LocalProtocols
 import com.nekobot.app.data.local.ai.parseModelProxyUrl
+import com.nekobot.app.data.local.ai.REALTIME_OPENAI_VOICES
+import com.nekobot.app.data.local.ai.REALTIME_QWEN_VOICES
+import com.nekobot.app.data.local.ai.REALTIME_QWEN_DEFAULT_MODEL
+import com.nekobot.app.data.local.ai.REALTIME_QWEN_DEFAULT_BASE_URL
+import com.nekobot.app.data.local.ai.REALTIME_QWEN_DEFAULT_VOICE
+import com.nekobot.app.data.local.ai.REALTIME_QWEN_DEFAULT_TRANSCRIPTION_MODEL
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.model.AiModel
 import com.nekobot.app.data.model.AiModelRequest
@@ -529,6 +535,13 @@ fun AiModelEditorDialog(
             when (state.purpose) {
                 "live" -> {
                     FormSection(stringResource(R.string.aimodel_editor_section_live))
+                    val isQwenRealtime = state.provider.equals("qwen", ignoreCase = true) ||
+                        state.provider.equals("dashscope", ignoreCase = true) ||
+                        state.model.contains("qwen", ignoreCase = true) &&
+                            state.model.contains("realtime", ignoreCase = true)
+                    val liveVoiceOptions = if (isQwenRealtime) REALTIME_QWEN_VOICES else REALTIME_OPENAI_VOICES
+                    val liveTranscriptionPlaceholder =
+                        if (isQwenRealtime) REALTIME_QWEN_DEFAULT_TRANSCRIPTION_MODEL else "gpt-4o-mini-transcribe"
                     Text(
                         text = stringResource(R.string.aimodel_editor_live_hint),
                         style = MaterialTheme.typography.bodySmall,
@@ -537,16 +550,13 @@ fun AiModelEditorDialog(
                     EditorDropdownField(
                         label = stringResource(R.string.aimodel_editor_live_voice),
                         value = state.ttsVoice,
-                        options = listOf(
-                            "marin", "cedar", "alloy", "ash", "ballad",
-                            "coral", "echo", "sage", "shimmer", "verse"
-                        ),
+                        options = liveVoiceOptions,
                         onSelect = { state = state.copy(ttsVoice = it) }
                     )
                     EditorTextField(
                         label = stringResource(R.string.aimodel_editor_live_transcription_model),
                         value = state.sttModel,
-                        placeholder = "gpt-4o-mini-transcribe"
+                        placeholder = liveTranscriptionPlaceholder
                     ) { state = state.copy(sttModel = it) }
                     EditorDropdownField(
                         label = stringResource(R.string.aimodel_editor_stt_language),
@@ -554,6 +564,13 @@ fun AiModelEditorDialog(
                         options = listOf("zh", "en", "auto"),
                         onSelect = { state = state.copy(language = it) }
                     )
+                    if (isQwenRealtime) {
+                        Text(
+                            text = stringResource(R.string.aimodel_editor_live_qwen_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
 
                 "tts" -> {
@@ -869,20 +886,32 @@ private fun AiModelEditorState.applyPreset(
     preset: ProviderPreset,
     protocols: List<ProtocolOption>,
     presetConfigTemplate: String
-): AiModelEditorState = copy(
-    name = presetConfigTemplate.format(preset.label),
-    provider = preset.provider,
-    protocol = protocolFor(preset.provider, protocols),
-    model = preset.model,
-    baseUrl = preset.baseUrl,
-    maxContextLength = preset.maxContextLength,
-    maxTokens = preset.maxTokens,
-    inputPrice = preset.inputPrice,
-    outputPrice = preset.outputPrice,
-    supportsTools = preset.provider != "google",
-    supportsReasoning = preset.provider !in setOf("google", "minimax"),
-    supportsStream = true
-)
+): AiModelEditorState {
+    // Live purpose + Qwen/DashScope 必须用 api-ws/v1 端点与 realtime 模型，不能用预设默认的
+    // compatible-mode/v1（文本对话端点）和 qwen3.x-max（非 realtime 模型），否则 Realtime 连接会报
+    // "URL does not appear to be valid" 或服务端 fallback 到已下线的旧模型快照。
+    val isQwenRealtimePreset = purpose == "live" && preset.provider in setOf("qwen", "dashscope")
+    val resolvedModel = if (isQwenRealtimePreset) REALTIME_QWEN_DEFAULT_MODEL else preset.model
+    val resolvedBaseUrl = if (isQwenRealtimePreset) REALTIME_QWEN_DEFAULT_BASE_URL else preset.baseUrl
+    val resolvedVoice = if (isQwenRealtimePreset) REALTIME_QWEN_DEFAULT_VOICE else ttsVoice
+    val resolvedSttModel = if (isQwenRealtimePreset) REALTIME_QWEN_DEFAULT_TRANSCRIPTION_MODEL else sttModel
+    return copy(
+        name = presetConfigTemplate.format(preset.label),
+        provider = preset.provider,
+        protocol = protocolFor(preset.provider, protocols),
+        model = resolvedModel,
+        baseUrl = resolvedBaseUrl,
+        maxContextLength = preset.maxContextLength,
+        maxTokens = preset.maxTokens,
+        inputPrice = preset.inputPrice,
+        outputPrice = preset.outputPrice,
+        supportsTools = preset.provider != "google",
+        supportsReasoning = preset.provider !in setOf("google", "minimax"),
+        supportsStream = true,
+        ttsVoice = resolvedVoice,
+        sttModel = resolvedSttModel
+    )
+}
 
 private fun AiModelEditorState.applyPurpose(
     purpose: String,
@@ -902,22 +931,32 @@ private fun AiModelEditorState.applyPurpose(
             supportsReasoning = true,
             supportsStream = true
         )
-        "live" -> copy(
-            name = renamed,
-            purpose = purpose,
-            provider = "openai",
-            baseUrl = "https://api.openai.com/v1",
-            model = "gpt-realtime",
-            temperature = "0.8",
-            maxTokens = "4096",
-            maxContextLength = "32000",
-            supportsTools = false,
-            supportsReasoning = false,
-            supportsStream = true,
-            ttsVoice = "marin",
-            sttModel = "gpt-4o-mini-transcribe",
-            language = language.ifBlank { "zh" }
-        )
+        "live" -> {
+            // 保留当前 provider：若已是 qwen/dashscope 则沿用 Qwen Realtime 默认配置，
+            // 否则回退 OpenAI Realtime 默认配置。避免一刀切写死 openai 导致 Qwen 用户被重置。
+            val isQwenLive = provider in setOf("qwen", "dashscope")
+            val liveProvider = if (isQwenLive) provider else "openai"
+            val liveBaseUrl = if (isQwenLive) REALTIME_QWEN_DEFAULT_BASE_URL else "https://api.openai.com/v1"
+            val liveModel = if (isQwenLive) REALTIME_QWEN_DEFAULT_MODEL else "gpt-realtime"
+            val liveVoice = if (isQwenLive) REALTIME_QWEN_DEFAULT_VOICE else "marin"
+            val liveSttModel = if (isQwenLive) REALTIME_QWEN_DEFAULT_TRANSCRIPTION_MODEL else "gpt-4o-mini-transcribe"
+            copy(
+                name = renamed,
+                purpose = purpose,
+                provider = liveProvider,
+                baseUrl = liveBaseUrl,
+                model = liveModel,
+                temperature = "0.8",
+                maxTokens = "4096",
+                maxContextLength = "32000",
+                supportsTools = false,
+                supportsReasoning = false,
+                supportsStream = true,
+                ttsVoice = liveVoice,
+                sttModel = liveSttModel,
+                language = language.ifBlank { "zh" }
+            )
+        }
         "vision" -> copy(
             name = renamed,
             purpose = purpose,

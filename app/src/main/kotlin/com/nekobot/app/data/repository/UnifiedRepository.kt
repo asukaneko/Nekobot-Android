@@ -769,6 +769,19 @@ class UnifiedRepository(
         }
     }
 
+    /**
+     * 本地模式为 Live 的首轮音频预先合成 PromptStack；远程模式由服务端维护会话提示词。
+     */
+    suspend fun prepareRealtimeLivePrompt(sessionId: String): Resource<String> = if (isLocal) {
+        try {
+            Resource.Success(local.prepareRealtimeLivePrompt(sessionId).orEmpty())
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "准备 Live 提示词失败")
+        }
+    } else {
+        Resource.Success("")
+    }
+
     /** Live 对话入口预检：三种语音链路模型都配置后才允许进入通话界面。 */
     suspend fun validateLiveConversationConfig(): Resource<Unit> {
         val purposes = listOf("stt", "tts", "live")

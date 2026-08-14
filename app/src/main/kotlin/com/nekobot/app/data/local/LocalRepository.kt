@@ -4157,7 +4157,13 @@ class LocalRepository(
     fun close() {
         // 先失活再发取消信号，确保尚未退出的同名/旧 profile 任务无法修改全局故事图。
         LocalPlotStoryStore.deactivateProfile(plotStoryOwner)
-        stopGeneration()
+        // 数据库管理/WebDAV 备份可能已经先关闭了 Room 实例；此时旧仓库里的
+        // agentRunDao 仍指向旧连接，不能再执行 pauseAllRunning，否则会因连接池已关闭
+        // 直接让清理协程崩溃。关闭阶段以释放运行时资源为主，旧连接已关闭时跳过暂停写入。
+        runCatching { stopGeneration() }
+            .onFailure { error ->
+                LocalLogger.w("LocalRepository", "关闭仓库时跳过暂停 Agent 运行记录: ${error.message}", error)
+            }
         localMcpRuntime.close()
         localBrowserTools.values.forEach(LocalBrowserTool::close)
         localBrowserTools.clear()
@@ -4165,6 +4171,114 @@ class LocalRepository(
     }
 
     // ==================== Pipeline 驱动的聊天（角色运行时） ====================
+
+    /**
+     * 为原生 Live 会话准备首轮 PromptStack。
+     *
+     * 语音尚未转写时不能走完整聊天管线，否则会写入一条空用户消息并触发模型生成。
+     * 此处只运行 AIPipeline 的上下文准备阶段，复用普通聊天的角色、世界书、记忆和
+     * 会话级提示词装配逻辑，再将合成结果缓存到会话。
+     */
+    suspend fun prepareRealtimeLivePrompt(sessionId: String): String? = withContext(Dispatchers.IO) {
+        val session = sessionDao.getById(sessionId) ?: return@withContext null
+        val activeModel = aiModelDao.getActiveByPurpose("live")
+            ?: aiModelDao.listByPurpose("live").firstOrNull()
+            ?: aiModelDao.getActive()
+            ?: return@withContext null
+        val character = session.characterId?.let { characterDao.getById(it) }
+        val worldBookEntries = if (shouldInjectWorldBooks(session.sessionMode)) {
+            loadWorldBookEntries(session.characterId)
+        } else {
+            emptyList()
+        }
+        val identity = character?.let {
+            com.nekobot.app.data.local.ai.CharacterIdentity(
+                characterId = it.id,
+                targetId = "local-user",
+                scopeId = sessionId,
+                relationshipTargetId = sessionRelationshipTargetId(sessionId),
+                channel = "local"
+            )
+        }
+        val callbacks = com.nekobot.app.data.local.ai.LocalPipelineCallbacks(
+            db = db,
+            aiClient = aiClient,
+            activeModel = activeModel,
+            session = session,
+            character = character,
+            worldBookEntries = worldBookEntries,
+            characterRuntime = character?.let { characterRuntime },
+            characterIdentity = identity
+        )
+        val disabledKeys = session.disabledPromptKeys
+            ?.split(",")
+            ?.filter { it.isNotBlank() }
+            ?: emptyList()
+        val chatRequest = com.nekobot.app.data.local.ai.ChatRequest.forLocal(
+            sessionId = sessionId,
+            content = "",
+            userId = "local-user",
+            metadata = buildMap {
+                put("session_mode", session.sessionMode)
+                if (session.plotMode) put("plot_mode", true)
+                if (session.plotRealTimeSync) put("plot_realtime_sync", true)
+                put("auto_state_interval", session.autoStateInterval)
+                if (disabledKeys.isNotEmpty()) put("disabled_prompt_keys", disabledKeys)
+                session.senderName?.takeIf { it.isNotBlank() }?.let { put("sender_name", it) }
+                session.userPersona?.takeIf { it.isNotBlank() }?.let { put("user_persona", it) }
+            }
+        )
+        val ctx = com.nekobot.app.data.local.ai.PipelineContext(chatRequest)
+        ctx.metadata["session_mode"] = session.sessionMode
+        if (session.plotMode) ctx.metadata["plot_mode"] = true
+        if (session.plotRealTimeSync) ctx.metadata["plot_realtime_sync"] = true
+        ctx.metadata["auto_state_interval"] = session.autoStateInterval
+        if (disabledKeys.isNotEmpty()) ctx.metadata["disabled_prompt_keys"] = disabledKeys
+        session.senderName?.takeIf { it.isNotBlank() }?.let { ctx.metadata["sender_name"] = it }
+        session.userPersona?.takeIf { it.isNotBlank() }?.let { ctx.metadata["user_persona"] = it }
+
+        if (session.sessionMode.equals("agent", ignoreCase = true)) {
+            val promptLanguage = appContext?.let {
+                LocaleHelper.getEffectiveLocale(it, ServiceContainer.prefs.language).language
+            } ?: Locale.getDefault().language
+            ctx.promptStack.addLocalAgentBasePrompt(promptLanguage)
+            val globalAgentMemory = runCatching { ServiceContainer.globalAgentMemory.read().content }
+                .onFailure {
+                    LocalLogger.w(TAG, "读取全局 Agent 记忆失败: ${it.message}")
+                }
+                .getOrDefault("")
+            ctx.promptStack.addGlobalAgentMemory(globalAgentMemory)
+            buildEnabledSkillsPrompt().takeIf { it.isNotBlank() }?.let { skillsPrompt ->
+                ctx.promptStack.add(
+                    key = "skills.available",
+                    content = skillsPrompt,
+                    priority = com.nekobot.app.data.local.ai.PromptStack.Priority.TOOL_INSTRUCTIONS,
+                    scope = "global"
+                )
+            }
+        }
+
+        if (character != null && !session.customPrompts.isNullOrBlank()) {
+            try {
+                val type = object : com.google.gson.reflect.TypeToken<List<Map<String, Any>>>() {}.type
+                val customPrompts = gson.fromJson<List<Map<String, Any>>>(session.customPrompts, type)
+                    ?: emptyList()
+                ctx.metadata["custom_prompts"] = customPrompts
+            } catch (e: Exception) {
+                LocalLogger.w(TAG, "解析会话自定义提示词失败: ${e.message}")
+            }
+        }
+
+        com.nekobot.app.data.local.ai.aiPipeline.prepareContext(ctx, callbacks)
+        val composedPrompt = ctx.metadata["composed_system_prompt"] as? String
+        if (!composedPrompt.isNullOrBlank()) {
+            sessionDao.updateComposedSystemPrompt(sessionId, composedPrompt)
+        }
+        ctx.metadata["prompt_stack_debug"]?.let { stackDebug ->
+            sessionDao.updatePromptStackDebug(sessionId, gson.toJson(stackDebug))
+        }
+        composedPrompt
+    }
 
     /**
      * 使用 AIPipeline + 角色运行时的流式聊天。

@@ -166,7 +166,7 @@
     <string name="localai_purpose_embedding">📊 임베딩</string>
     <string name="localai_purpose_image_generation">🎨 이미지 생성</string>
     <string name="localai_purpose_chat_model">💬 채팅 모델</string>
-    <string name="localai_purpose_hint_live">Live용 네이티브 음성 파이프라인입니다. gpt-realtime, OpenAI Base URL, 음색 및 입력 전사 모델을 설정하면 오디오와 자막을 함께 스트리밍할 수 있습니다.</string>
+    <string name="localai_purpose_hint_live">Live용 네이티브 음성 파이프라인입니다. OpenAI gpt-realtime 및 알리바바 클라우드 DashScope qwen3.5-omni-flash-realtime / qwen3-omni-flash-realtime을 지원합니다. Base URL, 음색, 입력 전사 모델을 설정하면 오디오와 자막을 함께 스트리밍할 수 있습니다. Qwen Realtime의 경우 Base URL을 https://dashscope.aliyuncs.com/api-ws/v1로 설정하고 「경로 자동 추가」를 활성화하세요. 참고: qwen-omni-turbo-realtime-2025-03-26 등 구 스냅샷은 단종되어 ModelNotFound가 반환됩니다.</string>
     <string name="localai_purpose_hint_vision">이미지 메시지 이해용, 이미지 설명의 폴백으로 사용돼요</string>
     <string name="localai_purpose_hint_video">비디오 메시지 이해용 (로컬 모드에서는 아직 자동 호출되지 않아요)</string>
     <string name="localai_purpose_hint_tts">텍스트 음성 변환용, 대화에서 수동으로 호출할 수 있어요</string>
@@ -282,6 +282,7 @@
     <string name="aimodel_editor_section_tts">TTS 음성 합성</string>
     <string name="aimodel_editor_section_live">Realtime 음성</string>
     <string name="aimodel_editor_live_hint">오디오 출력에는 스트리밍 오디오와 자막이 함께 포함됩니다. 입력 음성은 Realtime 모델이 직접 이해하며, 전사 모델은 사용자 자막 저장에만 사용됩니다.</string>
+    <string name="aimodel_editor_live_qwen_hint">Qwen Realtime 감지: 기본 음색은 Tina입니다(Qwen3.5-Omni는 Cherry 등 구형 음색을 지원하지 않으며 자동 보정됨), 전사 모델 기본값은 paraformer-realtime-v2입니다. Base URL을 https://dashscope.aliyuncs.com/api-ws/v1로 설정하고 「경로 자동 추가」를 활성화하세요.</string>
     <string name="aimodel_editor_live_voice">Realtime 음색</string>
     <string name="aimodel_editor_live_transcription_model">입력 전사 모델</string>
     <string name="aimodel_editor_tts_provider">TTS 제공자</string>
