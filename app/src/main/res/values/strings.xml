@@ -200,6 +200,11 @@
     <string name="portability_select_all">全选</string>
     <string name="portability_clear_selection">清空</string>
     <string name="portability_item_count">%1$d 项</string>
+    <string name="portability_detail_title">选择导出内容</string>
+    <string name="portability_detail_hint">点击勾选要包含的具体数据，清空后将跳过此分类。</string>
+    <string name="portability_detail_done">完成</string>
+    <string name="portability_detail_table_count">%1$d 条记录</string>
+    <string name="portability_detail_file_count">%1$d 个文件</string>
     <string name="portability_password_optional">归档密码（可选）</string>
     <string name="portability_password_hint">设置密码后整个归档会被加密</string>
     <string name="portability_password_required">导出账号与凭据时必须设置至少 8 位密码</string>

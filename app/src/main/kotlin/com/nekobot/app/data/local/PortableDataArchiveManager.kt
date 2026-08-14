@@ -77,10 +77,17 @@ enum class PortableDataCategory(
 data class PortableCategorySummary(
     val category: PortableDataCategory,
     val rowCount: Int = 0,
-    val fileCount: Int = 0
+    val fileCount: Int = 0,
+    val details: List<PortableCategoryDetail> = emptyList()
 ) {
     val itemCount: Int get() = rowCount + fileCount
 }
+
+data class PortableCategoryDetail(
+    val key: String,
+    val itemCount: Int,
+    val isFile: Boolean = false
+)
 
 data class PortableArchivePreview(
     val exportedAt: String,
@@ -108,13 +115,28 @@ class PortableDataArchiveManager(private val context: Context) {
     suspend fun scanCurrent(): List<PortableCategorySummary> = withContext(Dispatchers.IO) {
         val db = activeDatabase()
         PortableDataCategory.entries.map { category ->
-            val rows = category.tables.sumOf { table -> countRows(db, table) }
-            val files = attachmentRoots(category).sumOf { (_, root) -> countFiles(root) }
+            val tableDetails = category.tables.map { table ->
+                PortableCategoryDetail("table:$table", countRows(db, table))
+            }
+            val fileDetails = attachmentRoots(category).map { (rootId, root) ->
+                PortableCategoryDetail("root:$rootId", countFiles(root), isFile = true)
+            }
             val globalMemory = if (
                 category == PortableDataCategory.GLOBAL_MEMORY && globalMemoryFile().isFile
-            ) 1 else 0
-            val settings = if (category == PortableDataCategory.APP_SETTINGS) 1 else 0
-            PortableCategorySummary(category, rows + settings, files + globalMemory)
+            ) listOf(PortableCategoryDetail("global_memory", 1, isFile = true)) else emptyList()
+            val settings = if (category == PortableDataCategory.APP_SETTINGS) {
+                listOf(PortableCategoryDetail("app_settings", 1))
+            } else emptyList()
+            val credentialBundle = if (category == PortableDataCategory.CREDENTIALS) {
+                listOf(PortableCategoryDetail("credentials_bundle", 1))
+            } else emptyList()
+            val details = tableDetails + fileDetails + settings + globalMemory + credentialBundle
+            PortableCategorySummary(
+                category = category,
+                rowCount = details.filterNot { it.isFile }.sumOf(PortableCategoryDetail::itemCount),
+                fileCount = details.filter { it.isFile }.sumOf(PortableCategoryDetail::itemCount),
+                details = details
+            )
         }
     }
 
@@ -122,7 +144,8 @@ class PortableDataArchiveManager(private val context: Context) {
         selected: Set<PortableDataCategory>,
         password: String,
         output: OutputStream,
-        appVersion: String
+        appVersion: String,
+        selectedDetails: Map<PortableDataCategory, Set<String>> = emptyMap()
     ): PortableArchivePreview = withContext(Dispatchers.IO) {
         require(selected.isNotEmpty()) { "请至少选择一个导出类别" }
         if (PortableDataCategory.CREDENTIALS in selected) {
@@ -136,21 +159,33 @@ class PortableDataArchiveManager(private val context: Context) {
             val exportedAt = OffsetDateTime.now().toString()
             ZipOutputStream(BufferedOutputStream(temp.outputStream())).use { zip ->
                 PortableDataCategory.entries.filter(selected::contains).forEach { category ->
+                    val detailKeys = selectedDetails[category]
+                    val allDetails = detailKeys.isNullOrEmpty()
+                    val selectedTables = if (allDetails) {
+                        category.tables
+                    } else {
+                        category.tables.filter { "table:$it" in detailKeys }
+                    }
+                    val selectedRoots = if (allDetails) {
+                        attachmentRoots(category)
+                    } else {
+                        attachmentRoots(category).filter { "root:${it.first}" in detailKeys }
+                    }
                     var rowCount = 0
                     var fileCount = 0
-                    if (category.tables.isNotEmpty()) {
+                    if (selectedTables.isNotEmpty()) {
                         zip.putNextEntry(ZipEntry("data/${category.id}.json"))
-                        rowCount = writeDatabaseCategory(zip, db, category)
+                        rowCount = writeDatabaseCategory(zip, db, category, selectedTables)
                         zip.closeEntry()
                     }
-                    if (category == PortableDataCategory.APP_SETTINGS) {
+                    if (category == PortableDataCategory.APP_SETTINGS && (allDetails || "app_settings" in detailKeys.orEmpty())) {
                         putBytes(zip, "data/${category.id}.json", captureAppSettings())
                         rowCount = 1
                     }
-                    attachmentRoots(category).forEach { (rootId, root) ->
+                    selectedRoots.forEach { (rootId, root) ->
                         fileCount += writeDirectory(zip, category, rootId, root)
                     }
-                    if (category == PortableDataCategory.GLOBAL_MEMORY) {
+                    if (category == PortableDataCategory.GLOBAL_MEMORY && (allDetails || "global_memory" in detailKeys.orEmpty())) {
                         val memory = globalMemoryFile()
                         if (memory.isFile) {
                             putFile(zip, "files/${category.id}/memory/global-memory.md", memory)
@@ -160,7 +195,11 @@ class PortableDataArchiveManager(private val context: Context) {
                     summaries += PortableCategorySummary(category, rowCount, fileCount)
                 }
 
-                if (PortableDataCategory.CREDENTIALS in selected) {
+                if (
+                    PortableDataCategory.CREDENTIALS in selected &&
+                    (selectedDetails[PortableDataCategory.CREDENTIALS].isNullOrEmpty() ||
+                        "credentials_bundle" in selectedDetails[PortableDataCategory.CREDENTIALS].orEmpty())
+                ) {
                     val bundle = LocalDatabaseCredentialBundle.capture(db)
                     val encryptedBundle = LocalWebDavArchiveCodec.encrypt(
                         archive = bundle,
@@ -279,13 +318,14 @@ class PortableDataArchiveManager(private val context: Context) {
     private fun writeDatabaseCategory(
         output: OutputStream,
         db: NekobotDatabase,
-        category: PortableDataCategory
+        category: PortableDataCategory,
+        selectedTables: List<String> = category.tables
     ): Int {
         var count = 0
         val writer = JsonWriter(OutputStreamWriter(output, StandardCharsets.UTF_8))
         writer.beginObject()
         writer.name("tables").beginObject()
-        category.tables.forEach { table ->
+        selectedTables.forEach { table ->
             writer.name(table).beginArray()
             db.openHelper.readableDatabase.query("SELECT * FROM `${safeName(table)}`").use { cursor ->
                 while (cursor.moveToNext()) {

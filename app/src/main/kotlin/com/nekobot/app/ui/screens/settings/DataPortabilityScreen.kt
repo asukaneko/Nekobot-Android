@@ -7,6 +7,8 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -73,6 +76,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nekobot.app.R
 import com.nekobot.app.data.local.PortableArchivePreview
 import com.nekobot.app.data.local.PortableCategorySummary
+import com.nekobot.app.data.local.PortableCategoryDetail
 import com.nekobot.app.data.local.PortableDataArchiveManager
 import com.nekobot.app.data.local.PortableDataCategory
 import com.nekobot.app.ui.BaseViewModel
@@ -107,7 +111,8 @@ class DataPortabilityViewModel : BaseViewModel() {
         context: Context,
         uri: Uri,
         categories: Set<PortableDataCategory>,
-        password: String
+        password: String,
+        selectedDetails: Map<PortableDataCategory, Set<String>> = emptyMap()
     ) {
         viewModelScope.launch {
             setLoading(true)
@@ -115,7 +120,13 @@ class DataPortabilityViewModel : BaseViewModel() {
             try {
                 val version = context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty()
                 context.contentResolver.openOutputStream(uri, "w")?.use { output ->
-                    PortableDataArchiveManager(context).export(categories, password, output, version)
+                    PortableDataArchiveManager(context).export(
+                        selected = categories,
+                        password = password,
+                        output = output,
+                        appVersion = version,
+                        selectedDetails = selectedDetails
+                    )
                 } ?: error(string(R.string.portability_open_output_failed))
                 showToast(string(R.string.portability_export_success))
             } catch (error: Exception) {
@@ -202,6 +213,8 @@ fun DataPortabilityScreen(onBack: () -> Unit) {
     var exportPassword by remember { mutableStateOf("") }
     var pendingExport by remember { mutableStateOf<Set<PortableDataCategory>>(emptySet()) }
     var pendingExportPassword by remember { mutableStateOf("") }
+    var exportDetails by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
+    var detailCategory by remember { mutableStateOf<PortableDataCategory?>(null) }
     var importUri by rememberSaveable { mutableStateOf<String?>(null) }
     var importFileName by rememberSaveable { mutableStateOf<String?>(null) }
     var importPassword by remember { mutableStateOf("") }
@@ -209,6 +222,17 @@ fun DataPortabilityScreen(onBack: () -> Unit) {
     var confirmImport by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { vm.loadCurrent(context) }
+    LaunchedEffect(current) {
+        if (current.isNotEmpty()) {
+            exportDetails = exportDetails.toMutableMap().apply {
+                current.forEach { summary ->
+                    if (summary.category.id !in this) {
+                        this[summary.category.id] = summary.details.mapTo(linkedSetOf()) { it.key }
+                    }
+                }
+            }
+        }
+    }
     LaunchedEffect(toast) {
         toast?.let {
             Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
@@ -223,7 +247,15 @@ fun DataPortabilityScreen(onBack: () -> Unit) {
         ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri ->
         if (uri != null && pendingExport.isNotEmpty()) {
-            vm.export(context, uri, pendingExport, pendingExportPassword)
+            vm.export(
+                context = context,
+                uri = uri,
+                categories = pendingExport,
+                password = pendingExportPassword,
+                selectedDetails = exportDetails.mapNotNull { (id, details) ->
+                    PortableDataCategory.fromId(id)?.let { it to details }
+                }.toMap()
+            )
         }
         pendingExport = emptySet()
         pendingExportPassword = ""
@@ -288,13 +320,14 @@ fun DataPortabilityScreen(onBack: () -> Unit) {
                     )
                     Spacer(Modifier.height(4.dp))
                     current.forEach { summary ->
-                        CategorySelectionRow(
-                            summary = summary,
-                            selected = summary.category.id in exportSelection,
-                            onToggle = { selected ->
-                                exportSelection = exportSelection.toggle(summary.category.id, selected)
-                            }
-                        )
+                            CategorySelectionRow(
+                                summary = summary,
+                                selected = summary.category.id in exportSelection,
+                                onToggle = { selected ->
+                                    exportSelection = exportSelection.toggle(summary.category.id, selected)
+                                },
+                                onClick = { detailCategory = summary.category }
+                            )
                     }
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(
@@ -318,6 +351,9 @@ fun DataPortabilityScreen(onBack: () -> Unit) {
                     Button(
                         onClick = {
                             val categories = exportSelection.mapNotNullTo(linkedSetOf(), PortableDataCategory::fromId)
+                                .filterTo(linkedSetOf()) { category ->
+                                    exportDetails[category.id].orEmpty().isNotEmpty()
+                                }
                             if (categories.isEmpty()) {
                                 vm.showError(context.getString(R.string.portability_select_one))
                             } else if (
@@ -403,7 +439,8 @@ fun DataPortabilityScreen(onBack: () -> Unit) {
                                 selected = summary.category.id in importSelection,
                                 onToggle = { selected ->
                                     importSelection = importSelection.toggle(summary.category.id, selected)
-                                }
+                                },
+                                onClick = {}
                             )
                         }
                         Spacer(Modifier.height(10.dp))
@@ -452,6 +489,69 @@ fun DataPortabilityScreen(onBack: () -> Unit) {
             onCancel = { confirmImport = false }
         )
     }
+
+    detailCategory?.let { category ->
+        val summary = current.firstOrNull { it.category == category }
+        if (summary != null) {
+            val selectedDetails = exportDetails[category.id].orEmpty()
+            NekoDialog(
+                onDismiss = { detailCategory = null },
+                title = "${categoryLabel(category)}${stringResource(R.string.portability_detail_title)}",
+                message = stringResource(R.string.portability_detail_hint),
+                confirmText = stringResource(R.string.portability_detail_done),
+                onConfirm = { detailCategory = null },
+                cancelText = null,
+                content = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 420.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        SelectionActions(
+                            onAll = {
+                                exportDetails = exportDetails + (category.id to summary.details.mapTo(linkedSetOf()) { it.key })
+                            },
+                            onClear = { exportDetails = exportDetails + (category.id to emptySet()) }
+                        )
+                        summary.details.forEach { detail ->
+                            val selected = detail.key in selectedDetails
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        val next = if (selected) selectedDetails - detail.key else selectedDetails + detail.key
+                                        exportDetails = exportDetails + (category.id to next)
+                                    }
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(portableDetailLabel(detail), style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        text = if (detail.isFile) {
+                                            stringResource(R.string.portability_detail_file_count, detail.itemCount)
+                                        } else {
+                                            stringResource(R.string.portability_detail_table_count, detail.itemCount)
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Checkbox(
+                                    checked = selected,
+                                    onCheckedChange = { checked ->
+                                        val next = if (checked) selectedDetails + detail.key else selectedDetails - detail.key
+                                        exportDetails = exportDetails + (category.id to next)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            )
+        }
+    }
 }
 
 @Composable
@@ -466,12 +566,13 @@ private fun SelectionActions(onAll: () -> Unit, onClear: () -> Unit) {
 private fun CategorySelectionRow(
     summary: PortableCategorySummary,
     selected: Boolean,
-    onToggle: (Boolean) -> Unit
+    onToggle: (Boolean) -> Unit,
+    onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onToggle(!selected) }
+            .clickable(onClick = onClick)
             .padding(vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -597,3 +698,41 @@ private fun categoryDescription(category: PortableDataCategory): String = string
         PortableDataCategory.GLOBAL_MEMORY -> R.string.portability_category_global_memory_desc
     }
 )
+
+private fun portableDetailLabel(detail: PortableCategoryDetail): String {
+    val key = detail.key.substringAfter(':')
+    return when (key) {
+        "local_sessions" -> "会话"
+        "local_messages" -> "消息"
+        "local_agent_runs" -> "Agent 运行记录"
+        "local_message_favorites" -> "消息收藏"
+        "local_characters" -> "角色卡"
+        "local_world_books" -> "世界书"
+        "local_world_book_entries" -> "世界书条目"
+        "local_character_states" -> "角色状态"
+        "local_relationship_states" -> "关系状态"
+        "local_character_memories" -> "角色记忆"
+        "local_state_snapshots" -> "状态快照"
+        "local_ai_models" -> "AI 模型"
+        "local_failover_health" -> "故障转移状态"
+        "local_hooks" -> "Hooks"
+        "local_hook_logs" -> "Hook 日志"
+        "local_tasks" -> "任务"
+        "local_workflows" -> "工作流"
+        "local_skills" -> "Skills"
+        "local_tools" -> "工具"
+        "local_mcp_servers" -> "MCP 服务器"
+        "local_knowledge_documents" -> "知识文档"
+        "local_knowledge_chunks" -> "知识分块"
+        "routing_decision_logs" -> "路由决策记录"
+        "portraits" -> "角色立绘"
+        "cached_portraits" -> "立绘缓存"
+        "chat_backgrounds" -> "聊天背景"
+        "fonts" -> "自定义字体"
+        "workspace" -> "工作区文件"
+        "global_memory" -> "全局 Agent 记忆"
+        "app_settings" -> "应用设置"
+        "credentials_bundle" -> "加密账号与凭据"
+        else -> key
+    }
+}
