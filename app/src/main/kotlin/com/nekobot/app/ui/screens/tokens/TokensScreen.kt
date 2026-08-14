@@ -487,7 +487,7 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}) {
                             )
                         }
                         item(key = "key_metrics", contentType = "summary") {
-                            TokenKeyMetrics(stats = currentStats)
+                            TokenKeyMetrics(stats = currentStats, records = records)
                         }
                     }
 
@@ -975,9 +975,27 @@ private fun TokenHeroMetric(
 }
 
 @Composable
-private fun TokenKeyMetrics(stats: TokenStats) {
+private fun TokenKeyMetrics(stats: TokenStats, records: List<TokenRecordUi>) {
     val singleColumn = LocalConfiguration.current.screenWidthDp < 340 ||
         LocalDensity.current.fontScale >= 1.3f
+    val activeSessionCount = stats.activeSessions?.takeIf { it > 0 }
+        ?: records.asSequence()
+            .map { it.sessionId.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .count()
+    val averagePrice = records.asSequence()
+        .mapNotNull { record -> record.cost?.toDoubleOrNull() ?: record.estimatedCostUsd }
+        .toList()
+        .let { prices ->
+            if (prices.isNotEmpty()) {
+                formatUsdCost(prices.average())
+            } else {
+                val totalCost = stats.estimatedCost?.toDoubleOrNull()
+                val messageCount = stats.messageCount ?: 0L
+                if (totalCost != null && messageCount > 0) formatUsdCost(totalCost / messageCount) else "—"
+            }
+        }
     val items = listOf(
         TokenStatItem(
             label = stringResource(R.string.tokens_stat_messages),
@@ -993,13 +1011,13 @@ private fun TokenKeyMetrics(stats: TokenStats) {
         ),
         TokenStatItem(
             label = stringResource(R.string.tokens_stat_active_sessions),
-            value = "${stats.activeSessions ?: 0}",
+            value = "$activeSessionCount",
             icon = Icons.Filled.Forum,
             tint = MaterialTheme.colorScheme.tertiary
         ),
         TokenStatItem(
-            label = stringResource(R.string.tokens_stat_avg_response),
-            value = stats.avgResponseTime ?: "—",
+            label = stringResource(R.string.tokens_stat_avg_price),
+            value = averagePrice,
             icon = Icons.Filled.Speed,
             tint = MaterialTheme.colorScheme.primary
         )

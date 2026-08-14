@@ -51,7 +51,7 @@
     <string name="tokens_stat_avg_per_msg">平均/条</string>
     <string name="tokens_stat_estimated_cost">估算费用</string>
     <string name="tokens_stat_active_sessions">活跃会话</string>
-    <string name="tokens_stat_avg_response">平均响应</string>
+    <string name="tokens_stat_avg_price">平均价格</string>
     <string name="tokens_session_prefix">会话 %1$s</string>
     <string name="tokens_unknown_model">未知模型</string>
     <string name="tokens_source_prefix">来源 %1$s</string>

@@ -6403,6 +6403,8 @@ $charSection$topicSection
         var rangeOutput = 0L
         var rangeTotal = 0L
         var msgCount = 0L
+        var rangeCost = 0.0
+        val activeSessionIds = linkedSetOf<String>()
 
         for (rec in filtered) {
             val input = rec.get("input_tokens")?.asLong ?: 0
@@ -6412,6 +6414,10 @@ $charSection$topicSection
             rangeOutput += output
             rangeTotal += total
             msgCount++
+            rec.get("session_id")?.asString?.trim()?.takeIf { it.isNotBlank() }?.let(activeSessionIds::add)
+            rangeCost += rec.get("cost")?.asDouble
+                ?: rec.get("estimated_cost_usd")?.asDouble
+                ?: 0.0
         }
 
         // records 返回范围内完整明细；recentRecords 仅保留最近 50 条用于兼容旧调用方。
@@ -6450,6 +6456,10 @@ $charSection$topicSection
             messageCount = msgCount,
             avgTokensPerMsg = if (msgCount > 0) rangeTotal.toDouble() / msgCount else 0.0,
             estimatedCost = "—",
+            activeSessions = activeSessionIds.size,
+            avgPrice = if (msgCount > 0 && rangeCost > 0.0) {
+                String.format(Locale.US, "%.8f", rangeCost / msgCount)
+            } else "—",
             recentRecords = details.take(50),
             records = details
         )
@@ -8916,6 +8926,12 @@ $charSection$topicSection
 
     suspend fun moveToShared(sessionId: String, filename: String): JsonElement =
         workspaceRepository.moveToShared(sessionId, filename)
+
+    suspend fun moveWorkspaceFile(sessionId: String, filename: String, targetPath: String): JsonElement =
+        workspaceRepository.moveSessionFile(sessionId, filename, targetPath)
+
+    suspend fun moveSharedFile(filename: String, targetPath: String): JsonElement =
+        workspaceRepository.moveSharedFile(filename, targetPath)
 
     suspend fun moveSharedToPrivate(filename: String, sessionId: String): JsonElement =
         workspaceRepository.moveSharedToSession(filename, sessionId)

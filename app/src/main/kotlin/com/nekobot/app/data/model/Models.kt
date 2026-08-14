@@ -658,6 +658,7 @@ data class TokenStats(
     @SerializedName("avg_tokens_per_msg") val avgTokensPerMsg: Double? = null,
     @SerializedName("estimated_cost") val estimatedCost: String? = null,
     @SerializedName("active_sessions") val activeSessions: Int? = null,
+    @SerializedName("avg_price") val avgPrice: String? = null,
     @SerializedName("avg_response_time") val avgResponseTime: String? = null,
     val history: List<JsonElement>? = null,
     @SerializedName("recent_records") val recentRecords: List<JsonElement>? = null,

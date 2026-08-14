@@ -51,7 +51,7 @@
     <string name="tokens_stat_avg_per_msg">平均/メッセージ</string>
     <string name="tokens_stat_estimated_cost">推定コスト</string>
     <string name="tokens_stat_active_sessions">アクティブセッション</string>
-    <string name="tokens_stat_avg_response">平均応答</string>
+    <string name="tokens_stat_avg_price">平均価格</string>
     <string name="tokens_session_prefix">セッション %1$s</string>
     <string name="tokens_unknown_model">不明なモデル</string>
     <string name="tokens_source_prefix">ソース %1$s</string>
