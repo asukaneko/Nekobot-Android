@@ -85,6 +85,7 @@ import androidx.compose.material.icons.filled.KeyboardHide
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
@@ -229,6 +230,7 @@ fun ChatScreen(
     val viewModel: ChatViewModel = viewModel()
     val messages by viewModel.messages.collectAsStateWithLifecycle()
     val ttsStates by viewModel.ttsStates.collectAsStateWithLifecycle()
+    val liveStreamingSubtitle by viewModel.streamingContentPreview.collectAsStateWithLifecycle()
     val session by viewModel.session.collectAsStateWithLifecycle()
     val groupCharacters by viewModel.groupCharacters.collectAsStateWithLifecycle()
     val sending by viewModel.sending.collectAsStateWithLifecycle()
@@ -310,6 +312,8 @@ fun ChatScreen(
     var isRecording by remember { mutableStateOf(false) }
     var recordingDuration by remember { mutableStateOf(0) }
     var voiceTranscribing by remember { mutableStateOf(false) }
+    var showLiveMode by rememberSaveable(sessionId) { mutableStateOf(false) }
+    var liveConfigChecking by remember { mutableStateOf(false) }
     var recorderRef by remember { mutableStateOf<android.media.MediaRecorder?>(null) }
     var audioFileRef by remember { mutableStateOf<java.io.File?>(null) }
 
@@ -412,6 +416,46 @@ fun ChatScreen(
 
     fun startVoiceInput() {
         requestMicPermission.launch(android.Manifest.permission.RECORD_AUDIO)
+    }
+
+    val requestLiveMicPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            showLiveMode = true
+        } else {
+            scope.launch {
+                snackbarHostState.showSnackbar(context.getString(R.string.chat_voice_permission_required))
+            }
+        }
+    }
+
+    fun startLiveConversation() {
+        if (liveConfigChecking) return
+        liveConfigChecking = true
+        scope.launch {
+            try {
+                when (val result = ServiceContainer.unified.validateLiveConversationConfig()) {
+                    is Resource.Success -> {
+                        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                            context,
+                            android.Manifest.permission.RECORD_AUDIO
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        if (granted) {
+                            showLiveMode = true
+                        } else {
+                            requestLiveMicPermission.launch(android.Manifest.permission.RECORD_AUDIO)
+                        }
+                    }
+                    is Resource.Error -> snackbarHostState.showSnackbar(
+                        result.message ?: "请先配置 STT、TTS 和 Live 模型"
+                    )
+                    is Resource.Loading -> Unit
+                }
+            } finally {
+                liveConfigChecking = false
+            }
+        }
     }
 
     // 标记是否为首次加载，用于跳过滚动动画直接定位到最新消息
@@ -636,6 +680,22 @@ fun ChatScreen(
                             }
                         },
                         actions = {
+                            if (session != null && isCharacterLiveSession(session?.sessionMode)) {
+                                IconButton(
+                                    onClick = { startLiveConversation() },
+                                    enabled = !sending && !isRecording && !voiceTranscribing && !liveConfigChecking
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Phone,
+                                        contentDescription = stringResource(R.string.live_start),
+                                        tint = if (!sending && !isRecording && !voiceTranscribing && !liveConfigChecking) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                        }
+                                    )
+                                }
+                            }
                             Box {
                                 IconButton(onClick = { menuExpanded = true }) {
                                     Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.chat_more), tint = MaterialTheme.colorScheme.onSurface)
@@ -1376,6 +1436,24 @@ fun ChatScreen(
     }
 
     // 语音录制中弹窗
+    if (showLiveMode) {
+        LiveConversationDialog(
+            sessionId = sessionId,
+            sessionName = session?.displayName ?: stringResource(R.string.chat_conversation),
+            portraitUrl = session?.portraitUrl,
+            messages = messages,
+            sending = sending,
+            streamingSubtitle = liveStreamingSubtitle,
+            ttsStates = ttsStates,
+            onSendMessage = { viewModel.sendMessage(it) },
+            onPrepareTts = viewModel::prepareMessageTtsForLive,
+            onStartRealtimeTurn = viewModel::startRealtimeLiveTurn,
+            onStopRealtimeTurn = viewModel::stopRealtimeLiveTurn,
+            onStopGeneration = viewModel::stop,
+            onDismiss = { showLiveMode = false }
+        )
+    }
+
     if (isRecording) {
         VoiceRecordingDialog(
             duration = recordingDuration,

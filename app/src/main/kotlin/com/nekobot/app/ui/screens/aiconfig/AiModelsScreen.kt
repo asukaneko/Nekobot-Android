@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.JsonElement
 import com.nekobot.app.R
+import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.AiModel
 import com.nekobot.app.data.model.AiModelRequest
 import com.nekobot.app.data.model.ApiKey
@@ -144,21 +145,36 @@ class AiModelsViewModel : BaseViewModel() {
     fun create(req: AiModelRequest) {
         launchResult(
             block = { repo.createAiModel(req) },
-            onSuccess = { load() }
+            onSuccess = {
+                ServiceContainer.realtimeCredentialStore.save(ServiceContainer.prefs.serverUrl, req)
+                load()
+            }
         )
     }
 
     fun update(id: String, req: AiModelRequest) {
+        val previous = _models.value.firstOrNull { it.id == id }
         launchResult(
             block = { repo.updateAiModel(id, req) },
-            onSuccess = { load() }
+            onSuccess = {
+                ServiceContainer.realtimeCredentialStore.migrate(
+                    ServiceContainer.prefs.serverUrl,
+                    previous,
+                    req
+                )
+                load()
+            }
         )
     }
 
     fun delete(id: String) {
+        val deleted = _models.value.firstOrNull { it.id == id }
         launchResult(
             block = { repo.deleteAiModel(id) },
-            onSuccess = { load() }
+            onSuccess = {
+                ServiceContainer.realtimeCredentialStore.remove(ServiceContainer.prefs.serverUrl, deleted)
+                load()
+            }
         )
     }
 

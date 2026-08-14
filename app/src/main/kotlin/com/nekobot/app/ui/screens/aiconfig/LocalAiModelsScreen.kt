@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Memory
@@ -108,6 +109,7 @@ import java.util.UUID
 
 private val localModelPurposes = listOf(
     "chat",
+    "live",
     "vision",
     "video",
     "tts",
@@ -657,6 +659,7 @@ private fun LocalModelFilterCount(count: Int, selected: Boolean) {
 
 private fun localModelPurposeIcon(purpose: String): ImageVector = when (purpose) {
     "chat" -> Icons.Filled.ChatBubble
+    "live" -> Icons.Filled.GraphicEq
     "vision" -> Icons.Filled.Image
     "video" -> Icons.Filled.Movie
     "tts" -> Icons.AutoMirrored.Filled.VolumeUp
@@ -669,6 +672,7 @@ private fun localModelPurposeIcon(purpose: String): ImageVector = when (purpose)
 @Composable
 private fun localModelPurposeLabel(purpose: String): String = when (purpose) {
     "chat" -> stringResource(R.string.aimodel_editor_purpose_chat)
+    "live" -> stringResource(R.string.aimodel_editor_purpose_live)
     "vision" -> stringResource(R.string.aimodel_editor_purpose_vision)
     "video" -> stringResource(R.string.aimodel_editor_purpose_video)
     "tts" -> stringResource(R.string.aimodel_editor_purpose_tts)
@@ -860,6 +864,7 @@ private fun LocalAiModelEditDialog(
     val purposes = remember {
         listOf(
             "chat" to R.string.localai_purpose_chat_model,
+            "live" to R.string.localai_purpose_live,
             "vision" to R.string.localai_purpose_vision,
             "video" to R.string.localai_purpose_video,
             "tts" to R.string.localai_purpose_tts,
@@ -1073,6 +1078,7 @@ private fun LocalAiModelEditDialog(
             if (purpose != "chat") {
                 Text(
                     when (purpose) {
+                        "live" -> stringResource(R.string.localai_purpose_hint_live)
                         "vision" -> stringResource(R.string.localai_purpose_hint_vision)
                         "video" -> stringResource(R.string.localai_purpose_hint_video)
                         "tts" -> stringResource(R.string.localai_purpose_hint_tts)

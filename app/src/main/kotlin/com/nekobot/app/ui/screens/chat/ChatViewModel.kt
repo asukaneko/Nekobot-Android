@@ -174,6 +174,9 @@ import com.nekobot.app.data.local.isLocalCommandMessage
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
 import com.nekobot.app.data.local.ai.AgentRecoveryState
 import com.nekobot.app.data.local.ai.toRecoveryState
+import com.nekobot.app.data.local.ai.RealtimeContextMessage
+import com.nekobot.app.data.local.ai.RealtimeVoiceClient
+import com.nekobot.app.data.local.ai.RealtimeVoiceEvent
 import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.TtsPreviewRequest
@@ -385,6 +388,8 @@ class ChatViewModel : BaseViewModel() {
     val selectedMessageIds: StateFlow<Set<String>> = _selectedMessageIds.asStateFlow()
 
     private var currentSessionId: String = ""
+    private var realtimeLiveJob: kotlinx.coroutines.Job? = null
+    private val realtimeVoiceClient = RealtimeVoiceClient()
 
     /** 流式生成中的临时消息内容累加器（引用 runtime，跨 VM 共享） */
     private val streamingContent: StringBuilder get() = runtime.streamingContent
@@ -1029,15 +1034,26 @@ class ChatViewModel : BaseViewModel() {
         val volume: Float
     )
 
-    private fun activeTtsConfig(session: Session? = _session.value): ActiveTtsConfig? {
+    private fun activeTtsConfig(
+        session: Session? = _session.value,
+        requireEnabled: Boolean = true
+    ): ActiveTtsConfig? {
         val config = session?.ttsConfig
             ?.takeIf { it.isJsonObject }
             ?.asJsonObject
-            ?: return null
+        if (config == null) {
+            return if (requireEnabled) null else ActiveTtsConfig(
+                modelId = null,
+                voice = "",
+                speed = 1f,
+                pitch = 1f,
+                volume = 1f
+            )
+        }
         val enabled = runCatching {
             config.get("enabled")?.takeIf { !it.isJsonNull }?.asBoolean
         }.getOrNull() == true
-        if (!enabled) return null
+        if (requireEnabled && !enabled) return null
 
         fun stringValue(name: String): String? = runCatching {
             config.get(name)?.takeIf { !it.isJsonNull }?.asString?.trim()
@@ -1062,16 +1078,19 @@ class ChatViewModel : BaseViewModel() {
      * 聊天 ViewModel 会在进入会话详情页时保留，若只读 [_session]，返回聊天页后的第一条回复
      * 仍会使用切换 TTS 前的旧快照，造成开关延迟一轮生效。
      */
-    private suspend fun resolveLatestTtsConfig(sessionId: String): ActiveTtsConfig? {
+    private suspend fun resolveLatestTtsConfig(
+        sessionId: String,
+        requireEnabled: Boolean = true
+    ): ActiveTtsConfig? {
         val latest = when (val result = unified.getSession(sessionId)) {
             is Resource.Success -> result.data
             else -> null
         }
         if (latest != null) {
             if (currentSessionId == sessionId) _session.value = latest
-            return activeTtsConfig(latest)
+            return activeTtsConfig(latest, requireEnabled)
         }
-        return activeTtsConfig()
+        return activeTtsConfig(requireEnabled = requireEnabled)
     }
 
     /**
@@ -1139,7 +1158,8 @@ class ChatViewModel : BaseViewModel() {
      */
     private fun scheduleTtsForLatestAssistant(
         finalContent: String? = null,
-        excludedMessageIds: Set<String> = emptySet()
+        excludedMessageIds: Set<String> = emptySet(),
+        requireTtsEnabled: Boolean = true
     ) {
         val target = runtime
         val sessionId = currentSessionId
@@ -1157,14 +1177,23 @@ class ChatViewModel : BaseViewModel() {
             }
         }
 
-        val lookupKey = "_tts_lookup_${expectedContent.hashCode()}_${excludedMessageIds.hashCode()}"
+        val lookupKey = "_tts_lookup_${expectedContent.hashCode()}_${excludedMessageIds.hashCode()}_$requireTtsEnabled"
         if (target.ttsJobs[lookupKey]?.isActive == true) return
         val lookupJob = ServiceContainer.applicationScope.launch(
             start = kotlinx.coroutines.CoroutineStart.LAZY
         ) {
-            val config = resolveLatestTtsConfig(sessionId) ?: return@launch
+            val config = resolveLatestTtsConfig(sessionId, requireTtsEnabled) ?: return@launch
             findCandidate(target.messages.value)?.let {
-                startMessageTts(target, sessionId, it, config)
+                val force = !requireTtsEnabled &&
+                    it.id?.let(target.ttsStates.value::get)?.status == MessageTtsStatus.Error
+                startMessageTts(
+                    target,
+                    sessionId,
+                    it,
+                    config,
+                    force = force,
+                    waitForAutoTitle = requireTtsEnabled
+                )
                 return@launch
             }
             repeat(20) {
@@ -1190,7 +1219,16 @@ class ChatViewModel : BaseViewModel() {
                                 current + mergedCandidate
                             }
                         }
-                    startMessageTts(target, sessionId, mergedCandidate, config)
+                    val force = !requireTtsEnabled &&
+                        mergedCandidate.id?.let(target.ttsStates.value::get)?.status == MessageTtsStatus.Error
+                    startMessageTts(
+                        target,
+                        sessionId,
+                        mergedCandidate,
+                        config,
+                        force = force,
+                        waitForAutoTitle = requireTtsEnabled
+                    )
                     return@launch
                 }
                 kotlinx.coroutines.delay(250)
@@ -1243,7 +1281,8 @@ class ChatViewModel : BaseViewModel() {
         sessionId: String,
         message: Message,
         config: ActiveTtsConfig,
-        force: Boolean = false
+        force: Boolean = false,
+        waitForAutoTitle: Boolean = true
     ) {
         val messageId = message.id ?: return
         val text = prepareTtsText(message.displayContent)
@@ -1270,7 +1309,7 @@ class ChatViewModel : BaseViewModel() {
             start = kotlinx.coroutines.CoroutineStart.LAZY
         ) {
             try {
-                waitForRemoteAutoTitle(sessionId)
+                if (waitForAutoTitle) waitForRemoteAutoTitle(sessionId)
                 val audioUrl = if (localMode) {
                     when (
                         val result = unified.synthesizeAudio(
@@ -1370,6 +1409,164 @@ class ChatViewModel : BaseViewModel() {
             ChatSessionManager.pruneIfIdle(target.sessionId)
         }
         prepareJob.start()
+    }
+
+    /**
+     * Live 对话始终需要语音输出，因此即使普通会话的自动 TTS 开关关闭，
+     * 也会使用当前会话参数和已配置的 purpose=tts 模型生成并持久化音频。
+     */
+    fun prepareMessageTtsForLive(message: Message) {
+        val target = runtime
+        val sessionId = currentSessionId
+        if (sessionId.isBlank() || message.isUser || message.displayContent.isBlank()) return
+
+        if (!isPersistedAssistantMessage(message)) {
+            scheduleTtsForLatestAssistant(
+                finalContent = message.displayContent,
+                requireTtsEnabled = false
+            )
+            return
+        }
+
+        val messageId = message.id ?: return
+        if (!message.audioUrl.isNullOrBlank()) {
+            updateTtsState(target, messageId, MessageTtsUiState(MessageTtsStatus.Ready))
+            return
+        }
+        if (target.ttsJobs[messageId]?.isActive == true) return
+
+        val prepareKey = "_live_tts_prepare_$messageId"
+        if (target.ttsJobs[prepareKey]?.isActive == true) return
+        val prepareJob = ServiceContainer.applicationScope.launch(
+            start = kotlinx.coroutines.CoroutineStart.LAZY
+        ) {
+            val config = resolveLatestTtsConfig(sessionId, requireEnabled = false) ?: return@launch
+            val force = target.ttsStates.value[messageId]?.status == MessageTtsStatus.Error
+            startMessageTts(
+                target,
+                sessionId,
+                message,
+                config,
+                force = force,
+                waitForAutoTitle = false
+            )
+        }
+        target.ttsJobs[prepareKey] = prepareJob
+        prepareJob.invokeOnCompletion {
+            target.ttsJobs.remove(prepareKey, prepareJob)
+            ChatSessionManager.pruneIfIdle(target.sessionId)
+        }
+        prepareJob.start()
+    }
+
+    /** 使用 purpose=live 的 Realtime 模型执行一轮原生语音对话。 */
+    internal fun startRealtimeLiveTurn(
+        pcm16: ByteArray,
+        callbacks: LiveRealtimeTurnCallbacks
+    ) {
+        val sessionId = currentSessionId
+        if (sessionId.isBlank() || pcm16.isEmpty()) return
+        realtimeLiveJob?.cancel()
+        _sending.value = true
+        clearError()
+
+        val currentSession = _session.value
+        val context = _messages.value
+            .asSequence()
+            .filterNot { it.isThinkingCard || it.id == STREAMING_ID || it.displayContent.isBlank() }
+            .map {
+                RealtimeContextMessage(
+                    role = if (it.isUser) "user" else "assistant",
+                    content = it.displayContent
+                )
+            }
+            .toList()
+        val instructions = buildString {
+            val systemPrompt = currentSession?.composedSystemPrompt
+                ?.takeIf(String::isNotBlank)
+                ?: currentSession?.systemPrompt?.takeIf(String::isNotBlank)
+            if (systemPrompt != null) appendLine(systemPrompt)
+            append("你正在与用户进行实时语音通话。延续上述角色设定与完整会话上下文，使用用户当前的语言自然、简洁地回答。")
+        }
+
+        val job = viewModelScope.launch {
+            try {
+                val config = when (val result = unified.getRealtimeLiveModel()) {
+                    is Resource.Success -> result.data
+                    is Resource.Error -> throw IllegalStateException(result.message)
+                    is Resource.Loading -> throw IllegalStateException("Live 模型配置仍在加载")
+                }
+                realtimeVoiceClient.streamTurn(
+                    config = config,
+                    instructions = instructions,
+                    context = context,
+                    pcm16 = pcm16
+                ).collect { event ->
+                    when (event) {
+                        RealtimeVoiceEvent.Connected -> callbacks.onConnected()
+                        is RealtimeVoiceEvent.UserTranscript ->
+                            callbacks.onUserTranscript(event.text, event.isFinal)
+                        is RealtimeVoiceEvent.AssistantTranscript ->
+                            callbacks.onAssistantTranscript(event.text, event.isFinal)
+                        is RealtimeVoiceEvent.AudioDelta -> callbacks.onAudioDelta(event.pcm16)
+                        is RealtimeVoiceEvent.Failure -> throw IllegalStateException(event.message)
+                        is RealtimeVoiceEvent.Completed -> {
+                            val userText = event.userTranscript.trim().ifBlank {
+                                string(R.string.live_voice_message)
+                            }
+                            val assistantText = event.assistantTranscript.trim()
+                            if (assistantText.isBlank()) {
+                                throw IllegalStateException(string(R.string.live_realtime_empty_response))
+                            }
+                            callbacks.onUserTranscript(userText, true)
+                            callbacks.onAssistantTranscript(assistantText, true)
+                            when (
+                                val saved = unified.addConversationMessage(
+                                    sessionId,
+                                    role = "user",
+                                    content = userText
+                                )
+                            ) {
+                                is Resource.Error -> throw IllegalStateException(saved.message)
+                                else -> Unit
+                            }
+                            when (
+                                val saved = unified.addConversationMessage(
+                                    sessionId,
+                                    role = "assistant",
+                                    content = assistantText,
+                                    sender = currentSession?.senderName ?: currentSession?.characterName
+                                )
+                            ) {
+                                is Resource.Error -> throw IllegalStateException(saved.message)
+                                else -> Unit
+                            }
+                            _sending.value = false
+                            loadMessages()
+                            callbacks.onCompleted()
+                        }
+                    }
+                }
+            } catch (_: kotlinx.coroutines.CancellationException) {
+                // 主动挂断或切换链路属于正常取消。
+            } catch (error: Exception) {
+                val message = error.message ?: string(R.string.live_realtime_failed)
+                showError(message)
+                callbacks.onError(message)
+            } finally {
+                _sending.value = false
+            }
+        }
+        realtimeLiveJob = job
+        job.invokeOnCompletion {
+            if (realtimeLiveJob === job) realtimeLiveJob = null
+        }
+    }
+
+    fun stopRealtimeLiveTurn() {
+        realtimeLiveJob?.cancel()
+        realtimeLiveJob = null
+        _sending.value = false
     }
 
     /**
@@ -2138,6 +2335,7 @@ class ChatViewModel : BaseViewModel() {
     }
 
     override fun onCleared() {
+        stopRealtimeLiveTurn()
         super.onCleared()
         // 不取消 eventsJob / localChatJob：让 AI 生成流程在后台继续运行
         // 仅释放本 VM 对 runtime 的引用计数；若没有其他订阅者且无活跃 Job，状态会被清理

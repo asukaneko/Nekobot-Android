@@ -18,6 +18,7 @@ import com.nekobot.app.data.remote.NetworkClient
 import com.nekobot.app.data.remote.SocketManager
 import com.nekobot.app.data.repository.NekobotRepository
 import com.nekobot.app.data.repository.UnifiedRepository
+import com.nekobot.app.data.local.security.RealtimeCredentialStore
 import com.nekobot.app.integration.IncomingShare
 import com.nekobot.app.integration.NekobotShortcutManager
 import com.nekobot.app.widget.NekobotWidgetProvider
@@ -52,6 +53,8 @@ object ServiceContainer {
     lateinit var unified: UnifiedRepository
         private set
     lateinit var localRepository: LocalRepository
+        private set
+    internal lateinit var realtimeCredentialStore: RealtimeCredentialStore
         private set
     /** 跨会话、跨本地数据库 Profile 的 Agent 长期记忆。 */
     lateinit var globalAgentMemory: GlobalAgentMemoryStore
@@ -113,6 +116,7 @@ object ServiceContainer {
     fun init(app: Application) {
         appContext = app.applicationContext
         prefs = PrefsManager(app)
+        realtimeCredentialStore = RealtimeCredentialStore(app)
         globalAgentMemory = GlobalAgentMemoryStore(app)
         prefs.migrateSensitivePreferences()
         freezeLegacyPlotStoryProfiles(app)

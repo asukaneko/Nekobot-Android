@@ -137,6 +137,7 @@ private val providerPresets = listOf(
 @Composable
 private fun rememberPurposeLabels(): LinkedHashMap<String, String> = linkedMapOf(
     "chat" to stringResource(R.string.aimodel_editor_purpose_chat),
+    "live" to stringResource(R.string.aimodel_editor_purpose_live),
     "vision" to stringResource(R.string.aimodel_editor_purpose_vision),
     "video" to stringResource(R.string.aimodel_editor_purpose_video),
     "tts" to stringResource(R.string.aimodel_editor_purpose_tts),
@@ -350,6 +351,8 @@ fun AiModelEditorDialog(
                 value = state.baseUrl,
                 placeholder = if (state.purpose == "image_generation") {
                     "https://api.openai.com/v1/images/generations"
+                } else if (state.purpose == "live") {
+                    "https://api.openai.com/v1"
                 } else {
                     "https://api.example.com/v1"
                 }
@@ -522,6 +525,35 @@ fun AiModelEditorDialog(
             }
 
             when (state.purpose) {
+                "live" -> {
+                    FormSection(stringResource(R.string.aimodel_editor_section_live))
+                    Text(
+                        text = stringResource(R.string.aimodel_editor_live_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    EditorDropdownField(
+                        label = stringResource(R.string.aimodel_editor_live_voice),
+                        value = state.ttsVoice,
+                        options = listOf(
+                            "marin", "cedar", "alloy", "ash", "ballad",
+                            "coral", "echo", "sage", "shimmer", "verse"
+                        ),
+                        onSelect = { state = state.copy(ttsVoice = it) }
+                    )
+                    EditorTextField(
+                        label = stringResource(R.string.aimodel_editor_live_transcription_model),
+                        value = state.sttModel,
+                        placeholder = "gpt-4o-mini-transcribe"
+                    ) { state = state.copy(sttModel = it) }
+                    EditorDropdownField(
+                        label = stringResource(R.string.aimodel_editor_stt_language),
+                        value = state.language,
+                        options = listOf("zh", "en", "auto"),
+                        onSelect = { state = state.copy(language = it) }
+                    )
+                }
+
                 "tts" -> {
                     FormSection(stringResource(R.string.aimodel_editor_section_tts))
                     val ttsProviderLabels = mapOf(
@@ -860,6 +892,22 @@ private fun AiModelEditorState.applyPurpose(
             supportsTools = true,
             supportsReasoning = true,
             supportsStream = true
+        )
+        "live" -> copy(
+            name = renamed,
+            purpose = purpose,
+            provider = "openai",
+            baseUrl = "https://api.openai.com/v1",
+            model = "gpt-realtime",
+            temperature = "0.8",
+            maxTokens = "4096",
+            maxContextLength = "32000",
+            supportsTools = false,
+            supportsReasoning = false,
+            supportsStream = true,
+            ttsVoice = "marin",
+            sttModel = "gpt-4o-mini-transcribe",
+            language = language.ifBlank { "zh" }
         )
         "vision" -> copy(
             name = renamed,

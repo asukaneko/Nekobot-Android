@@ -45,6 +45,7 @@ import com.nekobot.app.data.local.ai.addGlobalAgentMemory
 import com.nekobot.app.data.local.ai.decodeThinkingCardsForUi
 import com.nekobot.app.data.local.ai.encodeToolCallHistory
 import com.nekobot.app.data.local.ai.toPersistedProgressCard
+import com.nekobot.app.data.local.ai.toRealtimeModelConfig
 import com.nekobot.app.data.local.ai.reconcileLocalTokenUsageRecords
 import com.nekobot.app.data.local.ai.relationshipStateFromInitial
 import com.nekobot.app.data.local.ai.resolveLocalTokenUsage
@@ -5954,7 +5955,32 @@ $charSection$topicSection
         aiModelDao.deleteById(id)
     }
 
-    suspend fun testModel(model: LocalAiModelEntity): LocalAiResult = aiClient.testModel(model)
+    suspend fun testModel(model: LocalAiModelEntity): LocalAiResult {
+        if (model.purpose == "live") {
+            val result = com.nekobot.app.data.local.ai.RealtimeVoiceClient()
+                .testConnection(model.toRealtimeModelConfig())
+            return result.fold(
+                onSuccess = {
+                    LocalAiResult(
+                        content = "Realtime WebSocket 连接成功",
+                        usedModelId = model.id,
+                        usedModelName = model.name,
+                        usedModelActualName = model.model
+                    )
+                },
+                onFailure = {
+                    LocalAiResult(
+                        content = "",
+                        error = it.message ?: "Realtime 连接失败",
+                        usedModelId = model.id,
+                        usedModelName = model.name,
+                        usedModelActualName = model.model
+                    )
+                }
+            )
+        }
+        return aiClient.testModel(model)
+    }
 
     suspend fun fetchAvailableModels(
         baseUrl: String,
@@ -8548,7 +8574,7 @@ $charSection$topicSection
 
     /** 用途列表（与远程保持一致）。 */
     fun allPurposes(): JsonElement = JsonParser.parseString(
-        """["chat","vision","video","tts","stt","embedding","image_generation"]"""
+        """["chat","live","vision","video","tts","stt","embedding","image_generation"]"""
     )
 
     // ==================== 扩展功能：故障转移队列 ====================

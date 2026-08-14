@@ -158,6 +158,7 @@
     <string name="localai_temperature">Temperature</string>
     <string name="localai_max_tokens">Max token</string>
     <string name="localai_purpose_chat">💬 Chat</string>
+    <string name="localai_purpose_live">📞 Live voice</string>
     <string name="localai_purpose_vision">🖼️ Vision</string>
     <string name="localai_purpose_video">🎬 Video</string>
     <string name="localai_purpose_tts">🔊 TTS</string>
@@ -165,6 +166,7 @@
     <string name="localai_purpose_embedding">📊 Embedding</string>
     <string name="localai_purpose_image_generation">🎨 Image Generation</string>
     <string name="localai_purpose_chat_model">💬 Chat Model</string>
+    <string name="localai_purpose_hint_live">Native voice pipeline for Live. Configure gpt-realtime, the OpenAI base URL, voice, and input transcription model to stream audio and subtitles together.</string>
     <string name="localai_purpose_hint_vision">For image message understanding, used as fallback for image description</string>
     <string name="localai_purpose_hint_video">For video message understanding (not auto-invoked in local mode yet)</string>
     <string name="localai_purpose_hint_tts">For text-to-speech, can be triggered manually in chat</string>
@@ -197,6 +199,7 @@
     <string name="aimodel_editor_preset_config_name">%1$s Config</string>
 
     <string name="aimodel_editor_purpose_chat">Chat Model</string>
+    <string name="aimodel_editor_purpose_live">Live voice</string>
     <string name="aimodel_editor_purpose_vision">Vision</string>
     <string name="aimodel_editor_purpose_video">Video</string>
     <string name="aimodel_editor_purpose_tts">TTS</string>
@@ -277,6 +280,10 @@
     <string name="aimodel_editor_capability_stream">Supports streaming responses</string>
 
     <string name="aimodel_editor_section_tts">TTS</string>
+    <string name="aimodel_editor_section_live">Realtime voice</string>
+    <string name="aimodel_editor_live_hint">Audio output includes streaming audio plus a transcript. The Realtime model understands input audio natively; the transcription model is only used to save user subtitles.</string>
+    <string name="aimodel_editor_live_voice">Realtime voice</string>
+    <string name="aimodel_editor_live_transcription_model">Input transcription model</string>
     <string name="aimodel_editor_tts_provider">TTS Provider</string>
     <string name="aimodel_editor_tts_provider_openai">OpenAI Compatible</string>
     <string name="aimodel_editor_tts_provider_xiaomi">Xiaomi MiMo</string>

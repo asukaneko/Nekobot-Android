@@ -131,8 +131,13 @@ class NekobotRepository(
         }
     suspend fun stopGeneration(id: String): Resource<ApiResult> = safeCall { api.stopGeneration(mapOf("session_id" to id)) }
     suspend fun listMessages(id: String): Resource<List<Message>> = safeCall { api.listMessages(id) }
-    suspend fun addMessage(id: String, content: String): Resource<Message> =
-        safeCall { api.addMessage(id, SendMessageRequest(content = content)) }
+    suspend fun addMessage(
+        id: String,
+        content: String,
+        role: String = "user",
+        sender: String? = null
+    ): Resource<Message> =
+        safeCall { api.addMessage(id, SendMessageRequest(role = role, content = content, sender = sender)) }
     suspend fun updateMessageAudio(id: String, messageId: String, audioUrl: String): Resource<Message> =
         safeCall {
             api.updateMessage(

@@ -30,6 +30,16 @@ enum class ChatInputLayoutMode {
     }
 }
 
+enum class LivePipelineMode {
+    CLASSIC,
+    REALTIME;
+
+    companion object {
+        fun fromStorage(value: String?): LivePipelineMode =
+            entries.firstOrNull { it.name == value } ?: CLASSIC
+    }
+}
+
 /**
  * 单条登录记录：服务器地址 + 用户名 + token（密码不保存，快速登录靠 token 复用）。
  * 若 token 已失效，后端会返回 401，届时用户需重新输入密码登录。
@@ -132,6 +142,13 @@ class PrefsManager(context: Context) {
         }
 
     val isLocalMode: Boolean get() = appMode.isLocal
+
+    /** Live 对话链路：传统 STT→LLM→TTS，或 Realtime 原生语音→语音。 */
+    var livePipelineMode: LivePipelineMode
+        get() = LivePipelineMode.fromStorage(prefs.getString(KEY_LIVE_PIPELINE_MODE, null))
+        set(value) {
+            prefs.edit().putString(KEY_LIVE_PIPELINE_MODE, value.name).apply()
+        }
 
     /** 隐私锁：应用每次重新进入前必须通过系统生物识别。 */
     var appLockEnabled: Boolean
@@ -625,6 +642,7 @@ class PrefsManager(context: Context) {
         private const val KEY_LOGIN_RECORDS = "login_records"
         private const val KEY_APP_LOCK_ENABLED = "app_lock_enabled"
         private const val KEY_CHAT_INPUT_LAYOUT = "chat_input_layout"
+        private const val KEY_LIVE_PIPELINE_MODE = "live_pipeline_mode"
         private const val KEY_RECENT_SESSIONS_INCLUDE_ARCHIVED = "recent_sessions_include_archived"
         private const val KEY_SMART_ROUTING_ENABLED = "smart_routing_enabled"
         private const val KEY_SMART_ROUTING_DAILY_BUDGET = "smart_routing_daily_budget"

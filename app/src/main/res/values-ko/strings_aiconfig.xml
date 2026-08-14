@@ -158,6 +158,7 @@
     <string name="localai_temperature">온도</string>
     <string name="localai_max_tokens">최대 토큰</string>
     <string name="localai_purpose_chat">💬 채팅</string>
+    <string name="localai_purpose_live">📞 Live 음성</string>
     <string name="localai_purpose_vision">🖼️ 비전</string>
     <string name="localai_purpose_video">🎬 비디오</string>
     <string name="localai_purpose_tts">🔊 TTS</string>
@@ -165,6 +166,7 @@
     <string name="localai_purpose_embedding">📊 임베딩</string>
     <string name="localai_purpose_image_generation">🎨 이미지 생성</string>
     <string name="localai_purpose_chat_model">💬 채팅 모델</string>
+    <string name="localai_purpose_hint_live">Live용 네이티브 음성 파이프라인입니다. gpt-realtime, OpenAI Base URL, 음색 및 입력 전사 모델을 설정하면 오디오와 자막을 함께 스트리밍할 수 있습니다.</string>
     <string name="localai_purpose_hint_vision">이미지 메시지 이해용, 이미지 설명의 폴백으로 사용돼요</string>
     <string name="localai_purpose_hint_video">비디오 메시지 이해용 (로컬 모드에서는 아직 자동 호출되지 않아요)</string>
     <string name="localai_purpose_hint_tts">텍스트 음성 변환용, 대화에서 수동으로 호출할 수 있어요</string>
@@ -197,6 +199,7 @@
     <string name="aimodel_editor_preset_config_name">%1$s 설정</string>
 
     <string name="aimodel_editor_purpose_chat">채팅 모델</string>
+    <string name="aimodel_editor_purpose_live">Live 실시간 음성</string>
     <string name="aimodel_editor_purpose_vision">이미지 인식</string>
     <string name="aimodel_editor_purpose_video">동영상 인식</string>
     <string name="aimodel_editor_purpose_tts">TTS 음성 합성</string>
@@ -277,6 +280,10 @@
     <string name="aimodel_editor_capability_stream">스트리밍 응답 지원</string>
 
     <string name="aimodel_editor_section_tts">TTS 음성 합성</string>
+    <string name="aimodel_editor_section_live">Realtime 음성</string>
+    <string name="aimodel_editor_live_hint">오디오 출력에는 스트리밍 오디오와 자막이 함께 포함됩니다. 입력 음성은 Realtime 모델이 직접 이해하며, 전사 모델은 사용자 자막 저장에만 사용됩니다.</string>
+    <string name="aimodel_editor_live_voice">Realtime 음색</string>
+    <string name="aimodel_editor_live_transcription_model">입력 전사 모델</string>
     <string name="aimodel_editor_tts_provider">TTS 제공자</string>
     <string name="aimodel_editor_tts_provider_openai">OpenAI 호환</string>
     <string name="aimodel_editor_tts_provider_xiaomi">샤오미 MiMo</string>

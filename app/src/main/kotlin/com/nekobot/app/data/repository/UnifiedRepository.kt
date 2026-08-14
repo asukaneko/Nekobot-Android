@@ -8,6 +8,8 @@ import com.google.gson.JsonParser
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalRepository
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
+import com.nekobot.app.data.local.ai.RealtimeModelConfig
+import com.nekobot.app.data.local.ai.toRealtimeModelConfig
 import com.nekobot.app.data.local.LocalWebDavBackupManager
 import com.nekobot.app.data.local.NbotConfigImporter
 import com.nekobot.app.data.local.PrefsManager
@@ -270,6 +272,18 @@ class UnifiedRepository(
 
     suspend fun addMessage(id: String, content: String): Resource<Message> =
         if (isLocal) Resource.Success(local.addMessage(id, "user", content)) else remote.addMessage(id, content)
+
+    /** 保存由 Live/Reatime 等外部生成链路产生的指定角色消息。 */
+    suspend fun addConversationMessage(
+        id: String,
+        role: String,
+        content: String,
+        sender: String? = null
+    ): Resource<Message> = if (isLocal) {
+        Resource.Success(local.addMessage(id, role, content, sender))
+    } else {
+        remote.addMessage(id, content, role, sender)
+    }
 
     suspend fun deleteMessage(id: String, messageId: String): Resource<Unit> =
         if (isLocal) { local.deleteMessage(id, messageId); Resource.Success(Unit) } else remote.deleteMessage(id, messageId)
@@ -715,6 +729,75 @@ class UnifiedRepository(
     /** 获取指定 purpose 的激活模型（用于 vision/tts/stt 等场景）。 */
     suspend fun getActiveLocalModelByPurpose(purpose: String): LocalAiModelEntity? =
         if (isLocal) local.getActiveModel(purpose) else null
+
+    /** 解析 Live 原生语音链路使用的 purpose=live 模型。 */
+    suspend fun getRealtimeLiveModel(): Resource<RealtimeModelConfig> {
+        if (isLocal) {
+            val models = local.listModelsByPurpose("live")
+            val selected = models.firstOrNull { it.active } ?: models.firstOrNull()
+                ?: return Resource.Error("未配置 Live 模型，请先在 AI 配置中心新增 purpose=live 的 gpt-realtime 模型")
+            return Resource.Success(selected.toRealtimeModelConfig())
+        }
+
+        return when (val result = remote.listAiModels()) {
+            is Resource.Success -> {
+                val selected = result.data.orEmpty()
+                    .filter { it.enabled != false && it.purpose == "live" }
+                    .sortedWith(compareByDescending<com.nekobot.app.data.model.AiModel> { it.active == true }
+                        .thenBy { it.priority ?: Int.MAX_VALUE })
+                    .firstOrNull()
+                    ?: return Resource.Error("未配置 Live 模型，请先在 AI 配置中心新增 purpose=live 的 gpt-realtime 模型")
+                val config = selected.toRealtimeModelConfig()
+                if (config.apiKey.isBlank() || config.apiKey == "********") {
+                    val cachedKey = ServiceContainer.realtimeCredentialStore.get(prefs.serverUrl, selected)
+                    if (cachedKey.isNullOrBlank()) {
+                        Resource.Error("服务端已隐藏 Live 模型密钥，请编辑该模型并重新填写一次 API Key")
+                    } else {
+                        Resource.Success(config.copy(apiKey = cachedKey))
+                    }
+                } else {
+                    Resource.Success(config)
+                }
+            }
+            is Resource.Error -> Resource.Error(result.message)
+            is Resource.Loading -> Resource.Loading
+        }
+    }
+
+    /** Live 对话入口预检：三种语音链路模型都配置后才允许进入通话界面。 */
+    suspend fun validateLiveConversationConfig(): Resource<Unit> {
+        val purposes = listOf("stt", "tts", "live")
+        if (isLocal) {
+            val missing = purposes.filter { purpose ->
+                local.listModelsByPurpose(purpose).isEmpty()
+            }
+            return if (missing.isEmpty()) {
+                Resource.Success(Unit)
+            } else {
+                Resource.Error(
+                    "Live 对话需要先配置 ${missing.joinToString("、")} 模型，请在 AI 配置中心添加并启用对应模型"
+                )
+            }
+        }
+
+        return when (val result = remote.listAiModels()) {
+            is Resource.Success -> {
+                val models = result.data.orEmpty()
+                val missing = purposes.filter { purpose ->
+                    models.none { it.enabled != false && it.purpose.equals(purpose, ignoreCase = true) }
+                }
+                if (missing.isNotEmpty()) {
+                    Resource.Error(
+                        "Live 对话需要先配置 ${missing.joinToString("、")} 模型，请在 AI 配置中心添加并启用对应模型"
+                    )
+                } else {
+                    Resource.Success(Unit)
+                }
+            }
+            is Resource.Error -> Resource.Error(result.message)
+            is Resource.Loading -> Resource.Loading
+        }
+    }
 
     suspend fun testLocalModel(model: LocalAiModelEntity) =
         if (isLocal) local.testModel(model) else null

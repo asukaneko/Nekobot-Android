@@ -169,6 +169,7 @@
     <string name="localai_temperature">温度</string>
     <string name="localai_max_tokens">最大 token</string>
     <string name="localai_purpose_chat">💬 对话</string>
+    <string name="localai_purpose_live">📞 Live 实时语音</string>
     <string name="localai_purpose_vision">🖼️ 图片理解</string>
     <string name="localai_purpose_video">🎬 视频理解</string>
     <string name="localai_purpose_tts">🔊 语音合成</string>
@@ -176,6 +177,7 @@
     <string name="localai_purpose_embedding">📊 向量嵌入</string>
     <string name="localai_purpose_image_generation">🎨 图片生成</string>
     <string name="localai_purpose_chat_model">💬 对话模型</string>
+    <string name="localai_purpose_hint_live">用于 Live 的原生语音链路。配置 gpt-realtime、OpenAI Base URL、音色和输入转写模型后，可同时流式播放音频并显示字幕。</string>
     <string name="localai_purpose_hint_vision">用于图片消息理解，将作为图片描述的回退模型</string>
     <string name="localai_purpose_hint_video">用于视频消息理解（暂未在本地模式自动调用）</string>
     <string name="localai_purpose_hint_tts">用于文本转语音，可在聊天界面手动触发</string>
@@ -198,6 +200,7 @@
 
     <!-- 用途标签（编辑器内下拉显示） -->
     <string name="aimodel_editor_purpose_chat">对话模型</string>
+    <string name="aimodel_editor_purpose_live">Live 实时语音</string>
     <string name="aimodel_editor_purpose_vision">图片理解</string>
     <string name="aimodel_editor_purpose_video">视频理解</string>
     <string name="aimodel_editor_purpose_tts">TTS 语音合成</string>
@@ -287,6 +290,10 @@
 
     <!-- TTS 配置 -->
     <string name="aimodel_editor_section_tts">TTS 语音合成</string>
+    <string name="aimodel_editor_section_live">Realtime 实时语音</string>
+    <string name="aimodel_editor_live_hint">音频输出模式会同时返回流式音频和转写字幕；输入语音由 Realtime 模型原生理解，转写模型仅用于保存用户字幕。</string>
+    <string name="aimodel_editor_live_voice">Realtime 音色</string>
+    <string name="aimodel_editor_live_transcription_model">输入转写模型</string>
     <string name="aimodel_editor_tts_provider">TTS 提供商</string>
     <string name="aimodel_editor_tts_provider_openai">OpenAI 兼容</string>
     <string name="aimodel_editor_tts_provider_xiaomi">小米 MiMo</string>
