@@ -337,9 +337,9 @@
 
   /* ---------- 11. 从 GitHub Releases 拉取更新日志 ---------- */
   const FALLBACK_RELEASES = [
+    { tag_name: 'v0.5.1', published_at: '2026-08-14', body: '- 新增实时语音对话模式\n- 新增数据导出中心，支持按类别批量导出/导入本地数据\n- 数据导出中心支持详细数据选择和滚动浏览\n- 工作区支持长按移动文件进入文件夹\n- Token 用量界面新增平均价格与活跃会话展示\n- 聊天界面新增命令与 Agent 技能建议\n- 设置页面新增开发者性能监视器\n- 修复底部导航栏标签文本换行问题\n- 网络请求默认使用 HTTPS 并对 HTTP 发出警告\n- 完善多语言 UI 覆盖' },
     { tag_name: 'v0.5.0', published_at: '2026-08-13', body: '- 新增全局搜索与命令中心\n- WebDAV 备份新增增量修订历史与指定版本恢复\n- 扩展本地 Agent 的 Android 系统操作与应用发现能力\n- 新增可由用户和 AI 共同维护的全局 Agent 记忆\n- 本地 AI 模型列表新增按功能筛选与分类计数\n- 优化 Compose 状态管理、数据库迁移验证与 Release 安装包体积' },
     { tag_name: 'v0.4.10', published_at: '2026-08-13', body: '- 新增聊天界面背景自定义功能（关闭/跟随立绘/自定义图片）及背景强度调节\n- 字号调节改为 12-24sp 精确滑块并支持「跟随系统字号」开关\n- Token 记录增加估算费用（USD）的计算与展示\n- 数据库备份支持密码保护凭据导入导出\n- 新增 /wenku8_login 与 /wenku_login 斜杠命令\n- 完善角色生成与 RAG 设置的多语言适配' },
-    { tag_name: 'v0.4.9', published_at: '2026-08-09', body: '- 为本地 Agent 添加 Android 原生工具支持\n- 修复数据库重新导入后角色立绘丢失及故事地图未导出的问题\n- 重构剧情图谱节点卡片与连线渲染\n- 优化 Token 用量界面和多语言筛选按钮显示' },
   ];
   function renderReleases(releases) {
     const container = $('#changelogList');
