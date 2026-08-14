@@ -163,7 +163,7 @@ fun AboutScreen(
                         iconColor = MaterialTheme.colorScheme.primary,
                         title = stringResource(R.string.settings_check_update),
                         subtitle = "v$version",
-                        onClick = { vm.checkForUpdate(version) }
+                        onClick = { vm.checkForUpdate(context, version) }
                     )
                     AboutRow(
                         icon = Icons.Filled.Person,

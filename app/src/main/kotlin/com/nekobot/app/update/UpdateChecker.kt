@@ -12,12 +12,13 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.util.concurrent.TimeUnit
+import java.util.zip.ZipFile
 
 /**
  * GitHub Releases 更新检查器。
  *
- * 从 https://api.github.com/repos/asukaneko/Nekobot-Android/releases/latest 获取最新发布信息，
- * 与当前应用版本比较，并提供 APK 下载与安装意图。
+ * 优先使用 GitHub 代理拉取发布信息和 APK，直连 GitHub 仅作为最终回退。
+ * 这样可以改善国内网络下载速度，并降低共享 VPN 出口触发 GitHub API 限流的概率。
  */
 object UpdateChecker {
 
@@ -25,10 +26,34 @@ object UpdateChecker {
     private const val REPO = "Nekobot-Android"
     private const val LATEST_URL = "https://api.github.com/repos/$OWNER/$REPO/releases/latest"
     private const val HTML_RELEASES_URL = "https://github.com/$OWNER/$REPO/releases"
+    private const val UPDATE_PREFS = "nekobot_update_cache"
+    private const val KEY_LATEST_RELEASE_JSON = "latest_release_json"
+    private const val KEY_GITHUB_ETAG = "github_etag"
 
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+    private data class ReleaseSource(
+        val name: String,
+        val proxyPrefix: String = ""
+    ) {
+        val isDirect: Boolean get() = proxyPrefix.isEmpty()
+
+        fun wrap(url: String): String = proxyPrefix + url
+    }
+
+    /** 已验证可访问 GitHub Releases API 与发布资产的 HTTPS 代理，按优先级回退。 */
+    private val releaseSources = listOf(
+        ReleaseSource("gh-proxy.com", "https://gh-proxy.com/"),
+        ReleaseSource("ghproxy.com", "https://ghproxy.com/"),
+        ReleaseSource("GitHub")
+    )
+
+    private val metadataClient: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(12, TimeUnit.SECONDS)
+        .build()
+
+    private val downloadClient: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(12, TimeUnit.SECONDS)
+        .readTimeout(90, TimeUnit.SECONDS)
         .build()
 
     /** 发布资产（apk）。 */
@@ -36,7 +61,8 @@ object UpdateChecker {
         val name: String,
         val browserDownloadUrl: String,
         val size: Long,
-        val contentType: String
+        val contentType: String,
+        val downloadUrls: List<String> = buildDownloadUrls(browserDownloadUrl)
     )
 
     /** 发布信息。 */
@@ -75,30 +101,65 @@ object UpdateChecker {
      * 获取最新 release。
      * @param currentVersion 当前 versionName（如 "0.3.4"）
      */
-    suspend fun checkForUpdate(currentVersion: String): CheckResult = withContext(Dispatchers.IO) {
-        runCatching {
-            val req = Request.Builder()
-                .url(LATEST_URL)
+    suspend fun checkForUpdate(context: Context, currentVersion: String): CheckResult = withContext(Dispatchers.IO) {
+        val prefs = context.applicationContext.getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
+        val cachedJson = prefs.getString(KEY_LATEST_RELEASE_JSON, null)
+        val cachedEtag = prefs.getString(KEY_GITHUB_ETAG, null)
+        val failures = mutableListOf<String>()
+
+        for (source in releaseSources) {
+            val requestBuilder = Request.Builder()
+                .url(source.wrap(LATEST_URL))
                 .header("Accept", "application/vnd.github+json")
                 .header("User-Agent", "Nekobot-Android-Updater")
-                .build()
-            client.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) {
-                    return@withContext CheckResult.Error("HTTP ${resp.code}")
-                }
-                val bodyStr = resp.body?.string()
-                    ?: return@withContext CheckResult.Error("响应为空")
-                val info = parseRelease(bodyStr)
-                    ?: return@withContext CheckResult.Error("解析发布信息失败")
-                if (isNewer(info.tagName, currentVersion)) {
-                    CheckResult.Available(info)
-                } else {
-                    CheckResult.UpToDate
-                }
+            if (source.isDirect && !cachedEtag.isNullOrBlank()) {
+                requestBuilder.header("If-None-Match", cachedEtag)
             }
-        }.getOrElse { e ->
-            CheckResult.Error(e.message ?: "未知错误")
+
+            val responseResult = runCatching {
+                metadataClient.newCall(requestBuilder.build()).execute()
+            }
+            if (responseResult.isFailure) {
+                val error = responseResult.exceptionOrNull()
+                failures += "${source.name}: ${error?.message ?: "连接失败"}"
+                continue
+            }
+            val response = responseResult.getOrThrow()
+
+            var responseEtag: String? = null
+            val releaseJson = response.use { resp ->
+                responseEtag = resp.header("ETag")
+                when {
+                    resp.code == 304 && !cachedJson.isNullOrBlank() -> cachedJson
+                    resp.isSuccessful -> resp.body?.string().also {
+                        if (it.isNullOrBlank()) failures += "${source.name}: 响应为空"
+                    }
+                    else -> {
+                        failures += "${source.name}: HTTP ${resp.code}"
+                        null
+                    }
+                }
+            } ?: continue
+
+            val info = parseRelease(releaseJson)
+            if (info == null) {
+                failures += "${source.name}: 发布信息无效"
+                continue
+            }
+
+            prefs.edit().putString(KEY_LATEST_RELEASE_JSON, releaseJson).apply {
+                if (source.isDirect && !responseEtag.isNullOrBlank()) {
+                    putString(KEY_GITHUB_ETAG, responseEtag)
+                }
+            }.apply()
+            return@withContext if (isNewer(info.tagName, currentVersion)) {
+                CheckResult.Available(info)
+            } else {
+                CheckResult.UpToDate
+            }
         }
+
+        CheckResult.Error(failures.joinToString("；").ifBlank { "所有更新源均不可用" })
     }
 
     /**
@@ -109,49 +170,24 @@ object UpdateChecker {
         asset: ReleaseAsset,
         onProgress: (DownloadResult) -> Unit
     ): DownloadResult = withContext(Dispatchers.IO) {
-        runCatching {
-            val dir = File(context.cacheDir, "downloads").apply { mkdirs() }
-            val target = File(dir, asset.name)
-            if (target.exists()) target.delete()
+        val dir = File(context.cacheDir, "downloads").apply { mkdirs() }
+        val target = File(dir, asset.name)
+        val failures = mutableListOf<String>()
+        val downloadUrls = asset.downloadUrls.ifEmpty { buildDownloadUrls(asset.browserDownloadUrl) }
 
-            val req = Request.Builder().url(asset.browserDownloadUrl).build()
-            client.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) {
-                    onProgress(DownloadResult.Error("HTTP ${resp.code}"))
-                    return@withContext DownloadResult.Error("HTTP ${resp.code}")
-                }
-                val total = resp.body?.contentLength() ?: -1L
-                resp.body?.byteStream()?.use { input ->
-                    target.outputStream().use { output ->
-                        val buf = ByteArray(8 * 1024)
-                        var read: Int
-                        var sum = 0L
-                        var lastReport = -1
-                        while (input.read(buf).also { read = it } != -1) {
-                            output.write(buf, 0, read)
-                            sum += read
-                            if (total > 0) {
-                                val pct = (sum * 100 / total).toInt().coerceIn(0, 100)
-                                if (pct != lastReport) {
-                                    lastReport = pct
-                                    onProgress(DownloadResult.Progress(pct))
-                                }
-                            }
-                        }
-                        output.flush()
-                    }
-                } ?: run {
-                    onProgress(DownloadResult.Error("下载内容为空"))
-                    return@withContext DownloadResult.Error("下载内容为空")
-                }
+        for (url in downloadUrls) {
+            onProgress(DownloadResult.Progress(0))
+            val failure = downloadFromSource(target, url, asset.size, onProgress)
+            if (failure == null) {
+                onProgress(DownloadResult.Done(target))
+                return@withContext DownloadResult.Done(target)
             }
-            onProgress(DownloadResult.Done(target))
-            DownloadResult.Done(target)
-        }.getOrElse { e ->
-            val msg = e.message ?: "下载失败"
-            onProgress(DownloadResult.Error(msg))
-            DownloadResult.Error(msg)
+            failures += "${sourceLabel(url)}: $failure"
         }
+
+        val message = failures.joinToString("；").ifBlank { "所有下载源均不可用" }
+        onProgress(DownloadResult.Error(message))
+        DownloadResult.Error(message)
     }
 
     /** 构造安装 APK 的 Intent（通过 FileProvider）。 */
@@ -171,7 +207,72 @@ object UpdateChecker {
 
     /** Releases 页面 Intent。 */
     fun buildReleasesPageIntent(): Intent =
-        Intent(Intent.ACTION_VIEW, Uri.parse(HTML_RELEASES_URL))
+        Intent(Intent.ACTION_VIEW, Uri.parse(releaseSources.first().wrap(HTML_RELEASES_URL)))
+
+    internal fun buildDownloadUrls(browserDownloadUrl: String): List<String> {
+        if (!browserDownloadUrl.startsWith("https://github.com/")) {
+            return listOf(browserDownloadUrl)
+        }
+        return releaseSources.map { it.wrap(browserDownloadUrl) }.distinct()
+    }
+
+    private fun downloadFromSource(
+        target: File,
+        url: String,
+        expectedSize: Long,
+        onProgress: (DownloadResult) -> Unit
+    ): String? {
+        target.delete()
+        val failure = runCatching {
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", "Nekobot-Android-Updater")
+                .build()
+            downloadClient.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) return@use "HTTP ${resp.code}"
+                val body = resp.body ?: return@use "下载内容为空"
+                val contentLength = body.contentLength()
+                if (expectedSize > 0 && contentLength > 0 && contentLength != expectedSize) {
+                    return@use "文件大小不匹配"
+                }
+
+                var downloaded = 0L
+                var lastReport = -1
+                body.byteStream().use { input ->
+                    target.outputStream().use { output ->
+                        val buffer = ByteArray(8 * 1024)
+                        var read: Int
+                        while (input.read(buffer).also { read = it } != -1) {
+                            output.write(buffer, 0, read)
+                            downloaded += read
+                            if (expectedSize > 0) {
+                                val percent = (downloaded * 100 / expectedSize).toInt().coerceIn(0, 100)
+                                if (percent != lastReport) {
+                                    lastReport = percent
+                                    onProgress(DownloadResult.Progress(percent))
+                                }
+                            }
+                        }
+                        output.flush()
+                    }
+                }
+
+                when {
+                    expectedSize > 0 && downloaded != expectedSize -> "下载文件不完整"
+                    !isValidApk(target) -> "下载内容不是有效 APK"
+                    else -> null
+                }
+            }
+        }.getOrElse { error -> error.message ?: "下载失败" }
+        if (failure != null) target.delete()
+        return failure
+    }
+
+    private fun isValidApk(file: File): Boolean = runCatching {
+        ZipFile(file).use { zip -> zip.getEntry("AndroidManifest.xml") != null }
+    }.getOrDefault(false)
+
+    private fun sourceLabel(url: String): String = Uri.parse(url).host ?: url
 
     /** 解析 GitHub release JSON 为 ReleaseInfo。 */
     private fun parseRelease(json: String): ReleaseInfo? = runCatching {

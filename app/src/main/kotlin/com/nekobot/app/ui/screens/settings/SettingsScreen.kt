@@ -258,11 +258,11 @@ class SettingsViewModel : BaseViewModel() {
     private val _downloadState = MutableStateFlow<DownloadUiState>(DownloadUiState.Idle)
     val downloadState: StateFlow<DownloadUiState> = _downloadState.asStateFlow()
 
-    /** 检查更新：调用 GitHub Releases API。 */
-    fun checkForUpdate(currentVersion: String) {
+    /** 检查更新：依次尝试镜像与 GitHub 回退源。 */
+    fun checkForUpdate(context: android.content.Context, currentVersion: String) {
         _updateState.value = UpdateUiState.Checking
         viewModelScope.launch {
-            when (val res = UpdateChecker.checkForUpdate(currentVersion)) {
+            when (val res = UpdateChecker.checkForUpdate(context, currentVersion)) {
                 is UpdateChecker.CheckResult.UpToDate -> {
                     _updateState.value = UpdateUiState.UpToDate
                 }
