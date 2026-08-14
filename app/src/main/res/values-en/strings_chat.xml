@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="sessions_filter_character_sessions">Character</string>
+    <string name="sessions_filter_agent_sessions">Agent</string>
     <!-- ==================== Sessions screen (SessionsScreen) ==================== -->
     <string name="sessions_filter_all">All chats</string>
     <string name="sessions_filter_unarchived">Unarchived</string>

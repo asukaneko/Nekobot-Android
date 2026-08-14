@@ -7,6 +7,8 @@ import com.nekobot.app.data.model.Session
 @Immutable
 data class SessionOverview(
     val total: Int = 0,
+    val characterSessions: Int = 0,
+    val agentSessions: Int = 0,
     val pinned: Int = 0,
     val favorite: Int = 0,
     val archived: Int = 0
@@ -50,31 +52,47 @@ internal fun formatSessionListDate(value: String?): String? {
 }
 
 val QUICK_SESSION_FILTERS = listOf(
-    SessionFilter.ALL,
-    SessionFilter.PINNED,
+    SessionFilter.CHARACTER_SESSIONS,
+    SessionFilter.AGENT_SESSIONS,
     SessionFilter.FAVORITE,
     SessionFilter.ARCHIVED
 )
 
 fun buildSessionOverview(sessions: List<Session>): SessionOverview {
     var total = 0
+    var characterSessions = 0
+    var agentSessions = 0
     var pinned = 0
     var favorite = 0
     var archived = 0
     sessions.forEach { session ->
         if (session.isArchive == true) return@forEach
         total++
+        if (session.archived != true) {
+            when {
+                session.isAgentSession() -> agentSessions++
+                session.isCharacterSession() -> characterSessions++
+            }
+        }
         if (session.pinned == true) pinned++
         if (session.favorite == true) favorite++
         if (session.archived == true) archived++
     }
     return SessionOverview(
         total = total,
+        characterSessions = characterSessions,
+        agentSessions = agentSessions,
         pinned = pinned,
         favorite = favorite,
         archived = archived
     )
 }
+
+internal fun Session.isAgentSession(): Boolean =
+    sessionMode.equals("agent", ignoreCase = true)
+
+internal fun Session.isCharacterSession(): Boolean =
+    sessionMode.isNullOrBlank() || sessionMode.equals("character", ignoreCase = true)
 
 private val GENERIC_SENDER_NAMES = setOf("AI", "Agent", "群聊")
 

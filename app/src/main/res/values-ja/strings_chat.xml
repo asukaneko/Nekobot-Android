@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="sessions_filter_character_sessions">キャラ</string>
+    <string name="sessions_filter_agent_sessions">Agent</string>
     <!-- ==================== チャット一覧画面 (SessionsScreen) ==================== -->
     <string name="sessions_filter_all">すべてのチャット</string>
     <string name="sessions_filter_unarchived">未アーカイブ</string>

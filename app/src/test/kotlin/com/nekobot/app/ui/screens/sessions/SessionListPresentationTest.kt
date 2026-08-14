@@ -27,7 +27,7 @@ class SessionListPresentationTest {
         )
 
         assertEquals(
-            SessionOverview(total = 4, pinned = 1, favorite = 1, archived = 1),
+            SessionOverview(total = 4, characterSessions = 3, pinned = 1, favorite = 1, archived = 1),
             buildSessionOverview(sessions)
         )
     }
@@ -36,12 +36,28 @@ class SessionListPresentationTest {
     fun quickSessionFilters_exposesTheFourPersistentShortcutsInDisplayOrder() {
         assertEquals(
             listOf(
-                SessionFilter.ALL,
-                SessionFilter.PINNED,
+                SessionFilter.CHARACTER_SESSIONS,
+                SessionFilter.AGENT_SESSIONS,
                 SessionFilter.FAVORITE,
                 SessionFilter.ARCHIVED
             ),
             QUICK_SESSION_FILTERS
+        )
+    }
+
+    @Test
+    fun buildSessionOverview_countsCharacterAndAgentSessionsSeparately() {
+        val sessions = listOf(
+            Session(id = "legacy-character"),
+            Session(id = "character", sessionMode = "character"),
+            Session(id = "agent", sessionMode = "agent"),
+            Session(id = "group", sessionMode = "group"),
+            Session(id = "automatic-archive", sessionMode = "agent", isArchive = true)
+        )
+
+        assertEquals(
+            SessionOverview(total = 4, characterSessions = 2, agentSessions = 1),
+            buildSessionOverview(sessions)
         )
     }
 

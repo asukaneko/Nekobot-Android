@@ -137,6 +137,8 @@ import com.nekobot.app.data.repository.SessionImportResult
 /** 会话列表筛选类型。 */
 enum class SessionFilter(val labelResId: Int) {
     ALL(R.string.sessions_recent),
+    CHARACTER_SESSIONS(R.string.sessions_filter_character_sessions),
+    AGENT_SESSIONS(R.string.sessions_filter_agent_sessions),
     UNARCHIVED(R.string.sessions_filter_unarchived),
     ARCHIVED(R.string.sessions_filter_archived),
     FAVORITE(R.string.sessions_filter_favorite),
@@ -262,7 +264,6 @@ fun SessionsScreen(
     val availableChannels by viewModel.availableChannels.collectAsStateWithLifecycle()
     val characterFilterId by viewModel.characterFilterId.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
-    val recentSessionsIncludeArchived by ServiceContainer.prefs.recentSessionsIncludeArchivedFlow.collectAsStateWithLifecycle()
 
     // 提取本地化字符串
     val titleText = stringResource(R.string.sessions_title)
@@ -463,7 +464,6 @@ fun SessionsScreen(
             // 概览统计 + 快速筛选合并：每张卡显示数量并可点击筛选
             SessionStatFilters(
                 overview = overview,
-                includeArchived = recentSessionsIncludeArchived,
                 selected = filter,
                 onSelect = viewModel::setFilter
             )
@@ -739,12 +739,11 @@ private fun SessionCountBadge(count: Int) {
 @Composable
 private fun SessionStatFilters(
     overview: SessionOverview,
-    includeArchived: Boolean,
     selected: SessionFilter,
     onSelect: (SessionFilter) -> Unit
 ) {
-    val recentLabel = stringResource(R.string.sessions_recent)
-    val pinLabel = stringResource(R.string.sessions_pin)
+    val characterSessionsLabel = stringResource(R.string.sessions_filter_character_sessions)
+    val agentSessionsLabel = stringResource(R.string.sessions_filter_agent_sessions)
     val favoriteLabel = stringResource(R.string.sessions_favorite)
     val archiveLabel = stringResource(R.string.sessions_archive)
     Row(
@@ -754,18 +753,18 @@ private fun SessionStatFilters(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         StatFilterCard(
-            label = recentLabel,
-            value = if (includeArchived) overview.total else (overview.total - overview.archived).coerceAtLeast(0),
+            label = characterSessionsLabel,
+            value = overview.characterSessions,
             icon = Icons.AutoMirrored.Outlined.Chat,
-            selected = selected == SessionFilter.ALL,
-            onClick = { onSelect(SessionFilter.ALL) }
+            selected = selected == SessionFilter.CHARACTER_SESSIONS,
+            onClick = { onSelect(SessionFilter.CHARACTER_SESSIONS) }
         )
         StatFilterCard(
-            label = pinLabel,
-            value = overview.pinned,
-            icon = Icons.Filled.PushPin,
-            selected = selected == SessionFilter.PINNED,
-            onClick = { onSelect(SessionFilter.PINNED) }
+            label = agentSessionsLabel,
+            value = overview.agentSessions,
+            icon = Icons.Filled.DashboardCustomize,
+            selected = selected == SessionFilter.AGENT_SESSIONS,
+            onClick = { onSelect(SessionFilter.AGENT_SESSIONS) }
         )
         StatFilterCard(
             label = favoriteLabel,
@@ -1950,10 +1949,14 @@ class SessionsViewModel : BaseViewModel() {
         val visible = all
             .filter { it.isArchive != true }
             .let { sessions ->
-                if (f == SessionFilter.ALL && !includeArchived) {
-                    sessions.filter { it.archived != true }
-                } else {
-                    sessions
+                when {
+                    f == SessionFilter.CHARACTER_SESSIONS || f == SessionFilter.AGENT_SESSIONS -> {
+                        sessions.filter { it.archived != true }
+                    }
+                    f == SessionFilter.ALL && !includeArchived -> {
+                        sessions.filter { it.archived != true }
+                    }
+                    else -> sessions
                 }
             }
         // 先按频道筛选
@@ -2394,6 +2397,8 @@ class SessionsViewModel : BaseViewModel() {
     private fun applyFilter(all: List<Session>, f: SessionFilter, charId: String?): List<Session> {
         return when (f) {
             SessionFilter.ALL -> all
+            SessionFilter.CHARACTER_SESSIONS -> all.filter(Session::isCharacterSession)
+            SessionFilter.AGENT_SESSIONS -> all.filter(Session::isAgentSession)
             SessionFilter.UNARCHIVED -> all.filter { it.archived != true }
             SessionFilter.ARCHIVED -> all.filter { it.archived == true }
             SessionFilter.FAVORITE -> all.filter { it.favorite == true }

@@ -2,6 +2,8 @@
 <resources>
     <!-- ==================== 会话列表页 (SessionsScreen) ==================== -->
     <string name="sessions_filter_all">全部会话</string>
+    <string name="sessions_filter_character_sessions">角色会话</string>
+    <string name="sessions_filter_agent_sessions">Agent</string>
     <string name="sessions_filter_unarchived">未归档</string>
     <string name="sessions_filter_archived">已归档</string>
     <string name="sessions_filter_favorite">收藏</string>

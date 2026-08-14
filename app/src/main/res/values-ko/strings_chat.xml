@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="sessions_filter_character_sessions">캐릭터</string>
+    <string name="sessions_filter_agent_sessions">Agent</string>
     <!-- ==================== 대화 목록 화면 (SessionsScreen) ==================== -->
     <string name="sessions_filter_all">모든 대화</string>
     <string name="sessions_filter_unarchived">미보관</string>
