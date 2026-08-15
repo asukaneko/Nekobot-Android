@@ -322,7 +322,8 @@
 
     <string name="aimodel_editor_section_image_gen">画像生成</string>
     <string name="aimodel_editor_image_size">画像サイズ</string>
-    <string name="aimodel_editor_image_prompt_template">プロンプトテンプレート (任意)</string>
+    <string name="aimodel_editor_image_prompt_template">追加プロンプト (任意)</string>
+    <string name="aimodel_editor_image_additional_prompt_hint">例: 日本のアニメ風、繊細な光と影、高精細</string>
 
     <!-- ==================== OAuth Accounts ==================== -->
     <string name="oauth_login_start_failed">OAuth ログインの開始に失敗しました</string>

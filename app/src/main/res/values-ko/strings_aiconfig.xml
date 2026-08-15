@@ -322,7 +322,8 @@
 
     <string name="aimodel_editor_section_image_gen">이미지 생성</string>
     <string name="aimodel_editor_image_size">이미지 크기</string>
-    <string name="aimodel_editor_image_prompt_template">프롬프트 템플릿 (선택)</string>
+    <string name="aimodel_editor_image_prompt_template">추가 프롬프트 (선택)</string>
+    <string name="aimodel_editor_image_additional_prompt_hint">예: 일본 애니메이션 스타일, 섬세한 조명, 높은 디테일</string>
 
     <!-- ==================== OAuth 계정 ==================== -->
     <string name="oauth_login_start_failed">OAuth 로그인 시작에 실패했어요</string>

@@ -330,7 +330,8 @@
 
     <string name="aimodel_editor_section_image_gen">Image Generation</string>
     <string name="aimodel_editor_image_size">Image size</string>
-    <string name="aimodel_editor_image_prompt_template">Prompt template (optional)</string>
+    <string name="aimodel_editor_image_prompt_template">Additional prompt (optional)</string>
+    <string name="aimodel_editor_image_additional_prompt_hint">Example: Japanese anime style, refined lighting, high detail</string>
 
     <!-- ==================== OAuth Accounts ==================== -->
     <string name="oauth_login_start_failed">Failed to start OAuth login</string>

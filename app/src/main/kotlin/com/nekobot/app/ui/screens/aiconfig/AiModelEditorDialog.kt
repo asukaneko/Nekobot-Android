@@ -826,6 +826,7 @@ fun AiModelEditorDialog(
                     EditorTextField(
                         label = stringResource(R.string.aimodel_editor_image_prompt_template),
                         value = state.promptTemplate,
+                        placeholder = stringResource(R.string.aimodel_editor_image_additional_prompt_hint),
                         singleLine = false
                     ) { state = state.copy(promptTemplate = it) }
                 }

@@ -1925,6 +1925,7 @@ class LocalAiClient(
             apiKey = model.apiKey,
             modelName = model.model,
             prompt = prompt,
+            additionalPrompt = model.promptTemplate,
             size = size,
             n = n,
             appendBaseUrlPath = model.appendBaseUrlPath,
@@ -2024,38 +2025,40 @@ class LocalAiClient(
         apiKey: String,
         modelName: String,
         prompt: String,
+        additionalPrompt: String = "",
         size: String = "1024x1024",
         n: Int = 1,
         appendBaseUrlPath: Boolean = true,
         proxyUrl: String = "",
         provider: String = ""
     ): List<GeneratedImage> {
+        val finalPrompt = appendImagePrompt(prompt, additionalPrompt)
         val normalizedProvider = provider.trim().lowercase()
         when (normalizedProvider) {
             "gemini", "google", "google_gemini" -> return generateImageGemini(
-                baseUrl, apiKey, modelName, prompt, appendBaseUrlPath, proxyUrl
+                baseUrl, apiKey, modelName, finalPrompt, appendBaseUrlPath, proxyUrl
             )
             "minimax" -> return generateImageMiniMax(
-                baseUrl, apiKey, modelName, prompt, size, appendBaseUrlPath, proxyUrl
+                baseUrl, apiKey, modelName, finalPrompt, size, appendBaseUrlPath, proxyUrl
             )
             "qwen", "dashscope", "tongyi" -> {
                 if (modelName.trim().equals(QWEN_IMAGE_3_MODEL, ignoreCase = true)) {
                     return generateImageQwenImage3(
-                        baseUrl, apiKey, modelName, prompt, n, appendBaseUrlPath, proxyUrl
+                        baseUrl, apiKey, modelName, finalPrompt, n, appendBaseUrlPath, proxyUrl
                     )
                 }
                 return generateImageQwenLegacy(
-                    baseUrl, apiKey, modelName, prompt, size, n, appendBaseUrlPath, proxyUrl
+                    baseUrl, apiKey, modelName, finalPrompt, size, n, appendBaseUrlPath, proxyUrl
                 )
             }
             "doubao", "seed", "seedream", "volcengine", "ark", "volces" -> return generateImageDoubao(
-                baseUrl, apiKey, modelName, prompt, size, n, appendBaseUrlPath, proxyUrl
+                baseUrl, apiKey, modelName, finalPrompt, size, n, appendBaseUrlPath, proxyUrl
             )
         }
         val url = resolveImageUrl(baseUrl, appendBaseUrlPath)
         val payload = mapOf(
             "model" to modelName,
-            "prompt" to prompt,
+            "prompt" to finalPrompt,
             "size" to size,
             "n" to n
         )
@@ -2093,6 +2096,12 @@ class LocalAiClient(
             throw e
         }
     }
+
+    /** 将模型配置的附加提示词置于用户图片描述之后。 */
+    private fun appendImagePrompt(prompt: String, additionalPrompt: String): String =
+        listOf(prompt.trim(), additionalPrompt.trim())
+            .filter { it.isNotEmpty() }
+            .joinToString("\n")
 
     private suspend fun generateImageGemini(
         baseUrl: String,

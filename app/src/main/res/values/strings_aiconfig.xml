@@ -343,7 +343,8 @@
     <!-- 图片生成配置 -->
     <string name="aimodel_editor_section_image_gen">图片生成</string>
     <string name="aimodel_editor_image_size">图片尺寸</string>
-    <string name="aimodel_editor_image_prompt_template">提示词模板（可选）</string>
+    <string name="aimodel_editor_image_prompt_template">附加提示词（可选）</string>
+    <string name="aimodel_editor_image_additional_prompt_hint">例如：日系动漫风格，细腻光影，高细节</string>
 
     <!-- ==================== OAuth 账号界面 ==================== -->
     <string name="oauth_login_start_failed">OAuth 登录启动失败</string>

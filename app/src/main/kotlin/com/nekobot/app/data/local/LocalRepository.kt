@@ -6351,6 +6351,7 @@ $charSection$topicSection
                     apiKey = model.apiKey.orEmpty(),
                     modelName = modelName,
                     prompt = prompt,
+                    additionalPrompt = model.promptTemplate.orEmpty(),
                     size = size,
                     n = n,
                     provider = model.provider ?: model.protocol.orEmpty()
