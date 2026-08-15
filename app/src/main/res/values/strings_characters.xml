@@ -66,7 +66,7 @@
     <string name="character_portrait_submit_failed">立绘生成任务提交失败</string>
     <string name="character_portrait_generating">立绘生成中…</string>
     <string name="character_portrait_success_saved">立绘生成成功，已自动保存</string>
-    <string name="character_portrait_save_manually">立绘生成成功，请点击保存按钮</string>
+    <string name="character_portrait_save_manually">AI 立绘已生成，尚未保存。点击保存后才会替换当前立绘。</string>
     <string name="character_portrait_timeout">立绘生成超时</string>
     <string name="character_image_load_failed">图片加载失败</string>
     <string name="character_portrait_upload_failed">立绘上传失败</string>

@@ -66,7 +66,7 @@
     <string name="character_portrait_submit_failed">立絵生成タスクの送信に失敗しました</string>
     <string name="character_portrait_generating">立絵を生成中…</string>
     <string name="character_portrait_success_saved">立絵を生成し自動保存しました</string>
-    <string name="character_portrait_save_manually">立絵が生成されました。保存をタップしてください。</string>
+    <string name="character_portrait_save_manually">AI立絵が生成されましたが、まだ保存されていません。保存すると現在の立絵に置き換わります。</string>
     <string name="character_portrait_timeout">立絵生成がタイムアウトしました</string>
     <string name="character_image_load_failed">画像の読み込みに失敗しました</string>
     <string name="character_portrait_upload_failed">立絵のアップロードに失敗しました</string>

@@ -78,6 +78,8 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
     val description = MutableStateFlow("")
     val avatar = MutableStateFlow("")
     val portrait = MutableStateFlow("")
+    private val _generatedPortrait = MutableStateFlow<String?>(null)
+    val generatedPortrait: StateFlow<String?> = _generatedPortrait.asStateFlow()
     val basicInfo = MutableStateFlow("")
     val personality = MutableStateFlow("")
     val firstMessage = MutableStateFlow("")
@@ -150,12 +152,13 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
         }
         val rulesList = rulesText.value.lines().map { it.trim() }.filter { it.isNotEmpty() }
         val tagsList = tagsText.value.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        val portraitToSave = generatedPortrait.value ?: portrait.value
 
         val payload = buildMap<String, Any?> {
             put("name", nameVal)
             description.value.trim().takeIf { it.isNotBlank() }?.let { put("description", it) }
             avatar.value.trim().takeIf { it.isNotBlank() }?.let { put("avatar", it) }
-            portrait.value.trim().takeIf { it.isNotBlank() }?.let { put("portrait", it) }
+            portraitToSave.trim().takeIf { it.isNotBlank() }?.let { put("portrait", it) }
             basicInfo.value.trim().takeIf { it.isNotBlank() }?.let { put("basicInfo", it) }
             personality.value.trim().takeIf { it.isNotBlank() }?.let { put("personality", it) }
             firstMessage.value.trim().takeIf { it.isNotBlank() }?.let { put("firstMessage", it) }
@@ -181,15 +184,29 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
         if (isNew) {
             launchResult(
                 block = { unified.createCharacter(json) },
-                onSuccess = { onSuccess() }
+                onSuccess = {
+                    portrait.value = portraitToSave
+                    _generatedPortrait.value = null
+                    onSuccess()
+                }
             )
         } else {
             val id = _character.value?.id ?: return
             launchResult(
                 block = { unified.updateCharacter(id, json) },
-                onSuccess = { onSuccess() }
+                onSuccess = {
+                    portrait.value = portraitToSave
+                    _generatedPortrait.value = null
+                    onSuccess()
+                }
             )
         }
+    }
+
+    /** 用户手动修改立绘时，以用户选择的结果为准。 */
+    fun updatePortrait(value: String) {
+        portrait.value = value
+        _generatedPortrait.value = null
     }
 
     /** 调用 AI 翻译角色卡并回填编辑字段，翻译结果由用户点击保存后持久化。 */
@@ -295,24 +312,10 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
         )
     }
 
-    /** 将生成的立绘 URL 写入 portrait 字段并自动保存（编辑模式下）。 */
+    /** 保留 AI 生成结果供预览，保存角色卡时才会替换当前立绘。 */
     private fun applyGeneratedPortrait(portraitUrl: String) {
-        portrait.value = portraitUrl
-        val id = _character.value?.id
-        if (!isNew && !id.isNullOrBlank()) {
-            viewModelScope.launch {
-                try {
-                    val payload = mapOf("portrait" to portraitUrl)
-                    val json = com.nekobot.app.ServiceContainer.gson.toJsonTree(payload)
-                    unified.updateCharacter(id, json)
-                    showToast(string(R.string.character_portrait_success_saved))
-                } catch (_: Exception) {
-                    showToast(string(R.string.character_portrait_save_manually))
-                }
-            }
-        } else {
-            showToast(string(R.string.character_portrait_save_manually))
-        }
+        _generatedPortrait.value = portraitUrl
+        showToast(string(R.string.character_portrait_save_manually))
     }
 
     /** 轮询 AI 立绘生成任务状态，完成或失败时结束。 */
@@ -345,21 +348,7 @@ class CharacterViewModel(characterId: String) : com.nekobot.app.ui.BaseViewModel
                     attempts++
                 }
                 if (!resultUrl.isNullOrBlank()) {
-                    portrait.value = resultUrl
-                    // 编辑模式下自动保存 portrait 到后端角色卡，避免用户忘记保存
-                    val id = _character.value?.id
-                    if (!isNew && !id.isNullOrBlank()) {
-                        try {
-                            val payload = mapOf("portrait" to resultUrl)
-                            val json = com.nekobot.app.ServiceContainer.gson.toJsonTree(payload)
-                            unified.updateCharacter(id, json)
-                            showToast(string(R.string.character_portrait_success_saved))
-                        } catch (_: Exception) {
-                            showToast(string(R.string.character_portrait_save_manually))
-                        }
-                    } else {
-                        showToast(string(R.string.character_portrait_save_manually))
-                    }
+                    applyGeneratedPortrait(resultUrl)
                 } else {
                     showToast(string(R.string.character_portrait_timeout))
                 }
@@ -392,6 +381,7 @@ fun CharacterDetailScreen(
     val description by vm.description.collectAsStateWithLifecycle()
     val avatar by vm.avatar.collectAsStateWithLifecycle()
     val portrait by vm.portrait.collectAsStateWithLifecycle()
+    val generatedPortrait by vm.generatedPortrait.collectAsStateWithLifecycle()
     val basicInfo by vm.basicInfo.collectAsStateWithLifecycle()
     val personality by vm.personality.collectAsStateWithLifecycle()
     val firstMessage by vm.firstMessage.collectAsStateWithLifecycle()
@@ -438,7 +428,7 @@ fun CharacterDetailScreen(
                 vm.setLoading(true)
                 try {
                     val path = withContext(Dispatchers.IO) { saveImageAndGetPath(context, uri, isLocalMode, "portrait") }
-                    if (path != null) vm.portrait.value = path
+                    if (path != null) vm.updatePortrait(path)
                     else vm.showToast(if (isLocalMode) context.getString(R.string.character_image_load_failed) else context.getString(R.string.character_portrait_upload_failed))
                 } finally {
                     vm.setLoading(false)
@@ -543,14 +533,18 @@ fun CharacterDetailScreen(
                 LabeledFieldWithUpload(
                     label = stringResource(R.string.character_portrait_path_label),
                     value = portrait,
-                    onValueChange = { vm.portrait.value = it },
+                    onValueChange = vm::updatePortrait,
                     onUploadClick = {
                         portraitLauncher.launch(arrayOf("image/*"))
                     },
                     onAiGenerateClick = { vm.generatePortraitAI() }
                 )
-                // 立绘预览：点击查看大图
-                PortraitPreview(portrait = portrait, onClick = { fullscreenPortrait = it })
+                // AI 立绘只作未保存预览，返回编辑页不会改变原立绘。
+                PortraitPreview(
+                    portrait = generatedPortrait ?: portrait,
+                    hasUnsavedGeneratedPortrait = generatedPortrait != null,
+                    onClick = { fullscreenPortrait = it }
+                )
                 // 基础信息（多行）
                 LabeledField(
                     label = stringResource(R.string.character_basic_info_label),
@@ -918,7 +912,11 @@ private fun resolveImageUrl(path: String): String {
  * 立绘预览卡片：非空时展示缩略图，点击进入全屏查看。
  */
 @Composable
-private fun PortraitPreview(portrait: String, onClick: (String) -> Unit) {
+private fun PortraitPreview(
+    portrait: String,
+    hasUnsavedGeneratedPortrait: Boolean,
+    onClick: (String) -> Unit
+) {
     if (portrait.isBlank()) return
     val url = remember(portrait) { resolveImageUrl(portrait) }
     Column {
@@ -927,6 +925,14 @@ private fun PortraitPreview(portrait: String, onClick: (String) -> Unit) {
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        if (hasUnsavedGeneratedPortrait) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = stringResource(R.string.character_portrait_save_manually),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.tertiary
+            )
+        }
         Spacer(Modifier.height(6.dp))
         Box(
             modifier = Modifier

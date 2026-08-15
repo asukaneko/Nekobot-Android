@@ -66,7 +66,7 @@
     <string name="character_portrait_submit_failed">초상화 생성 작업 제출 실패</string>
     <string name="character_portrait_generating">초상화 생성 중…</string>
     <string name="character_portrait_success_saved">초상화가 생성되어 자동 저장되었어요</string>
-    <string name="character_portrait_save_manually">초상화가 생성되었어요. 저장을 눌러 주세요.</string>
+    <string name="character_portrait_save_manually">AI 초상화가 생성되었지만 아직 저장되지 않았습니다. 저장하면 현재 초상화가 교체됩니다.</string>
     <string name="character_portrait_timeout">초상화 생성 시간 초과</string>
     <string name="character_image_load_failed">이미지 불러오기 실패</string>
     <string name="character_portrait_upload_failed">초상화 업로드 실패</string>

@@ -66,7 +66,7 @@
     <string name="character_portrait_submit_failed">Portrait generation task submission failed</string>
     <string name="character_portrait_generating">Generating portrait…</string>
     <string name="character_portrait_success_saved">Portrait generated and auto-saved</string>
-    <string name="character_portrait_save_manually">Portrait generated. Please tap save.</string>
+    <string name="character_portrait_save_manually">The AI portrait is ready but not saved. It will replace the current portrait only after you save.</string>
     <string name="character_portrait_timeout">Portrait generation timed out</string>
     <string name="character_image_load_failed">Image load failed</string>
     <string name="character_portrait_upload_failed">Portrait upload failed</string>
