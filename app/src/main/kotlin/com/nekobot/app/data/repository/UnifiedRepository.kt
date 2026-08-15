@@ -166,6 +166,7 @@ class UnifiedRepository(
                 name = req.name,
                 systemPrompt = req.systemPrompt,
                 favorite = req.favorite,
+                pinned = req.pinned,
                 tags = req.tags,
                 plotMode = req.plotMode,
                 plotRealTimeSync = req.plotRealTimeSync,
