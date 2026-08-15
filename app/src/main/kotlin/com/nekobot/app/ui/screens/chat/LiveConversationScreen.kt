@@ -14,14 +14,10 @@ import android.media.audiofx.Visualizer
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -163,7 +160,9 @@ internal fun LiveConversationDialog(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var contentVisible by remember(sessionId) { mutableStateOf(false) }
+    var interfaceVisible by remember(sessionId) { mutableStateOf(false) }
+    var portraitLanded by remember(sessionId) { mutableStateOf(false) }
+    var dismissing by remember(sessionId) { mutableStateOf(false) }
     var phase by remember(sessionId) { mutableStateOf(LiveConversationPhase.Connecting) }
     var subtitle by remember(sessionId) { mutableStateOf("") }
     var subtitleFromUser by remember(sessionId) { mutableStateOf(false) }
@@ -179,6 +178,8 @@ internal fun LiveConversationDialog(
         mutableStateOf(ServiceContainer.prefs.livePipelineMode)
     }
     var realtimeAudioStarted by remember(sessionId) { mutableStateOf(false) }
+
+    val soundEffects = remember(sessionId) { LiveConversationSoundEffects() }
 
     val audioController = remember(sessionId) {
         LiveAudioController(
@@ -316,13 +317,17 @@ internal fun LiveConversationDialog(
         onDispose {
             onStopRealtimeTurn()
             audioController.release()
+            soundEffects.release()
         }
     }
 
     LaunchedEffect(Unit) {
-        contentVisible = true
-        delay(650)
-        beginListening()
+        soundEffects.playEntrance()
+        portraitLanded = true
+        delay(LIVE_PORTRAIT_TRANSITION_MS)
+        interfaceVisible = true
+        delay(LIVE_INTERFACE_TRANSITION_MS)
+        if (!dismissing) beginListening()
     }
 
     LaunchedEffect(autoStopSignal) {
@@ -406,67 +411,74 @@ internal fun LiveConversationDialog(
             decorFitsSystemWindows = false
         )
     ) {
-        AnimatedVisibility(
-            visible = contentVisible,
-            enter = fadeIn(tween(320)) + scaleIn(
-                initialScale = 0.96f,
-                animationSpec = tween(460, easing = FastOutSlowInEasing)
+        LiveConversationContent(
+            sessionName = sessionName,
+            portraitUrl = portraitUrl,
+            phase = phase,
+            subtitle = subtitle,
+            subtitleFromUser = subtitleFromUser,
+            errorMessage = errorMessage,
+            spectrum = spectrum,
+            pipeline = pipeline,
+            interfaceVisible = interfaceVisible,
+            portraitLanded = portraitLanded,
+            pipelineEnabled = interfaceVisible && (
+                phase == LiveConversationPhase.Listening || phase == LiveConversationPhase.Error
             ),
-            exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.98f, animationSpec = tween(180))
-        ) {
-            LiveConversationContent(
-                sessionName = sessionName,
-                portraitUrl = portraitUrl,
-                phase = phase,
-                subtitle = subtitle,
-                subtitleFromUser = subtitleFromUser,
-                errorMessage = errorMessage,
-                spectrum = spectrum,
-                pipeline = pipeline,
-                pipelineEnabled = phase == LiveConversationPhase.Listening || phase == LiveConversationPhase.Error,
-                onPipelineChange = { selected ->
-                    if (selected != pipeline) {
-                        onStopRealtimeTurn()
-                        audioController.release()
-                        pipeline = selected
-                        ServiceContainer.prefs.livePipelineMode = selected
-                        phase = LiveConversationPhase.Connecting
-                        scope.launch {
-                            delay(180)
-                            beginListening(selected)
-                        }
-                    }
-                },
-                onPrimaryAction = {
-                    when (phase) {
-                        LiveConversationPhase.Listening -> finishRecordingAndSend()
-                        LiveConversationPhase.Speaking -> {
-                            onStopRealtimeTurn()
-                            audioController.stopPlayback()
-                            beginListening()
-                        }
-                        LiveConversationPhase.Thinking -> {
-                            if (pipeline == LivePipelineMode.REALTIME) {
-                                onStopRealtimeTurn()
-                                audioController.stopPlayback()
-                            } else {
-                                onStopGeneration()
-                            }
-                            awaitingAssistant = false
-                            errorMessage = context.getString(R.string.live_response_stopped)
-                            phase = LiveConversationPhase.Error
-                        }
-                        LiveConversationPhase.Error -> beginListening()
-                        else -> Unit
-                    }
-                },
-                onDismiss = {
+            onPipelineChange = { selected ->
+                if (selected != pipeline) {
                     onStopRealtimeTurn()
                     audioController.release()
+                    pipeline = selected
+                    ServiceContainer.prefs.livePipelineMode = selected
+                    phase = LiveConversationPhase.Connecting
+                    scope.launch {
+                        delay(180)
+                        beginListening(selected)
+                    }
+                }
+            },
+            onPrimaryAction = {
+                when (phase) {
+                    LiveConversationPhase.Listening -> {
+                        soundEffects.playFinishSpeaking()
+                        finishRecordingAndSend()
+                    }
+                    LiveConversationPhase.Speaking -> {
+                        onStopRealtimeTurn()
+                        audioController.stopPlayback()
+                        beginListening()
+                    }
+                    LiveConversationPhase.Thinking -> {
+                        if (pipeline == LivePipelineMode.REALTIME) {
+                            onStopRealtimeTurn()
+                            audioController.stopPlayback()
+                        } else {
+                            onStopGeneration()
+                        }
+                        awaitingAssistant = false
+                        errorMessage = context.getString(R.string.live_response_stopped)
+                        phase = LiveConversationPhase.Error
+                    }
+                    LiveConversationPhase.Error -> beginListening()
+                    else -> Unit
+                }
+            },
+            onDismiss = {
+                if (dismissing) return@LiveConversationContent
+                dismissing = true
+                soundEffects.playHangUp()
+                onStopRealtimeTurn()
+                audioController.release()
+                scope.launch {
+                    interfaceVisible = false
+                    delay(LIVE_INTERFACE_TRANSITION_MS)
+                    portraitLanded = false
+                    delay(LIVE_PORTRAIT_TRANSITION_MS)
                     onDismiss()
                 }
-            )
-        }
+            }
+        )
     }
 }
 
@@ -480,6 +492,8 @@ private fun LiveConversationContent(
     errorMessage: String?,
     spectrum: FloatArray,
     pipeline: LivePipelineMode,
+    interfaceVisible: Boolean,
+    portraitLanded: Boolean,
     pipelineEnabled: Boolean,
     onPipelineChange: (LivePipelineMode) -> Unit,
     onPrimaryAction: () -> Unit,
@@ -490,6 +504,26 @@ private fun LiveConversationContent(
     val surface = MaterialTheme.colorScheme.surface.copy(alpha = 1f)
     val subtitleScrollState = rememberScrollState()
     var pipelineMenuExpanded by remember { mutableStateOf(false) }
+    val interfaceAlpha by animateFloatAsState(
+        targetValue = if (interfaceVisible) 1f else 0f,
+        animationSpec = tween(LIVE_INTERFACE_TRANSITION_MS.toInt(), easing = FastOutSlowInEasing),
+        label = "live_interface_alpha"
+    )
+    val interfaceScale by animateFloatAsState(
+        targetValue = if (interfaceVisible) 1f else 0.9f,
+        animationSpec = tween(LIVE_INTERFACE_TRANSITION_MS.toInt(), easing = FastOutSlowInEasing),
+        label = "live_interface_scale"
+    )
+    val portraitOffset by animateDpAsState(
+        targetValue = if (portraitLanded) 0.dp else (-520).dp,
+        animationSpec = tween(LIVE_PORTRAIT_TRANSITION_MS.toInt(), easing = FastOutSlowInEasing),
+        label = "live_portrait_drop"
+    )
+    val interfaceModifier = Modifier.graphicsLayer {
+        alpha = interfaceAlpha
+        scaleX = interfaceScale
+        scaleY = interfaceScale
+    }
     LaunchedEffect(subtitleFromUser) {
         subtitleScrollState.scrollTo(0)
     }
@@ -529,7 +563,9 @@ private fun LiveConversationContent(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(interfaceModifier),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -606,10 +642,15 @@ private fun LiveConversationContent(
             LivePortraitSpectrum(
                 portraitUrl = portraitUrl,
                 spectrum = spectrum,
-                modifier = Modifier.size(286.dp)
+                modifier = Modifier
+                    .size(286.dp)
+                    .offset(y = portraitOffset)
             )
             Spacer(Modifier.height(22.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = interfaceModifier,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 if (busy) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(14.dp),
@@ -633,7 +674,8 @@ private fun LiveConversationContent(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(188.dp),
+                    .height(188.dp)
+                    .then(interfaceModifier),
                 shape = RoundedCornerShape(24.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.98f),
                 tonalElevation = 2.dp
@@ -685,7 +727,7 @@ private fun LiveConversationContent(
             ) {
                 LiveCallButton(
                     background = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    enabled = !busy,
+                    enabled = interfaceVisible && !busy,
                     onClick = onPrimaryAction
                 ) {
                     Icon(
@@ -700,6 +742,7 @@ private fun LiveConversationContent(
                 }
                 LiveCallButton(
                     background = Color(0xFFE84A5F),
+                    enabled = interfaceVisible,
                     onClick = onDismiss
                 ) {
                     Icon(
@@ -785,6 +828,140 @@ private fun LiveCallButton(
     ) {
         content()
     }
+}
+
+private class LiveConversationSoundEffects {
+    private val lock = Any()
+    private var activeTrack: AudioTrack? = null
+    private var released = false
+
+    fun playEntrance() {
+        play(
+            durationMs = 390,
+            notes = listOf(
+                LiveSoundNote(523.25, 0, 220, 0.18),
+                LiveSoundNote(659.25, 88, 225, 0.16),
+                LiveSoundNote(783.99, 172, 210, 0.14)
+            )
+        )
+    }
+
+    fun playFinishSpeaking() {
+        play(
+            durationMs = 235,
+            notes = listOf(
+                LiveSoundNote(587.33, 0, 155, 0.19),
+                LiveSoundNote(739.99, 82, 140, 0.17)
+            )
+        )
+    }
+
+    fun playHangUp() {
+        play(
+            durationMs = 255,
+            notes = listOf(
+                LiveSoundNote(493.88, 0, 155, 0.17),
+                LiveSoundNote(392.00, 82, 155, 0.15)
+            )
+        )
+    }
+
+    fun release() {
+        synchronized(lock) {
+            released = true
+            activeTrack?.let(::stopAndRelease)
+            activeTrack = null
+        }
+    }
+
+    private fun play(durationMs: Int, notes: List<LiveSoundNote>) {
+        val samples = createSamples(durationMs, notes)
+        val track = runCatching {
+            AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setSampleRate(LIVE_SOUND_SAMPLE_RATE)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build()
+                )
+                .setBufferSizeInBytes(samples.size * Short.SIZE_BYTES)
+                .setTransferMode(AudioTrack.MODE_STATIC)
+                .build()
+        }.getOrNull() ?: return
+
+        synchronized(lock) {
+            if (released) {
+                stopAndRelease(track)
+                return
+            }
+            activeTrack?.let(::stopAndRelease)
+            activeTrack = track
+        }
+
+        Thread({
+            try {
+                track.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
+                track.play()
+                Thread.sleep(durationMs.toLong() + LIVE_SOUND_RELEASE_PADDING_MS)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+            } catch (_: Exception) {
+                // 新音效触发时可能会提前释放旧音轨。
+            } finally {
+                synchronized(lock) {
+                    if (activeTrack === track) {
+                        stopAndRelease(track)
+                        activeTrack = null
+                    }
+                }
+            }
+        }, "live-sound-effect").apply {
+            isDaemon = true
+            start()
+        }
+    }
+
+    private fun createSamples(durationMs: Int, notes: List<LiveSoundNote>): ShortArray {
+        val sampleCount = durationMs * LIVE_SOUND_SAMPLE_RATE / 1_000
+        return ShortArray(sampleCount) { index ->
+            val timeSeconds = index.toDouble() / LIVE_SOUND_SAMPLE_RATE
+            var mix = 0.0
+            notes.forEach { note ->
+                val elapsedSeconds = timeSeconds - note.startMs / 1_000.0
+                val noteDurationSeconds = note.durationMs / 1_000.0
+                if (elapsedSeconds in 0.0..noteDurationSeconds) {
+                    val attack = (elapsedSeconds / LIVE_SOUND_ATTACK_SECONDS).coerceAtMost(1.0)
+                    val release = ((noteDurationSeconds - elapsedSeconds) / LIVE_SOUND_RELEASE_SECONDS)
+                        .coerceIn(0.0, 1.0)
+                    val phase = 2.0 * Math.PI * note.frequencyHz * elapsedSeconds
+                    val tone = sin(phase) * 0.86 + sin(phase * 2.0) * 0.14
+                    mix += tone * note.gain * attack * release
+                }
+            }
+            (mix.coerceIn(-0.72, 0.72) * Short.MAX_VALUE).toInt().toShort()
+        }
+    }
+
+    private fun stopAndRelease(track: AudioTrack) {
+        runCatching { track.pause() }
+        runCatching { track.flush() }
+        runCatching { track.stop() }
+        runCatching { track.release() }
+    }
+
+    private data class LiveSoundNote(
+        val frequencyHz: Double,
+        val startMs: Int,
+        val durationMs: Int,
+        val gain: Double
+    )
 }
 
 internal fun liveSubtitleWindow(text: String, limit: Int = Int.MAX_VALUE): String =
@@ -1274,6 +1451,12 @@ private fun spectrumFromPcm16(bytes: ByteArray): FloatArray {
 }
 
 private const val LIVE_SPECTRUM_BARS = 44
+private const val LIVE_PORTRAIT_TRANSITION_MS = 580L
+private const val LIVE_INTERFACE_TRANSITION_MS = 240L
+private const val LIVE_SOUND_SAMPLE_RATE = 44_100
+private const val LIVE_SOUND_RELEASE_PADDING_MS = 50L
+private const val LIVE_SOUND_ATTACK_SECONDS = 0.016
+private const val LIVE_SOUND_RELEASE_SECONDS = 0.072
 private const val LIVE_VOICE_THRESHOLD = 0.075f
 private const val LIVE_MIN_RECORDING_MS = 900L
 private const val LIVE_SILENCE_MS = 1_250L
