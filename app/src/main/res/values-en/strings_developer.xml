@@ -35,4 +35,11 @@
     <string name="performance_monitor_status_poor">Poor performance</string>
     <string name="performance_monitor_no_frames">Waiting for frame data…</string>
     <string name="performance_monitor_note">Measurements cover only the current app process. Navigate, scroll, or generate a reply to observe real workload changes.</string>
+    <string name="developer_update_preview_title">Simulate startup update prompt</string>
+    <string name="developer_update_preview_subtitle">Shows a test update prompt on the next launch</string>
+    <string name="developer_update_preview_scheduled">Test update prompt scheduled for the next launch</string>
+    <string name="developer_update_preview_reset_title">Reset update prompt test</string>
+    <string name="developer_update_preview_reset_subtitle">Clears the simulated prompt and ignored state</string>
+    <string name="developer_update_preview_reset_done">Update prompt test state reset</string>
+    <string name="developer_update_preview_release_notes">## Simulated update notes\n\n- This release is only for testing the startup update prompt.\n- It includes a non-installable preview APK so you can inspect the download source selector.\n- Switch among automatic selection, ghproxy.com, and GitHub direct.\n- Opening in a browser always goes to the official GitHub Releases page.\n- After choosing not to be reminded, reset the test state in Developer options.\n- These notes are intentionally long to verify the collapse and expand behavior.</string>
 </resources>

@@ -149,6 +149,7 @@
     <string name="update_no_new">最新のバージョンです</string>
     <string name="update_new_available">新バージョン %1$s が見つかりました</string>
     <string name="update_check_failed">更新確認に失敗しました：%1$s</string>
+    <string name="update_ignore_this_version">このバージョンを今後通知しない</string>
     <!-- バージョン情報ページ -->
     <string name="about_open_source_license">オープンソースライセンス</string>
     <string name="about_privacy_statement">プライバシーポリシー</string>
@@ -157,11 +158,18 @@
     <string name="about_footer">© 2024-2026 Asukaneko · GPL-3.0</string>
     <string name="about_privacy_content">Nekobot for Android プライバシーポリシー\n\n1. データ収集\n本アプリは個人情報を収集せず、統計・広告・トラッキング SDK を一切含みません。\n\n2. ローカルデータ\nローカルモードでは、会話・メッセージ・キャラクターカード・世界観帳・記憶・Token 使用量記録などのデータはすべてデバイス本体（アプリのプライベートディレクトリと SharedPreferences）に保存され、サーバーへアップロードされません。\n\n3. リモートデータ\nリモートモードでは、データはあなたが設定したバックエンドサーバー（デフォルトは自前でデプロイした Nekobot サーバー）にアップロードされます。本アプリ自体は第三者サービスと通信せず、設定したサーバーとのみ通信します。\n\n4. サードパーティ API\n設定した AI モデル API（OpenAI、Gemini など）は、それぞれのプライバシーポリシーに従ってリクエスト内容を処理します。各プロバイダのプライバシーポリシーをご参照ください。\n\n5. アプリ権限\n- ネットワーク権限：設定したバックエンドサーバーおよび AI API との通信\n- ストレージ権限：会話・キャラクターカードなどのエクスポート/インポート\n- 通知権限：AI 能動メッセージ通知（任意）\n\n6. データセキュリティ\n機密性の高い会話にはパスワード保護を設定することをお勧めします。エクスポートしたデータファイルは厳重に保管し、未承認のアクセスを防いでください。\n\n7. オープンソース\n本プロジェクトは GPL-3.0 ライセンスでオープンソース化されています。ソースコード：https://github.com/asukaneko/Nekobot-Android\n\nご質問がある場合は GitHub で issue を立ててください。</string>
     <string name="update_release_notes">リリースノート</string>
+    <string name="update_expand_release_notes">リリースノートを展開</string>
+    <string name="update_collapse_release_notes">リリースノートを折りたたむ</string>
     <string name="update_current_version">現在のバージョン</string>
     <string name="update_latest_version">最新バージョン</string>
     <string name="update_published_at">公開日時</string>
     <string name="update_download">ダウンロードしてインストール</string>
     <string name="update_downloading">ダウンロード中…%1$d%%</string>
+    <string name="update_downloading_from">%1$s からダウンロード中…%2$d%%</string>
+    <string name="update_download_source">ダウンロード元</string>
+    <string name="update_download_source_auto">自動選択（推奨）</string>
+    <string name="update_download_source_ghproxy">ghproxy.com</string>
+    <string name="update_download_source_github">GitHub に直接接続</string>
     <string name="update_download_failed">ダウンロード失敗：%1$s</string>
     <string name="update_install_failed">インストールを開始できません、ブラウザからダウンロードしてください</string>
     <string name="update_open_in_browser">ブラウザで開く</string>

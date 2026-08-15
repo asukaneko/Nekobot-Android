@@ -7,6 +7,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -23,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -227,7 +230,7 @@ fun LoadingOverlay(visible: Boolean, message: String = stringResource(R.string.c
 }
 
 /** 自定义弹窗：用于错误提示、确认操作等。
- *  内容过长时自动限制弹窗高度（屏幕 85%），内容区域滚动，保存/取消按钮始终可见。 */
+ *  内容过长时自动限制弹窗高度（屏幕 85%）；需要滚动的内容由调用方显式开启。 */
 @Composable
 fun NekoDialog(
     onDismiss: () -> Unit,
@@ -238,6 +241,9 @@ fun NekoDialog(
     onConfirm: (() -> Unit)? = null,
     cancelText: String? = stringResource(R.string.common_cancel),
     onCancel: (() -> Unit)? = null,
+    confirmIcon: ImageVector? = null,
+    confirmIconContentDescription: String? = null,
+    contentScrollable: Boolean = false,
     content: @Composable (ColumnScope.() -> Unit)? = null
 ) {
     Dialog(
@@ -250,6 +256,7 @@ fun NekoDialog(
         ) {
             // 限制弹窗最大高度为屏幕 85%，避免内容过长把按钮挤出屏幕
             val maxDialogHeight = maxHeight * 0.85f
+            val contentScrollState = rememberScrollState()
             GlassCard(
                 modifier = Modifier
                     .fillMaxWidth(0.9f)
@@ -277,7 +284,11 @@ fun NekoDialog(
                     Spacer(Modifier.height(8.dp))
                     // weight(1f, fill = false)：内容小时保持自然高度，内容超出时占用剩余空间并滚动
                     Column(
-                        modifier = Modifier
+                        modifier = (if (contentScrollable) {
+                            Modifier.verticalScroll(contentScrollState)
+                        } else {
+                            Modifier
+                        })
                             .fillMaxWidth()
                             .weight(1f, fill = false)
                     ) {
@@ -295,12 +306,28 @@ fun NekoDialog(
                         }
                         Spacer(Modifier.width(8.dp))
                     }
-                    Button(
-                        onClick = { onConfirm?.invoke() ?: onDismiss() },
-                        enabled = confirmEnabled,
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                    ) {
-                        Text(confirmText, color = MaterialTheme.colorScheme.onPrimary)
+                    if (confirmIcon != null) {
+                        FilledIconButton(
+                            onClick = { onConfirm?.invoke() ?: onDismiss() },
+                            enabled = confirmEnabled,
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            )
+                        ) {
+                            Icon(
+                                imageVector = confirmIcon,
+                                contentDescription = confirmIconContentDescription ?: confirmText
+                            )
+                        }
+                    } else {
+                        Button(
+                            onClick = { onConfirm?.invoke() ?: onDismiss() },
+                            enabled = confirmEnabled,
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Text(confirmText, color = MaterialTheme.colorScheme.onPrimary)
+                        }
                     }
                 }
             }

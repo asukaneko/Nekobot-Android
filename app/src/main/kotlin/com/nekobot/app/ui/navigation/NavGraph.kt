@@ -1,5 +1,7 @@
 package com.nekobot.app.ui.navigation
 
+import android.content.Context
+import android.widget.Toast
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.compose.animation.core.tween
@@ -18,11 +20,15 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -65,11 +71,13 @@ import com.nekobot.app.ui.screens.settings.SystemOperationsScreen
 import com.nekobot.app.ui.screens.settings.GlobalAgentMemoryScreen
 import com.nekobot.app.ui.screens.settings.WebDavBackupScreen
 import com.nekobot.app.ui.screens.settings.AboutScreen
+import com.nekobot.app.ui.screens.settings.DownloadUiState
 import com.nekobot.app.ui.screens.settings.DeveloperOptionsScreen
 import com.nekobot.app.ui.screens.settings.PerformanceMonitorScreen
 import com.nekobot.app.ui.screens.settings.LicenseScreen
 import com.nekobot.app.ui.screens.settings.PrivacyScreen
 import com.nekobot.app.ui.screens.settings.Wenku8LoginScreen
+import com.nekobot.app.ui.screens.settings.UpdateDetailDialog
 import com.nekobot.app.ui.screens.statehistory.StateHistoryScreen
 import com.nekobot.app.ui.screens.tokens.TokensScreen
 import com.nekobot.app.ui.screens.tokens.RoutingHistoryScreen
@@ -92,7 +100,9 @@ import com.nekobot.app.ui.screens.extensions.LoginTokensScreen
 import com.nekobot.app.ui.screens.extensions.ApiKeysScreen
 import com.nekobot.app.ui.screens.extensions.AchievementsScreen
 import com.nekobot.app.ui.components.AchievementUnlockHost
+import com.nekobot.app.update.UpdateChecker
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
 
 private val mainRoutes = setOf(
     Routes.SESSIONS, Routes.CHARACTERS, Routes.WORLD_BOOKS,
@@ -615,5 +625,97 @@ fun NekobotNavGraph() {
             )
         }
         AchievementUnlockHost()
+        StartupUpdateHost()
     }
 }
+
+/** 应用启动后静默检查更新，仅在发现未忽略的新版本时显示提示。 */
+@Composable
+private fun StartupUpdateHost() {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val currentVersion = remember(context) { getCurrentAppVersion(context) }
+    var updateInfo by remember { mutableStateOf<UpdateChecker.ReleaseInfo?>(null) }
+    val downloadStateFlow = remember { MutableStateFlow<DownloadUiState>(DownloadUiState.Idle) }
+    val downloadState by downloadStateFlow.collectAsStateWithLifecycle()
+
+    LaunchedEffect(currentVersion) {
+        UpdateChecker.consumeStartupUpdatePreview(context)?.let { preview ->
+            updateInfo = preview
+            return@LaunchedEffect
+        }
+        when (val result = UpdateChecker.checkForUpdate(context, currentVersion)) {
+            is UpdateChecker.CheckResult.Available -> {
+                if (!UpdateChecker.isVersionIgnored(context, result.info.tagName)) {
+                    updateInfo = result.info
+                }
+            }
+            else -> Unit
+        }
+    }
+
+    val info = updateInfo ?: return
+    UpdateDetailDialog(
+        info = info,
+        currentVersion = currentVersion,
+        downloadState = downloadState,
+        onDismiss = {
+            updateInfo = null
+            downloadStateFlow.value = DownloadUiState.Idle
+        },
+        onDownload = { asset, source ->
+            if (downloadState is DownloadUiState.Downloading) return@UpdateDetailDialog
+            downloadStateFlow.value = DownloadUiState.Downloading(0, source)
+            coroutineScope.launch {
+                when (
+                    val result = UpdateChecker.downloadApk(context, asset, source) { progress ->
+                        downloadStateFlow.value = when (progress) {
+                            is UpdateChecker.DownloadResult.Progress -> {
+                                DownloadUiState.Downloading(progress.percent, progress.source)
+                            }
+                            is UpdateChecker.DownloadResult.Done -> DownloadUiState.Done(progress.file)
+                            is UpdateChecker.DownloadResult.Error -> DownloadUiState.Idle
+                        }
+                    }
+                ) {
+                    is UpdateChecker.DownloadResult.Done -> {
+                        runCatching {
+                            context.startActivity(UpdateChecker.buildInstallIntent(context, result.file))
+                        }.onFailure {
+                            Toast.makeText(
+                                context,
+                                context.getString(com.nekobot.app.R.string.update_install_failed),
+                                Toast.LENGTH_LONG
+                            ).show()
+                            runCatching { context.startActivity(UpdateChecker.buildReleasesPageIntent()) }
+                        }
+                    }
+                    is UpdateChecker.DownloadResult.Error -> {
+                        downloadStateFlow.value = DownloadUiState.Idle
+                        Toast.makeText(
+                            context,
+                            context.getString(com.nekobot.app.R.string.update_download_failed, result.message),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    else -> Unit
+                }
+            }
+        },
+        onOpenInBrowser = {
+            runCatching { context.startActivity(UpdateChecker.buildReleasesPageIntent()) }
+        },
+        showIgnoreOption = true,
+        onIgnoreVersion = { tagName ->
+            if (UpdateChecker.isStartupUpdatePreview(tagName)) {
+                UpdateChecker.ignoreStartupUpdatePreview(context)
+            } else {
+                UpdateChecker.ignoreVersion(context, tagName)
+            }
+        }
+    )
+}
+
+private fun getCurrentAppVersion(context: Context): String = runCatching {
+    context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "unknown"
+}.getOrDefault("unknown")

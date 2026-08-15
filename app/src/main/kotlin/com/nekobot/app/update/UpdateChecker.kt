@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import androidx.core.content.FileProvider
 import com.google.gson.JsonParser
+import com.nekobot.app.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -29,8 +30,19 @@ object UpdateChecker {
     private const val UPDATE_PREFS = "nekobot_update_cache"
     private const val KEY_LATEST_RELEASE_JSON = "latest_release_json"
     private const val KEY_GITHUB_ETAG = "github_etag"
+    private const val KEY_IGNORED_VERSION = "ignored_version"
+    private const val KEY_STARTUP_UPDATE_PREVIEW_PENDING = "startup_update_preview_pending"
+    private const val KEY_IGNORED_PREVIEW_VERSION = "ignored_preview_version"
+    private const val STARTUP_UPDATE_PREVIEW_TAG = "v999.0.0-preview"
+
+    enum class DownloadSource {
+        AUTO,
+        GHPROXY,
+        GITHUB_DIRECT
+    }
 
     private data class ReleaseSource(
+        val downloadSource: DownloadSource,
         val name: String,
         val proxyPrefix: String = ""
     ) {
@@ -39,11 +51,10 @@ object UpdateChecker {
         fun wrap(url: String): String = proxyPrefix + url
     }
 
-    /** 已验证可访问 GitHub Releases API 与发布资产的 HTTPS 代理，按优先级回退。 */
+    /** 可访问 GitHub Releases API 与发布资产的 HTTPS 源，按优先级回退。 */
     private val releaseSources = listOf(
-        ReleaseSource("gh-proxy.com", "https://gh-proxy.com/"),
-        ReleaseSource("ghproxy.com", "https://ghproxy.com/"),
-        ReleaseSource("GitHub")
+        ReleaseSource(DownloadSource.GHPROXY, "ghproxy.com", "https://ghproxy.com/"),
+        ReleaseSource(DownloadSource.GITHUB_DIRECT, "GitHub")
     )
 
     private val metadataClient: OkHttpClient = OkHttpClient.Builder()
@@ -92,7 +103,7 @@ object UpdateChecker {
 
     /** 下载结果。 */
     sealed class DownloadResult {
-        data class Progress(val percent: Int) : DownloadResult()
+        data class Progress(val percent: Int, val source: DownloadSource) : DownloadResult()
         data class Done(val file: File) : DownloadResult()
         data class Error(val message: String) : DownloadResult()
     }
@@ -168,16 +179,18 @@ object UpdateChecker {
     suspend fun downloadApk(
         context: Context,
         asset: ReleaseAsset,
+        source: DownloadSource = DownloadSource.AUTO,
         onProgress: (DownloadResult) -> Unit
     ): DownloadResult = withContext(Dispatchers.IO) {
         val dir = File(context.cacheDir, "downloads").apply { mkdirs() }
         val target = File(dir, asset.name)
         val failures = mutableListOf<String>()
-        val downloadUrls = asset.downloadUrls.ifEmpty { buildDownloadUrls(asset.browserDownloadUrl) }
+        val downloadUrls = buildDownloadUrls(asset.browserDownloadUrl, source)
 
         for (url in downloadUrls) {
-            onProgress(DownloadResult.Progress(0))
-            val failure = downloadFromSource(target, url, asset.size, onProgress)
+            val activeSource = sourceForUrl(url)
+            onProgress(DownloadResult.Progress(0, activeSource))
+            val failure = downloadFromSource(target, url, asset.size, activeSource, onProgress)
             if (failure == null) {
                 onProgress(DownloadResult.Done(target))
                 return@withContext DownloadResult.Done(target)
@@ -207,19 +220,107 @@ object UpdateChecker {
 
     /** Releases 页面 Intent。 */
     fun buildReleasesPageIntent(): Intent =
-        Intent(Intent.ACTION_VIEW, Uri.parse(releaseSources.first().wrap(HTML_RELEASES_URL)))
+        Intent(Intent.ACTION_VIEW, Uri.parse(HTML_RELEASES_URL))
 
-    internal fun buildDownloadUrls(browserDownloadUrl: String): List<String> {
+    /** 读取用户选择不再提醒的 release tag；新版本的 tag 不会受影响。 */
+    fun isVersionIgnored(context: Context, tagName: String): Boolean =
+        tagName.isNotBlank() && context.applicationContext
+            .getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_IGNORED_VERSION, null) == tagName
+
+    /** 保存用户选择不再提醒的 release tag。 */
+    fun ignoreVersion(context: Context, tagName: String) {
+        context.applicationContext
+            .getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_IGNORED_VERSION, tagName)
+            .apply()
+    }
+
+    /** 安排下次启动时显示一次模拟更新提示，不影响真实更新检查。 */
+    fun scheduleStartupUpdatePreview(context: Context) {
+        context.applicationContext
+            .getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_STARTUP_UPDATE_PREVIEW_PENDING, true)
+            .apply()
+    }
+
+    /** 消费一次启动更新模拟请求；已忽略模拟版本时不再返回提示。 */
+    fun consumeStartupUpdatePreview(context: Context): ReleaseInfo? {
+        val prefs = context.applicationContext.getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(KEY_STARTUP_UPDATE_PREVIEW_PENDING, false)) return null
+        prefs.edit().remove(KEY_STARTUP_UPDATE_PREVIEW_PENDING).apply()
+        if (prefs.getString(KEY_IGNORED_PREVIEW_VERSION, null) == STARTUP_UPDATE_PREVIEW_TAG) {
+            return null
+        }
+        return ReleaseInfo(
+            tagName = STARTUP_UPDATE_PREVIEW_TAG,
+            name = STARTUP_UPDATE_PREVIEW_TAG,
+            body = context.getString(R.string.developer_update_preview_release_notes),
+            publishedAt = "",
+            htmlUrl = HTML_RELEASES_URL,
+            assets = listOf(
+                ReleaseAsset(
+                    name = "Nekobot-preview.apk",
+                    browserDownloadUrl = "https://github.com/$OWNER/$REPO/releases/download/" +
+                        "$STARTUP_UPDATE_PREVIEW_TAG/Nekobot-preview.apk",
+                    size = 8L * 1024L * 1024L,
+                    contentType = "application/vnd.android.package-archive"
+                )
+            )
+        )
+    }
+
+    fun isStartupUpdatePreview(tagName: String): Boolean = tagName == STARTUP_UPDATE_PREVIEW_TAG
+
+    /** 忽略模拟版本仅影响开发者测试，不会覆盖真实 release 的忽略记录。 */
+    fun ignoreStartupUpdatePreview(context: Context) {
+        context.applicationContext
+            .getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_IGNORED_PREVIEW_VERSION, STARTUP_UPDATE_PREVIEW_TAG)
+            .apply()
+    }
+
+    /** 清除模拟更新提示及其忽略状态，供重复测试使用。 */
+    fun resetStartupUpdatePreview(context: Context) {
+        context.applicationContext
+            .getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_STARTUP_UPDATE_PREVIEW_PENDING)
+            .remove(KEY_IGNORED_PREVIEW_VERSION)
+            .apply()
+    }
+
+    fun downloadSourcesFor(asset: ReleaseAsset): List<DownloadSource> =
+        if (asset.browserDownloadUrl.startsWith("https://github.com/")) {
+            listOf(DownloadSource.AUTO, DownloadSource.GHPROXY, DownloadSource.GITHUB_DIRECT)
+        } else {
+            listOf(DownloadSource.GITHUB_DIRECT)
+        }
+
+    internal fun buildDownloadUrls(
+        browserDownloadUrl: String,
+        source: DownloadSource = DownloadSource.AUTO
+    ): List<String> {
         if (!browserDownloadUrl.startsWith("https://github.com/")) {
             return listOf(browserDownloadUrl)
         }
-        return releaseSources.map { it.wrap(browserDownloadUrl) }.distinct()
+        return when (source) {
+            DownloadSource.AUTO -> releaseSources.map { it.wrap(browserDownloadUrl) }.distinct()
+            DownloadSource.GHPROXY -> listOf(
+                releaseSources.first { it.downloadSource == DownloadSource.GHPROXY }.wrap(browserDownloadUrl)
+            )
+            DownloadSource.GITHUB_DIRECT -> listOf(browserDownloadUrl)
+        }
     }
 
     private fun downloadFromSource(
         target: File,
         url: String,
         expectedSize: Long,
+        source: DownloadSource,
         onProgress: (DownloadResult) -> Unit
     ): String? {
         target.delete()
@@ -249,7 +350,7 @@ object UpdateChecker {
                                 val percent = (downloaded * 100 / expectedSize).toInt().coerceIn(0, 100)
                                 if (percent != lastReport) {
                                     lastReport = percent
-                                    onProgress(DownloadResult.Progress(percent))
+                                    onProgress(DownloadResult.Progress(percent, source))
                                 }
                             }
                         }
@@ -273,6 +374,11 @@ object UpdateChecker {
     }.getOrDefault(false)
 
     private fun sourceLabel(url: String): String = Uri.parse(url).host ?: url
+
+    private fun sourceForUrl(url: String): DownloadSource = when {
+        url.startsWith("https://ghproxy.com/") -> DownloadSource.GHPROXY
+        else -> DownloadSource.GITHUB_DIRECT
+    }
 
     /** 解析 GitHub release JSON 为 ReleaseInfo。 */
     private fun parseRelease(json: String): ReleaseInfo? = runCatching {

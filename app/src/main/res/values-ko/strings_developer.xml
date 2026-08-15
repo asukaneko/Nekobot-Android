@@ -35,4 +35,11 @@
     <string name="performance_monitor_status_poor">성능 저하</string>
     <string name="performance_monitor_no_frames">프레임 데이터 대기 중…</string>
     <string name="performance_monitor_note">측정값은 현재 앱 프로세스만 반영합니다. 화면 이동, 스크롤 또는 답변 생성 중 실제 부하 변화를 확인할 수 있습니다.</string>
+    <string name="developer_update_preview_title">시작 시 업데이트 알림 시뮬레이션</string>
+    <string name="developer_update_preview_subtitle">다음 실행 때 테스트 업데이트 대화 상자를 표시합니다</string>
+    <string name="developer_update_preview_scheduled">다음 실행 때 테스트 업데이트 알림이 표시됩니다</string>
+    <string name="developer_update_preview_reset_title">업데이트 알림 테스트 초기화</string>
+    <string name="developer_update_preview_reset_subtitle">시뮬레이션 알림과 무시 상태를 지웁니다</string>
+    <string name="developer_update_preview_reset_done">업데이트 알림 테스트 상태를 초기화했습니다</string>
+    <string name="developer_update_preview_release_notes">## 업데이트 알림 시뮬레이션\n\n- 이 릴리스는 시작 시 업데이트 알림을 확인하기 위한 용도입니다.\n- 다운로드 소스 선택을 확인할 수 있도록 설치할 수 없는 테스트 APK가 포함되어 있습니다.\n- 자동 선택, ghproxy.com, GitHub 직접 연결 사이에서 전환할 수 있습니다.\n- 브라우저에서 열기는 항상 GitHub 공식 Releases 페이지로 이동합니다.\n- 이 버전을 알리지 않도록 선택한 뒤에는 개발자 옵션에서 테스트 상태를 재설정할 수 있습니다.\n- 이 설명은 접기와 펼치기 동작을 확인할 수 있도록 의도적으로 길게 작성했습니다.</string>
 </resources>

@@ -159,6 +159,7 @@
     <string name="update_no_new">已是最新版本</string>
     <string name="update_new_available">发现新版本 %1$s</string>
     <string name="update_check_failed">检查更新失败：%1$s</string>
+    <string name="update_ignore_this_version">不再提醒此版本</string>
     <!-- 关于页面 -->
     <string name="about_open_source_license">开源许可证</string>
     <string name="about_privacy_statement">隐私声明</string>
@@ -167,11 +168,18 @@
     <string name="about_footer">© 2024-2026 Asukaneko · GPL-3.0</string>
     <string name="about_privacy_content">Nekobot for Android 隐私声明\n\n1. 数据收集\n本应用不收集任何个人信息，不包含任何统计、广告或追踪 SDK。\n\n2. 本地数据\n在「本地模式」下，你的会话、消息、角色卡、世界书、记忆、Token 用量记录等数据全部存储在你的设备本地（应用私有目录与 SharedPreferences 中），不会上传到任何服务器。\n\n3. 远程数据\n在「远程模式」下，你的数据将上传到你自行配置的后端服务器（默认为你自己部署的 Nekobot 服务端）。应用本身不与任何第三方服务通信，仅与你配置的服务端通信。\n\n4. 第三方 API\n你配置的 AI 模型 API（如 OpenAI、Gemini 等）会按照其各自的隐私政策处理请求内容。请参阅对应服务商的隐私政策。\n\n5. 应用权限\n- 网络权限：用于与你配置的后端服务器及 AI API 通信\n- 存储权限：用于导出/导入会话、角色卡等数据\n- 通知权限：用于 AI 主动消息通知（可选）\n\n6. 数据安全\n建议为敏感会话设置密码保护。导出的数据文件请妥善保管，避免未授权访问。\n\n7. 开源\n本项目基于 GPL-3.0 协议开源，源代码地址：https://github.com/asukaneko/Nekobot-Android\n\n如有疑问，请在 GitHub 上提 issue。</string>
     <string name="update_release_notes">发布说明</string>
+    <string name="update_expand_release_notes">展开发布说明</string>
+    <string name="update_collapse_release_notes">收起发布说明</string>
     <string name="update_current_version">当前版本</string>
     <string name="update_latest_version">最新版本</string>
     <string name="update_published_at">发布时间</string>
     <string name="update_download">下载并安装</string>
     <string name="update_downloading">正在下载…%1$d%%</string>
+    <string name="update_downloading_from">正在从 %1$s 下载…%2$d%%</string>
+    <string name="update_download_source">下载源</string>
+    <string name="update_download_source_auto">自动选择（推荐）</string>
+    <string name="update_download_source_ghproxy">ghproxy.com</string>
+    <string name="update_download_source_github">GitHub 直连</string>
     <string name="update_download_failed">下载失败：%1$s</string>
     <string name="update_install_failed">无法启动安装，请尝试从浏览器下载</string>
     <string name="update_open_in_browser">在浏览器中打开</string>

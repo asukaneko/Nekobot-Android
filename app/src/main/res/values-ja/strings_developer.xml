@@ -35,4 +35,11 @@
     <string name="performance_monitor_status_poor">性能低下</string>
     <string name="performance_monitor_no_frames">フレームデータを待機中…</string>
     <string name="performance_monitor_note">測定値は現在のアプリプロセスのみを対象とします。画面移動、スクロール、返信生成中に実際の負荷変化を確認できます。</string>
+    <string name="developer_update_preview_title">起動時更新通知をシミュレート</string>
+    <string name="developer_update_preview_subtitle">次回起動時にテスト用更新ダイアログを表示します</string>
+    <string name="developer_update_preview_scheduled">次回起動時にテスト用更新通知を表示します</string>
+    <string name="developer_update_preview_reset_title">更新通知テストをリセット</string>
+    <string name="developer_update_preview_reset_subtitle">シミュレーション通知と無視状態を消去します</string>
+    <string name="developer_update_preview_reset_done">更新通知テストの状態をリセットしました</string>
+    <string name="developer_update_preview_release_notes">## 更新通知のシミュレーション\n\n- このリリースは起動時の更新通知を確認するためだけのものです。\n- ダウンロード元の選択を確認できる、インストール不可のテスト APK を含みます。\n- 自動選択、ghproxy.com、GitHub 直接接続を切り替えられます。\n- ブラウザで開く場合は常に GitHub 公式の Releases ページを開きます。\n- このバージョンを通知しない場合は、開発者オプションでテスト状態をリセットできます。\n- この説明は折りたたみと展開を確認するために意図的に長くしています。</string>
 </resources>

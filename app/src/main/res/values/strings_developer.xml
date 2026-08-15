@@ -35,4 +35,11 @@
     <string name="performance_monitor_status_poor">性能较差</string>
     <string name="performance_monitor_no_frames">等待界面帧数据…</string>
     <string name="performance_monitor_note">检测数据仅反映当前应用进程。切换页面、滚动列表或生成消息时更容易观察真实性能变化。</string>
+    <string name="developer_update_preview_title">模拟启动更新提示</string>
+    <string name="developer_update_preview_subtitle">下次启动时显示测试更新弹窗</string>
+    <string name="developer_update_preview_scheduled">已安排在下次启动时显示测试更新提示</string>
+    <string name="developer_update_preview_reset_title">重置更新提示测试</string>
+    <string name="developer_update_preview_reset_subtitle">清除模拟提示与忽略状态</string>
+    <string name="developer_update_preview_reset_done">已重置更新提示测试状态</string>
+    <string name="developer_update_preview_release_notes">## 模拟更新说明\n\n- 此发布仅用于测试启动更新提示。\n- 内含一个不可安装的模拟 APK，用于查看下载源选择。\n- 可在自动选择、ghproxy.com 和 GitHub 直连之间切换。\n- 在浏览器中打开会始终前往 GitHub 官方 Releases 页面。\n- 勾选“不再提醒此版本”后，可通过开发者选项重置测试状态。\n- 本说明刻意较长，用于验证发布说明的折叠与展开效果。</string>
 </resources>

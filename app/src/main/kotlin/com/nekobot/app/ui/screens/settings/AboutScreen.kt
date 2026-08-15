@@ -274,8 +274,8 @@ fun AboutScreen(
             currentVersion = getAppVersion(context),
             downloadState = downloadState,
             onDismiss = { vm.dismissUpdateState() },
-            onDownload = { asset ->
-                vm.downloadApk(context, asset) { file ->
+            onDownload = { asset, source ->
+                vm.downloadApk(context, asset, source) { file ->
                     runCatching {
                         context.startActivity(UpdateChecker.buildInstallIntent(context, file))
                     }.onFailure {
