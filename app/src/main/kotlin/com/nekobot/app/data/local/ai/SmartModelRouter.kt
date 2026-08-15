@@ -11,6 +11,10 @@ data class SmartRoutingRequest(
     val dailySpentUsd: Double = 0.0
 ) {
     val isAgent: Boolean get() = sessionMode.equals("agent", ignoreCase = true)
+    val isRoleplay: Boolean
+        get() = sessionMode.isBlank() ||
+            sessionMode.equals("character", ignoreCase = true) ||
+            sessionMode.equals("group", ignoreCase = true)
     val isComplex: Boolean
         get() = isAgent || hasAttachments || promptChars >= 4_000 || estimatedContextTokens >= 24_000
     val isSimple: Boolean
@@ -53,71 +57,15 @@ data class SmartModelScoreBreakdown(
  * 此处只决定首选模型与后续尝试顺序。
  */
 object SmartModelRouter {
+    private const val AGENT_GPT_CLAUDE_BONUS = 75.0
+    private const val ROLEPLAY_PRICE_WEIGHT_MULTIPLIER = 2.5
+
     fun score(
         models: List<LocalAiModelEntity>,
         request: SmartRoutingRequest,
         metrics: Map<String, SmartModelMetric> = emptyMap()
-    ): List<SmartModelScore> {
-        if (models.isEmpty()) return emptyList()
-        val requiredContext = request.estimatedContextTokens.coerceAtLeast(0) + 2_048
-        val contextCapable = models.filter { model ->
-            model.maxContextLength == null || model.maxContextLength >= requiredContext
-        }.ifEmpty { models }
-        val candidates = if (request.isAgent && contextCapable.any(LocalAiModelEntity::supportsTools)) {
-            contextCapable.filter(LocalAiModelEntity::supportsTools)
-        } else {
-            contextCapable
-        }
-
-        val pricingCatalog = ModelPricingCatalog.current()
-        val knownPrices = candidates.mapNotNull { effectivePrice(it, pricingCatalog) }.sorted()
-        val fallbackPrice = knownPrices.getOrNull(knownPrices.size / 2) ?: 0.0
-        val prices = candidates.associate {
-            it.id to (effectivePrice(it, pricingCatalog) ?: fallbackPrice)
-        }
-        val minPrice = prices.values.minOrNull() ?: 0.0
-        val maxPrice = prices.values.maxOrNull() ?: minPrice
-        val knownTtft = candidates.mapNotNull { metrics[it.id]?.averageTtftMs }.sorted()
-        val fallbackTtft = knownTtft.getOrNull(knownTtft.size / 2) ?: 3_000.0
-        val minTtft = candidates.minOfOrNull { metrics[it.id]?.averageTtftMs ?: fallbackTtft } ?: fallbackTtft
-        val maxTtft = candidates.maxOfOrNull { metrics[it.id]?.averageTtftMs ?: fallbackTtft } ?: fallbackTtft
-        val budgetPressure = when {
-            request.dailyBudgetUsd <= 0.0 -> 0.0
-            else -> (request.dailySpentUsd / request.dailyBudgetUsd).coerceIn(0.0, 1.5)
-        }
-        val costWeight = 30.0 + budgetPressure * 45.0 + if (request.isSimple) 25.0 else 0.0
-
-        return candidates.map { model ->
-            val metric = metrics[model.id] ?: SmartModelMetric()
-            val priceScore = normalize(prices.getValue(model.id), minPrice, maxPrice)
-            val speedScore = normalize(metric.averageTtftMs ?: fallbackTtft, minTtft, maxTtft)
-            val failurePenalty =
-                metric.consecutiveFailures * 18.0 +
-                    metric.dailyFailures.coerceAtMost(5) * 4.0 +
-                    if (metric.coolingDown) 500.0 else 0.0
-            val contextBonus = model.maxContextLength
-                ?.let { (it.coerceAtMost(256_000) / 256_000.0) * 12.0 }
-                ?: 4.0
-            val capabilityBonus = when {
-                request.isAgent ->
-                    (if (model.supportsTools) 18.0 else -120.0) +
-                        (if (model.supportsReasoning) 12.0 else 0.0)
-                request.isComplex -> if (model.supportsReasoning) 18.0 else 0.0
-                else -> 0.0
-            }
-            val noHistoryPenalty = if (metric.recentRequests == 0) 3.0 else 0.0
-            val score =
-                model.priority.coerceAtLeast(0) * 3.0 +
-                    priceScore * costWeight +
-                    speedScore * 24.0 +
-                    failurePenalty +
-                    noHistoryPenalty -
-                    contextBonus -
-                    capabilityBonus -
-                    if (model.active) 2.0 else 0.0
-            SmartModelScore(model, score)
-        }.sortedWith(compareBy(SmartModelScore::score, { it.model.priority }, { it.model.createdAt }))
-    }
+    ): List<SmartModelScore> = scoreDetailed(models, request, metrics)
+        .map { SmartModelScore(it.model, it.score) }
 
     /**
      * 与 [score] 逻辑完全相同，但返回带分项得分和原因列表的 [SmartModelScoreBreakdown]，
@@ -155,7 +103,12 @@ object SmartModelRouter {
             request.dailyBudgetUsd <= 0.0 -> 0.0
             else -> (request.dailySpentUsd / request.dailyBudgetUsd).coerceIn(0.0, 1.5)
         }
-        val costWeight = 30.0 + budgetPressure * 45.0 + if (request.isSimple) 25.0 else 0.0
+        val standardCostWeight = 30.0 + budgetPressure * 45.0 + if (request.isSimple) 25.0 else 0.0
+        val costWeight = if (request.isRoleplay) {
+            standardCostWeight * ROLEPLAY_PRICE_WEIGHT_MULTIPLIER
+        } else {
+            standardCostWeight
+        }
 
         return candidates.map { model ->
             val metric = metrics[model.id] ?: SmartModelMetric()
@@ -171,7 +124,8 @@ object SmartModelRouter {
             val capabilityBonus = when {
                 request.isAgent ->
                     (if (model.supportsTools) 18.0 else -120.0) +
-                        (if (model.supportsReasoning) 12.0 else 0.0)
+                        (if (model.supportsReasoning) 12.0 else 0.0) +
+                        (if (model.isGptOrClaude()) AGENT_GPT_CLAUDE_BONUS else 0.0)
                 request.isComplex -> if (model.supportsReasoning) 18.0 else 0.0
                 else -> 0.0
             }
@@ -234,4 +188,10 @@ object SmartModelRouter {
 
     private fun normalize(value: Double, min: Double, max: Double): Double =
         if (max <= min) 0.0 else ((value - min) / (max - min)).coerceIn(0.0, 1.0)
+
+    private fun LocalAiModelEntity.isGptOrClaude(): Boolean =
+        listOf(model, name).any { value ->
+            val normalized = value.lowercase()
+            normalized.contains("gpt") || normalized.contains("claude")
+        }
 }

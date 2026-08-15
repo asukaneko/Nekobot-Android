@@ -32,6 +32,48 @@ class SmartModelRouterTest {
     }
 
     @Test
+    fun agentRequestPrioritizesGptAndClaudeModels() {
+        val generic = model("generic", price = 0.1, reasoning = true)
+        val gpt = model("gpt-5", price = 20.0)
+        val claude = model("claude-sonnet", price = 20.0)
+        val routed = SmartModelRouter.route(
+            listOf(generic, gpt, claude),
+            SmartRoutingRequest(promptChars = 1_000, sessionMode = "agent"),
+            mapOf(
+                generic.id to SmartModelMetric(averageTtftMs = 300.0, recentRequests = 5),
+                gpt.id to SmartModelMetric(averageTtftMs = 1_000.0, recentRequests = 5),
+                claude.id to SmartModelMetric(averageTtftMs = 1_000.0, recentRequests = 5)
+            )
+        )
+
+        assertEquals(setOf("gpt-5", "claude-sonnet"), routed.take(2).map { it.id }.toSet())
+    }
+
+    @Test
+    fun roleplayRequestGivesPriceMoreWeight() {
+        val capable = model("capable", price = 10.0, reasoning = true)
+        val affordable = model("affordable", price = 0.1)
+        val metrics = mapOf(
+            capable.id to SmartModelMetric(averageTtftMs = 300.0, recentRequests = 5),
+            affordable.id to SmartModelMetric(averageTtftMs = 3_000.0, recentRequests = 5)
+        )
+
+        val standard = SmartModelRouter.route(
+            listOf(capable, affordable),
+            SmartRoutingRequest(promptChars = 4_000, sessionMode = "utility"),
+            metrics
+        )
+        val roleplay = SmartModelRouter.route(
+            listOf(capable, affordable),
+            SmartRoutingRequest(promptChars = 4_000, sessionMode = "character"),
+            metrics
+        )
+
+        assertEquals("capable", standard.first().id)
+        assertEquals("affordable", roleplay.first().id)
+    }
+
+    @Test
     fun longContextFiltersModelsThatCannotFit() {
         val short = model("short", price = 0.1, context = 8_000)
         val long = model("long", price = 2.0, context = 128_000)
