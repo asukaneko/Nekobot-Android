@@ -337,6 +337,7 @@
 
   /* ---------- 11. 从 GitHub Releases 拉取更新日志 ---------- */
   const FALLBACK_RELEASES = [
+    { tag_name: 'v0.5.3', published_at: '2026-08-15', body: '- 新增 SeedRealtime 与 GLM-Realtime 实时语音协议支持\n- 新增 Qwen Image 3.0 图像生成模型与附加提示词\n- 实时通话新增音效并增强进出场动画\n- 智能路由与故障转移交互优化\n- 更新下载支持多镜像源回退与 APK 完整性校验' },
     { tag_name: 'v0.5.2', published_at: '2026-08-14', body: '- 新增多模态提供者支持（Gemini/GLM/MiniMax/Qwen/豆包）的 TTS、STT 及图片生成能力\n- 支持阿里云 DashScope Qwen Realtime 语音链路并预合成 Live 会话提示词\n- 新增世界书封面管理与列表/网格视图切换功能\n- 新增会话类型筛选功能，区分角色会话与 Agent 会话' },
     { tag_name: 'v0.5.1', published_at: '2026-08-14', body: '- 新增实时语音对话模式\n- 新增数据导出中心，支持按类别批量导出/导入本地数据\n- 数据导出中心支持详细数据选择和滚动浏览\n- 工作区支持长按移动文件进入文件夹\n- Token 用量界面新增平均价格与活跃会话展示\n- 聊天界面新增命令与 Agent 技能建议\n- 设置页面新增开发者性能监视器\n- 修复底部导航栏标签文本换行问题\n- 网络请求默认使用 HTTPS 并对 HTTP 发出警告\n- 完善多语言 UI 覆盖' },
     { tag_name: 'v0.5.0', published_at: '2026-08-13', body: '- 新增全局搜索与命令中心\n- WebDAV 备份新增增量修订历史与指定版本恢复\n- 扩展本地 Agent 的 Android 系统操作与应用发现能力\n- 新增可由用户和 AI 共同维护的全局 Agent 记忆\n- 本地 AI 模型列表新增按功能筛选与分类计数\n- 优化 Compose 状态管理、数据库迁移验证与 Release 安装包体积' },
