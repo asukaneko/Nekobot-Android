@@ -292,7 +292,8 @@
     <string name="aimodel_editor_section_tts">TTS 语音合成</string>
     <string name="aimodel_editor_section_live">Realtime 实时语音</string>
     <string name="aimodel_editor_live_hint">音频输出模式会同时返回流式音频和转写字幕；输入语音由 Realtime 模型原生理解，转写模型仅用于保存用户字幕。</string>
-    <string name="aimodel_editor_live_voice">Realtime 音色</string>
+    <string name="aimodel_editor_live_voice">Realtime 音色（可自定义）</string>
+    <string name="aimodel_editor_live_voice_preset">常用音色</string>
     <string name="aimodel_editor_live_transcription_model">输入转写模型</string>
     <string name="aimodel_editor_live_qwen_hint">检测到 Qwen Realtime：默认音色 Tina（Qwen3.5-Omni 不再支持 Cherry 等旧音色，会自动纠正），转写模型默认 paraformer-realtime-v2。请将 Base URL 配为 https://dashscope.aliyuncs.com/api-ws/v1 并启用「自动拼接路径」。</string>
     <string name="aimodel_editor_live_seed_hint">检测到 SeedRealtime：默认模型 doubao-seed-1.6-flash-realtime，默认音色 zh_female_shuangkuaisisi_moon_bigtts，转写模型默认 doubao-1.5-asr-pro。请将 Base URL 配为 https://ark.cn-beijing.volces.com/api/v3 并启用「自动拼接路径」。</string>

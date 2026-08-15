@@ -643,8 +643,12 @@ fun AiModelEditorDialog(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    EditorDropdownField(
+                    EditorTextField(
                         label = stringResource(R.string.aimodel_editor_live_voice),
+                        value = state.ttsVoice
+                    ) { state = state.copy(ttsVoice = it) }
+                    EditorDropdownField(
+                        label = stringResource(R.string.aimodel_editor_live_voice_preset),
                         value = state.ttsVoice,
                         options = liveVoiceOptions,
                         onSelect = { state = state.copy(ttsVoice = it) }

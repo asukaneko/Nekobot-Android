@@ -282,7 +282,8 @@
     <string name="aimodel_editor_section_tts">TTS</string>
     <string name="aimodel_editor_section_live">Realtime voice</string>
     <string name="aimodel_editor_live_hint">Audio output includes streaming audio plus a transcript. The Realtime model understands input audio natively; the transcription model is only used to save user subtitles.</string>
-    <string name="aimodel_editor_live_voice">Realtime voice</string>
+    <string name="aimodel_editor_live_voice">Realtime voice (custom)</string>
+    <string name="aimodel_editor_live_voice_preset">Common voices</string>
     <string name="aimodel_editor_live_qwen_hint">Qwen Realtime detected: default voice is Tina (Qwen3.5-Omni no longer supports legacy voices like Cherry and will auto-correct), transcription model defaults to paraformer-realtime-v2. Set the base URL to https://dashscope.aliyuncs.com/api-ws/v1 and enable \"Append base URL path\".</string>
     <string name="aimodel_editor_live_seed_hint">SeedRealtime detected: defaults are doubao-seed-1.6-flash-realtime, voice zh_female_shuangkuaisisi_moon_bigtts, and transcription model doubao-1.5-asr-pro. Set the base URL to https://ark.cn-beijing.volces.com/api/v3 and enable \"Append base URL path\".</string>
     <string name="aimodel_editor_live_glm_hint">GLM-Realtime detected: defaults are glm-realtime, voice tongtong, and transcription model glm-asr. Set the base URL to https://open.bigmodel.cn/api/paas/v4 and enable \"Append base URL path\".</string>

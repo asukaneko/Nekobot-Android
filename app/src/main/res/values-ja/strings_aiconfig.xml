@@ -284,7 +284,8 @@
     <string name="aimodel_editor_live_qwen_hint">Qwen Realtime を検出：デフォルト音色は Tina（Qwen3.5-Omni は Cherry などの旧音色をサポートせず、自動補正されます）、文字起こしモデルは paraformer-realtime-v2 が既定。Base URL を https://dashscope.aliyuncs.com/api-ws/v1 とし、「自動パス付与」を有効にしてください。</string>
     <string name="aimodel_editor_live_seed_hint">SeedRealtime を検出：既定は doubao-seed-1.6-flash-realtime、音色 zh_female_shuangkuaisisi_moon_bigtts、文字起こしモデル doubao-1.5-asr-pro です。Base URL を https://ark.cn-beijing.volces.com/api/v3 とし、「自動パス付与」を有効にしてください。</string>
     <string name="aimodel_editor_live_glm_hint">GLM-Realtime を検出：既定は glm-realtime、音色 tongtong、文字起こしモデル glm-asr です。Base URL を https://open.bigmodel.cn/api/paas/v4 とし、「自動パス付与」を有効にしてください。</string>
-    <string name="aimodel_editor_live_voice">Realtime 音色</string>
+    <string name="aimodel_editor_live_voice">Realtime 音色（カスタム可）</string>
+    <string name="aimodel_editor_live_voice_preset">よく使う音色</string>
     <string name="aimodel_editor_live_transcription_model">入力文字起こしモデル</string>
     <string name="aimodel_editor_tts_provider">TTS プロバイダ</string>
     <string name="aimodel_editor_tts_provider_openai">OpenAI 互換</string>

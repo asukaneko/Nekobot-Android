@@ -284,7 +284,8 @@
     <string name="aimodel_editor_live_qwen_hint">Qwen Realtime 감지: 기본 음색은 Tina입니다(Qwen3.5-Omni는 Cherry 등 구형 음색을 지원하지 않으며 자동 보정됨), 전사 모델 기본값은 paraformer-realtime-v2입니다. Base URL을 https://dashscope.aliyuncs.com/api-ws/v1로 설정하고 「경로 자동 추가」를 활성화하세요.</string>
     <string name="aimodel_editor_live_seed_hint">SeedRealtime 감지: 기본값은 doubao-seed-1.6-flash-realtime, 음색 zh_female_shuangkuaisisi_moon_bigtts, 전사 모델 doubao-1.5-asr-pro입니다. Base URL을 https://ark.cn-beijing.volces.com/api/v3로 설정하고 「경로 자동 추가」를 활성화하세요.</string>
     <string name="aimodel_editor_live_glm_hint">GLM-Realtime 감지: 기본값은 glm-realtime, 음색 tongtong, 전사 모델 glm-asr입니다. Base URL을 https://open.bigmodel.cn/api/paas/v4로 설정하고 「경로 자동 추가」를 활성화하세요.</string>
-    <string name="aimodel_editor_live_voice">Realtime 음색</string>
+    <string name="aimodel_editor_live_voice">Realtime 음색(사용자 지정 가능)</string>
+    <string name="aimodel_editor_live_voice_preset">자주 쓰는 음색</string>
     <string name="aimodel_editor_live_transcription_model">입력 전사 모델</string>
     <string name="aimodel_editor_tts_provider">TTS 제공자</string>
     <string name="aimodel_editor_tts_provider_openai">OpenAI 호환</string>
