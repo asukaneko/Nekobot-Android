@@ -171,6 +171,7 @@ import com.nekobot.app.data.model.ReasoningEffort
 import com.nekobot.app.data.model.ThinkingCard
 import com.nekobot.app.data.model.ThinkingStep
 import com.nekobot.app.data.local.ChatInputLayoutMode
+import com.nekobot.app.data.local.LivePipelineMode
 import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.local.VISION_FAILURE_MARKER
 import com.nekobot.app.data.local.isLocalCommandMessage
@@ -435,7 +436,12 @@ fun ChatScreen(
         liveConfigChecking = true
         scope.launch {
             try {
-                when (val result = ServiceContainer.unified.validateLiveConversationConfig()) {
+                when (
+                    val result = ServiceContainer.unified.validateLiveConversationConfig(
+                        requiresRealtimeModel =
+                            ServiceContainer.prefs.livePipelineMode == LivePipelineMode.REALTIME
+                    )
+                ) {
                     is Resource.Success -> {
                         val granted = androidx.core.content.ContextCompat.checkSelfPermission(
                             context,
@@ -680,7 +686,7 @@ fun ChatScreen(
                             }
                         },
                         actions = {
-                            if (session != null && isCharacterLiveSession(session?.sessionMode)) {
+                            if (session != null && isLiveConversationSession(session?.sessionMode)) {
                                 IconButton(
                                     onClick = { startLiveConversation() },
                                     enabled = !sending && !isRecording && !voiceTranscribing && !liveConfigChecking
@@ -1450,6 +1456,18 @@ fun ChatScreen(
             onStartRealtimeTurn = viewModel::startRealtimeLiveTurn,
             onStopRealtimeTurn = viewModel::stopRealtimeLiveTurn,
             onStopGeneration = viewModel::stop,
+            onValidatePipeline = { pipeline ->
+                when (
+                    val result = ServiceContainer.unified.validateLiveConversationConfig(
+                        requiresRealtimeModel = pipeline == LivePipelineMode.REALTIME
+                    )
+                ) {
+                    is Resource.Success -> null
+                    is Resource.Error -> result.message
+                        ?: context.getString(R.string.live_realtime_failed)
+                    is Resource.Loading -> context.getString(R.string.live_connecting)
+                }
+            },
             onDismiss = { showLiveMode = false }
         )
     }

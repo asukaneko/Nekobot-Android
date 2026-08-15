@@ -11,6 +11,7 @@ import java.util.Base64
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -86,6 +88,13 @@ private enum class RealtimeProtocol {
 data class RealtimeContextMessage(
     val role: String,
     val content: String
+)
+
+/** Qwen Realtime 返回的函数调用。 */
+data class RealtimeFunctionCall(
+    val callId: String,
+    val name: String,
+    val arguments: String
 )
 
 sealed interface RealtimeVoiceEvent {
@@ -160,12 +169,20 @@ class RealtimeVoiceClient(
         config: RealtimeModelConfig,
         instructions: String,
         context: List<RealtimeContextMessage>,
-        pcm16: ByteArray
+        pcm16: ByteArray,
+        tools: List<Map<String, Any>> = emptyList(),
+        onToolCall: (suspend (RealtimeFunctionCall) -> Map<String, Any>)? = null
     ): Flow<RealtimeVoiceEvent> = callbackFlow {
         require(config.apiKey.isNotBlank() && config.apiKey != "********") {
             "Realtime 模型缺少可用的 API Key"
         }
         require(pcm16.isNotEmpty()) { "没有可发送的语音数据" }
+        require(tools.isEmpty() || config.isQwenRealtime) {
+            "当前 Realtime 模型不支持本地 Agent 工具调用"
+        }
+        require(tools.isEmpty() || onToolCall != null) {
+            "启用 Realtime 工具调用时必须提供工具执行器"
+        }
         // Qwen Realtime 手动 commit 模式下，音频过短会触发 "buffer too small, or have no audio"。
         // 至少需要约 0.5 秒音频（24000Hz × 0.5s × 2 bytes = 24000 bytes）。
         val minAudioBytes = if (config.isQwenRealtime) REALTIME_QWEN_MIN_AUDIO_BYTES else 1
@@ -189,6 +206,7 @@ class RealtimeVoiceClient(
         var closeRequested = false
         var completionJob: Job? = null
         var closeTimeoutJob: Job? = null
+        val pendingFunctionCalls = linkedMapOf<String, RealtimeFunctionCall>()
         lateinit var socket: WebSocket
 
         fun emitCompletedAndClose() {
@@ -228,7 +246,7 @@ class RealtimeVoiceClient(
         }
 
         fun scheduleQwenClose() {
-            if (!responseDone || terminal.get()) return
+            if (!responseDone || pendingFunctionCalls.isNotEmpty() || terminal.get()) return
             completionJob?.cancel()
             completionJob = launch {
                 // input_audio_transcription.completed 通常紧随 response.done；给它一个
@@ -238,11 +256,51 @@ class RealtimeVoiceClient(
             }
         }
 
+        fun failTurn(message: String) {
+            if (terminal.compareAndSet(false, true)) {
+                trySend(RealtimeVoiceEvent.Failure(message))
+                socket.close(1011, message.take(100))
+                close()
+            }
+        }
+
+        fun executePendingQwenToolCalls(webSocket: WebSocket) {
+            val executor = onToolCall ?: return failTurn("Realtime 工具执行器不可用")
+            val calls = pendingFunctionCalls.values.toList()
+            if (calls.isEmpty()) return
+            pendingFunctionCalls.clear()
+            completionJob?.cancel()
+            responseDone = false
+            responseActive = true
+
+            launch {
+                for (call in calls) {
+                    val output = runCatching {
+                        withContext(Dispatchers.IO) {
+                            executor(call)
+                        }
+                    }.getOrElse { error ->
+                        mapOf(
+                            "success" to false,
+                            "error" to (error.message ?: "工具执行失败")
+                        )
+                    }
+                    if (!webSocket.send(gson.toJson(buildQwenFunctionCallOutput(call.callId, output)))) {
+                        failTurn("Realtime 工具结果发送失败")
+                        return@launch
+                    }
+                }
+                if (!webSocket.send(gson.toJson(buildRealtimeResponseCreate(config)))) {
+                    failTurn("Realtime 工具调用后响应创建失败")
+                }
+            }
+        }
+
         val listener = object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 // Qwen Realtime 的 conversation.item.create 仅支持 function_call_output 类型，
                 // 不支持 message 类型，因此上下文需拼接到 instructions 中传递。
-                val sessionUpdate = buildRealtimeSessionUpdate(config, instructions, context)
+                val sessionUpdate = buildRealtimeSessionUpdate(config, instructions, context, tools)
                 webSocket.send(gson.toJson(sessionUpdate))
                 if (!config.isQwenRealtime) {
                     buildRealtimeContextEvents(context).forEach { event ->
@@ -363,6 +421,23 @@ class RealtimeVoiceClient(
                         }
                     }
 
+                    "response.function_call_arguments.done" -> {
+                        if (!config.isQwenRealtime) return
+                        val callId = event.string("call_id").orEmpty()
+                        val name = event.string("name").orEmpty()
+                        val arguments = event.string("arguments").orEmpty()
+                        if (callId.isBlank() || name.isBlank()) {
+                            failTurn("Realtime 返回了无效的工具调用")
+                            return
+                        }
+                        completionJob?.cancel()
+                        pendingFunctionCalls[callId] = RealtimeFunctionCall(
+                            callId = callId,
+                            name = name,
+                            arguments = arguments
+                        )
+                    }
+
                     "response.done" -> {
                         val responseObject = event.objectOrNull("response")
                         val status = responseObject?.string("status")
@@ -379,6 +454,10 @@ class RealtimeVoiceClient(
                             return
                         }
                         responseActive = false
+                        if (config.isQwenRealtime && pendingFunctionCalls.isNotEmpty()) {
+                            executePendingQwenToolCalls(webSocket)
+                            return
+                        }
                         responseDone = true
                         if (config.isQwenRealtime) scheduleQwenClose()
                         else finishOpenAiAfter(if (userTranscript.isBlank()) 1_500L else 80L)
@@ -479,10 +558,11 @@ class RealtimeVoiceClient(
 internal fun buildRealtimeSessionUpdate(
     config: RealtimeModelConfig,
     instructions: String,
-    context: List<RealtimeContextMessage> = emptyList()
+    context: List<RealtimeContextMessage> = emptyList(),
+    tools: List<Map<String, Any>> = emptyList()
 ): JsonObject {
     if (config.isQwenRealtime) {
-        return buildQwenRealtimeSessionUpdate(config, instructions, context)
+        return buildQwenRealtimeSessionUpdate(config, instructions, context, tools)
     }
     if (config.usesFlatSessionUpdate) {
         return buildFlatRealtimeSessionUpdate(config, instructions)
@@ -566,7 +646,12 @@ private fun buildFlatRealtimeSessionUpdate(
 internal fun buildRealtimeResponseCreate(config: RealtimeModelConfig): JsonObject = JsonObject().apply {
     addProperty("type", "response.create")
     when {
-        config.isQwenRealtime -> Unit
+        config.isQwenRealtime -> add("response", JsonObject().apply {
+            add("modalities", JsonArray().apply {
+                add("text")
+                add("audio")
+            })
+        })
         config.usesFlatSessionUpdate -> add("response", JsonObject().apply {
             add("modalities", JsonArray().apply {
                 add("text")
@@ -592,7 +677,8 @@ internal fun buildRealtimeResponseCreate(config: RealtimeModelConfig): JsonObjec
 private fun buildQwenRealtimeSessionUpdate(
     config: RealtimeModelConfig,
     instructions: String,
-    context: List<RealtimeContextMessage> = emptyList()
+    context: List<RealtimeContextMessage> = emptyList(),
+    tools: List<Map<String, Any>> = emptyList()
 ): JsonObject = JsonObject().apply {
     // Qwen3.5-Omni-Realtime 不再支持 Cherry/Serena/Chelsie 等旧音色，自动纠正为默认音色
     val resolvedVoice = config.voice.ifBlank { REALTIME_QWEN_DEFAULT_VOICE }
@@ -615,9 +701,25 @@ private fun buildQwenRealtimeSessionUpdate(
                 config.transcriptionModel.ifBlank { REALTIME_QWEN_DEFAULT_TRANSCRIPTION_MODEL }
             )
         })
+        if (tools.isNotEmpty()) {
+            add("tools", Gson().toJsonTree(tools).asJsonArray)
+        }
         // 关闭服务端 VAD，使用手动 commit + response.create 触发回复，与 OpenAI 路径保持一致
         add("turn_detection", null)
         addProperty("instructions", mergedInstructions)
+    })
+}
+
+/** 将本地 Agent 工具执行结果封装为 DashScope Realtime 所需的 function_call_output 事件。 */
+internal fun buildQwenFunctionCallOutput(
+    callId: String,
+    output: Map<String, Any>
+): JsonObject = JsonObject().apply {
+    addProperty("type", "conversation.item.create")
+    add("item", JsonObject().apply {
+        addProperty("type", "function_call_output")
+        addProperty("call_id", callId)
+        addProperty("output", Gson().toJson(output))
     })
 }
 

@@ -8,6 +8,7 @@ import com.google.gson.JsonParser
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalRepository
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
+import com.nekobot.app.data.local.ai.RealtimeAgentToolRuntime
 import com.nekobot.app.data.local.ai.RealtimeModelConfig
 import com.nekobot.app.data.local.ai.toRealtimeModelConfig
 import com.nekobot.app.data.local.LocalWebDavBackupManager
@@ -782,9 +783,24 @@ class UnifiedRepository(
         Resource.Success("")
     }
 
-    /** Live 对话入口预检：三种语音链路模型都配置后才允许进入通话界面。 */
-    suspend fun validateLiveConversationConfig(): Resource<Unit> {
-        val purposes = listOf("stt", "tts", "live")
+    /** 仅本地 Agent 可将 Qwen Realtime 的 function_call 委托给应用内工具执行器。 */
+    internal suspend fun createRealtimeAgentToolRuntime(
+        sessionId: String
+    ): RealtimeAgentToolRuntime? = if (isLocal) {
+        local.createRealtimeAgentToolRuntime(sessionId)
+    } else {
+        null
+    }
+
+    /** Live 对话入口预检：经典链路只需 STT/TTS，原生 Realtime 额外需要 live 模型。 */
+    suspend fun validateLiveConversationConfig(
+        requiresRealtimeModel: Boolean = true
+    ): Resource<Unit> {
+        val purposes = buildList {
+            add("stt")
+            add("tts")
+            if (requiresRealtimeModel) add("live")
+        }
         if (isLocal) {
             val missing = purposes.filter { purpose ->
                 local.listModelsByPurpose(purpose).isEmpty()

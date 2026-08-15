@@ -119,8 +119,10 @@ internal data class LiveRealtimeTurnCallbacks(
     val onError: (String) -> Unit
 )
 
-internal fun isCharacterLiveSession(sessionMode: String?): Boolean =
-    sessionMode.isNullOrBlank() || sessionMode.equals("character", ignoreCase = true)
+internal fun isLiveConversationSession(sessionMode: String?): Boolean =
+    sessionMode.isNullOrBlank() ||
+        sessionMode.equals("character", ignoreCase = true) ||
+        sessionMode.equals("agent", ignoreCase = true)
 
 internal fun liveMessageFingerprint(message: Message): String {
     val stableId = message.id?.takeIf {
@@ -156,6 +158,7 @@ internal fun LiveConversationDialog(
     onStartRealtimeTurn: (ByteArray, LiveRealtimeTurnCallbacks) -> Unit,
     onStopRealtimeTurn: () -> Unit,
     onStopGeneration: () -> Unit,
+    onValidatePipeline: suspend (LivePipelineMode) -> String?,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -427,12 +430,18 @@ internal fun LiveConversationDialog(
             ),
             onPipelineChange = { selected ->
                 if (selected != pipeline) {
-                    onStopRealtimeTurn()
-                    audioController.release()
-                    pipeline = selected
-                    ServiceContainer.prefs.livePipelineMode = selected
-                    phase = LiveConversationPhase.Connecting
                     scope.launch {
+                        val validationError = onValidatePipeline(selected)
+                        if (validationError != null) {
+                            errorMessage = validationError
+                            phase = LiveConversationPhase.Error
+                            return@launch
+                        }
+                        onStopRealtimeTurn()
+                        audioController.release()
+                        pipeline = selected
+                        ServiceContainer.prefs.livePipelineMode = selected
+                        phase = LiveConversationPhase.Connecting
                         delay(180)
                         beginListening(selected)
                     }

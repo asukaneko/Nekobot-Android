@@ -175,6 +175,7 @@ import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
 import com.nekobot.app.data.local.ai.AgentRecoveryState
 import com.nekobot.app.data.local.ai.toRecoveryState
 import com.nekobot.app.data.local.ai.RealtimeContextMessage
+import com.nekobot.app.data.local.ai.RealtimeFunctionCall
 import com.nekobot.app.data.local.ai.RealtimeVoiceClient
 import com.nekobot.app.data.local.ai.RealtimeVoiceEvent
 import com.nekobot.app.data.model.MessageFavoriteRequest
@@ -342,6 +343,14 @@ class ChatViewModel : BaseViewModel() {
     private fun isAgentSession(): Boolean =
         _session.value?.sessionMode.equals("agent", ignoreCase = true) ||
             _messages.value.any { message -> message.thinkingCards.orEmpty().any(ThinkingCard::isAgent) }
+
+    private fun parseRealtimeToolArguments(arguments: String): Map<String, Any> = runCatching {
+        @Suppress("UNCHECKED_CAST")
+        com.google.gson.Gson().fromJson(
+            arguments.ifBlank { "{}" },
+            Map::class.java
+        ) as? Map<String, Any>
+    }.getOrNull().orEmpty()
 
     private fun enrichAgentThinkingCard(card: ThinkingCard, reasoning: String): ThinkingCard {
         if (reasoning.isBlank()) return card
@@ -1490,22 +1499,44 @@ class ChatViewModel : BaseViewModel() {
                         is Resource.Error -> throw IllegalStateException(result.message)
                         is Resource.Loading -> null
                     }
-                val instructions = buildString {
-                    val systemPrompt = preparedPrompt
-                        ?: currentSession?.systemPrompt?.takeIf(String::isNotBlank)
-                    if (systemPrompt != null) appendLine(systemPrompt)
-                    append("你正在与用户进行实时语音通话。延续上述角色设定与完整会话上下文，使用用户当前的语言自然、简洁地回答。")
-                }
                 val config = when (val result = unified.getRealtimeLiveModel()) {
                     is Resource.Success -> result.data
                     is Resource.Error -> throw IllegalStateException(result.message)
                     is Resource.Loading -> throw IllegalStateException("Live 模型配置仍在加载")
                 }
+                val toolRuntime = if (
+                    currentSession?.sessionMode.equals("agent", ignoreCase = true) &&
+                    config.isQwenRealtime
+                ) {
+                    unified.createRealtimeAgentToolRuntime(sessionId)
+                } else {
+                    null
+                }
+                val instructions = buildString {
+                    val systemPrompt = preparedPrompt
+                        ?: currentSession?.systemPrompt?.takeIf(String::isNotBlank)
+                    if (systemPrompt != null) appendLine(systemPrompt)
+                    append("你正在与用户进行实时语音通话。延续上述会话设定与完整上下文，使用用户当前的语言自然、简洁地回答。")
+                    if (toolRuntime != null) {
+                        append("需要完成实际操作时，使用已提供的工具；工具返回后再向用户说明结果。")
+                    }
+                }
+                val toolCallHandler: (suspend (RealtimeFunctionCall) -> Map<String, Any>)? =
+                    toolRuntime?.let { runtime ->
+                        { call ->
+                            runtime.execute(
+                                call.name,
+                                parseRealtimeToolArguments(call.arguments)
+                            )
+                        }
+                    }
                 realtimeVoiceClient.streamTurn(
                     config = config,
                     instructions = instructions,
                     context = context,
-                    pcm16 = pcm16
+                    pcm16 = pcm16,
+                    tools = toolRuntime?.tools.orEmpty(),
+                    onToolCall = toolCallHandler
                 ).collect { event ->
                     when (event) {
                         RealtimeVoiceEvent.Connected -> callbacks.onConnected()

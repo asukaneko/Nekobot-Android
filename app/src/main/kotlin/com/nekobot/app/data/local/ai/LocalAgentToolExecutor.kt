@@ -140,6 +140,17 @@ internal fun buildLocalSkillToolDefinitions(): List<Map<String, Any>> {
 }
 
 /**
+ * Qwen Realtime Agent 一轮通话所需的本地工具运行时。
+ *
+ * Realtime WebSocket 负责模型侧的 function_call 循环；实际工具仍由本地 Agent
+ * 执行器运行，因而保留工作区隔离、授权确认和 MCP/Skill/数据库工具能力。
+ */
+internal data class RealtimeAgentToolRuntime(
+    val tools: List<Map<String, Any>>,
+    val execute: suspend (toolName: String, arguments: Map<String, Any>) -> Map<String, Any>
+)
+
+/**
  * Android 本地 Agent 工具执行器。
  *
  * 文件工具严格限制在当前会话工作区；命令在应用沙箱内执行，并经过高风险阻断与会话授权。

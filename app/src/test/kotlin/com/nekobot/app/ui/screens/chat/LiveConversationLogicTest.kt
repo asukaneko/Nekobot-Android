@@ -10,12 +10,13 @@ import org.junit.Test
 class LiveConversationLogicTest {
 
     @Test
-    fun liveButtonIsLimitedToCharacterSessions() {
-        assertTrue(isCharacterLiveSession(null))
-        assertTrue(isCharacterLiveSession("character"))
-        assertTrue(isCharacterLiveSession("CHARACTER"))
-        assertFalse(isCharacterLiveSession("group"))
-        assertFalse(isCharacterLiveSession("agent"))
+    fun liveButtonSupportsCharacterAndAgentSessions() {
+        assertTrue(isLiveConversationSession(null))
+        assertTrue(isLiveConversationSession("character"))
+        assertTrue(isLiveConversationSession("CHARACTER"))
+        assertTrue(isLiveConversationSession("agent"))
+        assertTrue(isLiveConversationSession("AGENT"))
+        assertFalse(isLiveConversationSession("group"))
     }
 
     @Test

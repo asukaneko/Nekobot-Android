@@ -19,9 +19,11 @@ import com.nekobot.app.data.local.ai.FailoverUsage
 import com.nekobot.app.data.local.ai.FailoverUsageReader
 import com.nekobot.app.data.local.ai.LocalAiClient
 import com.nekobot.app.data.local.ai.LocalAiResult
+import com.nekobot.app.data.local.ai.LocalAgentToolExecutor
 import com.nekobot.app.data.local.ai.LocalBrowserTool
 import com.nekobot.app.data.local.ai.LocalChatFailoverExecutor
 import com.nekobot.app.data.local.ai.LocalContextTokenMessage
+import com.nekobot.app.data.local.ai.LocalDbToolExecutor
 import com.nekobot.app.data.local.ai.LocalGenerationController
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
 import com.nekobot.app.data.local.ai.LocalLinuxSandboxCoordinator
@@ -30,6 +32,7 @@ import com.nekobot.app.data.local.ai.LocalPersistedTokenMessage
 import com.nekobot.app.data.local.ai.LocalPromptBuilder
 import com.nekobot.app.data.local.ai.LocalProfileRepository
 import com.nekobot.app.data.local.ai.LocalRelationshipRepository
+import com.nekobot.app.data.local.ai.RealtimeAgentToolRuntime
 import com.nekobot.app.data.local.ai.ModelPricingCatalog
 import com.nekobot.app.data.local.ai.RelationshipState
 import com.nekobot.app.data.local.ai.SmartModelMetric
@@ -42,8 +45,14 @@ import com.nekobot.app.data.local.ai.TokenStatsManager
 import com.nekobot.app.data.local.ai.currentLocalContextTokens
 import com.nekobot.app.data.local.ai.addLocalAgentBasePrompt
 import com.nekobot.app.data.local.ai.addGlobalAgentMemory
+import com.nekobot.app.data.local.ai.buildLocalAgentToolDefinitions
+import com.nekobot.app.data.local.ai.buildLocalDbToolDefinitions
+import com.nekobot.app.data.local.ai.buildLocalSkillToolDefinitions
 import com.nekobot.app.data.local.ai.decodeThinkingCardsForUi
 import com.nekobot.app.data.local.ai.encodeToolCallHistory
+import com.nekobot.app.data.local.ai.localDbToolIds
+import com.nekobot.app.data.local.ai.localSkillToolIds
+import com.nekobot.app.data.local.ai.parseMcpToolName
 import com.nekobot.app.data.local.ai.toPersistedProgressCard
 import com.nekobot.app.data.local.ai.toRealtimeModelConfig
 import com.nekobot.app.data.local.ai.reconcileLocalTokenUsageRecords
@@ -4278,6 +4287,100 @@ class LocalRepository(
             sessionDao.updatePromptStackDebug(sessionId, gson.toJson(stackDebug))
         }
         composedPrompt
+    }
+
+    /**
+     * 为 Qwen Realtime 的 Agent Function Calling 创建本地工具运行时。
+     *
+     * 语音模型只负责选择工具；工具仍通过与常规 Agent 相同的本地执行器运行，
+     * 因此工作区隔离、MCP/Skill/数据库工具和危险操作授权都不会绕过。
+     */
+    internal suspend fun createRealtimeAgentToolRuntime(
+        sessionId: String
+    ): RealtimeAgentToolRuntime? = withContext(Dispatchers.IO) {
+        val session = sessionDao.getById(sessionId)
+            ?.takeIf { it.sessionMode.equals("agent", ignoreCase = true) }
+            ?: return@withContext null
+        val generationController = LocalGenerationController()
+        val workspaceRoot = appContext?.filesDir
+            ?.let { LocalWorkspaceStorage.resolve(it, sessionId) }
+        val sharedWorkspaceRoot = appContext?.filesDir
+            ?.let { LocalWorkspaceStorage.resolveShared(it) }
+        val localTools = LocalAgentToolExecutor(
+            sessionId = sessionId,
+            workspaceRoot = workspaceRoot,
+            authorizationManager = localExecAuthorizationManager,
+            onConfirmationRequired = { request ->
+                _execConfirmationEvents.tryEmit(request)
+            },
+            thinkingHistoryProvider = { limit ->
+                kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                    messageDao.listBySession(sessionId)
+                    .asReversed()
+                    .mapNotNull { message ->
+                        val cardsJson = message.thinkingCards ?: return@mapNotNull null
+                        @Suppress("UNCHECKED_CAST")
+                        val cards = runCatching {
+                            gson.fromJson(cardsJson, List::class.java) as List<Map<String, Any>>
+                        }.getOrDefault(emptyList())
+                        mapOf(
+                            "message_id" to message.id,
+                            "timestamp" to message.timestamp,
+                            "cards" to cards
+                        )
+                    }
+                    .take(limit)
+                }
+            },
+            visionDescriber = { imageUrl, question ->
+                kotlinx.coroutines.runBlocking {
+                    describeImageViaQueue(
+                        imageUrl = imageUrl,
+                        question = question,
+                        requestTag = sessionId,
+                        shouldStop = generationController::isStopped
+                    )
+                }
+            },
+            generationController = generationController,
+            sharedWorkspaceRoot = sharedWorkspaceRoot
+        )
+        val dbTools = LocalDbToolExecutor(
+            db = db,
+            sessionId = sessionId,
+            authorizationManager = localExecAuthorizationManager,
+            onConfirmationRequired = { request ->
+                _execConfirmationEvents.tryEmit(request)
+            },
+            generationController = generationController
+        )
+        val mcpTools = localMcpRuntime.getOpenAiToolDefinitions()
+            .ifEmpty { cachedMcpAgentTools }
+        val tools = (
+            buildLocalAgentToolDefinitions() +
+                buildLocalSkillToolDefinitions() +
+                buildLocalDbToolDefinitions() +
+                mcpTools
+            ).distinctBy { definition ->
+            @Suppress("UNCHECKED_CAST")
+            (definition["function"] as? Map<String, Any>)?.get("name")?.toString()
+                ?: definition["name"]?.toString()
+                ?: definition.toString()
+        }
+
+        RealtimeAgentToolRuntime(
+            tools = tools,
+            execute = { toolName, arguments ->
+                when {
+                    parseMcpToolName(toolName) != null ->
+                        localMcpRuntime.executeByFullName(toolName, arguments, sessionId)
+                    toolName in localSkillToolIds -> executeLocalSkillTool(toolName, arguments)
+                    toolName in localDbToolIds -> dbTools.execute(toolName, arguments)
+                    toolName == "browser_use" -> executeLocalBrowserTool(sessionId, arguments)
+                    else -> localTools.execute(toolName, arguments)
+                }
+            }
+        )
     }
 
     /**

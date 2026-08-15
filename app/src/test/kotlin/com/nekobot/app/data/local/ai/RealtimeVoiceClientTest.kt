@@ -148,6 +148,53 @@ class RealtimeVoiceClientTest {
     }
 
     @Test
+    fun qwenSessionUpdateIncludesOpenAiFormatAgentTools() {
+        val tools = listOf(
+            mapOf(
+                "type" to "function",
+                "function" to mapOf(
+                    "name" to "get_weather",
+                    "description" to "查询天气",
+                    "parameters" to mapOf("type" to "object")
+                )
+            )
+        )
+        val event = buildRealtimeSessionUpdate(
+            config = RealtimeModelConfig(
+                id = "live",
+                name = "Qwen Live",
+                apiKey = "test",
+                baseUrl = REALTIME_QWEN_DEFAULT_BASE_URL,
+                model = REALTIME_QWEN_DEFAULT_MODEL,
+                provider = "qwen"
+            ),
+            instructions = "使用工具完成任务",
+            tools = tools
+        )
+
+        val registered = event.getAsJsonObject("session").getAsJsonArray("tools")
+        assertEquals("function", registered[0].asJsonObject.get("type").asString)
+        assertEquals(
+            "get_weather",
+            registered[0].asJsonObject.getAsJsonObject("function").get("name").asString
+        )
+    }
+
+    @Test
+    fun qwenFunctionOutputPreservesCallIdAndJsonResult() {
+        val event = buildQwenFunctionCallOutput(
+            callId = "call_weather",
+            output = mapOf("success" to true, "temperature" to 25)
+        )
+
+        val item = event.getAsJsonObject("item")
+        assertEquals("conversation.item.create", event.get("type").asString)
+        assertEquals("function_call_output", item.get("type").asString)
+        assertEquals("call_weather", item.get("call_id").asString)
+        assertTrue(item.get("output").asString.contains("\"temperature\":25"))
+    }
+
+    @Test
     fun websocketUrlCorrectsCompatibleModeToApiWsForQwenRealtime() {
         // Qwen 预设默认 baseurl 是 compatible-mode/v1（文本对话端点），Realtime 需要自动纠正成 api-ws/v1
         assertEquals(
