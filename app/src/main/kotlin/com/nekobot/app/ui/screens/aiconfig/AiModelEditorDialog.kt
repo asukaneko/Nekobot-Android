@@ -135,7 +135,9 @@ private data class ProviderPreset(
     val maxContextLength: String,
     val maxTokens: String,
     val inputPrice: String,
-    val outputPrice: String
+    val outputPrice: String,
+    val labelRes: Int? = null,
+    val purpose: String? = null
 )
 
 private val LIVE_SEED_PROVIDERS = setOf("doubao", "seed", "volcengine", "bytedance", "ark", "volces")
@@ -189,6 +191,18 @@ private val providerPresets = listOf(
     ProviderPreset("MiniMax", "minimax", "minimax-m2.7", "https://api.minimaxi.com/v1", "204800", "131072", "", ""),
     ProviderPreset("Grok", "grok", "grok-4.20", "https://api.x.ai/v1", "1000000", "131072", "", ""),
     ProviderPreset("Qwen", "qwen", "qwen3.7-max", "https://dashscope.aliyuncs.com/compatible-mode/v1", "1000000", "65536", "", ""),
+    ProviderPreset(
+        label = "Qwen Image 3.0",
+        provider = "qwen",
+        model = "qwen-image-3.0",
+        baseUrl = "https://dashscope.aliyuncs.com/api/v1",
+        maxContextLength = "",
+        maxTokens = "",
+        inputPrice = "",
+        outputPrice = "",
+        labelRes = R.string.aimodel_editor_preset_qwen_image_3,
+        purpose = "image_generation"
+    ),
     ProviderPreset("Mimo", "xiaomi", "mimo-v2.5", "https://api.xiaomimimo.com/v1", "1048576", "131072", "", ""),
     ProviderPreset("豆包 Seed", "doubao", "doubao-seedream-4-0-250828", "https://ark.cn-beijing.volces.com/api/v3", "", "", "", "")
 )
@@ -340,9 +354,17 @@ fun AiModelEditorDialog(
                     AssistChip(
                         onClick = {
                             allowAutomaticPricing = true
-                            state = state.applyPreset(preset, protocolOptions, presetConfigTemplate)
+                            val presetLabel = preset.labelRes?.let(context::getString) ?: preset.label
+                            state = state.applyPreset(
+                                preset,
+                                protocolOptions,
+                                presetConfigTemplate,
+                                presetLabel
+                            )
                         },
-                        label = { Text(preset.label) }
+                        label = {
+                            Text(preset.labelRes?.let { stringResource(it) } ?: preset.label)
+                        }
                     )
                 }
             }
@@ -363,7 +385,14 @@ fun AiModelEditorDialog(
                 onSelect = { provider ->
                     val preset = providerPresets.firstOrNull { it.provider == provider }
                     allowAutomaticPricing = true
-                    state = preset?.let { state.applyPreset(it, protocolOptions, presetConfigTemplate) }
+                    state = preset?.let {
+                        state.applyPreset(
+                            it,
+                            protocolOptions,
+                            presetConfigTemplate,
+                            it.labelRes?.let(context::getString) ?: it.label
+                        )
+                    }
                         ?: state.copy(provider = provider, protocol = protocolFor(provider, protocolOptions))
                 }
             )
@@ -964,14 +993,18 @@ private fun Double.toCatalogPrice(): String {
 private fun AiModelEditorState.applyPreset(
     preset: ProviderPreset,
     protocols: List<ProtocolOption>,
-    presetConfigTemplate: String
+    presetConfigTemplate: String,
+    presetLabel: String
 ): AiModelEditorState {
     // Live purpose + Qwen/DashScope 必须用 api-ws/v1 端点与 realtime 模型，不能用预设默认的
     // compatible-mode/v1（文本对话端点）和 qwen3.x-max（非 realtime 模型），否则 Realtime 连接会报
     // "URL does not appear to be valid" 或服务端 fallback 到已下线的旧模型快照。
-    val liveDefaults = liveRealtimeDefaults(preset.provider).takeIf { purpose == "live" }
+    val targetPurpose = preset.purpose ?: purpose
+    val liveDefaults = liveRealtimeDefaults(preset.provider).takeIf { targetPurpose == "live" }
+    val isImageGeneration = targetPurpose == "image_generation"
     return copy(
-        name = presetConfigTemplate.format(preset.label),
+        name = presetConfigTemplate.format(presetLabel),
+        purpose = targetPurpose,
         provider = liveDefaults?.provider ?: preset.provider,
         protocol = protocolFor(preset.provider, protocols),
         model = liveDefaults?.model ?: preset.model,
@@ -980,9 +1013,9 @@ private fun AiModelEditorState.applyPreset(
         maxTokens = preset.maxTokens,
         inputPrice = preset.inputPrice,
         outputPrice = preset.outputPrice,
-        supportsTools = preset.provider != "google",
-        supportsReasoning = preset.provider !in setOf("google", "minimax"),
-        supportsStream = true,
+        supportsTools = !isImageGeneration && preset.provider != "google",
+        supportsReasoning = !isImageGeneration && preset.provider !in setOf("google", "minimax"),
+        supportsStream = !isImageGeneration,
         ttsVoice = liveDefaults?.voice ?: ttsVoice,
         sttModel = liveDefaults?.transcriptionModel ?: sttModel
     )

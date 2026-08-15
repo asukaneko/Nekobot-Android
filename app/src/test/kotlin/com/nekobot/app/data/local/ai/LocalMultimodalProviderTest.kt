@@ -108,6 +108,50 @@ class LocalMultimodalProviderTest {
         assertArrayEquals(expected, images.single().bytes)
     }
 
+    @Test
+    fun qwenImage3UsesMultimodalEndpointAndReadsChoiceImage() = runBlocking {
+        var requestBody = ""
+        val client = client { request ->
+            assertEquals(
+                "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+                request.url.toString()
+            )
+            requestBody = request.body!!.let { body ->
+                val buffer = okio.Buffer()
+                body.writeTo(buffer)
+                buffer.readUtf8()
+            }
+            response(
+                request,
+                """{"output":{"choices":[{"message":{"content":[{"image":"https://example.com/image.png"}]}}]}}""",
+                "application/json"
+            )
+        }
+
+        val images = LocalAiClient(client).generateImage(
+            baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            apiKey = "key",
+            modelName = "qwen-image-3.0",
+            prompt = "a cat",
+            provider = "qwen"
+        )
+
+        val json = JsonParser.parseString(requestBody).asJsonObject
+        assertEquals("qwen-image-3.0", json.get("model").asString)
+        assertEquals(
+            "a cat",
+            json.getAsJsonObject("input")
+                .getAsJsonArray("messages")[0]
+                .asJsonObject
+                .getAsJsonArray("content")[0]
+                .asJsonObject
+                .get("text")
+                .asString
+        )
+        assertTrue(json.getAsJsonObject("parameters").get("prompt_extend").asBoolean)
+        assertEquals("https://example.com/image.png", images.single().url)
+    }
+
     private fun model(
         provider: String,
         baseUrl: String,

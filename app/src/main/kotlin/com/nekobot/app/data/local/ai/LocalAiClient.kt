@@ -159,6 +159,8 @@ data class GeneratedImage(
     val bytes: ByteArray?
 )
 
+private const val QWEN_IMAGE_3_MODEL = "qwen-image-3.0"
+
 /** OpenAI 兼容 Embeddings 结果。 */
 data class EmbeddingResult(
     val vectors: List<FloatArray>,
@@ -2036,9 +2038,16 @@ class LocalAiClient(
             "minimax" -> return generateImageMiniMax(
                 baseUrl, apiKey, modelName, prompt, size, appendBaseUrlPath, proxyUrl
             )
-            "qwen", "dashscope", "tongyi" -> return generateImageQwen(
-                baseUrl, apiKey, modelName, prompt, size, n, appendBaseUrlPath, proxyUrl
-            )
+            "qwen", "dashscope", "tongyi" -> {
+                if (modelName.trim().equals(QWEN_IMAGE_3_MODEL, ignoreCase = true)) {
+                    return generateImageQwenImage3(
+                        baseUrl, apiKey, modelName, prompt, n, appendBaseUrlPath, proxyUrl
+                    )
+                }
+                return generateImageQwenLegacy(
+                    baseUrl, apiKey, modelName, prompt, size, n, appendBaseUrlPath, proxyUrl
+                )
+            }
             "doubao", "seed", "seedream", "volcengine", "ark", "volces" -> return generateImageDoubao(
                 baseUrl, apiKey, modelName, prompt, size, n, appendBaseUrlPath, proxyUrl
             )
@@ -2178,7 +2187,53 @@ class LocalAiClient(
         return executeImageJsonRequest(request, proxyUrl, "豆包 Seed image")
     }
 
-    private suspend fun generateImageQwen(
+    /** Qwen Image 3.0 使用同步多模态生成端点，不走旧版异步文生图任务接口。 */
+    private suspend fun generateImageQwenImage3(
+        baseUrl: String,
+        apiKey: String,
+        modelName: String,
+        prompt: String,
+        n: Int,
+        appendBaseUrlPath: Boolean,
+        proxyUrl: String
+    ): List<GeneratedImage> {
+        val url = MultimodalProviderSupport.dashscopeEndpoint(
+            baseUrl,
+            "/services/aigc/multimodal-generation/generation",
+            "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+            appendBaseUrlPath
+        )
+        val payload = mapOf(
+            "model" to modelName.ifBlank { QWEN_IMAGE_3_MODEL },
+            "input" to mapOf(
+                "messages" to listOf(
+                    mapOf(
+                        "role" to "user",
+                        "content" to listOf(mapOf("text" to prompt))
+                    )
+                )
+            ),
+            "parameters" to mapOf("prompt_extend" to true)
+        )
+        return buildList {
+            repeat(n.coerceIn(1, 4)) {
+                val request = Request.Builder().url(url)
+                    .post(gson.toJson(payload).toRequestBody(JSON_TYPE))
+                    .header("Authorization", "Bearer $apiKey")
+                    .header("Content-Type", "application/json")
+                    .build()
+                val images = parseQwenImage3Json(
+                    executeJson(request, proxyUrl, "Qwen Image 3.0")
+                )
+                if (images.isEmpty()) {
+                    throw IllegalStateException("Qwen Image 3.0 未返回图片")
+                }
+                addAll(images)
+            }
+        }
+    }
+
+    private suspend fun generateImageQwenLegacy(
         baseUrl: String,
         apiKey: String,
         modelName: String,
@@ -2231,6 +2286,57 @@ class LocalAiClient(
             }
         }
         throw IllegalStateException("Qwen image 任务轮询超时")
+    }
+
+    private fun parseQwenImage3Json(root: com.google.gson.JsonObject): List<GeneratedImage> {
+        val images = mutableListOf<GeneratedImage>()
+        root.getAsJsonObject("output")
+            ?.getAsJsonArray("choices")
+            ?.forEach { choice ->
+                val content = choice.takeIf { it.isJsonObject }
+                    ?.asJsonObject
+                    ?.getAsJsonObject("message")
+                    ?.get("content")
+                when {
+                    content?.isJsonArray == true -> content.asJsonArray.forEach { part ->
+                        appendQwenImagePart(images, part)
+                    }
+                    content?.isJsonObject == true -> appendQwenImagePart(images, content)
+                }
+            }
+        return images
+    }
+
+    private fun appendQwenImagePart(
+        images: MutableList<GeneratedImage>,
+        part: com.google.gson.JsonElement
+    ) {
+        val objectPart = part.takeIf { it.isJsonObject }?.asJsonObject ?: return
+        val image = objectPart.get("image") ?: objectPart.get("image_url") ?: return
+        when {
+            image.isJsonPrimitive && !image.isJsonNull -> {
+                images += GeneratedImage(url = image.asString, bytes = null)
+            }
+            image.isJsonObject -> {
+                val imageObject = image.asJsonObject
+                val url = imageObject.get("url")
+                    ?.takeIf { !it.isJsonNull }
+                    ?.asString
+                    ?: imageObject.get("image_url")
+                        ?.takeIf { !it.isJsonNull }
+                        ?.asString
+                val base64 = imageObject.get("b64_json")
+                    ?.takeIf { !it.isJsonNull }
+                    ?.asString
+                when {
+                    !url.isNullOrBlank() -> images += GeneratedImage(url = url, bytes = null)
+                    !base64.isNullOrBlank() -> images += GeneratedImage(
+                        url = null,
+                        bytes = Base64.getDecoder().decode(base64)
+                    )
+                }
+            }
+        }
     }
 
     private suspend fun executeImageJsonRequest(

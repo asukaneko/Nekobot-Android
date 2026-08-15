@@ -4,6 +4,7 @@ build/
 */build/
 local.properties
 .signing/
+.gradle-qwen-image
 
 # Android Studio / IntelliJ
 .idea/

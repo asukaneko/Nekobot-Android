@@ -195,6 +195,7 @@
     <string name="aimodel_editor_default_name_chat">새 채팅 모델 설정</string>
     <string name="aimodel_editor_default_name_purpose">새 %1$s 설정</string>
     <string name="aimodel_editor_preset_config_name">%1$s 설정</string>
+    <string name="aimodel_editor_preset_qwen_image_3">Qwen Image 3.0</string>
 
     <string name="aimodel_editor_purpose_chat">채팅 모델</string>
     <string name="aimodel_editor_purpose_live">Live 실시간 음성</string>
