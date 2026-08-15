@@ -201,11 +201,13 @@ class RealtimeVoiceClient(
         var responseDone = false
         var responseActive = false
         var responseCreateSent = false
+        var audioUploadStarted = false
         var inputTranscriptDone = false
         var completionEmitted = false
         var closeRequested = false
         var completionJob: Job? = null
         var closeTimeoutJob: Job? = null
+        var responseCreateJob: Job? = null
         val pendingFunctionCalls = linkedMapOf<String, RealtimeFunctionCall>()
         lateinit var socket: WebSocket
 
@@ -264,6 +266,61 @@ class RealtimeVoiceClient(
             }
         }
 
+        fun createResponseIfIdle(webSocket: WebSocket) {
+            if (terminal.get() || responseCreateSent || responseActive) return
+            responseCreateSent = true
+            val responseCreate = gson.toJson(buildRealtimeResponseCreate(config))
+            if (!webSocket.send(responseCreate) && terminal.compareAndSet(false, true)) {
+                trySend(RealtimeVoiceEvent.Failure("Realtime 响应创建失败"))
+                webSocket.cancel()
+                close()
+            }
+        }
+
+        fun scheduleQwenResponseCreate(webSocket: WebSocket) {
+            responseCreateJob?.cancel()
+            responseCreateJob = launch {
+                // qwen-audio-3.0-realtime-plus 可能在提交音频后立即自动创建响应。
+                // 留出一个短窗口接收 response.created，避免再发送 response.create。
+                delay(REALTIME_QWEN_AUTO_RESPONSE_GRACE_MS)
+                createResponseIfIdle(webSocket)
+            }
+        }
+
+        fun uploadAudio(webSocket: WebSocket) {
+            if (audioUploadStarted || terminal.get()) return
+            audioUploadStarted = true
+            launch {
+                var offset = 0
+                while (offset < pcm16.size) {
+                    val end = minOf(offset + REALTIME_INPUT_CHUNK_BYTES, pcm16.size)
+                    val bytes = pcm16.copyOfRange(offset, end)
+                    if (!webSocket.send(
+                        gson.toJson(JsonObject().apply {
+                            addProperty("type", "input_audio_buffer.append")
+                            addProperty("audio", Base64.getEncoder().encodeToString(bytes))
+                        })
+                    )) {
+                        if (terminal.compareAndSet(false, true)) {
+                            trySend(RealtimeVoiceEvent.Failure("Realtime 音频发送失败"))
+                            webSocket.cancel()
+                            close()
+                        }
+                        return@launch
+                    }
+                    offset = end
+                }
+                // 必须等待 input_audio_buffer.committed 后再 response.create。
+                if (!webSocket.send("{\"type\":\"input_audio_buffer.commit\"}")) {
+                    if (terminal.compareAndSet(false, true)) {
+                        trySend(RealtimeVoiceEvent.Failure("Realtime 音频提交失败"))
+                        webSocket.cancel()
+                        close()
+                    }
+                }
+            }
+        }
+
         fun executePendingQwenToolCalls(webSocket: WebSocket) {
             val executor = onToolCall ?: return failTurn("Realtime 工具执行器不可用")
             val calls = pendingFunctionCalls.values.toList()
@@ -307,43 +364,20 @@ class RealtimeVoiceClient(
                         webSocket.send(gson.toJson(event))
                     }
                 }
-                // 官方建议实时音频约每 100ms 一包；手动模式也使用这个粒度，避免一次
-                // 大包和不规则延迟让服务端的输入缓冲区出现空提交或处理滞后。
-                launch {
-                    var offset = 0
-                    while (offset < pcm16.size) {
-                        val end = minOf(offset + REALTIME_INPUT_CHUNK_BYTES, pcm16.size)
-                        val bytes = pcm16.copyOfRange(offset, end)
-                        if (!webSocket.send(
-                            gson.toJson(JsonObject().apply {
-                                addProperty("type", "input_audio_buffer.append")
-                                addProperty("audio", Base64.getEncoder().encodeToString(bytes))
-                            })
-                        )) {
-                            if (terminal.compareAndSet(false, true)) {
-                                trySend(RealtimeVoiceEvent.Failure("Realtime 音频发送失败"))
-                                webSocket.cancel()
-                                close()
-                            }
-                            return@launch
-                        }
-                        offset = end
-                    }
-                    // 必须等待 input_audio_buffer.committed 后再 response.create。
-                    if (!webSocket.send("{\"type\":\"input_audio_buffer.commit\"}")) {
-                        if (terminal.compareAndSet(false, true)) {
-                            trySend(RealtimeVoiceEvent.Failure("Realtime 音频提交失败"))
-                            webSocket.cancel()
-                            close()
-                        }
-                    }
-                }
+                // Qwen 必须先确认 session.update 已禁用服务端 VAD，才可提交音频。
+                // 否则新模型可能按默认 VAD 自动创建响应，再收到 response.create 时会报并发错误。
+                if (!config.isQwenRealtime) uploadAudio(webSocket)
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 val event = runCatching { JsonParser.parseString(text).asJsonObject }.getOrNull() ?: return
                 when (event.string("type")) {
-                    "session.created", "session.updated" -> trySend(RealtimeVoiceEvent.Connected)
+                    "session.created" -> trySend(RealtimeVoiceEvent.Connected)
+
+                    "session.updated" -> {
+                        trySend(RealtimeVoiceEvent.Connected)
+                        if (config.isQwenRealtime) uploadAudio(webSocket)
+                    }
 
                     "conversation.item.input_audio_transcription.delta" -> {
                         // Qwen 返回 text（已确认前缀）+ stash（暂存后缀），不能把每次
@@ -375,18 +409,14 @@ class RealtimeVoiceClient(
                     }
 
                     "input_audio_buffer.committed" -> {
-                        if (!terminal.get() && !responseCreateSent && !responseActive) {
-                            responseCreateSent = true
-                            val responseCreate = gson.toJson(buildRealtimeResponseCreate(config))
-                            if (!webSocket.send(responseCreate) && terminal.compareAndSet(false, true)) {
-                                trySend(RealtimeVoiceEvent.Failure("Realtime 响应创建失败"))
-                                webSocket.cancel()
-                                close()
-                            }
-                        }
+                        if (config.isQwenRealtime) scheduleQwenResponseCreate(webSocket)
+                        else createResponseIfIdle(webSocket)
                     }
 
-                    "response.created" -> responseActive = true
+                    "response.created" -> {
+                        responseActive = true
+                        responseCreateJob?.cancel()
+                    }
 
                     "response.output_audio.delta", "response.audio.delta" -> {
                         event.string("delta")
@@ -467,12 +497,10 @@ class RealtimeVoiceClient(
                         val message = event.objectOrNull("error")?.string("message")
                             ?: event.string("message")
                             ?: "Realtime 服务返回错误"
-                        if (
-                            config.isQwenRealtime &&
-                            message.contains("conversation already has an active response", ignoreCase = true)
-                        ) {
+                        if (config.isQwenRealtime && isQwenResponseAlreadyInProgress(message)) {
                             // 服务端已经自动开始了这一轮响应时，重复 response.create 只会返回该错误；
                             // 保留当前 WebSocket，继续等待已有响应的 response.done。
+                            responseCreateJob?.cancel()
                             responseActive = true
                             return
                         }
@@ -508,6 +536,7 @@ class RealtimeVoiceClient(
         awaitClose {
             completionJob?.cancel()
             closeTimeoutJob?.cancel()
+            responseCreateJob?.cancel()
             terminal.set(true)
             if (!closeRequested) socket.cancel()
         }
@@ -838,6 +867,14 @@ private fun JsonObject.string(key: String): String? =
 private fun JsonObject.objectOrNull(key: String): JsonObject? =
     get(key)?.takeIf { it.isJsonObject }?.asJsonObject
 
+/** DashScope 新旧 Qwen Realtime 模型返回的重复创建响应错误文本并不完全一致。 */
+internal fun isQwenResponseAlreadyInProgress(message: String): Boolean =
+    message.contains("active response", ignoreCase = true) ||
+        (
+            message.contains("create response", ignoreCase = true) &&
+                message.contains("in progress", ignoreCase = true)
+            )
+
 private val RealtimeProtocol.defaultModel: String
     get() = when (this) {
         RealtimeProtocol.QWEN -> REALTIME_QWEN_DEFAULT_MODEL
@@ -870,6 +907,7 @@ const val REALTIME_OUTPUT_SAMPLE_RATE = 24_000
 private const val REALTIME_INPUT_CHUNK_BYTES = 3_200
 private const val REALTIME_MAX_INSTRUCTIONS_CHARS = 12_000
 private const val REALTIME_MAX_CONTEXT_CHARS = 48_000
+private const val REALTIME_QWEN_AUTO_RESPONSE_GRACE_MS = 180L
 /** Qwen Realtime 手动 commit 模式下最小音频长度（约 0.5 秒，16000Hz × 0.5s × 2 bytes）。 */
 private const val REALTIME_QWEN_MIN_AUDIO_BYTES = 16_000
 

@@ -90,6 +90,34 @@ class RealtimeVoiceClientTest {
     }
 
     @Test
+    fun qwenAudioRealtimePlusUsesQwenProtocolWithoutProviderMetadata() {
+        val config = RealtimeModelConfig(
+            id = "live",
+            name = "Qwen Audio Live",
+            apiKey = "test",
+            baseUrl = REALTIME_QWEN_DEFAULT_BASE_URL,
+            model = "qwen-audio-3.0-realtime-plus"
+        )
+
+        assertTrue(config.isQwenRealtime)
+    }
+
+    @Test
+    fun recognizesQwenResponseAlreadyInProgressErrors() {
+        assertTrue(
+            isQwenResponseAlreadyInProgress(
+                "Cannot create response while another response is in progress"
+            )
+        )
+        assertTrue(
+            isQwenResponseAlreadyInProgress(
+                "Conversation already has an active response"
+            )
+        )
+        assertFalse(isQwenResponseAlreadyInProgress("Invalid API key"))
+    }
+
+    @Test
     fun seedAndGlmProviderDetectionFlagsConfigs() {
         val seed = RealtimeModelConfig(
             id = "live",
