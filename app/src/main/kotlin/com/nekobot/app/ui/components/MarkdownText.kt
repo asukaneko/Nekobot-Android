@@ -1,5 +1,8 @@
 package com.nekobot.app.ui.components
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -8,6 +11,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -26,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -316,7 +321,7 @@ private fun RenderBlock(
 ) {
     when (block) {
         is MdBlock.CodeBlock -> CodeBlockRenderer(block)
-        is MdBlock.Header -> Text(
+        is MdBlock.Header -> MarkdownInlineText(
             text = parseInline(block.content, color, style, styleParentheses),
             style = when (block.level) {
                 1 -> style.copy(fontSize = (style.fontSize.value * 1.8).sp, fontWeight = FontWeight.Bold)
@@ -325,7 +330,8 @@ private fun RenderBlock(
                 4 -> style.copy(fontSize = (style.fontSize.value * 1.2).sp, fontWeight = FontWeight.SemiBold)
                 5 -> style.copy(fontSize = (style.fontSize.value * 1.1).sp, fontWeight = FontWeight.SemiBold)
                 else -> style.copy(fontWeight = FontWeight.SemiBold)
-            }
+            },
+            color = color
         )
         is MdBlock.ListItem -> ListRenderer(block, color, style, styleParentheses)
         is MdBlock.Blockquote -> Box(
@@ -335,7 +341,11 @@ private fun RenderBlock(
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
                 .padding(8.dp)
         ) {
-            Text(text = parseInline(block.content, color, style, styleParentheses), style = style)
+            MarkdownInlineText(
+                text = parseInline(block.content, color, style, styleParentheses),
+                style = style,
+                color = color
+            )
         }
         is MdBlock.Table -> TableRenderer(block, color, style)
         is MdBlock.HorizontalRule -> Box(
@@ -346,7 +356,7 @@ private fun RenderBlock(
                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
         )
         is MdBlock.InnerMonologue -> InnerMonologueRenderer(block, color, style)
-        is MdBlock.Paragraph -> Text(
+        is MdBlock.Paragraph -> MarkdownInlineText(
             text = parseInline(block.content, color, style, styleParentheses),
             style = style,
             color = color
@@ -411,7 +421,7 @@ private fun ListRenderer(
                     style = style,
                     color = color
                 )
-                Text(
+                MarkdownInlineText(
                     text = parseInline(item, color, style, styleParentheses),
                     style = style,
                     color = color,
@@ -525,11 +535,10 @@ private fun androidx.compose.foundation.layout.RowScope.TableCell(
             .padding(horizontal = 8.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
+        MarkdownInlineText(
             text = parseInline(text, color, style),
-            style = style,
-            color = color,
-            textAlign = TextAlign.Center
+            style = style.copy(textAlign = TextAlign.Center),
+            color = color
         )
     }
 }
@@ -565,7 +574,7 @@ private fun InnerMonologueRenderer(block: MdBlock.InnerMonologue, color: android
             enter = expandVertically() + fadeIn(),
             exit = shrinkVertically() + fadeOut()
         ) {
-            Text(
+            MarkdownInlineText(
                 text = parseInline(block.content, color.copy(alpha = 0.6f), style.copy(fontStyle = FontStyle.Italic)),
                 style = style.copy(fontStyle = FontStyle.Italic),
                 color = color.copy(alpha = 0.6f),
@@ -581,6 +590,44 @@ private fun InnerMonologueRenderer(block: MdBlock.InnerMonologue, color: android
  * 解析行内格式：粗体 **text**、斜体 *text*、行内代码 `code`、链接 [text](url)。
  * 删除线已被禁用，`~~` 会按原文显示。
  */
+private const val URL_ANNOTATION_TAG = "URL"
+
+@Composable
+private fun MarkdownInlineText(
+    text: AnnotatedString,
+    style: androidx.compose.ui.text.TextStyle,
+    color: androidx.compose.ui.graphics.Color,
+    modifier: Modifier = Modifier
+) {
+    val links = text.getStringAnnotations(URL_ANNOTATION_TAG, 0, text.length)
+    if (links.isEmpty()) {
+        Text(text = text, style = style, color = color, modifier = modifier)
+        return
+    }
+
+    val context = LocalContext.current
+    ClickableText(
+        text = text,
+        modifier = modifier,
+        style = style.copy(color = color),
+        onClick = { offset ->
+            text.getStringAnnotations(URL_ANNOTATION_TAG, offset, offset)
+                .firstOrNull()
+                ?.item
+                ?.let { openExternalLink(context, it) }
+        }
+    )
+}
+
+private fun openExternalLink(context: Context, url: String) {
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+        addCategory(Intent.CATEGORY_BROWSABLE)
+    }
+    if (intent.resolveActivity(context.packageManager) != null) {
+        context.startActivity(intent)
+    }
+}
+
 @Suppress("UNUSED_PARAMETER")
 fun parseInline(
     text: String,
@@ -655,9 +702,18 @@ fun parseInline(
                     val urlEnd = text.indexOf(')', textEnd + 2)
                     if (urlEnd > 0) {
                         val linkText = text.substring(i + 1, textEnd)
-                        val url = text.substring(textEnd + 2, urlEnd)
-                        withStyle(SpanStyle(color = androidx.compose.ui.graphics.Color(0xFF58A6FF))) {
+                        val url = text.substring(textEnd + 2, urlEnd).trim()
+                        val linkStart = length
+                        withStyle(
+                            SpanStyle(
+                                color = androidx.compose.ui.graphics.Color(0xFF58A6FF),
+                                textDecoration = TextDecoration.Underline
+                            )
+                        ) {
                             append(linkText)
+                        }
+                        if (url.isHttpUrl()) {
+                            addStringAnnotation(URL_ANNOTATION_TAG, url, linkStart, length)
                         }
                         i = urlEnd + 1
                         continue
@@ -670,3 +726,6 @@ fun parseInline(
         }
     }
 }
+
+private fun String.isHttpUrl(): Boolean =
+    startsWith("https://", ignoreCase = true) || startsWith("http://", ignoreCase = true)

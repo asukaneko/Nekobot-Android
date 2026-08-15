@@ -43,4 +43,30 @@ class MarkdownTextTest {
         assertEquals("后文", (blocks[2] as MdBlock.Paragraph).content)
         assertTrue(blocks.none { it.toString().contains("INNER:") })
     }
+
+    @Test
+    fun `http markdown link keeps clickable URL annotation`() {
+        val rendered = parseInline(
+            "[Nekobot](https://example.com/docs)",
+            Color.Black,
+            TextStyle.Default
+        )
+
+        assertEquals("Nekobot", rendered.text)
+        assertEquals(
+            "https://example.com/docs",
+            rendered.getStringAnnotations("URL", 0, rendered.length).single().item
+        )
+    }
+
+    @Test
+    fun `unsupported markdown link does not receive URL annotation`() {
+        val rendered = parseInline(
+            "[Local file](file:///sdcard/example.txt)",
+            Color.Black,
+            TextStyle.Default
+        )
+
+        assertTrue(rendered.getStringAnnotations("URL", 0, rendered.length).isEmpty())
+    }
 }
