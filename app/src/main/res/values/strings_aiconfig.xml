@@ -224,6 +224,7 @@
 
     <!-- 协议回退标签 -->
     <string name="aimodel_editor_protocol_openai_compatible">OpenAI 兼容</string>
+    <string name="aimodel_editor_protocol_gemini_native">Gemini 原生（generateContent）</string>
 
     <!-- 音频参考文件相关错误 -->
     <string name="aimodel_editor_audio_read_error">无法读取音频文件</string>

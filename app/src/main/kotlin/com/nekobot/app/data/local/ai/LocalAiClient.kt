@@ -210,7 +210,9 @@ class LocalAiClient(
             val url = protocol.resolveUrl(
                 runtimeModel.baseUrl,
                 runtimeModel.model,
-                runtimeModel.appendBaseUrlPath
+                runtimeModel.appendBaseUrlPath,
+                stream = true,
+                apiKey = runtimeModel.apiKey
             )
             val headers = mergeRuntimeHeaders(
                 protocol.buildHeaders(runtimeModel.apiKey, stream = true),
@@ -346,7 +348,9 @@ class LocalAiClient(
         val url = protocol.resolveUrl(
             runtimeModel.baseUrl,
             runtimeModel.model,
-            runtimeModel.appendBaseUrlPath
+            runtimeModel.appendBaseUrlPath,
+            stream = false,
+            apiKey = runtimeModel.apiKey
         )
         val headers = mergeRuntimeHeaders(
             protocol.buildHeaders(runtimeModel.apiKey, stream = false),
@@ -409,7 +413,13 @@ class LocalAiClient(
         streamCallbacks: LocalAiStreamCallbacks? = null
     ): LocalAiResult {
         val protocol = LocalProtocols.get(model.protocol)
-        val url = protocol.resolveUrl(model.baseUrl, model.model, model.appendBaseUrlPath)
+        val url = protocol.resolveUrl(
+            model.baseUrl,
+            model.model,
+            model.appendBaseUrlPath,
+            stream = true,
+            apiKey = model.apiKey
+        )
         val headers = mergeRuntimeHeaders(
             protocol.buildHeaders(model.apiKey, stream = true),
             credential
@@ -738,9 +748,13 @@ class LocalAiClient(
     suspend fun fetchAvailableModels(
         baseUrl: String,
         apiKey: String,
+        protocolName: String,
         appendBaseUrlPath: Boolean,
         proxyUrl: String = ""
     ): List<String> {
+        if (protocolName == GeminiNativeProtocol.name) {
+            return fetchGeminiModels(baseUrl, apiKey, proxyUrl)
+        }
         val base = baseUrl.trimEnd('/')
         val url = when {
             base.endsWith("/models") -> base
@@ -777,6 +791,54 @@ class LocalAiClient(
                         ?: item.asJsonObject.get("name")?.takeIf { !it.isJsonNull }?.asString
                     else -> null
                 }
+            }.distinct().sorted()
+        }
+    }
+
+    private fun fetchGeminiModels(
+        baseUrl: String,
+        apiKey: String,
+        proxyUrl: String
+    ): List<String> {
+        val supplied = baseUrl.trim().trimEnd('/')
+        require(supplied.isNotBlank()) { "Gemini base URL is required" }
+        val path = supplied.substringBefore('?')
+        val listUrl = when {
+            path.endsWith("/models") -> path
+            path.contains("/models/") -> "${path.substringBefore("/models/")}/models"
+            else -> "$path/models"
+        }
+        val url = if (
+            apiKey.isNotBlank() &&
+            listUrl.contains("generativelanguage.googleapis.com", ignoreCase = true)
+        ) {
+            "$listUrl?key=${java.net.URLEncoder.encode(apiKey, Charsets.UTF_8.name())}"
+        } else {
+            listUrl
+        }
+        val request = Request.Builder()
+            .url(url)
+            .get()
+            .header("x-goog-api-key", apiKey)
+            .header("Authorization", "Bearer $apiKey")
+            .build()
+        clientFor(proxyUrl).newCall(request).execute().use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw FailoverHttpException(response.code, "HTTP ${response.code}: ${raw.take(500)}")
+            }
+            val models = JsonParser.parseString(raw)
+                .takeIf { it.isJsonObject }
+                ?.asJsonObject
+                ?.getAsJsonArray("models")
+                ?: return emptyList()
+            return models.mapNotNull { item ->
+                item.takeIf { it.isJsonObject }
+                    ?.asJsonObject
+                    ?.get("name")
+                    ?.takeIf { !it.isJsonNull }
+                    ?.asString
+                    ?.removePrefix("models/")
             }.distinct().sorted()
         }
     }
@@ -885,7 +947,9 @@ class LocalAiClient(
             val url = protocol.resolveUrl(
                 runtimeModel.baseUrl,
                 runtimeModel.model,
-                runtimeModel.appendBaseUrlPath
+                runtimeModel.appendBaseUrlPath,
+                stream = true,
+                apiKey = runtimeModel.apiKey
             )
             val headers = mergeRuntimeHeaders(
                 protocol.buildHeaders(runtimeModel.apiKey, stream = true),
@@ -1072,7 +1136,13 @@ class LocalAiClient(
         requestTag: String? = null
     ): LocalAiResult {
         val protocol = LocalProtocols.get(model.protocol)
-        val url = protocol.resolveUrl(model.baseUrl, model.model, model.appendBaseUrlPath)
+        val url = protocol.resolveUrl(
+            model.baseUrl,
+            model.model,
+            model.appendBaseUrlPath,
+            stream = false,
+            apiKey = model.apiKey
+        )
         val headers = protocol.buildHeaders(model.apiKey, stream = false)
         val payload = buildVisionPayload(model, protocol, imageUrl, question)
         val body = gson.toJson(payload).toRequestBody(JSON_TYPE)
@@ -1121,6 +1191,22 @@ class LocalAiClient(
         imageUrl: String,
         question: String
     ): Map<String, Any> {
+        if (protocol.name == GeminiNativeProtocol.name) {
+            return protocol.buildPayload(
+                model = model.model,
+                messages = listOf(
+                    mapOf(
+                        "role" to "user",
+                        "content" to listOf(
+                            mapOf("type" to "text", "text" to question),
+                            mapOf("type" to "image_url", "image_url" to mapOf("url" to imageUrl))
+                        )
+                    )
+                ),
+                stream = false,
+                extra = mapOf("max_tokens" to (model.maxTokens ?: 1024))
+            )
+        }
         if (protocol.name == AnthropicMessagesProtocol.name) {
             val source = if (imageUrl.startsWith("data:")) {
                 val mediaType = imageUrl.substringAfter("data:", "").substringBefore(';')

@@ -13,7 +13,13 @@ object AnthropicMessagesProtocol : LocalProtocol {
 
     override val name: String = "anthropic_messages"
 
-    override fun resolveUrl(baseUrl: String, model: String, appendBaseUrlPath: Boolean): String {
+    override fun resolveUrl(
+        baseUrl: String,
+        model: String,
+        appendBaseUrlPath: Boolean,
+        stream: Boolean,
+        apiKey: String
+    ): String {
         val base = baseUrl.trimEnd('/')
         if (base.contains("/v1/messages")) return base
         return "$base/v1/messages"

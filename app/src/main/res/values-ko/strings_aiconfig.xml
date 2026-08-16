@@ -220,6 +220,7 @@
     <string name="aimodel_editor_provider_custom">커스텀</string>
 
     <string name="aimodel_editor_protocol_openai_compatible">OpenAI 호환</string>
+    <string name="aimodel_editor_protocol_gemini_native">Gemini 네이티브(generateContent)</string>
 
     <string name="aimodel_editor_audio_read_error">오디오 파일을 읽을 수 없어요</string>
     <string name="aimodel_editor_audio_too_large">참조 오디오는 7.5 MB 이하여야 해요</string>

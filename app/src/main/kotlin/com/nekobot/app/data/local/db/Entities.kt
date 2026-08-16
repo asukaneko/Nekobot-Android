@@ -234,7 +234,7 @@ data class LocalWorldBookEntryEntity(
 /**
  * 本地 AI 模型配置。
  *
- * protocol 取值："openai_chat" / "anthropic_messages"。
+ * protocol 取值："openai_chat" / "openai_responses" / "anthropic_messages" / "gemini_native"。
  * active 表示当前是否为激活模型（本地模式仅使用 active=true 的一个）。
  */
 @Entity(
@@ -244,7 +244,7 @@ data class LocalWorldBookEntryEntity(
 data class LocalAiModelEntity(
     @PrimaryKey val id: String,
     val name: String,
-    val protocol: String,                      // openai_chat / anthropic_messages
+    val protocol: String,                      // openai_chat / openai_responses / anthropic_messages / gemini_native
     val provider: String? = null,
     @ColumnInfo(name = "api_key") val apiKey: String,
     @ColumnInfo(name = "proxy_url") val proxyUrl: String = "",

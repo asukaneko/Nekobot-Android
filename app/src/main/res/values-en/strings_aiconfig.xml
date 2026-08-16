@@ -221,6 +221,7 @@
     <string name="aimodel_editor_provider_custom">Custom</string>
 
     <string name="aimodel_editor_protocol_openai_compatible">OpenAI Compatible</string>
+    <string name="aimodel_editor_protocol_gemini_native">Gemini Native (generateContent)</string>
 
     <string name="aimodel_editor_audio_read_error">Cannot read audio file</string>
     <string name="aimodel_editor_audio_too_large">Reference audio must be ≤ 7.5 MB</string>

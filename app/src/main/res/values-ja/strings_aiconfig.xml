@@ -220,6 +220,7 @@
     <string name="aimodel_editor_provider_custom">カスタム</string>
 
     <string name="aimodel_editor_protocol_openai_compatible">OpenAI 互換</string>
+    <string name="aimodel_editor_protocol_gemini_native">Gemini ネイティブ（generateContent）</string>
 
     <string name="aimodel_editor_audio_read_error">音声ファイルを読み込めません</string>
     <string name="aimodel_editor_audio_too_large">参照音声は 7.5 MB 以下にしてください</string>

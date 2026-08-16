@@ -33,7 +33,13 @@ interface LocalProtocol {
     val requiresStreaming: Boolean
         get() = false
 
-    fun resolveUrl(baseUrl: String, model: String, appendBaseUrlPath: Boolean): String
+    fun resolveUrl(
+        baseUrl: String,
+        model: String,
+        appendBaseUrlPath: Boolean,
+        stream: Boolean = false,
+        apiKey: String = ""
+    ): String
 
     fun buildHeaders(apiKey: String, stream: Boolean): Map<String, String>
 
@@ -85,7 +91,8 @@ object LocalProtocols {
     private val registry: Map<String, LocalProtocol> = mapOf(
         OpenAIChatProtocol.name to OpenAIChatProtocol,
         OpenAIResponsesProtocol.name to OpenAIResponsesProtocol,
-        AnthropicMessagesProtocol.name to AnthropicMessagesProtocol
+        AnthropicMessagesProtocol.name to AnthropicMessagesProtocol,
+        GeminiNativeProtocol.name to GeminiNativeProtocol
     )
 
     fun get(name: String): LocalProtocol =

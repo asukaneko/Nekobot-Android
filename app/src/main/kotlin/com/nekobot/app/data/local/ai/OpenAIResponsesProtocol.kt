@@ -17,7 +17,13 @@ object OpenAIResponsesProtocol : LocalProtocol {
 
     private val gson = Gson()
 
-    override fun resolveUrl(baseUrl: String, model: String, appendBaseUrlPath: Boolean): String {
+    override fun resolveUrl(
+        baseUrl: String,
+        model: String,
+        appendBaseUrlPath: Boolean,
+        stream: Boolean,
+        apiKey: String
+    ): String {
         val base = baseUrl.trimEnd('/')
         if (base.endsWith("/responses")) return base
         return if (appendBaseUrlPath) "$base/responses" else base

@@ -185,7 +185,7 @@ private fun liveRealtimeDefaults(provider: String): LiveRealtimeDefaults = when 
 private val providerPresets = listOf(
     ProviderPreset("OpenAI", "openai", "gpt-5.5", "", "1050000", "128000", "", ""),
     ProviderPreset("Claude", "anthropic", "claude-opus-4.8", "", "1000000", "128000", "", ""),
-    ProviderPreset("Gemini", "google", "gemini-3.5-flash", "", "1048576", "65536", "", ""),
+    ProviderPreset("Gemini", "google", "gemini-3.5-flash", "https://generativelanguage.googleapis.com/v1beta", "1048576", "65536", "", ""),
     ProviderPreset("DeepSeek", "deepseek", "deepseek-v4-flash", "https://api.deepseek.com", "1000000", "131072", "", ""),
     ProviderPreset("GLM", "zhipu", "glm-5.1", "https://open.bigmodel.cn/api/paas/v4", "200000", "128000", "", ""),
     ProviderPreset("MiniMax", "minimax", "minimax-m2.7", "https://api.minimaxi.com/v1", "204800", "131072", "", ""),
@@ -938,7 +938,7 @@ private fun EditorDropdownField(
 private fun protocolFor(provider: String, protocols: List<ProtocolOption>): String {
     val desired = when (provider) {
         "anthropic" -> listOf("anthropic_messages", "anthropic")
-        "google" -> listOf("google", "gemini")
+        "google", "gemini" -> listOf("gemini_native", "google", "gemini")
         else -> listOf("openai_compatible", "openai_chat", "openai")
     }
     return desired.firstNotNullOfOrNull { target ->

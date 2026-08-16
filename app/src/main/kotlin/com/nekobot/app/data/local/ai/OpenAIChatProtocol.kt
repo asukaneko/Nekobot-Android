@@ -12,7 +12,13 @@ object OpenAIChatProtocol : LocalProtocol {
 
     override val name: String = "openai_chat"
 
-    override fun resolveUrl(baseUrl: String, model: String, appendBaseUrlPath: Boolean): String {
+    override fun resolveUrl(
+        baseUrl: String,
+        model: String,
+        appendBaseUrlPath: Boolean,
+        stream: Boolean,
+        apiKey: String
+    ): String {
         val base = baseUrl.trimEnd('/')
         if (!appendBaseUrlPath) return base
         // 已经含完整路径则直接返回

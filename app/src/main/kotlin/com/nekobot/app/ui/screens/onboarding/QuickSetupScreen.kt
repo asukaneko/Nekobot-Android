@@ -67,7 +67,7 @@ private data class QuickSetupProviderPreset(
 private val quickSetupProviderPresets = listOf(
     QuickSetupProviderPreset("OpenAI", "openai", "openai_chat", "https://api.openai.com/v1", "gpt-5.5"),
     QuickSetupProviderPreset("Claude", "anthropic", "anthropic_messages", "https://api.anthropic.com/v1", "claude-opus-4.8"),
-    QuickSetupProviderPreset("Gemini", "google", "openai_chat", "https://generativelanguage.googleapis.com/v1beta/openai", "gemini-3.5-flash"),
+    QuickSetupProviderPreset("Gemini", "google", "gemini_native", "https://generativelanguage.googleapis.com/v1beta", "gemini-3.5-flash"),
     QuickSetupProviderPreset("DeepSeek", "deepseek", "openai_chat", "https://api.deepseek.com", "deepseek-v4-flash"),
     QuickSetupProviderPreset("GLM", "zhipu", "openai_chat", "https://open.bigmodel.cn/api/paas/v4", "glm-5.1"),
     QuickSetupProviderPreset("MiniMax", "minimax", "openai_chat", "https://api.minimaxi.com/v1", "minimax-m2.7"),
@@ -210,6 +210,7 @@ private fun QuickSetupChatModelScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
     val protocols = LocalProtocols.names()
+    val geminiNativeLabel = stringResource(R.string.aimodel_editor_protocol_gemini_native)
     var selectedPresetProvider by rememberSaveable { mutableStateOf("openai") }
     var name by rememberSaveable { mutableStateOf("OpenAI") }
     var provider by rememberSaveable { mutableStateOf("openai") }
@@ -336,8 +337,10 @@ private fun QuickSetupChatModelScreen(
             Spacer(Modifier.height(12.dp))
             QuickSetupDropdown(
                 label = stringResource(R.string.aimodel_editor_field_provider_type),
-                value = protocol,
-                options = protocols.map { it to it },
+                value = if (protocol == "gemini_native") geminiNativeLabel else protocol,
+                options = protocols.map {
+                    it to if (it == "gemini_native") geminiNativeLabel else it
+                },
                 onSelect = { protocol = it }
             )
             Spacer(Modifier.height(12.dp))

@@ -84,6 +84,7 @@ import androidx.lifecycle.viewModelScope
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalLogger
+import com.nekobot.app.data.local.ai.GeminiNativeProtocol
 import com.nekobot.app.data.local.ai.LocalProtocols
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.model.ApiKey
@@ -226,6 +227,7 @@ class LocalAiModelsViewModel : BaseViewModel() {
     fun fetchModels(
         baseUrl: String,
         apiKey: String,
+        protocol: String,
         appendBaseUrlPath: Boolean,
         proxyUrl: String
     ) {
@@ -236,6 +238,7 @@ class LocalAiModelsViewModel : BaseViewModel() {
                     ServiceContainer.localRepository.fetchAvailableModels(
                         baseUrl,
                         apiKey,
+                        protocol,
                         appendBaseUrlPath,
                         proxyUrl
                     )
@@ -420,8 +423,14 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
 
     // 编辑/新建对话框
     if (showEditDialog) {
-        val protocolOptions = remember {
-            LocalProtocols.names().map { ProtocolOption(it, it) }
+        val geminiNativeLabel = stringResource(R.string.aimodel_editor_protocol_gemini_native)
+        val protocolOptions = remember(geminiNativeLabel) {
+            LocalProtocols.names().map { protocol ->
+                ProtocolOption(
+                    protocol,
+                    if (protocol == GeminiNativeProtocol.name) geminiNativeLabel else protocol
+                )
+            }
         }
         AiModelEditorDialog(
             initial = editingModel.toEditorState(protocolOptions),
@@ -432,8 +441,8 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
             savedApiKeys = apiKeys,
             showProxyConfig = true,
             onResolveApiKey = vm::resolveApiKey,
-            onFetchModels = { baseUrl, apiKey, _, appendBaseUrlPath, proxyUrl ->
-                vm.fetchModels(baseUrl, apiKey, appendBaseUrlPath, proxyUrl)
+            onFetchModels = { baseUrl, apiKey, protocol, appendBaseUrlPath, proxyUrl ->
+                vm.fetchModels(baseUrl, apiKey, protocol, appendBaseUrlPath, proxyUrl)
             },
             onDismiss = {
                 showEditDialog = false

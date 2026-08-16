@@ -315,10 +315,10 @@ object NbotConfigImporter {
             val id = obj.str("id") ?: UUID.randomUUID().toString()
             val purpose = obj.str("purpose") ?: "chat"
             val sourceProtocol = obj.str("provider_type") ?: obj.str("protocol").orEmpty()
-            val localProtocol = if (sourceProtocol.contains("anthropic", ignoreCase = true)) {
-                "anthropic_messages"
-            } else {
-                "openai_chat"
+            val localProtocol = when {
+                sourceProtocol.contains("gemini", ignoreCase = true) -> "gemini_native"
+                sourceProtocol.contains("anthropic", ignoreCase = true) -> "anthropic_messages"
+                else -> "openai_chat"
             }
             db.aiModelDao().upsert(
                 LocalAiModelEntity(
