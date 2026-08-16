@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="nekobot_primary">#7C5CFF</color>
+    <color name="ic_launcher_background">#FFFFFF</color>
     <color name="nekobot_dark">#12121A</color>
 </resources>
