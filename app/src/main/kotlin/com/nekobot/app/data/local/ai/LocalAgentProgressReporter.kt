@@ -126,6 +126,7 @@ internal class LocalAgentProgressReporter(
         thinking: String
     ) {
         val resultPreview = boundedAgentValuePreview(result, 120)
+        val resultTruncated = isAgentToolOutputTruncated(result)
         val index = steps.indexOfLast {
             it.type == "tool" && it.name == toolName && it.status != "done"
         }
@@ -136,7 +137,8 @@ internal class LocalAgentProgressReporter(
                 fullResult = boundedAgentValuePreview(
                     result,
                     MAX_AGENT_PROGRESS_RESULT_PREVIEW_CHARS
-                )
+                ),
+                resultTruncated = resultTruncated
             )
         } else {
             steps.add(
@@ -148,7 +150,8 @@ internal class LocalAgentProgressReporter(
                     fullResult = boundedAgentValuePreview(
                         result,
                         MAX_AGENT_PROGRESS_RESULT_PREVIEW_CHARS
-                    )
+                    ),
+                    resultTruncated = resultTruncated
                 )
             )
         }

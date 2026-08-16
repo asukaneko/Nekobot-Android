@@ -3,6 +3,7 @@ package com.nekobot.app.data.local.ai
 import com.nekobot.app.data.model.ThinkingCard
 import com.nekobot.app.data.model.ThinkingStep
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -43,6 +44,15 @@ class AgentProgressPersistenceTest {
 
         assertTrue(preview.contains("<cycle>"))
         assertTrue(preview.length <= 128)
+    }
+
+    @Test
+    fun toolOutputTruncationRecognizesCommonBooleanEncodings() {
+        assertTrue(isAgentToolOutputTruncated(mapOf("truncated" to true)))
+        assertTrue(isAgentToolOutputTruncated(mapOf("TRUNCATED" to "true")))
+        assertTrue(isAgentToolOutputTruncated(mapOf("truncated" to 1)))
+        assertFalse(isAgentToolOutputTruncated(mapOf("truncated" to false)))
+        assertFalse(isAgentToolOutputTruncated(mapOf("content" to "complete")))
     }
 
     @Test

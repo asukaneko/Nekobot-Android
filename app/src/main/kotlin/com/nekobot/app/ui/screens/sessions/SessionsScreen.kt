@@ -2,10 +2,9 @@ package com.nekobot.app.ui.screens.sessions
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -55,7 +54,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
+import com.nekobot.app.ui.components.BorderlessOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -796,16 +795,11 @@ private fun RowScope.StatFilterCard(
     val containerColor =
         if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
         else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-    val borderColor =
-        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-
     Column(
         modifier = Modifier
             .weight(1f)
             .clip(RoundedCornerShape(14.dp))
             .background(containerColor)
-            .border(BorderStroke(1.dp, borderColor), RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
             .padding(vertical = 9.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -878,10 +872,6 @@ private fun SearchEntryBar(
     val hasActiveFilter = filter != SessionFilter.ALL || channelFilterValue != null || searchQuery.isNotBlank()
 
     val accent = MaterialTheme.colorScheme.primary
-    val borderColor =
-        if (hasActiveFilter) accent.copy(alpha = 0.5f)
-        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -891,7 +881,6 @@ private fun SearchEntryBar(
             .height(48.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .border(BorderStroke(1.dp, borderColor), RoundedCornerShape(14.dp))
             .clickable { onClick() }
             .padding(horizontal = 14.dp)
     ) {
@@ -1673,7 +1662,7 @@ private fun SessionItem(
             ),
         shape = SessionItemShape,
         color = containerColor,
-        border = BorderStroke(1.dp, borderColor),
+        border = null,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
     ) {

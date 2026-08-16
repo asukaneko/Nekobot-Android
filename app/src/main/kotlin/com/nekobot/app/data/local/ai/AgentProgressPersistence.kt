@@ -144,3 +144,15 @@ internal fun boundedAgentValuePreview(value: Any?, maxChars: Int): String {
     }
     return output.toString()
 }
+
+/** 工具以字符串或数值返回布尔标记时，也统一识别为输出截断。 */
+internal fun isAgentToolOutputTruncated(result: Map<String, Any>): Boolean {
+    return when (val value = result.entries.firstOrNull {
+        it.key.equals("truncated", ignoreCase = true)
+    }?.value) {
+        is Boolean -> value
+        is String -> value.equals("true", ignoreCase = true)
+        is Number -> value.toInt() == 1
+        else -> false
+    }
+}

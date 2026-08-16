@@ -3,9 +3,8 @@ package com.nekobot.app.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -45,7 +44,7 @@ fun GlassCard(
     modifier: Modifier = Modifier,
     cornerRadius: Int = 20,
     containerColor: Color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-    borderWidth: Int = 1,
+    borderWidth: Int = 0,
     borderColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
     contentPadding: PaddingValues = PaddingValues(16.dp),
     content: @Composable ColumnScope.() -> Unit
@@ -118,10 +117,7 @@ fun GlassDropdownMenu(
         containerColor = containerColor,
         tonalElevation = 0.dp,
         shadowElevation = 10.dp,
-        border = BorderStroke(
-            width = 1.dp,
-            brush = borderBrush
-        ),
+        border = null,
         content = content
     )
 }
@@ -167,10 +163,7 @@ fun ExposedDropdownMenuBoxScope.GlassExposedDropdownMenu(
         containerColor = containerColor,
         tonalElevation = 0.dp,
         shadowElevation = 10.dp,
-        border = BorderStroke(
-            width = 1.dp,
-            brush = borderBrush
-        ),
+        border = null,
         content = content
     )
 }
@@ -244,6 +237,7 @@ fun NekoDialog(
     confirmIcon: ImageVector? = null,
     confirmIconContentDescription: String? = null,
     contentScrollable: Boolean = false,
+    borderWidth: Int = 0,
     content: @Composable (ColumnScope.() -> Unit)? = null
 ) {
     Dialog(
@@ -263,7 +257,8 @@ fun NekoDialog(
                     .heightIn(max = maxDialogHeight)
                     .padding(8.dp),
                 cornerRadius = 24,
-                containerColor = MaterialTheme.colorScheme.surface
+                containerColor = MaterialTheme.colorScheme.surface,
+                borderWidth = borderWidth
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(

@@ -1,6 +1,5 @@
 package com.nekobot.app.ui.components
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,11 +44,7 @@ fun ModelCardFrame(
         modifier = modifier,
         shape = shape,
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
-        border = BorderStroke(
-            width = 1.dp,
-            color = if (isActive) primary.copy(alpha = 0.26f)
-            else MaterialTheme.colorScheme.outline.copy(alpha = 0.20f)
-        ),
+        border = null,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
     ) {

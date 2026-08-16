@@ -1,6 +1,6 @@
 package com.nekobot.app.ui.components
 
-import androidx.compose.foundation.border
+import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding

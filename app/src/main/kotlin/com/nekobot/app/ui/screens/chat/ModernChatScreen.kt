@@ -19,9 +19,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -87,7 +86,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import com.nekobot.app.ui.components.BorderlessOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -299,7 +298,7 @@ private fun CommandSuggestionPanel(
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 3.dp,
         shadowElevation = 8.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+        border = null
     ) {
         LazyColumn(
             modifier = Modifier
@@ -1239,10 +1238,7 @@ private fun PendingImageAttachments(
                 modifier = Modifier.size(76.dp),
                 shape = RoundedCornerShape(14.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,
-                border = BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-                )
+                border = null
             ) {
                 Box {
                     if (model != null) {
@@ -1449,7 +1445,7 @@ private fun ModernPlotChoices(
                         shape = RoundedCornerShape(14.dp),
                         color = if (selected) levelColor.copy(alpha = 0.15f)
                         else MaterialTheme.colorScheme.surfaceVariant,
-                        border = if (selected) BorderStroke(1.dp, levelColor.copy(alpha = 0.6f)) else null
+                        border = null
                     ) {
                         Column(modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)) {
                             // 等级标识：色点 + 文字
@@ -1585,10 +1581,7 @@ private fun ReasoningEffortSelector(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f),
-        border = BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)
-        )
+        border = null
     ) {
         Column {
             Row(
@@ -1893,7 +1886,7 @@ private fun ModernContextCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.56f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f))
+        border = null
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

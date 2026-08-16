@@ -16,7 +16,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -112,8 +112,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
+import com.nekobot.app.ui.components.BorderlessOutlinedButton as OutlinedButton
+import com.nekobot.app.ui.components.BorderlessOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -2410,13 +2410,10 @@ private fun MessageBubble(
                 androidx.compose.material3.Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 6.dp),
+                    .padding(bottom = 6.dp),
                     shape = RoundedCornerShape(14.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
-                    )
+                    border = null
                 ) {
                     Column {
                         Row(
@@ -2787,13 +2784,7 @@ private fun ProgressCard(
         modifier = Modifier.fillMaxWidth(),
         cornerRadius = 14,
         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-        borderColor = if (hasError) {
-            MaterialTheme.colorScheme.error.copy(alpha = 0.48f)
-        } else if (card.isComplete) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.32f)
-        } else {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
-        },
+        borderWidth = 0,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 10.dp)
     ) {
         // 头部：图标 + 内容文本 + 展开开关
@@ -3043,6 +3034,8 @@ private fun StepDetailDialog(
         ?.takeIf(String::isNotBlank)
     val argumentsJson = step.arguments?.let { formatJson(it) }
     val fullResultJson = step.fullResult?.let { formatJson(it) }
+    val toolOutputWasTruncated = step.resultTruncated == true ||
+        fullResultIndicatesTruncation(step.fullResult)
     val hasAny = detail != null || thinkingContent != null ||
         !argumentsJson.isNullOrBlank() || !fullResultJson.isNullOrBlank()
 
@@ -3052,7 +3045,8 @@ private fun StepDetailDialog(
         confirmText = stringResource(R.string.common_close),
         onConfirm = null,
         cancelText = null,
-        onCancel = null
+        onCancel = null,
+        borderWidth = 0
     ) {
         Box(
             modifier = Modifier
@@ -3099,7 +3093,12 @@ private fun StepDetailDialog(
                             label = stringResource(R.string.chat_step_result),
                             icon = Icons.Filled.CheckCircle,
                             content = fullResultJson,
-                            isCode = true
+                            isCode = true,
+                            notice = if (toolOutputWasTruncated) {
+                                stringResource(R.string.chat_step_result_truncated)
+                            } else {
+                                null
+                            }
                         )
                     }
                 }
@@ -3115,7 +3114,8 @@ private fun StepDetailSection(
     content: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     isCode: Boolean = false,
-    accent: Boolean = false
+    accent: Boolean = false,
+    notice: String? = null
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -3137,6 +3137,23 @@ private fun StepDetailSection(
                 else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        if (!notice.isNullOrBlank()) {
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Filled.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = notice,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
         Spacer(Modifier.height(4.dp))
         androidx.compose.material3.Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -3151,6 +3168,24 @@ private fun StepDetailSection(
                 modifier = Modifier.padding(8.dp)
             )
         }
+    }
+}
+
+/** 兼容旧进度卡：早期版本只在结果预览文本中保留 truncated=true。 */
+private fun fullResultIndicatesTruncation(fullResult: Any?): Boolean {
+    return when (fullResult) {
+        is Map<*, *> -> fullResult.entries.any { (key, value) ->
+            key?.toString()?.equals("truncated", ignoreCase = true) == true &&
+                when (value) {
+                    is Boolean -> value
+                    is String -> value.equals("true", ignoreCase = true)
+                    is Number -> value.toInt() == 1
+                    else -> false
+                }
+        }
+        is String -> Regex("\\btruncated\\s*[=:]\\s*true\\b", RegexOption.IGNORE_CASE)
+            .containsMatchIn(fullResult)
+        else -> false
     }
 }
 

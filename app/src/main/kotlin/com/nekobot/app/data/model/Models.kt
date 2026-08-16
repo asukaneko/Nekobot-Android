@@ -268,6 +268,7 @@ data class ThinkingStep(
     val detail: String? = null,         // 摘要（工具参数/结果前 100-200 字符）
     val arguments: Map<String, Any>? = null,
     @SerializedName("full_result") val fullResult: Any? = null,
+    @SerializedName("result_truncated") val resultTruncated: Boolean? = null,
     @SerializedName("thinking_content") val thinkingContent: String? = null
 )
 

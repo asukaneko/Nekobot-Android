@@ -3,7 +3,6 @@ package com.nekobot.app.ui.screens.chat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import android.graphics.Bitmap
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -88,10 +87,7 @@ internal fun LocalBrowserPreview(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
-        )
+        border = null
     ) {
         Column {
             BrowserPreviewHeader(

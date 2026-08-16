@@ -82,12 +82,13 @@ class LocalAgentProgressReporterTest {
         reporter.onToolDone(
             context,
             toolName = "workspace_read_file",
-            result = mapOf("content" to "x".repeat(500_000)),
+            result = mapOf("content" to "x".repeat(500_000), "truncated" to true),
             thinking = ""
         )
 
         val toolStep = updates.last().steps.single { it.type == "tool" }
         assertTrue(toolStep.arguments?.get("preview").toString().length <= 1_500)
         assertTrue(toolStep.fullResult.toString().length <= 3_000)
+        assertTrue(toolStep.resultTruncated == true)
     }
 }
