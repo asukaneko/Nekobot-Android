@@ -227,4 +227,21 @@
     <string name="diagnostic_log_level_info">信息</string>
     <string name="diagnostic_copy_log">复制日志</string>
     <string name="diagnostic_copied">已复制到剪贴板</string>
+    <string name="quick_setup_skip">跳过</string>
+    <string name="quick_setup_title">快速配置</string>
+    <string name="quick_setup_description">先选择使用方式，之后可随时在设置中修改。</string>
+    <string name="quick_setup_mode_label">使用方式</string>
+    <string name="quick_setup_local_mode">本地模式</string>
+    <string name="quick_setup_local_description">数据保存在此设备，无需登录即可开始。</string>
+    <string name="quick_setup_server_mode">服务器模式</string>
+    <string name="quick_setup_server_description">连接 Nekobot 服务器，并在下一步登录。</string>
+    <string name="quick_setup_start_local">开始使用</string>
+    <string name="quick_setup_continue_server">前往登录</string>
+    <string name="quick_setup_configure_chat_model">配置对话模型</string>
+    <string name="quick_setup_continue_without_model">暂不配置，开始使用</string>
+    <string name="quick_setup_chat_model_title">配置对话模型</string>
+    <string name="quick_setup_chat_model_description">保存后将作为本地模式的当前对话模型。</string>
+    <string name="quick_setup_preset">预设</string>
+    <string name="quick_setup_preset_custom">自定义</string>
+    <string name="quick_setup_save_model_and_start">保存并开始使用</string>
 </resources>

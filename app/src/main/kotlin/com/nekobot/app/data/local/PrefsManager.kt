@@ -134,14 +134,28 @@ class PrefsManager(context: Context) {
     /** 运行模式：本地 / 服务器 */
     var appMode: AppMode
         get() {
-            val raw = prefs.getString(KEY_APP_MODE, AppMode.SERVER.name) ?: AppMode.SERVER.name
-            return runCatching { AppMode.valueOf(raw) }.getOrDefault(AppMode.SERVER)
+            val raw = prefs.getString(KEY_APP_MODE, AppMode.LOCAL.name) ?: AppMode.LOCAL.name
+            return runCatching { AppMode.valueOf(raw) }.getOrDefault(AppMode.LOCAL)
         }
         set(value) {
             prefs.edit().putString(KEY_APP_MODE, value.name).apply()
         }
 
     val isLocalMode: Boolean get() = appMode.isLocal
+
+    /** 首次快速配置是否已经完成。已有模式或登录信息的用户不会再次看到引导。 */
+    var quickSetupCompleted: Boolean
+        get() = prefs.getBoolean(KEY_QUICK_SETUP_COMPLETED, hasExistingConfiguration())
+        set(value) {
+            prefs.edit().putBoolean(KEY_QUICK_SETUP_COMPLETED, value).apply()
+        }
+
+    private fun hasExistingConfiguration(): Boolean =
+        prefs.contains(KEY_APP_MODE) ||
+            prefs.contains(KEY_SERVER_URL) ||
+            prefs.contains(KEY_USERNAME) ||
+            !token.isNullOrBlank() ||
+            listLoginRecords().isNotEmpty()
 
     /** Live 对话链路：传统 STT→LLM→TTS，或 Realtime 原生语音→语音。 */
     var livePipelineMode: LivePipelineMode
@@ -646,6 +660,7 @@ class PrefsManager(context: Context) {
         private const val KEY_TOKEN = "auth_token"
         private const val KEY_USERNAME = "username"
         private const val KEY_APP_MODE = "app_mode"
+        private const val KEY_QUICK_SETUP_COMPLETED = "quick_setup_completed"
         private const val KEY_LOGIN_RECORDS = "login_records"
         private const val KEY_APP_LOCK_ENABLED = "app_lock_enabled"
         private const val KEY_CHAT_INPUT_LAYOUT = "chat_input_layout"

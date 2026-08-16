@@ -73,7 +73,7 @@ object ServiceContainer {
     val applicationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** 全局运行模式流：模式切换时所有观察页面自动刷新 */
-    private val _appModeFlow = MutableStateFlow(AppMode.SERVER)
+    private val _appModeFlow = MutableStateFlow(AppMode.LOCAL)
     val appModeFlow: StateFlow<AppMode> = _appModeFlow.asStateFlow()
 
     /** 数据源代次：本地数据库 Profile 切换时递增，驱动现有页面重新加载。 */

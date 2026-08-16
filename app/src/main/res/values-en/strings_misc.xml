@@ -168,4 +168,21 @@
     <string name="login_delete_record">Delete record</string>
     <string name="login_expired">Session expired, please re-enter your password</string>
     <string name="login_required_fields">Please fill in all fields</string>
+    <string name="quick_setup_skip">Skip</string>
+    <string name="quick_setup_title">Quick setup</string>
+    <string name="quick_setup_description">Choose how you want to use the app. You can change this later in Settings.</string>
+    <string name="quick_setup_mode_label">Usage mode</string>
+    <string name="quick_setup_local_mode">Local mode</string>
+    <string name="quick_setup_local_description">Your data stays on this device and you can get started without signing in.</string>
+    <string name="quick_setup_server_mode">Server mode</string>
+    <string name="quick_setup_server_description">Connect to a Nekobot server and sign in on the next screen.</string>
+    <string name="quick_setup_start_local">Get started</string>
+    <string name="quick_setup_continue_server">Go to sign in</string>
+    <string name="quick_setup_configure_chat_model">Configure chat model</string>
+    <string name="quick_setup_continue_without_model">Start without a model</string>
+    <string name="quick_setup_chat_model_title">Configure chat model</string>
+    <string name="quick_setup_chat_model_description">This model will become the active chat model for local mode.</string>
+    <string name="quick_setup_preset">Preset</string>
+    <string name="quick_setup_preset_custom">Custom</string>
+    <string name="quick_setup_save_model_and_start">Save and start</string>
 </resources>

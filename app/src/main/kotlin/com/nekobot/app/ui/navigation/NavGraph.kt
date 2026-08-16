@@ -37,6 +37,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.ui.screens.aiconfig.AiConfigCenterScreen
 import com.nekobot.app.ui.screens.aiconfig.AiConfigScreen
 import com.nekobot.app.ui.screens.aiconfig.AiModelsScreen
@@ -50,6 +51,7 @@ import com.nekobot.app.ui.screens.characters.CharactersScreen
 import com.nekobot.app.ui.screens.chat.ModernChatScreen
 import com.nekobot.app.ui.screens.chat.WorkspaceScreen
 import com.nekobot.app.ui.screens.login.LoginScreen
+import com.nekobot.app.ui.screens.onboarding.QuickSetupScreen
 import com.nekobot.app.ui.screens.memory.MemoryScreen
 import com.nekobot.app.ui.screens.more.MoreScreen
 import com.nekobot.app.ui.screens.search.GlobalSearchScreen
@@ -129,6 +131,9 @@ private fun tabDirection(from: String?, to: String?): Int {
 @Composable
 fun NekobotNavGraph() {
     val navController = rememberNavController()
+    var isQuickSetupCompleted by remember {
+        mutableStateOf(ServiceContainer.prefs.quickSetupCompleted)
+    }
     val mainPagerState = rememberPagerState(
         initialPage = 0,
         pageCount = { bottomRoutes.size }
@@ -143,7 +148,8 @@ fun NekobotNavGraph() {
 
     // 观察全局登录态：登出时自动跳登录页，登录时跳会话页
     val isLoggedIn by ServiceContainer.loginStateFlow.collectAsStateWithLifecycle()
-    LaunchedEffect(isLoggedIn) {
+    LaunchedEffect(isLoggedIn, isQuickSetupCompleted) {
+        if (!isQuickSetupCompleted) return@LaunchedEffect
         if (!isLoggedIn && currentRoute != Routes.LOGIN) {
             navController.navigate(Routes.LOGIN) {
                 popUpTo(0) { inclusive = true }
@@ -161,7 +167,7 @@ fun NekobotNavGraph() {
     LaunchedEffect(pendingSessionId) {
         val sid = pendingSessionId ?: return@LaunchedEffect
         ServiceContainer.setPendingSessionId(null) // 消费掉
-        if (isLoggedIn) {
+        if (isQuickSetupCompleted && isLoggedIn) {
             navController.navigate(Routes.chat(sid))
         }
     }
@@ -169,7 +175,7 @@ fun NekobotNavGraph() {
     // 系统分享先回到会话页，内容在用户进入目标聊天后才会被消费。
     val pendingShare by ServiceContainer.pendingShare.collectAsStateWithLifecycle()
     LaunchedEffect(pendingShare?.id, isLoggedIn) {
-        if (pendingShare == null || !isLoggedIn) return@LaunchedEffect
+        if (pendingShare == null || !isQuickSetupCompleted || !isLoggedIn) return@LaunchedEffect
         mainPagerState.scrollToPage(0)
         if (currentRoute != Routes.SESSIONS) {
             navController.navigate(Routes.SESSIONS) {
@@ -181,7 +187,11 @@ fun NekobotNavGraph() {
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
-            startDestination = if (isLoggedIn) Routes.SESSIONS else Routes.LOGIN,
+            startDestination = when {
+                !isQuickSetupCompleted -> Routes.QUICK_SETUP
+                isLoggedIn -> Routes.SESSIONS
+                else -> Routes.LOGIN
+            },
             modifier = Modifier.fillMaxSize(),
             // 主 Tab 之间：按底栏顺序做方向性横向滑动 + 淡入，呼应圆岛的滑动方向；
             // 进入/退出详情页：从右侧滑入、向右滑出，形成层级纵深感。
@@ -214,6 +224,21 @@ fun NekobotNavGraph() {
                     fadeOut(tween(DETAIL_ANIM_MS))
             }
         ) {
+            composable(Routes.QUICK_SETUP) {
+                QuickSetupScreen { mode ->
+                    ServiceContainer.switchAppMode(mode)
+                    ServiceContainer.prefs.quickSetupCompleted = true
+                    isQuickSetupCompleted = true
+                    val destination = if (mode == AppMode.LOCAL) {
+                        Routes.SESSIONS
+                    } else {
+                        Routes.LOGIN
+                    }
+                    navController.navigate(destination) {
+                        popUpTo(Routes.QUICK_SETUP) { inclusive = true }
+                    }
+                }
+            }
             composable(Routes.LOGIN) {
                 LoginScreen(onLoggedIn = {
                     // 广播登录成功，LaunchedEffect 会自动导航到 SESSIONS

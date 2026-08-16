@@ -167,4 +167,21 @@
     <string name="login_delete_record">記録を削除</string>
     <string name="login_expired">セッションの有効期限が切れました、パスワードを再入力してください</string>
     <string name="login_required_fields">すべての項目を入力してください</string>
+    <string name="quick_setup_skip">スキップ</string>
+    <string name="quick_setup_title">クイック設定</string>
+    <string name="quick_setup_description">利用方法を選択してください。後から設定で変更できます。</string>
+    <string name="quick_setup_mode_label">利用方法</string>
+    <string name="quick_setup_local_mode">ローカルモード</string>
+    <string name="quick_setup_local_description">データはこの端末に保存され、ログインせずに始められます。</string>
+    <string name="quick_setup_server_mode">サーバーモード</string>
+    <string name="quick_setup_server_description">Nekobot サーバーに接続して、次の画面でログインします。</string>
+    <string name="quick_setup_start_local">はじめる</string>
+    <string name="quick_setup_continue_server">ログインへ</string>
+    <string name="quick_setup_configure_chat_model">チャットモデルを設定</string>
+    <string name="quick_setup_continue_without_model">モデルを設定せずに開始</string>
+    <string name="quick_setup_chat_model_title">チャットモデルを設定</string>
+    <string name="quick_setup_chat_model_description">保存後、このモデルはローカルモードの現在のチャットモデルになります。</string>
+    <string name="quick_setup_preset">プリセット</string>
+    <string name="quick_setup_preset_custom">カスタム</string>
+    <string name="quick_setup_save_model_and_start">保存して開始</string>
 </resources>

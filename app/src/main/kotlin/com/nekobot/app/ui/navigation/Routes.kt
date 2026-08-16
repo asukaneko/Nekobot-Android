@@ -10,6 +10,7 @@ import androidx.compose.ui.res.stringResource
 import com.nekobot.app.R
 
 object Routes {
+    const val QUICK_SETUP = "quick_setup"
     const val LOGIN = "login"
 
     // 底部导航主页面

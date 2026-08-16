@@ -167,4 +167,21 @@
     <string name="login_delete_record">기록 삭제</string>
     <string name="login_expired">세션이 만료되었어요. 비밀번호를 다시 입력해 주세요</string>
     <string name="login_required_fields">모든 항목을 입력해 주세요</string>
+    <string name="quick_setup_skip">건너뛰기</string>
+    <string name="quick_setup_title">빠른 설정</string>
+    <string name="quick_setup_description">사용 방식을 선택하세요. 나중에 설정에서 변경할 수 있습니다.</string>
+    <string name="quick_setup_mode_label">사용 방식</string>
+    <string name="quick_setup_local_mode">로컬 모드</string>
+    <string name="quick_setup_local_description">데이터는 이 기기에 저장되며 로그인 없이 시작할 수 있습니다.</string>
+    <string name="quick_setup_server_mode">서버 모드</string>
+    <string name="quick_setup_server_description">Nekobot 서버에 연결한 뒤 다음 화면에서 로그인합니다.</string>
+    <string name="quick_setup_start_local">시작하기</string>
+    <string name="quick_setup_continue_server">로그인으로 이동</string>
+    <string name="quick_setup_configure_chat_model">대화 모델 설정</string>
+    <string name="quick_setup_continue_without_model">모델 없이 시작</string>
+    <string name="quick_setup_chat_model_title">대화 모델 설정</string>
+    <string name="quick_setup_chat_model_description">저장하면 이 모델이 로컬 모드의 현재 대화 모델로 설정됩니다.</string>
+    <string name="quick_setup_preset">프리셋</string>
+    <string name="quick_setup_preset_custom">사용자 지정</string>
+    <string name="quick_setup_save_model_and_start">저장하고 시작</string>
 </resources>
