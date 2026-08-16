@@ -1,6 +1,7 @@
 package com.nekobot.app.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
@@ -16,6 +17,7 @@ import androidx.compose.material3.ChipElevation
 import androidx.compose.material3.FilterChip as MaterialFilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton as MaterialOutlinedButton
 import androidx.compose.material3.OutlinedTextField as MaterialOutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -31,6 +33,7 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 @Composable
 fun BorderlessOutlinedTextField(
@@ -55,7 +58,7 @@ fun BorderlessOutlinedTextField(
     maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
     minLines: Int = 1,
     interactionSource: MutableInteractionSource? = null,
-    shape: Shape = OutlinedTextFieldDefaults.shape,
+    shape: Shape = RoundedCornerShape(12.dp),
     colors: TextFieldColors = OutlinedTextFieldDefaults.colors()
 ) {
     MaterialOutlinedTextField(
@@ -82,10 +85,10 @@ fun BorderlessOutlinedTextField(
         interactionSource = interactionSource,
         shape = shape,
         colors = colors.copy(
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-            disabledIndicatorColor = Color.Transparent,
-            errorIndicatorColor = Color.Transparent
+            focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+            unfocusedIndicatorColor = MaterialTheme.colorScheme.outline,
+            disabledIndicatorColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.38f),
+            errorIndicatorColor = MaterialTheme.colorScheme.error
         )
     )
 }

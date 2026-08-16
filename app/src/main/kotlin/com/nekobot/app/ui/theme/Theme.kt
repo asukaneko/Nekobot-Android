@@ -2,6 +2,7 @@ package com.nekobot.app.ui.theme
 
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -14,6 +15,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import com.nekobot.app.ServiceContainer
 
@@ -97,6 +99,7 @@ fun NekobotTheme(
         followSystemFont = followSystemFont,
         systemFontScale = systemFontScale
     )
+    val shapes = MaterialTheme.shapes.copy(extraSmall = RoundedCornerShape(12.dp))
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -111,6 +114,7 @@ fun NekobotTheme(
     MaterialTheme(
         colorScheme = finalColorScheme,
         typography = typography,
+        shapes = shapes,
         content = content
     )
 }

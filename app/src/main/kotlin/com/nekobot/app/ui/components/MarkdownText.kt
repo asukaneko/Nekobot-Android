@@ -3,6 +3,7 @@ package com.nekobot.app.ui.components
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -12,23 +13,31 @@ import androidx.compose.foundation.background
 import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.ClickableText
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -46,6 +55,8 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.nekobot.app.R
 
 /**
@@ -55,8 +66,8 @@ import com.nekobot.app.R
  * 1. 内心独白折叠块：`（内心：...）` 转为灰色可折叠块
  * 2. 全角括号内容斜体：`（...）` 转为斜体
  * 3. 禁用删除线：`~~text~~` 不渲染为删除线（与原仓库一致）
- * 4. 代码块带语言标签和复制按钮
- * 5. 表格可横向滚动
+ * 4. 代码块和表格支持复制、全屏查看
+ * 5. 表格可横向滚动，并可复制单个单元格
  * 6. 流式渲染友好：每次 recomposition 重新解析
  *
  * 上述 1/2/3 项预处理仅在 [chatMode] = true 时生效，仅用于聊天对话气泡；
@@ -366,43 +377,73 @@ private fun RenderBlock(
 
 @Composable
 private fun CodeBlockRenderer(block: MdBlock.CodeBlock) {
-    val clipboard = LocalClipboardManager.current
-    Column(
+    var fullscreen by remember { mutableStateOf(false) }
+
+    CodeBlockContent(
+        block = block,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
+            .padding(vertical = 4.dp),
+        showToolbar = true,
+        fullscreen = false,
+        onFullscreen = { fullscreen = true }
+    )
+
+    if (fullscreen) {
+        MarkdownFullscreenDialog(
+            title = block.language.ifEmpty { stringResource(R.string.markdown_code_block) },
+            copyText = block.code,
+            onDismissRequest = { fullscreen = false }
+        ) { contentModifier ->
+            CodeBlockContent(
+                block = block,
+                modifier = contentModifier,
+                showToolbar = false,
+                fullscreen = true
+            )
+        }
+    }
+}
+
+@Composable
+private fun CodeBlockContent(
+    block: MdBlock.CodeBlock,
+    modifier: Modifier,
+    showToolbar: Boolean,
+    fullscreen: Boolean,
+    onFullscreen: (() -> Unit)? = null
+) {
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+
+    Column(
+        modifier = modifier
             .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
     ) {
-        // 语言标签 + 复制按钮
-        if (block.language.isNotEmpty() || block.code.isNotEmpty()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = block.language.ifEmpty { "code" },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f)
-                )
-                IconButton(onClick = { clipboard.setText(AnnotatedString(block.code)) }, modifier = Modifier.size(20.dp)) {
-                    Icon(Icons.Filled.ContentCopy, contentDescription = stringResource(R.string.common_copy), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
-                }
-            }
+        if (showToolbar) {
+            MarkdownBlockToolbar(
+                title = block.language.ifEmpty { stringResource(R.string.markdown_code_block) },
+                onCopy = {
+                    copyMarkdownText(context, clipboard, block.code)
+                },
+                onFullscreen = onFullscreen
+            )
         }
-        Text(
-            text = block.code,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontFamily = FontFamily.Monospace,
+        SelectionContainer(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp)
+                .then(if (fullscreen) Modifier.weight(1f).verticalScroll(rememberScrollState()) else Modifier)
                 .horizontalScroll(rememberScrollState())
-        )
+        ) {
+            Text(
+                text = block.code,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.padding(8.dp)
+            )
+        }
     }
 }
 
@@ -433,7 +474,16 @@ private fun ListRenderer(
 }
 
 @Composable
-private fun TableRenderer(block: MdBlock.Table, color: androidx.compose.ui.graphics.Color, style: androidx.compose.ui.text.TextStyle) {
+private fun TableRenderer(
+    block: MdBlock.Table,
+    color: androidx.compose.ui.graphics.Color,
+    style: androidx.compose.ui.text.TextStyle,
+    modifier: Modifier = Modifier,
+    fullscreen: Boolean = false
+) {
+    var showFullscreen by rememberSaveable { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
     val borderColor = color.copy(alpha = 0.25f)
     val headerBg = color.copy(alpha = 0.10f)
     val cellBg = color.copy(alpha = 0.03f)
@@ -476,49 +526,99 @@ private fun TableRenderer(block: MdBlock.Table, color: androidx.compose.ui.graph
         with(density) { finalPx.toDp() }
     }
 
-    Column(
-        modifier = Modifier
-            .padding(vertical = 4.dp)
+    Column(modifier = modifier.then(if (fullscreen) Modifier else Modifier.padding(vertical = 4.dp))) {
+        if (!fullscreen) {
+            MarkdownBlockToolbar(
+                title = stringResource(R.string.markdown_table),
+                onCopy = {
+                    copyMarkdownText(context, clipboard, tableToTsv(block, color, style))
+                },
+                onFullscreen = { showFullscreen = true }
+            )
+        }
+
+        val tableModifier = Modifier
+            .then(if (fullscreen) Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()) else Modifier)
             .horizontalScroll(rememberScrollState())
             .clip(RoundedCornerShape(6.dp))
             .background(cellBg)
-    ) {
-        // === 表头 ===
-        Row(
-            modifier = Modifier
-                .height(IntrinsicSize.Max)
-                .background(headerBg)
-        ) {
-            header.forEach { cell ->
-                TableCell(
-                    text = cell,
-                    color = color,
-                    style = style.copy(fontWeight = FontWeight.Bold),
-                    borderColor = borderColor,
-                    width = columnWidth
-                )
-            }
-        }
-        // === 数据行 ===
-        rows.forEach { row ->
+        Column(modifier = tableModifier) {
+            // === 表头 ===
             Row(
-                modifier = Modifier.height(IntrinsicSize.Max)
+                modifier = Modifier
+                    .height(IntrinsicSize.Max)
+                    .background(headerBg)
             ) {
-                row.forEach { cell ->
+                header.forEach { cell ->
                     TableCell(
                         text = cell,
                         color = color,
-                        style = style,
+                        style = style.copy(fontWeight = FontWeight.Bold),
                         borderColor = borderColor,
                         width = columnWidth
                     )
                 }
             }
+            // === 数据行 ===
+            rows.forEach { row ->
+                Row(
+                    modifier = Modifier.height(IntrinsicSize.Max)
+                ) {
+                    row.forEach { cell ->
+                        TableCell(
+                            text = cell,
+                            color = color,
+                            style = style,
+                            borderColor = borderColor,
+                            width = columnWidth
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (showFullscreen) {
+        MarkdownFullscreenDialog(
+            title = stringResource(R.string.markdown_table),
+            copyText = tableToTsv(block, color, style),
+            onDismissRequest = { showFullscreen = false }
+        ) { contentModifier ->
+            LandscapeTableFullscreenContent(modifier = contentModifier) {
+                TableRenderer(
+                    block = block,
+                    color = color,
+                    style = style,
+                    modifier = Modifier.fillMaxSize(),
+                    fullscreen = true
+                )
+            }
         }
     }
 }
 
-/** 表格单元格：固定宽度 width + fillMaxHeight 统一行高 + 居中文本 + 行内格式（粗体/斜体/代码） */
+/** 仅旋转表格内容区，以竖屏弹层承载横屏尺寸的表格，不改变设备方向。 */
+@Composable
+private fun LandscapeTableFullscreenContent(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    BoxWithConstraints(
+        modifier = modifier.clipToBounds(),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .requiredSize(width = maxHeight, height = maxWidth)
+                .graphicsLayer { rotationZ = 90f },
+            contentAlignment = Alignment.Center
+        ) {
+            content()
+        }
+    }
+}
+
+/** 表格单元格：点击复制，长按可使用系统文本选择菜单选取局部内容。 */
 @Composable
 private fun androidx.compose.foundation.layout.RowScope.TableCell(
     text: String,
@@ -527,19 +627,145 @@ private fun androidx.compose.foundation.layout.RowScope.TableCell(
     borderColor: androidx.compose.ui.graphics.Color,
     width: Dp
 ) {
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    val copyText = parseInline(text, color, style).text
     Box(
         modifier = Modifier
             .width(width)
             .fillMaxHeight()
             .border(0.5.dp, borderColor)
+            .clickable { copyMarkdownText(context, clipboard, copyText) }
             .padding(horizontal = 8.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {
-        MarkdownInlineText(
-            text = parseInline(text, color, style),
-            style = style.copy(textAlign = TextAlign.Center),
-            color = color
+        SelectionContainer(modifier = Modifier.fillMaxWidth()) {
+            MarkdownInlineText(
+                text = parseInline(text, color, style),
+                style = style.copy(textAlign = TextAlign.Center),
+                color = color,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Composable
+private fun MarkdownBlockToolbar(
+    title: String,
+    onCopy: () -> Unit,
+    onFullscreen: (() -> Unit)?
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+            maxLines = 1
         )
+        IconButton(onClick = onCopy, modifier = Modifier.size(24.dp)) {
+            Icon(
+                Icons.Filled.ContentCopy,
+                contentDescription = stringResource(R.string.common_copy),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(15.dp)
+            )
+        }
+        onFullscreen?.let { openFullscreen ->
+            IconButton(onClick = openFullscreen, modifier = Modifier.size(24.dp)) {
+                Icon(
+                    Icons.Filled.Fullscreen,
+                    contentDescription = stringResource(R.string.markdown_fullscreen),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MarkdownFullscreenDialog(
+    title: String,
+    copyText: String,
+    onDismissRequest: () -> Unit,
+    content: @Composable (Modifier) -> Unit
+) {
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+
+    Dialog(
+        onDismissRequest = onDismissRequest,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1
+                    )
+                    IconButton(
+                        onClick = { copyMarkdownText(context, clipboard, copyText) }
+                    ) {
+                        Icon(
+                            Icons.Filled.ContentCopy,
+                            contentDescription = stringResource(R.string.common_copy),
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                    IconButton(onClick = onDismissRequest) {
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.markdown_exit_fullscreen),
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                }
+                content(Modifier.weight(1f).fillMaxWidth())
+            }
+        }
+    }
+}
+
+private fun copyMarkdownText(context: Context, clipboard: androidx.compose.ui.platform.ClipboardManager, text: String) {
+    clipboard.setText(AnnotatedString(text))
+    Toast.makeText(context, context.getString(R.string.common_copy_success), Toast.LENGTH_SHORT).show()
+}
+
+internal fun tableToTsv(
+    block: MdBlock.Table,
+    color: androidx.compose.ui.graphics.Color,
+    style: androidx.compose.ui.text.TextStyle
+): String {
+    val columnCount = maxOf(block.header.size, block.rows.maxOfOrNull { it.size } ?: 1)
+    val rows = listOf(block.header) + block.rows
+    return rows.joinToString("\n") { row ->
+        (row + List(maxOf(0, columnCount - row.size)) { "" })
+            .take(columnCount)
+            .joinToString("\t") { cell -> parseInline(cell, color, style).text }
     }
 }
 

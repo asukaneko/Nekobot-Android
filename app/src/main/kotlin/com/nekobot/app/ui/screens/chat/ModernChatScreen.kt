@@ -20,6 +20,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border as actualBorder
 import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -910,7 +911,7 @@ private fun ModernChatComposer(
                             )
                             .clip(composerShape)
                             .background(composerGlassFill, composerShape)
-                            .border(1.dp, composerGlassBorder, composerShape)
+                            .actualBorder(1.dp, composerGlassBorder, composerShape)
                     ) {
                         Row(
                             modifier = Modifier.padding(6.dp),

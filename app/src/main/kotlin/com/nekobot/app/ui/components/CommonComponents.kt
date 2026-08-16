@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.rememberScrollState
@@ -117,7 +118,7 @@ fun GlassDropdownMenu(
         containerColor = containerColor,
         tonalElevation = 0.dp,
         shadowElevation = 10.dp,
-        border = null,
+        border = BorderStroke(1.dp, borderBrush),
         content = content
     )
 }
@@ -163,7 +164,7 @@ fun ExposedDropdownMenuBoxScope.GlassExposedDropdownMenu(
         containerColor = containerColor,
         tonalElevation = 0.dp,
         shadowElevation = 10.dp,
-        border = null,
+        border = BorderStroke(1.dp, borderBrush),
         content = content
     )
 }

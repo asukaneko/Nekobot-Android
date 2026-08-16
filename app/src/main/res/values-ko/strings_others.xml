@@ -168,4 +168,8 @@
     <string name="markdown_inner_monologue">내면 독백</string>
     <string name="markdown_collapse">접기</string>
     <string name="markdown_expand">펼치기</string>
+    <string name="markdown_code_block">코드</string>
+    <string name="markdown_table">표</string>
+    <string name="markdown_fullscreen">전체 화면으로 보기</string>
+    <string name="markdown_exit_fullscreen">전체 화면 종료</string>
 </resources>

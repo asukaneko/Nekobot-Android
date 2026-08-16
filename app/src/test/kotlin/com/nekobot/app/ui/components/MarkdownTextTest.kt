@@ -69,4 +69,16 @@ class MarkdownTextTest {
 
         assertTrue(rendered.getStringAnnotations("URL", 0, rendered.length).isEmpty())
     }
+
+    @Test
+    fun `table copy text is tab separated and strips inline markdown`() {
+        val table = parseBlocks(
+            "| Name | Value |\n| --- | --- |\n| **Neko** | `42` |"
+        ).single() as MdBlock.Table
+
+        assertEquals(
+            "Name\tValue\nNeko\t42",
+            tableToTsv(table, Color.Black, TextStyle.Default)
+        )
+    }
 }

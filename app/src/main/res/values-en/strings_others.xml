@@ -168,4 +168,8 @@
     <string name="markdown_inner_monologue">Inner monologue</string>
     <string name="markdown_collapse">Collapse</string>
     <string name="markdown_expand">Expand</string>
+    <string name="markdown_code_block">Code</string>
+    <string name="markdown_table">Table</string>
+    <string name="markdown_fullscreen">View fullscreen</string>
+    <string name="markdown_exit_fullscreen">Exit fullscreen</string>
 </resources>
