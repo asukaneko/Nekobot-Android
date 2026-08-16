@@ -41,5 +41,5 @@
     <string name="developer_update_preview_reset_title">更新通知テストをリセット</string>
     <string name="developer_update_preview_reset_subtitle">シミュレーション通知と無視状態を消去します</string>
     <string name="developer_update_preview_reset_done">更新通知テストの状態をリセットしました</string>
-    <string name="developer_update_preview_release_notes">## 更新通知のシミュレーション\n\n- このリリースは起動時の更新通知を確認するためだけのものです。\n- ダウンロード元の選択を確認できる、インストール不可のテスト APK を含みます。\n- 自動選択、ghproxy.com、GitHub 直接接続を切り替えられます。\n- ブラウザで開く場合は常に GitHub 公式の Releases ページを開きます。\n- このバージョンを通知しない場合は、開発者オプションでテスト状態をリセットできます。\n- この説明は折りたたみと展開を確認するために意図的に長くしています。</string>
+    <string name="developer_update_preview_release_notes">## 更新通知のシミュレーション\n\n- このリリースは起動時の更新通知を確認するためだけのものです。\n- ダウンロードとエラー処理を確認できる、インストール不可のテスト APK を含みます。\n- 更新確認とダウンロードには GitHub 公式サービスのみを使用します。\n- ブラウザで開く場合は常に GitHub 公式の Releases ページを開きます。\n- このバージョンを通知しない場合は、開発者オプションでテスト状態をリセットできます。\n- この説明は折りたたみと展開を確認するために意図的に長くしています。</string>
 </resources>

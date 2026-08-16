@@ -663,15 +663,15 @@ private fun StartupUpdateHost() {
             updateInfo = null
             downloadStateFlow.value = DownloadUiState.Idle
         },
-        onDownload = { asset, source ->
+        onDownload = { asset ->
             if (downloadState is DownloadUiState.Downloading) return@UpdateDetailDialog
-            downloadStateFlow.value = DownloadUiState.Downloading(0, source)
+            downloadStateFlow.value = DownloadUiState.Downloading(0)
             coroutineScope.launch {
                 when (
-                    val result = UpdateChecker.downloadApk(context, asset, source) { progress ->
+                    val result = UpdateChecker.downloadApk(context, asset) { progress ->
                         downloadStateFlow.value = when (progress) {
                             is UpdateChecker.DownloadResult.Progress -> {
-                                DownloadUiState.Downloading(progress.percent, progress.source)
+                                DownloadUiState.Downloading(progress.percent)
                             }
                             is UpdateChecker.DownloadResult.Done -> DownloadUiState.Done(progress.file)
                             is UpdateChecker.DownloadResult.Error -> DownloadUiState.Idle

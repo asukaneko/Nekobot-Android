@@ -37,7 +37,6 @@ import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.ImportExport
@@ -55,8 +54,6 @@ import androidx.compose.material.icons.filled.Settings as SettingsIcon
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -265,7 +262,7 @@ class SettingsViewModel : BaseViewModel() {
     private val _downloadState = MutableStateFlow<DownloadUiState>(DownloadUiState.Idle)
     val downloadState: StateFlow<DownloadUiState> = _downloadState.asStateFlow()
 
-    /** 检查更新：依次尝试镜像与 GitHub 回退源。 */
+    /** 检查更新：仅使用 GitHub 官方服务。 */
     fun checkForUpdate(context: android.content.Context, currentVersion: String) {
         _updateState.value = UpdateUiState.Checking
         viewModelScope.launch {
@@ -291,15 +288,14 @@ class SettingsViewModel : BaseViewModel() {
     fun downloadApk(
         context: android.content.Context,
         asset: UpdateChecker.ReleaseAsset,
-        source: UpdateChecker.DownloadSource,
         onReady: (java.io.File) -> Unit
     ) {
-        _downloadState.value = DownloadUiState.Downloading(0, source)
+        _downloadState.value = DownloadUiState.Downloading(0)
         viewModelScope.launch {
-            val res = UpdateChecker.downloadApk(context, asset, source) { progress ->
+            val res = UpdateChecker.downloadApk(context, asset) { progress ->
                 when (progress) {
                     is UpdateChecker.DownloadResult.Progress -> {
-                        _downloadState.value = DownloadUiState.Downloading(progress.percent, progress.source)
+                        _downloadState.value = DownloadUiState.Downloading(progress.percent)
                     }
                     is UpdateChecker.DownloadResult.Error -> {
                         _downloadState.value = DownloadUiState.Idle
@@ -337,7 +333,7 @@ sealed class UpdateUiState {
 /** 下载进度 UI 状态。 */
 sealed class DownloadUiState {
     data object Idle : DownloadUiState()
-    data class Downloading(val percent: Int, val source: UpdateChecker.DownloadSource) : DownloadUiState()
+    data class Downloading(val percent: Int) : DownloadUiState()
     data class Done(val file: java.io.File) : DownloadUiState()
 }
 
@@ -850,8 +846,8 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
             currentVersion = getAppVersion(context),
             downloadState = downloadState,
             onDismiss = { vm.dismissUpdateState() },
-            onDownload = { asset, source ->
-                vm.downloadApk(context, asset, source) { file ->
+            onDownload = { asset ->
+                vm.downloadApk(context, asset) { file ->
                     runCatching {
                         context.startActivity(UpdateChecker.buildInstallIntent(context, file))
                     }.onFailure {
@@ -1167,7 +1163,7 @@ fun UpdateDetailDialog(
     currentVersion: String,
     downloadState: DownloadUiState,
     onDismiss: () -> Unit,
-    onDownload: (UpdateChecker.ReleaseAsset, UpdateChecker.DownloadSource) -> Unit,
+    onDownload: (UpdateChecker.ReleaseAsset) -> Unit,
     onOpenInBrowser: () -> Unit,
     showIgnoreOption: Boolean = false,
     onIgnoreVersion: ((String) -> Unit)? = null
@@ -1175,14 +1171,6 @@ fun UpdateDetailDialog(
     val apkAsset = info.apkAsset
     val isDownloading = downloadState is DownloadUiState.Downloading
     val percent = (downloadState as? DownloadUiState.Downloading)?.percent ?: 0
-    val activeSource = (downloadState as? DownloadUiState.Downloading)?.source
-    val downloadSources = remember(apkAsset?.browserDownloadUrl) {
-        apkAsset?.let(UpdateChecker::downloadSourcesFor).orEmpty()
-    }
-    var selectedDownloadSource by remember(apkAsset?.browserDownloadUrl) {
-        mutableStateOf(downloadSources.firstOrNull() ?: UpdateChecker.DownloadSource.GITHUB_DIRECT)
-    }
-    var sourceMenuExpanded by remember { mutableStateOf(false) }
     var ignoreThisVersion by remember(info.tagName) { mutableStateOf(false) }
     val hasLongReleaseNotes = info.body.length > 500 || info.body.lineSequence().count() > 6
     var releaseNotesExpanded by remember(info.tagName, info.body) { mutableStateOf(false) }
@@ -1200,7 +1188,7 @@ fun UpdateDetailDialog(
         onConfirm = {
             if (apkAsset != null) {
                 ignoreThisVersion = false
-                onDownload(apkAsset, selectedDownloadSource)
+                onDownload(apkAsset)
             } else {
                 onOpenInBrowser()
             }
@@ -1315,47 +1303,6 @@ fun UpdateDetailDialog(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            if (downloadSources.size > 1) {
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    text = stringResource(R.string.update_download_source),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(4.dp))
-                Box {
-                    OutlinedButton(
-                        onClick = { sourceMenuExpanded = true },
-                        enabled = !isDownloading,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = downloadSourceLabel(selectedDownloadSource),
-                            modifier = Modifier.weight(1f),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Start
-                        )
-                        Icon(
-                            imageVector = Icons.Filled.ArrowDropDown,
-                            contentDescription = null
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = sourceMenuExpanded,
-                        onDismissRequest = { sourceMenuExpanded = false },
-                        modifier = Modifier.fillMaxWidth(0.82f)
-                    ) {
-                        downloadSources.forEach { source ->
-                            DropdownMenuItem(
-                                text = { Text(downloadSourceLabel(source)) },
-                                onClick = {
-                                    selectedDownloadSource = source
-                                    sourceMenuExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-            }
         }
         if (showIgnoreOption) {
             Spacer(Modifier.height(12.dp))
@@ -1389,8 +1336,7 @@ fun UpdateDetailDialog(
             Spacer(Modifier.height(4.dp))
             Text(
                 text = stringResource(
-                    R.string.update_downloading_from,
-                    downloadSourceLabel(activeSource ?: selectedDownloadSource),
+                    R.string.update_downloading,
                     percent
                 ),
                 style = MaterialTheme.typography.labelSmall,
@@ -1398,13 +1344,6 @@ fun UpdateDetailDialog(
             )
         }
     }
-}
-
-@Composable
-private fun downloadSourceLabel(source: UpdateChecker.DownloadSource): String = when (source) {
-    UpdateChecker.DownloadSource.AUTO -> stringResource(R.string.update_download_source_auto)
-    UpdateChecker.DownloadSource.GHPROXY -> stringResource(R.string.update_download_source_ghproxy)
-    UpdateChecker.DownloadSource.GITHUB_DIRECT -> stringResource(R.string.update_download_source_github)
 }
 
 /** 把 ISO 时间字符串（如 2024-05-01T12:34:56Z）格式化为可读形式。失败时原样返回。 */

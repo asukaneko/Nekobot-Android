@@ -165,11 +165,6 @@
     <string name="update_published_at">公開日時</string>
     <string name="update_download">ダウンロードしてインストール</string>
     <string name="update_downloading">ダウンロード中…%1$d%%</string>
-    <string name="update_downloading_from">%1$s からダウンロード中…%2$d%%</string>
-    <string name="update_download_source">ダウンロード元</string>
-    <string name="update_download_source_auto">自動選択（推奨）</string>
-    <string name="update_download_source_ghproxy">ghproxy.com</string>
-    <string name="update_download_source_github">GitHub に直接接続</string>
     <string name="update_download_failed">ダウンロード失敗：%1$s</string>
     <string name="update_install_failed">インストールを開始できません、ブラウザからダウンロードしてください</string>
     <string name="update_open_in_browser">ブラウザで開く</string>

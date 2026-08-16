@@ -165,11 +165,6 @@
     <string name="update_published_at">게시 시각</string>
     <string name="update_download">다운로드 및 설치</string>
     <string name="update_downloading">다운로드 중…%1$d%%</string>
-    <string name="update_downloading_from">%1$s에서 다운로드 중…%2$d%%</string>
-    <string name="update_download_source">다운로드 소스</string>
-    <string name="update_download_source_auto">자동 선택(권장)</string>
-    <string name="update_download_source_ghproxy">ghproxy.com</string>
-    <string name="update_download_source_github">GitHub 직접 연결</string>
     <string name="update_download_failed">다운로드 실패: %1$s</string>
     <string name="update_install_failed">설치를 시작할 수 없습니다, 브라우저에서 다운로드하세요</string>
     <string name="update_open_in_browser">브라우저에서 열기</string>

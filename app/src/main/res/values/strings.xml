@@ -175,11 +175,6 @@
     <string name="update_published_at">发布时间</string>
     <string name="update_download">下载并安装</string>
     <string name="update_downloading">正在下载…%1$d%%</string>
-    <string name="update_downloading_from">正在从 %1$s 下载…%2$d%%</string>
-    <string name="update_download_source">下载源</string>
-    <string name="update_download_source_auto">自动选择（推荐）</string>
-    <string name="update_download_source_ghproxy">ghproxy.com</string>
-    <string name="update_download_source_github">GitHub 直连</string>
     <string name="update_download_failed">下载失败：%1$s</string>
     <string name="update_install_failed">无法启动安装，请尝试从浏览器下载</string>
     <string name="update_open_in_browser">在浏览器中打开</string>

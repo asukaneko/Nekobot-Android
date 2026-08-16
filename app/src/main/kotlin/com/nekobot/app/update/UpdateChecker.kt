@@ -35,28 +35,7 @@ object UpdateChecker {
     private const val KEY_IGNORED_PREVIEW_VERSION = "ignored_preview_version"
     private const val STARTUP_UPDATE_PREVIEW_TAG = "v999.0.0-preview"
 
-    enum class DownloadSource {
-        AUTO,
-        GHPROXY,
-        GITHUB_DIRECT
-    }
-
-    private data class ReleaseSource(
-        val downloadSource: DownloadSource,
-        val name: String,
-        val proxyPrefix: String = ""
-    ) {
-        val isDirect: Boolean get() = proxyPrefix.isEmpty()
-
-        fun wrap(url: String): String = proxyPrefix + url
-    }
-
     /** 可访问 GitHub Releases API 与发布资产的 HTTPS 源，按优先级回退。 */
-    private val releaseSources = listOf(
-        ReleaseSource(DownloadSource.GHPROXY, "ghproxy.com", "https://ghproxy.com/"),
-        ReleaseSource(DownloadSource.GITHUB_DIRECT, "GitHub")
-    )
-
     private val metadataClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
@@ -103,7 +82,7 @@ object UpdateChecker {
 
     /** 下载结果。 */
     sealed class DownloadResult {
-        data class Progress(val percent: Int, val source: DownloadSource) : DownloadResult()
+        data class Progress(val percent: Int) : DownloadResult()
         data class Done(val file: File) : DownloadResult()
         data class Error(val message: String) : DownloadResult()
     }
@@ -116,61 +95,48 @@ object UpdateChecker {
         val prefs = context.applicationContext.getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
         val cachedJson = prefs.getString(KEY_LATEST_RELEASE_JSON, null)
         val cachedEtag = prefs.getString(KEY_GITHUB_ETAG, null)
-        val failures = mutableListOf<String>()
-
-        for (source in releaseSources) {
-            val requestBuilder = Request.Builder()
-                .url(source.wrap(LATEST_URL))
-                .header("Accept", "application/vnd.github+json")
-                .header("User-Agent", "Nekobot-Android-Updater")
-            if (source.isDirect && !cachedEtag.isNullOrBlank()) {
-                requestBuilder.header("If-None-Match", cachedEtag)
-            }
-
-            val responseResult = runCatching {
-                metadataClient.newCall(requestBuilder.build()).execute()
-            }
-            if (responseResult.isFailure) {
-                val error = responseResult.exceptionOrNull()
-                failures += "${source.name}: ${error?.message ?: "连接失败"}"
-                continue
-            }
-            val response = responseResult.getOrThrow()
-
-            var responseEtag: String? = null
-            val releaseJson = response.use { resp ->
-                responseEtag = resp.header("ETag")
-                when {
-                    resp.code == 304 && !cachedJson.isNullOrBlank() -> cachedJson
-                    resp.isSuccessful -> resp.body?.string().also {
-                        if (it.isNullOrBlank()) failures += "${source.name}: 响应为空"
-                    }
-                    else -> {
-                        failures += "${source.name}: HTTP ${resp.code}"
-                        null
-                    }
-                }
-            } ?: continue
-
-            val info = parseRelease(releaseJson)
-            if (info == null) {
-                failures += "${source.name}: 发布信息无效"
-                continue
-            }
-
-            prefs.edit().putString(KEY_LATEST_RELEASE_JSON, releaseJson).apply {
-                if (source.isDirect && !responseEtag.isNullOrBlank()) {
-                    putString(KEY_GITHUB_ETAG, responseEtag)
-                }
-            }.apply()
-            return@withContext if (isNewer(info.tagName, currentVersion)) {
-                CheckResult.Available(info)
-            } else {
-                CheckResult.UpToDate
-            }
+        val requestBuilder = Request.Builder()
+            .url(LATEST_URL)
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "Nekobot-Android-Updater")
+        if (!cachedEtag.isNullOrBlank()) {
+            requestBuilder.header("If-None-Match", cachedEtag)
         }
 
-        CheckResult.Error(failures.joinToString("；").ifBlank { "所有更新源均不可用" })
+        val responseResult = runCatching {
+            metadataClient.newCall(requestBuilder.build()).execute()
+        }
+        if (responseResult.isFailure) {
+            val error = responseResult.exceptionOrNull()
+            return@withContext CheckResult.Error(error?.message ?: "连接失败")
+        }
+
+        var responseEtag: String? = null
+        val releaseJson = responseResult.getOrThrow().use { response ->
+            responseEtag = response.header("ETag")
+            when {
+                response.code == 304 && !cachedJson.isNullOrBlank() -> cachedJson
+                response.isSuccessful -> response.body?.string()
+                else -> null
+            }
+        }
+        if (releaseJson.isNullOrBlank()) {
+            return@withContext CheckResult.Error("GitHub: HTTP 响应无效")
+        }
+
+        val info = parseRelease(releaseJson)
+            ?: return@withContext CheckResult.Error("GitHub: 发布信息无效")
+
+        prefs.edit().putString(KEY_LATEST_RELEASE_JSON, releaseJson).apply {
+            if (!responseEtag.isNullOrBlank()) {
+                putString(KEY_GITHUB_ETAG, responseEtag)
+            }
+        }.apply()
+        if (isNewer(info.tagName, currentVersion)) {
+            CheckResult.Available(info)
+        } else {
+            CheckResult.UpToDate
+        }
     }
 
     /**
@@ -179,26 +145,24 @@ object UpdateChecker {
     suspend fun downloadApk(
         context: Context,
         asset: ReleaseAsset,
-        source: DownloadSource = DownloadSource.AUTO,
         onProgress: (DownloadResult) -> Unit
     ): DownloadResult = withContext(Dispatchers.IO) {
         val dir = File(context.cacheDir, "downloads").apply { mkdirs() }
         val target = File(dir, asset.name)
         val failures = mutableListOf<String>()
-        val downloadUrls = buildDownloadUrls(asset.browserDownloadUrl, source)
+        val downloadUrls = buildDownloadUrls(asset.browserDownloadUrl)
 
         for (url in downloadUrls) {
-            val activeSource = sourceForUrl(url)
-            onProgress(DownloadResult.Progress(0, activeSource))
-            val failure = downloadFromSource(target, url, asset.size, activeSource, onProgress)
+            onProgress(DownloadResult.Progress(0))
+            val failure = downloadFromSource(target, url, asset.size, onProgress)
             if (failure == null) {
                 onProgress(DownloadResult.Done(target))
                 return@withContext DownloadResult.Done(target)
             }
-            failures += "${sourceLabel(url)}: $failure"
+            failures += "GitHub: $failure"
         }
 
-        val message = failures.joinToString("；").ifBlank { "所有下载源均不可用" }
+        val message = failures.joinToString("；").ifBlank { "GitHub 官方下载不可用" }
         onProgress(DownloadResult.Error(message))
         DownloadResult.Error(message)
     }
@@ -293,34 +257,13 @@ object UpdateChecker {
             .apply()
     }
 
-    fun downloadSourcesFor(asset: ReleaseAsset): List<DownloadSource> =
-        if (asset.browserDownloadUrl.startsWith("https://github.com/")) {
-            listOf(DownloadSource.AUTO, DownloadSource.GHPROXY, DownloadSource.GITHUB_DIRECT)
-        } else {
-            listOf(DownloadSource.GITHUB_DIRECT)
-        }
-
-    internal fun buildDownloadUrls(
-        browserDownloadUrl: String,
-        source: DownloadSource = DownloadSource.AUTO
-    ): List<String> {
-        if (!browserDownloadUrl.startsWith("https://github.com/")) {
-            return listOf(browserDownloadUrl)
-        }
-        return when (source) {
-            DownloadSource.AUTO -> releaseSources.map { it.wrap(browserDownloadUrl) }.distinct()
-            DownloadSource.GHPROXY -> listOf(
-                releaseSources.first { it.downloadSource == DownloadSource.GHPROXY }.wrap(browserDownloadUrl)
-            )
-            DownloadSource.GITHUB_DIRECT -> listOf(browserDownloadUrl)
-        }
-    }
+    internal fun buildDownloadUrls(browserDownloadUrl: String): List<String> =
+        listOf(browserDownloadUrl)
 
     private fun downloadFromSource(
         target: File,
         url: String,
         expectedSize: Long,
-        source: DownloadSource,
         onProgress: (DownloadResult) -> Unit
     ): String? {
         target.delete()
@@ -350,7 +293,7 @@ object UpdateChecker {
                                 val percent = (downloaded * 100 / expectedSize).toInt().coerceIn(0, 100)
                                 if (percent != lastReport) {
                                     lastReport = percent
-                                    onProgress(DownloadResult.Progress(percent, source))
+                                    onProgress(DownloadResult.Progress(percent))
                                 }
                             }
                         }
@@ -372,13 +315,6 @@ object UpdateChecker {
     private fun isValidApk(file: File): Boolean = runCatching {
         ZipFile(file).use { zip -> zip.getEntry("AndroidManifest.xml") != null }
     }.getOrDefault(false)
-
-    private fun sourceLabel(url: String): String = Uri.parse(url).host ?: url
-
-    private fun sourceForUrl(url: String): DownloadSource = when {
-        url.startsWith("https://ghproxy.com/") -> DownloadSource.GHPROXY
-        else -> DownloadSource.GITHUB_DIRECT
-    }
 
     /** 解析 GitHub release JSON 为 ReleaseInfo。 */
     private fun parseRelease(json: String): ReleaseInfo? = runCatching {
