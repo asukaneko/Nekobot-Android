@@ -172,6 +172,8 @@
     <string name="update_view_releases">View Releases page</string>
     <string name="settings_recent_sessions_include_archived">Show archived chats in Recent chats</string>
     <string name="settings_recent_sessions_include_archived_desc">When enabled, archived chats also appear in the Recent chats list on the home screen</string>
+    <string name="settings_open_latest_session_on_launch">Open latest chat on launch</string>
+    <string name="settings_open_latest_session_on_launch_desc">Automatically open the most recently updated chat when the app starts</string>
     <string name="settings_data_portability">Data export center</string>
     <string name="settings_data_portability_desc">Batch export, preview, and selectively import categories</string>
     <string name="portability_title">Data Export Center</string>

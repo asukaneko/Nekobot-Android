@@ -192,6 +192,19 @@ class PrefsManager(context: Context) {
             prefs.edit().putBoolean(KEY_RECENT_SESSIONS_INCLUDE_ARCHIVED, value).apply()
         }
 
+    private val _openLatestSessionOnLaunch = MutableStateFlow(
+        prefs.getBoolean(KEY_OPEN_LATEST_SESSION_ON_LAUNCH, false)
+    )
+    val openLatestSessionOnLaunchFlow: StateFlow<Boolean> =
+        _openLatestSessionOnLaunch.asStateFlow()
+
+    var openLatestSessionOnLaunch: Boolean
+        get() = _openLatestSessionOnLaunch.value
+        set(value) {
+            _openLatestSessionOnLaunch.value = value
+            prefs.edit().putBoolean(KEY_OPEN_LATEST_SESSION_ON_LAUNCH, value).apply()
+        }
+
     /** 根据费用、延迟、上下文和任务复杂度动态调整本地聊天模型顺序。 */
     var smartRoutingEnabled: Boolean
         get() = prefs.getBoolean(KEY_SMART_ROUTING_ENABLED, true)
@@ -666,6 +679,7 @@ class PrefsManager(context: Context) {
         private const val KEY_CHAT_INPUT_LAYOUT = "chat_input_layout"
         private const val KEY_LIVE_PIPELINE_MODE = "live_pipeline_mode"
         private const val KEY_RECENT_SESSIONS_INCLUDE_ARCHIVED = "recent_sessions_include_archived"
+        private const val KEY_OPEN_LATEST_SESSION_ON_LAUNCH = "open_latest_session_on_launch"
         private const val KEY_SMART_ROUTING_ENABLED = "smart_routing_enabled"
         private const val KEY_SMART_ROUTING_DAILY_BUDGET = "smart_routing_daily_budget"
         private const val KEY_SMART_ROUTING_BUDGET_ALERT = "smart_routing_budget_alert"

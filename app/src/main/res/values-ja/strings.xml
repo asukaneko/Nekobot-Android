@@ -172,6 +172,8 @@
     <string name="update_view_releases">Releases ページを見る</string>
     <string name="settings_recent_sessions_include_archived">最近のチャットにアーカイブ済みを表示</string>
     <string name="settings_recent_sessions_include_archived_desc">有効にすると、アーカイブ済みのチャットもホーム画面の最近のチャット一覧に表示します</string>
+    <string name="settings_open_latest_session_on_launch">起動時に最新のチャットを開く</string>
+    <string name="settings_open_latest_session_on_launch_desc">アプリ起動後、最後に更新されたチャットを自動的に開きます</string>
     <string name="settings_data_portability">データエクスポートセンター</string>
     <string name="settings_data_portability_desc">カテゴリ別に一括エクスポート・選択インポート</string>
     <string name="portability_title">データエクスポートセンター</string>

@@ -172,6 +172,8 @@
     <string name="update_view_releases">Releases 페이지 보기</string>
     <string name="settings_recent_sessions_include_archived">최근 대화에 보관된 대화 표시</string>
     <string name="settings_recent_sessions_include_archived_desc">켜면 보관된 대화도 홈 화면의 최근 대화 목록에 표시됩니다</string>
+    <string name="settings_open_latest_session_on_launch">앱을 열 때 최신 대화로 이동</string>
+    <string name="settings_open_latest_session_on_launch_desc">앱을 시작하면 가장 최근에 업데이트된 대화를 자동으로 엽니다</string>
     <string name="settings_data_portability">데이터 내보내기 센터</string>
     <string name="settings_data_portability_desc">카테고리별 일괄 내보내기 및 선택 가져오기</string>
     <string name="portability_title">데이터 내보내기 센터</string>

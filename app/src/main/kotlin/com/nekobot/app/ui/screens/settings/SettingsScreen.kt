@@ -348,6 +348,7 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
     val serverUrl by vm.serverUrl.collectAsStateWithLifecycle()
     val appMode by vm.appMode.collectAsStateWithLifecycle()
     val recentSessionsIncludeArchived by ServiceContainer.prefs.recentSessionsIncludeArchivedFlow.collectAsStateWithLifecycle()
+    val openLatestSessionOnLaunch by ServiceContainer.prefs.openLatestSessionOnLaunchFlow.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val toast by vm.toast.collectAsStateWithLifecycle()
@@ -634,6 +635,16 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                                 ServiceContainer.prefs.recentSessionsIncludeArchived = enabled
                             }
                         )
+                        SettingSwitchRow(
+                            icon = Icons.Filled.Tune,
+                            iconColor = MaterialTheme.colorScheme.primary,
+                            title = stringResource(R.string.settings_open_latest_session_on_launch),
+                            subtitle = stringResource(R.string.settings_open_latest_session_on_launch_desc),
+                            checked = openLatestSessionOnLaunch,
+                            onCheckedChange = { enabled ->
+                                ServiceContainer.prefs.openLatestSessionOnLaunch = enabled
+                            }
+                        )
                         SettingNavRow(
                             icon = Icons.Filled.Tune,
                             iconColor = MaterialTheme.colorScheme.primary,
@@ -687,6 +698,16 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                             checked = recentSessionsIncludeArchived,
                             onCheckedChange = { enabled ->
                                 ServiceContainer.prefs.recentSessionsIncludeArchived = enabled
+                            }
+                        )
+                        SettingSwitchRow(
+                            icon = Icons.Filled.Tune,
+                            iconColor = MaterialTheme.colorScheme.primary,
+                            title = stringResource(R.string.settings_open_latest_session_on_launch),
+                            subtitle = stringResource(R.string.settings_open_latest_session_on_launch_desc),
+                            checked = openLatestSessionOnLaunch,
+                            onCheckedChange = { enabled ->
+                                ServiceContainer.prefs.openLatestSessionOnLaunch = enabled
                             }
                         )
                         SettingNavRow(

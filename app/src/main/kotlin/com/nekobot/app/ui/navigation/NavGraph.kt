@@ -38,6 +38,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.AppMode
+import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.screens.aiconfig.AiConfigCenterScreen
 import com.nekobot.app.ui.screens.aiconfig.AiConfigScreen
 import com.nekobot.app.ui.screens.aiconfig.AiModelsScreen
@@ -179,6 +180,31 @@ fun NekobotNavGraph() {
         mainPagerState.scrollToPage(0)
         if (currentRoute != Routes.SESSIONS) {
             navController.navigate(Routes.SESSIONS) {
+                launchSingleTop = true
+            }
+        }
+    }
+
+    var shouldOpenLatestSession by remember {
+        mutableStateOf(ServiceContainer.prefs.openLatestSessionOnLaunch)
+    }
+    LaunchedEffect(isQuickSetupCompleted, isLoggedIn, pendingSessionId, pendingShare?.id) {
+        if (!shouldOpenLatestSession || !isQuickSetupCompleted || !isLoggedIn) return@LaunchedEffect
+        if (pendingSessionId != null || pendingShare != null) {
+            shouldOpenLatestSession = false
+            return@LaunchedEffect
+        }
+        shouldOpenLatestSession = false
+        val sessionId = runCatching {
+            when (val result = ServiceContainer.unified.listSessions()) {
+                is Resource.Success -> result.data
+                    .maxByOrNull { it.updatedAt ?: it.createdAt.orEmpty() }
+                    ?.id
+                else -> null
+            }
+        }.getOrNull()
+        sessionId?.let { id ->
+            navController.navigate(Routes.chat(id)) {
                 launchSingleTop = true
             }
         }
