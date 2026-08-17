@@ -204,7 +204,7 @@ class AutoState(
             return emptyMap()
         }
 
-        com.nekobot.app.data.local.LocalLogger.i(TAG, "callStateModel: LLM 返回内容长度=${result.content.length} | 前100字符=${result.content.take(100)}")
+        com.nekobot.app.data.local.LocalLogger.i(TAG, "callStateModel: LLM 返回内容长度=${result.content.length}")
         val parsed = parseStateResponse(result.content)
         if (parsed.isEmpty()) {
             com.nekobot.app.data.local.LocalLogger.w(TAG, "callStateModel: JSON 解析失败，返回空 Map")

@@ -137,7 +137,7 @@ class AutoMemory(
         val memories = try {
             callMemoryModel(turns, characterName, targetId, userPersona, characterId, sessionId)
         } catch (e: Exception) {
-            LocalLogger.w(TAG, "记忆抽取失败: ${e.message}", e)
+            LocalLogger.w(TAG, "记忆抽取失败", e)
             // 失败回滚：放回缓冲区，计数器重置为间隔值（下一轮重试）
             turnBuffers[counterKey] = turns.toMutableList()
             turnCounters[counterKey] = MEMORY_TURN_INTERVAL
@@ -157,10 +157,10 @@ class AutoMemory(
         // 保存结构化记忆（按 category 分发到不同 path，区分 append/replace，同步派生 timeline）
         try {
             val savedCount = saveMemoriesByCategory(memories, characterId, targetId, sessionId)
-            LocalLogger.i(TAG, "抽取并保存 $savedCount 条记忆 (key=$counterKey) categories=${memories.map { it["category"] }}")
+            LocalLogger.i(TAG, "抽取并保存 $savedCount 条记忆 (key=$counterKey)")
             return savedCount
         } catch (e: Exception) {
-            LocalLogger.w(TAG, "记忆落盘失败: ${e.message}", e)
+            LocalLogger.w(TAG, "记忆落盘失败", e)
             // 落盘失败：放回缓冲区下一轮重试
             turnBuffers[counterKey] = turns.toMutableList()
             turnCounters[counterKey] = MEMORY_TURN_INTERVAL
@@ -380,7 +380,6 @@ class AutoMemory(
         LocalLogger.i(TAG, "调用记忆抽取 LLM: turns=${turns.size} existing=${existingMemories.size}")
 
         // 3 次重试
-        var lastError: String? = null
         repeat(MAX_LLM_RETRIES) { attempt ->
             try {
                 val execution = failoverExecutor?.execute(messages)
@@ -395,12 +394,10 @@ class AutoMemory(
                     )
                 }
                 if (result.error != null) {
-                    lastError = "LLM 错误: ${result.error}"
-                    LocalLogger.w(TAG, "记忆抽取 LLM 第 ${attempt + 1}/$MAX_LLM_RETRIES 次失败: ${result.error}")
+                    LocalLogger.w(TAG, "记忆抽取 LLM 第 ${attempt + 1}/$MAX_LLM_RETRIES 次失败")
                     return@repeat
                 }
                 if (result.content.isBlank()) {
-                    lastError = "LLM 返回空内容"
                     LocalLogger.w(TAG, "记忆抽取 LLM 第 ${attempt + 1}/$MAX_LLM_RETRIES 次返回空内容")
                     return@repeat
                 }
@@ -408,17 +405,15 @@ class AutoMemory(
                 LocalLogger.i(TAG, "记忆抽取 LLM 第 ${attempt + 1}/$MAX_LLM_RETRIES 次成功，返回 ${result.content.length} 字符，开始解析")
                 val parsed = parseMemoryResponse(result.content)
                 if (parsed.isEmpty()) {
-                    lastError = "解析后为空"
                     LocalLogger.w(TAG, "记忆抽取 LLM 第 ${attempt + 1}/$MAX_LLM_RETRIES 次解析失败，将重试")
                     return@repeat
                 }
                 return parsed
             } catch (e: Exception) {
-                lastError = "异常: ${e.message}"
-                LocalLogger.w(TAG, "记忆抽取 LLM 第 ${attempt + 1}/$MAX_LLM_RETRIES 次异常: ${e.message}", e)
+                LocalLogger.w(TAG, "记忆抽取 LLM 第 ${attempt + 1}/$MAX_LLM_RETRIES 次异常", e)
             }
         }
-        LocalLogger.w(TAG, "记忆抽取 LLM $MAX_LLM_RETRIES 次重试均失败: $lastError")
+        LocalLogger.w(TAG, "记忆抽取 LLM $MAX_LLM_RETRIES 次重试均失败")
         return emptyList()
     }
 
@@ -446,7 +441,7 @@ class AutoMemory(
                 }
             }
         } catch (e: Exception) {
-            LocalLogger.w(TAG, "读取已有记忆失败（不影响主流程）: ${e.message}")
+            LocalLogger.w(TAG, "读取已有记忆失败（不影响主流程）")
         }
         return result
     }
@@ -538,7 +533,7 @@ action 决策规则：
     fun parseMemoryResponse(text: String): List<Map<String, Any>> {
         val cleaned = cleanResponseContent(text)
         if (cleaned.isEmpty()) {
-            LocalLogger.w(TAG, "记忆抽取解析：cleanResponseContent 后为空，原始文本前 200 字符: ${text.take(200)}")
+            LocalLogger.w(TAG, "记忆抽取解析：cleanResponseContent 后为空（原始长度=${text.length}）")
             return emptyList()
         }
 
@@ -561,7 +556,7 @@ action 决策规则：
             // 正则提取数组
             val match = Regex("""\[[\s\S]*\]""").find(cleaned)
             if (match == null) {
-                LocalLogger.w(TAG, "记忆抽取解析：无法识别为 JSON 数组/对象，也未匹配到 [...]，原始文本前 200 字符: ${text.take(200)}")
+                LocalLogger.w(TAG, "记忆抽取解析：无法识别为 JSON 数组或对象（原始长度=${text.length}）")
                 return emptyList()
             }
             match.value
@@ -571,16 +566,16 @@ action 决策规则：
             val type = object : TypeToken<List<Map<String, Any>>>() {}.type
             @Suppress("UNCHECKED_CAST")
             val list = gson.fromJson<List<Map<String, Any>>>(arrayStr, type) ?: run {
-                LocalLogger.w(TAG, "记忆抽取解析：Gson 返回 null，arrayStr 前 200 字符: ${arrayStr.take(200)}")
+                LocalLogger.w(TAG, "记忆抽取解析：Gson 返回 null（候选 JSON 长度=${arrayStr.length}）")
                 return emptyList()
             }
             val normalized = list.mapNotNull { item -> normalizeMemoryItem(item) }
             if (normalized.isEmpty() && list.isNotEmpty()) {
-                LocalLogger.w(TAG, "记忆抽取解析：LLM 返回 ${list.size} 条但归一化后全部被丢弃，原始 category 列表: ${list.map { it["category"] ?: it["kind"] }}")
+                LocalLogger.w(TAG, "记忆抽取解析：LLM 返回 ${list.size} 条但归一化后全部被丢弃")
             }
             normalized.take(8)
         } catch (e: Exception) {
-            LocalLogger.w(TAG, "记忆抽取解析 JSON 失败: ${e.message}，arrayStr 前 200 字符: ${arrayStr.take(200)}", e)
+            LocalLogger.w(TAG, "记忆抽取解析 JSON 失败（候选 JSON 长度=${arrayStr.length}）", e)
             emptyList()
         }
     }
@@ -591,7 +586,7 @@ action 决策规则：
             .trim().lowercase().replace("-", "_").replace(" ", "_")
         val aliased = MEMORY_CATEGORY_ALIASES[category] ?: category
         if (aliased !in STRUCTURED_CATEGORIES) {
-            LocalLogger.w(TAG, "记忆条目被丢弃：category='$category' 不在 STRUCTURED_CATEGORIES，title=${item["title"]}")
+            LocalLogger.w(TAG, "记忆条目被丢弃：分类不在允许范围")
             return null
         }
 
@@ -602,7 +597,7 @@ action 决策规则：
         if (title.isEmpty()) title = summary.take(30)
         if (content.isEmpty()) content = summary
         if (title.isEmpty() || content.isEmpty()) {
-            LocalLogger.w(TAG, "记忆条目被丢弃：title 或 content 为空 (category=$aliased title='$title' contentLen=${content.length})")
+            LocalLogger.w(TAG, "记忆条目被丢弃：标题或内容为空（内容长度=${content.length}）")
             return null
         }
 

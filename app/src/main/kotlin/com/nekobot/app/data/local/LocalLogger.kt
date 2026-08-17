@@ -3,45 +3,47 @@ package com.nekobot.app.data.local
 import android.content.Context
 import android.util.Log
 import com.google.gson.Gson
-import com.google.gson.JsonObject
-import com.google.gson.JsonParser
+import com.google.gson.reflect.TypeToken
+import com.nekobot.app.data.local.security.SecurePreferenceStore
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /**
- * 本地模式运行日志记录器。
+ * 本地模式诊断日志。
  *
- * 将关键流程（AIPipeline / CharacterRuntime / LocalRepository 等）的日志
- * 持久化到 SharedPreferences，供应用内日志查看界面展示。
- * 同时输出到 Logcat，保持与原有 android.util.Log 行为一致。
- *
- * 存储：SharedPreferences("local_logs")，key="records"，JSON 数组，上限 2000 条。
+ * 记录先保留在内存环形缓存，再批量写入 Android Keystore 加密的偏好文件。
+ * 日志不能作为聊天、模型输出或凭据的副本，因此写入前会截断并脱敏。
  */
 object LocalLogger {
 
     private const val PREF_NAME = "local_logs"
     private const val KEY_RECORDS = "records"
-    private const val MAX_RECORDS = 2000
+    private const val MAX_RECORDS = 500
+    private const val MAX_MESSAGE_CHARS = 1_000
+    private const val PERSIST_DELAY_MS = 750L
 
     private val gson = Gson()
     private val lock = ReentrantLock()
     private val timeFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    private val persistenceExecutor = Executors.newSingleThreadScheduledExecutor { runnable ->
+        Thread(runnable, "NekobotLocalLogger").apply { isDaemon = true }
+    }
+    private val records = ArrayDeque<Record>()
 
-    private var prefs: android.content.SharedPreferences? = null
+    private var legacyPrefs: android.content.SharedPreferences? = null
+    private var securePrefs: SecurePreferenceStore? = null
+    private var persistScheduled = false
 
-    /** 日志等级 */
     const val LEVEL_DEBUG = "debug"
     const val LEVEL_INFO = "info"
     const val LEVEL_WARNING = "warning"
     const val LEVEL_ERROR = "error"
-
-    /** 初始化（在 ServiceContainer.init 中调用） */
-    fun init(context: Context) {
-        prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-    }
 
     data class Record(
         val time: String,
@@ -51,99 +53,110 @@ object LocalLogger {
         val message: String
     )
 
-    fun d(tag: String, msg: String) {
-        writeToLog { Log.d(tag, msg) }
-        append(LEVEL_DEBUG, tag, msg)
-    }
-
-    fun i(tag: String, msg: String) {
-        writeToLog { Log.i(tag, msg) }
-        append(LEVEL_INFO, tag, msg)
-    }
-
-    fun w(tag: String, msg: String, throwable: Throwable? = null) {
-        writeToLog {
-            if (throwable != null) Log.w(tag, msg, throwable) else Log.w(tag, msg)
+    fun init(context: Context) {
+        lock.withLock {
+            val appContext = context.applicationContext
+            legacyPrefs = runCatching {
+                appContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            }.getOrNull()
+            // 日志是诊断能力，Keystore 或历史数据异常时不能阻断应用启动。
+            securePrefs = runCatching { SecurePreferenceStore(appContext) }.getOrNull()
+            records.clear()
+            val raw = runCatching {
+                securePrefs?.getString(KEY_RECORDS, legacyPrefs)
+                    ?: legacyPrefs?.getString(KEY_RECORDS, null)
+            }.getOrNull().orEmpty()
+            val type = object : TypeToken<List<Record>>() {}.type
+            val restored = runCatching {
+                gson.fromJson<List<Record>>(raw, type).orEmpty()
+            }.getOrDefault(emptyList())
+            restored.takeLast(MAX_RECORDS).forEach(records::addLast)
         }
-        val full = if (throwable != null) "$msg | ${throwable.javaClass.simpleName}: ${throwable.message}" else msg
-        append(LEVEL_WARNING, tag, full)
     }
 
-    fun e(tag: String, msg: String, throwable: Throwable? = null) {
+    fun d(tag: String, msg: String) = log(LEVEL_DEBUG, tag, msg)
+
+    fun i(tag: String, msg: String) = log(LEVEL_INFO, tag, msg)
+
+    fun w(tag: String, msg: String, throwable: Throwable? = null) =
+        log(LEVEL_WARNING, tag, exceptionMessage(msg, throwable))
+
+    fun e(tag: String, msg: String, throwable: Throwable? = null) =
+        log(LEVEL_ERROR, tag, exceptionMessage(msg, throwable))
+
+    private fun log(level: String, tag: String, rawMessage: String) {
+        val message = redactForLocalLog(rawMessage)
         writeToLog {
-            if (throwable != null) Log.e(tag, msg, throwable) else Log.e(tag, msg)
+            when (level) {
+                LEVEL_DEBUG -> Log.d(tag, message)
+                LEVEL_INFO -> Log.i(tag, message)
+                LEVEL_WARNING -> Log.w(tag, message)
+                else -> Log.e(tag, message)
+            }
         }
-        val full = if (throwable != null) "$msg | ${throwable.javaClass.simpleName}: ${throwable.message}" else msg
-        append(LEVEL_ERROR, tag, full)
+        append(level, tag, message)
     }
 
-    /** JVM 单测没有 Android Log 实现，日志输出失败不能中断业务流程。 */
+    private fun exceptionMessage(message: String, throwable: Throwable?): String =
+        if (throwable == null) message
+        else "$message | ${throwable.javaClass.simpleName}: ${throwable.message.orEmpty()}"
+
     private inline fun writeToLog(block: () -> Int) {
-        try {
-            block()
-        } catch (_: RuntimeException) {
-            // Android 运行时始终可用；这里只为纯 JVM 测试环境降级。
-        }
+        runCatching(block)
     }
 
     private fun append(level: String, tag: String, message: String) {
-        val sp = prefs ?: return
         val now = Date()
-        val record = JsonObject().apply {
-            addProperty("time", timeFormat.format(now))
-            addProperty("date", dateFormat.format(now))
-            addProperty("level", level)
-            addProperty("tag", tag)
-            addProperty("message", message)
-        }
-        lock.lock()
-        try {
-            val existing = sp.getString(KEY_RECORDS, "[]") ?: "[]"
-            val arr = try {
-                JsonParser.parseString(existing).asJsonArray
-            } catch (_: Exception) {
-                com.google.gson.JsonArray()
-            }
-            arr.add(record)
-            while (arr.size() > MAX_RECORDS) arr.remove(0)
-            sp.edit().putString(KEY_RECORDS, arr.toString()).apply()
-        } catch (_: Exception) {
-            // 日志记录失败不应影响主流程
-        } finally {
-            lock.unlock()
-        }
-    }
-
-    /** 读取全部日志记录（按时间倒序，最新在前） */
-    fun listLogs(): List<Record> {
-        val sp = prefs ?: return emptyList()
-        val raw = sp.getString(KEY_RECORDS, "[]") ?: "[]"
-        return try {
-            val arr = JsonParser.parseString(raw).asJsonArray
-            arr.mapNotNull { el ->
-                if (!el.isJsonObject) return@mapNotNull null
-                val obj = el.asJsonObject
+        lock.withLock {
+            records.addLast(
                 Record(
-                    time = obj.get("time")?.asString ?: "",
-                    date = obj.get("date")?.asString ?: "",
-                    level = obj.get("level")?.asString ?: "info",
-                    tag = obj.get("tag")?.asString ?: "",
-                    message = obj.get("message")?.asString ?: ""
+                    time = timeFormat.format(now),
+                    date = dateFormat.format(now),
+                    level = level,
+                    tag = tag,
+                    message = message
                 )
-            }.reversed()  // 最新在前
-        } catch (_: Exception) {
-            emptyList()
+            )
+            while (records.size > MAX_RECORDS) records.removeFirst()
+            schedulePersistLocked()
         }
     }
 
-    /** 清空全部日志 */
+    private fun schedulePersistLocked() {
+        if (persistScheduled || securePrefs == null) return
+        persistScheduled = true
+        persistenceExecutor.schedule({
+            val snapshot = lock.withLock {
+                persistScheduled = false
+                gson.toJson(records.toList())
+            }
+            runCatching { securePrefs?.putString(KEY_RECORDS, snapshot) }
+        }, PERSIST_DELAY_MS, TimeUnit.MILLISECONDS)
+    }
+
+    fun listLogs(): List<Record> = lock.withLock { records.toList().asReversed() }
+
     fun clear() {
-        val sp = prefs ?: return
-        lock.lock()
-        try {
-            sp.edit().remove(KEY_RECORDS).apply()
-        } finally {
-            lock.unlock()
+        val preferences = lock.withLock {
+            records.clear()
+            securePrefs to legacyPrefs
         }
+        runCatching { preferences.first?.remove(KEY_RECORDS, preferences.second) }
+    }
+}
+
+/** 供日志系统和 JVM 单元测试复用的保守脱敏规则。 */
+internal fun redactForLocalLog(message: String): String {
+    val withoutCredentials = message
+        .replace(
+            Regex("(?i)(authorization|x-auth-token|api[_-]?key|password|token|secret)\\s*[:=]\\s*(?:bearer\\s+)?[^\\s,;]+"),
+            "\$1=<redacted>"
+        )
+        .replace(Regex("(?i)bearer\\s+[a-z0-9._~+/=-]+"), "Bearer <redacted>")
+        .replace(Regex("(?i)(https?://[^\\s?#]+)\\?[^\\s]+"), "\$1?<redacted>")
+    return if (withoutCredentials.length > 1_000) {
+        withoutCredentials.take(1_000) + "...<truncated>"
+    } else {
+        withoutCredentials
     }
 }

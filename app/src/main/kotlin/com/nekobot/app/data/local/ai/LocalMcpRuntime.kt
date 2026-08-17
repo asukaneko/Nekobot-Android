@@ -544,7 +544,7 @@ private class StdioMcpTransportSession(
             runCatching {
                 while (!closed) {
                     val line = stderr.readLine() ?: break
-                    LocalLogger.d("LocalMcpStdio", line)
+                    android.util.Log.d("LocalMcpStdio", "MCP stderr emitted (${line.length} characters)")
                 }
             }
         }
