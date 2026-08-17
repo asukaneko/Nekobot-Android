@@ -7,56 +7,56 @@ class NormalizeServerUrlTest {
 
     @Test
     fun wraps_bare_ipv6_loopback_with_port() {
-        assertEquals("http://[::1]:5000", PrefsManager.normalizeServerUrl("http://::1:5000"))
+        assertEquals("https://[::1]:5000", PrefsManager.normalizeServerUrl("http://::1:5000"))
     }
 
     @Test
     fun wraps_bare_ipv6_full_address_with_port() {
         assertEquals(
-            "http://[2001:db8::1]:5000",
+            "https://[2001:db8::1]:5000",
             PrefsManager.normalizeServerUrl("http://2001:db8::1:5000")
         )
     }
 
     @Test
     fun keeps_already_bracketed_ipv6() {
-        assertEquals("http://[::1]:5000", PrefsManager.normalizeServerUrl("http://[::1]:5000"))
+        assertEquals("https://[::1]:5000", PrefsManager.normalizeServerUrl("http://[::1]:5000"))
         assertEquals(
-            "http://[2001:db8::1]:5000",
+            "https://[2001:db8::1]:5000",
             PrefsManager.normalizeServerUrl("http://[2001:db8::1]:5000")
         )
     }
 
     @Test
     fun wraps_bare_ipv6_without_port() {
-        assertEquals("http://[::1]", PrefsManager.normalizeServerUrl("http://::1"))
+        assertEquals("https://[::1]", PrefsManager.normalizeServerUrl("http://::1"))
         assertEquals(
-            "http://[2001:db8::1]",
+            "https://[2001:db8::1]",
             PrefsManager.normalizeServerUrl("http://2001:db8::1")
         )
     }
 
     @Test
-    fun leaves_ipv4_untouched() {
-        assertEquals("http://192.168.1.1:5000", PrefsManager.normalizeServerUrl("http://192.168.1.1:5000"))
-        assertEquals("http://10.0.0.1", PrefsManager.normalizeServerUrl("http://10.0.0.1"))
+    fun upgrades_insecure_ipv4_to_https() {
+        assertEquals("https://192.168.1.1:5000", PrefsManager.normalizeServerUrl("http://192.168.1.1:5000"))
+        assertEquals("https://10.0.0.1", PrefsManager.normalizeServerUrl("http://10.0.0.1"))
     }
 
     @Test
-    fun leaves_hostname_untouched() {
-        assertEquals("http://example.com:5000", PrefsManager.normalizeServerUrl("http://example.com:5000"))
+    fun upgrades_insecure_hostname_to_https() {
+        assertEquals("https://example.com:5000", PrefsManager.normalizeServerUrl("http://example.com:5000"))
         assertEquals("https://nekobot.app", PrefsManager.normalizeServerUrl("https://nekobot.app"))
     }
 
     @Test
     fun strips_trailing_slash() {
-        assertEquals("http://[::1]:5000", PrefsManager.normalizeServerUrl("http://::1:5000/"))
-        assertEquals("http://example.com", PrefsManager.normalizeServerUrl("http://example.com/"))
+        assertEquals("https://[::1]:5000", PrefsManager.normalizeServerUrl("http://::1:5000/"))
+        assertEquals("https://example.com", PrefsManager.normalizeServerUrl("http://example.com/"))
     }
 
     @Test
     fun trims_whitespace() {
-        assertEquals("http://[::1]:5000", PrefsManager.normalizeServerUrl("  http://::1:5000  "))
+        assertEquals("https://[::1]:5000", PrefsManager.normalizeServerUrl("  http://::1:5000  "))
     }
 
     @Test
@@ -67,7 +67,7 @@ class NormalizeServerUrlTest {
     @Test
     fun preserves_path_after_authority() {
         assertEquals(
-            "http://[::1]:5000/api",
+            "https://[::1]:5000/api",
             PrefsManager.normalizeServerUrl("http://::1:5000/api")
         )
     }

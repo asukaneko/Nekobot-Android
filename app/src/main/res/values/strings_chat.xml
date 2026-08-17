@@ -457,14 +457,14 @@
     <string name="chat_exec_confirm_title">命令执行授权</string>
     <string name="chat_exec_confirm_description">AI 请求执行以下命令。该命令不在安全白名单中，请确认你信任此操作。</string>
     <string name="chat_exec_confirm_allow">允许执行</string>
-    <string name="chat_exec_confirm_always_allow">本会话始终允许 %1$s</string>
+    <string name="chat_exec_confirm_always_allow">本会话始终允许这一条命令（%1$s）</string>
     <string name="chat_exec_confirm_this_command">该主命令</string>
     <string name="chat_exec_confirm_reject">拒绝</string>
     <string name="chat_exec_confirm_unknown_command">未知命令</string>
     <string name="chat_exec_confirm_request_id">请求 ID：%1$s</string>
     <string name="chat_exec_confirm_socket_disconnected">Socket 未连接，无法提交授权结果</string>
     <string name="chat_exec_confirm_approved">已授权，正在执行命令…</string>
-    <string name="chat_exec_confirm_always_approved">已设为本会话始终允许，正在执行命令…</string>
+    <string name="chat_exec_confirm_always_approved">已设为本会话始终允许这一条命令，正在执行…</string>
     <string name="chat_exec_confirm_rejected">已拒绝执行命令</string>
 
     <!-- ==================== Hook 触发通知（成就式弹窗） ==================== -->

@@ -371,4 +371,12 @@
     <string name="localai_filter_all">すべて</string>
     <string name="localai_filter_empty">この機能のモデルはありません</string>
     <string name="localai_filter_show_all">すべてのモデルを表示</string>
+    <string name="aimodel_editor_provider_doubao">Doubao Seed</string>
+    <string name="aimodel_editor_tts_provider_gemini">Gemini ネイティブ TTS</string>
+    <string name="aimodel_editor_tts_provider_glm">GLM-TTS</string>
+    <string name="aimodel_editor_tts_provider_minimax">MiniMax TTS</string>
+    <string name="aimodel_editor_tts_provider_qwen">Qwen TTS</string>
+    <string name="aimodel_editor_stt_provider_gemini">Gemini ネイティブ音声認識</string>
+    <string name="aimodel_editor_stt_provider_glm">GLM-ASR</string>
+    <string name="aimodel_editor_stt_provider_qwen">Qwen ASR</string>
 </resources>

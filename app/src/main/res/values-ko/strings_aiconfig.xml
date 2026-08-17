@@ -371,4 +371,12 @@
     <string name="localai_filter_all">전체</string>
     <string name="localai_filter_empty">이 기능의 모델이 없습니다</string>
     <string name="localai_filter_show_all">모든 모델 보기</string>
+    <string name="aimodel_editor_provider_doubao">Doubao Seed</string>
+    <string name="aimodel_editor_tts_provider_gemini">Gemini 네이티브 TTS</string>
+    <string name="aimodel_editor_tts_provider_glm">GLM-TTS</string>
+    <string name="aimodel_editor_tts_provider_minimax">MiniMax TTS</string>
+    <string name="aimodel_editor_tts_provider_qwen">Qwen TTS</string>
+    <string name="aimodel_editor_stt_provider_gemini">Gemini 네이티브 음성 인식</string>
+    <string name="aimodel_editor_stt_provider_glm">GLM-ASR</string>
+    <string name="aimodel_editor_stt_provider_qwen">Qwen ASR</string>
 </resources>

@@ -451,14 +451,14 @@
     <string name="chat_exec_confirm_title">Command authorization</string>
     <string name="chat_exec_confirm_description">AI wants to run the following command. It is not on the safe allowlist; only approve it if you trust this operation.</string>
     <string name="chat_exec_confirm_allow">Allow execution</string>
-    <string name="chat_exec_confirm_always_allow">Always allow %1$s in this session</string>
+    <string name="chat_exec_confirm_always_allow">Always allow this exact command (%1$s) in this session</string>
     <string name="chat_exec_confirm_this_command">this command</string>
     <string name="chat_exec_confirm_reject">Reject</string>
     <string name="chat_exec_confirm_unknown_command">Unknown command</string>
     <string name="chat_exec_confirm_request_id">Request ID: %1$s</string>
     <string name="chat_exec_confirm_socket_disconnected">Socket is disconnected; authorization could not be submitted</string>
     <string name="chat_exec_confirm_approved">Authorized. Running command…</string>
-    <string name="chat_exec_confirm_always_approved">Always allowed for this session. Running command…</string>
+    <string name="chat_exec_confirm_always_approved">This exact command is always allowed for this session. Running…</string>
     <string name="chat_exec_confirm_rejected">Command execution rejected</string>
 
     <!-- ==================== Hook notification (achievement popup) ==================== -->
@@ -525,6 +525,8 @@
     <string name="live_pipeline_label">Conversation flow</string>
     <string name="live_pipeline_classic">STT → LLM → TTS</string>
     <string name="live_pipeline_realtime">Realtime voice → voice</string>
+    <string name="live_pipeline_classic_short">STT pipeline</string>
+    <string name="live_pipeline_realtime_short">Realtime</string>
     <string name="live_connecting">Connecting…</string>
     <string name="live_listening">Listening</string>
     <string name="live_transcribing">Transcribing speech</string>

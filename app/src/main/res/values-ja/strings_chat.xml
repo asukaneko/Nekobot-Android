@@ -468,14 +468,14 @@
     <string name="chat_exec_confirm_title">コマンド実行の承認</string>
     <string name="chat_exec_confirm_description">AI が次のコマンドの実行を要求しています。安全リストにないため、信頼できる操作の場合のみ許可してください。</string>
     <string name="chat_exec_confirm_allow">実行を許可</string>
-    <string name="chat_exec_confirm_always_allow">このセッションでは %1$s を常に許可</string>
+    <string name="chat_exec_confirm_always_allow">このセッションでこのコマンドのみ常に許可（%1$s）</string>
     <string name="chat_exec_confirm_this_command">このコマンド</string>
     <string name="chat_exec_confirm_reject">拒否</string>
     <string name="chat_exec_confirm_unknown_command">不明なコマンド</string>
     <string name="chat_exec_confirm_request_id">リクエスト ID：%1$s</string>
     <string name="chat_exec_confirm_socket_disconnected">Socket が未接続のため、承認結果を送信できません</string>
     <string name="chat_exec_confirm_approved">承認しました。コマンドを実行しています…</string>
-    <string name="chat_exec_confirm_always_approved">このセッションでは常に許可します。コマンドを実行しています…</string>
+    <string name="chat_exec_confirm_always_approved">このコマンドのみこのセッションで常に許可します。実行中…</string>
     <string name="chat_exec_confirm_rejected">コマンドの実行を拒否しました</string>
 
     <!-- ==================== Hook 通知（実績ポップアップ） ==================== -->
@@ -526,6 +526,8 @@
     <string name="live_pipeline_label">会話フロー</string>
     <string name="live_pipeline_classic">STT → LLM → TTS</string>
     <string name="live_pipeline_realtime">Realtime 音声 → 音声</string>
+    <string name="live_pipeline_classic_short">STT フロー</string>
+    <string name="live_pipeline_realtime_short">Realtime</string>
     <string name="live_connecting">接続中…</string>
     <string name="live_listening">聞き取り中</string>
     <string name="live_transcribing">音声を認識中</string>

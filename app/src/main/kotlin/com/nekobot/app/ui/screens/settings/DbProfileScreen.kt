@@ -887,9 +887,7 @@ class DbProfileViewModel : ViewModel() {
     ): Boolean {
         var insertedUri: Uri? = null
         return try {
-            check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                string(R.string.dbprofile_export_location_required)
-            }
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
             val resolver = context.contentResolver
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
