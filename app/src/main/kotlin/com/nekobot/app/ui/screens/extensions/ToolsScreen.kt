@@ -47,9 +47,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nekobot.app.R
+import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.Tool
 import com.nekobot.app.data.model.ToolRequest
 import com.nekobot.app.ui.BaseViewModel
@@ -197,11 +199,18 @@ fun ToolsScreen(onBack: () -> Unit) {
 
     // 内置工具查看弹窗
     viewTarget?.let { target ->
+        val isSearchWebTool = target.id == "search_web"
+        var exaApiKey by remember(target.id) {
+            mutableStateOf(if (isSearchWebTool) ServiceContainer.prefs.exaApiKey else "")
+        }
         NekoDialog(
             onDismiss = { viewTarget = null },
             title = stringResource(R.string.tools_detail_title),
-            confirmText = stringResource(R.string.common_close),
-            onConfirm = { viewTarget = null },
+            confirmText = stringResource(if (isSearchWebTool) R.string.common_save else R.string.common_close),
+            onConfirm = {
+                if (isSearchWebTool) ServiceContainer.prefs.exaApiKey = exaApiKey.trim()
+                viewTarget = null
+            },
             cancelText = null,
             onCancel = null,
             content = {
@@ -215,6 +224,18 @@ fun ToolsScreen(onBack: () -> Unit) {
                     Text(stringResource(R.string.tools_builtin, if (target.builtin) stringResource(R.string.common_yes) else stringResource(R.string.common_no)), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(4.dp))
                     Text(stringResource(R.string.tools_created_at, target.createdAt ?: "—"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (isSearchWebTool) {
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = exaApiKey,
+                            onValueChange = { exaApiKey = it },
+                            label = { Text(stringResource(R.string.tools_exa_key_label)) },
+                            supportingText = { Text(stringResource(R.string.tools_exa_key_hint)) },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
             }
         )

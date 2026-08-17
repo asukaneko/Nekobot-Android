@@ -527,6 +527,14 @@ class PrefsManager(context: Context) {
             prefs.edit().remove(KEY_WENKU8_COOKIE).apply()
         }
 
+    /** Exa MCP 网页搜索使用的可选 API Key，留空时按匿名方式请求。 */
+    var exaApiKey: String
+        get() = securePrefs.getString(KEY_EXA_API_KEY, prefs).orEmpty()
+        set(value) {
+            securePrefs.putString(KEY_EXA_API_KEY, value.takeIf(String::isNotEmpty))
+            prefs.edit().remove(KEY_EXA_API_KEY).apply()
+        }
+
     /**
      * wenku8 自定义 User-Agent。
      *
@@ -818,6 +826,7 @@ class PrefsManager(context: Context) {
 
         // nbotcfg 导入密码记忆
         const val KEY_LAST_NBOTCFG_PWD = "last_nbotcfg_password"
+        private const val KEY_EXA_API_KEY = "exa_api_key"
 
         // wenku8 轻小说 Cookie
         const val KEY_WENKU8_COOKIE = "wenku8_cookie"

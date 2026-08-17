@@ -89,6 +89,8 @@
     <string name="tools_name_label">Name (required)</string>
     <string name="tools_description_label">Description</string>
     <string name="tools_enabled_label">Enabled</string>
+    <string name="tools_exa_key_label">Exa API Key (optional)</string>
+    <string name="tools_exa_key_hint">Leave blank to use anonymous search</string>
 
     <!-- ==================== MCP Servers ==================== -->
     <string name="mcp_title">MCP Servers</string>

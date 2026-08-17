@@ -356,6 +356,7 @@ internal class LocalAgentToolExecutor(
     private fun searchWebViaExa(query: String): Map<String, Any> {
         val baseUrl = "https://mcp.exa.ai/mcp"
         val jsonMediaType = "application/json".toMediaType()
+        val exaApiKey = ServiceContainer.prefs.exaApiKey.trim()
 
         // 1. Initialize 请求，建立 MCP 会话
         val initPayload = """
@@ -366,6 +367,7 @@ internal class LocalAgentToolExecutor(
             .post(initPayload)
             .header("Accept", "application/json, text/event-stream")
             .header("Content-Type", "application/json")
+            .apply { exaApiKey.takeIf(String::isNotBlank)?.let { header("Authorization", "Bearer $it") } }
             .build()
         var sessionId: String? = null
         val initResult = withHttpResponse(initRequest) { response ->
@@ -388,6 +390,7 @@ internal class LocalAgentToolExecutor(
                 .post(notifPayload)
                 .header("Accept", "application/json, text/event-stream")
                 .header("Content-Type", "application/json")
+                .apply { exaApiKey.takeIf(String::isNotBlank)?.let { header("Authorization", "Bearer $it") } }
                 .apply { sessionId?.let { header("Mcp-Session-Id", it) } }
                 .build()
             withHttpResponse(notifRequest) { /* 忽略响应 */ }
@@ -411,6 +414,7 @@ internal class LocalAgentToolExecutor(
             .post(callPayload.toRequestBody(jsonMediaType))
             .header("Accept", "application/json, text/event-stream")
             .header("Content-Type", "application/json")
+            .apply { exaApiKey.takeIf(String::isNotBlank)?.let { header("Authorization", "Bearer $it") } }
             .apply { sessionId?.let { header("Mcp-Session-Id", it) } }
             .build()
         val callResult = withHttpResponse(callRequest) { response ->

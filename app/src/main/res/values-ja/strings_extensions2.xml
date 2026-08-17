@@ -70,6 +70,8 @@
     <string name="tools_name_label">名称 (必須)</string>
     <string name="tools_description_label">説明</string>
     <string name="tools_enabled_label">有効</string>
+    <string name="tools_exa_key_label">Exa API Key (任意)</string>
+    <string name="tools_exa_key_hint">空欄の場合は匿名検索を使用します</string>
 
     <!-- ==================== MCP サーバー ==================== -->
     <string name="mcp_title">MCP サーバー</string>

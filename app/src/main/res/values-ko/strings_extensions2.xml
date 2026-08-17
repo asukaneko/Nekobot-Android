@@ -70,6 +70,8 @@
     <string name="tools_name_label">이름(필수)</string>
     <string name="tools_description_label">설명</string>
     <string name="tools_enabled_label">활성화됨</string>
+    <string name="tools_exa_key_label">Exa API Key(선택 사항)</string>
+    <string name="tools_exa_key_hint">비워 두면 익명 검색을 사용합니다</string>
 
     <!-- ==================== MCP 서버 ==================== -->
     <string name="mcp_title">MCP 서버</string>

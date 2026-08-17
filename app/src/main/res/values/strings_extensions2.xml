@@ -89,6 +89,8 @@
     <string name="tools_name_label">名称（必填）</string>
     <string name="tools_description_label">描述</string>
     <string name="tools_enabled_label">启用</string>
+    <string name="tools_exa_key_label">Exa API Key（可选）</string>
+    <string name="tools_exa_key_hint">留空时使用匿名搜索</string>
 
     <!-- ==================== MCP 服务 ==================== -->
     <string name="mcp_title">MCP 服务</string>
