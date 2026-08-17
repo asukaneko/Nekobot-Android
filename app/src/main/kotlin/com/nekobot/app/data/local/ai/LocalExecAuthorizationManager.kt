@@ -3,7 +3,6 @@ package com.nekobot.app.data.local.ai
 import com.nekobot.app.data.remote.ExecAuthorization
 import com.nekobot.app.data.remote.ExecConfirmationRequest
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.util.UUID
@@ -74,6 +73,7 @@ class LocalExecAuthorizationManager(
     private data class Pending(
         val sessionId: String,
         val mainCommand: String,
+        val authorizationKey: String,
         val decision: CompletableDeferred<ExecAuthorization>
     )
 
@@ -87,18 +87,21 @@ class LocalExecAuthorizationManager(
 
     fun isYoloEnabled(sessionId: String): Boolean = sessionId in yoloSessions
 
-    fun requestAuthorization(
+    suspend fun requestAuthorization(
         sessionId: String,
         command: String,
         mainCommand: String,
         onRequest: (ExecConfirmationRequest) -> Unit
     ): ExecAuthorization {
         if (isYoloEnabled(sessionId)) return ExecAuthorization.Once
-        if (alwaysAllowed[sessionId]?.contains(mainCommand) == true) return ExecAuthorization.Always
+        val authorizationKey = command.trim().replace(Regex("\\s+"), " ")
+        if (alwaysAllowed[sessionId]?.contains(authorizationKey) == true) {
+            return ExecAuthorization.Always
+        }
 
         val requestId = UUID.randomUUID().toString()
         val decision = CompletableDeferred<ExecAuthorization>()
-        pending[requestId] = Pending(sessionId, mainCommand, decision)
+        pending[requestId] = Pending(sessionId, mainCommand, authorizationKey, decision)
         onRequest(
             ExecConfirmationRequest(
                 requestId = requestId,
@@ -110,10 +113,8 @@ class LocalExecAuthorizationManager(
         )
 
         return try {
-            runBlocking {
-                withTimeoutOrNull(authorizationTimeoutMs) { decision.await() }
-                    ?: ExecAuthorization.Reject
-            }
+            withTimeoutOrNull(authorizationTimeoutMs) { decision.await() }
+                ?: ExecAuthorization.Reject
         } finally {
             pending.remove(requestId)
         }
@@ -129,7 +130,7 @@ class LocalExecAuthorizationManager(
         if (authorization == ExecAuthorization.Always) {
             alwaysAllowed
                 .computeIfAbsent(sessionId) { ConcurrentHashMap.newKeySet() }
-                .add(request.mainCommand)
+                .add(request.authorizationKey)
         }
         return request.decision.complete(authorization)
     }

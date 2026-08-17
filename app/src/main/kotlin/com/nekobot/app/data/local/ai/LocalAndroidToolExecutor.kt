@@ -73,7 +73,7 @@ internal class LocalAndroidToolExecutor(
     private val authorizationManager: LocalExecAuthorizationManager,
     private val onConfirmationRequired: (ExecConfirmationRequest) -> Unit
 ) {
-    fun execute(toolName: String, args: Map<String, Any>): Map<String, Any> {
+    suspend fun execute(toolName: String, args: Map<String, Any>): Map<String, Any> {
         val appContext = context?.applicationContext
             ?: return failure("Android 应用上下文不可用")
         return try {
@@ -101,6 +101,8 @@ internal class LocalAndroidToolExecutor(
                 "android_media_control" -> mediaControl(args)
                 else -> failure("Android 模式不支持工具: $toolName")
             }
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
         } catch (error: Exception) {
             failure(error.message ?: "Android 工具执行失败")
         }
@@ -166,7 +168,7 @@ internal class LocalAndroidToolExecutor(
         )
     }
 
-    private fun readClipboard(context: Context): Map<String, Any> {
+    private suspend fun readClipboard(context: Context): Map<String, Any> {
         val authorization = authorizationManager.requestAuthorization(
             sessionId = sessionId,
             command = "android_clipboard_read",
@@ -194,7 +196,7 @@ internal class LocalAndroidToolExecutor(
         )
     }
 
-    private fun writeClipboard(context: Context, args: Map<String, Any>): Map<String, Any> {
+    private suspend fun writeClipboard(context: Context, args: Map<String, Any>): Map<String, Any> {
         val text = args.string("text")
         if (!authorize("android_clipboard_write", "write ${text.take(120)}")) {
             return failure("用户拒绝写入系统剪贴板")
@@ -381,7 +383,7 @@ internal class LocalAndroidToolExecutor(
         )
     }
 
-    private fun volume(context: Context, args: Map<String, Any>): Map<String, Any> {
+    private suspend fun volume(context: Context, args: Map<String, Any>): Map<String, Any> {
         val audio = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
             ?: return failure("音频服务不可用")
         val streamName = args.string("stream").lowercase(Locale.ROOT).ifBlank { "music" }
@@ -431,7 +433,7 @@ internal class LocalAndroidToolExecutor(
         )
     }
 
-    private fun uiTree(args: Map<String, Any>): Map<String, Any> {
+    private suspend fun uiTree(args: Map<String, Any>): Map<String, Any> {
         if (!authorize("android_ui_tree", "read current UI tree")) return failure("用户拒绝读取当前界面")
         val service = accessibilityService() ?: return accessibilityUnavailable()
         val snapshot = service.snapshot(args.int("max_nodes", NekobotAccessibilityService.DEFAULT_MAX_NODES))
@@ -444,7 +446,7 @@ internal class LocalAndroidToolExecutor(
         )
     }
 
-    private fun uiClick(args: Map<String, Any>): Map<String, Any> {
+    private suspend fun uiClick(args: Map<String, Any>): Map<String, Any> {
         val selector = args.string("selector")
         if (selector.isBlank()) return failure("selector 不能为空")
         if (!authorize("android_ui_click", "click $selector")) return failure("用户拒绝点击界面元素")
@@ -456,7 +458,7 @@ internal class LocalAndroidToolExecutor(
         return actionResult(result.success, result.message, result.matched, result.metadata)
     }
 
-    private fun uiSetText(args: Map<String, Any>): Map<String, Any> {
+    private suspend fun uiSetText(args: Map<String, Any>): Map<String, Any> {
         val selector = args.string("selector")
         val text = args.string("text")
         if (selector.isBlank()) return failure("selector 不能为空")
@@ -470,7 +472,7 @@ internal class LocalAndroidToolExecutor(
         return actionResult(result.success, result.message, result.matched, result.metadata)
     }
 
-    private fun uiScroll(args: Map<String, Any>): Map<String, Any> {
+    private suspend fun uiScroll(args: Map<String, Any>): Map<String, Any> {
         val direction = args.string("direction").ifBlank { "down" }
         if (!authorize("android_ui_scroll", "scroll $direction")) return failure("用户拒绝滚动当前界面")
         val result = accessibilityService()?.scroll(
@@ -482,7 +484,7 @@ internal class LocalAndroidToolExecutor(
         return actionResult(result.success, result.message, result.matched, result.metadata)
     }
 
-    private fun globalAction(args: Map<String, Any>): Map<String, Any> {
+    private suspend fun globalAction(args: Map<String, Any>): Map<String, Any> {
         val action = args.string("action")
         if (action.isBlank()) return failure("action 不能为空")
         if (!authorize("android_global_action", action)) return failure("用户拒绝系统全局动作")
@@ -490,7 +492,7 @@ internal class LocalAndroidToolExecutor(
         return actionResult(result.success, result.message, result.matched, result.metadata)
     }
 
-    private fun screenshot(): Map<String, Any> {
+    private suspend fun screenshot(): Map<String, Any> {
         if (!authorize("android_screenshot", "capture current screen")) return failure("用户拒绝截取当前屏幕")
         val service = accessibilityService() ?: return accessibilityUnavailable()
         val root = workspaceRoot?.canonicalFile
@@ -507,7 +509,7 @@ internal class LocalAndroidToolExecutor(
         )
     }
 
-    private fun notifications(args: Map<String, Any>): Map<String, Any> {
+    private suspend fun notifications(args: Map<String, Any>): Map<String, Any> {
         if (!authorize("android_notifications", "read active notifications")) return failure("用户拒绝读取通知")
         val service = notificationService() ?: return notificationUnavailable()
         val entries = service.notificationSnapshot(
@@ -518,7 +520,7 @@ internal class LocalAndroidToolExecutor(
         return success("notifications" to entries, "count" to entries.size)
     }
 
-    private fun notificationAction(args: Map<String, Any>): Map<String, Any> {
+    private suspend fun notificationAction(args: Map<String, Any>): Map<String, Any> {
         val key = args.string("notification_key")
         val action = args.string("action")
         if (key.isBlank() || action.isBlank()) return failure("notification_key 和 action 不能为空")
@@ -530,7 +532,7 @@ internal class LocalAndroidToolExecutor(
         return actionResult(result.success, result.message, metadata = mapOf("package_name" to result.packageName))
     }
 
-    private fun mediaControl(args: Map<String, Any>): Map<String, Any> {
+    private suspend fun mediaControl(args: Map<String, Any>): Map<String, Any> {
         val action = args.string("action").ifBlank { "get" }
         if (!authorize("android_media_control", action)) return failure("用户拒绝访问媒体会话")
         val service = notificationService() ?: return notificationUnavailable()
@@ -552,7 +554,7 @@ internal class LocalAndroidToolExecutor(
     private fun notificationUnavailable(): Map<String, Any> =
         failure("Nekobot 通知使用权未连接，请先通过 android_open_settings 打开 notification_listener")
 
-    private fun authorize(mainCommand: String, details: String): Boolean =
+    private suspend fun authorize(mainCommand: String, details: String): Boolean =
         authorizationManager.requestAuthorization(
             sessionId = sessionId,
             command = "$mainCommand: $details",

@@ -1072,7 +1072,11 @@ internal class LocalPipelineCallbacks(
 
     // ---- 工具执行 ----
 
-    override fun executeTool(toolName: String, args: Map<String, Any>, toolContext: Map<String, Any>): Map<String, Any> {
+    override suspend fun executeTool(
+        toolName: String,
+        args: Map<String, Any>,
+        toolContext: Map<String, Any>
+    ): Map<String, Any> {
         if (parseMcpToolName(toolName) != null) {
             return mcpToolExecutor?.invoke(toolName, args)
                 ?: mapOf("success" to false, "error" to "MCP 工具运行时不可用")
@@ -1096,7 +1100,7 @@ internal class LocalPipelineCallbacks(
      * 普通 screenshot 仍只保存截图；understand_screenshot 或 analyze=true 会将工作区图片
      * 交给 understand_image，避免模型拿到路径后忘记继续调用图片理解工具。
      */
-    private fun executeBrowserTool(args: Map<String, Any>): Map<String, Any> {
+    private suspend fun executeBrowserTool(args: Map<String, Any>): Map<String, Any> {
         val browser = browserToolExecutor
             ?: return mapOf("success" to false, "error" to "浏览器运行时不可用")
         val browserResult = browser(args)

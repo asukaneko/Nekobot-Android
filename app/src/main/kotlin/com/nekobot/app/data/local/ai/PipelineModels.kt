@@ -315,5 +315,9 @@ open class PipelineCallbacks {
      * @param toolContext 工具上下文
      * @return 工具执行结果字典
      */
-    open fun executeTool(toolName: String, args: Map<String, Any>, toolContext: Map<String, Any>): Map<String, Any> = emptyMap()
+    open suspend fun executeTool(
+        toolName: String,
+        args: Map<String, Any>,
+        toolContext: Map<String, Any>
+    ): Map<String, Any> = emptyMap()
 }

@@ -186,7 +186,7 @@ internal class LocalAgentToolExecutor(
         )
     }
 
-    fun execute(toolName: String, args: Map<String, Any>): Map<String, Any> {
+    suspend fun execute(toolName: String, args: Map<String, Any>): Map<String, Any> {
         if (generationController.isStopped) return stoppedFailure()
         return try {
             when (toolName) {
@@ -237,6 +237,8 @@ internal class LocalAgentToolExecutor(
                 "android_media_control" -> androidToolExecutor.execute(toolName, args)
                 else -> failure("本地模式不支持工具: $toolName")
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             if (generationController.isStopped) stoppedFailure()
             else failure(e.message ?: "工具执行失败")
@@ -248,7 +250,7 @@ internal class LocalAgentToolExecutor(
         return memorySnapshotResult(store.read())
     }
 
-    private fun updateGlobalAgentMemory(args: Map<String, Any>): Map<String, Any> {
+    private suspend fun updateGlobalAgentMemory(args: Map<String, Any>): Map<String, Any> {
         val store = globalAgentMemoryStore ?: return failure("全局 Agent 记忆存储不可用")
         val mode = args.string("mode").trim().lowercase(Locale.ROOT).ifBlank { "replace_text" }
         if (mode !in setOf("replace", "append", "replace_text", "clear")) {
@@ -490,7 +492,7 @@ internal class LocalAgentToolExecutor(
         }
     }
 
-    private fun execCommand(args: Map<String, Any>): Map<String, Any> {
+    private suspend fun execCommand(args: Map<String, Any>): Map<String, Any> {
         val command = args.string("command")
         val timeoutSeconds = args.int("timeout", 30).coerceIn(1, 600)
         val policy = evaluateLocalCommand(command)

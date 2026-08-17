@@ -70,7 +70,10 @@ class AIPipeline {
     ): PipelineResult {
         val startTime = System.nanoTime()
         ctx.metadata["_pipeline_start_time"] = startTime
-        com.nekobot.app.data.local.LocalLogger.i(TAG, "Pipeline 开始 | 会话=${ctx.chatRequest.conversationId} | 用户消息=${ctx.chatRequest.content.take(80)}")
+        com.nekobot.app.data.local.LocalLogger.i(
+            TAG,
+            "Pipeline 开始 | 会话=${ctx.chatRequest.conversationId} | 用户消息长度=${ctx.chatRequest.content.length}"
+        )
 
         val progress = progressReporter ?: callbacks.getProgressReporter(ctx)
 
@@ -602,7 +605,7 @@ class AIPipeline {
     }
 
     /** 运行工具调用循环 */
-    private fun runToolLoop(
+    private suspend fun runToolLoop(
         ctx: PipelineContext,
         callbacks: PipelineCallbacks,
         tools: List<Map<String, Any>>,
@@ -614,7 +617,7 @@ class AIPipeline {
         val preparedMessageCount = ctx.messages.size + ctx.toolCallHistory.orEmpty().size
 
         // 工具执行器
-        val toolExecutor: (Map<String, Any>, String, Int, List<Map<String, Any>>) -> Map<String, Any> = { toolCall, thinking, iteration, messages ->
+        val toolExecutor: suspend (Map<String, Any>, String, Int, List<Map<String, Any>>) -> Map<String, Any> = { toolCall, thinking, iteration, messages ->
             val name = (toolCall["name"] as? String) ?: ""
             @Suppress("UNCHECKED_CAST")
             var args = (toolCall["arguments"] as? Map<String, Any>) ?: emptyMap()

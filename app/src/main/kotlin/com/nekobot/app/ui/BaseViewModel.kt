@@ -8,6 +8,7 @@ import com.nekobot.app.data.repository.Resource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** 所有 ViewModel 的基类：统一管理 loading / error / toast 状态。 */
@@ -58,6 +59,8 @@ abstract class BaseViewModel : ViewModel() {
                     is Resource.Error -> onError(res.message)
                     is Resource.Loading -> {}
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 onError(e.message ?: string(R.string.common_unknown_error))
             } finally {
@@ -80,6 +83,8 @@ abstract class BaseViewModel : ViewModel() {
                     is Resource.Error -> onError(res.message)
                     is Resource.Loading -> {}
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 onError(e.message ?: string(R.string.common_unknown_error))
             } finally {

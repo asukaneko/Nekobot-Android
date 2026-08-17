@@ -14,7 +14,7 @@ import com.nekobot.app.data.local.db.NekobotDatabase
 import com.nekobot.app.data.remote.ExecAuthorization
 import com.nekobot.app.data.remote.ExecConfirmationRequest
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -542,8 +542,7 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
  * 其余读写操作直接执行。
  *
  * 执行入口 [execute] 与 [LocalAgentToolExecutor.execute] 保持同步签名，
- * 内部使用 `runBlocking(Dispatchers.IO)` 桥接 suspend 的 DAO 调用，
- * 与 `executeLocalSkillTool` 一致。
+ * 运行在 IO dispatcher，避免数据库调用和用户确认阻塞调用协程。
  */
 internal class LocalDbToolExecutor(
     private val db: NekobotDatabase,
@@ -554,7 +553,7 @@ internal class LocalDbToolExecutor(
 ) {
     private val gson = Gson()
 
-    fun execute(toolName: String, args: Map<String, Any>): Map<String, Any> {
+    suspend fun execute(toolName: String, args: Map<String, Any>): Map<String, Any> {
         if (generationController.isStopped) return stoppedFailure()
         if (toolName !in localDbToolIds) {
             return failure("未知数据库工具: $toolName")
@@ -573,7 +572,7 @@ internal class LocalDbToolExecutor(
             }
             if (generationController.isStopped) return stoppedFailure()
         }
-        return runBlocking(Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
             try {
                 when (toolName) {
                     // 角色卡
@@ -633,6 +632,8 @@ internal class LocalDbToolExecutor(
                     "db_update_ai_config" -> updateAiConfig(args)
                     else -> failure("未实现的数据库工具: $toolName")
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 if (generationController.isStopped) stoppedFailure()
                 else failure(e.message ?: "数据库工具执行失败")
@@ -696,20 +697,17 @@ internal class LocalDbToolExecutor(
     private suspend fun createCharacter(args: Map<String, Any>): Map<String, Any> {
         val name = args.string("name").ifBlank { return failure("name 不能为空") }
         val now = nowIso()
-        // 调试日志：记录 AI 传入的 initial_relationship / initial_state 原始值
         com.nekobot.app.data.local.LocalLogger.i(
             "LocalDbTool",
-            "createCharacter args: initial_relationship=${args["initial_relationship"]}, " +
-                "initial_state=${args["initial_state"]}, " +
-                "initial_affection=${args["initial_affection"]}, " +
-                "initial_trust=${args["initial_trust"]}"
+            "createCharacter: has_initial_relationship=${"initial_relationship" in args}, " +
+                "has_initial_state=${"initial_state" in args}"
         )
         // 合并 initial_relationship 与 initial_state 到角色卡的 state JSON 字段
         // （normalizeInitialState 会在加载角色卡时统一解析 mood/energy/六维关系）
         val initialStateJson = buildInitialStateJson(args)
         com.nekobot.app.data.local.LocalLogger.i(
             "LocalDbTool",
-            "createCharacter state JSON: $initialStateJson"
+            "createCharacter: initial state prepared (${initialStateJson?.length ?: 0} characters)"
         )
         val entity = LocalCharacterEntity(
             id = UUID.randomUUID().toString(),

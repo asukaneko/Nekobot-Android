@@ -1,6 +1,7 @@
 package com.nekobot.app.data.local.ai
 
 import com.nekobot.app.data.local.db.LocalAgentRunEntity
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -11,7 +12,7 @@ import org.junit.Test
 class AgentRunRecoveryTest {
 
     @Test
-    fun checkpointIsWrittenOnlyAfterWholeToolBatchCompletes() {
+    fun checkpointIsWrittenOnlyAfterWholeToolBatchCompletes() = runBlocking {
         var modelCalls = 0
         val checkpoints = mutableListOf<List<Map<String, Any>>>()
         val result = runToolCallLoop(

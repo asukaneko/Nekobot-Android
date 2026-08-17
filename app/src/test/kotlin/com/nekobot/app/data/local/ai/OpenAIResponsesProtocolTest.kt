@@ -3,6 +3,7 @@ package com.nekobot.app.data.local.ai
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlinx.coroutines.runBlocking
 
 class OpenAIResponsesProtocolTest {
     @Test
@@ -77,7 +78,7 @@ class OpenAIResponsesProtocolTest {
     }
 
     @Test
-    fun `completed response maps to stop so tool loop does not repeat`() {
+    fun `completed response maps to stop so tool loop does not repeat`() = runBlocking {
         var modelCalls = 0
         val result = runToolCallLoop(
             initialMessages = listOf(mapOf("role" to "user", "content" to "look it up")),

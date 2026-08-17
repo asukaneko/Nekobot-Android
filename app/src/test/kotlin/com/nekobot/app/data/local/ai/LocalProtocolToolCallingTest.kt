@@ -3,6 +3,7 @@ package com.nekobot.app.data.local.ai
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlinx.coroutines.runBlocking
 
 class LocalProtocolToolCallingTest {
 
@@ -262,7 +263,7 @@ class LocalProtocolToolCallingTest {
     }
 
     @Test
-    fun toolLoopExecutesCallAndReturnsFinalModelContent() {
+    fun toolLoopExecutesCallAndReturnsFinalModelContent() = runBlocking {
         var modelCalls = 0
         val result = runToolCallLoop(
             initialMessages = listOf(mapOf("role" to "user", "content" to "现在几点")),
@@ -296,7 +297,7 @@ class LocalProtocolToolCallingTest {
     }
 
     @Test
-    fun toolLoopStopsBeforeRunningAnotherTool() {
+    fun toolLoopStopsBeforeRunningAnotherTool() = runBlocking {
         var modelCalls = 0
         var executedTools = 0
         var stopRequested = false

@@ -152,7 +152,7 @@ data class ToolExecutionResult(
 data class ToolLoopSession(
     val initialMessages: List<Map<String, Any>>,
     val modelCall: ModelCall,
-    val toolExecutor: (Map<String, Any>, String, Int, List<Map<String, Any>>) -> Map<String, Any>,
+    val toolExecutor: suspend (Map<String, Any>, String, Int, List<Map<String, Any>>) -> Map<String, Any>,
     val toolCallHistory: List<Map<String, Any>>? = null,
     val maxIterations: Int = 50,
     val maxConsecutiveErrors: Int = 3,
@@ -440,10 +440,10 @@ private fun mergeUsage(target: MutableMap<String, Any>, usage: Any?) {
  * @param hooks 钩子回调
  * @return ToolLoopResult
  */
-fun runToolCallLoop(
+suspend fun runToolCallLoop(
     initialMessages: List<Map<String, Any>>,
     modelCall: ModelCall,
-    toolExecutor: (Map<String, Any>, String, Int, List<Map<String, Any>>) -> Map<String, Any>,
+    toolExecutor: suspend (Map<String, Any>, String, Int, List<Map<String, Any>>) -> Map<String, Any>,
     maxIterations: Int = 50,
     maxConsecutiveErrors: Int = 3,
     hooks: ToolLoopHooks? = null,
@@ -638,7 +638,7 @@ fun runToolCallLoop(
 /**
  * 运行工具循环会话（含工具调用历史恢复）。
  */
-fun runToolLoopSession(session: ToolLoopSession): ToolExecutionResult {
+suspend fun runToolLoopSession(session: ToolLoopSession): ToolExecutionResult {
     val preparedMessages = applyToolCallHistory(session.initialMessages, session.toolCallHistory)
     val loopResult = runToolCallLoop(
         preparedMessages,

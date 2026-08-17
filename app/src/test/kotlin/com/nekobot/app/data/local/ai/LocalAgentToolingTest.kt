@@ -7,6 +7,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlinx.coroutines.runBlocking
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -286,20 +287,22 @@ class LocalAgentToolingTest {
     }
 
     @Test
-    fun alwaysAuthorizationIsReusedForSameCommandInSession() {
-        val manager = LocalExecAuthorizationManager(authorizationTimeoutMs = 2000)
+    fun alwaysAuthorizationIsReusedOnlyForExactCommandInSession() = runBlocking {
+        val manager = LocalExecAuthorizationManager(authorizationTimeoutMs = 100)
         val requestRef = AtomicReference<ExecConfirmationRequest>()
         val requestReady = CountDownLatch(1)
         val executor = Executors.newSingleThreadExecutor()
         try {
             val first = executor.submit<ExecAuthorization> {
-                manager.requestAuthorization(
+                runBlocking {
+                    manager.requestAuthorization(
                     sessionId = "session-1",
                     command = "git status",
                     mainCommand = "git"
                 ) {
                     requestRef.set(it)
                     requestReady.countDown()
+                    }
                 }
             }
 
@@ -320,15 +323,15 @@ class LocalAgentToolingTest {
                 command = "git diff",
                 mainCommand = "git"
             ) { requestedAgain = true }
-            assertEquals(ExecAuthorization.Always, reused)
-            assertFalse(requestedAgain)
+            assertEquals(ExecAuthorization.Reject, reused)
+            assertTrue(requestedAgain)
         } finally {
             executor.shutdownNow()
         }
     }
 
     @Test
-    fun yoloSkipsAuthorizationWithinSessionOnly() {
+    fun yoloSkipsAuthorizationWithinSessionOnly() = runBlocking {
         val manager = LocalExecAuthorizationManager(authorizationTimeoutMs = 100)
         manager.enableYolo("session-yolo")
 
@@ -345,7 +348,7 @@ class LocalAgentToolingTest {
     }
 
     @Test
-    fun workspaceToolsReadWriteAndRejectPathTraversal() {
+    fun workspaceToolsReadWriteAndRejectPathTraversal() = runBlocking {
         val root = Files.createTempDirectory("nekobot-agent-tools").toFile()
         try {
             val executor = LocalAgentToolExecutor(
@@ -424,7 +427,7 @@ class LocalAgentToolingTest {
     }
 
     @Test
-    fun standardLinuxFileToolsSupportWorkspacePathsAppendAndExactEdit() {
+    fun standardLinuxFileToolsSupportWorkspacePathsAppendAndExactEdit() = runBlocking {
         val root = Files.createTempDirectory("nekobot-linux-file-tools").toFile()
         try {
             val executor = LocalAgentToolExecutor(
@@ -482,7 +485,7 @@ class LocalAgentToolingTest {
     }
 
     @Test
-    fun toolArgumentsAreRepairedValidatedAndRepeatedCallsAreStopped() {
+    fun toolArgumentsAreRepairedValidatedAndRepeatedCallsAreStopped() = runBlocking {
         val repaired = normalizeAgentToolCall(
             mapOf(
                 "id" to "call-1",
@@ -534,7 +537,7 @@ class LocalAgentToolingTest {
     }
 
     @Test
-    fun workspaceExtractEpubCreatesOrderedTxtAndReturnsCanonicalPath() {
+    fun workspaceExtractEpubCreatesOrderedTxtAndReturnsCanonicalPath() = runBlocking {
         val root = Files.createTempDirectory("nekobot-agent-epub").toFile()
         try {
             val epub = root.resolve("novels/book.epub")
