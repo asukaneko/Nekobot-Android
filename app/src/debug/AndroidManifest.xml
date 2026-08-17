@@ -4,6 +4,6 @@
 
     <application
         android:networkSecurityConfig="@xml/network_security_config_debug"
-        android:usesCleartextTraffic="true"
+        android:usesCleartextTraffic="false"
         tools:replace="android:networkSecurityConfig,android:usesCleartextTraffic" />
 </manifest>

@@ -315,6 +315,9 @@ class SocketManager(private val prefs: PrefsManager) {
             // 与 Web 端 nbot-shared.js 保持一致：
             //   path: '/socket.io', transports: ['websocket','polling'], auth: { token }
             val uri = baseUrl.trimEnd('/')
+            require(uri.startsWith("https://", ignoreCase = true)) {
+                "Only HTTPS server URLs are supported"
+            }
             val options = IO.Options.builder()
                 .setPath("/socket.io")
                 .setTransports(arrayOf(WebSocket.NAME, "polling"))

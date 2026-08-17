@@ -272,7 +272,7 @@ internal class LocalBrowserTool(
                     databaseEnabled = true
                     loadsImagesAutomatically = true
                     blockNetworkImage = false
-                    mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                    mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                     cacheMode = WebSettings.LOAD_DEFAULT
                     allowFileAccess = false
                     allowContentAccess = false
@@ -287,7 +287,7 @@ internal class LocalBrowserTool(
                 setBackgroundColor(android.graphics.Color.WHITE)
                 CookieManager.getInstance().apply {
                     setAcceptCookie(true)
-                    setAcceptThirdPartyCookies(this@browserView, true)
+                    setAcceptThirdPartyCookies(this@browserView, false)
                 }
                 webViewClient = createWebViewClient()
                 webChromeClient = object : WebChromeClient() {
@@ -1589,7 +1589,7 @@ internal class LocalBrowserTool(
 
     private fun isAllowedWebUrl(url: String): Boolean {
         val scheme = runCatching { Uri.parse(url).scheme?.lowercase() }.getOrNull()
-        return scheme == "http" || scheme == "https"
+        return scheme == "https"
     }
 
     private fun requireWebView(): WebView =

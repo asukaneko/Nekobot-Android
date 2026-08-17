@@ -62,7 +62,7 @@ class PrefsManager(context: Context) {
     private val gson = Gson()
 
     var serverUrl: String
-        get() = prefs.getString(KEY_SERVER_URL, DEFAULT_SERVER) ?: DEFAULT_SERVER
+        get() = normalizeServerUrl(prefs.getString(KEY_SERVER_URL, DEFAULT_SERVER) ?: DEFAULT_SERVER)
         set(value) {
             // 规范化：去掉末尾斜杠 + 自动为 IPv6 主机加方括号
             prefs.edit().putString(KEY_SERVER_URL, normalizeServerUrl(value)).apply()
@@ -835,11 +835,11 @@ class PrefsManager(context: Context) {
          *   ::1:5000               → https://[::1]:5000
          *   192.168.1.1:5000       → https://192.168.1.1:5000
          *   example.com            → https://example.com
-         *   http://::1:5000         → http://[::1]:5000
-         *   http://2001:db8::1:5000 → http://[2001:db8::1]:5000
-         *   http://[::1]:5000       → 保持不变
-         *   http://192.168.1.1:5000 → 保持不变
-         *   http://example.com      → 保持不变
+         *   http://::1:5000         → https://[::1]:5000
+         *   http://2001:db8::1:5000 → https://[2001:db8::1]:5000
+         *   http://[::1]:5000       → https://[::1]:5000
+         *   http://192.168.1.1:5000 → https://192.168.1.1:5000
+         *   http://example.com      → https://example.com
          *
          * 启发式：authority 含 2 个及以上冒号视为 IPv6；
          * 最后一个冒号后为纯数字端口（2~5 位，1 位视为 IPv6 地址段如 ::1），
@@ -849,7 +849,9 @@ class PrefsManager(context: Context) {
             val trimmed = input.trim().trimEnd('/')
             if (trimmed.isEmpty()) return trimmed
             // 已包含方括号，无需处理 IPv6；但可能仍缺 scheme
-            val withScheme = if (Regex("^(https?)://", RegexOption.IGNORE_CASE).containsMatchIn(trimmed)) {
+            val withScheme = if (trimmed.startsWith("http://", ignoreCase = true)) {
+                "https://${trimmed.substringAfter("://")}"
+            } else if (trimmed.startsWith("https://", ignoreCase = true)) {
                 trimmed
             } else {
                 "https://$trimmed"

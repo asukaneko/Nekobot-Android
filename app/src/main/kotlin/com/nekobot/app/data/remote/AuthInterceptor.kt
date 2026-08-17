@@ -14,7 +14,6 @@ class AuthInterceptor(private val prefs: PrefsManager) : Interceptor {
         val request = if (!token.isNullOrEmpty()) {
             original.newBuilder()
                 .header("Authorization", "Bearer $token")
-                .header("X-Auth-Token", token)
                 .build()
         } else {
             original

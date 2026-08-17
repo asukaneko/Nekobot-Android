@@ -97,6 +97,9 @@ class NetworkClient(private val prefs: PrefsManager) {
     val client: OkHttpClient get() = okHttpClient
 
     private fun buildRetrofit(baseUrl: String): Retrofit {
+        require(baseUrl.startsWith("https://", ignoreCase = true)) {
+            "Only HTTPS server URLs are supported"
+        }
         val safeUrl = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
         return Retrofit.Builder()
             .baseUrl(safeUrl)
