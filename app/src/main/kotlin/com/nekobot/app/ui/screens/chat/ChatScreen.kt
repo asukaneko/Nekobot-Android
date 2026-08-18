@@ -1215,37 +1215,27 @@ fun ChatScreen(
                             .fillMaxSize()
                             .padding(12.dp)
                     )
-                    TextButton(
-                        onClick = { downloadGeneratedImage(image) },
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 18.dp)
-                            .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(24.dp))
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Download,
-                            contentDescription = null,
-                            tint = Color.White
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = stringResource(R.string.chat_message_image_download),
-                            color = Color.White
-                        )
-                    }
-                    IconButton(
-                        onClick = { previewGeneratedImage = null },
+                    Row(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .statusBarsPadding()
                             .padding(8.dp)
                             .background(Color.Black.copy(alpha = 0.45f), CircleShape)
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = stringResource(R.string.chat_message_image_close_preview),
-                            tint = Color.White
-                        )
+                        IconButton(onClick = { downloadGeneratedImage(image) }) {
+                            Icon(
+                                imageVector = Icons.Filled.Download,
+                                contentDescription = stringResource(R.string.chat_message_image_download),
+                                tint = Color.White
+                            )
+                        }
+                        IconButton(onClick = { previewGeneratedImage = null }) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.chat_message_image_close_preview),
+                                tint = Color.White
+                            )
+                        }
                     }
                 }
             }
