@@ -443,6 +443,7 @@ class PortableDataArchiveManager(private val context: Context) {
             "local_characters" -> column in setOf("portrait", "avatar")
             "local_world_books" -> column == "cover_url"
             "local_message_images" -> column in setOf("file_path", "reference_image_path")
+            "local_messages" -> column == "audio_url"
             else -> false
         }
         if (!supported || value.isJsonNull || !value.isJsonPrimitive) return value
@@ -461,6 +462,10 @@ class PortableDataArchiveManager(private val context: Context) {
             "/files/worldbook_covers/" in normalized -> {
                 val relative = normalized.substringAfter("/files/worldbook_covers/")
                 resolvePortablePath(File(appContext.filesDir, "worldbook_covers"), relative)
+            }
+            "/files/tts/" in normalized -> {
+                val relative = normalized.substringAfter("/files/tts/")
+                resolvePortablePath(File(appContext.filesDir, "tts"), relative)
             }
             else -> null
         } ?: return value
@@ -647,6 +652,7 @@ class PortableDataArchiveManager(private val context: Context) {
         PortableDataCategory.MEDIA -> listOf(
             "portraits" to File(appContext.filesDir, "portraits"),
             "cached_portraits" to File(appContext.cacheDir, "portraits"),
+            "tts_audio" to File(appContext.filesDir, "tts"),
             "chat_backgrounds" to File(appContext.filesDir, "chat_backgrounds"),
             "fonts" to File(appContext.filesDir, "fonts")
         )

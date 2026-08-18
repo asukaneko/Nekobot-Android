@@ -114,6 +114,37 @@ class NekobotDatabaseLatestMigrationTest {
         migrated.close()
     }
 
+    @Test
+    fun migration34To35_addsMessageAudioUpdateTime() {
+        open(version = 34, onCreate = { db ->
+            db.execSQL(
+                "CREATE TABLE local_messages " +
+                    "(id TEXT NOT NULL PRIMARY KEY, audio_url TEXT, created_at TEXT NOT NULL)"
+            )
+            db.execSQL(
+                "INSERT INTO local_messages(id, audio_url, created_at) " +
+                    "VALUES ('message-1', 'file:///data/user/0/test/files/tts/reply.mp3', '2026-08-18T00:00:00Z')"
+            )
+        }).close()
+
+        val migrated = open(
+            version = 35,
+            onUpgrade = { db, oldVersion, newVersion ->
+                assertEquals(34, oldVersion)
+                assertEquals(35, newVersion)
+                NekobotDatabase.MIGRATION_34_35.migrate(db)
+            }
+        )
+        val db = migrated.writableDatabase
+        assertTrue(columnNames(db, "local_messages").contains("audio_updated_at"))
+        db.query("SELECT audio_url, audio_updated_at FROM local_messages WHERE id = 'message-1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("file:///data/user/0/test/files/tts/reply.mp3", cursor.getString(0))
+            assertTrue(cursor.isNull(1))
+        }
+        migrated.close()
+    }
+
     private fun open(
         version: Int,
         onCreate: (SupportSQLiteDatabase) -> Unit = {},

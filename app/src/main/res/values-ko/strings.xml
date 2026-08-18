@@ -273,4 +273,5 @@
     <string name="portability_category_workspace_desc">세션 및 공유 작업 공간의 사용자 파일</string>
     <string name="portability_category_global_memory">전역 Agent 메모리</string>
     <string name="portability_category_global_memory_desc">대화 전반에 주입되는 장기 Agent 메모리</string>
+    <string name="portability_detail_tts_audio">채팅 생성 음성</string>
 </resources>

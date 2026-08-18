@@ -41,7 +41,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalKnowledgeChunkEntity::class,
         RoutingDecisionLogEntity::class
     ],
-    version = 34,
+    version = 35,
     exportSchema = true
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -747,6 +747,13 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        /** v34 → v35：记录聊天 TTS 音频的最后更新时刻，供跨设备增量同步使用。 */
+        val MIGRATION_34_35 = object : Migration(34, 35) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_messages ADD COLUMN audio_updated_at TEXT")
+            }
+        }
+
         /**
          * 完整迁移链同时供生产数据库构建和迁移回归测试使用。
          * 新版本必须把迁移追加到这里；缺少迁移时直接失败，绝不静默清空用户数据。
@@ -760,7 +767,7 @@ abstract class NekobotDatabase : RoomDatabase() {
             MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25,
             MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29,
             MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33,
-            MIGRATION_33_34
+            MIGRATION_33_34, MIGRATION_34_35
         )
 
         fun get(context: Context): NekobotDatabase =

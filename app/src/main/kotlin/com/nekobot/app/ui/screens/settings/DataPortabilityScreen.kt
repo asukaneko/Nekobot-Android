@@ -729,6 +729,7 @@ private fun portableDetailLabel(detail: PortableCategoryDetail): String {
         "portraits" -> R.string.portability_detail_portraits
         "cached_portraits" -> R.string.portability_detail_cached_portraits
         "worldbook_covers" -> R.string.portability_detail_worldbook_covers
+        "tts_audio" -> R.string.portability_detail_tts_audio
         "chat_backgrounds" -> R.string.portability_detail_chat_backgrounds
         "fonts" -> R.string.portability_detail_fonts
         "workspace" -> R.string.portability_detail_workspace

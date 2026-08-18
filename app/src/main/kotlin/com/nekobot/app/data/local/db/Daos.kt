@@ -95,6 +95,9 @@ interface MessageDao {
     @Query("SELECT * FROM local_messages WHERE session_id = :sessionId ORDER BY created_at ASC")
     suspend fun listBySession(sessionId: String): List<LocalMessageEntity>
 
+    @Query("SELECT * FROM local_messages WHERE id = :id LIMIT 1")
+    suspend fun getById(id: String): LocalMessageEntity?
+
     @Query(
         "SELECT * FROM local_messages " +
             "WHERE content LIKE '%' || :query || '%' OR reasoning_content LIKE '%' || :query || '%' " +
@@ -136,8 +139,8 @@ interface MessageDao {
     @Query("UPDATE local_messages SET thinking_cards = :json WHERE id = :id")
     suspend fun updateThinkingCards(id: String, json: String?)
 
-    @Query("UPDATE local_messages SET audio_url = :audioUrl WHERE id = :id")
-    suspend fun updateAudioUrl(id: String, audioUrl: String?)
+    @Query("UPDATE local_messages SET audio_url = :audioUrl, audio_updated_at = :updatedAt WHERE id = :id")
+    suspend fun updateAudioUrl(id: String, audioUrl: String?, updatedAt: String)
 
     @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND created_at < :createdAt ORDER BY created_at ASC")
     suspend fun listBefore(sessionId: String, createdAt: String): List<LocalMessageEntity>

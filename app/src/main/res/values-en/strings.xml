@@ -273,4 +273,5 @@
     <string name="portability_category_workspace_desc">User files in session and shared workspaces</string>
     <string name="portability_category_global_memory">Global Agent memory</string>
     <string name="portability_category_global_memory_desc">Long-term Agent memory injected across chats</string>
+    <string name="portability_detail_tts_audio">Generated chat audio</string>
 </resources>

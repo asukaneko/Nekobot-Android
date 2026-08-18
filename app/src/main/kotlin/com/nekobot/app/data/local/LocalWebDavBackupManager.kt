@@ -518,9 +518,6 @@ class LocalWebDavBackupManager(
                     ?: WebDavSyncManifest()
                 val db = NekobotDatabase.get(appContext, profileName)
                 val localRecords = collectIncrementalRecords(db)
-                val localIndex = localRecords.mapValues { (_, record) ->
-                    LocalWebDavIncrementalLogic.indexOf(record, "")
-                }
                 val now = nowIso()
                 val outgoing = linkedMapOf<String, WebDavSyncRecord>()
                 val incoming = linkedMapOf<String, WebDavSyncRecord>()
@@ -955,11 +952,23 @@ class LocalWebDavBackupManager(
             records[record.key] = record
         }
         db.messageDao().listAll().forEach { entity ->
+            val value = gson.toJsonTree(entity).asJsonObject.apply {
+                val audioFile = messageAudioFile(entity.audioUrl)
+                if (audioFile?.isFile == true) {
+                    require(audioFile.length() <= MAX_MESSAGE_AUDIO_BYTES) { "聊天音频文件过大" }
+                    addProperty("audio_url", audioFile.name)
+                    addProperty("audio_file_name", audioFile.name)
+                    addProperty(
+                        "audio_file_base64",
+                        Base64.getEncoder().encodeToString(audioFile.readBytes())
+                    )
+                }
+            }
             val record = LocalWebDavIncrementalLogic.record(
                 TYPE_MESSAGE,
                 entity.id,
-                entity.createdAt,
-                gson.toJsonTree(entity).asJsonObject
+                entity.audioUpdatedAt ?: entity.createdAt,
+                value
             )
             records[record.key] = record
         }
@@ -1035,7 +1044,10 @@ class LocalWebDavBackupManager(
                 .forEach { record ->
                     when (record.type) {
                         TYPE_SESSION -> db.sessionDao().deleteById(record.id)
-                        TYPE_MESSAGE -> db.messageDao().deleteById(record.id)
+                        TYPE_MESSAGE -> {
+                            db.messageDao().getById(record.id)?.audioUrl?.let(::deleteMessageAudioFile)
+                            db.messageDao().deleteById(record.id)
+                        }
                         TYPE_MESSAGE_IMAGE -> {
                             db.messageImageDao().getById(record.id)?.filePath?.let(::deleteMessageImageFile)
                             db.messageImageDao().deleteById(record.id)
@@ -1069,9 +1081,7 @@ class LocalWebDavBackupManager(
                                 db.sessionDao().update(entity)
                             }
                         }
-                        TYPE_MESSAGE -> db.messageDao().upsert(
-                            gson.fromJson(value, LocalMessageEntity::class.java)
-                        )
+                        TYPE_MESSAGE -> db.messageDao().upsert(restoreSyncedMessage(value))
                         TYPE_MESSAGE_IMAGE -> db.messageImageDao().upsert(
                             restoreSyncedMessageImage(value)
                         )
@@ -1106,6 +1116,46 @@ class LocalWebDavBackupManager(
         val root = File(appContext.filesDir, "portraits").canonicalFile
         val target = File(root, fileName).canonicalFile
         return target.takeIf { it.path.startsWith(root.path + File.separator) }
+    }
+
+    private fun messageAudioFile(reference: String?): File? {
+        if (reference.isNullOrBlank()) return null
+        val fileName = runCatching {
+            android.net.Uri.parse(reference).path?.let(::File)?.name ?: File(reference).name
+        }.getOrNull()
+        return messageAudioFileByName(fileName)
+    }
+
+    private fun messageAudioFileByName(fileName: String?): File? {
+        if (fileName.isNullOrBlank() || !fileName.matches(Regex("[A-Za-z0-9._-]{1,128}"))) {
+            return null
+        }
+        val root = File(appContext.filesDir, "tts").canonicalFile
+        val target = File(root, fileName).canonicalFile
+        return target.takeIf { it.path.startsWith(root.path + File.separator) }
+    }
+
+    private fun deleteMessageAudioFile(reference: String) {
+        messageAudioFile(reference)?.let { file -> runCatching { file.delete() } }
+    }
+
+    private fun restoreSyncedMessage(value: JsonObject): LocalMessageEntity {
+        val entity = gson.fromJson(value, LocalMessageEntity::class.java)
+        val fileName = value.get("audio_file_name")?.asString?.takeIf { it.isNotBlank() }
+        val target = messageAudioFileByName(fileName)
+        val encoded = value.get("audio_file_base64")?.asString.orEmpty()
+        if (target != null && encoded.isNotBlank()) {
+            val bytes = Base64.getDecoder().decode(encoded)
+            require(bytes.size.toLong() <= MAX_MESSAGE_AUDIO_BYTES) { "聊天音频文件过大" }
+            target.parentFile?.mkdirs()
+            target.writeBytes(bytes)
+        }
+        val restoredAudioUrl = target?.takeIf(File::isFile)
+            ?.let { android.net.Uri.fromFile(it).toString() }
+            ?: entity.audioUrl?.takeIf {
+                it.startsWith("http://") || it.startsWith("https://") || it.startsWith("content://")
+            }
+        return entity.copy(audioUrl = restoredAudioUrl)
     }
 
     private fun deleteMessageImageFile(reference: String) {
@@ -1303,6 +1353,7 @@ class LocalWebDavBackupManager(
                 addProperty("database_name", dbName)
                 addProperty("created_at", nowIso())
                 addProperty("includes_portraits", includePortraits)
+                addProperty("includes_message_audio", true)
             }
             putZipEntry(zip, ENTRY_METADATA, gson.toJson(metadata).toByteArray())
 
@@ -1326,6 +1377,18 @@ class LocalWebDavBackupManager(
                 ENTRY_ACHIEVEMENTS,
                 gson.toJson(achievement).toByteArray()
             )
+
+            val audioDir = File(appContext.filesDir, "tts")
+            audioDir.walkTopDown()
+                .filter { it.isFile }
+                .forEach { file ->
+                    require(file.length() <= MAX_MESSAGE_AUDIO_BYTES) { "聊天音频文件过大" }
+                    val relative = file.relativeTo(audioDir)
+                        .invariantSeparatorsPath
+                        .takeIf(::isSafeRelativePath)
+                        ?: return@forEach
+                    putZipEntry(zip, "$ENTRY_MESSAGE_AUDIO_PREFIX$relative", file.readBytes())
+                }
 
             if (includePortraits) {
                 val portraitDir = File(appContext.cacheDir, "portraits/$profileName")
@@ -1428,6 +1491,20 @@ class LocalWebDavBackupManager(
                 }.commit()
             }
 
+            val audioEntries = entries.filterKeys { it.startsWith(ENTRY_MESSAGE_AUDIO_PREFIX) }
+            audioEntries.forEach { (path, bytes) ->
+                val relative = path.removePrefix(ENTRY_MESSAGE_AUDIO_PREFIX)
+                if (isSafeRelativePath(relative)) {
+                    require(bytes.size.toLong() <= MAX_MESSAGE_AUDIO_BYTES) { "聊天音频文件过大" }
+                    val audioDir = File(appContext.filesDir, "tts").canonicalFile
+                    val target = File(audioDir, relative).canonicalFile
+                    if (target.path.startsWith(audioDir.path + File.separator)) {
+                        target.parentFile?.mkdirs()
+                        target.writeBytes(bytes)
+                    }
+                }
+            }
+
             val portraitEntries = entries.filterKeys { it.startsWith(ENTRY_PORTRAITS_PREFIX) }
             if (includePortraits && portraitEntries.isNotEmpty()) {
                 val portraitDir = File(appContext.cacheDir, "portraits/$profileName")
@@ -1479,6 +1556,7 @@ class LocalWebDavBackupManager(
             ServiceContainer.switchLocalDb(profileName)
             val restoredDb = NekobotDatabase.get(appContext, profileName)
             restoredDb.openHelper.writableDatabase
+            normalizeRestoredMessageAudioUrls(restoredDb)
             entries[ENTRY_CREDENTIALS]?.let { raw ->
                 restoreCredentialBundle(restoredDb, raw)
             }
@@ -1495,6 +1573,21 @@ class LocalWebDavBackupManager(
 
         rollback.delete()
         staging.delete()
+    }
+
+    private suspend fun normalizeRestoredMessageAudioUrls(db: NekobotDatabase) {
+        db.messageDao().listAll().forEach { entity ->
+            val file = messageAudioFile(entity.audioUrl) ?: return@forEach
+            if (!file.isFile) return@forEach
+            val normalized = android.net.Uri.fromFile(file).toString()
+            if (entity.audioUrl != normalized) {
+                db.messageDao().updateAudioUrl(
+                    id = entity.id,
+                    audioUrl = normalized,
+                    updatedAt = entity.audioUpdatedAt ?: nowIso()
+                )
+            }
+        }
     }
 
     /**
@@ -1924,6 +2017,7 @@ class LocalWebDavBackupManager(
         const val ENTRY_PORTRAITS_PREFIX = "portraits/"
         const val ENTRY_LOCAL_PORTRAITS_PREFIX = "local-portraits/"
         const val ENTRY_WORLD_BOOK_COVERS_PREFIX = "worldbook-covers/"
+        const val ENTRY_MESSAGE_AUDIO_PREFIX = "message-audio/"
         const val ACHIEVEMENT_PREF_NAME = "nekobot_achievements"
         const val TYPE_SESSION = "session"
         const val TYPE_MESSAGE = "message"
@@ -1934,6 +2028,7 @@ class LocalWebDavBackupManager(
         const val MAX_ARCHIVE_ENTRIES = 5_000
         const val MAX_ARCHIVE_SIZE = 1024L * 1024L * 1024L
         const val MAX_MESSAGE_IMAGE_BYTES = 64L * 1024L * 1024L
+        const val MAX_MESSAGE_AUDIO_BYTES = 64L * 1024L * 1024L
 
         val XML_MEDIA_TYPE = "application/xml; charset=utf-8".toMediaType()
         val BINARY_MEDIA_TYPE = "application/octet-stream".toMediaType()

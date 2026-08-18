@@ -273,4 +273,5 @@
     <string name="portability_category_workspace_desc">セッションおよび共有ワークスペースのユーザーファイル</string>
     <string name="portability_category_global_memory">グローバル Agent 記憶</string>
     <string name="portability_category_global_memory_desc">チャットをまたいで注入される長期 Agent 記憶</string>
+    <string name="portability_detail_tts_audio">チャット生成音声</string>
 </resources>

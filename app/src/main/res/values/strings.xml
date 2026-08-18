@@ -293,4 +293,5 @@
     <string name="portability_category_workspace_desc">会话与共享工作区中的用户文件</string>
     <string name="portability_category_global_memory">全局 Agent 记忆</string>
     <string name="portability_category_global_memory_desc">跨会话注入的长期 Agent 记忆文件</string>
+    <string name="portability_detail_tts_audio">聊天生成音频</string>
 </resources>

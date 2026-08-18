@@ -100,6 +100,8 @@ data class LocalMessageEntity(
     @ColumnInfo(name = "input_tokens") val inputTokens: Int? = null,
     @ColumnInfo(name = "output_tokens") val outputTokens: Int? = null,
     @ColumnInfo(name = "audio_url") val audioUrl: String? = null,
+    /** 聊天 TTS 音频最后一次生成/更新的时间，用于跨设备增量同步冲突处理。 */
+    @ColumnInfo(name = "audio_updated_at") val audioUpdatedAt: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: String,
     /** 该用户消息关联的进度卡片 JSON（ThinkingCard 列表序列化），agent 模式持久化 */
     @ColumnInfo(name = "thinking_cards") val thinkingCards: String? = null,

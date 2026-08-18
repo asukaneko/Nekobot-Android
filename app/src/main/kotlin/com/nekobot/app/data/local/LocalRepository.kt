@@ -6441,7 +6441,7 @@ $charSection$topicSection
 
     suspend fun updateMessageAudioUrl(messageId: String, audioUrl: String?) =
         withContext(Dispatchers.IO) {
-            messageDao.updateAudioUrl(messageId, audioUrl)
+            messageDao.updateAudioUrl(messageId, audioUrl, nowIso())
         }
 
     /** 根据当前 TTS 模型提供商返回与原仓库一致的内置音色。 */
