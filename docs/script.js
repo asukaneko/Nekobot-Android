@@ -337,9 +337,9 @@
 
   /* ---------- 11. 从 GitHub Releases 拉取更新日志 ---------- */
   const FALLBACK_RELEASES = [
+    { tag_name: 'v0.5.6', published_at: '2026-08-18', body: '- 消息长按新增 AI 生图，支持图生图与多供应商\n- WebDAV 增量同步与备份支持聊天 TTS 音频\n- WebDAV 自动增量同步支持自定义间隔与版本保留\n- 网页搜索工具支持 Exa API Key\n- Agent 工具权限作用域限制与协作式取消\n- 默认禁止明文 HTTP，加固传输安全' },
     { tag_name: 'v0.5.5', published_at: '2026-08-16', body: '- 新增首次启动快速配置流程，支持本地或服务器模式及常用模型预设\n- 本地 AI 新增 Gemini 原生协议提供者支持\n- 启动后可自动打开最近使用的会话\n- 增强 Markdown 代码块和表格查看\n- Agent 工具输出增加截断提示，界面统一为无描边样式' },
     { tag_name: 'v0.5.4', published_at: '2026-08-16', body: '- Agent 会话实时语音支持调用本地 Agent 工具\n- Markdown 链接支持点击后跳转外部浏览器\n- Realtime 语音模型支持自定义音色\n- AI 生成立绘改为保存前预览\n- 优化 Qwen Realtime 并发响应与更新下载流程' },
-    { tag_name: 'v0.5.3', published_at: '2026-08-15', body: '- 新增 SeedRealtime 与 GLM-Realtime 实时语音协议支持\n- 新增 Qwen Image 3.0 图像生成模型与附加提示词\n- 实时通话新增音效并增强进出场动画\n- 智能路由与故障转移交互优化\n- 更新下载支持多镜像源回退与 APK 完整性校验' },
   ];
   function renderReleases(releases) {
     const container = $('#changelogList');
