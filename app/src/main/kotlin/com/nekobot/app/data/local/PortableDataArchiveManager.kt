@@ -35,7 +35,13 @@ enum class PortableDataCategory(
 ) {
     CONVERSATIONS(
         "conversations",
-        listOf("local_sessions", "local_messages", "local_agent_runs", "local_message_favorites")
+        listOf(
+            "local_sessions",
+            "local_messages",
+            "local_agent_runs",
+            "local_message_favorites",
+            "local_message_images"
+        )
     ),
     CHARACTERS("characters", listOf("local_characters")),
     WORLD_BOOKS("world_books", listOf("local_world_books", "local_world_book_entries")),
@@ -436,6 +442,7 @@ class PortableDataArchiveManager(private val context: Context) {
             "local_sessions" -> column in setOf("portrait", "sender_avatar", "character_avatar")
             "local_characters" -> column in setOf("portrait", "avatar")
             "local_world_books" -> column == "cover_url"
+            "local_message_images" -> column in setOf("file_path", "reference_image_path")
             else -> false
         }
         if (!supported || value.isJsonNull || !value.isJsonPrimitive) return value

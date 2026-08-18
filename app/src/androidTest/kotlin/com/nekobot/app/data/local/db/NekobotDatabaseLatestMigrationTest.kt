@@ -62,6 +62,58 @@ class NekobotDatabaseLatestMigrationTest {
         migrated.close()
     }
 
+    @Test
+    fun migration32To33_createsMessageImageStorage() {
+        open(version = 32).close()
+
+        val migrated = open(
+            version = 33,
+            onUpgrade = { db, oldVersion, newVersion ->
+                assertEquals(32, oldVersion)
+                assertEquals(33, newVersion)
+                NekobotDatabase.MIGRATION_32_33.migrate(db)
+            }
+        )
+        val db = migrated.writableDatabase
+
+        assertTrue(tableExists(db, "local_message_images"))
+        assertTrue(
+            columnNames(db, "local_message_images").containsAll(
+                listOf("session_id", "message_id", "prompt", "status", "file_path", "updated_at")
+            )
+        )
+        migrated.close()
+    }
+
+    @Test
+    fun migration33To34_addsReferenceImageColumns() {
+        open(version = 33, onCreate = { db ->
+            db.execSQL(
+                "CREATE TABLE local_message_images " +
+                    "(id TEXT NOT NULL PRIMARY KEY, session_id TEXT NOT NULL, message_id TEXT NOT NULL, " +
+                    "prompt TEXT NOT NULL, status TEXT NOT NULL, file_name TEXT, file_path TEXT, " +
+                    "mime_type TEXT, model_id TEXT, model_name TEXT, error_message TEXT, " +
+                    "created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+            )
+        }).close()
+
+        val migrated = open(
+            version = 34,
+            onUpgrade = { db, oldVersion, newVersion ->
+                assertEquals(33, oldVersion)
+                assertEquals(34, newVersion)
+                NekobotDatabase.MIGRATION_33_34.migrate(db)
+            }
+        )
+        val db = migrated.writableDatabase
+        assertTrue(
+            columnNames(db, "local_message_images").containsAll(
+                listOf("reference_image_path", "reference_image_mime_type")
+            )
+        )
+        migrated.close()
+    }
+
     private fun open(
         version: Int,
         onCreate: (SupportSQLiteDatabase) -> Unit = {},

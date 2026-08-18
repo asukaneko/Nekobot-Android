@@ -553,4 +553,14 @@
     <string name="live_voice_message">（语音消息）</string>
     <string name="live_realtime_empty_response">Realtime 没有返回可保存的字幕</string>
     <string name="live_realtime_failed">Realtime 对话失败</string>
+    <string name="chat_message_generate_image">AI 生图</string>
+    <string name="chat_message_image_queued">已加入图片生成队列</string>
+    <string name="chat_message_image_generating">正在生成图片…</string>
+    <string name="chat_message_image_failed">图片生成失败：%1$s</string>
+    <string name="chat_message_image_model">由 %1$s 生成</string>
+    <string name="chat_message_image_content_description">AI 生成的图片</string>
+    <string name="chat_message_image_queued_toast">已开始生成图片</string>
+    <string name="chat_message_image_preview">图片预览</string>
+    <string name="chat_message_image_close_preview">关闭图片预览</string>
+    <string name="chat_message_image_download">下载到 Download</string>
 </resources>

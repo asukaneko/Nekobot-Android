@@ -16,7 +16,9 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.MultipartBody
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -157,6 +159,12 @@ private val FAILOVER_REFUSAL_PREFIXES = listOf(
 data class GeneratedImage(
     val url: String?,
     val bytes: ByteArray?
+)
+
+/** 图生图参考图。字节内容在任务执行时读取，避免把临时 URI 直接交给供应商。 */
+data class ImageGenerationReference(
+    val bytes: ByteArray,
+    val mimeType: String = "image/png"
 )
 
 private const val QWEN_IMAGE_3_MODEL = "qwen-image-3.0"
@@ -2004,7 +2012,8 @@ class LocalAiClient(
         model: LocalAiModelEntity,
         prompt: String,
         size: String = "1024x1024",
-        n: Int = 1
+        n: Int = 1,
+        referenceImage: ImageGenerationReference? = null
     ): List<GeneratedImage> {
         val images = generateImage(
             baseUrl = model.baseUrl,
@@ -2014,6 +2023,7 @@ class LocalAiClient(
             additionalPrompt = model.promptTemplate,
             size = size,
             n = n,
+            referenceImage = referenceImage,
             appendBaseUrlPath = model.appendBaseUrlPath,
             proxyUrl = model.proxyUrl,
             provider = MultimodalProviderSupport.imageProvider(model)
@@ -2116,13 +2126,14 @@ class LocalAiClient(
         n: Int = 1,
         appendBaseUrlPath: Boolean = true,
         proxyUrl: String = "",
-        provider: String = ""
+        provider: String = "",
+        referenceImage: ImageGenerationReference? = null
     ): List<GeneratedImage> {
         val finalPrompt = appendImagePrompt(prompt, additionalPrompt)
         val normalizedProvider = provider.trim().lowercase()
         when (normalizedProvider) {
             "gemini", "google", "google_gemini" -> return generateImageGemini(
-                baseUrl, apiKey, modelName, finalPrompt, appendBaseUrlPath, proxyUrl
+                baseUrl, apiKey, modelName, finalPrompt, appendBaseUrlPath, proxyUrl, referenceImage
             )
             "minimax" -> return generateImageMiniMax(
                 baseUrl, apiKey, modelName, finalPrompt, size, appendBaseUrlPath, proxyUrl
@@ -2130,7 +2141,8 @@ class LocalAiClient(
             "qwen", "dashscope", "tongyi" -> {
                 if (modelName.trim().equals(QWEN_IMAGE_3_MODEL, ignoreCase = true)) {
                     return generateImageQwenImage3(
-                        baseUrl, apiKey, modelName, finalPrompt, n, appendBaseUrlPath, proxyUrl
+                        baseUrl, apiKey, modelName, finalPrompt, n, appendBaseUrlPath, proxyUrl,
+                        referenceImage
                     )
                 }
                 return generateImageQwenLegacy(
@@ -2139,6 +2151,19 @@ class LocalAiClient(
             }
             "doubao", "seed", "seedream", "volcengine", "ark", "volces" -> return generateImageDoubao(
                 baseUrl, apiKey, modelName, finalPrompt, size, n, appendBaseUrlPath, proxyUrl
+            )
+        }
+        if (referenceImage != null) {
+            return generateImageEditOpenAi(
+                baseUrl = baseUrl,
+                apiKey = apiKey,
+                modelName = modelName,
+                prompt = finalPrompt,
+                size = size,
+                n = n,
+                appendBaseUrlPath = appendBaseUrlPath,
+                proxyUrl = proxyUrl,
+                referenceImage = referenceImage
             )
         }
         val url = resolveImageUrl(baseUrl, appendBaseUrlPath)
@@ -2195,7 +2220,8 @@ class LocalAiClient(
         modelName: String,
         prompt: String,
         appendBaseUrlPath: Boolean,
-        proxyUrl: String
+        proxyUrl: String,
+        referenceImage: ImageGenerationReference? = null
     ): List<GeneratedImage> {
         val model = modelName.ifBlank { "gemini-3.1-flash-image" }
         val url = MultimodalProviderSupport.endpoint(
@@ -2204,8 +2230,21 @@ class LocalAiClient(
             "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent",
             appendBaseUrlPath
         )
+        val parts = buildList<Map<String, Any>> {
+            add(mapOf("text" to prompt))
+            referenceImage?.let { reference ->
+                add(
+                    mapOf(
+                        "inlineData" to mapOf(
+                            "mimeType" to reference.mimeType,
+                            "data" to Base64.getEncoder().encodeToString(reference.bytes)
+                        )
+                    )
+                )
+            }
+        }
         val body = mapOf(
-            "contents" to listOf(mapOf("parts" to listOf(mapOf("text" to prompt)))),
+            "contents" to listOf(mapOf("parts" to parts)),
             "generationConfig" to mapOf("responseModalities" to listOf("IMAGE"))
         )
         val request = Request.Builder().url(url)
@@ -2214,6 +2253,52 @@ class LocalAiClient(
             .header("Content-Type", "application/json")
             .build()
         return executeImageJsonRequest(request, proxyUrl, "Gemini image")
+    }
+
+    /** OpenAI 兼容图生图端点，使用 multipart /images/edits。 */
+    private suspend fun generateImageEditOpenAi(
+        baseUrl: String,
+        apiKey: String,
+        modelName: String,
+        prompt: String,
+        size: String,
+        n: Int,
+        appendBaseUrlPath: Boolean,
+        proxyUrl: String,
+        referenceImage: ImageGenerationReference
+    ): List<GeneratedImage> {
+        val imageType = referenceImage.mimeType.toMediaTypeOrNull() ?: "image/png".toMediaType()
+        val extension = referenceImage.mimeType.substringAfter('/', "png")
+            .lowercase()
+            .takeIf { it.matches(Regex("[a-z0-9]{1,8}")) }
+            ?: "png"
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("model", modelName)
+            .addFormDataPart("prompt", prompt)
+            .addFormDataPart("size", size)
+            .addFormDataPart("n", n.toString())
+            .addFormDataPart(
+                "image",
+                "character-reference.$extension",
+                referenceImage.bytes.toRequestBody(imageType)
+            )
+            .build()
+        val request = Request.Builder()
+            .url(resolveImageEditUrl(baseUrl, appendBaseUrlPath))
+            .post(body)
+            .header("Authorization", "Bearer $apiKey")
+            .build()
+        return clientFor(proxyUrl).newCall(request).awaitResponse().use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw FailoverHttpException(response.code, "Image edit HTTP ${response.code}: ${raw.take(500)}")
+            }
+            parseImageJson(
+                runCatching { JsonParser.parseString(raw).asJsonObject }
+                    .getOrElse { throw IllegalStateException("图生图返回了无法解析的 JSON") }
+            )
+        }
     }
 
     private suspend fun generateImageMiniMax(
@@ -2290,7 +2375,8 @@ class LocalAiClient(
         prompt: String,
         n: Int,
         appendBaseUrlPath: Boolean,
-        proxyUrl: String
+        proxyUrl: String,
+        referenceImage: ImageGenerationReference? = null
     ): List<GeneratedImage> {
         val url = MultimodalProviderSupport.dashscopeEndpoint(
             baseUrl,
@@ -2304,7 +2390,17 @@ class LocalAiClient(
                 "messages" to listOf(
                     mapOf(
                         "role" to "user",
-                        "content" to listOf(mapOf("text" to prompt))
+                        "content" to buildList<Map<String, String>> {
+                            referenceImage?.let {
+                                add(
+                                    mapOf(
+                                        "image" to "data:${it.mimeType};base64," +
+                                            Base64.getEncoder().encodeToString(it.bytes)
+                                    )
+                                )
+                            }
+                            add(mapOf("text" to prompt))
+                        }
                     )
                 )
             ),
@@ -2555,6 +2651,24 @@ class LocalAiClient(
             if (!appendBaseUrlPath) return base
             if (base.endsWith("/v1")) return "$base/images/generations"
             return "$base/v1/images/generations"
+        }
+
+        /** 解析 OpenAI 兼容图生图端点 URL（/images/edits）。 */
+        private fun resolveImageEditUrl(baseUrl: String, appendBaseUrlPath: Boolean): String {
+            val base = baseUrl.trimEnd('/')
+            if (base.contains("/images/edits")) return base
+            if (base.contains("/images/generations")) {
+                return base.replace("/images/generations", "/images/edits")
+            }
+            if (base.contains("/chat/completions")) {
+                return base.replace("/chat/completions", "/images/edits")
+            }
+            if (base.contains("/chatcompletion")) {
+                return base.replace("/chatcompletion", "/images/edits")
+            }
+            if (!appendBaseUrlPath) return base
+            if (base.endsWith("/v1")) return "$base/images/edits"
+            return "$base/v1/images/edits"
         }
 
         /** 解析 OpenAI 兼容 Embedding 端点。 */

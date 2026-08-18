@@ -19,6 +19,8 @@ import com.nekobot.app.data.local.validateSkillNameValue
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.local.db.LocalAgentRunEntity
 import com.nekobot.app.data.local.db.LocalMessageEntity
+import com.nekobot.app.data.local.db.LocalMessageImageEntity
+import com.nekobot.app.data.local.ai.ImageGenerationReference
 import com.nekobot.app.data.local.db.LocalSessionEntity
 import com.nekobot.app.data.model.ApiResult
 import com.nekobot.app.data.model.ApiKey
@@ -682,6 +684,30 @@ class UnifiedRepository(
 
     fun observeLocalMessages(sessionId: String): Flow<List<LocalMessageEntity>>? =
         if (isLocal) local.observeMessages(sessionId) else null
+
+    /** 消息生图保存在本机当前数据库档案中，远程会话也可通过 messageId 关联展示。 */
+    fun observeMessageImages(sessionId: String): Flow<List<LocalMessageImageEntity>> =
+        local.observeMessageImages(sessionId)
+
+    suspend fun enqueueMessageImage(
+        sessionId: String,
+        messageId: String,
+        prompt: String,
+        referenceImagePath: String? = null,
+        referenceImageMimeType: String? = null
+    ): Resource<LocalMessageImageEntity> = try {
+        Resource.Success(
+            local.enqueueMessageImage(
+                sessionId,
+                messageId,
+                prompt,
+                referenceImagePath,
+                referenceImageMimeType
+            )
+        )
+    } catch (e: Exception) {
+        Resource.Error(e.message ?: "无法创建图片生成任务")
+    }
 
     fun observeLocalAgentRun(sessionId: String): Flow<LocalAgentRunEntity?>? =
         if (isLocal) local.observeAgentRun(sessionId) else null
@@ -1986,11 +2012,12 @@ class UnifiedRepository(
     suspend fun generateImages(
         prompt: String,
         size: String = "1024x1024",
-        n: Int = 1
+        n: Int = 1,
+        referenceImage: ImageGenerationReference? = null
     ): Resource<List<com.nekobot.app.data.local.LocalImageResult>> {
         if (isLocal) {
             return try {
-                Resource.Success(local.generateImages(prompt, size, n))
+                Resource.Success(local.generateImages(prompt, size, n, referenceImage))
             } catch (e: Exception) {
                 Resource.Error(e.message ?: "本地图片生成失败")
             }
@@ -2007,7 +2034,9 @@ class UnifiedRepository(
             if (imageModels.isEmpty()) {
                 return Resource.Error("未配置图片生成模型，请在 AI 配置中心启用 purpose=image_generation 的模型")
             }
-            Resource.Success(local.generateImagesFromRemoteModels(imageModels, prompt, size, n))
+            Resource.Success(
+                local.generateImagesFromRemoteModels(imageModels, prompt, size, n, referenceImage)
+            )
         } catch (e: Exception) {
             Resource.Error(e.message ?: "远程图片生成失败")
         }

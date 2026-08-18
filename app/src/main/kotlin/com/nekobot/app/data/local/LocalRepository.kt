@@ -73,6 +73,8 @@ import com.nekobot.app.data.local.db.LocalCharacterEntity
 import com.nekobot.app.data.local.db.LocalHookEntity
 import com.nekobot.app.data.local.db.LocalMcpServerEntity
 import com.nekobot.app.data.local.db.LocalMessageEntity
+import com.nekobot.app.data.local.db.LocalMessageImageEntity
+import com.nekobot.app.data.local.ai.ImageGenerationReference
 import com.nekobot.app.data.local.db.LocalMessageFavoriteEntity
 import com.nekobot.app.data.local.db.LocalSessionEntity
 import com.nekobot.app.data.local.db.LocalSkillEntity
@@ -182,6 +184,7 @@ class LocalRepository(
     private val plotStoryOwner = Any()
     private val sessionDao = db.sessionDao()
     private val messageDao = db.messageDao()
+    private val messageImageDao = db.messageImageDao()
     private val agentRunDao = db.agentRunDao()
     private val characterDao = db.characterDao()
     private val worldBookDao = db.worldBookDao()
@@ -1290,6 +1293,10 @@ class LocalRepository(
         localBrowserTools.remove(id)?.close()
         LocalLinuxSandboxCoordinator.stopSession(id)
         automationScheduler?.cancelProactive(id)
+        messageImageDao.listBySession(id).forEach { image ->
+            image.filePath?.let(::deleteMessageImageFile)
+        }
+        messageImageDao.deleteBySession(id)
         sessionDao.deleteById(id)
     }
 
@@ -1533,6 +1540,117 @@ class LocalRepository(
 
     fun observeMessages(sessionId: String): Flow<List<LocalMessageEntity>> =
         messageDao.observeBySession(sessionId)
+
+    /** 观察会话中所有由消息触发的 AI 生图任务（本地与远程会话共用）。 */
+    fun observeMessageImages(sessionId: String): Flow<List<LocalMessageImageEntity>> =
+        messageImageDao.observeBySession(sessionId)
+
+    /** 创建一条持久化的生图任务，实际执行由 WorkManager 在后台完成。 */
+    suspend fun enqueueMessageImage(
+        sessionId: String,
+        messageId: String,
+        prompt: String,
+        referenceImagePath: String? = null,
+        referenceImageMimeType: String? = null
+    ): LocalMessageImageEntity = withContext(Dispatchers.IO) {
+        val now = nowIso()
+        val task = LocalMessageImageEntity(
+            id = UUID.randomUUID().toString(),
+            sessionId = sessionId,
+            messageId = messageId,
+            prompt = prompt,
+            referenceImagePath = referenceImagePath,
+            referenceImageMimeType = referenceImageMimeType,
+            status = MESSAGE_IMAGE_STATUS_QUEUED,
+            createdAt = now,
+            updatedAt = now
+        )
+        messageImageDao.upsert(task)
+        task
+    }
+
+    suspend fun getMessageImage(id: String): LocalMessageImageEntity? =
+        withContext(Dispatchers.IO) { messageImageDao.getById(id) }
+
+    suspend fun markMessageImageRunning(id: String) = withContext(Dispatchers.IO) {
+        messageImageDao.getById(id)?.let { task ->
+            if (task.status != MESSAGE_IMAGE_STATUS_COMPLETED) {
+                messageImageDao.upsert(
+                    task.copy(
+                        status = MESSAGE_IMAGE_STATUS_RUNNING,
+                        errorMessage = null,
+                        updatedAt = nowIso()
+                    )
+                )
+            }
+        }
+    }
+
+    /** 将缓存中的图片复制到持久立绘目录，并更新任务为完成状态。 */
+    suspend fun completeMessageImage(id: String, image: LocalImageResult) =
+        withContext(Dispatchers.IO) {
+            val task = messageImageDao.getById(id) ?: return@withContext
+            val context = appContext ?: throw IllegalStateException("应用上下文未初始化，无法保存生成图片")
+            val extension = image.mimeType.substringAfter('/', "png")
+                .lowercase(Locale.ROOT)
+                .takeIf { it.matches(Regex("[a-z0-9]{1,10}")) }
+                ?: "png"
+            val fileName = "message_image_${task.id.replace("-", "").take(16)}.$extension"
+            val target = File(context.filesDir, "portraits/$fileName")
+            target.parentFile?.mkdirs()
+
+            val sourceUri = android.net.Uri.parse(image.cacheUri)
+            val sourceFile = sourceUri.path?.let(::File)
+            if (sourceFile?.isFile == true) {
+                sourceFile.copyTo(target, overwrite = true)
+            } else {
+                context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                    target.outputStream().use { output -> input.copyTo(output) }
+                } ?: throw IllegalStateException("无法读取生成的图片")
+            }
+
+            messageImageDao.upsert(
+                task.copy(
+                    status = MESSAGE_IMAGE_STATUS_COMPLETED,
+                    fileName = fileName,
+                    filePath = android.net.Uri.fromFile(target).toString(),
+                    mimeType = image.mimeType,
+                    modelId = image.usedModelId,
+                    modelName = image.usedModelName,
+                    errorMessage = null,
+                    updatedAt = nowIso()
+                )
+            )
+        }
+
+    suspend fun failMessageImage(id: String, error: String) = withContext(Dispatchers.IO) {
+        messageImageDao.getById(id)?.let { task ->
+            messageImageDao.upsert(
+                task.copy(
+                    status = MESSAGE_IMAGE_STATUS_FAILED,
+                    errorMessage = error.take(500),
+                    updatedAt = nowIso()
+                )
+            )
+        }
+    }
+
+    /** 删除单个任务及其已持久化的本地图片。 */
+    suspend fun deleteMessageImage(id: String) = withContext(Dispatchers.IO) {
+        val task = messageImageDao.getById(id) ?: return@withContext
+        task.filePath?.let(::deleteMessageImageFile)
+        messageImageDao.deleteById(id)
+    }
+
+    private fun deleteMessageImageFile(reference: String) {
+        val context = appContext ?: return
+        val file = android.net.Uri.parse(reference).path?.let(::File) ?: return
+        val root = File(context.filesDir, "portraits").canonicalFile
+        val target = runCatching { file.canonicalFile }.getOrNull() ?: return
+        if (target.path.startsWith(root.path + File.separator)) {
+            runCatching { target.delete() }
+        }
+    }
 
     /** 未完成的本地 Agent 运行；聊天页结合内存 Job 判断是否需要显示恢复入口。 */
     fun observeAgentRun(sessionId: String): Flow<LocalAgentRunEntity?> =
@@ -3659,6 +3777,10 @@ class LocalRepository(
     }.getOrDefault(false)
 
     suspend fun deleteMessage(sessionId: String, messageId: String) = withContext(Dispatchers.IO) {
+        messageImageDao.listBySession(sessionId)
+            .filter { it.messageId == messageId }
+            .forEach { image -> image.filePath?.let(::deleteMessageImageFile) }
+        messageImageDao.deleteByMessageId(messageId)
         messageDao.deleteById(messageId)
         sessionDao.touch(
             sessionId,
@@ -3670,6 +3792,10 @@ class LocalRepository(
 
     suspend fun clearMessages(sessionId: String) = withContext(Dispatchers.IO) {
         agentRunDao.deleteBySession(sessionId)
+        messageImageDao.listBySession(sessionId).forEach { image ->
+            image.filePath?.let(::deleteMessageImageFile)
+        }
+        messageImageDao.deleteBySession(sessionId)
         messageDao.deleteBySession(sessionId)
         sessionDao.touch(sessionId, "", 0, nowIso())
     }
@@ -6382,7 +6508,8 @@ $charSection$topicSection
     suspend fun generateImages(
         prompt: String,
         size: String = "1024x1024",
-        n: Int = 1
+        n: Int = 1,
+        referenceImage: ImageGenerationReference? = null
     ): List<LocalImageResult> = withContext(Dispatchers.IO) {
         val queue = queueFor("image_generation")
         if (queue.isEmpty()) {
@@ -6390,7 +6517,7 @@ $charSection$topicSection
         }
         val exec = try {
             failoverCoordinator.execute(queue, "image_generation") { model ->
-                aiClient.generateImage(model, prompt, size, n)
+                aiClient.generateImage(model, prompt, size, n, referenceImage)
             }
         } catch (e: FailoverAllFailedException) {
             throw IllegalStateException(e.message ?: "图片生成全部模型失败")
@@ -6439,7 +6566,8 @@ $charSection$topicSection
         models: List<AiModel>,
         prompt: String,
         size: String = "1024x1024",
-        n: Int = 1
+        n: Int = 1,
+        referenceImage: ImageGenerationReference? = null
     ): List<LocalImageResult> = withContext(Dispatchers.IO) {
         if (models.isEmpty()) {
             throw IllegalStateException("未配置图片生成模型，请在 AI 配置中心启用 purpose=image_generation 的模型")
@@ -6460,6 +6588,7 @@ $charSection$topicSection
                     additionalPrompt = model.promptTemplate.orEmpty(),
                     size = size,
                     n = n,
+                    referenceImage = referenceImage,
                     provider = model.provider ?: model.protocol.orEmpty()
                 )
                 if (images.isNotEmpty()) {
@@ -7021,6 +7150,10 @@ $charSection$topicSection
 
     companion object {
         private const val TAG = "LocalRepository"
+        const val MESSAGE_IMAGE_STATUS_QUEUED = "queued"
+        const val MESSAGE_IMAGE_STATUS_RUNNING = "running"
+        const val MESSAGE_IMAGE_STATUS_COMPLETED = "completed"
+        const val MESSAGE_IMAGE_STATUS_FAILED = "failed"
         private const val JM_CHAPTER_FETCH_CONCURRENCY = 6
         private const val JM_DEFAULT_MAX_PAGES = 1_200
         private const val JM_FREE_SPACE_CHECK_INTERVAL = 20

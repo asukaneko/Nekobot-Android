@@ -1,5 +1,15 @@
 package com.nekobot.app.ui.screens.chat
 
+import android.Manifest
+import android.content.ContentValues
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.compose.animation.AnimatedVisibility
@@ -73,6 +83,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Key
@@ -151,11 +162,15 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 import android.provider.OpenableColumns
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
@@ -171,6 +186,7 @@ import com.nekobot.app.data.model.ReasoningEffort
 import com.nekobot.app.data.model.ThinkingCard
 import com.nekobot.app.data.model.ThinkingStep
 import com.nekobot.app.data.local.ChatInputLayoutMode
+import com.nekobot.app.data.local.db.LocalMessageImageEntity
 import com.nekobot.app.data.local.LivePipelineMode
 import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.local.VISION_FAILURE_MARKER
@@ -230,6 +246,7 @@ fun ChatScreen(
 ) {
     val viewModel: ChatViewModel = viewModel()
     val messages by viewModel.messages.collectAsStateWithLifecycle()
+    val messageImages by viewModel.messageImages.collectAsStateWithLifecycle()
     val ttsStates by viewModel.ttsStates.collectAsStateWithLifecycle()
     val liveStreamingSubtitle by viewModel.streamingContentPreview.collectAsStateWithLifecycle()
     val session by viewModel.session.collectAsStateWithLifecycle()
@@ -257,6 +274,9 @@ fun ChatScreen(
             }
             ?.id
     }
+    val messageImagesByMessage = remember(messageImages) {
+        messageImages.groupBy(LocalMessageImageEntity::messageId)
+    }
 
     var input by rememberSaveable(sessionId) {
         mutableStateOf(ServiceContainer.prefs.getChatInputDraft(sessionId))
@@ -274,6 +294,9 @@ fun ChatScreen(
     var menuExpanded by rememberSaveable(sessionId) { mutableStateOf(false) }
     var deletingMessage by remember { mutableStateOf<Message?>(null) }
     var messageActionTarget by remember(sessionId) { mutableStateOf<Message?>(null) }
+    var previewGeneratedImage by remember(sessionId) {
+        mutableStateOf<LocalMessageImageEntity?>(null)
+    }
     var selectingTextMessage by remember(sessionId) { mutableStateOf<Message?>(null) }
     var showClearConfirm by rememberSaveable(sessionId) { mutableStateOf(false) }
     var showMyMessages by rememberSaveable(sessionId) { mutableStateOf(false) }
@@ -292,6 +315,59 @@ fun ChatScreen(
     val keyboard = LocalSoftwareKeyboardController.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val context = LocalContext.current
+    var pendingDownloadImage by remember { mutableStateOf<LocalMessageImageEntity?>(null) }
+    val downloadPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val image = pendingDownloadImage
+        pendingDownloadImage = null
+        if (granted && image != null) {
+            scope.launch {
+                val fileName = saveGeneratedImageToDownloads(context, image)
+                Toast.makeText(
+                    context,
+                    if (fileName != null) {
+                        context.getString(R.string.workspace_downloaded_to, fileName)
+                    } else {
+                        context.getString(R.string.workspace_download_failed)
+                    },
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        } else if (image != null) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.workspace_download_failed),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    fun downloadGeneratedImage(image: LocalMessageImageEntity) {
+        if (
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingDownloadImage = image
+            downloadPermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            return
+        }
+        scope.launch {
+            val fileName = saveGeneratedImageToDownloads(context, image)
+            Toast.makeText(
+                context,
+                if (fileName != null) {
+                    context.getString(R.string.workspace_downloaded_to, fileName)
+                } else {
+                    context.getString(R.string.workspace_download_failed)
+                },
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
     val clipboard = LocalClipboardManager.current
     val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
     // 文件选择模式：null=未选择, "send"=发送文件(上传+插入引用), "upload"=仅上传到工作区
@@ -995,6 +1071,8 @@ fun ChatScreen(
                                 }
                                 MessageBubble(
                                     message = msg,
+                                    generatedImages = messageImagesByMessage[msg.id].orEmpty(),
+                                    onGeneratedImageClick = { previewGeneratedImage = it },
                                     ttsState = msg.id?.let { ttsStates[it] },
                                     portraitUrl = groupIdentity.portraitUrl ?: session?.portraitUrl,
                                     senderName = groupIdentity.name,
@@ -1110,6 +1188,68 @@ fun ChatScreen(
                 onDismiss = { stepDetailTarget = null }
             )
         }
+
+        previewGeneratedImage?.let { image ->
+            Dialog(
+                onDismissRequest = { previewGeneratedImage = null },
+                properties = DialogProperties(
+                    usePlatformDefaultWidth = false,
+                    dismissOnBackPress = true,
+                    dismissOnClickOutside = true
+                )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black)
+                        .clickable { previewGeneratedImage = null }
+                ) {
+                    SubcomposeAsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(image.filePath)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = stringResource(R.string.chat_message_image_preview),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp)
+                    )
+                    TextButton(
+                        onClick = { downloadGeneratedImage(image) },
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 18.dp)
+                            .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(24.dp))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Download,
+                            contentDescription = null,
+                            tint = Color.White
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.chat_message_image_download),
+                            color = Color.White
+                        )
+                    }
+                    IconButton(
+                        onClick = { previewGeneratedImage = null },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .statusBarsPadding()
+                            .padding(8.dp)
+                            .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.chat_message_image_close_preview),
+                            tint = Color.White
+                        )
+                    }
+                }
+            }
+        }
     }
 
     // 长按消息后的操作菜单
@@ -1128,6 +1268,15 @@ fun ChatScreen(
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+            )
+            MessageActionSheetItem(
+                text = stringResource(R.string.chat_message_generate_image),
+                icon = Icons.Filled.AutoAwesome,
+                enabled = targetId != null && target.displayContent.isNotBlank(),
+                onClick = {
+                    messageActionTarget = null
+                    viewModel.generateImageForMessage(target)
+                }
             )
             MessageActionSheetItem(
                 text = stringResource(R.string.common_delete),
@@ -2304,6 +2453,8 @@ private fun SafePlainMessageText(
 @Composable
 private fun MessageBubble(
     message: Message,
+    generatedImages: List<LocalMessageImageEntity> = emptyList(),
+    onGeneratedImageClick: (LocalMessageImageEntity) -> Unit = {},
     ttsState: MessageTtsUiState? = null,
     portraitUrl: String? = null,
     senderName: String? = null,
@@ -2602,6 +2753,14 @@ private fun MessageBubble(
             }
 
             // 流式生成中：气泡下方追加打字圆点，提示仍在输出
+            if (generatedImages.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                generatedImages.forEachIndexed { index, image ->
+                    MessageGeneratedImageCard(image, onGeneratedImageClick)
+                    if (index < generatedImages.lastIndex) Spacer(Modifier.height(8.dp))
+                }
+            }
+
             if (isStreamingPlaceholder) {
                 Spacer(Modifier.height(6.dp))
                 TypingDots(modifier = Modifier.padding(start = 6.dp))
@@ -2690,6 +2849,151 @@ private fun MessageBubble(
                 onCheckedChange = { onToggleSelection() },
                 modifier = Modifier.size(40.dp)
             )
+        }
+    }
+}
+
+/** 消息下方的 AI 生图结果或任务状态。 */
+private suspend fun saveGeneratedImageToDownloads(
+    context: android.content.Context,
+    image: LocalMessageImageEntity
+): String? = withContext(Dispatchers.IO) {
+    val reference = image.filePath?.takeIf { it.isNotBlank() } ?: return@withContext null
+    val sourceUri = runCatching { Uri.parse(reference) }.getOrNull() ?: return@withContext null
+    val mimeType = image.mimeType?.takeIf { it.isNotBlank() } ?: "image/png"
+    val extension = mimeType.substringAfter('/', "png")
+        .lowercase()
+        .takeIf { it.matches(Regex("[a-z0-9]{1,8}")) }
+        ?: "png"
+    val fileName = "nekobot_image_${System.currentTimeMillis()}.$extension"
+    val input = runCatching {
+        when (sourceUri.scheme?.lowercase()) {
+            "file" -> sourceUri.path?.let(::File)?.inputStream()
+            else -> context.contentResolver.openInputStream(sourceUri)
+        }
+    }.getOrNull() ?: return@withContext null
+
+    var destinationUri: Uri? = null
+    try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val targetUri = context.contentResolver.insert(
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                values
+            ) ?: return@withContext null
+            destinationUri = targetUri
+            context.contentResolver.openOutputStream(targetUri)?.use { output ->
+                input.use { it.copyTo(output) }
+            } ?: return@withContext null
+            context.contentResolver.update(
+                targetUri,
+                ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
+                null,
+                null
+            )
+        } else {
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_DOWNLOADS
+            )
+            if (!downloadsDir.exists()) downloadsDir.mkdirs()
+            val target = File(downloadsDir, fileName)
+            FileOutputStream(target).use { output -> input.use { it.copyTo(output) } }
+        }
+        fileName
+    } catch (_: Exception) {
+        destinationUri?.let { runCatching { context.contentResolver.delete(it, null, null) } }
+        null
+    } finally {
+        runCatching { input.close() }
+    }
+}
+
+@Composable
+private fun MessageGeneratedImageCard(
+    image: LocalMessageImageEntity,
+    onClick: (LocalMessageImageEntity) -> Unit = {}
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f))
+            .padding(8.dp)
+    ) {
+        when (image.status) {
+            "completed" -> {
+                if (!image.modelName.isNullOrBlank()) {
+                    Text(
+                        text = stringResource(R.string.chat_message_image_model, image.modelName),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                    Spacer(Modifier.height(6.dp))
+                }
+                SubcomposeAsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(image.filePath)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = stringResource(R.string.chat_message_image_content_description),
+                    contentScale = ContentScale.FillWidth,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onClick(image) }
+                )
+            }
+
+            "failed" -> {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Error,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(
+                            R.string.chat_message_image_failed,
+                            image.errorMessage ?: stringResource(R.string.common_unknown_error)
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+
+            else -> {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = if (image.status == "running") {
+                            stringResource(R.string.chat_message_image_generating)
+                        } else {
+                            stringResource(R.string.chat_message_image_queued)
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }

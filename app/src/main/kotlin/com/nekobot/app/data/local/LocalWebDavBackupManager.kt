@@ -10,6 +10,7 @@ import com.google.gson.JsonParser
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.db.LocalCharacterEntity
 import com.nekobot.app.data.local.db.LocalMessageEntity
+import com.nekobot.app.data.local.db.LocalMessageImageEntity
 import com.nekobot.app.data.local.db.LocalSessionEntity
 import com.nekobot.app.data.local.db.LocalWorldBookEntity
 import com.nekobot.app.data.local.db.LocalWorldBookEntryEntity
@@ -914,6 +915,26 @@ class LocalWebDavBackupManager(
             )
             records[record.key] = record
         }
+        db.messageImageDao().listAll().forEach { entity ->
+            val value = gson.toJsonTree(entity).asJsonObject.apply {
+                // 设备间同步使用稳定的文件名，不能把绝对 filesDir 路径写入哈希。
+                addProperty("file_path", entity.fileName.orEmpty())
+                addProperty("reference_image_path", stablePortraitReference(entity.referenceImagePath))
+                addProperty("reference_image_mime_type", entity.referenceImageMimeType.orEmpty())
+                val file = messageImageFile(entity.fileName)
+                if (entity.status == LocalRepository.MESSAGE_IMAGE_STATUS_COMPLETED && file?.isFile == true) {
+                    require(file.length() <= MAX_MESSAGE_IMAGE_BYTES) { "消息生图文件过大" }
+                    addProperty("file_base64", Base64.getEncoder().encodeToString(file.readBytes()))
+                }
+            }
+            val record = LocalWebDavIncrementalLogic.record(
+                TYPE_MESSAGE_IMAGE,
+                entity.id,
+                entity.updatedAt,
+                value
+            )
+            records[record.key] = record
+        }
         db.characterDao().listAll().forEach { entity ->
             val record = LocalWebDavIncrementalLogic.record(
                 TYPE_CHARACTER,
@@ -956,16 +977,21 @@ class LocalWebDavBackupManager(
                     when (record.type) {
                         TYPE_WORLD_BOOK_ENTRY -> 0
                         TYPE_MESSAGE -> 1
-                        TYPE_SESSION -> 2
-                        TYPE_WORLD_BOOK -> 3
-                        TYPE_CHARACTER -> 4
-                        else -> 5
+                        TYPE_MESSAGE_IMAGE -> 2
+                        TYPE_SESSION -> 3
+                        TYPE_WORLD_BOOK -> 4
+                        TYPE_CHARACTER -> 5
+                        else -> 6
                     }
                 }
                 .forEach { record ->
                     when (record.type) {
                         TYPE_SESSION -> db.sessionDao().deleteById(record.id)
                         TYPE_MESSAGE -> db.messageDao().deleteById(record.id)
+                        TYPE_MESSAGE_IMAGE -> {
+                            db.messageImageDao().getById(record.id)?.filePath?.let(::deleteMessageImageFile)
+                            db.messageImageDao().deleteById(record.id)
+                        }
                         TYPE_CHARACTER -> db.characterDao().deleteById(record.id)
                         TYPE_WORLD_BOOK -> db.worldBookDao().deleteById(record.id)
                         TYPE_WORLD_BOOK_ENTRY -> db.worldBookDao().deleteEntryById(record.id)
@@ -980,7 +1006,8 @@ class LocalWebDavBackupManager(
                         TYPE_SESSION -> 2
                         TYPE_WORLD_BOOK_ENTRY -> 3
                         TYPE_MESSAGE -> 4
-                        else -> 5
+                        TYPE_MESSAGE_IMAGE -> 5
+                        else -> 6
                     }
                 }
                 .forEach { record ->
@@ -996,6 +1023,9 @@ class LocalWebDavBackupManager(
                         }
                         TYPE_MESSAGE -> db.messageDao().upsert(
                             gson.fromJson(value, LocalMessageEntity::class.java)
+                        )
+                        TYPE_MESSAGE_IMAGE -> db.messageImageDao().upsert(
+                            restoreSyncedMessageImage(value)
                         )
                         TYPE_CHARACTER -> {
                             val entity = gson.fromJson(value, LocalCharacterEntity::class.java)
@@ -1018,6 +1048,78 @@ class LocalWebDavBackupManager(
                         )
                     }
                 }
+        }
+    }
+
+    private fun messageImageFile(fileName: String?): File? {
+        if (fileName.isNullOrBlank() || !fileName.matches(Regex("[A-Za-z0-9._-]{1,128}"))) {
+            return null
+        }
+        val root = File(appContext.filesDir, "portraits").canonicalFile
+        val target = File(root, fileName).canonicalFile
+        return target.takeIf { it.path.startsWith(root.path + File.separator) }
+    }
+
+    private fun deleteMessageImageFile(reference: String) {
+        val fileName = android.net.Uri.parse(reference).path?.let(::File)?.name ?: return
+        messageImageFile(fileName)?.let { file -> runCatching { file.delete() } }
+    }
+
+    private fun restoreSyncedMessageImage(value: JsonObject): LocalMessageImageEntity {
+        val entity = gson.fromJson(value, LocalMessageImageEntity::class.java)
+        val fileName = value.get("file_path")?.asString?.takeIf { it.isNotBlank() }
+            ?: entity.fileName
+        val target = messageImageFile(fileName)
+        val encoded = value.get("file_base64")?.asString.orEmpty()
+        if (target != null && encoded.isNotBlank()) {
+            val bytes = Base64.getDecoder().decode(encoded)
+            require(bytes.size.toLong() <= MAX_MESSAGE_IMAGE_BYTES) { "消息生图文件过大" }
+            target.parentFile?.mkdirs()
+            target.writeBytes(bytes)
+        }
+        val available = target?.isFile == true
+        return entity.copy(
+            fileName = fileName,
+            filePath = target?.takeIf { available }?.let { android.net.Uri.fromFile(it).toString() },
+            referenceImagePath = restorePortraitReference(value.get("reference_image_path")?.asString),
+            referenceImageMimeType = value.get("reference_image_mime_type")?.asString
+                ?.takeIf { it.isNotBlank() },
+            status = if (entity.status == LocalRepository.MESSAGE_IMAGE_STATUS_COMPLETED && !available) {
+                LocalRepository.MESSAGE_IMAGE_STATUS_FAILED
+            } else {
+                entity.status
+            },
+            errorMessage = if (entity.status == LocalRepository.MESSAGE_IMAGE_STATUS_COMPLETED && !available) {
+                "同步后未找到图片文件"
+            } else {
+                entity.errorMessage
+            }
+        )
+    }
+
+    private fun stablePortraitReference(reference: String?): String {
+        if (reference.isNullOrBlank()) return ""
+        val path = runCatching { android.net.Uri.parse(reference).path }.getOrNull()
+        val root = File(appContext.filesDir, "portraits").canonicalFile
+        val file = path?.let(::File)?.let { runCatching { it.canonicalFile }.getOrNull() }
+        return if (file != null && file.path.startsWith(root.path + File.separator)) {
+            file.relativeTo(root).invariantSeparatorsPath
+        } else {
+            reference
+        }
+    }
+
+    private fun restorePortraitReference(reference: String?): String? {
+        if (reference.isNullOrBlank()) return null
+        if (reference.startsWith("http://") || reference.startsWith("https://") || reference.startsWith("content://")) {
+            return reference
+        }
+        val root = File(appContext.filesDir, "portraits").canonicalFile
+        val target = runCatching { File(root, reference).canonicalFile }.getOrNull()
+        return if (target != null && target.path.startsWith(root.path + File.separator)) {
+            target.takeIf { it.isFile }?.let { android.net.Uri.fromFile(it).toString() }
+        } else {
+            reference
         }
     }
 
@@ -1140,6 +1242,18 @@ class LocalWebDavBackupManager(
                         putZipEntry(zip, "$ENTRY_PORTRAITS_PREFIX$relative", file.readBytes())
                     }
 
+                // 消息生图与角色立绘都保存在 filesDir/portraits；独立前缀保留原有缓存立绘的恢复语义。
+                val localPortraitDir = File(appContext.filesDir, "portraits")
+                localPortraitDir.walkTopDown()
+                    .filter { it.isFile }
+                    .forEach { file ->
+                        val relative = file.relativeTo(localPortraitDir)
+                            .invariantSeparatorsPath
+                            .takeIf { isSafeRelativePath(it) }
+                            ?: return@forEach
+                        putZipEntry(zip, "$ENTRY_LOCAL_PORTRAITS_PREFIX$relative", file.readBytes())
+                    }
+
                 val coverDir = File(appContext.filesDir, "worldbook_covers")
                 coverDir.walkTopDown()
                     .filter { it.isFile }
@@ -1223,6 +1337,22 @@ class LocalWebDavBackupManager(
                 if (portraitDir.exists()) portraitDir.deleteRecursively()
                 portraitEntries.forEach { (path, bytes) ->
                     val relative = path.removePrefix(ENTRY_PORTRAITS_PREFIX)
+                    if (isSafeRelativePath(relative)) {
+                        File(portraitDir, relative).apply {
+                            parentFile?.mkdirs()
+                            writeBytes(bytes)
+                        }
+                    }
+                }
+            }
+
+            val localPortraitEntries = entries.filterKeys {
+                it.startsWith(ENTRY_LOCAL_PORTRAITS_PREFIX)
+            }
+            if (includePortraits && localPortraitEntries.isNotEmpty()) {
+                val portraitDir = File(appContext.filesDir, "portraits")
+                localPortraitEntries.forEach { (path, bytes) ->
+                    val relative = path.removePrefix(ENTRY_LOCAL_PORTRAITS_PREFIX)
                     if (isSafeRelativePath(relative)) {
                         File(portraitDir, relative).apply {
                             parentFile?.mkdirs()
@@ -1685,15 +1815,18 @@ class LocalWebDavBackupManager(
         const val ENTRY_TOKEN_USAGE = "token-usage.json"
         const val ENTRY_ACHIEVEMENTS = "achievements.json"
         const val ENTRY_PORTRAITS_PREFIX = "portraits/"
+        const val ENTRY_LOCAL_PORTRAITS_PREFIX = "local-portraits/"
         const val ENTRY_WORLD_BOOK_COVERS_PREFIX = "worldbook-covers/"
         const val ACHIEVEMENT_PREF_NAME = "nekobot_achievements"
         const val TYPE_SESSION = "session"
         const val TYPE_MESSAGE = "message"
+        const val TYPE_MESSAGE_IMAGE = "message_image"
         const val TYPE_CHARACTER = "character"
         const val TYPE_WORLD_BOOK = "world_book"
         const val TYPE_WORLD_BOOK_ENTRY = "world_book_entry"
         const val MAX_ARCHIVE_ENTRIES = 5_000
         const val MAX_ARCHIVE_SIZE = 1024L * 1024L * 1024L
+        const val MAX_MESSAGE_IMAGE_BYTES = 64L * 1024L * 1024L
 
         val XML_MEDIA_TYPE = "application/xml; charset=utf-8".toMediaType()
         val BINARY_MEDIA_TYPE = "application/octet-stream".toMediaType()

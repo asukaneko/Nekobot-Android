@@ -168,9 +168,11 @@ import com.nekobot.app.data.model.ReasoningEffort
 import com.nekobot.app.data.model.ThinkingCard
 import com.nekobot.app.data.model.ThinkingStep
 import com.nekobot.app.data.local.ChatInputLayoutMode
+import com.nekobot.app.data.local.MessageImageGenerationScheduler
 import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.local.VISION_FAILURE_MARKER
 import com.nekobot.app.data.local.isLocalCommandMessage
+import com.nekobot.app.data.local.db.LocalMessageImageEntity
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
 import com.nekobot.app.data.local.ai.AgentRecoveryState
 import com.nekobot.app.data.local.ai.toRecoveryState
@@ -396,6 +398,10 @@ class ChatViewModel : BaseViewModel() {
     private val _selectedMessageIds = MutableStateFlow<Set<String>>(emptySet())
     val selectedMessageIds: StateFlow<Set<String>> = _selectedMessageIds.asStateFlow()
 
+    private val _messageImages = MutableStateFlow<List<LocalMessageImageEntity>>(emptyList())
+    val messageImages: StateFlow<List<LocalMessageImageEntity>> = _messageImages.asStateFlow()
+    private var messageImagesJob: kotlinx.coroutines.Job? = null
+
     private var currentSessionId: String = ""
     private var realtimeLiveJob: kotlinx.coroutines.Job? = null
     private val realtimeVoiceClient = RealtimeVoiceClient()
@@ -480,6 +486,12 @@ class ChatViewModel : BaseViewModel() {
             ChatSessionManager.release(currentSessionId)
         }
         currentSessionId = sessionId
+        messageImagesJob?.cancel()
+        messageImagesJob = viewModelScope.launch {
+            unified.observeMessageImages(sessionId).collect { images ->
+                if (currentSessionId == sessionId) _messageImages.value = images
+            }
+        }
         // 获取（或创建）跨 VM 共享的运行时状态，引用计数 +1
         // 通过 _runtime.value 赋值使 Compose 的 flatMapLatest 自动切换到新 runtime
         _runtime.value = ChatSessionManager.acquire(sessionId)
@@ -2324,6 +2336,94 @@ class ChatViewModel : BaseViewModel() {
         )
     }
 
+    /** 根据长按的消息内容创建持久生图任务，并交给 WorkManager 异步执行。 */
+    fun generateImageForMessage(message: Message) {
+        val sessionId = currentSessionId.takeIf(String::isNotBlank) ?: return
+        val messageId = message.id?.takeIf(String::isNotBlank) ?: return
+        val messagePrompt = message.displayContent.trim()
+        if (messagePrompt.isBlank()) return
+
+        viewModelScope.launch {
+            val currentSession = _session.value
+            val characterId = currentSession?.characterId
+                ?: currentSession?.characterIds?.firstOrNull()
+            val character = characterId?.let { id ->
+                when (val result = unified.getCharacter(id)) {
+                    is Resource.Success -> result.data
+                    else -> null
+                }
+            }
+            val prompt = buildMessageImagePrompt(messagePrompt, currentSession, character)
+            val referencePath = resolveAvatarUrl(
+                character?.portrait
+                    ?: character?.avatar
+                    ?: currentSession?.portraitUrl
+            )
+            when (
+                val result = unified.enqueueMessageImage(
+                    sessionId = sessionId,
+                    messageId = messageId,
+                    prompt = prompt,
+                    referenceImagePath = referencePath
+                )
+            ) {
+                is Resource.Success -> {
+                    val context = ServiceContainer.appContext
+                    if (context == null) {
+                        ServiceContainer.localRepository.failMessageImage(
+                            result.data.id,
+                            "应用上下文未初始化"
+                        )
+                        showError(string(R.string.chat_message_image_failed, "应用上下文未初始化"))
+                    } else {
+                        MessageImageGenerationScheduler.enqueue(context, result.data.id)
+                        showToast(string(R.string.chat_message_image_queued_toast))
+                    }
+                }
+
+                is Resource.Error -> showError(result.message)
+                is Resource.Loading -> Unit
+            }
+        }
+    }
+
+    private fun buildMessageImagePrompt(
+        messagePrompt: String,
+        session: Session?,
+        character: CharacterPreset?
+    ): String {
+        val sections = mutableListOf<String>()
+        fun add(label: String, value: String?) {
+            value?.trim()?.takeIf { it.isNotBlank() }?.let {
+                sections += "$label：${it.take(8_000)}"
+            }
+        }
+
+        add("角色名", character?.name ?: session?.characterName)
+        add("角色描述", character?.description)
+        add("基础信息", character?.basicInfo)
+        add("性格", character?.personality)
+        add("角色场景", character?.scenario ?: session?.scenario)
+        add("系统设定", character?.systemPrompt)
+        add("行为规则", character?.rules?.joinToString("\n"))
+        add("标签", character?.tags?.joinToString(", "))
+        add("首条问候", character?.firstMessage)
+        add("备用问候", character?.alternateGreetings?.joinToString("\n"))
+        add("示例对话", character?.exampleDialogues)
+        add("会话设定", session?.systemPrompt)
+
+        return buildString {
+            appendLine("请根据下面的画面要求生成一张图片。")
+            if (sections.isNotEmpty()) {
+                appendLine("角色卡上下文（仅用于保持角色身份、外观、服装、气质与世界观一致，不要把这些说明文字绘制到图片中）：")
+                sections.forEach { appendLine(it) }
+            }
+            appendLine("本次消息的画面要求：")
+            appendLine(messagePrompt)
+            append("请优先保持角色卡与参考立绘中的人物特征一致，并将消息内容转化为自然的画面构图；图片中不要出现角色卡、提示词或解释文字。")
+        }.take(32_000)
+    }
+
     /** 进入多选模式，并预选指定消息。 */
     fun enterSelectionMode(messageId: String) {
         _selectionMode.value = true
@@ -2372,6 +2472,7 @@ class ChatViewModel : BaseViewModel() {
 
     override fun onCleared() {
         stopRealtimeLiveTurn()
+        messageImagesJob?.cancel()
         super.onCleared()
         // 不取消 eventsJob / localChatJob：让 AI 生成流程在后台继续运行
         // 仅释放本 VM 对 runtime 的引用计数；若没有其他订阅者且无活跃 Job，状态会被清理

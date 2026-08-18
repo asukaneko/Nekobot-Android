@@ -169,6 +169,33 @@ interface MessageDao {
 }
 
 @Dao
+interface MessageImageDao {
+    @Query("SELECT * FROM local_message_images WHERE session_id = :sessionId ORDER BY created_at ASC")
+    fun observeBySession(sessionId: String): Flow<List<LocalMessageImageEntity>>
+
+    @Query("SELECT * FROM local_message_images WHERE session_id = :sessionId ORDER BY created_at ASC")
+    suspend fun listBySession(sessionId: String): List<LocalMessageImageEntity>
+
+    @Query("SELECT * FROM local_message_images ORDER BY created_at ASC")
+    suspend fun listAll(): List<LocalMessageImageEntity>
+
+    @Query("SELECT * FROM local_message_images WHERE id = :id")
+    suspend fun getById(id: String): LocalMessageImageEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(image: LocalMessageImageEntity)
+
+    @Query("DELETE FROM local_message_images WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM local_message_images WHERE message_id = :messageId")
+    suspend fun deleteByMessageId(messageId: String)
+
+    @Query("DELETE FROM local_message_images WHERE session_id = :sessionId")
+    suspend fun deleteBySession(sessionId: String)
+}
+
+@Dao
 interface AgentRunDao {
     @Query("SELECT * FROM local_agent_runs WHERE session_id = :sessionId LIMIT 1")
     fun observeBySession(sessionId: String): Flow<LocalAgentRunEntity?>

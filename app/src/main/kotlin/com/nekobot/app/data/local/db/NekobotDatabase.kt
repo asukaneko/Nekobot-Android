@@ -16,6 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [
         LocalSessionEntity::class,
         LocalMessageEntity::class,
+        LocalMessageImageEntity::class,
         LocalAgentRunEntity::class,
         LocalCharacterEntity::class,
         LocalWorldBookEntity::class,
@@ -40,12 +41,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalKnowledgeChunkEntity::class,
         RoutingDecisionLogEntity::class
     ],
-    version = 32,
+    version = 34,
     exportSchema = true
 )
 abstract class NekobotDatabase : RoomDatabase() {
     abstract fun sessionDao(): SessionDao
     abstract fun messageDao(): MessageDao
+    abstract fun messageImageDao(): MessageImageDao
     abstract fun agentRunDao(): AgentRunDao
     abstract fun characterDao(): CharacterDao
     abstract fun worldBookDao(): WorldBookDao
@@ -705,6 +707,46 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        /** v32 → v33：新增消息 AI 生图任务及本地图片引用。 */
+        val MIGRATION_32_33 = object : Migration(32, 33) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_message_images (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        session_id TEXT NOT NULL,
+                        message_id TEXT NOT NULL,
+                        prompt TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        file_name TEXT,
+                        file_path TEXT,
+                        mime_type TEXT,
+                        model_id TEXT,
+                        model_name TEXT,
+                        error_message TEXT,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_local_message_images_session_id " +
+                        "ON local_message_images(session_id)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_local_message_images_message_id " +
+                        "ON local_message_images(message_id)"
+                )
+            }
+        }
+
+        val MIGRATION_33_34 = object : Migration(33, 34) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_message_images ADD COLUMN reference_image_path TEXT")
+                db.execSQL("ALTER TABLE local_message_images ADD COLUMN reference_image_mime_type TEXT")
+            }
+        }
+
         /**
          * 完整迁移链同时供生产数据库构建和迁移回归测试使用。
          * 新版本必须把迁移追加到这里；缺少迁移时直接失败，绝不静默清空用户数据。
@@ -717,7 +759,8 @@ abstract class NekobotDatabase : RoomDatabase() {
             MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21,
             MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25,
             MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29,
-            MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32
+            MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33,
+            MIGRATION_33_34
         )
 
         fun get(context: Context): NekobotDatabase =

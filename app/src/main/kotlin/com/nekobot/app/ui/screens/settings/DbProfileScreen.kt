@@ -724,6 +724,10 @@ class DbProfileViewModel : ViewModel() {
         db.worldBookDao().listAll().forEach { book ->
             book.coverUrl?.takeIf { it.isNotBlank() }?.let(references::add)
         }
+        db.messageImageDao().listAll().forEach { image ->
+            image.filePath?.takeIf { it.isNotBlank() }?.let(references::add)
+            image.referenceImagePath?.takeIf { it.isNotBlank() }?.let(references::add)
+        }
         return references.mapNotNull { reference ->
             resolveAppPrivateFile(context, reference)?.let { file ->
                 DbProfilePortraitSource(reference, file)
@@ -869,6 +873,18 @@ class DbProfileViewModel : ViewModel() {
             val coverUrl = rewrite(book.coverUrl)
             if (coverUrl != book.coverUrl) {
                 db.worldBookDao().update(book.copy(coverUrl = coverUrl))
+            }
+        }
+        db.messageImageDao().listAll().forEach { image ->
+            val filePath = rewrite(image.filePath)
+            val referenceImagePath = rewrite(image.referenceImagePath)
+            if (filePath != image.filePath || referenceImagePath != image.referenceImagePath) {
+                db.messageImageDao().upsert(
+                    image.copy(
+                        filePath = filePath,
+                        referenceImagePath = referenceImagePath
+                    )
+                )
             }
         }
     }

@@ -548,4 +548,14 @@
     <string name="live_voice_message">(음성 메시지)</string>
     <string name="live_realtime_empty_response">저장할 자막이 반환되지 않았습니다</string>
     <string name="live_realtime_failed">Realtime 대화에 실패했습니다</string>
+    <string name="chat_message_generate_image">AI 이미지 생성</string>
+    <string name="chat_message_image_queued">이미지 생성 대기열에 추가됨</string>
+    <string name="chat_message_image_generating">이미지 생성 중…</string>
+    <string name="chat_message_image_failed">이미지 생성 실패: %1$s</string>
+    <string name="chat_message_image_model">%1$s에서 생성</string>
+    <string name="chat_message_image_content_description">AI 생성 이미지</string>
+    <string name="chat_message_image_queued_toast">이미지 생성을 시작했습니다</string>
+    <string name="chat_message_image_preview">이미지 미리보기</string>
+    <string name="chat_message_image_close_preview">이미지 미리보기 닫기</string>
+    <string name="chat_message_image_download">Download에 저장</string>
 </resources>

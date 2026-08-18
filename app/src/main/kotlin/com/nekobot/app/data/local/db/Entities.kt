@@ -114,6 +114,36 @@ data class LocalMessageEntity(
 )
 
 /**
+ * 由某条聊天消息触发的 AI 生图任务。
+ *
+ * 图片文件存放在应用私有的 portraits 目录中，以便沿用角色立绘既有的数据导出、
+ * 数据库档案迁移和 WebDAV 备份能力。该表不建立消息外键：远程模式的消息并不在
+ * 本地 local_messages 表内，但同样需要在当前设备保存并展示生成结果。
+ */
+@Entity(
+    tableName = "local_message_images",
+    indices = [Index("session_id"), Index("message_id")]
+)
+data class LocalMessageImageEntity(
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "session_id") val sessionId: String,
+    @ColumnInfo(name = "message_id") val messageId: String,
+    val prompt: String,
+    @ColumnInfo(name = "reference_image_path") val referenceImagePath: String? = null,
+    @ColumnInfo(name = "reference_image_mime_type") val referenceImageMimeType: String? = null,
+    /** queued / running / completed / failed */
+    val status: String,
+    @ColumnInfo(name = "file_name") val fileName: String? = null,
+    @ColumnInfo(name = "file_path") val filePath: String? = null,
+    @ColumnInfo(name = "mime_type") val mimeType: String? = null,
+    @ColumnInfo(name = "model_id") val modelId: String? = null,
+    @ColumnInfo(name = "model_name") val modelName: String? = null,
+    @ColumnInfo(name = "error_message") val errorMessage: String? = null,
+    @ColumnInfo(name = "created_at") val createdAt: String,
+    @ColumnInfo(name = "updated_at") val updatedAt: String
+)
+
+/**
  * 本地 Agent 单会话运行检查点。
  *
  * 只保留尚未正常完成的一轮任务；完整工具批次结束后更新 checkpointHistory，
