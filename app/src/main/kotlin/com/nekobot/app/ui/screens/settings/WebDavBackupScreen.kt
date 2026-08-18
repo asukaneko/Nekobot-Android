@@ -123,14 +123,20 @@ class WebDavBackupViewModel : BaseViewModel() {
         url: String,
         username: String,
         password: String,
-        encryptionPassword: String
+        encryptionPassword: String,
+        autoIncrementalSyncEnabled: Boolean? = null,
+        autoIncrementalSyncIntervalHours: Int? = null,
+        incrementalSyncMaxVersions: Int? = null
     ) {
         val cfg = WebDavConfig(
             enabled = enabled,
             url = url.trim(),
             username = username.trim(),
             password = password.ifBlank { null },
-            encryptionPassword = encryptionPassword.ifBlank { null }
+            encryptionPassword = encryptionPassword.ifBlank { null },
+            autoIncrementalSyncEnabled = autoIncrementalSyncEnabled,
+            autoIncrementalSyncIntervalHours = autoIncrementalSyncIntervalHours,
+            incrementalSyncMaxVersions = incrementalSyncMaxVersions
         )
         launchResult(
             block = { unified.saveWebDavConfig(cfg) },
@@ -305,6 +311,15 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
     var passwordInput by remember { mutableStateOf("") }
     var encryptionPasswordInput by remember { mutableStateOf("") }
     var enabledInput by remember(config) { mutableStateOf(config?.enabled == true) }
+    var autoIncrementalSyncEnabledInput by remember(config) {
+        mutableStateOf(config?.autoIncrementalSyncEnabled == true)
+    }
+    var autoIncrementalSyncIntervalHoursInput by remember(config) {
+        mutableStateOf((config?.autoIncrementalSyncIntervalHours ?: 6).toString())
+    }
+    var incrementalSyncMaxVersionsInput by remember(config) {
+        mutableStateOf((config?.incrementalSyncMaxVersions ?: 10).toString())
+    }
 
     // 备份/同步选项
     var backupPassword by remember { mutableStateOf("") }
@@ -424,6 +439,62 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                             visualTransformation = PasswordVisualTransformation(),
                             modifier = Modifier.fillMaxWidth()
                         )
+
+                        if (ServiceContainer.prefs.isLocalMode) {
+                            Spacer(Modifier.height(16.dp))
+                            SectionHeader(
+                                title = stringResource(R.string.webdav_auto_incremental_title),
+                                subtitle = stringResource(R.string.webdav_auto_incremental_subtitle)
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        stringResource(R.string.webdav_auto_incremental_enabled),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        stringResource(R.string.webdav_auto_incremental_enabled_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = autoIncrementalSyncEnabledInput,
+                                    onCheckedChange = { autoIncrementalSyncEnabledInput = it }
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = autoIncrementalSyncIntervalHoursInput,
+                                onValueChange = { value ->
+                                    autoIncrementalSyncIntervalHoursInput = value.filter(Char::isDigit)
+                                },
+                                label = { Text(stringResource(R.string.webdav_auto_incremental_interval_hours)) },
+                                supportingText = {
+                                    Text(stringResource(R.string.webdav_auto_incremental_interval_hours_desc))
+                                },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = incrementalSyncMaxVersionsInput,
+                                onValueChange = { value ->
+                                    incrementalSyncMaxVersionsInput = value.filter(Char::isDigit)
+                                },
+                                label = { Text(stringResource(R.string.webdav_incremental_max_versions)) },
+                                supportingText = {
+                                    Text(stringResource(R.string.webdav_incremental_max_versions_desc))
+                                },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                         Spacer(Modifier.height(12.dp))
 
                         Row(
@@ -437,7 +508,22 @@ fun WebDavBackupScreen(onBack: () -> Unit) {
                                         urlInput,
                                         usernameInput,
                                         passwordInput,
-                                        encryptionPasswordInput
+                                        encryptionPasswordInput,
+                                        autoIncrementalSyncEnabled = if (ServiceContainer.prefs.isLocalMode) {
+                                            autoIncrementalSyncEnabledInput
+                                        } else {
+                                            null
+                                        },
+                                        autoIncrementalSyncIntervalHours = if (ServiceContainer.prefs.isLocalMode) {
+                                            autoIncrementalSyncIntervalHoursInput.toIntOrNull()?.coerceIn(1, 168) ?: 6
+                                        } else {
+                                            null
+                                        },
+                                        incrementalSyncMaxVersions = if (ServiceContainer.prefs.isLocalMode) {
+                                            incrementalSyncMaxVersionsInput.toIntOrNull()?.coerceIn(1, 50) ?: 10
+                                        } else {
+                                            null
+                                        }
                                     )
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),

@@ -238,4 +238,12 @@
     <string name="dbprofile_import_file_failed">가져오기 실패, 다시 시도해 주세요</string>
     <string name="dbprofile_import_file_failed_reason">가져오기 실패: %1$s</string>
     <string name="dbprofile_selected_file">선택된 파일: %1$s</string>
+    <string name="webdav_auto_incremental_title">자동 증분 동기화</string>
+    <string name="webdav_auto_incremental_subtitle">설정한 간격으로 네트워크 연결 시 현재 로컬 데이터베이스를 동기화합니다</string>
+    <string name="webdav_auto_incremental_enabled">자동 증분 동기화 사용</string>
+    <string name="webdav_auto_incremental_enabled_desc">끄면 증분 동기화는 수동으로만 실행할 수 있습니다.</string>
+    <string name="webdav_auto_incremental_interval_hours">동기화 간격(시간)</string>
+    <string name="webdav_auto_incremental_interval_hours_desc">1~168시간으로 설정할 수 있습니다. 배터리 최적화로 실행이 지연될 수 있습니다.</string>
+    <string name="webdav_incremental_max_versions">보관할 최대 버전 수</string>
+    <string name="webdav_incremental_max_versions_desc">현재 버전을 포함해 1~50개를 보관하며, 초과한 기록은 자동으로 삭제합니다.</string>
 </resources>

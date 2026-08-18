@@ -1411,7 +1411,10 @@ data class WebDavConfig(
     @SerializedName("last_modified") val lastModified: String? = null,
     @SerializedName("resolved_file_url") val resolvedFileUrl: String? = null,
     @SerializedName("has_password") val hasPassword: Boolean? = null,
-    @SerializedName("has_encryption_password") val hasEncryptionPassword: Boolean? = null
+    @SerializedName("has_encryption_password") val hasEncryptionPassword: Boolean? = null,
+    @SerializedName("auto_incremental_sync_enabled") val autoIncrementalSyncEnabled: Boolean? = null,
+    @SerializedName("auto_incremental_sync_interval_hours") val autoIncrementalSyncIntervalHours: Int? = null,
+    @SerializedName("incremental_sync_max_versions") val incrementalSyncMaxVersions: Int? = null
 )
 
 data class WebDavTestRequest(

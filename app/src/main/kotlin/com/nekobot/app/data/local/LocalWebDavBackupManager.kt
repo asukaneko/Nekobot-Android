@@ -114,7 +114,19 @@ class LocalWebDavBackupManager(
                 .takeIf { it.isNotBlank() },
             resolvedFileUrl = runCatching { resolveFileUrl(url) }.getOrNull(),
             hasPassword = password.isNotBlank(),
-            hasEncryptionPassword = encryptionPassword.isNotBlank()
+            hasEncryptionPassword = encryptionPassword.isNotBlank(),
+            autoIncrementalSyncEnabled = configPrefs.getBoolean(
+                KEY_AUTO_INCREMENTAL_SYNC_ENABLED,
+                false
+            ),
+            autoIncrementalSyncIntervalHours = configPrefs.getInt(
+                KEY_AUTO_INCREMENTAL_SYNC_INTERVAL_HOURS,
+                DEFAULT_AUTO_INCREMENTAL_SYNC_INTERVAL_HOURS
+            ).coerceIn(MIN_AUTO_INCREMENTAL_SYNC_INTERVAL_HOURS, MAX_AUTO_INCREMENTAL_SYNC_INTERVAL_HOURS),
+            incrementalSyncMaxVersions = configPrefs.getInt(
+                KEY_INCREMENTAL_SYNC_MAX_VERSIONS,
+                DEFAULT_INCREMENTAL_SYNC_MAX_VERSIONS
+            ).coerceIn(MIN_INCREMENTAL_SYNC_MAX_VERSIONS, MAX_INCREMENTAL_SYNC_MAX_VERSIONS)
         )
     }
 
@@ -135,10 +147,38 @@ class LocalWebDavBackupManager(
                 securePrefs.putString(SECURE_KEY_ENCRYPTION_PASSWORD, it)
                 editor.remove(KEY_ENCRYPTION_PASSWORD)
             }
+        config.autoIncrementalSyncEnabled?.let {
+            editor.putBoolean(KEY_AUTO_INCREMENTAL_SYNC_ENABLED, it)
+        }
+        config.autoIncrementalSyncIntervalHours?.let {
+            editor.putInt(
+                KEY_AUTO_INCREMENTAL_SYNC_INTERVAL_HOURS,
+                it.coerceIn(
+                    MIN_AUTO_INCREMENTAL_SYNC_INTERVAL_HOURS,
+                    MAX_AUTO_INCREMENTAL_SYNC_INTERVAL_HOURS
+                )
+            )
+        }
+        config.incrementalSyncMaxVersions?.let {
+            editor.putInt(
+                KEY_INCREMENTAL_SYNC_MAX_VERSIONS,
+                it.coerceIn(
+                    MIN_INCREMENTAL_SYNC_MAX_VERSIONS,
+                    MAX_INCREMENTAL_SYNC_MAX_VERSIONS
+                )
+            )
+        }
         editor.apply()
         LocalWebDavSyncScheduler.configure(
             appContext,
-            config.enabled ?: configPrefs.getBoolean(KEY_ENABLED, false)
+            webDavEnabled = config.enabled ?: configPrefs.getBoolean(KEY_ENABLED, false),
+            autoIncrementalSyncEnabled = config.autoIncrementalSyncEnabled
+                ?: configPrefs.getBoolean(KEY_AUTO_INCREMENTAL_SYNC_ENABLED, false),
+            intervalHours = config.autoIncrementalSyncIntervalHours
+                ?: configPrefs.getInt(
+                    KEY_AUTO_INCREMENTAL_SYNC_INTERVAL_HOURS,
+                    DEFAULT_AUTO_INCREMENTAL_SYNC_INTERVAL_HOURS
+                )
         )
         return successJson().apply {
             add("config", gson.toJsonTree(getConfig()))
@@ -636,6 +676,14 @@ class LocalWebDavBackupManager(
                     .putString(baselineKey, gson.toJson(remoteManifest))
                     .putString(KEY_LAST_CONFLICTS, gson.toJson(conflictDetails))
                     .apply()
+                pruneIncrementalHistory(
+                    raw = raw,
+                    rootUrl = rootUrl,
+                    maxVersions = configPrefs.getInt(
+                        KEY_INCREMENTAL_SYNC_MAX_VERSIONS,
+                        DEFAULT_INCREMENTAL_SYNC_MAX_VERSIONS
+                    )
+                )
                 updateStatus(
                     lastSyncAt = now,
                     lastError = "",
@@ -1121,6 +1169,55 @@ class LocalWebDavBackupManager(
         } else {
             reference
         }
+    }
+
+    /**
+     * 当前 manifest 始终保留；历史目录只保存其余版本，合计不超过用户设置的上限。
+     * 仅在 manifest 成功写入后调用，避免同步失败时错误删除可恢复的版本。
+     */
+    private fun pruneIncrementalHistory(
+        raw: RawConfig,
+        rootUrl: String,
+        maxVersions: Int
+    ) {
+        val historyUrl = "${rootUrl}history/"
+        val propfindBody = """
+            <?xml version="1.0" encoding="utf-8"?>
+            <D:propfind xmlns:D="DAV:"><D:prop/></D:propfind>
+        """.trimIndent().toRequestBody(XML_MEDIA_TYPE)
+        val historyRevisions = mutableSetOf<Long>()
+        execute(
+            Request.Builder().url(historyUrl).method("PROPFIND", propfindBody).header("Depth", "1"),
+            raw
+        ).use { response ->
+            if (response.code == 404) return
+            if (response.code !in listOf(200, 207)) {
+                error("读取 WebDAV 历史目录失败 (HTTP ${response.code})")
+            }
+            val xml = response.body?.string().orEmpty()
+            Regex("manifest-(\\d+)\\.nksync", RegexOption.IGNORE_CASE)
+                .findAll(xml)
+                .mapNotNull { it.groupValues.getOrNull(1)?.toLongOrNull() }
+                .forEach(historyRevisions::add)
+        }
+
+        val maxHistoryVersions = (maxVersions.coerceIn(
+            MIN_INCREMENTAL_SYNC_MAX_VERSIONS,
+            MAX_INCREMENTAL_SYNC_MAX_VERSIONS
+        ) - 1).coerceAtLeast(0)
+        historyRevisions
+            .sortedDescending()
+            .drop(maxHistoryVersions)
+            .forEach { revision ->
+                execute(
+                    Request.Builder().url("${historyUrl}manifest-$revision.nksync").delete(),
+                    raw
+                ).use { response ->
+                    if (response.code !in listOf(200, 202, 204, 404)) {
+                        error("清理 WebDAV 历史版本失败 (HTTP ${response.code})")
+                    }
+                }
+            }
     }
 
     private fun ensureIncrementalFolders(raw: RawConfig) {
@@ -1802,8 +1899,18 @@ class LocalWebDavBackupManager(
         const val KEY_LAST_FILE_SIZE = "last_file_size"
         const val KEY_LAST_MODIFIED = "last_modified"
         const val KEY_SYNC_DEVICE_ID = "sync_device_id"
+        const val KEY_AUTO_INCREMENTAL_SYNC_ENABLED = "auto_incremental_sync_enabled"
+        const val KEY_AUTO_INCREMENTAL_SYNC_INTERVAL_HOURS = "auto_incremental_sync_interval_hours"
+        const val KEY_INCREMENTAL_SYNC_MAX_VERSIONS = "incremental_sync_max_versions"
         const val KEY_SYNC_BASE_PREFIX = "sync_base_"
         const val KEY_LAST_CONFLICTS = "last_incremental_conflicts"
+
+        const val DEFAULT_AUTO_INCREMENTAL_SYNC_INTERVAL_HOURS = 6
+        const val MIN_AUTO_INCREMENTAL_SYNC_INTERVAL_HOURS = 1
+        const val MAX_AUTO_INCREMENTAL_SYNC_INTERVAL_HOURS = 24 * 7
+        const val DEFAULT_INCREMENTAL_SYNC_MAX_VERSIONS = 10
+        const val MIN_INCREMENTAL_SYNC_MAX_VERSIONS = 1
+        const val MAX_INCREMENTAL_SYNC_MAX_VERSIONS = 50
 
         const val BACKUP_FOLDER = "nekobot"
         const val BACKUP_FILENAME = "config.nbotcfg"

@@ -238,4 +238,12 @@
     <string name="dbprofile_import_file_failed">インポート失敗、再試行してください</string>
     <string name="dbprofile_import_file_failed_reason">インポート失敗：%1$s</string>
     <string name="dbprofile_selected_file">選択されたファイル：%1$s</string>
+    <string name="webdav_auto_incremental_title">自動増分同期</string>
+    <string name="webdav_auto_incremental_subtitle">指定した間隔で、ネットワーク接続時に現在のローカルデータベースを同期します</string>
+    <string name="webdav_auto_incremental_enabled">自動増分同期を有効にする</string>
+    <string name="webdav_auto_incremental_enabled_desc">無効にすると、増分同期は手動でのみ実行できます。</string>
+    <string name="webdav_auto_incremental_interval_hours">同期間隔（時間）</string>
+    <string name="webdav_auto_incremental_interval_hours_desc">1～168 時間で設定できます。省電力設定により実行が遅れる場合があります。</string>
+    <string name="webdav_incremental_max_versions">保持するバージョン数</string>
+    <string name="webdav_incremental_max_versions_desc">現在のバージョンを含めて 1～50 件を保持します。超過した履歴は自動削除されます。</string>
 </resources>

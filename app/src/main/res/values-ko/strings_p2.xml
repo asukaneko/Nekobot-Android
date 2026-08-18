@@ -113,7 +113,7 @@
     <string name="diagnostic_copied">클립보드에 복사했습니다</string>
     <string name="webdav_incremental_title">증분 동기화</string>
     <string name="webdav_incremental_subtitle">기기 간 세션, 캐릭터 카드 및 세계관 책 병합</string>
-    <string name="webdav_incremental_desc">종단 간 암호화로 변경된 레코드만 업로드합니다. 원격에는 리비전 파일을 보존하며 충돌 시 업데이트 시간이 더 최신인 내용을 자동으로 사용합니다. WebDAV를 사용하면 6시간마다 자동으로 동기화합니다.</string>
+    <string name="webdav_incremental_desc">종단 간 암호화로 변경된 레코드만 업로드합니다. 원격에는 리비전 파일을 보존하며 충돌 시 업데이트 시간이 더 최신인 내용을 자동으로 사용합니다. 자동 동기화 사용 여부, 간격 및 보관 한도를 별도로 설정할 수 있습니다.</string>
     <string name="webdav_incremental_button">지금 증분 동기화</string>
     <string name="webdav_incremental_result">동기화 완료: 업로드 %1$d, 다운로드 %2$d, 충돌 %3$d</string>
     <string name="webdav_incremental_failed">증분 동기화 실패</string>

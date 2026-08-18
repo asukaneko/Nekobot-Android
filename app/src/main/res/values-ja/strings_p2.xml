@@ -113,7 +113,7 @@
     <string name="diagnostic_copied">クリップボードにコピーしました</string>
     <string name="webdav_incremental_title">差分同期</string>
     <string name="webdav_incremental_subtitle">デバイス間でセッション、キャラクターカード、世界設定を統合</string>
-    <string name="webdav_incremental_desc">エンドツーエンド暗号化で、変更されたレコードだけをアップロードします。リモートにはリビジョンを保持し、競合時は更新日時が新しい内容を自動採用します。WebDAV を有効にすると 6 時間ごとに自動同期します。</string>
+    <string name="webdav_incremental_desc">エンドツーエンド暗号化で、変更されたレコードだけをアップロードします。リモートにはリビジョンを保持し、競合時は更新日時が新しい内容を自動採用します。自動同期の有効化、間隔、保持数を個別に設定できます。</string>
     <string name="webdav_incremental_button">今すぐ差分同期</string>
     <string name="webdav_incremental_result">同期完了：アップロード %1$d、ダウンロード %2$d、競合 %3$d</string>
     <string name="webdav_incremental_failed">差分同期に失敗しました</string>

@@ -85,7 +85,7 @@
     <string name="diagnostic_copied">Copied to clipboard</string>
     <string name="webdav_incremental_title">Incremental sync</string>
     <string name="webdav_incremental_subtitle">Merge sessions, character cards, and world books across devices</string>
-    <string name="webdav_incremental_desc">End-to-end encrypted. Only changed records are uploaded. Remote revisions are retained, and conflicts automatically keep the newer record. When WebDAV is enabled, sync runs every 6 hours.</string>
+    <string name="webdav_incremental_desc">End-to-end encrypted. Only changed records are uploaded. Remote revisions are retained, and conflicts automatically keep the newer record. Configure automatic sync, its interval, and the retention limit separately.</string>
     <string name="webdav_incremental_button">Sync now</string>
     <string name="webdav_incremental_result">Sync complete: %1$d uploaded, %2$d downloaded, %3$d conflicts</string>
     <string name="webdav_incremental_failed">Incremental sync failed</string>

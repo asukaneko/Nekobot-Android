@@ -175,7 +175,7 @@
     <string name="webdav_refresh_info">刷新信息</string>
     <string name="webdav_incremental_title">增量同步</string>
     <string name="webdav_incremental_subtitle">跨设备合并会话、角色卡与世界书</string>
-    <string name="webdav_incremental_desc">端到端加密，只上传发生变化的记录；远端保留版本文件，冲突时自动采用更新时间较新的内容。启用 WebDAV 后每 6 小时自动同步。</string>
+    <string name="webdav_incremental_desc">端到端加密，只上传发生变化的记录；远端保留版本文件，冲突时自动采用更新时间较新的内容。自动同步的开关、间隔和版本保留数可单独设置。</string>
     <string name="webdav_incremental_button">立即增量同步</string>
     <string name="webdav_incremental_result">同步完成：上传 %1$d，下载 %2$d，冲突 %3$d</string>
     <string name="webdav_incremental_failed">增量同步失败</string>
@@ -251,4 +251,12 @@
     <string name="dbprofile_import_file_failed">导入失败，请重试</string>
     <string name="dbprofile_import_file_failed_reason">导入失败：%1$s</string>
     <string name="dbprofile_selected_file">已选文件：%1$s</string>
+    <string name="webdav_auto_incremental_title">自动增量同步</string>
+    <string name="webdav_auto_incremental_subtitle">按设置的间隔在有网络时同步当前本地数据库</string>
+    <string name="webdav_auto_incremental_enabled">启用自动增量同步</string>
+    <string name="webdav_auto_incremental_enabled_desc">关闭后仅可手动执行增量同步</string>
+    <string name="webdav_auto_incremental_interval_hours">同步间隔（小时）</string>
+    <string name="webdav_auto_incremental_interval_hours_desc">可设置 1–168 小时；系统可能因省电策略延后执行</string>
+    <string name="webdav_incremental_max_versions">最多保留版本数</string>
+    <string name="webdav_incremental_max_versions_desc">可设置 1–50 个版本，包含当前版本；超出的历史版本会自动清理</string>
 </resources>

@@ -245,4 +245,12 @@
     <string name="dbprofile_import_file_failed">Import failed, please try again</string>
     <string name="dbprofile_import_file_failed_reason">Import failed: %1$s</string>
     <string name="dbprofile_selected_file">Selected file: %1$s</string>
+    <string name="webdav_auto_incremental_title">Automatic incremental sync</string>
+    <string name="webdav_auto_incremental_subtitle">Sync the current local database on a network at the interval you choose</string>
+    <string name="webdav_auto_incremental_enabled">Enable automatic incremental sync</string>
+    <string name="webdav_auto_incremental_enabled_desc">When disabled, incremental sync can only be started manually.</string>
+    <string name="webdav_auto_incremental_interval_hours">Sync interval (hours)</string>
+    <string name="webdav_auto_incremental_interval_hours_desc">Set 1–168 hours. Battery optimization may delay execution.</string>
+    <string name="webdav_incremental_max_versions">Maximum versions to retain</string>
+    <string name="webdav_incremental_max_versions_desc">Set 1–50 versions including the current one; older history is removed automatically.</string>
 </resources>
