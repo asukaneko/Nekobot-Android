@@ -72,6 +72,23 @@ class LocalJmRankingClientTest {
     }
 
     @Test
+    fun prefersDedicatedAlbumCoverBeforeFirstPhoto() {
+        val candidates = buildJmCoverCandidates("286368")
+
+        assertEquals(
+            listOf(
+                "media/albums/286368.jpg",
+                "media/albums/286368.webp",
+                "media/photos/286368/00001.webp",
+                "media/photos/286368/00001.jpg"
+            ),
+            candidates.map { it.path }
+        )
+        assertEquals(false, candidates.first().isScrambled)
+        assertEquals(true, candidates[2].isScrambled)
+    }
+
+    @Test
     fun decodesUpstreamAesPayloadFormat() {
         val timestamp = "1720000000"
         val secret = "test-secret"

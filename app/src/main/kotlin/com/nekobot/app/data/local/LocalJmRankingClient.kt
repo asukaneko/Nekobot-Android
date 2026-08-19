@@ -48,6 +48,12 @@ internal data class LocalJmPhoto(
     val imageFiles: List<String>
 )
 
+internal data class LocalJmCoverCandidate(
+    val path: String,
+    val filename: String,
+    val isScrambled: Boolean
+)
+
 internal data class LocalJmPdfImage(
     val jpegBytes: ByteArray,
     val width: Int,
@@ -194,7 +200,11 @@ internal class LocalJmRankingClient(
         var lastError: Exception? = null
         for (imageDomain in IMAGE_DOMAINS) {
             try {
-                val bytes = fetchImageBytes(imageDomain, photoId, filename, referer)
+                val bytes = fetchImageBytes(
+                    imageDomain,
+                    "media/photos/$photoId/$filename",
+                    referer
+                )
                 return decodeAndCompressJmImage(
                     albumId = photoId.toLong(),
                     filename = filename.substringBeforeLast('.'),
@@ -220,14 +230,19 @@ internal class LocalJmRankingClient(
     fun fetchCoverDataUrl(albumId: String): String? {
         if (albumId.toLongOrNull() == null) return null
         val referer = "https://${lastApiDomain ?: FALLBACK_API_DOMAINS.first()}"
-        for (imageDomain in IMAGE_DOMAINS) {
-            for (suffix in COVER_SUFFIXES) {
+        for (candidate in buildJmCoverCandidates(albumId)) {
+            for (imageDomain in IMAGE_DOMAINS) {
                 val bytes = runCatching {
-                    fetchImageBytes(imageDomain, albumId, "00001.$suffix", referer)
+                    fetchImageBytes(imageDomain, candidate.path, referer)
                 }.getOrNull() ?: continue
 
                 val dataUrl = runCatching {
-                    decodeAndCompressCover(albumId, "00001", bytes)
+                    decodeAndCompressCover(
+                        albumId = albumId,
+                        filename = candidate.filename,
+                        bytes = bytes,
+                        scrambleId = if (candidate.isScrambled) 0L else null
+                    )
                 }.getOrNull()
                 if (dataUrl != null) return dataUrl
             }
@@ -342,17 +357,15 @@ internal class LocalJmRankingClient(
 
     private fun fetchImageBytes(
         imageDomain: String,
-        photoId: String,
-        filename: String,
+        path: String,
         referer: String
     ): ByteArray {
         val imageUrl = "https://$imageDomain"
             .toHttpUrl()
             .newBuilder()
-            .addPathSegment("media")
-            .addPathSegment("photos")
-            .addPathSegment(photoId)
-            .addPathSegment(filename)
+            .apply {
+                path.split('/').filter { it.isNotBlank() }.forEach { addPathSegment(it) }
+            }
             .build()
         return httpClient.newCall(
             Request.Builder()
@@ -436,7 +449,6 @@ internal class LocalJmRankingClient(
             "cdn-msp.jmapinodeudzn.net",
             "cdn-msp3.jmapinodeudzn.net"
         )
-        private val COVER_SUFFIXES = listOf("webp", "jpg")
         private val SCRAMBLE_ID_REGEX =
             Regex("""var\s+scramble_id\s*=\s*(\d+)\s*;""")
 
@@ -498,6 +510,32 @@ internal fun parseJmRankingPayload(
         }
         ?.take(limit.coerceIn(1, 50))
         .orEmpty()
+
+internal fun buildJmCoverCandidates(albumId: String): List<LocalJmCoverCandidate> {
+    if (albumId.toLongOrNull() == null) return emptyList()
+    return listOf(
+        LocalJmCoverCandidate(
+            path = "media/albums/$albumId.jpg",
+            filename = albumId,
+            isScrambled = false
+        ),
+        LocalJmCoverCandidate(
+            path = "media/albums/$albumId.webp",
+            filename = albumId,
+            isScrambled = false
+        ),
+        LocalJmCoverCandidate(
+            path = "media/photos/$albumId/00001.webp",
+            filename = "00001",
+            isScrambled = true
+        ),
+        LocalJmCoverCandidate(
+            path = "media/photos/$albumId/00001.jpg",
+            filename = "00001",
+            isScrambled = true
+        )
+    )
+}
 
 internal fun parseJmAlbumPayload(
     payload: JsonObject,
@@ -590,13 +628,14 @@ internal fun calculateJmScrambleSegments(
 private fun decodeAndCompressCover(
     albumId: String,
     filename: String,
-    bytes: ByteArray
+    bytes: ByteArray,
+    scrambleId: Long?
 ): String {
     val image = decodeAndCompressJmImage(
         albumId = albumId.toLong(),
         filename = filename,
         bytes = bytes,
-        scrambleId = 0L,
+        scrambleId = scrambleId,
         maxWidth = 600,
         maxHeight = 840,
         quality = 84
@@ -608,18 +647,20 @@ private fun decodeAndCompressJmImage(
     albumId: Long,
     filename: String,
     bytes: ByteArray,
-    scrambleId: Long,
+    scrambleId: Long?,
     maxWidth: Int,
     maxHeight: Int,
     quality: Int
 ): LocalJmPdfImage {
     val source = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
         ?: throw IllegalArgumentException("无法解析图片")
-    val segmentCount = calculateJmScrambleSegments(
-        albumId = albumId,
-        filename = filename,
-        scrambleId = scrambleId
-    )
+    val segmentCount = scrambleId?.let {
+        calculateJmScrambleSegments(
+            albumId = albumId,
+            filename = filename,
+            scrambleId = it
+        )
+    } ?: 0
     val decoded = unscrambleJmBitmap(source, segmentCount)
     if (decoded !== source) source.recycle()
 
