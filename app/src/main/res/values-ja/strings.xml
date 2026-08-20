@@ -104,7 +104,7 @@
     <string name="settings_config_reloaded">設定を再読み込みしました</string>
     <string name="settings_advanced">詳細</string>
     <string name="settings_app_lock">プライバシーロック</string>
-    <string name="settings_app_lock_desc">アプリに戻るとき指紋認証を要求します</string>
+    <string name="settings_app_lock_desc">バックグラウンドと最近使ったアプリのプレビューで画面を隠し、戻るとき指紋認証を要求します（有効中はスクリーンショット不可）</string>
     <string name="settings_app_lock_unavailable">先にシステム設定で指紋を登録してください</string>
     <string name="settings_app_lock_auth_title">指紋を確認</string>
     <string name="settings_app_lock_enable_auth_desc">認証してプライバシーロックを有効にします</string>

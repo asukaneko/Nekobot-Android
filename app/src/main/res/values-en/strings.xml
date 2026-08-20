@@ -104,7 +104,7 @@
     <string name="settings_config_reloaded">Config reloaded</string>
     <string name="settings_advanced">Advanced</string>
     <string name="settings_app_lock">Privacy lock</string>
-    <string name="settings_app_lock_desc">Require fingerprint authentication when returning to the app</string>
+    <string name="settings_app_lock_desc">Hide content in background and recents preview, require fingerprint on return (screenshots blocked while on)</string>
     <string name="settings_app_lock_unavailable">Enroll an available fingerprint in system settings first</string>
     <string name="settings_app_lock_auth_title">Verify fingerprint</string>
     <string name="settings_app_lock_enable_auth_desc">Authenticate to enable privacy lock</string>

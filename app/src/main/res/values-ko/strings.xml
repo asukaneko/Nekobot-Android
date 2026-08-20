@@ -104,7 +104,7 @@
     <string name="settings_config_reloaded">설정을 다시 불러왔어요</string>
     <string name="settings_advanced">고급</string>
     <string name="settings_app_lock">개인정보 잠금</string>
-    <string name="settings_app_lock_desc">앱에 다시 들어올 때 지문 인증을 요구해요</string>
+    <string name="settings_app_lock_desc">백그라운드와 최근 앱 미리보기에서 화면을 가리고, 다시 들어올 때 지문 인증을 요구해요 (켜져 있는 동안 스크린샷 불가)</string>
     <string name="settings_app_lock_unavailable">먼저 시스템 설정에서 지문을 등록해 주세요</string>
     <string name="settings_app_lock_auth_title">지문 확인</string>
     <string name="settings_app_lock_enable_auth_desc">인증 후 개인정보 잠금을 켭니다</string>

@@ -114,7 +114,7 @@
     <string name="settings_config_reloaded">配置已重载</string>
     <string name="settings_advanced">高级功能</string>
     <string name="settings_app_lock">隐私锁</string>
-    <string name="settings_app_lock_desc">离开应用后，再次进入需要验证指纹</string>
+    <string name="settings_app_lock_desc">后台与最近任务页中隐藏界面内容，再次进入需验证指纹（开启期间无法截屏录屏）</string>
     <string name="settings_app_lock_unavailable">请先在系统设置中录入可用的指纹</string>
     <string name="settings_app_lock_auth_title">验证指纹</string>
     <string name="settings_app_lock_enable_auth_desc">验证后开启隐私锁</string>

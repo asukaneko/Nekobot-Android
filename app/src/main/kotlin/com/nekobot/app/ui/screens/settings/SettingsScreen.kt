@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.background
@@ -377,6 +378,15 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                         ServiceContainer.prefs.appLockEnabled = enabled
                         appLockState.value = enabled
                         pendingAppLockState.value = null
+                        // 立即更新 FLAG_SECURE，保证下次切后台时最近任务页预览已被隐藏
+                        if (enabled) {
+                            host.window.setFlags(
+                                WindowManager.LayoutParams.FLAG_SECURE,
+                                WindowManager.LayoutParams.FLAG_SECURE
+                            )
+                        } else {
+                            host.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                        }
                         Toast.makeText(
                             context,
                             context.getString(

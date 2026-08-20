@@ -2,6 +2,7 @@ package com.nekobot.app
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -62,6 +63,9 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         appUnlocked = !ServiceContainer.prefs.appLockEnabled
+        // 隐私锁开启期间 FLAG_SECURE 常驻：系统任务快照（最近任务页预览）在切后台的
+        // 过渡动画开始时就已截取，onPause/onStop 里再设置来不及，必须提前生效
+        applySecureFlag(ServiceContainer.prefs.appLockEnabled)
         biometricPrompt = BiometricPrompt(
             this,
             ContextCompat.getMainExecutor(this),
@@ -105,6 +109,21 @@ class MainActivity : FragmentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 开关可能在运行中被修改，回到前台时校正 FLAG_SECURE 状态
+        applySecureFlag(ServiceContainer.prefs.appLockEnabled)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (ServiceContainer.prefs.appLockEnabled && !isChangingConfigurations) {
+            // 切到后台立即切换到锁定页，保证退出动画期间内容也不可见；
+            // FLAG_SECURE 已常驻，最近任务页快照始终为空白
+            appUnlocked = false
         }
     }
 
@@ -157,6 +176,18 @@ class MainActivity : FragmentActivity() {
                 getString(R.string.share_choose_session),
                 Toast.LENGTH_SHORT
             ).show()
+        }
+    }
+
+    /** 隐私锁开启期间保持 FLAG_SECURE：最近任务页预览空白，同时禁止截屏/录屏。 */
+    private fun applySecureFlag(enabled: Boolean) {
+        if (enabled) {
+            window.setFlags(
+                WindowManager.LayoutParams.FLAG_SECURE,
+                WindowManager.LayoutParams.FLAG_SECURE
+            )
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
     }
 
