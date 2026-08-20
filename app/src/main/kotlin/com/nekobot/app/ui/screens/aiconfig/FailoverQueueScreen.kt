@@ -354,7 +354,9 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
         val modelId = movedModelId ?: return@LaunchedEffect
         val index = queue.indexOfFirst { it.id == modelId }
         if (index >= 0) {
-            listState.animateScrollToItem(index, scrollOffset = -movedCardOffset)
+            // 智能路由卡片作为列表首项时，队列项在 LazyColumn 中的整体索引需 +1
+            val headerOffset = if (ServiceContainer.prefs.isLocalMode && purpose == "chat") 1 else 0
+            listState.animateScrollToItem(index + headerOffset, scrollOffset = -movedCardOffset)
         }
         vm.clearMovedModel()
     }
@@ -383,63 +385,6 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                if (ServiceContainer.prefs.isLocalMode && purpose == "chat") {
-                    GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 16) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    stringResource(R.string.smart_routing_title),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Text(
-                                    stringResource(R.string.smart_routing_subtitle),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Switch(
-                                checked = smartRoutingEnabledInput,
-                                onCheckedChange = { smartRoutingEnabledInput = it }
-                            )
-                        }
-                        Spacer(Modifier.height(10.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = smartRoutingBudgetInput,
-                                onValueChange = { value ->
-                                    smartRoutingBudgetInput = value.filter {
-                                        it.isDigit() || it == '.'
-                                    }
-                                },
-                                label = {
-                                    Text(stringResource(R.string.smart_routing_daily_budget))
-                                },
-                                supportingText = {
-                                    Text(stringResource(R.string.smart_routing_daily_budget_hint))
-                                },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                singleLine = true,
-                                modifier = Modifier.weight(1f)
-                            )
-                            OutlinedButton(
-                                onClick = {
-                                    vm.saveSmartRouting(
-                                        smartRoutingEnabledInput,
-                                        smartRoutingBudgetInput.toDoubleOrNull() ?: 0.0
-                                    )
-                                }
-                            ) {
-                                Text(stringResource(R.string.common_save))
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(10.dp))
-                }
                 Row(
                     modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -457,7 +402,28 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
                     ErrorBanner(message = it, onRetry = vm::load)
                     Spacer(Modifier.height(8.dp))
                 }
+                val showSmartRouting = ServiceContainer.prefs.isLocalMode && purpose == "chat"
                 if (!loading && queue.isEmpty()) {
+                    // 空列表时无滚动内容，智能路由卡片固定显示在空状态上方
+                    if (showSmartRouting) {
+                        SmartRoutingCard(
+                            enabledInput = smartRoutingEnabledInput,
+                            onEnabledInputChange = { smartRoutingEnabledInput = it },
+                            budgetInput = smartRoutingBudgetInput,
+                            onBudgetInputChange = { value ->
+                                smartRoutingBudgetInput = value.filter {
+                                    it.isDigit() || it == '.'
+                                }
+                            },
+                            onSave = {
+                                vm.saveSmartRouting(
+                                    smartRoutingEnabledInput,
+                                    smartRoutingBudgetInput.toDoubleOrNull() ?: 0.0
+                                )
+                            }
+                        )
+                        Spacer(Modifier.height(10.dp))
+                    }
                     EmptyState(title = stringResource(R.string.failover_empty_title), hint = stringResource(R.string.failover_empty_hint))
                 } else {
                     LazyColumn(
@@ -465,6 +431,27 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
                         state = listState,
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
+                        // 智能路由卡片作为列表首项，随列表一起滚动
+                        if (showSmartRouting) {
+                            item(key = "smart_routing") {
+                                SmartRoutingCard(
+                                    enabledInput = smartRoutingEnabledInput,
+                                    onEnabledInputChange = { smartRoutingEnabledInput = it },
+                                    budgetInput = smartRoutingBudgetInput,
+                                    onBudgetInputChange = { value ->
+                                        smartRoutingBudgetInput = value.filter {
+                                            it.isDigit() || it == '.'
+                                        }
+                                    },
+                                    onSave = {
+                                        vm.saveSmartRouting(
+                                            smartRoutingEnabledInput,
+                                            smartRoutingBudgetInput.toDoubleOrNull() ?: 0.0
+                                        )
+                                    }
+                                )
+                            }
+                        }
                         itemsIndexed(queue, key = { _, item -> item.id }) { index, item ->
                             FailoverModelCard(
                                 item = item,
@@ -504,6 +491,60 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
             onReset = { vm.reset(detail.modelId) },
             onDismiss = vm::dismissDetail
         )
+    }
+}
+
+/** 智能模型路由配置卡片（本地模式对话用途专用，随列表滚动） */
+@Composable
+private fun SmartRoutingCard(
+    enabledInput: Boolean,
+    onEnabledInputChange: (Boolean) -> Unit,
+    budgetInput: String,
+    onBudgetInputChange: (String) -> Unit,
+    onSave: () -> Unit
+) {
+    GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 16) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.smart_routing_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    stringResource(R.string.smart_routing_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = enabledInput,
+                onCheckedChange = onEnabledInputChange
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = budgetInput,
+                onValueChange = onBudgetInputChange,
+                label = {
+                    Text(stringResource(R.string.smart_routing_daily_budget))
+                },
+                supportingText = {
+                    Text(stringResource(R.string.smart_routing_daily_budget_hint))
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+            OutlinedButton(onClick = onSave) {
+                Text(stringResource(R.string.common_save))
+            }
+        }
     }
 }
 
