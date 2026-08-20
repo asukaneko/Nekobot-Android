@@ -112,7 +112,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -392,8 +394,15 @@ private fun ModernChatComposer(
     val keyboard = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
 
-    var input by remember(sessionId) {
-        mutableStateOf(ServiceContainer.prefs.getChatInputDraft(sessionId))
+    var inputField by remember(sessionId) {
+        mutableStateOf(
+            TextFieldValue(ServiceContainer.prefs.getChatInputDraft(sessionId))
+        )
+    }
+    val input = inputField.text
+    // 程序化更新输入内容时光标置于末尾，方便继续输入
+    fun updateInput(text: String) {
+        inputField = TextFieldValue(text, TextRange(text.length))
     }
     // 输入框草稿持久化：退出会话后保留
     LaunchedEffect(input, sessionId) {
@@ -503,7 +512,7 @@ private fun ModernChatComposer(
                     is Resource.Success -> {
                         val text = result.data?.text.orEmpty().trim()
                         if (text.isNotEmpty()) {
-                            input = if (input.isBlank()) text else "$input $text"
+                            updateInput(if (input.isBlank()) text else "$input $text")
                         } else {
                             toast(context.getString(R.string.chat_voice_no_text))
                         }
@@ -568,10 +577,10 @@ private fun ModernChatComposer(
                                 )
                                 toast(context.getString(R.string.chat_image_attached, uploadedName))
                             } else {
-                                input = buildString {
+                                updateInput(buildString {
                                     if (input.isNotBlank()) append(input).append('\n')
                                     append(context.getString(R.string.chat_file_uploaded_ref_inline, uploadedName))
-                                }
+                                })
                                 toast(context.getString(R.string.chat_file_uploaded_ref))
                             }
                         } else {
@@ -595,10 +604,10 @@ private fun ModernChatComposer(
         fileBusy = share.attachments.isNotEmpty()
         try {
             if (share.text.isNotBlank()) {
-                input = buildString {
+                updateInput(buildString {
                     if (input.isNotBlank()) append(input).append('\n')
                     append(share.text)
-                }
+                })
             }
             share.attachments.forEach { attachment ->
                 val file = java.io.File(attachment.localPath)
@@ -631,10 +640,10 @@ private fun ModernChatComposer(
                                 localPath = localFile?.absolutePath
                             )
                         } else {
-                            input = buildString {
+                            updateInput(buildString {
                                 if (input.isNotBlank()) append(input).append('\n')
                                 append(context.getString(R.string.chat_file_uploaded_ref_inline, uploadedName))
-                            }
+                            })
                         }
                     }
                     is Resource.Error -> toast(context.getString(R.string.chat_upload_failed, result.message))
@@ -777,7 +786,7 @@ private fun ModernChatComposer(
                     draftStats = draftStats,
                     onSelect = { choice ->
                         pendingPlotChoiceId = choice.id
-                        input = choice.title
+                        updateInput(choice.title)
                         inputExpanded = true
                         closePanel()
                     },
@@ -868,7 +877,7 @@ private fun ModernChatComposer(
                         CommandSuggestionPanel(
                             candidates = commandCandidates,
                             onPick = { candidate ->
-                                input = candidate.insertion
+                                updateInput(candidate.insertion)
                                 dismissedCommandCandidateInput = candidate.insertion
                                 inputExpanded = true
                                 pendingPlotChoiceId = null
@@ -953,14 +962,14 @@ private fun ModernChatComposer(
                                 contentAlignment = Alignment.TopStart
                             ) {
                                 BasicTextField(
-                                    value = input,
+                                    value = inputField,
                                     onValueChange = {
                                         if (panelExpanded) closePanel()
-                                        if (it != dismissedCommandCandidateInput) {
+                                        if (it.text != dismissedCommandCandidateInput) {
                                             dismissedCommandCandidateInput = null
                                         }
-                                        input = it
-                                        if (pendingPlotChoiceId != null && it != plotChoices.firstOrNull { c -> c.id == pendingPlotChoiceId }?.title) {
+                                        inputField = it
+                                        if (pendingPlotChoiceId != null && it.text != plotChoices.firstOrNull { c -> c.id == pendingPlotChoiceId }?.title) {
                                             pendingPlotChoiceId = null
                                         }
                                     },
@@ -1023,7 +1032,7 @@ private fun ModernChatComposer(
                                             val text = input
                                             val choiceId = pendingPlotChoiceId
                                             val attachments = pendingImageAttachments
-                                            input = ""
+                                            updateInput("")
                                             inputExpanded = false
                                             pendingPlotChoiceId = null
                                             pendingImageAttachments = emptyList()
