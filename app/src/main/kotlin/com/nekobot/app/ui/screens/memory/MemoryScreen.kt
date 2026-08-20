@@ -149,13 +149,7 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
         val result = mutableListOf<MemoryFile>()
         for ((charName, charMems) in byCharacter) {
             // 第二层：按 category 分组
-            val grouped = charMems.groupBy { mem ->
-                mem.category?.takeIf { it.isNotBlank() } ?: when (mem.type) {
-                    "long" -> "important_event"
-                    "short" -> "recent_digest"
-                    else -> "legacy"
-                }
-            }
+            val grouped = charMems.groupBy { mem -> memoryCategoryOf(mem) }
             for (meta in com.nekobot.app.data.local.ai.MEMORY_CATEGORY_META) {
                 val entries = grouped[meta.key] ?: continue
                 if (entries.isEmpty()) continue
@@ -185,6 +179,14 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
         // 按 categoryOrder 排序，同一 category 内按角色名排序
         return result.sortedWith(compareBy({ it.categoryOrder }, { it.characterId }))
     }
+
+    /** 计算记忆条目归属的 memoryfs category（与 buildLocalMemoryFsFiles 分组逻辑一致） */
+    private fun memoryCategoryOf(mem: LegacyMemory): String =
+        mem.category?.takeIf { it.isNotBlank() } ?: when (mem.type) {
+            "long" -> "important_event"
+            "short" -> "recent_digest"
+            else -> "legacy"
+        }
 
     /** 构造本地模式 MemoryFS 展示路径（对齐原仓库 fs.py 路径规范） */
     private fun buildLocalMemoryPath(
@@ -224,16 +226,25 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
     /** 删除 MemoryFS 文件 */
     fun deleteMemoryFile(path: String) {
         if (isLocalMode) {
-            // 本地模式：MemoryFS 文件由记忆聚合而来，按 path 匹配删除
+            // 本地模式：MemoryFS 文件是"角色 × 类别"的聚合视图，
+            // path 仅为展示路径，需找出该分组下所有底层记忆逐条删除
             val target = _files.value.find { it.path == path } ?: return
-            // 本地 MemoryFS 文件的 path 即 memoryId
+            val unknownLabel = string(R.string.memory_unknown_character)
+            val ids = _legacy.value
+                .filter { mem ->
+                    val groupKey = mem.characterName.ifBlank { unknownLabel }
+                    groupKey == target.characterId && memoryCategoryOf(mem) == target.category
+                }
+                .mapNotNull { it.id }
+                .toSet()
             launchResult(
                 block = {
-                    com.nekobot.app.ServiceContainer.localRepository.deleteMemory(path)
+                    ids.forEach { com.nekobot.app.ServiceContainer.localRepository.deleteMemory(it) }
                     com.nekobot.app.data.repository.Resource.Success(null)
                 },
                 onSuccess = {
                     _files.value = _files.value.filterNot { it.path == path }
+                    _legacy.value = _legacy.value.filterNot { it.id in ids }
                     showToast(string(R.string.memory_deleted_file))
                 }
             )
@@ -258,6 +269,8 @@ class MemoryViewModel : com.nekobot.app.ui.BaseViewModel() {
                 },
                 onSuccess = {
                     _legacy.value = _legacy.value.filterNot { it.id == id }
+                    // 底层记忆变化后同步重建文件视图，保持两个列表一致
+                    _files.value = buildLocalMemoryFsFiles(_legacy.value)
                     showToast(string(R.string.memory_deleted))
                 }
             )
