@@ -4,6 +4,8 @@ import android.content.Context
 import android.widget.Toast
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -28,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavType
@@ -104,8 +107,10 @@ import com.nekobot.app.ui.screens.extensions.ApiKeysScreen
 import com.nekobot.app.ui.screens.extensions.AchievementsScreen
 import com.nekobot.app.ui.components.AchievementUnlockHost
 import com.nekobot.app.update.UpdateChecker
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlin.math.absoluteValue
 
 private val mainRoutes = setOf(
     Routes.SESSIONS, Routes.CHARACTERS, Routes.WORLD_BOOKS,
@@ -115,8 +120,26 @@ private val mainRoutes = setOf(
 // 底栏 Tab 的显示顺序，用于判断横向滑动方向。
 private val tabOrder = bottomRoutes
 
-private const val TAB_ANIM_MS = 200
-private const val DETAIL_ANIM_MS = 220
+// 入场淡入刻意比滑动更长，滑动到位后透明度还留有一段"余韵"，
+// 这段缓慢收尾正是阻尼感的来源。离场淡出更短，让旧页面快速让位。
+private const val TAB_FADE_IN_MS = 260
+private const val TAB_FADE_DELAY_MS = 20
+private const val DETAIL_ANIM_MS = 200
+private const val DETAIL_FADE_IN_MS = 300
+private const val DETAIL_FADE_OUT_MS = 160
+private const val DETAIL_FADE_DELAY_MS = 50
+
+// 点击底栏切换 Tab：先拉起一层与背景同色的"纱幕"盖住旧页，
+// 在纱幕完全遮住的瞬间无动画瞬切页面，再让纱幕带阻尼长尾褪去。
+// 纱幕是纯色层（graphicsLayer 延迟读取 alpha），动画开销几乎为零；
+// 瞬切引发的多页组合/布局开销被藏在纱幕之后——既不卡顿也不闪屏。
+// 手势左右滑动切换不经过纱幕，仍走 Pager 的横向滚动。
+private const val TAB_CLICK_VEIL_ON_MS = 110
+private const val TAB_CLICK_VEIL_OFF_MS = 260
+
+// 阻尼缓动曲线（easeOutQuint 风格）：起步迅猛、末端长尾缓慢趋停，
+// 页面像被阻尼滑轨"吸入"到位，而非匀速生硬地切换。
+private val DampedEasing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
 
 /**
  * 返回主 Tab 间切换的滑动方向：
@@ -140,6 +163,9 @@ fun NekobotNavGraph() {
         pageCount = { bottomRoutes.size }
     )
     val mainPagerScope = rememberCoroutineScope()
+    // 点击底栏切换 Tab 的纱幕透明度（0 = 无纱幕）；手势左右滑动切换不经过它。
+    val tabSwitchVeil = remember { Animatable(0f) }
+    var tabClickJob by remember { mutableStateOf<Job?>(null) }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val showBottomBar = currentRoute in mainRoutes
@@ -219,35 +245,45 @@ fun NekobotNavGraph() {
                 else -> Routes.LOGIN
             },
             modifier = Modifier.fillMaxSize(),
-            // 主 Tab 之间：按底栏顺序做方向性横向滑动 + 淡入，呼应圆岛的滑动方向；
-            // 进入/退出详情页：从右侧滑入、向右滑出，形成层级纵深感。
+            // 主 Tab 之间（点击底栏触发）：纯阻尼淡入淡出，不再左右位移；
+            // 左右滑动切换保留在 Pager 手势上。进入详情页：从右侧滑入形成层级纵深感。
+            // 所有淡入淡出统一走阻尼曲线：离场页面快速褪去，
+            // 入场页面带长尾缓缓"显影"落实，交叉之间产生柔和的阻尼手感。
             enterTransition = {
                 val from = initialState.destination.route
                 val to = targetState.destination.route
                 val dir = tabDirection(from, to)
-                if (dir != 0) {
-                    slideInHorizontally(tween(TAB_ANIM_MS)) { w -> dir * w / 6 } +
-                        fadeIn(tween(TAB_ANIM_MS))
-                } else {
-                    slideInHorizontally(tween(DETAIL_ANIM_MS)) { w -> w } +
-                        fadeIn(tween(DETAIL_ANIM_MS))
+                when {
+                    // Tab 间切换：纯阻尼淡入，无横向位移
+                    dir != 0 -> fadeIn(
+                        tween(TAB_FADE_IN_MS, delayMillis = TAB_FADE_DELAY_MS, easing = DampedEasing)
+                    )
+                    // 回到顶层 Tab（从详情页点底栏、登录完成等）：同样纯淡入
+                    to in mainRoutes -> fadeIn(
+                        tween(DETAIL_FADE_IN_MS, delayMillis = DETAIL_FADE_DELAY_MS, easing = DampedEasing)
+                    )
+                    // 进入详情页：从右侧滑入 + 淡入，保留层级纵深感
+                    else -> slideInHorizontally(tween(DETAIL_ANIM_MS, easing = DampedEasing)) { w -> w } +
+                        fadeIn(
+                            tween(
+                                DETAIL_FADE_IN_MS,
+                                delayMillis = DETAIL_FADE_DELAY_MS,
+                                easing = DampedEasing
+                            )
+                        )
                 }
             },
             exitTransition = {
-                val from = initialState.destination.route
-                val to = targetState.destination.route
-                val dir = tabDirection(from, to)
-                if (dir != 0) {
-                    slideOutHorizontally(tween(TAB_ANIM_MS)) { w -> -dir * w / 6 } +
-                        fadeOut(tween(TAB_ANIM_MS))
-                } else {
-                    fadeOut(tween(DETAIL_ANIM_MS))
-                }
+                // 离场统一纯淡出：Tab 切换与详情页被覆盖时均不做横向位移
+                fadeOut(tween(DETAIL_FADE_OUT_MS, easing = DampedEasing))
             },
-            popEnterTransition = { fadeIn(tween(DETAIL_ANIM_MS)) },
+            popEnterTransition = {
+                slideInHorizontally(tween(DETAIL_ANIM_MS, easing = DampedEasing)) { w -> -w / 4 } +
+                    fadeIn(tween(DETAIL_FADE_IN_MS, easing = DampedEasing))
+            },
             popExitTransition = {
-                slideOutHorizontally(tween(DETAIL_ANIM_MS)) { w -> w } +
-                    fadeOut(tween(DETAIL_ANIM_MS))
+                slideOutHorizontally(tween(DETAIL_ANIM_MS, easing = DampedEasing)) { w -> w } +
+                    fadeOut(tween(DETAIL_FADE_OUT_MS, easing = DampedEasing))
             }
         ) {
             composable(Routes.QUICK_SETUP) {
@@ -272,55 +308,87 @@ fun NekobotNavGraph() {
                 })
             }
             composable(Routes.SESSIONS) {
+                // 纱幕颜色与全局背景一致，盖住页面时视觉上等同于"淡入背景色"
+                val veilColor = androidx.compose.material3.MaterialTheme.colorScheme.background
+                Box(modifier = Modifier.fillMaxSize()) {
                 HorizontalPager(
                     state = mainPagerState,
                     modifier = Modifier.fillMaxSize(),
                     key = { page -> bottomRoutes[page] },
                     beyondViewportPageCount = 1
                 ) { page ->
-                    when (bottomRoutes[page]) {
-                        Routes.SESSIONS -> SessionsScreen(
-                            onOpenChat = { id ->
-                                navController.navigate(Routes.chat(id))
-                            },
-                            onOpenDetail = { id ->
-                                navController.navigate(Routes.sessionDetail(id))
-                            },
-                            onOpenStoryGraph = { id ->
-                                navController.navigate(Routes.storyGraph(id))
-                            },
-                            onNavigate = { route ->
-                                navController.navigate(route)
+                    // 手势左右滑动时：页面随偏离中心的程度做淡入淡出。
+                    // 淡化幅度刻意收敛（图片密集页面过强的透明叠加会引发闪烁感），
+                    // 滑出侧轻微褪去、滑入侧缓缓显影，形成柔和的阻尼层次感。
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                val pageOffset = (
+                                    (mainPagerState.currentPage - page) +
+                                        mainPagerState.currentPageOffsetFraction
+                                    ).absoluteValue
+                                val progress = pageOffset.coerceIn(0f, 1f)
+                                alpha = 1f - 0.28f * progress
                             }
-                        )
+                    ) {
+                            when (bottomRoutes[page]) {
+                                Routes.SESSIONS -> SessionsScreen(
+                                    onOpenChat = { id ->
+                                        navController.navigate(Routes.chat(id))
+                                    },
+                                    onOpenDetail = { id ->
+                                        navController.navigate(Routes.sessionDetail(id))
+                                    },
+                                    onOpenStoryGraph = { id ->
+                                        navController.navigate(Routes.storyGraph(id))
+                                    },
+                                    onNavigate = { route ->
+                                        navController.navigate(route)
+                                    }
+                                )
 
-                        Routes.CHARACTERS -> CharactersScreen(
-                            onOpenCharacter = { id ->
-                                if (id == "new") navController.navigate(Routes.characterDetail(id))
-                                else navController.navigate(Routes.characterView(id))
-                            },
-                            onOpenEdit = { id ->
-                                navController.navigate(Routes.characterDetail(id))
+                                Routes.CHARACTERS -> CharactersScreen(
+                                    onOpenCharacter = { id ->
+                                        if (id == "new") navController.navigate(Routes.characterDetail(id))
+                                        else navController.navigate(Routes.characterView(id))
+                                    },
+                                    onOpenEdit = { id ->
+                                        navController.navigate(Routes.characterDetail(id))
+                                    }
+                                )
+
+                                Routes.WORLD_BOOKS -> WorldBooksScreen(onOpenBook = { id ->
+                                    navController.navigate(Routes.worldBookDetail(id))
+                                })
+
+                                Routes.TOKENS -> TokensScreen(
+                                    onNavigate = { route -> navController.navigate(route) }
+                                )
+
+                                Routes.MORE -> MoreScreen(
+                                    onNavigate = { route -> navController.navigate(route) },
+                                    onLogout = {
+                                        ServiceContainer.socket.disconnect()
+                                        ServiceContainer.repository.logoutLocal()
+                                        ServiceContainer.notifyLoginState(false)
+                                    }
+                                )
                             }
-                        )
-
-                        Routes.WORLD_BOOKS -> WorldBooksScreen(onOpenBook = { id ->
-                            navController.navigate(Routes.worldBookDetail(id))
-                        })
-
-                        Routes.TOKENS -> TokensScreen(
-                            onNavigate = { route -> navController.navigate(route) }
-                        )
-
-                        Routes.MORE -> MoreScreen(
-                            onNavigate = { route -> navController.navigate(route) },
-                            onLogout = {
-                                ServiceContainer.socket.disconnect()
-                                ServiceContainer.repository.logoutLocal()
-                                ServiceContainer.notifyLoginState(false)
-                            }
-                        )
                     }
+                }
+
+                    // 纱幕：点击底栏切换时拉起盖住页面（见 onItemSelected），
+                    // 纯色层 + graphicsLayer 延迟读取 alpha，动画开销几乎为零；
+                    // 不带 clickable/pointerInput，不拦截任何触摸事件。
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                alpha = tabSwitchVeil.value
+                            }
+                            .background(veilColor)
+                    )
                 }
             }
             composable(
@@ -658,8 +726,21 @@ fun NekobotNavGraph() {
 
                     if (currentRoute == Routes.SESSIONS) {
                         if (targetPage != mainPagerState.currentPage) {
-                            mainPagerScope.launch {
-                                mainPagerState.animateScrollToPage(targetPage)
+                            // 点击切换：拉起纱幕盖住旧页 → 纱幕全遮时无动画瞬切 →
+                            // 纱幕带阻尼长尾褪去显出新页。瞬切引发的多页组合开销
+                            // 藏在纱幕之后，不卡顿、不闪屏；
+                            // 手势左右滑动仍走横向滚动，两种切换方式互不干扰。
+                            tabClickJob?.cancel()
+                            tabClickJob = mainPagerScope.launch {
+                                tabSwitchVeil.animateTo(
+                                    1f,
+                                    tween(TAB_CLICK_VEIL_ON_MS, easing = DampedEasing)
+                                )
+                                mainPagerState.scrollToPage(targetPage)
+                                tabSwitchVeil.animateTo(
+                                    0f,
+                                    tween(TAB_CLICK_VEIL_OFF_MS, easing = DampedEasing)
+                                )
                             }
                         }
                     } else {
