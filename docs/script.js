@@ -337,9 +337,9 @@
 
   /* ---------- 11. 从 GitHub Releases 拉取更新日志 ---------- */
   const FALLBACK_RELEASES = [
+    { tag_name: 'v0.5.8', published_at: '2026-08-21', body: '- Agent 会话支持按模型上下文容量自动压缩历史对话\n- 新增上下文占比分析，可查看各类内容的 Token 占用\n- 思考强度按 Agent 与角色会话类型独立保存\n- 故障转移增加上下文容量校验\n- 修复本地模式 MemoryFS 删除分组和列表同步问题' },
     { tag_name: 'v0.5.7', published_at: '2026-08-20', body: '- 隐私锁新增后台隐藏与截屏防护\n- 导航切换引入纱幕遮罩与阻尼动画，避免卡顿闪屏\n- 漫画封面优先使用专辑专属封面图\n- 生成图片预览下载按钮移至顶部右上角\n- 程序化插入内容后输入框光标自动移至末尾' },
     { tag_name: 'v0.5.6', published_at: '2026-08-18', body: '- 消息长按新增 AI 生图，支持图生图与多供应商\n- WebDAV 增量同步与备份支持聊天 TTS 音频\n- WebDAV 自动增量同步支持自定义间隔与版本保留\n- 网页搜索工具支持 Exa API Key\n- Agent 工具权限作用域限制与协作式取消\n- 默认禁止明文 HTTP，加固传输安全' },
-    { tag_name: 'v0.5.5', published_at: '2026-08-16', body: '- 新增首次启动快速配置流程，支持本地或服务器模式及常用模型预设\n- 本地 AI 新增 Gemini 原生协议提供者支持\n- 启动后可自动打开最近使用的会话\n- 增强 Markdown 代码块和表格查看\n- Agent 工具输出增加截断提示，界面统一为无描边样式' },
   ];
   function renderReleases(releases) {
     const container = $('#changelogList');
