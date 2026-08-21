@@ -411,7 +411,7 @@ private fun ModernChatComposer(
     }
     var panelExpanded by remember { mutableStateOf(false) }
     var reasoningEffort by remember(sessionId) {
-        mutableStateOf(ServiceContainer.prefs.getSessionReasoningEffort(sessionId))
+        mutableStateOf(ServiceContainer.prefs.getReasoningEffort())
     }
     var inputExpanded by remember { mutableStateOf(false) }
     var chatInputLayout by remember {
@@ -825,7 +825,7 @@ private fun ModernChatComposer(
                     reasoningEffort = reasoningEffort,
                     onReasoningEffortChange = { effort ->
                         reasoningEffort = effort
-                        ServiceContainer.prefs.setSessionReasoningEffort(sessionId, effort)
+                        ServiceContainer.prefs.setReasoningEffort(effort)
                     },
                     onCompress = { onCompress() },
                     onSendFile = {

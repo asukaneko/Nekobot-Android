@@ -349,7 +349,7 @@ class ChatViewModel : BaseViewModel() {
     }
 
     private fun isReasoningEnabled(): Boolean =
-        ServiceContainer.prefs.getSessionReasoningEffort(currentSessionId) != ReasoningEffort.NONE
+        ServiceContainer.prefs.getReasoningEffort() != ReasoningEffort.NONE
 
     private fun isAgentSession(): Boolean =
         _session.value?.sessionMode.equals("agent", ignoreCase = true) ||
@@ -1668,7 +1668,7 @@ class ChatViewModel : BaseViewModel() {
             val flow = try {
                 unified.resumeAgentRunStream(
                     currentSessionId,
-                    ServiceContainer.prefs.getSessionReasoningEffort(currentSessionId)
+                    ServiceContainer.prefs.getReasoningEffort()
                 )
             } catch (_: kotlinx.coroutines.CancellationException) {
                 return@startLocalChatCollection
@@ -1979,7 +1979,7 @@ class ChatViewModel : BaseViewModel() {
                     unified.regenerateStream(
                         currentSessionId,
                         messageId,
-                        ServiceContainer.prefs.getSessionReasoningEffort(currentSessionId)
+                        ServiceContainer.prefs.getReasoningEffort()
                     )
                 } catch (_: kotlinx.coroutines.CancellationException) {
                     return@startLocalChatCollection
@@ -2012,7 +2012,7 @@ class ChatViewModel : BaseViewModel() {
                     unified.regenerate(
                         currentSessionId,
                         messageId,
-                        ServiceContainer.prefs.getSessionReasoningEffort(currentSessionId)
+                        ServiceContainer.prefs.getReasoningEffort()
                     )
                 },
                 onSuccess = {
@@ -2054,7 +2054,7 @@ class ChatViewModel : BaseViewModel() {
                 val flow = try {
                     unified.regenerateGreetingStream(
                         currentSessionId,
-                        ServiceContainer.prefs.getSessionReasoningEffort(currentSessionId)
+                        ServiceContainer.prefs.getReasoningEffort()
                     )
                 } catch (_: kotlinx.coroutines.CancellationException) {
                     return@startLocalChatCollection
@@ -2086,7 +2086,7 @@ class ChatViewModel : BaseViewModel() {
                     unified.regenerateGreeting(
                         currentSessionId,
                         messageId,
-                        ServiceContainer.prefs.getSessionReasoningEffort(currentSessionId)
+                        ServiceContainer.prefs.getReasoningEffort()
                     )
                 },
                 onSuccess = {

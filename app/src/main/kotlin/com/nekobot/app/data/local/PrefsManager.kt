@@ -645,19 +645,28 @@ class PrefsManager(context: Context) {
         prefs.edit().remove("chat_draft_$sessionId").apply()
     }
 
-    /** 获取指定会话的思考强度；默认关闭以保持既有调用行为。 */
-    fun getSessionReasoningEffort(sessionId: String): com.nekobot.app.data.model.ReasoningEffort =
+    /** 获取全局思考强度；新会话和已有会话统一使用此值。 */
+    fun getReasoningEffort(): com.nekobot.app.data.model.ReasoningEffort =
         com.nekobot.app.data.model.ReasoningEffort.fromValue(
-            prefs.getString("reasoning_effort_$sessionId", null)
+            prefs.getString(KEY_REASONING_EFFORT, null)
         )
 
-    /** 持久化指定会话的思考强度。 */
-    fun setSessionReasoningEffort(
-        sessionId: String,
-        effort: com.nekobot.app.data.model.ReasoningEffort
-    ) {
-        prefs.edit().putString("reasoning_effort_$sessionId", effort.wireValue).apply()
+    /** 持久化全局思考强度。 */
+    fun setReasoningEffort(effort: com.nekobot.app.data.model.ReasoningEffort) {
+        prefs.edit().putString(KEY_REASONING_EFFORT, effort.wireValue).apply()
     }
+
+    /** 兼容旧调用方：思考强度已从会话级改为全局。 */
+    @Deprecated("思考强度现在是全局设置")
+    fun getSessionReasoningEffort(@Suppress("UNUSED_PARAMETER") sessionId: String) =
+        getReasoningEffort()
+
+    /** 兼容旧调用方：思考强度已从会话级改为全局。 */
+    @Deprecated("思考强度现在是全局设置")
+    fun setSessionReasoningEffort(
+        @Suppress("UNUSED_PARAMETER") sessionId: String,
+        effort: com.nekobot.app.data.model.ReasoningEffort
+    ) = setReasoningEffort(effort)
 
     /** 读取会话自动命名进度；没有旧记录时返回 null，由命名器从当前消息数恢复。 */
     fun getSessionAutoNamingState(sessionId: String): Pair<Boolean, Int>? {
@@ -689,6 +698,7 @@ class PrefsManager(context: Context) {
         private const val KEY_RECENT_SESSIONS_INCLUDE_ARCHIVED = "recent_sessions_include_archived"
         private const val KEY_OPEN_LATEST_SESSION_ON_LAUNCH = "open_latest_session_on_launch"
         private const val KEY_SMART_ROUTING_ENABLED = "smart_routing_enabled"
+        private const val KEY_REASONING_EFFORT = "reasoning_effort"
         private const val KEY_SMART_ROUTING_DAILY_BUDGET = "smart_routing_daily_budget"
         private const val KEY_SMART_ROUTING_BUDGET_ALERT = "smart_routing_budget_alert"
         private const val KEY_RAG_SEMANTIC_WEIGHT = "rag_semantic_weight"
