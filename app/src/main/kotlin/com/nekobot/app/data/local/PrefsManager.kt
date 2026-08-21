@@ -645,28 +645,37 @@ class PrefsManager(context: Context) {
         prefs.edit().remove("chat_draft_$sessionId").apply()
     }
 
-    /** 获取全局思考强度；新会话和已有会话统一使用此值。 */
-    fun getReasoningEffort(): com.nekobot.app.data.model.ReasoningEffort =
+    /** 获取对应会话类型的全局思考强度；Agent 与角色会话互不影响。 */
+    fun getReasoningEffort(isAgentSession: Boolean): com.nekobot.app.data.model.ReasoningEffort =
         com.nekobot.app.data.model.ReasoningEffort.fromValue(
-            prefs.getString(KEY_REASONING_EFFORT, null)
+            prefs.getString(
+                if (isAgentSession) KEY_AGENT_REASONING_EFFORT else KEY_CHARACTER_REASONING_EFFORT,
+                // 兼容拆分设置前保存的单一全局值，作为两类会话的初始默认值。
+                prefs.getString(KEY_REASONING_EFFORT_LEGACY, null)
+            )
         )
 
-    /** 持久化全局思考强度。 */
-    fun setReasoningEffort(effort: com.nekobot.app.data.model.ReasoningEffort) {
-        prefs.edit().putString(KEY_REASONING_EFFORT, effort.wireValue).apply()
+    /** 持久化对应会话类型的全局思考强度。 */
+    fun setReasoningEffort(
+        isAgentSession: Boolean,
+        effort: com.nekobot.app.data.model.ReasoningEffort
+    ) {
+        prefs.edit()
+            .putString(
+                if (isAgentSession) KEY_AGENT_REASONING_EFFORT else KEY_CHARACTER_REASONING_EFFORT,
+                effort.wireValue
+            )
+            .apply()
     }
 
-    /** 兼容旧调用方：思考强度已从会话级改为全局。 */
+    /** 兼容旧调用方：未提供会话类型时按角色会话读取。 */
     @Deprecated("思考强度现在是全局设置")
-    fun getSessionReasoningEffort(@Suppress("UNUSED_PARAMETER") sessionId: String) =
-        getReasoningEffort()
+    fun getReasoningEffort() = getReasoningEffort(isAgentSession = false)
 
-    /** 兼容旧调用方：思考强度已从会话级改为全局。 */
+    /** 兼容旧调用方：未提供会话类型时按角色会话保存。 */
     @Deprecated("思考强度现在是全局设置")
-    fun setSessionReasoningEffort(
-        @Suppress("UNUSED_PARAMETER") sessionId: String,
-        effort: com.nekobot.app.data.model.ReasoningEffort
-    ) = setReasoningEffort(effort)
+    fun setReasoningEffort(effort: com.nekobot.app.data.model.ReasoningEffort) =
+        setReasoningEffort(isAgentSession = false, effort)
 
     /** 读取会话自动命名进度；没有旧记录时返回 null，由命名器从当前消息数恢复。 */
     fun getSessionAutoNamingState(sessionId: String): Pair<Boolean, Int>? {
@@ -698,7 +707,9 @@ class PrefsManager(context: Context) {
         private const val KEY_RECENT_SESSIONS_INCLUDE_ARCHIVED = "recent_sessions_include_archived"
         private const val KEY_OPEN_LATEST_SESSION_ON_LAUNCH = "open_latest_session_on_launch"
         private const val KEY_SMART_ROUTING_ENABLED = "smart_routing_enabled"
-        private const val KEY_REASONING_EFFORT = "reasoning_effort"
+        private const val KEY_REASONING_EFFORT_LEGACY = "reasoning_effort"
+        private const val KEY_AGENT_REASONING_EFFORT = "reasoning_effort_agent"
+        private const val KEY_CHARACTER_REASONING_EFFORT = "reasoning_effort_character"
         private const val KEY_SMART_ROUTING_DAILY_BUDGET = "smart_routing_daily_budget"
         private const val KEY_SMART_ROUTING_BUDGET_ALERT = "smart_routing_budget_alert"
         private const val KEY_RAG_SEMANTIC_WEIGHT = "rag_semantic_weight"

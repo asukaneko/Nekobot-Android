@@ -199,6 +199,7 @@ fun ModernChatScreen(
             plotChoicesLoading = plotChoicesLoading,
             plotMode = session?.plotMode == true,
             plotRealTimeSync = session?.plotRealTimeSync == true,
+            isAgentSession = session?.sessionMode.equals("agent", ignoreCase = true),
             skillsEnabled = session?.sessionMode.equals("agent", ignoreCase = true),
             onSend = { text, plotChoiceId, attachments, reasoningEffort ->
                 val command = LocalSlashCommands.parse(text)
@@ -382,6 +383,7 @@ private fun ModernChatComposer(
     plotChoicesLoading: Boolean,
     plotMode: Boolean,
     plotRealTimeSync: Boolean,
+    isAgentSession: Boolean,
     skillsEnabled: Boolean,
     onSend: (String, String?, List<Map<String, Any>>, ReasoningEffort) -> Unit,
     onStop: () -> Unit,
@@ -414,8 +416,8 @@ private fun ModernChatComposer(
         ServiceContainer.prefs.setChatInputDraft(sessionId, input)
     }
     var panelExpanded by rememberSaveable(sessionId) { mutableStateOf(false) }
-    var reasoningEffort by remember(sessionId) {
-        mutableStateOf(ServiceContainer.prefs.getReasoningEffort())
+    var reasoningEffort by remember(sessionId, isAgentSession) {
+        mutableStateOf(ServiceContainer.prefs.getReasoningEffort(isAgentSession))
     }
     var inputExpanded by remember { mutableStateOf(false) }
     var chatInputLayout by remember {
@@ -829,7 +831,7 @@ private fun ModernChatComposer(
                     reasoningEffort = reasoningEffort,
                     onReasoningEffortChange = { effort ->
                         reasoningEffort = effort
-                        ServiceContainer.prefs.setReasoningEffort(effort)
+                        ServiceContainer.prefs.setReasoningEffort(isAgentSession, effort)
                     },
                     onCompress = { onCompress() },
                     onOpenContextAnalysis = {
