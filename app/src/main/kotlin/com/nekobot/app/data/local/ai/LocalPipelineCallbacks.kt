@@ -619,7 +619,11 @@ internal class LocalPipelineCallbacks(
                 if (coordinator != null) {
                     kotlinx.coroutines.runBlocking {
                         try {
-                            val exec = coordinator.execute(modelQueue, activeModel.purpose.ifBlank { "chat" }) { model ->
+                            val exec = coordinator.execute(
+                                models = modelQueue,
+                                purpose = activeModel.purpose.ifBlank { "chat" },
+                                requiredContextTokens = estimateLocalMessagesTokens(messages)
+                            ) { model ->
                                 chatOnceForGeneration(model, messages, extra, streamCallbacks)
                             }
                             // 保留工具调用等结构化响应，并补充实际使用的模型。
@@ -640,7 +644,8 @@ internal class LocalPipelineCallbacks(
                             extra,
                             requestTag = session.id,
                             shouldStop = { generationController.isStopped },
-                            streamCallbacks = streamCallbacks
+                            streamCallbacks = streamCallbacks,
+                            requiredContextTokens = estimateLocalMessagesTokens(messages)
                         )
                     }
                 }
@@ -698,7 +703,12 @@ internal class LocalPipelineCallbacks(
             // 避免长回复产生“每 token 一个 Map”的内存放大。
             try {
                 kotlinx.coroutines.runBlocking {
-                    aiClient.chatStreamWithFailover(modelQueue, messages, extra).collect { event ->
+                    aiClient.chatStreamWithFailover(
+                        models = modelQueue,
+                        messages = messages,
+                        extra = extra,
+                        requiredContextTokens = estimateLocalMessagesTokens(messages)
+                    ).collect { event ->
                         if (generationController.isStopped) {
                             throw kotlinx.coroutines.CancellationException("生成已停止")
                         }

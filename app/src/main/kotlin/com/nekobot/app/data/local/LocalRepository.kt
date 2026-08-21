@@ -51,6 +51,7 @@ import com.nekobot.app.data.local.ai.buildLocalSkillToolDefinitions
 import com.nekobot.app.data.local.ai.decodeThinkingCardsForUi
 import com.nekobot.app.data.local.ai.encodeToolCallHistory
 import com.nekobot.app.data.local.ai.estimateLocalTextTokens
+import com.nekobot.app.data.local.ai.estimateLocalMessagesTokens
 import com.nekobot.app.data.local.ai.localDbToolIds
 import com.nekobot.app.data.local.ai.localSkillToolIds
 import com.nekobot.app.data.local.ai.parseMcpToolName
@@ -473,7 +474,11 @@ class LocalRepository(
             throw IllegalStateException("未配置可用的聊天模型，请在故障转移队列中启用 purpose=chat 的模型")
         }
         val execution = try {
-            failoverCoordinator.execute(queue, "chat") { model ->
+            failoverCoordinator.execute(
+                models = queue,
+                purpose = "chat",
+                requiredContextTokens = estimateLocalMessagesTokens(messages)
+            ) { model ->
                 val result = aiClient.chatOnce(model, messages, extra, requestTag)
                 result.error?.let { error ->
                     throw FailoverHttpException(result.statusCode, error)
@@ -3926,7 +3931,12 @@ class LocalRepository(
         var streamFailureReason: String? = null
         val streamStartNano = System.nanoTime()
         var firstChunkNano: Long? = null
-        aiClient.chatStreamWithFailover(queue, messages, extra).collect { event ->
+        aiClient.chatStreamWithFailover(
+            models = queue,
+            messages = messages,
+            extra = extra,
+            requiredContextTokens = estimateLocalMessagesTokens(messages)
+        ).collect { event ->
             when (event) {
                 is RealtimeEvent.StreamChunk -> {
                     if (fullContent.isEmpty()) firstChunkNano = System.nanoTime()
@@ -4142,7 +4152,12 @@ class LocalRepository(
         val streamStartNano = System.nanoTime()
         var firstChunkNano: Long? = null
 
-        aiClient.chatStreamWithFailover(queue, promptMessages, extra).collect { event ->
+        aiClient.chatStreamWithFailover(
+            models = queue,
+            messages = promptMessages,
+            extra = extra,
+            requiredContextTokens = estimateLocalMessagesTokens(promptMessages)
+        ).collect { event ->
             when (event) {
                 is RealtimeEvent.StreamChunk -> {
                     if (fullContent.isEmpty()) firstChunkNano = System.nanoTime()

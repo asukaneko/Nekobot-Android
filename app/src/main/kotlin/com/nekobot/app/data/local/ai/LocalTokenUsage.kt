@@ -300,7 +300,8 @@ internal fun estimateLocalTextTokens(text: String): Int {
     return tokens.coerceAtLeast(1)
 }
 
-private fun estimateLocalMessagesTokens(messages: List<Map<String, Any>>): Int {
+/** 估算一次请求实际发送的消息上下文，供路由和故障转移容量检查共用。 */
+internal fun estimateLocalMessagesTokens(messages: List<Map<String, Any>>): Int {
     if (messages.isEmpty()) return 0
     val total = messages.sumOf { message ->
         MESSAGE_OVERHEAD_TOKENS + estimateMessageValueTokens(message["content"])

@@ -864,19 +864,26 @@ class LocalAiClient(
         extra: Map<String, Any?> = emptyMap(),
         requestTag: String? = null,
         shouldStop: () -> Boolean = { false },
-        streamCallbacks: LocalAiStreamCallbacks? = null
+        streamCallbacks: LocalAiStreamCallbacks? = null,
+        requiredContextTokens: Int? = null
     ): LocalAiResult {
         if (models.isEmpty()) return LocalAiResult("", error = "无可用模型")
         if (shouldStop()) throw CancellationException("生成已停止")
         val failover = getFailoverState()
         val exclude = mutableSetOf<String>()
         var lastError: LocalAiResult? = null
-        for (i in models.indices) {
+        val primaryModelId = models.firstOrNull()?.id
+        for (attempt in models.indices) {
             if (shouldStop()) throw CancellationException("生成已停止")
-            val modelConfigs = models.map { mapOf("model_id" to it.id) }
+            val candidates = models.filter {
+                it.id == primaryModelId || it.canHandleContext(requiredContextTokens)
+            }
+            if (candidates.isEmpty()) break
+            val modelConfigs = candidates.map { mapOf("model_id" to it.id) }
             val selected = failover.selectModel(modelConfigs, exclude)
             val modelId = (selected?.get("model_id") as? String)
-            val model = models.firstOrNull { it.id == modelId } ?: models[i]
+            val model = candidates.firstOrNull { it.id == modelId } ?: candidates.firstOrNull { it.id !in exclude }
+                ?: break
             exclude.add(model.id)
 
             try {
@@ -920,7 +927,8 @@ class LocalAiClient(
     fun chatStreamWithFailover(
         models: List<LocalAiModelEntity>,
         messages: List<Map<String, Any>>,
-        extra: Map<String, Any?> = emptyMap()
+        extra: Map<String, Any?> = emptyMap(),
+        requiredContextTokens: Int? = null
     ): Flow<RealtimeEvent> = flow {
         if (models.isEmpty()) {
             emit(RealtimeEvent.Error("无可用模型"))
@@ -930,14 +938,20 @@ class LocalAiClient(
         val failover = getFailoverState()
         val exclude = mutableSetOf<String>()
         var lastErrorMsg: String? = null
+        val primaryModelId = models.firstOrNull()?.id
 
         emit(RealtimeEvent.StreamStart(null))
 
-        for (i in models.indices) {
-            val modelConfigs = models.map { mapOf("model_id" to it.id) }
+        for (attempt in models.indices) {
+            val candidates = models.filter {
+                it.id == primaryModelId || it.canHandleContext(requiredContextTokens)
+            }
+            if (candidates.isEmpty()) break
+            val modelConfigs = candidates.map { mapOf("model_id" to it.id) }
             val selected = failover.selectModel(modelConfigs, exclude)
             val modelId = (selected?.get("model_id") as? String)
-            val model = models.firstOrNull { it.id == modelId } ?: models[i]
+            val model = candidates.firstOrNull { it.id == modelId } ?: candidates.firstOrNull { it.id !in exclude }
+                ?: break
             exclude.add(model.id)
             val (runtimeModel, credential) = resolveRuntimeModel(model)
 
@@ -2587,6 +2601,11 @@ class LocalAiClient(
 
     private fun clientFor(model: LocalAiModelEntity): OkHttpClient =
         clientFor(model.proxyUrl)
+
+    private fun LocalAiModelEntity.canHandleContext(requiredContextTokens: Int?): Boolean {
+        val limit = maxContextLength ?: return true
+        return requiredContextTokens == null || limit <= 0 || limit >= requiredContextTokens
+    }
 
     private fun clientFor(proxyUrl: String): OkHttpClient {
         val normalized = proxyUrl.trim()

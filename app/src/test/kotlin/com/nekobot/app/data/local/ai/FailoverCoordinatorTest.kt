@@ -70,9 +70,35 @@ class FailoverCoordinatorTest {
         assertNotNull(store.values["cooling"])
     }
 
+    @Test
+    fun executeSkipsSmallerContextModelsAfterFailover() = runBlocking {
+        val store = FakeHealthStore()
+        val coordinator = FailoverCoordinator(store, FakeUsageReader())
+        val models = listOf(
+            model("primary", context = 4_096),
+            model("too-small", context = 1_024),
+            model("large-enough", context = 8_192)
+        )
+
+        val execution = coordinator.execute(
+            models = models,
+            purpose = "chat",
+            requiredContextTokens = 2_048
+        ) { current ->
+            if (current.id == "primary") {
+                throw FailoverHttpException(503, "primary unavailable")
+            }
+            current.id
+        }
+
+        assertEquals("large-enough", execution.value)
+        assertEquals(listOf("primary", "large-enough"), execution.attempts)
+    }
+
     private fun model(
         id: String,
-        tokenLimitDaily: Long = 0
+        tokenLimitDaily: Long = 0,
+        context: Int? = null
     ): LocalAiModelEntity = LocalAiModelEntity(
         id = id,
         name = id,
@@ -82,7 +108,8 @@ class FailoverCoordinatorTest {
         model = id,
         purpose = "chat",
         createdAt = "2026-07-27",
-        tokenLimitDaily = tokenLimitDaily
+        tokenLimitDaily = tokenLimitDaily,
+        maxContextLength = context
     )
 
     private class FakeHealthStore : FailoverHealthStore {

@@ -32,12 +32,14 @@ class FailoverCoordinator(
      *
      * @param models  按优先级排序的模型列表（P0 在前）
      * @param purpose 用于默认超时的 purpose 名（chat/vision/tts/stt/image_generation/embedding）
+     * @param requiredContextTokens 当前任务的估算上下文；发生故障转移时会跳过上下文窗口更小的候选
      * @param block   每次尝试执行的挂起代码块，接收当前模型，返回结果
      * @return [FailoverExecution] 包含结果值、成功使用的模型、所有尝试过的模型 ID
      */
     suspend fun <T> execute(
         models: List<LocalAiModelEntity>,
         purpose: String,
+        requiredContextTokens: Int? = null,
         block: suspend (LocalAiModelEntity) -> T
     ): FailoverExecution<T> {
         if (models.isEmpty()) {
@@ -53,8 +55,17 @@ class FailoverCoordinator(
         val failures = mutableListOf<FailoverFailure>()
         val now = clock()
         val today = todayString()
-
+        val primaryModelId = models.firstOrNull()?.id
         for (model in models) {
+            // 首选模型仍按原策略尝试；队列中的接替模型必须能容纳当前任务上下文。
+            if (
+                model.id != primaryModelId &&
+                requiredContextTokens != null &&
+                model.maxContextLength != null &&
+                model.maxContextLength > 0 &&
+                model.maxContextLength < requiredContextTokens
+            ) continue
+
             // 跳过超 token 限额的模型
             if (!isWithinTokenLimits(model, now, today)) continue
 
