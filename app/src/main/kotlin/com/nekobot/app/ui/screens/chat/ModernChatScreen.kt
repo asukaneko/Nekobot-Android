@@ -99,6 +99,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -155,6 +156,7 @@ fun ModernChatScreen(
     sessionId: String,
     onBack: () -> Unit,
     onOpenChat: (String) -> Unit = {},
+    onOpenContextAnalysis: (String) -> Unit = {},
     onOpenSessionDetail: (String) -> Unit = {},
     onOpenWorkspace: (String) -> Unit = {},
     onOpenStoryGraph: (String) -> Unit = {},
@@ -212,6 +214,7 @@ fun ModernChatScreen(
             },
             onStop = viewModel::stop,
             onCompress = viewModel::compressContext,
+            onOpenContextAnalysis = { onOpenContextAnalysis(sessionId) },
             onClear = { viewModel.clearMessages(sessionId) },
             onRegeneratePlotChoices = viewModel::regeneratePlotChoices,
             onOpenWorkspace = { onOpenWorkspace(sessionId) },
@@ -383,6 +386,7 @@ private fun ModernChatComposer(
     onSend: (String, String?, List<Map<String, Any>>, ReasoningEffort) -> Unit,
     onStop: () -> Unit,
     onCompress: () -> Unit,
+    onOpenContextAnalysis: () -> Unit,
     onClear: () -> Unit,
     onRegeneratePlotChoices: () -> Unit,
     onOpenWorkspace: () -> Unit,
@@ -409,7 +413,7 @@ private fun ModernChatComposer(
     LaunchedEffect(input, sessionId) {
         ServiceContainer.prefs.setChatInputDraft(sessionId, input)
     }
-    var panelExpanded by remember { mutableStateOf(false) }
+    var panelExpanded by rememberSaveable(sessionId) { mutableStateOf(false) }
     var reasoningEffort by remember(sessionId) {
         mutableStateOf(ServiceContainer.prefs.getReasoningEffort())
     }
@@ -828,6 +832,10 @@ private fun ModernChatComposer(
                         ServiceContainer.prefs.setReasoningEffort(effort)
                     },
                     onCompress = { onCompress() },
+                    onOpenContextAnalysis = {
+                        panelExpanded = true
+                        onOpenContextAnalysis()
+                    },
                     onSendFile = {
                         filePickMode = "send"
                         pickFile.launch("*/*")
@@ -1723,6 +1731,7 @@ private fun ModernChatActionPanel(
     reasoningEffort: ReasoningEffort,
     onReasoningEffortChange: (ReasoningEffort) -> Unit,
     onCompress: () -> Unit,
+    onOpenContextAnalysis: () -> Unit,
     onSendFile: () -> Unit,
     onOpenWorkspace: () -> Unit,
     onSearch: () -> Unit,
@@ -1756,7 +1765,8 @@ private fun ModernChatActionPanel(
                     usedTokens = usedTokens,
                     maxTokens = maxTokens,
                     sending = sending,
-                    onCompress = onCompress
+                    onCompress = onCompress,
+                    onOpenAnalysis = onOpenContextAnalysis
                 )
             }
             item { ModernSectionTitle(stringResource(R.string.chat_common_section)) }
@@ -1890,7 +1900,8 @@ private fun ModernContextCard(
     usedTokens: Long,
     maxTokens: Int?,
     sending: Boolean,
-    onCompress: () -> Unit
+    onCompress: () -> Unit,
+    onOpenAnalysis: () -> Unit
 ) {
     // 计算已用 Token 占最大上下文的比例；maxTokens 缺省时百分比置 0
     val progress = if (maxTokens != null && maxTokens > 0) {
@@ -1907,36 +1918,45 @@ private fun ModernContextCard(
         Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // 圆环进度条：外圈 CircularProgressIndicator，内圈百分比数字
-                Box(
-                    modifier = Modifier.size(42.dp),
-                    contentAlignment = Alignment.Center
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(onClick = onOpenAnalysis)
+                        .padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    CircularProgressIndicator(
-                        progress = { progress },
+                    Box(
                         modifier = Modifier.size(42.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                        strokeWidth = 4.dp,
-                        trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-                    )
-                    Text(
-                        text = "$percent%",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Spacer(Modifier.width(10.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.chat_context_metric),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        stringResource(R.string.chat_context_metric_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.size(42.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            strokeWidth = 4.dp,
+                            trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                        )
+                        Text(
+                            text = "$percent%",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.chat_context_metric),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            stringResource(R.string.chat_context_analysis_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 TextButton(onClick = onCompress, enabled = !sending && messageCount > 0) {
                     Icon(Icons.Filled.Compress, contentDescription = null, modifier = Modifier.size(17.dp))

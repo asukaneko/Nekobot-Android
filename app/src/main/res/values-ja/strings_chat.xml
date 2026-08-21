@@ -561,4 +561,19 @@
     <string name="chat_message_image_preview">画像プレビュー</string>
     <string name="chat_message_image_close_preview">画像プレビューを閉じる</string>
     <string name="chat_message_image_download">Download に保存</string>
+    <string name="chat_context_analysis_desc">種類別の割合を表示</string>
+    <string name="chat_context_analysis_title">コンテキスト内訳</string>
+    <string name="chat_context_analysis_current">現在のコンテキスト</string>
+    <string name="chat_context_analysis_capacity">%1$d / %2$d tokens</string>
+    <string name="chat_context_analysis_tokens">%1$d tokens</string>
+    <string name="chat_context_analysis_type_breakdown">種類別の割合</string>
+    <string name="chat_context_analysis_basis">現在コンテキストに含まれる内容からの推定値です。公開できないモデル内部プロンプトは含みません。</string>
+    <string name="chat_context_analysis_empty">分析できるコンテキストメッセージはありません。</string>
+    <string name="chat_context_analysis_part_detail">約 %1$d tokens · %2$d 件</string>
+    <string name="chat_context_analysis_user_messages">ユーザーメッセージ</string>
+    <string name="chat_context_analysis_assistant_messages">アシスタントメッセージ</string>
+    <string name="chat_context_analysis_summary">圧縮された要約</string>
+    <string name="chat_context_analysis_system_prompt">システムプロンプト</string>
+    <string name="chat_context_analysis_tool_content">ツール呼び出し</string>
+    <string name="chat_context_analysis_other_messages">その他のメッセージ</string>
 </resources>

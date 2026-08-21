@@ -566,4 +566,19 @@
     <string name="chat_message_image_preview">图片预览</string>
     <string name="chat_message_image_close_preview">关闭图片预览</string>
     <string name="chat_message_image_download">下载到 Download</string>
+    <string name="chat_context_analysis_desc">查看类型占比</string>
+    <string name="chat_context_analysis_title">上下文占比分析</string>
+    <string name="chat_context_analysis_current">当前上下文</string>
+    <string name="chat_context_analysis_capacity">%1$d / %2$d tokens</string>
+    <string name="chat_context_analysis_tokens">%1$d tokens</string>
+    <string name="chat_context_analysis_type_breakdown">类型占比</string>
+    <string name="chat_context_analysis_basis">按当前参与上下文的内容估算，未包含模型无法公开的内部提示词。</string>
+    <string name="chat_context_analysis_empty">当前没有可分析的上下文消息。</string>
+    <string name="chat_context_analysis_part_detail">约 %1$d tokens · %2$d 项</string>
+    <string name="chat_context_analysis_user_messages">用户消息</string>
+    <string name="chat_context_analysis_assistant_messages">助手消息</string>
+    <string name="chat_context_analysis_summary">压缩摘要</string>
+    <string name="chat_context_analysis_system_prompt">系统提示词</string>
+    <string name="chat_context_analysis_tool_content">工具调用</string>
+    <string name="chat_context_analysis_other_messages">其他消息</string>
 </resources>

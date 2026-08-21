@@ -560,4 +560,19 @@
     <string name="chat_message_image_preview">Image preview</string>
     <string name="chat_message_image_close_preview">Close image preview</string>
     <string name="chat_message_image_download">Download to Download</string>
+    <string name="chat_context_analysis_desc">View type breakdown</string>
+    <string name="chat_context_analysis_title">Context breakdown</string>
+    <string name="chat_context_analysis_current">Current context</string>
+    <string name="chat_context_analysis_capacity">%1$d / %2$d tokens</string>
+    <string name="chat_context_analysis_tokens">%1$d tokens</string>
+    <string name="chat_context_analysis_type_breakdown">Type breakdown</string>
+    <string name="chat_context_analysis_basis">Estimated from content currently included in context; non-public model-internal prompts are excluded.</string>
+    <string name="chat_context_analysis_empty">There are no context messages to analyze.</string>
+    <string name="chat_context_analysis_part_detail">About %1$d tokens · %2$d items</string>
+    <string name="chat_context_analysis_user_messages">User messages</string>
+    <string name="chat_context_analysis_assistant_messages">Assistant messages</string>
+    <string name="chat_context_analysis_summary">Compressed summary</string>
+    <string name="chat_context_analysis_system_prompt">System prompt</string>
+    <string name="chat_context_analysis_tool_content">Tool calls</string>
+    <string name="chat_context_analysis_other_messages">Other messages</string>
 </resources>

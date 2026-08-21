@@ -25,6 +25,9 @@ object Routes {
     const val CHAT = "chat/{sessionId}"
     fun chat(sessionId: String) = "chat/$sessionId"
 
+    const val CONTEXT_ANALYSIS = "context_analysis/{sessionId}"
+    fun contextAnalysis(sessionId: String) = "context_analysis/$sessionId"
+
     const val SESSION_DETAIL = "session/{sessionId}"
     fun sessionDetail(id: String) = "session/$id"
 
