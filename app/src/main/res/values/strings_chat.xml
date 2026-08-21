@@ -392,6 +392,9 @@
     <string name="chat_stopped_toast">已停止</string>
     <string name="chat_stop_requested">已请求停止</string>
     <string name="chat_context_compressed">上下文已压缩</string>
+    <string name="chat_context_compression_not_needed">对话过短，暂无可压缩内容</string>
+    <string name="chat_agent_context_compressing">正在压缩对话</string>
+    <string name="chat_agent_context_compressed">已压缩对话</string>
     <string name="chat_extracted_from_archive">已从归档提取 %1$d 轮对话</string>
     <string name="chat_forked_toast">已从该消息处分叉</string>
     <string name="chat_fork_no_id">分叉成功，但未返回新会话 ID</string>

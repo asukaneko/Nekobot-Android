@@ -224,6 +224,8 @@ data class Message(
     @SerializedName("output_tokens") val outputTokens: Int? = null,
     val model: String? = null,
     val filtered: Boolean? = null,
+    /** 本地持久化消息来源；Agent 上下文摘要使用它保存压缩边界。 */
+    val source: String? = null,
     @SerializedName("created_at") val createdAt: String? = null,
     // 进度卡片（thinking_card）的结构化字段：服务端推送时携带，普通消息为 null
     val steps: List<ThinkingStep>? = null,

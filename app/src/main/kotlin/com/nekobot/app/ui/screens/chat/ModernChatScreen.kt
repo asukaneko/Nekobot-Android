@@ -127,6 +127,7 @@ import com.nekobot.app.data.local.ChatInputLayoutMode
 import com.nekobot.app.data.local.LocalCommandAction
 import com.nekobot.app.data.local.LocalCommandSuggestion
 import com.nekobot.app.data.local.LocalSlashCommands
+import com.nekobot.app.data.local.isAgentContextSummary
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.ReasoningEffort
@@ -698,14 +699,19 @@ private fun ModernChatComposer(
     val messageCount = messages.count { !it.isThinkingCard }
     val charCount = input.length
     val tokenEstimate = estimateModernChatDraftTokens(input)
+    // 压缩不会改变可见消息数量，只会更新隐藏摘要的边界 source。
+    // 将该边界纳入 key，压缩完成后立即重新计算 + 面板中的上下文用量与比例。
+    val contextRevision = messages.asReversed()
+        .firstOrNull { it.isAgentContextSummary() }
+        ?.let { message -> "${message.id}:${message.source}" }
+        .orEmpty()
 
     // 加载激活模型的 maxTokens，用于上下文圆环进度条百分比计算
     var maxTokens by remember { mutableStateOf<Int?>(null) }
     // 当前上下文 Token：本地模式取最近一次完整 prompt usage，避免把每轮累计计费用量重复相加
     var usedTokens by remember { mutableStateOf(0L) }
-    // 消息条数变化或发送中状态变化时刷新（远程模式发送后服务端会先写 token 记录）
-    val refreshKey = messageCount.toString() + "_" + sending.toString()
-    LaunchedEffect(refreshKey) {
+    // 消息条数、压缩边界或发送状态变化时刷新（远程模式发送后服务端会先写 token 记录）。
+    LaunchedEffect(sessionId, messageCount, contextRevision, sending) {
         // 进度条分母：当前激活聊天模型的上下文窗口长度（max_context_length）
         // 本地模式和远程模式均通过 unified.getActiveContextLength() 统一获取
         maxTokens = withContext(Dispatchers.IO) {

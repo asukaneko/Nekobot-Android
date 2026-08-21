@@ -386,6 +386,9 @@
     <string name="chat_stopped_toast">중지했어요</string>
     <string name="chat_stop_requested">중지 요청됨</string>
     <string name="chat_context_compressed">컨텍스트가 압축되었어요</string>
+    <string name="chat_context_compression_not_needed">대화가 너무 짧아 압축할 내용이 없습니다</string>
+    <string name="chat_agent_context_compressing">대화를 압축하는 중</string>
+    <string name="chat_agent_context_compressed">대화를 압축했어요</string>
     <string name="chat_extracted_from_archive">보관함에서 %1$d턴 추출했어요</string>
     <string name="chat_forked_toast">이 메시지에서 포크했어요</string>
     <string name="chat_fork_no_id">포크 성공, 하지만 새 대화 ID가 반환되지 않았어요</string>

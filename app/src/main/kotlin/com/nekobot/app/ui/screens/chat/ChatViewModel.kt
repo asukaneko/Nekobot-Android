@@ -171,6 +171,7 @@ import com.nekobot.app.data.local.ChatInputLayoutMode
 import com.nekobot.app.data.local.MessageImageGenerationScheduler
 import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.local.VISION_FAILURE_MARKER
+import com.nekobot.app.data.local.isAgentContextSummary
 import com.nekobot.app.data.local.isLocalCommandMessage
 import com.nekobot.app.data.local.db.LocalMessageImageEntity
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
@@ -283,6 +284,14 @@ class ChatViewModel : BaseViewModel() {
         .flatMapLatest { it }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
     private val _sending: MutableStateFlow<Boolean> get() = runtime.sending
+
+    val agentContextCompressionInProgress: StateFlow<Boolean> = _runtime
+        .map { it.agentContextCompressionInProgress }
+        .distinctUntilChanged()
+        .flatMapLatest { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    private val _agentContextCompressionInProgress: MutableStateFlow<Boolean>
+        get() = runtime.agentContextCompressionInProgress
 
     val execConfirmation: StateFlow<ExecConfirmationRequest?> = _runtime
         .map { it.execConfirmation }
@@ -748,7 +757,7 @@ class ChatViewModel : BaseViewModel() {
                     else incoming.copy(reasoningContent = null)
                 }
                 // 过滤进度卡片（thinking_card），不展示在聊天列表
-                if (msg.isThinkingCard) return
+                if (msg.isThinkingCard && !msg.isAgentContextSummary()) return
                 _messages.value = mergeRealtimeNewMessage(
                     current = _messages.value,
                     incoming = msg,
@@ -805,6 +814,12 @@ class ChatViewModel : BaseViewModel() {
                     } else event.card
                     applyThinkingCardUpdate(card)
                     if (!isLocalMode) _sending.value = !event.card.isComplete
+                }
+            }
+            is RealtimeEvent.ContextCompressionStatus -> {
+                if (event.sessionId == currentSessionId) {
+                    _agentContextCompressionInProgress.value = event.inProgress
+                    if (!event.inProgress && event.compressed) loadMessages()
                 }
             }
             is RealtimeEvent.HookNotificationEvent -> {
@@ -972,7 +987,7 @@ class ChatViewModel : BaseViewModel() {
                     .associateBy { it.content to it.timestamp }
 
                 val merged = uiFresh
-                    .filterNot { msg -> msg.isThinkingCard }
+                    .filterNot { msg -> msg.isThinkingCard && !msg.isAgentContextSummary() }
                     .map { message ->
                         if (showStandaloneReasoning || message.isUser) message
                         else message.copy(reasoningContent = null)
@@ -2181,17 +2196,30 @@ class ChatViewModel : BaseViewModel() {
     /** 压缩上下文：将早期消息摘要化以节省 token。 */
     fun compressContext() {
         if (currentSessionId.isBlank()) return
+        val showAgentCompressionState = isLocalMode && isAgentSession()
+        if (showAgentCompressionState) _agentContextCompressionInProgress.value = true
         launchResult(
             block = { unified.compressContext(currentSessionId) },
             onSuccess = { json ->
+                if (showAgentCompressionState) _agentContextCompressionInProgress.value = false
+                val compressed = json?.takeIf { it.isJsonObject }
+                    ?.asJsonObject?.get("compressed")?.asBoolean ?: true
                 // 后端返回 archive_session_id，写回当前 session 状态
                 val archiveId = json?.takeIf { it.isJsonObject }
                     ?.asJsonObject?.get("archive_session_id")?.asString
                 if (archiveId != null) {
                     _session.value = _session.value?.copy(archiveSessionId = archiveId)
                 }
-                showToast(string(R.string.chat_context_compressed))
-                loadMessages()
+                if (compressed) {
+                    showToast(string(R.string.chat_context_compressed))
+                    loadMessages()
+                } else {
+                    showToast(string(R.string.chat_context_compression_not_needed))
+                }
+            },
+            onError = { message ->
+                if (showAgentCompressionState) _agentContextCompressionInProgress.value = false
+                showError(message)
             }
         )
     }

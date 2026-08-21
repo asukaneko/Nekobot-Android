@@ -190,6 +190,8 @@ import com.nekobot.app.data.local.db.LocalMessageImageEntity
 import com.nekobot.app.data.local.LivePipelineMode
 import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.local.VISION_FAILURE_MARKER
+import com.nekobot.app.data.local.agentContextSummaryBoundaryId
+import com.nekobot.app.data.local.isAgentContextSummary
 import com.nekobot.app.data.local.isLocalCommandMessage
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
 import com.nekobot.app.data.local.ai.AgentRecoveryState
@@ -254,6 +256,7 @@ fun ChatScreen(
     val sending by viewModel.sending.collectAsStateWithLifecycle()
     val loading by viewModel.loading.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
+    val toast by viewModel.toast.collectAsStateWithLifecycle()
     val plotChoices by viewModel.plotChoices.collectAsStateWithLifecycle()
     val plotChoicesLoading by viewModel.plotChoicesLoading.collectAsStateWithLifecycle()
     val selectionMode by viewModel.selectionMode.collectAsStateWithLifecycle()
@@ -261,6 +264,11 @@ fun ChatScreen(
     val execConfirmation by viewModel.execConfirmation.collectAsStateWithLifecycle()
     val hookNotifications by viewModel.hookNotifications.collectAsStateWithLifecycle()
     val agentRecovery by viewModel.agentRecovery.collectAsStateWithLifecycle()
+    val agentContextCompressionInProgress by viewModel.agentContextCompressionInProgress.collectAsStateWithLifecycle()
+    // 摘要可能先于会话元数据加载完成；直接以消息自身的压缩边界驱动分隔线。
+    val agentCompressionBoundaryIds = messages.mapNotNull { it.agentContextSummaryBoundaryId() }.toSet()
+    // 摘要本身仅供请求上下文使用，聊天列表仍展示完整原始历史。
+    val visibleMessages = messages.filterNot { it.isAgentContextSummary() }
     // 不把完整 Message 列表作为 remember key：Agent 历史可能携带较大的嵌套进度数据，
     // Compose 对 key 做 equals 时会递归比较整棵工具结果。
     val latestBrowserProgressCardId = messages.asReversed().firstNotNullOfOrNull { message ->
@@ -315,6 +323,12 @@ fun ChatScreen(
     val keyboard = LocalSoftwareKeyboardController.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val context = LocalContext.current
+    LaunchedEffect(toast) {
+        toast?.let { message ->
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            viewModel.clearToast()
+        }
+    }
     var pendingDownloadImage by remember { mutableStateOf<LocalMessageImageEntity?>(null) }
     val downloadPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -572,14 +586,14 @@ fun ChatScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     // 新消息时滚动：首次加载用瞬时滚动（无动画），后续用动画滚动
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
+    LaunchedEffect(visibleMessages.size) {
+        if (visibleMessages.isNotEmpty()) {
             if (initialLoad) {
                 // 首次加载：直接跳到底部，无动画
-                listState.scrollToItem(messages.lastIndex)
+                listState.scrollToItem(visibleMessages.lastIndex)
                 initialLoad = false
             } else {
-                listState.animateScrollToItem(messages.lastIndex)
+                listState.animateScrollToItem(visibleMessages.lastIndex)
             }
         }
     }
@@ -894,8 +908,8 @@ fun ChatScreen(
                         viewModel.regeneratePlotChoices()
                     },
                     onScrollToBottom = {
-                        if (messages.isNotEmpty()) {
-                            scope.launch { listState.animateScrollToItem(messages.lastIndex) }
+                        if (visibleMessages.isNotEmpty()) {
+                            scope.launch { listState.animateScrollToItem(visibleMessages.lastIndex) }
                         }
                     },
                     onShowMyMessages = { showMyMessages = true },
@@ -964,7 +978,7 @@ fun ChatScreen(
                         )
                     )
             )
-            if (messages.isEmpty() && loading) {
+            if (visibleMessages.isEmpty() && loading) {
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -972,7 +986,7 @@ fun ChatScreen(
                 ) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
-            } else if (messages.isEmpty()) {
+            } else if (visibleMessages.isEmpty()) {
                 // 空会话引导：角色会话显示立绘，其他模式显示默认图标
                 Column(
                     modifier = Modifier.fillMaxSize().padding(32.dp),
@@ -1039,7 +1053,7 @@ fun ChatScreen(
                         }
                     }
                     itemsIndexed(
-                        messages,
+                        visibleMessages,
                         key = { index, message -> chatMessageItemKey(index, message) }
                     ) { index, msg ->
                         // 注意：LazyColumn 单个 item 内的多个平级节点会像 Box 一样叠放，
@@ -1047,7 +1061,7 @@ fun ChatScreen(
                         Column {
                             // 跨天消息之间插入日期分隔条
                             val day = dayKey(msg.timestamp)
-                            val prevDay = messages.getOrNull(index - 1)?.let { dayKey(it.timestamp) }
+                            val prevDay = visibleMessages.getOrNull(index - 1)?.let { dayKey(it.timestamp) }
                             if (day != null && day != prevDay) {
                                 DateSeparatorChip(label = dayLabel(day))
                                 Spacer(Modifier.height(2.dp))
@@ -1110,7 +1124,19 @@ fun ChatScreen(
                                     onToggleSelection = { msg.id?.let { viewModel.toggleSelection(it) } }
                                 )
                             }
+                            if (msg.id != null && msg.id in agentCompressionBoundaryIds) {
+                                Spacer(Modifier.height(4.dp))
+                                AgentContextCompressionDivider(inProgress = false)
+                            }
                             // 远程模式只有 Agent 会话显示进度卡片；本地模式还需要支持角色/群聊的耗时命令。
+                            if (
+                                index == visibleMessages.lastIndex &&
+                                session?.sessionMode.equals("agent", ignoreCase = true) &&
+                                agentContextCompressionInProgress
+                            ) {
+                                Spacer(Modifier.height(4.dp))
+                                AgentContextCompressionDivider(inProgress = true)
+                            }
                             if (
                                 msg.isUser &&
                                 shouldRenderProgressCards(
@@ -3873,6 +3899,51 @@ private fun deepenColor(color: Color, factor: Float = 0.78f): Color {
 }
 
 /** 日期分隔条：居中胶囊样式，在跨天消息之间插入。 */
+@Composable
+private fun AgentContextCompressionDivider(inProgress: Boolean) {
+    val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = color.copy(alpha = 0.38f)
+        )
+        Spacer(Modifier.width(10.dp))
+        if (inProgress) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(14.dp),
+                strokeWidth = 1.5.dp,
+                color = color
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Filled.Compress,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                tint = color
+            )
+        }
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = stringResource(
+                if (inProgress) R.string.chat_agent_context_compressing
+                else R.string.chat_agent_context_compressed
+            ),
+            style = MaterialTheme.typography.labelSmall,
+            color = color
+        )
+        Spacer(Modifier.width(10.dp))
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = color.copy(alpha = 0.38f)
+        )
+    }
+}
+
 @Composable
 private fun DateSeparatorChip(label: String) {
     Box(

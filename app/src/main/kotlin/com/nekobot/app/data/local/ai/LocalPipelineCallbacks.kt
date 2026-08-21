@@ -3,6 +3,8 @@ package com.nekobot.app.data.local.ai
 import android.util.Log
 import com.google.gson.Gson
 import com.nekobot.app.data.local.VISION_FAILURE_MARKER
+import com.nekobot.app.data.local.agentContextWindow
+import com.nekobot.app.data.local.isAgentContextSummary
 import com.nekobot.app.data.local.isLocalCommandMessage
 import com.nekobot.app.data.local.shouldInjectWorldBooks
 import com.nekobot.app.data.local.db.LocalAiModelEntity
@@ -208,15 +210,21 @@ internal class LocalPipelineCallbacks(
         knowledgeSearcher?.invoke(query).orEmpty()
 
     override fun loadMessages(ctx: PipelineContext): List<Map<String, Any>> {
+        val isAgentSession = session.sessionMode.equals("agent", ignoreCase = true)
         val history = kotlinx.coroutines.runBlocking {
             messageDao.listBySession(session.id)
-        }.filter { it.role != "system" }
+        }.let { messages ->
+            if (isAgentSession) messages.agentContextWindow() else messages
+        }.filter { message ->
+            !message.role.equals("system", ignoreCase = true) ||
+                (isAgentSession && message.isAgentContextSummary())
+        }
             .filterNot { it.isLocalCommandMessage() }
             // 当前用户消息由下面统一追加。按 id 排除而不是 dropLast(1)，否则群聊第二名
             // 角色执行时，最后一条已经是前一名角色回复，会被错误删掉并重复注入用户消息。
             .filterNot { it.id == parentMessageId }
 
-        val contextHistory = if (session.sessionMode.equals("agent", ignoreCase = true)) {
+        val contextHistory = if (isAgentSession) {
             addLegacyAgentContextFallback(history)
         } else {
             history

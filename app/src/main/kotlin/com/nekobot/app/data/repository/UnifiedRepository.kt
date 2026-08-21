@@ -415,21 +415,18 @@ class UnifiedRepository(
 
     suspend fun compressContext(id: String): Resource<JsonElement> {
         if (!isLocal) return remote.compressContext(id)
-        val ok = try {
+        val result = try {
             local.compressContext(id)
         } catch (e: Exception) {
             return Resource.Error(e.message ?: "压缩失败")
         }
-        return if (ok) {
-            // 读取 archive_session_id 回写响应，供 ChatScreen 写回 session 状态
-            val archiveId = local.getSession(id)?.archiveSessionId
-            val payload = if (archiveId != null) {
-                "{\"success\":true,\"archive_session_id\":\"$archiveId\"}"
-            } else {
-                "{\"success\":true}"
-            }
-            Resource.Success(JsonParser.parseString(payload))
-        } else Resource.Error("压缩失败")
+        result.errorMessage?.let { return Resource.Error(it) }
+        val payload = buildString {
+            append("{\"success\":true,\"compressed\":${result.compressed}")
+            result.archiveSessionId?.let { append(",\"archive_session_id\":\"$it\"") }
+            append('}')
+        }
+        return Resource.Success(JsonParser.parseString(payload))
     }
 
     /** 从归档会话提取 N 轮对话回到当前会话。 */

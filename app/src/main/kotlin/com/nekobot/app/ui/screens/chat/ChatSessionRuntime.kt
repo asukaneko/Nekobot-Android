@@ -37,6 +37,7 @@ class ChatSessionState(val sessionId: String) {
     val plotChoicesLoading = MutableStateFlow(false)
     val hookNotifications = MutableStateFlow<List<HookNotification>>(emptyList())
     val ttsStates = MutableStateFlow<Map<String, MessageTtsUiState>>(emptyMap())
+    val agentContextCompressionInProgress = MutableStateFlow(false)
 
     // ============ 流式生成的临时可变状态 ============
     /** 流式生成中的临时消息内容累加器 */

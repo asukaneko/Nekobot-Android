@@ -50,6 +50,7 @@ import com.nekobot.app.data.local.ai.buildLocalDbToolDefinitions
 import com.nekobot.app.data.local.ai.buildLocalSkillToolDefinitions
 import com.nekobot.app.data.local.ai.decodeThinkingCardsForUi
 import com.nekobot.app.data.local.ai.encodeToolCallHistory
+import com.nekobot.app.data.local.ai.estimateLocalTextTokens
 import com.nekobot.app.data.local.ai.localDbToolIds
 import com.nekobot.app.data.local.ai.localSkillToolIds
 import com.nekobot.app.data.local.ai.parseMcpToolName
@@ -161,6 +162,59 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipInputStream
+
+/** Agent 会话压缩摘要的持久化标记。 */
+internal const val AGENT_CONTEXT_SUMMARY_SOURCE = "agent_context_summary"
+internal const val AGENT_CONTEXT_SUMMARY_PREFIX = "【已压缩的 Agent 对话】"
+private const val AGENT_CONTEXT_SUMMARY_SOURCE_SEPARATOR = ":"
+private const val LEGACY_CONTEXT_SUMMARY_PREFIX = "【历史对话摘要】"
+private const val AGENT_SUMMARY_MAX_CHARS = 2_000
+private const val AGENT_SUMMARY_INPUT_OVERHEAD_TOKENS = 1_024
+private const val AGENT_CONTEXT_MESSAGE_OVERHEAD_TOKENS = 8
+private const val DEFAULT_AGENT_CONTEXT_TOKENS = 100_000
+
+/** 兼容旧版 Agent 会话中未写入 source 的历史摘要。 */
+internal fun LocalMessageEntity.isAgentContextSummary(): Boolean =
+    role.equals("system", ignoreCase = true) && (
+        source == AGENT_CONTEXT_SUMMARY_SOURCE ||
+            source?.startsWith("$AGENT_CONTEXT_SUMMARY_SOURCE$AGENT_CONTEXT_SUMMARY_SOURCE_SEPARATOR") == true ||
+            content.startsWith(AGENT_CONTEXT_SUMMARY_PREFIX) ||
+            content.startsWith(LEGACY_CONTEXT_SUMMARY_PREFIX)
+        )
+
+internal fun LocalMessageEntity.agentContextSummaryBoundaryId(): String? =
+    source
+        ?.takeIf { it.startsWith("$AGENT_CONTEXT_SUMMARY_SOURCE$AGENT_CONTEXT_SUMMARY_SOURCE_SEPARATOR") }
+        ?.removePrefix("$AGENT_CONTEXT_SUMMARY_SOURCE$AGENT_CONTEXT_SUMMARY_SOURCE_SEPARATOR")
+        ?.takeIf(String::isNotBlank)
+
+/** 返回实际发送给 Agent 的历史：摘要和压缩边界后的原始消息。 */
+internal fun List<LocalMessageEntity>.agentContextWindow(): List<LocalMessageEntity> {
+    val summary = asReversed().firstOrNull { it.isAgentContextSummary() }
+        ?: return this
+    val boundaryId = summary.agentContextSummaryBoundaryId() ?: return this
+    val boundaryIndex = indexOfFirst { it.id == boundaryId }
+    if (boundaryIndex < 0) return this
+    return buildList(size - boundaryIndex) {
+        add(summary)
+        addAll(this@agentContextWindow.drop(boundaryIndex + 1).filterNot { it.isAgentContextSummary() })
+    }
+}
+
+/** UI 只识别新版摘要，旧摘要会在下一次 Agent 压缩时自动迁移。 */
+internal fun Message.isAgentContextSummary(): Boolean =
+    role.equals("system", ignoreCase = true) &&
+        (
+            source?.startsWith("$AGENT_CONTEXT_SUMMARY_SOURCE$AGENT_CONTEXT_SUMMARY_SOURCE_SEPARATOR") == true ||
+                displayContent.startsWith(AGENT_CONTEXT_SUMMARY_PREFIX) ||
+                displayContent.startsWith(LEGACY_CONTEXT_SUMMARY_PREFIX)
+        )
+
+internal fun Message.agentContextSummaryBoundaryId(): String? =
+    source
+        ?.takeIf { it.startsWith("$AGENT_CONTEXT_SUMMARY_SOURCE$AGENT_CONTEXT_SUMMARY_SOURCE_SEPARATOR") }
+        ?.removePrefix("$AGENT_CONTEXT_SUMMARY_SOURCE$AGENT_CONTEXT_SUMMARY_SOURCE_SEPARATOR")
+        ?.takeIf(String::isNotBlank)
 
 /**
  * 本地模式仓库：直接操作 Room + 调用 AI 接口。
@@ -279,7 +333,14 @@ class LocalRepository(
         val session = sessionId.takeIf(String::isNotBlank)?.let { sessionDao.getById(it) }
         val contextTokens = sessionId.takeIf(String::isNotBlank)
             ?.let { id ->
-                estimateLocalAiContextTokens(messageDao.listBySession(id))
+                val messages = messageDao.listBySession(id)
+                estimateLocalAiContextTokens(
+                    if (session?.sessionMode.equals("agent", ignoreCase = true)) {
+                        messages.agentContextWindow()
+                    } else {
+                        messages
+                    }
+                )
             }
             ?: 0
         val records = readTokenUsageRecordsReconciled().takeLast(1_000)
@@ -4609,6 +4670,38 @@ class LocalRepository(
 
         // 群聊会话没有单一 character_id：按 group_config 调度一个或多个角色，
         // 每个角色使用自己的 CharacterRuntime/角色卡执行同一条共享消息历史。
+        val maxContextTokens = activeModel.maxContextLength
+            ?.takeIf { it > 0 }
+            ?: DEFAULT_AGENT_CONTEXT_TOKENS
+        if (
+            session.sessionMode.equals("agent", ignoreCase = true) &&
+            needsAgentContextCompression(sessionId, maxContextTokens)
+        ) {
+            emit(RealtimeEvent.ContextCompressionStatus(sessionId, inProgress = true))
+            val compression = compressAgentContext(
+                sessionId = sessionId,
+                keepRecent = 10,
+                maxContextTokens = maxContextTokens,
+                automatic = true
+            )
+            emit(
+                RealtimeEvent.ContextCompressionStatus(
+                    sessionId = sessionId,
+                    inProgress = false,
+                    compressed = compression.compressed
+                )
+            )
+            compression.errorMessage?.let { message ->
+                emit(
+                    RealtimeEvent.Error(
+                        message = "Agent 上下文压缩失败：$message",
+                        sessionId = sessionId,
+                        completesForeground = false
+                    )
+                )
+            }
+        }
+
         if (session.sessionMode.equals("group", ignoreCase = true)) {
             chatGroupWithPipeline(
                 session = session,
@@ -4962,6 +5055,9 @@ class LocalRepository(
                             ctx = ctx,
                             callbacks = callbacks,
                             tools = tools,
+                            // Pipeline 的字符窗口只作最后的防护；Agent 自动压缩的触发
+                            // 已使用模型配置的 token 上限，避免过早压缩历史。
+                            maxContextChars = maxContextTokens,
                             progressReporter = progressReporter
                         )
                     } finally {
@@ -5634,9 +5730,24 @@ class LocalRepository(
     suspend fun compressContext(
         sessionId: String,
         keepRecent: Int = 10
-    ): Boolean = withContext(Dispatchers.IO) {
+    ): ContextCompressionResult = withContext(Dispatchers.IO) {
+        val session = sessionDao.getById(sessionId)
+        if (session?.sessionMode.equals("agent", ignoreCase = true)) {
+            val maxContextTokens = aiModelDao.getActive()?.maxContextLength
+                ?.takeIf { it > 0 }
+                ?: DEFAULT_AGENT_CONTEXT_TOKENS
+            return@withContext compressAgentContext(
+                sessionId = sessionId,
+                keepRecent = keepRecent,
+                maxContextTokens = maxContextTokens,
+                automatic = false
+            )
+        }
+
         val messages = listAiContextMessages(sessionId)
-        if (messages.size <= keepRecent + 2) return@withContext true  // 不需要压缩
+        if (messages.size <= keepRecent + 2) {
+            return@withContext ContextCompressionResult(compressed = false)
+        }
 
         val toCompress = messages.dropLast(keepRecent)
         val toKeep = messages.takeLast(keepRecent)
@@ -5666,12 +5777,16 @@ class LocalRepository(
             purpose = TokenStatsManager.PURPOSE_UTILITY
         )
         if (result.error != null || result.content.isBlank()) {
-            return@withContext false
+            return@withContext ContextCompressionResult(
+                compressed = false,
+                errorMessage = result.error ?: "压缩失败"
+            )
         }
 
         // 把被压缩的原始消息归档为一个独立会话（archive session），供"提取归档 N 轮"使用
         val source = sessionDao.getById(sessionId)
         val archiveId = UUID.randomUUID().toString()
+        var savedArchiveSessionId: String? = null
         val now = nowIso()
         if (source != null) {
             val archiveEntity = source.copy(
@@ -5691,6 +5806,7 @@ class LocalRepository(
             // 把归档会话 id 回写到源会话
             val updated = source.copy(archiveSessionId = archiveId, updatedAt = now)
             sessionDao.update(updated)
+            savedArchiveSessionId = archiveId
         }
 
         // 删除被压缩的消息
@@ -5714,8 +5830,222 @@ class LocalRepository(
             count = messageDao.countBySession(sessionId),
             updatedAt = now
         )
-        true
+        ContextCompressionResult(compressed = true, archiveSessionId = savedArchiveSessionId)
     }
+
+    /** Agent 自动压缩只在持久化的会话上下文达到模型上限时触发。 */
+    private suspend fun needsAgentContextCompression(
+        sessionId: String,
+        maxContextTokens: Int
+    ): Boolean {
+        if (maxContextTokens <= 0) return false
+        return listAiContextMessages(sessionId)
+            .agentContextWindow()
+            .asSequence()
+            // 普通 system 消息会由 Agent 的提示词构建器单独处理，不属于历史上下文；
+            // 唯一需要随历史再次发送的是 Agent 压缩摘要。
+            .filter { !it.role.equals("system", ignoreCase = true) || it.isAgentContextSummary() }
+            .sumOf { it.agentContextTokenCount() } >= maxContextTokens
+    }
+
+    /**
+     * Agent 会话不创建归档会话，也不删除历史。被压缩的非 system 消息仍留在界面中，
+     * 后续请求仅发送一条 system 摘要和压缩边界后的消息。
+     */
+    private suspend fun compressAgentContext(
+        sessionId: String,
+        keepRecent: Int,
+        maxContextTokens: Int,
+        automatic: Boolean
+    ): ContextCompressionResult {
+        val messages = listAiContextMessages(sessionId)
+        val currentSummary = messages.asReversed().firstOrNull(LocalMessageEntity::isAgentContextSummary)
+        val activeNonSystemMessages = messages.agentContextWindow()
+            .filterNot { it.role.equals("system", ignoreCase = true) }
+        if (activeNonSystemMessages.isEmpty()) return ContextCompressionResult(compressed = false)
+
+        if (automatic && !needsAgentContextCompression(sessionId, maxContextTokens)) {
+            return ContextCompressionResult(compressed = false)
+        }
+
+        val retainedMessages = if (automatic) {
+            retainAgentMessagesWithinLimit(activeNonSystemMessages, maxContextTokens)
+        } else {
+            activeNonSystemMessages.takeLast(keepRecent.coerceAtLeast(1))
+        }
+        val retainedIds = retainedMessages.mapTo(hashSetOf()) { it.id }
+        val toCompress = activeNonSystemMessages.filterNot { it.id in retainedIds }
+        if (toCompress.isEmpty()) return ContextCompressionResult(compressed = false)
+
+        val previousSummary = currentSummary?.content
+            ?.removeAgentContextSummaryPrefix()
+            ?.trim()
+            .orEmpty()
+        val summary = summarizeAgentHistory(
+            previousSummary = previousSummary,
+            messages = toCompress,
+            maxContextTokens = maxContextTokens
+        ) ?: return ContextCompressionResult(
+            compressed = false,
+            errorMessage = "压缩失败"
+        )
+
+        val now = nowIso()
+        val boundary = toCompress.last()
+        val summaryMessage = (currentSummary ?: boundary).copy(
+            id = currentSummary?.id ?: UUID.randomUUID().toString(),
+            sessionId = sessionId,
+            role = "system",
+            content = "$AGENT_CONTEXT_SUMMARY_PREFIX\n$summary",
+            reasoningContent = null,
+            sender = "system",
+            timestamp = now,
+            model = null,
+            inputTokens = null,
+            outputTokens = null,
+            audioUrl = null,
+            audioUpdatedAt = null,
+            createdAt = now,
+            thinkingCards = null,
+            toolCallHistory = null,
+            source = "$AGENT_CONTEXT_SUMMARY_SOURCE$AGENT_CONTEXT_SUMMARY_SOURCE_SEPARATOR${boundary.id}",
+            knowledgeCitations = null,
+            routingDecisionId = null
+        )
+
+        // 只更新摘要边界，完整历史继续保存在当前会话并照常显示。
+        messages
+            .filter(LocalMessageEntity::isAgentContextSummary)
+            .filterNot { it.id == summaryMessage.id }
+            .forEach { messageDao.deleteById(it.id) }
+        messageDao.upsert(summaryMessage)
+
+        sessionDao.touch(
+            id = sessionId,
+            lastMessage = retainedMessages.lastOrNull()?.content?.take(200).orEmpty(),
+            count = messageDao.countBySession(sessionId),
+            updatedAt = now
+        )
+        return ContextCompressionResult(compressed = true)
+    }
+
+    /** 自动压缩时优先保留最近两条非 system 消息，并尽可能多地保留未超限的后续历史。 */
+    private fun retainAgentMessagesWithinLimit(
+        nonSystemMessages: List<LocalMessageEntity>,
+        maxContextTokens: Int
+    ): List<LocalMessageEntity> {
+        // 已有摘要会被新摘要原地覆盖，因此只为最终的一条摘要预留一次空间。
+        var usedTokens = agentSummaryTokenBudget(maxContextTokens)
+        val minimumToKeep = minOf(2, nonSystemMessages.size)
+        val retained = ArrayDeque<LocalMessageEntity>()
+        for (message in nonSystemMessages.asReversed()) {
+            val messageTokens = message.agentContextTokenCount()
+            if (retained.size >= minimumToKeep && usedTokens + messageTokens > maxContextTokens) break
+            retained.addFirst(message)
+            usedTokens += messageTokens
+        }
+        return retained.toList()
+    }
+
+    /** 逐段压缩，确保当原始历史已很长时，摘要请求本身也不会越过模型上下文窗口。 */
+    private suspend fun summarizeAgentHistory(
+        previousSummary: String,
+        messages: List<LocalMessageEntity>,
+        maxContextTokens: Int
+    ): String? {
+        val dialogText = messages.joinToString("\n") { message ->
+            buildString {
+                append('[')
+                append(
+                    when (message.role.lowercase()) {
+                        "user" -> "用户"
+                        "assistant" -> "Agent"
+                        else -> message.role
+                    }
+                )
+                append("] ")
+                append(message.content)
+                message.toolCallHistory?.takeIf(String::isNotBlank)?.let { toolHistory ->
+                    append("\n[工具调用记录] ")
+                    append(toolHistory)
+                }
+            }
+        }
+        val summaryLimit = minOf(
+            AGENT_SUMMARY_MAX_CHARS,
+            agentSummaryTokenBudget(maxContextTokens)
+        )
+        var rollingSummary = previousSummary.take(summaryLimit)
+        var offset = 0
+        while (offset < dialogText.length) {
+            val chunkTokenBudget = (
+                maxContextTokens - AGENT_SUMMARY_INPUT_OVERHEAD_TOKENS -
+                    estimateLocalTextTokens(rollingSummary)
+                ).coerceAtLeast(128)
+            val nextOffset = nextAgentSummaryChunkEnd(dialogText, offset, chunkTokenBudget)
+            val chunk = dialogText.substring(offset, nextOffset)
+            val material = buildString {
+                if (rollingSummary.isNotBlank()) {
+                    append("此前压缩摘要：\n")
+                    append(rollingSummary)
+                    append("\n\n")
+                }
+                append("需要纳入的新历史：\n")
+                append(chunk)
+            }
+            val execution = executeChatOnceViaQueue(
+                listOf(
+                    mapOf(
+                        "role" to "system",
+                        "content" to "你负责维护 Agent 的长期工作上下文。请将输入资料压缩成不超过 2000 个汉字的连续摘要，保留用户目标、已完成与未完成的工作、关键结论、文件或命令结果、工具调用状态、约束和后续行动。已有摘要与新历史必须合并，不要遗漏已有摘要中的有效信息。只输出摘要正文。"
+                    ),
+                    mapOf("role" to "user", "content" to material)
+                )
+            )
+            recordFailoverTokenUsage(
+                execution = execution,
+                source = "agent_context_compression",
+                purpose = TokenStatsManager.PURPOSE_UTILITY
+            )
+            val result = execution.value
+            if (result.error != null || result.content.isBlank()) return null
+            rollingSummary = result.content.trim().take(summaryLimit)
+            offset = nextOffset
+        }
+        return rollingSummary.takeIf(String::isNotBlank)
+    }
+
+    /** 使用与本地用量统计相同的估算器，模型的 max_context_length 单位为 token。 */
+    private fun LocalMessageEntity.agentContextTokenCount(): Int =
+        AGENT_CONTEXT_MESSAGE_OVERHEAD_TOKENS +
+            estimateLocalTextTokens(content) +
+            (toolCallHistory?.let(::estimateLocalTextTokens) ?: 0)
+
+    /** 摘要最多 2000 字；在小上下文模型上进一步缩小，确保总结请求自身能够发送。 */
+    private fun agentSummaryTokenBudget(maxContextTokens: Int): Int = minOf(
+        AGENT_SUMMARY_MAX_CHARS,
+        (maxContextTokens - AGENT_SUMMARY_INPUT_OVERHEAD_TOKENS - 512).coerceAtLeast(256)
+    )
+
+    private fun nextAgentSummaryChunkEnd(text: String, start: Int, tokenBudget: Int): Int {
+        var low = start + 1
+        var high = text.length
+        var result = start
+        while (low <= high) {
+            val middle = low + (high - low) / 2
+            if (estimateLocalTextTokens(text.substring(start, middle)) <= tokenBudget) {
+                result = middle
+                low = middle + 1
+            } else {
+                high = middle - 1
+            }
+        }
+        return result.coerceAtLeast(start + 1).coerceAtMost(text.length)
+    }
+
+    private fun String.removeAgentContextSummaryPrefix(): String =
+        removePrefix(AGENT_CONTEXT_SUMMARY_PREFIX)
+            .removePrefix(LEGACY_CONTEXT_SUMMARY_PREFIX)
 
     /**
      * 从归档会话末尾提取 N 轮对话回到当前会话。
@@ -6835,6 +7165,19 @@ $charSection$topicSection
      */
     suspend fun sessionContextTokenUsage(sessionId: String): Long = withContext(Dispatchers.IO) {
         val messages = listAiContextMessages(sessionId)
+        val isAgentSession = sessionDao.getById(sessionId)
+            ?.sessionMode
+            .equals("agent", ignoreCase = true)
+        if (isAgentSession) {
+            // 压缩后的旧消息仍保留在 UI 中，但不能再作为当前上下文计入用量。
+            // 不复用旧 assistant 消息保存的 input_tokens：它们对应压缩前的完整提示词。
+            return@withContext messages
+                .agentContextWindow()
+                .filter { !it.role.equals("system", ignoreCase = true) || it.isAgentContextSummary() }
+                .sumOf { it.agentContextTokenCount().toLong() }
+        }
+
+        val contextMessages = messages
             .filter { it.role != "system" }
             .map {
                 LocalContextTokenMessage(
@@ -6843,7 +7186,7 @@ $charSection$topicSection
                     outputTokens = it.outputTokens
                 )
             }
-        currentLocalContextTokens(messages)
+        currentLocalContextTokens(contextMessages)
     }
 
     /** 本地 token 用量排行榜（按 model / session 聚合，从独立存储读取）。 */
@@ -7231,6 +7574,7 @@ $charSection$topicSection
         outputTokens = outputTokens,
         // 合并 input+output 作为总 token 数，供 UI 统计使用
         tokens = listOfNotNull(inputTokens, outputTokens).takeIf { it.size == 2 }?.sum(),
+        source = source,
         createdAt = createdAt,
         // UI 历史只加载有界进度卡。完整工具历史仅供 AI 上下文路径读取，绝不能塞进聊天状态。
         thinkingCards = decodeThinkingCardsForUi(id, thinkingCards, gson),
@@ -8894,8 +9238,7 @@ $charSection$topicSection
             addProperty("model", active?.model ?: "")
             addProperty("temperature", active?.temperature ?: 0.7)
             addProperty("max_tokens", active?.maxTokens ?: 2048)
-            // 本地模型未单独存储上下文窗口长度，使用默认值 100k（与后端默认一致）
-            addProperty("max_context_length", 100000)
+            addProperty("max_context_length", active?.maxContextLength ?: 100000)
             addProperty("top_p", active?.topP ?: 1.0)
             addProperty("frequency_penalty", 0.0)
             addProperty("presence_penalty", 0.0)
@@ -8913,6 +9256,8 @@ $charSection$topicSection
             model = obj?.get("model")?.takeIf { it.isJsonPrimitive }?.asString ?: active.model,
             temperature = obj?.get("temperature")?.takeIf { it.isJsonPrimitive }?.asFloat ?: active.temperature,
             maxTokens = obj?.get("max_tokens")?.takeIf { it.isJsonPrimitive }?.asInt ?: active.maxTokens,
+            maxContextLength = obj?.get("max_context_length")?.takeIf { it.isJsonPrimitive }?.asInt
+                ?: active.maxContextLength,
             topP = obj?.get("top_p")?.takeIf { it.isJsonPrimitive }?.asFloat ?: active.topP
         )
         aiModelDao.upsert(updated)
@@ -9318,6 +9663,13 @@ data class LocalImageResult(
     val mimeType: String,
     val usedModelId: String,
     val usedModelName: String
+)
+
+/** 本地上下文压缩的执行结果。 */
+data class ContextCompressionResult(
+    val compressed: Boolean,
+    val archiveSessionId: String? = null,
+    val errorMessage: String? = null
 )
 
 /**

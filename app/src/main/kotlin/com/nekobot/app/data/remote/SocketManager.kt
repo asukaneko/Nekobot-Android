@@ -243,6 +243,12 @@ sealed class RealtimeEvent {
         val card: com.nekobot.app.data.model.ThinkingCard,
         val sessionId: String? = null
     ) : RealtimeEvent()
+    /** Agent 会话上下文压缩状态，仅本地管线发出。 */
+    data class ContextCompressionStatus(
+        val sessionId: String,
+        val inProgress: Boolean,
+        val compressed: Boolean = false
+    ) : RealtimeEvent()
     /**
      * Hook 触发通知（成就式弹窗）。
      * - 远程模式：服务端通过 `hook_notification` Socket.IO 事件推送
@@ -274,6 +280,7 @@ fun RealtimeEvent.targetSessionId(): String? = when (this) {
     is RealtimeEvent.ExecConfirmationRequired -> request.sessionId
     is RealtimeEvent.ExecConfirmationResolved -> sessionId
     is RealtimeEvent.ThinkingCardUpdate -> sessionId
+    is RealtimeEvent.ContextCompressionStatus -> sessionId
     is RealtimeEvent.HookNotificationEvent -> notification.conversationId
     is RealtimeEvent.SessionRenamed -> sessionId
     is RealtimeEvent.ForegroundComplete -> sessionId
