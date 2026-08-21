@@ -2014,7 +2014,7 @@ private fun AchievementItem(achievement: DashboardAchievement) {
                         trackColor = MaterialTheme.colorScheme.surfaceVariant
                     )
                     Text(
-                        "${(achievement.progress * 100).toInt()}%",
+                        (achievement.progress * 100).toInt().toString(),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold

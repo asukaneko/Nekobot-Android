@@ -29,7 +29,6 @@ import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.EmojiEvents
-import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Image
@@ -77,13 +76,12 @@ fun ExtensionsScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
         ExtensionItem(stringResource(R.string.extensions_message_filter), stringResource(R.string.extensions_message_filter_desc), Icons.Filled.FilterAlt, Routes.MESSAGE_FILTER),
         ExtensionItem(stringResource(R.string.extensions_tts_playground), stringResource(R.string.extensions_tts_playground_desc), Icons.Filled.PlayCircle, Routes.TTS_PLAYGROUND),
         ExtensionItem(stringResource(R.string.extensions_image_generation), stringResource(R.string.extensions_image_generation_desc), Icons.Filled.Image, Routes.IMAGE_GENERATION_PLAYGROUND),
-        ExtensionItem(stringResource(R.string.extensions_login_tokens), stringResource(R.string.extensions_login_tokens_desc), Icons.Filled.VpnKey, Routes.LOGIN_TOKENS),
-        ExtensionItem(stringResource(R.string.extensions_api_keys), stringResource(R.string.extensions_api_keys_desc), Icons.Filled.Key, Routes.API_KEYS)
+        ExtensionItem(stringResource(R.string.extensions_login_tokens), stringResource(R.string.extensions_login_tokens_desc), Icons.Filled.VpnKey, Routes.LOGIN_TOKENS)
     )
     // 本地模式仅展示本地已实现的模块（含 TTS/图片生成实验室）
     val localSupportedRoutes = setOf(
         Routes.ACHIEVEMENTS, Routes.HOOKS, Routes.TASK_CENTER, Routes.WORKFLOWS,
-        Routes.KNOWLEDGE, Routes.SKILLS, Routes.TOOLS, Routes.MCP_SERVERS, Routes.API_KEYS,
+        Routes.KNOWLEDGE, Routes.SKILLS, Routes.TOOLS, Routes.MCP_SERVERS,
         Routes.TTS_PLAYGROUND, Routes.IMAGE_GENERATION_PLAYGROUND
     )
     val items = if (isLocalMode) allItems.filter { it.route in localSupportedRoutes } else allItems
