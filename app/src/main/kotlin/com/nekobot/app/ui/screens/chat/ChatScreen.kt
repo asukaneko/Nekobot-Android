@@ -3352,8 +3352,8 @@ private fun StepDetailDialog(
         ?.takeLast(20_000)
         ?.stripEmoji()
         ?.takeIf(String::isNotBlank)
-    val argumentsJson = step.arguments?.let { formatJson(it) }
-    val fullResultJson = step.fullResult?.let { formatJson(it) }
+    val argumentsJson = step.arguments?.let { formatJsonForDisplay(it) }
+    val fullResultJson = step.fullResult?.let { formatJsonForDisplay(it) }
     val toolOutputWasTruncated = step.resultTruncated == true ||
         fullResultIndicatesTruncation(step.fullResult)
     val hasAny = detail != null || thinkingContent != null ||
@@ -3631,16 +3631,6 @@ private fun HookNotificationCard(
 }
 
 /** 格式化 JSON 字符串（任意对象转 pretty JSON）。 */
-private fun formatJson(value: Any): String {
-    return try {
-        val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
-        val element = gson.toJsonTree(value)
-        gson.toJson(element)
-    } catch (e: Exception) {
-        value.toString()
-    }
-}
-
 /**
  * 剥离文本中的 emoji 字符与常见 emoji 前缀（如 "🔄 AI 正在处理..." → "AI 正在处理..."）。
  *
