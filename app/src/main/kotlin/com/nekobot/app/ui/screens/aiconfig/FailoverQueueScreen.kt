@@ -343,6 +343,14 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
         )
     }
 
+    fun saveSmartRoutingEnabled(enabled: Boolean) {
+        smartRoutingEnabledInput = enabled
+        vm.saveSmartRouting(
+            enabled = enabled,
+            dailyBudgetUsd = smartRoutingBudgetInput.toDoubleOrNull() ?: 0.0
+        )
+    }
+
     LaunchedEffect(toast) {
         toast?.let {
             Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
@@ -408,7 +416,7 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
                     if (showSmartRouting) {
                         SmartRoutingCard(
                             enabledInput = smartRoutingEnabledInput,
-                            onEnabledInputChange = { smartRoutingEnabledInput = it },
+                            onEnabledInputChange = ::saveSmartRoutingEnabled,
                             budgetInput = smartRoutingBudgetInput,
                             onBudgetInputChange = { value ->
                                 smartRoutingBudgetInput = value.filter {
@@ -436,7 +444,7 @@ fun FailoverQueueScreen(onBack: () -> Unit) {
                             item(key = "smart_routing") {
                                 SmartRoutingCard(
                                     enabledInput = smartRoutingEnabledInput,
-                                    onEnabledInputChange = { smartRoutingEnabledInput = it },
+                                    onEnabledInputChange = ::saveSmartRoutingEnabled,
                                     budgetInput = smartRoutingBudgetInput,
                                     onBudgetInputChange = { value ->
                                         smartRoutingBudgetInput = value.filter {
