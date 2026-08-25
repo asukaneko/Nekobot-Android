@@ -39,11 +39,7 @@ internal fun evaluateLocalCommand(command: String): LocalCommandPolicy {
         ?.drop(1)
         ?.firstOrNull { it.isNotBlank() }
         .orEmpty()
-    val mainCommand = File(firstToken).name
-        .removeSuffix(".exe")
-        .removeSuffix(".cmd")
-        .removeSuffix(".bat")
-        .lowercase()
+    val mainCommand = normalizeLocalCommandName(firstToken)
 
     val blocked = localBlockedCommandPatterns.firstOrNull { it.containsMatchIn(trimmed) }
     if (blocked != null) {
@@ -62,6 +58,95 @@ internal fun evaluateLocalCommand(command: String): LocalCommandPolicy {
     )
 }
 
+private fun normalizeLocalCommandName(token: String): String = File(token.trim())
+    .name
+    .removeSuffix(".exe")
+    .removeSuffix(".cmd")
+    .removeSuffix(".bat")
+    .lowercase()
+
+/**
+ * 提取一次命令授权请求中涉及的可执行命令名。
+ *
+ * 工具命令可能包含 `git status && git diff` 这样的 Shell 命令链。参数变化时
+ * 应复用授权，但不能把对 `git` 的授权扩展为新出现的 `curl`；引号中的 Shell
+ * 运算符不参与切分。
+ */
+internal fun extractLocalAuthorizationCommands(
+    command: String,
+    fallbackMainCommand: String
+): Set<String> {
+    val trimmed = command.trim()
+    if (trimmed.isEmpty()) {
+        return normalizeLocalCommandName(fallbackMainCommand).takeIf(String::isNotBlank)?.let(::setOf)
+            ?: emptySet()
+    }
+
+    val segments = mutableListOf<String>()
+    val current = StringBuilder()
+    var quote: Char? = null
+    var escaped = false
+    var hasShellBoundary = false
+
+    for (char in trimmed) {
+        if (escaped) {
+            current.append(char)
+            escaped = false
+            continue
+        }
+        if (char == '\\' && quote != '\'') {
+            current.append(char)
+            escaped = true
+            continue
+        }
+        if (quote != null) {
+            current.append(char)
+            if (char == quote) quote = null
+            continue
+        }
+        if (char == '\'' || char == '"') {
+            quote = char
+            current.append(char)
+            continue
+        }
+        if (char == ';' || char == '|' || char == '&' || char == '\r' || char == '\n') {
+            hasShellBoundary = true
+            segments += current.toString()
+            current.setLength(0)
+        } else {
+            current.append(char)
+        }
+    }
+    segments += current.toString()
+
+    // `agent_memory_update: mode=append` 等非 Shell 工具标签使用调用方提供的
+    // 主命令，不能把整段标签当作可执行文件名。
+    if (!hasShellBoundary) {
+        return normalizeLocalCommandName(fallbackMainCommand)
+            .takeIf(String::isNotBlank)
+            ?.let(::setOf)
+            ?: emptySet()
+    }
+
+    return segments.asSequence()
+        .mapNotNull { segment ->
+            Regex("""^\s*(?:"([^"]+)"|'([^']+)'|(\S+))""")
+                .find(segment.trim())
+                ?.groupValues
+                ?.drop(1)
+                ?.firstOrNull(String::isNotBlank)
+        }
+        .map(::normalizeLocalCommandName)
+        .filter(String::isNotBlank)
+        .toSet()
+        .ifEmpty {
+            normalizeLocalCommandName(fallbackMainCommand)
+                .takeIf(String::isNotBlank)
+                ?.let(::setOf)
+                ?: emptySet()
+        }
+}
+
 /**
  * 本地 Agent 命令授权状态。
  *
@@ -73,7 +158,7 @@ class LocalExecAuthorizationManager(
     private data class Pending(
         val sessionId: String,
         val mainCommand: String,
-        val authorizationKey: String,
+        val authorizationCommands: Set<String>,
         val decision: CompletableDeferred<ExecAuthorization>
     )
 
@@ -85,6 +170,10 @@ class LocalExecAuthorizationManager(
         yoloSessions.add(sessionId)
     }
 
+    fun disableYolo(sessionId: String) {
+        yoloSessions.remove(sessionId)
+    }
+
     fun isYoloEnabled(sessionId: String): Boolean = sessionId in yoloSessions
 
     suspend fun requestAuthorization(
@@ -94,14 +183,15 @@ class LocalExecAuthorizationManager(
         onRequest: (ExecConfirmationRequest) -> Unit
     ): ExecAuthorization {
         if (isYoloEnabled(sessionId)) return ExecAuthorization.Once
-        val authorizationKey = command.trim().replace(Regex("\\s+"), " ")
-        if (alwaysAllowed[sessionId]?.contains(authorizationKey) == true) {
+        val authorizationCommands = extractLocalAuthorizationCommands(command, mainCommand)
+        val allowedCommands = alwaysAllowed[sessionId].orEmpty()
+        if (authorizationCommands.isNotEmpty() && authorizationCommands.all { it in allowedCommands }) {
             return ExecAuthorization.Always
         }
 
         val requestId = UUID.randomUUID().toString()
         val decision = CompletableDeferred<ExecAuthorization>()
-        pending[requestId] = Pending(sessionId, mainCommand, authorizationKey, decision)
+        pending[requestId] = Pending(sessionId, mainCommand, authorizationCommands, decision)
         onRequest(
             ExecConfirmationRequest(
                 requestId = requestId,
@@ -130,7 +220,7 @@ class LocalExecAuthorizationManager(
         if (authorization == ExecAuthorization.Always) {
             alwaysAllowed
                 .computeIfAbsent(sessionId) { ConcurrentHashMap.newKeySet() }
-                .add(request.authorizationKey)
+                .addAll(request.authorizationCommands)
         }
         return request.decision.complete(authorization)
     }

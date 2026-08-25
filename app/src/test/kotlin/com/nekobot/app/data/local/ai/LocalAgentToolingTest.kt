@@ -287,7 +287,7 @@ class LocalAgentToolingTest {
     }
 
     @Test
-    fun alwaysAuthorizationIsReusedOnlyForExactCommandInSession() = runBlocking {
+    fun alwaysAuthorizationIsReusedForMainCommandsAndTracksNewChainCommands() = runBlocking {
         val manager = LocalExecAuthorizationManager(authorizationTimeoutMs = 100)
         val requestRef = AtomicReference<ExecConfirmationRequest>()
         val requestReady = CountDownLatch(1)
@@ -297,7 +297,7 @@ class LocalAgentToolingTest {
                 runBlocking {
                     manager.requestAuthorization(
                     sessionId = "session-1",
-                    command = "git status",
+                    command = "git status && git diff --stat",
                     mainCommand = "git"
                 ) {
                     requestRef.set(it)
@@ -320,14 +320,39 @@ class LocalAgentToolingTest {
             var requestedAgain = false
             val reused = manager.requestAuthorization(
                 sessionId = "session-1",
-                command = "git diff",
+                command = "git log --oneline",
                 mainCommand = "git"
             ) { requestedAgain = true }
-            assertEquals(ExecAuthorization.Reject, reused)
-            assertTrue(requestedAgain)
+            assertEquals(ExecAuthorization.Always, reused)
+            assertFalse(requestedAgain)
+
+            var requestedForNewCommand = false
+            val newCommand = manager.requestAuthorization(
+                sessionId = "session-1",
+                command = "git status && curl https://example.com",
+                mainCommand = "git"
+            ) { requestedForNewCommand = true }
+            assertEquals(ExecAuthorization.Reject, newCommand)
+            assertTrue(requestedForNewCommand)
         } finally {
             executor.shutdownNow()
         }
+    }
+
+    @Test
+    fun authorizationCommandExtractionHandlesChainsAndQuotedOperators() {
+        assertEquals(
+            setOf("git"),
+            extractLocalAuthorizationCommands("git status && git diff --stat", "git")
+        )
+        assertEquals(
+            setOf("git", "curl"),
+            extractLocalAuthorizationCommands("git status && curl https://example.com", "git")
+        )
+        assertEquals(
+            setOf("echo"),
+            extractLocalAuthorizationCommands("echo 'a && b'", "echo")
+        )
     }
 
     @Test
@@ -345,6 +370,16 @@ class LocalAgentToolingTest {
         assertEquals(ExecAuthorization.Once, result)
         assertFalse(requested)
         assertFalse(manager.isYoloEnabled("other-session"))
+
+        manager.disableYolo("session-yolo")
+        var requestedAfterDisable = false
+        val afterDisable = manager.requestAuthorization(
+            sessionId = "session-yolo",
+            command = "git status",
+            mainCommand = "git"
+        ) { requestedAfterDisable = true }
+        assertEquals(ExecAuthorization.Reject, afterDisable)
+        assertTrue(requestedAfterDisable)
     }
 
     @Test

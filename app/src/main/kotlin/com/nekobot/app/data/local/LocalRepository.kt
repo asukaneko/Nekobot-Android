@@ -5600,6 +5600,14 @@ class LocalRepository(
     }
 
     /** 提交本地 Agent 命令授权结果。 */
+    fun isYoloEnabled(sessionId: String): Boolean =
+        localExecAuthorizationManager.isYoloEnabled(sessionId)
+
+    fun setYoloEnabled(sessionId: String, enabled: Boolean) {
+        if (enabled) localExecAuthorizationManager.enableYolo(sessionId)
+        else localExecAuthorizationManager.disableYolo(sessionId)
+    }
+
     fun respondToExecConfirmation(
         requestId: String,
         sessionId: String,

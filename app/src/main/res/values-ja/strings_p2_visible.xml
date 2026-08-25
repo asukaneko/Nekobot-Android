@@ -13,6 +13,8 @@
     <string name="reasoning_effort_medium_desc">速度と品質のバランス</string>
     <string name="reasoning_effort_high_desc">複雑なタスクに適しています</string>
     <string name="reasoning_effort_max_desc">モデルの最大推論強度を使用します</string>
+    <string name="chat_yolo_mode">YOLO モード</string>
+    <string name="chat_yolo_mode_subtitle">この会話では毎回の承認を省略します。高リスクの禁止コマンドは引き続き拒否します</string>
     <string name="citation_unnamed_document">無題の文書</string>
     <string name="citation_chunk_position">段落位置</string>
     <string name="citation_chunk_number">第%1$d段落</string>

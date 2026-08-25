@@ -13,6 +13,8 @@
     <string name="reasoning_effort_medium_desc">속도와 품질의 균형</string>
     <string name="reasoning_effort_high_desc">복잡한 작업에 적합합니다</string>
     <string name="reasoning_effort_max_desc">모델의 최대 추론 강도를 사용합니다</string>
+    <string name="chat_yolo_mode">YOLO 모드</string>
+    <string name="chat_yolo_mode_subtitle">이 대화에서 명령별 승인을 생략하며 고위험 차단 명령은 계속 차단됩니다</string>
     <string name="citation_unnamed_document">제목 없는 문서</string>
     <string name="citation_chunk_position">문단 위치</string>
     <string name="citation_chunk_number">%1$d번째 문단</string>

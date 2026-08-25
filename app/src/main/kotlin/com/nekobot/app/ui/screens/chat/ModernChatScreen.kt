@@ -170,6 +170,11 @@ fun ModernChatScreen(
     val plotChoicesLoading by viewModel.plotChoicesLoading.collectAsStateWithLifecycle()
     val session by viewModel.session.collectAsStateWithLifecycle()
     val agentRecovery by viewModel.agentRecovery.collectAsStateWithLifecycle()
+    val isAgentSession = session?.sessionMode.equals("agent", ignoreCase = true)
+    val yoloAvailable = isAgentSession && ServiceContainer.prefs.isLocalMode
+    var yoloEnabled by remember(sessionId, yoloAvailable) {
+        mutableStateOf(yoloAvailable && ServiceContainer.unified.isYoloEnabled(sessionId))
+    }
     val listState = rememberLazyListState()
     val composerScope = rememberCoroutineScope()
 
@@ -199,8 +204,15 @@ fun ModernChatScreen(
             plotChoicesLoading = plotChoicesLoading,
             plotMode = session?.plotMode == true,
             plotRealTimeSync = session?.plotRealTimeSync == true,
-            isAgentSession = session?.sessionMode.equals("agent", ignoreCase = true),
-            skillsEnabled = session?.sessionMode.equals("agent", ignoreCase = true),
+            isAgentSession = isAgentSession,
+            yoloEnabled = yoloEnabled,
+            yoloAvailable = yoloAvailable,
+            onToggleYolo = {
+                val enabled = !yoloEnabled
+                ServiceContainer.unified.setYoloEnabled(sessionId, enabled)
+                yoloEnabled = enabled
+            },
+            skillsEnabled = isAgentSession,
             onSend = { text, plotChoiceId, attachments, reasoningEffort ->
                 val command = LocalSlashCommands.parse(text)
                 if (
@@ -384,7 +396,10 @@ private fun ModernChatComposer(
     plotMode: Boolean,
     plotRealTimeSync: Boolean,
     isAgentSession: Boolean,
+    yoloEnabled: Boolean,
+    yoloAvailable: Boolean,
     skillsEnabled: Boolean,
+    onToggleYolo: () -> Unit,
     onSend: (String, String?, List<Map<String, Any>>, ReasoningEffort) -> Unit,
     onStop: () -> Unit,
     onCompress: () -> Unit,
@@ -829,10 +844,13 @@ private fun ModernChatComposer(
                     plotMode = plotMode,
                     plotRealTimeSync = plotRealTimeSync,
                     reasoningEffort = reasoningEffort,
+                    yoloEnabled = yoloEnabled,
+                    yoloAvailable = yoloAvailable,
                     onReasoningEffortChange = { effort ->
                         reasoningEffort = effort
                         ServiceContainer.prefs.setReasoningEffort(isAgentSession, effort)
                     },
+                    onToggleYolo = onToggleYolo,
                     onCompress = { onCompress() },
                     onOpenContextAnalysis = {
                         panelExpanded = true
@@ -1731,7 +1749,10 @@ private fun ModernChatActionPanel(
     plotMode: Boolean,
     plotRealTimeSync: Boolean,
     reasoningEffort: ReasoningEffort,
+    yoloEnabled: Boolean,
+    yoloAvailable: Boolean,
     onReasoningEffortChange: (ReasoningEffort) -> Unit,
+    onToggleYolo: () -> Unit,
     onCompress: () -> Unit,
     onOpenContextAnalysis: () -> Unit,
     onSendFile: () -> Unit,
@@ -1818,6 +1839,18 @@ private fun ModernChatActionPanel(
                     enabled = !sending,
                     onSelected = onReasoningEffortChange
                 )
+            }
+            if (yoloAvailable) {
+                item {
+                    ModernToggleRow(
+                        icon = Icons.Filled.Terminal,
+                        title = stringResource(R.string.chat_yolo_mode),
+                        subtitle = stringResource(R.string.chat_yolo_mode_subtitle),
+                        checked = yoloEnabled,
+                        enabled = !sending,
+                        onCheckedChange = { onToggleYolo() }
+                    )
+                }
             }
             item { ModernSectionTitle(stringResource(R.string.chat_session_tools)) }
             item {

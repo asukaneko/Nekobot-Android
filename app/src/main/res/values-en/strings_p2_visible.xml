@@ -13,6 +13,8 @@
     <string name="reasoning_effort_medium_desc">Balance speed and quality</string>
     <string name="reasoning_effort_high_desc">Best for complex tasks</string>
     <string name="reasoning_effort_max_desc">Use the model’s highest reasoning effort</string>
+    <string name="chat_yolo_mode">YOLO mode</string>
+    <string name="chat_yolo_mode_subtitle">Skip per-command approval in this session; high-risk blacklist commands remain blocked</string>
     <string name="citation_unnamed_document">Untitled document</string>
     <string name="citation_chunk_position">Paragraph</string>
     <string name="citation_chunk_number">Paragraph %1$d</string>

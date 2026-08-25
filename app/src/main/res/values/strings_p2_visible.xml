@@ -13,6 +13,8 @@
     <string name="reasoning_effort_medium_desc">速度与质量平衡</string>
     <string name="reasoning_effort_high_desc">适合复杂任务</string>
     <string name="reasoning_effort_max_desc">使用模型最高推理强度</string>
+    <string name="chat_yolo_mode">YOLO 模式</string>
+    <string name="chat_yolo_mode_subtitle">本会话内命令无需逐次授权，高风险黑名单仍会拦截</string>
 
     <string name="citation_unnamed_document">未命名文档</string>
     <string name="citation_chunk_position">段落位置</string>

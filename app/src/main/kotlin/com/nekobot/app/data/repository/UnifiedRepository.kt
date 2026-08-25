@@ -394,6 +394,13 @@ class UnifiedRepository(
     }
 
     /** 本地 Agent 命令授权；服务器模式由 SocketManager 处理。 */
+    fun isYoloEnabled(sessionId: String): Boolean =
+        isLocal && local.isYoloEnabled(sessionId)
+
+    fun setYoloEnabled(sessionId: String, enabled: Boolean) {
+        if (isLocal) local.setYoloEnabled(sessionId, enabled)
+    }
+
     fun respondToLocalExecConfirmation(
         requestId: String,
         sessionId: String,
