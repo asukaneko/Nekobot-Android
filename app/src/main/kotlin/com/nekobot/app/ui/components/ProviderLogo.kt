@@ -96,18 +96,31 @@ private val MODEL_NAME_HINTS = listOf(
 )
 
 /** 推断模型对应的提供商 Logo 资源路径 */
-fun providerLogoAsset(provider: String?, baseUrl: String?, model: String?): String {
+fun providerLogoAsset(
+    provider: String?,
+    baseUrl: String?,
+    model: String?
+): String {
     provider?.trim()?.lowercase()?.let { p ->
+        if (p == "doubao" || p.contains("doubao") || p.contains("volcengine")) {
+            return ASSET_PREFIX + "doubao-dark.svg"
+        }
         PROVIDER_LOGO_MAP[p]?.let { return ASSET_PREFIX + it }
         // provider 可能带后缀（如 "openai_compatible"），做包含匹配
         PROVIDER_LOGO_MAP.entries.firstOrNull { (key, _) -> p.contains(key) }
             ?.let { return ASSET_PREFIX + it.value }
     }
     baseUrl?.lowercase()?.let { url ->
+        if ("volces.com" in url || "doubao" in url) {
+            return ASSET_PREFIX + "doubao-dark.svg"
+        }
         BASE_URL_HINTS.firstOrNull { (hint, _) -> hint in url }
             ?.let { return ASSET_PREFIX + it.second }
     }
     model?.lowercase()?.let { m ->
+        if ("doubao" in m || "seed" in m) {
+            return ASSET_PREFIX + "doubao-dark.svg"
+        }
         MODEL_NAME_HINTS.firstOrNull { (hint, _) -> hint in m }
             ?.let { return ASSET_PREFIX + it.second }
     }

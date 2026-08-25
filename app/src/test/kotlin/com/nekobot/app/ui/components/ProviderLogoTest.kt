@@ -13,4 +13,11 @@ class ProviderLogoTest {
             providerLogoAsset("opencode-go", null, null).endsWith("/opencode-go.svg")
         )
     }
+
+    @Test
+    fun `doubao uses the same asset in every theme`() {
+        assertTrue(
+            providerLogoAsset("doubao", null, null).endsWith("/doubao-dark.svg")
+        )
+    }
 }
