@@ -34,9 +34,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -56,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -792,13 +797,59 @@ fun RenderContentSegments(
                 SegmentType.HTML -> HtmlRenderer(html = segment.text, url = segment.url)
                 SegmentType.FILE -> FileCardRenderer(fileName = segment.fileName, sessionId = sessionId)
             }
-            if (idx != segments.lastIndex) Spacer(Modifier.height(4.dp))
+            if (idx != segments.lastIndex) {
+                val gap = if (segment.type == SegmentType.FILE || segments[idx + 1].type == SegmentType.FILE) {
+                    2.dp
+                } else {
+                    4.dp
+                }
+                Spacer(Modifier.height(gap))
+            }
         }
     }
 }
 
 /** 获取文件扩展名（小写，不含点） */
 private fun fileExt(name: String): String = name.substringAfterLast('.', "").lowercase()
+
+private data class FileCardVisual(
+    val icon: ImageVector,
+    val accent: Color
+)
+
+/** 文件类型的视觉标识：颜色只用于文件卡片，不改变全局主题色。 */
+private fun fileCardVisual(fileName: String): FileCardVisual {
+    return when (fileExt(fileName)) {
+        "pdf" -> FileCardVisual(Icons.Filled.Description, Color(0xFFE53935))
+        "doc", "docx", "odt", "rtf" -> FileCardVisual(Icons.Filled.Description, Color(0xFF1976D2))
+        "xls", "xlsx", "csv", "ods" -> FileCardVisual(Icons.Filled.Description, Color(0xFF2E7D32))
+        "ppt", "pptx", "odp" -> FileCardVisual(Icons.Filled.Description, Color(0xFFE65100))
+        in IMAGE_EXTS -> FileCardVisual(Icons.Filled.Image, Color(0xFF00897B))
+        in VIDEO_EXTS -> FileCardVisual(Icons.Filled.Movie, Color(0xFF7B1FA2))
+        "txt", "md", "json", "xml", "html", "htm", "css", "js", "ts", "kt", "java", "py", "sh" ->
+            FileCardVisual(Icons.Filled.Description, Color(0xFF1565C0))
+        else -> FileCardVisual(Icons.Filled.InsertDriveFile, Color(0xFF607D8B))
+    }
+}
+
+@Composable
+private fun FileCardIcon(fileName: String, modifier: Modifier = Modifier) {
+    val visual = remember(fileName) { fileCardVisual(fileName) }
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(visual.accent.copy(alpha = 0.14f))
+            .padding(9.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = visual.icon,
+            contentDescription = null,
+            tint = visual.accent,
+            modifier = Modifier.size(24.dp)
+        )
+    }
+}
 
 internal fun isPdfWorkspaceFile(fileName: String, mimeType: String = ""): Boolean =
     mimeType.equals("application/pdf", ignoreCase = true) ||
@@ -972,27 +1023,16 @@ private fun LocalWorkspaceFileCard(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        cornerRadius = 12
+        cornerRadius = 12,
+        // GlassCard 默认还有 16dp 内边距；文件卡片自己的 Row 已负责留白，不能叠加。
+        contentPadding = PaddingValues(0.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(12.dp)
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = fileExt(fileName).take(3).ifBlank { "?" }.uppercase(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Spacer(Modifier.width(12.dp))
+            FileCardIcon(fileName, modifier = Modifier.size(44.dp))
+            Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = fileName,
@@ -1008,7 +1048,7 @@ private fun LocalWorkspaceFileCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(6.dp))
             Icon(
                 imageVector = Icons.Filled.Fullscreen,
                 contentDescription = previewText,
@@ -1069,27 +1109,18 @@ private fun UnsupportedFileCard(
     fileUrl: String?,
     modifier: Modifier = Modifier
 ) {
-    GlassCard(modifier = modifier.fillMaxWidth(), cornerRadius = 12) {
+    GlassCard(
+        modifier = modifier.fillMaxWidth(),
+        cornerRadius = 12,
+        // GlassCard 默认还有 16dp 内边距；文件卡片自己的 Row 已负责留白，不能叠加。
+        contentPadding = PaddingValues(0.dp)
+    ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(12.dp)
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
         ) {
-            // 文件图标
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = fileExt(fileName).take(3).ifBlank { "?" }.uppercase(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                )
-            }
-            Spacer(Modifier.width(12.dp))
+            FileCardIcon(fileName, modifier = Modifier.size(44.dp))
+            Spacer(Modifier.width(10.dp))
             // 文件名
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -1106,7 +1137,7 @@ private fun UnsupportedFileCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(6.dp))
             // 下载按钮
             if (fileUrl != null) {
                 DownloadButton(fileName, fileUrl)

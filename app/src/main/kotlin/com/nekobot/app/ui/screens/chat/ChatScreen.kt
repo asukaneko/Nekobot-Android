@@ -2765,7 +2765,11 @@ private fun MessageBubble(
                         }
                     }
                 }
-                if (!isLast) Spacer(Modifier.height(10.dp))
+                if (!isLast) {
+                    val fileAdjacent = contentSegments.any { it.type == SegmentType.FILE } ||
+                        parsedSegments.getOrNull(idx + 1).orEmpty().any { it.type == SegmentType.FILE }
+                    Spacer(Modifier.height(if (fileAdjacent) 4.dp else 10.dp))
+                }
             }
 
             // 流式生成中：气泡下方追加打字圆点，提示仍在输出
