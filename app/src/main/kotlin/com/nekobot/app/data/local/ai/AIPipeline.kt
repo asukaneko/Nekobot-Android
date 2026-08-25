@@ -64,7 +64,7 @@ class AIPipeline {
         ctx: PipelineContext,
         callbacks: PipelineCallbacks,
         tools: List<Map<String, Any>> = emptyList(),
-        maxToolIterations: Int = 50,
+        maxToolIterations: Int = 150,
         maxContextChars: Int = 100000,
         progressReporter: ProgressReporter? = null
     ): PipelineResult {
@@ -670,6 +670,13 @@ class AIPipeline {
                 val fileName = result["_file_name"] as? String
                 if (filePath != null && fileName != null) {
                     progress.onSendFile(ctx, filePath, fileName)
+                    // 工具结果本身不会自动进入助手正文；保存工作区相对路径，
+                    // 由结果组装阶段补成 [File: ...]，这样 UI 才能渲染文件卡片。
+                    val fileReference = (result["path"] as? String)
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
+                        ?: fileName
+                    ctx.sentFileReferences += fileReference
                 }
                 null  // 使用默认 tool message 格式
             },
@@ -836,6 +843,10 @@ class AIPipeline {
         ctx: PipelineContext,
         callbacks: PipelineCallbacks
     ): PipelineResult {
+        // workspace_send_file/download_file 只返回文件元数据，必须将引用写入最终消息。
+        // 这一步放在流式/错误/普通消息分支之前，确保所有收尾路径都不会漏掉文件卡片。
+        ctx.finalContent = appendAgentFileReferences(ctx.finalContent, ctx.sentFileReferences)
+
         // 流式消息处理
         if (ctx.metadata["streamed"] == true && ctx.streamedMessage != null) {
             @Suppress("UNCHECKED_CAST")

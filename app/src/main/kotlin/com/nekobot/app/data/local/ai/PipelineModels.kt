@@ -77,6 +77,8 @@ class PipelineContext(
     var stoppedPrematurely: Boolean = false
     /** 工具调用追踪 */
     var toolTrace: List<Map<String, Any>> = emptyList()
+    /** 本轮 Agent 工具实际发送到聊天中的工作区文件引用。 */
+    val sentFileReferences: MutableList<String> = mutableListOf()
     /** 连续错误计数 */
     var consecutiveErrors: Int = 0
     /** token 用量 */

@@ -849,8 +849,15 @@ internal fun resolveLocalWorkspaceFile(
     fileName: String
 ): File? {
     if (!ServiceContainer.prefs.isLocalMode || fileName.isBlank()) return null
-    val root = LocalWorkspaceStorage.resolve(context.filesDir, sessionId)?.canonicalFile ?: return null
-    val target = runCatching { File(root, fileName).canonicalFile }.getOrNull() ?: return null
+    val (root, relativeName) = if (fileName.startsWith("shared://", ignoreCase = true)) {
+        LocalWorkspaceStorage.resolveShared(context.filesDir)?.canonicalFile to
+            fileName.substringAfter("//").trimStart('/')
+    } else {
+        LocalWorkspaceStorage.resolve(context.filesDir, sessionId)?.canonicalFile to fileName
+    }
+    root ?: return null
+    if (relativeName.isBlank()) return null
+    val target = runCatching { File(root, relativeName).canonicalFile }.getOrNull() ?: return null
     val isInside = target.path == root.path || target.path.startsWith(root.path + File.separator)
     return target.takeIf { isInside && it.isFile }
 }

@@ -154,7 +154,7 @@ data class ToolLoopSession(
     val modelCall: ModelCall,
     val toolExecutor: suspend (Map<String, Any>, String, Int, List<Map<String, Any>>) -> Map<String, Any>,
     val toolCallHistory: List<Map<String, Any>>? = null,
-    val maxIterations: Int = 50,
+    val maxIterations: Int = 150,
     val maxConsecutiveErrors: Int = 3,
     val hooks: ToolLoopHooks? = null,
     val shouldStop: () -> Boolean = { false }
@@ -444,7 +444,7 @@ suspend fun runToolCallLoop(
     initialMessages: List<Map<String, Any>>,
     modelCall: ModelCall,
     toolExecutor: suspend (Map<String, Any>, String, Int, List<Map<String, Any>>) -> Map<String, Any>,
-    maxIterations: Int = 50,
+    maxIterations: Int = 150,
     maxConsecutiveErrors: Int = 3,
     hooks: ToolLoopHooks? = null,
     shouldStop: () -> Boolean = { false }

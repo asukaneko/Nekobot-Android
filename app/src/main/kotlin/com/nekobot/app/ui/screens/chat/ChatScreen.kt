@@ -3652,7 +3652,7 @@ private fun String.stripEmoji(): String {
         "[\uD800-\uDBFF][\uDC00-\uDFFF]"  // 所有代理对（补充平面字符，含所有 emoji）
     )
     var stripped = emojiRegex.replace(this, "")
-    // 折叠多余空格与首尾空白，处理 "AI 正在处理... (1/50)" 前缀被剥离后的残余空格
+    // 折叠多余空格与首尾空白，处理 "AI 正在处理... (1/150)" 前缀被剥离后的残余空格
     stripped = stripped.replace(Regex("\\s{2,}"), " ").trim()
     return stripped
 }

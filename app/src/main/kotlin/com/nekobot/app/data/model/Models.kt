@@ -280,7 +280,7 @@ data class ThinkingStep(
  */
 data class ThinkingCard(
     val id: String,
-    val content: String,                // 头部文本，如"🔄 AI 正在处理... (1/50)"或"✅ 处理完成"
+    val content: String,                // 头部文本，如"🔄 AI 正在处理... (1/150)"或"✅ 处理完成"
     val steps: List<ThinkingStep> = emptyList(),
     /** 0-100 的确定进度；为空时沿用不确定进度动画。 */
     val progress: Int? = null,
