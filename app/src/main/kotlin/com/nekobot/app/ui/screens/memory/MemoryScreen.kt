@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -29,6 +31,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -65,6 +70,29 @@ private val PRIORITY_OPTIONS = listOf(
     "normal" to R.string.memory_priority_normal,
     "low" to R.string.memory_priority_low
 )
+
+/** 各记忆类别对应的图标，便于在列表中快速识别 */
+private fun categoryIcon(category: String): ImageVector = when (category) {
+    "user_persona" -> Icons.Filled.Person
+    "character_persona" -> Icons.Filled.Face
+    "important_event" -> Icons.Filled.Star
+    "timeline" -> Icons.Filled.Timeline
+    "life_sim" -> Icons.Filled.Bedtime
+    "recent_digest" -> Icons.Filled.History
+    else -> Icons.Filled.Memory
+}
+
+/** 各记忆类别对应的强调色（取自主题，保证深浅色模式下协调） */
+@Composable
+private fun categoryAccent(category: String): Color = when (category) {
+    "user_persona" -> MaterialTheme.colorScheme.tertiary
+    "character_persona" -> MaterialTheme.colorScheme.primary
+    "important_event" -> MaterialTheme.colorScheme.secondary
+    "timeline" -> MaterialTheme.colorScheme.tertiary
+    "life_sim" -> MaterialTheme.colorScheme.secondary
+    "recent_digest" -> MaterialTheme.colorScheme.primary
+    else -> MaterialTheme.colorScheme.onSurfaceVariant
+}
 
 /**
  * 角色记忆页 ViewModel：管理 MemoryFS 文件与旧版记忆的加载、删除、增改。
@@ -394,7 +422,7 @@ fun MemoryScreen(
     val showAddDialog by viewModel.showAddDialog.collectAsStateWithLifecycle()
     val editingLegacy by viewModel.editingLegacy.collectAsStateWithLifecycle()
 
-    var showExportMenu by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
     var deleteFile by remember { mutableStateOf<MemoryFile?>(null) }
     var deleteLegacyItem by remember { mutableStateOf<LegacyMemory?>(null) }
 
@@ -472,24 +500,30 @@ fun MemoryScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.load() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.memory_refresh), tint = MaterialTheme.colorScheme.onSurface)
-                    }
                     IconButton(onClick = { viewModel.startAddLegacy() }) {
                         Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.memory_add_legacy), tint = MaterialTheme.colorScheme.primary)
                     }
                     Box {
-                        IconButton(onClick = { showExportMenu = true }) {
+                        IconButton(onClick = { showMenu = true }) {
                             Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.memory_more), tint = MaterialTheme.colorScheme.onSurface)
                         }
                         DropdownMenu(
-                            expanded = showExportMenu,
-                            onDismissRequest = { showExportMenu = false }
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text(stringResource(R.string.memory_export_legacy)) },
+                                text = { Text(stringResource(R.string.memory_refresh)) },
+                                leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
                                 onClick = {
-                                    showExportMenu = false
+                                    showMenu = false
+                                    viewModel.load()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.memory_export_legacy)) },
+                                leadingIcon = { Icon(Icons.Filled.FileDownload, contentDescription = null) },
+                                onClick = {
+                                    showMenu = false
                                     viewModel.exportLegacy()
                                 }
                             )
@@ -499,153 +533,118 @@ fun MemoryScreen(
             )
         }
     ) { padding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            if (files.isEmpty() && legacy.isEmpty() && !loading) {
-                EmptyState(
-                    title = stringResource(R.string.memory_empty_title),
-                    hint = stringResource(R.string.memory_empty_hint),
-                    icon = {
-                        Icon(
-                            Icons.Filled.Psychology,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(48.dp)
-                        )
-                    }
-                )
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    if (error != null) {
-                        item {
-                            ErrorBanner(message = error!!, onRetry = {
-                                viewModel.clearError()
-                                viewModel.load()
-                            })
+            // 搜索 + 角色筛选统一面板：固定在顶部，不随列表滚动
+            MemorySearchPanel(
+                searchQuery = searchQuery,
+                onQueryChange = { viewModel.setSearchQuery(it) },
+                selectedChar = selectedChar,
+                characterOptions = characterOptions,
+                onSelectCharacter = { viewModel.selectCharacter(it) },
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+            )
+            Box(modifier = Modifier.weight(1f)) {
+                if (files.isEmpty() && legacy.isEmpty() && !loading) {
+                    EmptyState(
+                        title = stringResource(R.string.memory_empty_title),
+                        hint = stringResource(R.string.memory_empty_hint),
+                        icon = {
+                            Icon(
+                                Icons.Filled.Psychology,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(48.dp)
+                            )
                         }
-                    }
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (error != null) {
+                            item {
+                                ErrorBanner(message = error!!, onRetry = {
+                                    viewModel.clearError()
+                                    viewModel.load()
+                                })
+                            }
+                        }
 
-                    // 搜索框
-                    item {
-                        OutlinedTextField(
-                            value = searchQuery,
-                            onValueChange = { viewModel.setSearchQuery(it) },
-                            placeholder = { Text(stringResource(R.string.memory_search_hint)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-                            trailingIcon = {
-                                if (searchQuery.isNotEmpty()) {
-                                    IconButton(onClick = { viewModel.setSearchQuery("") }) {
-                                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.common_clear), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                }
-                            },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                                cursorColor = MaterialTheme.colorScheme.primary,
-                                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
-                            )
-                        )
-                    }
+                        // MemoryFS 分组
+                        groupedFiles.forEach { (category, list) ->
+                            item {
+                                val labelRes = CATEGORY_LABELS[category]
+                                val label = if (labelRes != null) stringResource(labelRes) else category
+                                SectionHeader(
+                                    title = label,
+                                    subtitle = stringResource(R.string.memory_count_format, list.size)
+                                )
+                            }
+                            items(list, key = { "fs_${it.path}" }) { file ->
+                                MemoryFileItem(
+                                    file = file,
+                                    expanded = expandedPaths.contains(file.path),
+                                    onToggle = { viewModel.toggleExpand(file.path) },
+                                    onDelete = { deleteFile = file }
+                                )
+                            }
+                        }
 
-                    // 角色筛选 Chip 行
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            FilterChip(
-                                selected = selectedChar == null,
-                                onClick = { viewModel.selectCharacter(null) },
-                                label = { Text(stringResource(R.string.memory_filter_all)) }
-                            )
-                            characterOptions.forEach { (id, label) ->
-                                FilterChip(
-                                    selected = selectedChar == id,
-                                    onClick = { viewModel.selectCharacter(id) },
-                                    label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        // 旧版记忆 - 长期
+                        if (longTermLegacy.isNotEmpty()) {
+                            item {
+                                SectionHeader(title = stringResource(R.string.memory_long_term_legacy), subtitle = stringResource(R.string.memory_count_format, longTermLegacy.size))
+                            }
+                            items(longTermLegacy, key = { "lt_${it.id ?: it.hashCode()}" }) { mem ->
+                                val expandKey = "legacy://${mem.id ?: mem.hashCode()}"
+                                LegacyMemoryItem(
+                                    memory = mem,
+                                    expanded = expandedPaths.contains(expandKey),
+                                    onToggle = { viewModel.toggleExpand(expandKey) },
+                                    onEdit = { viewModel.startEditLegacy(mem) },
+                                    onDelete = { deleteLegacyItem = mem }
+                                )
+                            }
+                        }
+
+                        // 旧版记忆 - 短期
+                        if (shortTermLegacy.isNotEmpty()) {
+                            item {
+                                SectionHeader(title = stringResource(R.string.memory_short_term_legacy), subtitle = stringResource(R.string.memory_count_format, shortTermLegacy.size))
+                            }
+                            items(shortTermLegacy, key = { "st_${it.id ?: it.hashCode()}" }) { mem ->
+                                val expandKey = "legacy://${mem.id ?: mem.hashCode()}"
+                                LegacyMemoryItem(
+                                    memory = mem,
+                                    expanded = expandedPaths.contains(expandKey),
+                                    onToggle = { viewModel.toggleExpand(expandKey) },
+                                    onEdit = { viewModel.startEditLegacy(mem) },
+                                    onDelete = { deleteLegacyItem = mem }
+                                )
+                            }
+                        }
+
+                        if (groupedFiles.isEmpty() && longTermLegacy.isEmpty() && shortTermLegacy.isEmpty()) {
+                            item {
+                                Text(
+                                    stringResource(R.string.memory_no_match),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(vertical = 24.dp)
                                 )
                             }
                         }
                     }
-
-                    // MemoryFS 分组
-                    groupedFiles.forEach { (category, list) ->
-                        item {
-                            val labelRes = CATEGORY_LABELS[category]
-                            val label = if (labelRes != null) stringResource(labelRes) else category
-                            SectionHeader(
-                                title = label,
-                                subtitle = stringResource(R.string.memory_count_format, list.size)
-                            )
-                        }
-                        items(list, key = { "fs_${it.path}" }) { file ->
-                            MemoryFileItem(
-                                file = file,
-                                expanded = expandedPaths.contains(file.path),
-                                onToggle = { viewModel.toggleExpand(file.path) },
-                                onDelete = { deleteFile = file }
-                            )
-                        }
-                    }
-
-                    // 旧版记忆 - 长期
-                    if (longTermLegacy.isNotEmpty()) {
-                        item {
-                            SectionHeader(title = stringResource(R.string.memory_long_term_legacy), subtitle = stringResource(R.string.memory_count_format, longTermLegacy.size))
-                        }
-                        items(longTermLegacy, key = { "lt_${it.id ?: it.hashCode()}" }) { mem ->
-                            LegacyMemoryItem(
-                                memory = mem,
-                                onEdit = { viewModel.startEditLegacy(mem) },
-                                onDelete = { deleteLegacyItem = mem }
-                            )
-                        }
-                    }
-
-                    // 旧版记忆 - 短期
-                    if (shortTermLegacy.isNotEmpty()) {
-                        item {
-                            SectionHeader(title = stringResource(R.string.memory_short_term_legacy), subtitle = stringResource(R.string.memory_count_format, shortTermLegacy.size))
-                        }
-                        items(shortTermLegacy, key = { "st_${it.id ?: it.hashCode()}" }) { mem ->
-                            LegacyMemoryItem(
-                                memory = mem,
-                                onEdit = { viewModel.startEditLegacy(mem) },
-                                onDelete = { deleteLegacyItem = mem }
-                            )
-                        }
-                    }
-
-                    if (groupedFiles.isEmpty() && longTermLegacy.isEmpty() && shortTermLegacy.isEmpty()) {
-                        item {
-                            Text(
-                                stringResource(R.string.memory_no_match),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(vertical = 24.dp)
-                            )
-                        }
-                    }
                 }
+                LoadingOverlay(visible = loading)
             }
-            LoadingOverlay(visible = loading)
         }
     }
 
@@ -692,7 +691,95 @@ fun MemoryScreen(
     }
 }
 
-/** MemoryFS 文件卡片 */
+/** 统一的搜索 + 角色筛选面板：搜索行与筛选 Chip 组合在同一玻璃卡片内 */
+@Composable
+private fun MemorySearchPanel(
+    searchQuery: String,
+    onQueryChange: (String) -> Unit,
+    selectedChar: String?,
+    characterOptions: Map<String, String>,
+    onSelectCharacter: (String?) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    GlassCard(
+        modifier = modifier.fillMaxWidth(),
+        cornerRadius = 16,
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)
+    ) {
+        // 搜索行
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+        ) {
+            Icon(
+                Icons.Filled.Search,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.width(10.dp))
+            BasicTextField(
+                value = searchQuery,
+                onValueChange = onQueryChange,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                modifier = Modifier.weight(1f),
+                decorationBox = { innerTextField ->
+                    Box {
+                        if (searchQuery.isEmpty()) {
+                            Text(
+                                stringResource(R.string.memory_search_hint),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        innerTextField()
+                    }
+                }
+            )
+            if (searchQuery.isNotEmpty()) {
+                IconButton(onClick = { onQueryChange("") }, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = stringResource(R.string.common_clear),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+        // 角色筛选 Chip 行
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FilterChip(
+                selected = selectedChar == null,
+                onClick = { onSelectCharacter(null) },
+                label = { Text(stringResource(R.string.memory_filter_all)) }
+            )
+            characterOptions.forEach { (id, label) ->
+                FilterChip(
+                    selected = selectedChar == id,
+                    onClick = { onSelectCharacter(id) },
+                    label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                )
+            }
+        }
+    }
+}
+
+/** MemoryFS 文件卡片：折叠态仅展示标题与元信息，点击展开查看路径、完整内容与删除操作 */
 @Composable
 private fun MemoryFileItem(
     file: MemoryFile,
@@ -700,167 +787,234 @@ private fun MemoryFileItem(
     onToggle: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val accent = categoryAccent(file.category)
     GlassCard(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onToggle() }
+            .clickable { onToggle() },
+        cornerRadius = 16
     ) {
-        Row(verticalAlignment = Alignment.Top) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // 类别图标盒：按类别着色，便于快速识别
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(accent.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    categoryIcon(file.category),
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Filled.Description,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = file.title.ifBlank { file.path.substringAfterLast('/') },
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    if (file.injectsToPrompt) {
-                        Spacer(Modifier.width(6.dp))
-                        AssistChip(
-                            onClick = {},
-                            label = { Text(stringResource(R.string.memory_inject), style = MaterialTheme.typography.labelSmall) },
-                            shape = RoundedCornerShape(8.dp),
-                            colors = AssistChipDefaults.assistChipColors(
-                                containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                                labelColor = MaterialTheme.colorScheme.primary
-                            )
-                        )
-                    }
-                }
-                // 角色名 + 路径：模仿原仓库展示 characters/{charName}/users/{targetId}/{category}.md
-                // 让用户能直观区分属于哪个角色
-                Spacer(Modifier.height(4.dp))
-                if (file.characterId.isNotBlank()) {
-                    AssistChip(
-                        onClick = {},
-                        label = { Text(file.characterId, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        shape = RoundedCornerShape(8.dp),
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f),
-                            labelColor = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                    )
-                    Spacer(Modifier.height(4.dp))
-                }
                 Text(
-                    text = file.path,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
+                    text = file.title.ifBlank { file.path.substringAfterLast('/') },
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (file.summary.isNotBlank()) {
-                    Spacer(Modifier.height(6.dp))
+                // 元信息行：角色 · 摘要（本地模式为「N 条记忆」）
+                val meta = buildString {
+                    if (file.characterId.isNotBlank()) append(file.characterId)
+                    if (file.summary.isNotBlank()) {
+                        if (isNotEmpty()) append(" · ")
+                        append(file.summary)
+                    }
+                }
+                if (meta.isNotBlank()) {
+                    Spacer(Modifier.height(2.dp))
                     Text(
-                        text = file.summary,
+                        text = meta,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = if (expanded) Int.MAX_VALUE else 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                AnimatedVisibility(
-                    visible = expanded,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
-                    if (file.content.isNotBlank()) {
-                        Column {
-                            Spacer(Modifier.height(8.dp))
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                text = file.content,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                }
-                if (file.updatedAt.isNotBlank()) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = stringResource(R.string.memory_updated_at, file.updatedAt),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
             }
-            Spacer(Modifier.width(8.dp))
+            if (file.injectsToPrompt) {
+                Spacer(Modifier.width(8.dp))
+                InjectBadge()
+            }
+            Spacer(Modifier.width(2.dp))
+            Icon(
+                if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        AnimatedVisibility(
+            visible = expanded,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
             Column {
-                IconButton(onClick = onToggle) {
-                    Icon(
-                        if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                        contentDescription = if (expanded) stringResource(R.string.markdown_collapse) else stringResource(R.string.markdown_expand),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                Spacer(Modifier.height(12.dp))
+                // 展示路径：characters/{charName}/users/{targetId}/{category}.md
+                Text(
+                    text = file.path,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (file.content.isNotBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = file.content,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.common_delete), tint = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (file.updatedAt.isNotBlank()) {
+                        Text(
+                            text = stringResource(R.string.memory_updated_at, file.updatedAt),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
+                    } else {
+                        Spacer(Modifier.weight(1f))
+                    }
+                    TextButton(onClick = onDelete) {
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         }
     }
 }
 
-/** 旧版记忆卡片 */
+/** 「注入」标记：紧凑的小徽章，表示该文件内容会注入提示词 */
+@Composable
+private fun InjectBadge() {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Text(
+            stringResource(R.string.memory_inject),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+/** 旧版记忆卡片：与 MemoryFS 卡片统一为「点击展开 → 展开区操作」的交互 */
 @Composable
 private fun LegacyMemoryItem(
     memory: LegacyMemory,
+    expanded: Boolean,
+    onToggle: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.Top) {
+    val highPriority = memory.priority == "high"
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onToggle() },
+        cornerRadius = 16
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.Memory,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Filled.Memory,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(6.dp))
                     Text(
                         text = memory.title.ifBlank { stringResource(R.string.memory_unnamed) },
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f, fill = false)
                     )
+                    if (highPriority) {
+                        Spacer(Modifier.width(6.dp))
+                        // 高优先级圆点提示
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.error)
+                        )
+                    }
                 }
-                if (!memory.summary.isNullOrBlank()) {
-                    Spacer(Modifier.height(4.dp))
+                val preview = memory.summary?.takeIf { it.isNotBlank() } ?: memory.content
+                if (preview.isNotBlank()) {
+                    Spacer(Modifier.height(2.dp))
                     Text(
-                        text = memory.summary,
+                        text = preview,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = memory.content,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            }
+            Spacer(Modifier.width(2.dp))
+            Icon(
+                if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        AnimatedVisibility(
+            visible = expanded,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            Column {
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                Spacer(Modifier.height(12.dp))
+                if (memory.content.isNotBlank()) {
+                    Text(
+                        text = memory.content,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.height(10.dp))
+                }
+                // 元信息 Chip 行
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     if (memory.characterName.isNotBlank()) {
                         AssistChip(
                             onClick = {},
@@ -886,23 +1040,41 @@ private fun LegacyMemoryItem(
                         label = { Text(stringResource(R.string.memory_priority_label, priorityLabel), style = MaterialTheme.typography.labelSmall) },
                         shape = RoundedCornerShape(8.dp),
                         colors = AssistChipDefaults.assistChipColors(
-                            containerColor = if (memory.priority == "high")
+                            containerColor = if (highPriority)
                                 MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
                             else MaterialTheme.colorScheme.surfaceVariant,
-                            labelColor = if (memory.priority == "high")
+                            labelColor = if (highPriority)
                                 MaterialTheme.colorScheme.error
                             else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     )
                 }
-            }
-            Spacer(Modifier.width(8.dp))
-            Column {
-                IconButton(onClick = onEdit) {
-                    Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.common_edit), tint = MaterialTheme.colorScheme.primary)
-                }
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.common_delete), tint = MaterialTheme.colorScheme.error)
+                // 操作行：编辑 / 删除
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onEdit) {
+                        Icon(
+                            Icons.Filled.Edit,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.common_edit), color = MaterialTheme.colorScheme.primary)
+                    }
+                    TextButton(onClick = onDelete) {
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         }
