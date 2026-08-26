@@ -7,6 +7,28 @@ import org.junit.Test
 class StreamingDisplayPreviewTest {
 
     @Test
+    fun streamingAssistantContentKeepsMarkdownRenderer() {
+        assertTrue(
+            !shouldUseSafePlainText(
+                isUser = false,
+                contentLength = 16_000,
+                isStreaming = true
+            )
+        )
+    }
+
+    @Test
+    fun nonStreamingLongAssistantContentUsesPlainTextFallback() {
+        assertTrue(
+            shouldUseSafePlainText(
+                isUser = false,
+                contentLength = 24_001,
+                isStreaming = false
+            )
+        )
+    }
+
+    @Test
     fun shortStreamingContentIsUnchanged() {
         assertEquals("完整短回复", buildStreamingDisplayPreview("完整短回复", maxChars = 20))
     }

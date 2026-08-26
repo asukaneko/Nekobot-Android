@@ -2435,12 +2435,11 @@ private fun StreamingAssistantBubble(
 private fun SafePlainMessageText(
     text: String,
     color: Color,
-    isStreaming: Boolean,
     modifier: Modifier = Modifier
 ) {
     val pageSize = 16_000
-    var visibleChars by remember(text, isStreaming) {
-        mutableStateOf(if (isStreaming) text.length else text.length.coerceAtMost(pageSize))
+    var visibleChars by remember(text) {
+        mutableStateOf(text.length.coerceAtMost(pageSize))
     }
     val visibleText = remember(text, visibleChars) {
         text.take(visibleChars)
@@ -2454,7 +2453,7 @@ private fun SafePlainMessageText(
                 style = MaterialTheme.typography.bodyMedium
             )
         }
-        if (!isStreaming && visibleChars < text.length) {
+        if (visibleChars < text.length) {
             TextButton(
                 onClick = { visibleChars = (visibleChars + pageSize).coerceAtMost(text.length) },
                 modifier = Modifier.align(Alignment.End)
@@ -2506,7 +2505,12 @@ private fun MessageBubble(
 
     // 按 <||> 拆分内容为多段（保留非空段）
     val isStreamingPlaceholder = message.id == ChatViewModel.STREAMING_ID
-    val useSafePlainText = isStreamingPlaceholder || (!isUser && message.displayContent.length > 24_000)
+    // 流式预览有长度上限，可安全使用 MarkdownText 并在每次刷新时重解析。
+    val useSafePlainText = shouldUseSafePlainText(
+        isUser = isUser,
+        contentLength = message.displayContent.length,
+        isStreaming = isStreamingPlaceholder
+    )
     val emptyMessageParen = stringResource(R.string.chat_empty_message_paren)
     val segments = remember(message.content) {
         message.displayContent
@@ -2750,7 +2754,6 @@ private fun MessageBubble(
                             SafePlainMessageText(
                                 text = segment,
                                 color = textColor,
-                                isStreaming = isStreamingPlaceholder,
                                 modifier = if (isUser) Modifier.widthIn(max = maxBubbleWidth) else Modifier.fillMaxWidth()
                             )
                         } else {
@@ -4228,6 +4231,13 @@ internal fun buildStreamingDisplayPreview(
     return omittedPrefix +
         content.subSequence(content.length - maxChars, content.length).toString()
 }
+
+/** 流式预览已限制长度，保持 Markdown 渲染；仅普通超长 AI 消息降级为分页纯文本。 */
+internal fun shouldUseSafePlainText(
+    isUser: Boolean,
+    contentLength: Int,
+    isStreaming: Boolean
+): Boolean = !isStreaming && !isUser && contentLength > 24_000
 
 /**
  * 结束流式消息时整理 UI 列表。

@@ -60,6 +60,18 @@ class MarkdownTextTest {
     }
 
     @Test
+    fun `completed markdown received incrementally is rendered by the standard parser`() {
+        val rendered = parseInline(
+            "正在生成 **Markdown** 和 `code`",
+            Color.Black,
+            TextStyle.Default
+        )
+
+        assertEquals("正在生成 Markdown 和 code", rendered.text)
+        assertEquals(2, rendered.spanStyles.size)
+    }
+
+    @Test
     fun `unsupported markdown link does not receive URL annotation`() {
         val rendered = parseInline(
             "[Local file](file:///sdcard/example.txt)",
