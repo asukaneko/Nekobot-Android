@@ -73,7 +73,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -1685,12 +1687,19 @@ private fun SessionItem(
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
+                    val fallbackPainter = if (row.isAgentSession) {
+                        painterResource(R.drawable.ic_agent_neko)
+                    } else {
+                        rememberVectorPainter(
+                            if (row.isGroupSession) Icons.Outlined.Group
+                            else Icons.AutoMirrored.Outlined.Chat
+                        )
+                    }
                     Icon(
-                        if (row.isGroupSession) Icons.Outlined.Group
-                        else Icons.AutoMirrored.Outlined.Chat,
+                        painter = fallbackPainter,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(34.dp)
                     )
                 }
             }

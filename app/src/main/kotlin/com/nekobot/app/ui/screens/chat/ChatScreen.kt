@@ -157,6 +157,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
@@ -746,7 +747,12 @@ fun ChatScreen(
                                     portraitUrl = session?.portraitUrl,
                                     size = 34.dp,
                                     ring = true,
-                                    fallbackIcon = if (session?.sessionMode == "group") Icons.Outlined.Group else Icons.Outlined.SmartToy
+                                    fallbackIcon = if (session?.sessionMode == "group") Icons.Outlined.Group else Icons.Outlined.SmartToy,
+                                    fallbackPainter = if (session?.sessionMode.equals("agent", ignoreCase = true)) {
+                                        painterResource(R.drawable.ic_agent_neko)
+                                    } else {
+                                        null
+                                    }
                                 )
                                 Spacer(Modifier.width(10.dp))
                                 Column {
@@ -1007,13 +1013,21 @@ fun ChatScreen(
                                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                if (session?.sessionMode == "group") Icons.Outlined.Group
-                                else Icons.Outlined.SmartToy,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(40.dp)
-                            )
+                            if (session?.sessionMode.equals("agent", ignoreCase = true)) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_agent_neko),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(40.dp)
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Outlined.Group,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(40.dp)
+                                )
+                            }
                         }
                     }
                     Spacer(Modifier.height(18.dp))
@@ -3819,13 +3833,14 @@ private fun TypingDots(
     }
 }
 
-/** 角色头像：圆形立绘，可带主题色光环；加载中/失败回退到机器人图标。 */
+/** 角色头像：圆形立绘，可带主题色光环；加载中/失败时显示指定的回退图标。 */
 @Composable
 private fun ChatAvatar(
     portraitUrl: String?,
     size: androidx.compose.ui.unit.Dp,
     ring: Boolean = false,
-    fallbackIcon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Outlined.SmartToy
+    fallbackIcon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Outlined.SmartToy,
+    fallbackPainter: androidx.compose.ui.graphics.painter.Painter? = null
 ) {
     val resolved = resolveAvatarUrl(portraitUrl)
     Box(
@@ -3844,12 +3859,21 @@ private fun ChatAvatar(
         contentAlignment = Alignment.Center
     ) {
         val fallback: @Composable () -> Unit = {
-            Icon(
-                fallbackIcon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(size * 0.55f)
-            )
+            if (fallbackPainter != null) {
+                Icon(
+                    painter = fallbackPainter,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(size * 0.55f)
+                )
+            } else {
+                Icon(
+                    fallbackIcon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(size * 0.55f)
+                )
+            }
         }
         if (!resolved.isNullOrBlank()) {
             SubcomposeAsyncImage(

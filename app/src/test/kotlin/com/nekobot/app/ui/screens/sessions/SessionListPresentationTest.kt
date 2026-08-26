@@ -91,7 +91,7 @@ class SessionListPresentationTest {
     }
 
     @Test
-    fun buildSessionListRows_flagsGroupSessionsForGroupIconFallback() {
+    fun buildSessionListRows_flagsAgentAndGroupSessionsForIconFallback() {
         val characters = listOf(
             CharacterPreset(id = "alice", name = "爱丽丝", portrait = "/alice.png")
         )
@@ -104,6 +104,8 @@ class SessionListPresentationTest {
 
         val rows = buildSessionListRows(sessions, characters) { it }
 
+        // Agent 会话使用独立的 Agent 图标。
+        assertEquals(true, rows[2].isAgentSession)
         // 普通会话不标记为群聊
         assertEquals(false, rows[0].isGroupSession)
         // session_mode == "group" 标记为群聊

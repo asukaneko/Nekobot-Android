@@ -32,6 +32,8 @@ data class SessionListRow(
     val pinned: Boolean,
     val favorite: Boolean,
     val archived: Boolean,
+    /** Agent 会话：列表项无头像时显示 Agent 图标。 */
+    val isAgentSession: Boolean = false,
     /** 群聊会话：列表项无立绘时回退到群聊图标而非默认聊天图标。 */
     val isGroupSession: Boolean = false
 )
@@ -130,7 +132,7 @@ fun buildSessionListRows(
         val senderCharacterName = session.senderName?.takeIf {
             it.isNotBlank() && it !in GENERIC_SENDER_NAMES
         }
-        val isAgentSession = session.sessionMode == "agent"
+        val isAgentSession = session.isAgentSession()
         val isGroupSession =
             session.sessionMode == "group" || !session.characterIds.isNullOrEmpty()
         val characterLabel = when {
@@ -161,6 +163,7 @@ fun buildSessionListRows(
             pinned = session.pinned == true,
             favorite = session.favorite == true,
             archived = session.archived == true,
+            isAgentSession = isAgentSession,
             isGroupSession = isGroupSession
         )
     }
