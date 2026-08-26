@@ -131,6 +131,13 @@ private fun JsonObject.strOr(key: String, default: String = "—"): String =
 private fun JsonObject.strOrNull(key: String): String? =
     get(key)?.takeIf { it.isJsonPrimitive }?.asString
 
+internal fun filterStateHistorySessions(sessions: List<JsonObject>): List<JsonObject> =
+    sessions.filterNot { session ->
+        sequenceOf("session_mode", "sessionMode")
+            .mapNotNull { key -> session.get(key)?.takeIf { it.isJsonPrimitive }?.asString }
+            .any { it.equals("agent", ignoreCase = true) }
+    }
+
 /**
  * 状态历程 ViewModel：拉取所有渠道（QQ + Web 等）的角色状态时间线。
  * 数据源：
@@ -159,7 +166,9 @@ class StateHistoryViewModel : BaseViewModel() {
             if (!cacheJson.isNullOrBlank()) {
                 runCatching {
                     val arr = JsonParser.parseString(cacheJson).asJsonArray
-                    val list = arr.mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject }
+                    val list = filterStateHistorySessions(
+                        arr.mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject }
+                    )
                     // 按 updated_at 倒序：最新会话排在最前
                     val sorted = list.sortedByDescending { it.get("updated_at")?.asString ?: "" }
                     _sessions.value = sorted
@@ -202,7 +211,9 @@ class StateHistoryViewModel : BaseViewModel() {
         launchResult(
             block = {
                 val sessions = com.nekobot.app.ServiceContainer.localRepository.listSessions()
-                val jsonSessions = sessions.mapNotNull { s ->
+                val jsonSessions = sessions
+                    .filterNot { it.sessionMode.equals("agent", ignoreCase = true) }
+                    .mapNotNull { s ->
                     val sid = s.id ?: return@mapNotNull null
                     val timeline = com.nekobot.app.ServiceContainer.localRepository
                         .listStateHistory(sid)
@@ -234,10 +245,11 @@ class StateHistoryViewModel : BaseViewModel() {
                     obj.addProperty("id", sid)
                     obj.addProperty("name", s.displayName)
                     obj.addProperty("character_id", s.characterId ?: "")
+                    obj.addProperty("session_mode", s.sessionMode ?: "character")
                     obj.addProperty("updated_at", s.updatedAt ?: "")
                     obj.add("character_runtime_timeline", timelineArr)
                     obj
-                }
+                }.let(::filterStateHistorySessions)
                 Resource.Success(jsonSessions)
             },
             onSuccess = { merged ->
@@ -272,7 +284,11 @@ class StateHistoryViewModel : BaseViewModel() {
                 }.toSet()
 
                 val webTimelines = allSessions
-                    .filter { it.id != null && it.id !in channelIds }
+                    .filter {
+                        it.id != null &&
+                            it.id !in channelIds &&
+                            !it.sessionMode.equals("agent", ignoreCase = true)
+                    }
                     .map { s ->
                         val tl = when (val r = repo.sessionRuntimeTimeline(s.id!!)) {
                             is Resource.Success -> parseTimeline(r.data)
@@ -281,7 +297,7 @@ class StateHistoryViewModel : BaseViewModel() {
                         buildSessionJson(s, tl)
                     }
 
-                Resource.Success(channelSessions + webTimelines)
+                Resource.Success(filterStateHistorySessions(channelSessions + webTimelines))
             },
             onSuccess = { merged ->
                 // 按 updated_at 倒序：最新会话排在最前
@@ -322,6 +338,7 @@ class StateHistoryViewModel : BaseViewModel() {
         obj.addProperty("id", session.id)
         obj.addProperty("name", session.displayName)
         obj.addProperty("character_id", session.characterId)
+        obj.addProperty("session_mode", session.sessionMode)
         obj.addProperty("updated_at", session.updatedAt ?: "")
         val timelineArr = JsonArray()
         timeline.forEach { timelineArr.add(it) }
