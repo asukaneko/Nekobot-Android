@@ -1897,6 +1897,7 @@ class LocalRepository(
         val progressReporter = when (command.action) {
             LocalCommandAction.JM_RANK,
             LocalCommandAction.JM_DOWNLOAD,
+            LocalCommandAction.JM_SEARCH,
             LocalCommandAction.NOVEL_SEARCH,
             LocalCommandAction.NOVEL_SEARCH_AUTHOR,
             LocalCommandAction.NOVEL_HOT,
@@ -1950,6 +1951,8 @@ class LocalRepository(
                 localJmRankingText(session.id, command.args, progressReporter)
             LocalCommandAction.JM_DOWNLOAD ->
                 localJmDownloadPdfText(session.id, command.args, progressReporter)
+            LocalCommandAction.JM_SEARCH ->
+                localJmSearchText(session.id, command.args, progressReporter)
             LocalCommandAction.NOVEL_SEARCH ->
                 localNovelSearchText(session.id, command.args, progressReporter, byAuthor = false)
             LocalCommandAction.NOVEL_SEARCH_AUTHOR ->
@@ -2400,6 +2403,219 @@ class LocalRepository(
             val message = error.message ?: "获取 JM ${period.displayName}失败，请稍后重试。"
             progressReporter?.update(
                 content = "JM ${period.displayName}获取失败",
+                progress = currentProgress.get(),
+                steps = listOf(
+                    ThinkingStep(type = "done", name = "任务失败", status = "error", detail = message)
+                ),
+                isComplete = true,
+                force = true
+            )
+            message
+        }
+    }
+
+    private suspend fun localJmSearchText(
+        sessionId: String,
+        rawQuery: String,
+        progressReporter: LocalCommandProgressReporter?
+    ): String {
+        val query = rawQuery.trim()
+        if (query.isBlank()) {
+            val message = "格式：`/jm_search <关键词或漫画ID>`"
+            progressReporter?.update(
+                content = "JM 搜索参数错误",
+                progress = 0,
+                steps = listOf(
+                    ThinkingStep(type = "done", name = "参数校验失败", status = "error", detail = message)
+                ),
+                isComplete = true,
+                force = true
+            )
+            return message
+        }
+        val directAlbumId = query.takeIf { it.matches(Regex("\\d+")) }
+        val currentProgress = AtomicInteger(0)
+
+        suspend fun report(
+            content: String,
+            progress: Int,
+            steps: List<ThinkingStep>,
+            isComplete: Boolean = false,
+            force: Boolean = false
+        ) {
+            currentProgress.set(progress.coerceIn(0, 100))
+            progressReporter?.update(content, progress, steps, isComplete, force)
+        }
+
+        report(
+            content = if (directAlbumId == null) "搜索 JM 漫画" else "获取 JM$directAlbumId",
+            progress = 0,
+            steps = listOf(
+                ThinkingStep(
+                    type = "knowledge",
+                    name = if (directAlbumId == null) "搜索漫画" else "获取漫画信息",
+                    status = "running",
+                    detail = query
+                )
+            ),
+            force = true
+        )
+
+        return try {
+            val entries = withContext(Dispatchers.IO) {
+                if (directAlbumId == null) {
+                    localJmRankingClient.searchSite(query)
+                } else {
+                    localJmRankingClient.fetchAlbum(directAlbumId).let { album ->
+                        listOf(LocalJmSearchEntry(album.id, album.title))
+                    }
+                }
+            }
+            if (entries.isEmpty()) {
+                val message = "没有找到与“$query”相关的 JM 漫画。"
+                report(
+                    content = "JM 搜索无结果",
+                    progress = 100,
+                    steps = listOf(
+                        ThinkingStep(type = "knowledge", name = "搜索漫画", status = "done", detail = "0 条")
+                    ),
+                    isComplete = true,
+                    force = true
+                )
+                return message
+            }
+
+            report(
+                content = "处理 JM 搜索结果",
+                progress = 12,
+                steps = listOf(
+                    ThinkingStep(
+                        type = "knowledge",
+                        name = if (directAlbumId == null) "搜索漫画" else "获取漫画信息",
+                        status = "done",
+                        detail = "${entries.size} 条"
+                    ),
+                    ThinkingStep(
+                        type = "image",
+                        name = "下载高清封面",
+                        status = "running",
+                        detail = "0/${entries.size}"
+                    )
+                ),
+                force = true
+            )
+            val semaphore = Semaphore(6)
+            val completedCovers = AtomicInteger(0)
+            val successfulCovers = AtomicInteger(0)
+            val covers = coroutineScope {
+                entries.map { entry ->
+                    async(Dispatchers.IO) {
+                        val cover = semaphore.withPermit {
+                            localJmRankingClient.fetchCoverDataUrl(entry.id)
+                        }
+                        if (!cover.isNullOrBlank()) successfulCovers.incrementAndGet()
+                        val completed = completedCovers.incrementAndGet()
+                        report(
+                            content = "下载 JM 搜索封面",
+                            progress = progressBetween(12, 90, completed, entries.size),
+                            steps = listOf(
+                                ThinkingStep(
+                                    type = "knowledge",
+                                    name = if (directAlbumId == null) "搜索漫画" else "获取漫画信息",
+                                    status = "done",
+                                    detail = "${entries.size} 条"
+                                ),
+                                ThinkingStep(
+                                    type = "image",
+                                    name = "下载高清封面",
+                                    status = if (completed == entries.size) "done" else "running",
+                                    detail = "$completed/${entries.size}，成功 ${successfulCovers.get()} 张"
+                                )
+                            )
+                        )
+                        entry.id to cover
+                    }
+                }.awaitAll().toMap()
+            }
+
+            report(
+                content = "生成 JM 搜索文件",
+                progress = 94,
+                steps = listOf(
+                    ThinkingStep(
+                        type = "knowledge",
+                        name = if (directAlbumId == null) "搜索漫画" else "获取漫画信息",
+                        status = "done",
+                        detail = "${entries.size} 条"
+                    ),
+                    ThinkingStep(
+                        type = "image",
+                        name = "下载高清封面",
+                        status = "done",
+                        detail = "成功 ${successfulCovers.get()}/${entries.size} 张"
+                    ),
+                    ThinkingStep(type = "file", name = "生成搜索 HTML", status = "running")
+                ),
+                force = true
+            )
+            val root = localWorkspaceRoot(sessionId)
+                ?: error("无法打开当前会话工作区。")
+            val searchDir = File(root, "search")
+            if (!searchDir.exists() && !searchDir.mkdirs()) {
+                error("无法创建搜索结果目录。")
+            }
+            val fileName = "jm-search-${System.currentTimeMillis()}.html"
+            withContext(Dispatchers.IO) {
+                File(searchDir, fileName).writeText(
+                    buildLocalJmSearchHtml(query, entries, covers),
+                    Charsets.UTF_8
+                )
+            }
+            val coverCount = covers.values.count { !it.isNullOrBlank() }
+            report(
+                content = "JM 搜索已完成",
+                progress = 100,
+                steps = listOf(
+                    ThinkingStep(
+                        type = "knowledge",
+                        name = if (directAlbumId == null) "搜索漫画" else "获取漫画信息",
+                        status = "done",
+                        detail = "${entries.size} 条"
+                    ),
+                    ThinkingStep(
+                        type = "image",
+                        name = "下载高清封面",
+                        status = "done",
+                        detail = "成功 $coverCount/${entries.size} 张"
+                    ),
+                    ThinkingStep(
+                        type = "file",
+                        name = "搜索 HTML 已保存",
+                        status = "done",
+                        detail = "search/$fileName"
+                    )
+                ),
+                isComplete = true,
+                force = true
+            )
+            "JM 搜索完成：${entries.size} 条，成功获取 $coverCount 张封面。\n\n[File: search/$fileName]"
+        } catch (error: CancellationException) {
+            withContext(NonCancellable) {
+                progressReporter?.update(
+                    content = "JM 搜索已取消",
+                    progress = currentProgress.get(),
+                    steps = listOf(
+                        ThinkingStep(type = "done", name = "任务已取消", status = "error")
+                    ),
+                    isComplete = true,
+                    force = true
+                )
+            }
+            throw error
+        } catch (error: Exception) {
+            val message = error.message ?: "搜索 JM 漫画失败，请稍后重试。"
+            progressReporter?.update(
+                content = "JM 搜索失败",
                 progress = currentProgress.get(),
                 steps = listOf(
                     ThinkingStep(type = "done", name = "任务失败", status = "error", detail = message)
@@ -4655,7 +4871,8 @@ class LocalRepository(
             val commandParentId = parentMessageId ?: java.util.UUID.randomUUID().toString()
             if (
                 command.action == LocalCommandAction.JM_RANK ||
-                command.action == LocalCommandAction.JM_DOWNLOAD
+                command.action == LocalCommandAction.JM_DOWNLOAD ||
+                command.action == LocalCommandAction.JM_SEARCH
             ) {
                 // Room 持久化不会在命令执行期间自动刷新 ChatViewModel。
                 // 用 channelFlow 把并发封面/章节任务的卡片安全地实时推给聊天界面。

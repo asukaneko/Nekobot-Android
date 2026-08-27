@@ -164,6 +164,12 @@ internal object LocalSlashCommands {
             action = LocalCommandAction.JM_DOWNLOAD
         ),
         LocalCommandSpec(
+            aliases = listOf("/jm_search"),
+            usage = "/jm_search <关键词或漫画ID>",
+            description = "搜索 JM 漫画并生成带封面的 HTML",
+            action = LocalCommandAction.JM_SEARCH
+        ),
+        LocalCommandSpec(
             aliases = listOf("/findbook", "/fb"),
             usage = "/findbook <书名>",
             description = "搜索轻小说并生成卡片网格 HTML",
@@ -219,7 +225,7 @@ internal object LocalSlashCommands {
         ),
         LocalCommandSpec(
             aliases = listOf(
-                "/jm_search", "/jm_tag", "/jm_clear",
+                "/jm_tag", "/jm_clear",
                 "/get_fav", "/add_fav", "/list_fav", "/del_fav",
                 "/add_black_list", "/abl", "/del_black_list", "/dbl",
                 "/list_black_list", "/lbl"
@@ -358,6 +364,7 @@ internal enum class LocalCommandAction(val isNative: Boolean) {
     FORTUNE(true),
     JM_RANK(true),
     JM_DOWNLOAD(true),
+    JM_SEARCH(true),
     NOVEL_SEARCH(true),
     NOVEL_SEARCH_AUTHOR(true),
     NOVEL_SELECT(true),

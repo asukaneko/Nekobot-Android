@@ -72,6 +72,29 @@ class LocalJmRankingClientTest {
     }
 
     @Test
+    fun parsesSearchPayloadWithPrimitiveAndArrayAuthors() {
+        val payload = JsonParser.parseString(
+            """
+            {
+              "content": [
+                {"id": "100", "name": " 第一部  漫画 ", "author": ["作者甲", "作者乙"]},
+                {"id": "200", "name": "第二部\n漫画", "author": "作者丙"},
+                {"id": "invalid", "name": "无效数据"}
+              ]
+            }
+            """.trimIndent()
+        ).asJsonObject
+
+        assertEquals(
+            listOf(
+                LocalJmSearchEntry("100", "第一部 漫画", "作者甲 / 作者乙"),
+                LocalJmSearchEntry("200", "第二部 漫画", "作者丙")
+            ),
+            parseJmSearchPayload(payload)
+        )
+    }
+
+    @Test
     fun prefersDedicatedAlbumCoverBeforeFirstPhoto() {
         val candidates = buildJmCoverCandidates("286368")
 
@@ -178,6 +201,20 @@ class LocalJmRankingClientTest {
         assertTrue(html.contains("href=\"https://18comic.vip/album/123\""))
         assertTrue(html.contains("A&amp;B &lt;测试&gt;"))
         assertTrue(html.contains("点击卡片打开漫画详情"))
+        assertTrue(!html.contains("target=\"_blank\""))
+    }
+
+    @Test
+    fun buildsSearchHtmlWithEscapedQueryAndAuthor() {
+        val html = buildLocalJmSearchHtml(
+            query = "A&B <测试>",
+            entries = listOf(LocalJmSearchEntry("123", "标题", "作者&甲")),
+            covers = emptyMap()
+        )
+
+        assertTrue(html.contains("A&amp;B &lt;测试&gt;"))
+        assertTrue(html.contains("作者&amp;甲"))
+        assertTrue(html.contains("href=\"https://18comic.vip/album/123\""))
         assertTrue(!html.contains("target=\"_blank\""))
     }
 

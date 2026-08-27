@@ -63,7 +63,7 @@ class LocalSlashCommandsTest {
         assertEquals(LocalCommandAction.JM_RANK, rank?.action)
 
         val search = LocalSlashCommands.parse("/jm_search 测试")
-        assertEquals(LocalCommandAction.PYTHON_RUNTIME_REQUIRED, search?.action)
+        assertEquals(LocalCommandAction.JM_SEARCH, search?.action)
     }
 
     @Test
@@ -134,6 +134,7 @@ class LocalSlashCommandsTest {
         assertTrue(help.contains("/note"))
         assertTrue(help.contains("/jmrank"))
         assertTrue(help.contains("/jm <漫画ID>"))
+        assertTrue(help.contains("/jm_search <关键词或漫画ID>"))
         assertTrue(help.contains("/wenku8_login"))
         assertTrue(help.contains("/yolo"))
         assertFalse(help.contains("依赖 Python"))

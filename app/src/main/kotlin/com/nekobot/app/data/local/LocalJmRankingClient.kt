@@ -29,6 +29,12 @@ internal data class LocalJmRankingEntry(
     val title: String
 )
 
+internal data class LocalJmSearchEntry(
+    val id: String,
+    val title: String,
+    val author: String = ""
+)
+
 internal data class LocalJmChapter(
     val id: String,
     val title: String,
@@ -104,6 +110,37 @@ internal class LocalJmRankingClient(
 
         throw IllegalStateException(
             "JM 排行接口暂时不可用，请稍后重试；如果持续失败，可能是接口签名规则已更新。"
+        )
+    }
+
+    /**
+     * 搜索 JM 站内漫画。协议与 jmcomic 的 search_site 保持一致：
+     * `main_tag=0`、按最新排序，并最多合并前五页结果。
+     */
+    fun searchSite(
+        query: String,
+        maxPages: Int = MAX_SEARCH_PAGES,
+        limit: Int = MAX_SEARCH_SIZE
+    ): List<LocalJmSearchEntry> {
+        val normalizedQuery = query.trim()
+        require(normalizedQuery.isNotBlank()) { "搜索内容不能为空" }
+        val pages = maxPages.coerceIn(1, MAX_SEARCH_PAGES)
+        val resultLimit = limit.coerceIn(1, MAX_SEARCH_SIZE)
+        var lastError: Exception? = null
+
+        for (domain in availableApiDomains()) {
+            try {
+                val entries = searchSiteFromDomain(domain, normalizedQuery, pages, resultLimit)
+                lastApiDomain = domain
+                return entries
+            } catch (error: Exception) {
+                lastError = error
+            }
+        }
+
+        throw IllegalStateException(
+            "JM 搜索接口暂时不可用，请稍后重试；如果持续失败，可能是接口签名规则已更新。",
+            lastError
         )
     }
 
@@ -298,6 +335,37 @@ internal class LocalJmRankingClient(
         return parseJmRankingPayload(rankingPayload, limit)
     }
 
+    private fun searchSiteFromDomain(
+        domain: String,
+        query: String,
+        maxPages: Int,
+        limit: Int
+    ): List<LocalJmSearchEntry> {
+        val session = createApiSession(domain)
+        val entries = mutableListOf<LocalJmSearchEntry>()
+        val seenIds = mutableSetOf<String>()
+        for (page in 1..maxPages) {
+            val payload = requestEncryptedApi(
+                session = session,
+                path = "search",
+                query = mapOf(
+                    "main_tag" to "0",
+                    "search_query" to query,
+                    "page" to page.toString(),
+                    "o" to "mr",
+                    "t" to "a"
+                )
+            )
+            val pageEntries = parseJmSearchPayload(payload, limit - entries.size)
+            if (pageEntries.isEmpty()) break
+            pageEntries.forEach { entry ->
+                if (seenIds.add(entry.id)) entries += entry
+            }
+            if (entries.size >= limit) break
+        }
+        return entries.take(limit)
+    }
+
     private fun createApiSession(domain: String): LocalJmApiSession {
         val timestamp = currentTimestamp()
         val initialHeaders = signedHeaders(timestamp, INITIAL_APP_VERSION, APP_SECRET)
@@ -417,6 +485,8 @@ internal class LocalJmRankingClient(
 
     companion object {
         private const val MAX_RANKING_SIZE = 50
+        private const val MAX_SEARCH_PAGES = 5
+        private const val MAX_SEARCH_SIZE = 50
         private const val INITIAL_APP_VERSION = "2.0.28"
         private const val APP_SECRET = "185Hcomic3PAPP7R"
         private const val APP_CONTENT_SECRET = "18comicAPPContent"
@@ -507,6 +577,25 @@ internal fun parseJmRankingPayload(
                 ?.trim()
                 .orEmpty()
             if (id.isBlank() || title.isBlank()) null else LocalJmRankingEntry(id, title)
+        }
+        ?.take(limit.coerceIn(1, 50))
+        .orEmpty()
+
+internal fun parseJmSearchPayload(
+    payload: JsonObject,
+    limit: Int = 50
+): List<LocalJmSearchEntry> =
+    payload.getAsJsonArray("content")
+        ?.mapNotNull { element ->
+            val item = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
+            val id = item.stringValue("id")?.takeIf { it.matches(Regex("\\d+")) }.orEmpty()
+            val title = item.stringValue("name")?.normalizedJmText().orEmpty()
+            if (id.isBlank() || title.isBlank()) return@mapNotNull null
+            LocalJmSearchEntry(
+                id = id,
+                title = title,
+                author = item.jmAuthorValue()
+            )
         }
         ?.take(limit.coerceIn(1, 50))
         .orEmpty()
@@ -813,6 +902,100 @@ internal fun buildLocalJmRankingHtml(
     """.trimIndent()
 }
 
+internal fun buildLocalJmSearchHtml(
+    query: String,
+    entries: List<LocalJmSearchEntry>,
+    covers: Map<String, String?>
+): String {
+    val coverCount = entries.count { !covers[it.id].isNullOrBlank() }
+    val cards = entries.mapIndexed { index, entry ->
+        val safeId = escapeHtml(entry.id)
+        val safeTitle = escapeHtml(entry.title)
+        val safeAuthor = escapeHtml(entry.author)
+        val cover = covers[entry.id]
+        val coverHtml = if (cover.isNullOrBlank()) {
+            """<div class="cover placeholder"><span>暂无封面</span></div>"""
+        } else {
+            """<img class="cover" src="$cover" alt="$safeTitle" loading="lazy">"""
+        }
+        val authorHtml = if (safeAuthor.isBlank()) "" else """<div class="author">$safeAuthor</div>"""
+        """
+        <article class="card">
+          <a href="https://18comic.vip/album/$safeId">
+            $coverHtml
+            <div class="meta">
+              <div class="rank">#${index + 1}</div>
+              <div class="title">$safeTitle</div>
+              $authorHtml
+              <div class="id">JM$safeId</div>
+            </div>
+          </a>
+        </article>
+        """.trimIndent()
+    }.joinToString("\n")
+
+    return """
+        <!DOCTYPE html>
+        <html lang="zh-CN">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>${escapeHtml(query)} - JM 搜索</title>
+          <style>
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              padding: 22px;
+              color: #f3f4f6;
+              background: #111827;
+              font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", sans-serif;
+            }
+            h1 { margin: 0 0 8px; font-size: 24px; }
+            .note { margin: 0 0 20px; color: #9ca3af; font-size: 13px; }
+            .grid {
+              display: grid;
+              grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+              gap: 16px;
+            }
+            .card {
+              overflow: hidden;
+              border: 1px solid rgba(255,255,255,.08);
+              border-radius: 15px;
+              background: #1f2937;
+              box-shadow: 0 9px 22px rgba(0,0,0,.24);
+            }
+            .card a { display: block; color: inherit; text-decoration: none; }
+            .cover {
+              display: block;
+              width: 100%;
+              aspect-ratio: 13 / 18;
+              object-fit: cover;
+              background: #0b1220;
+            }
+            .placeholder {
+              display: grid;
+              place-items: center;
+              color: #6b7280;
+              font-size: 13px;
+            }
+            .meta { padding: 11px 13px 14px; }
+            .rank { margin-bottom: 5px; color: #60a5fa; font-weight: 750; font-size: 13px; }
+            .title { min-height: 40px; font-size: 14px; line-height: 1.45; word-break: break-word; }
+            .author { margin-top: 6px; color: #93c5fd; font-size: 12px; word-break: break-word; }
+            .id { margin-top: 7px; color: #9ca3af; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <h1>JM 搜索</h1>
+          <p class="note">${escapeHtml(query)} · 共 ${entries.size} 条 · 已获取 $coverCount 张封面 · 点击卡片打开漫画详情</p>
+          <main class="grid">
+            $cards
+          </main>
+        </body>
+        </html>
+    """.trimIndent()
+}
+
 private fun escapeHtml(value: String): String =
     value.replace("&", "&amp;")
         .replace("<", "&lt;")
@@ -825,6 +1008,18 @@ private fun JsonObject.stringValue(name: String): String? =
         ?.takeIf { it.isJsonPrimitive }
         ?.asString
         ?.trim()
+
+private fun JsonObject.jmAuthorValue(): String =
+    get("author")?.let { value ->
+        when {
+            value.isJsonPrimitive -> value.asString
+            value.isJsonArray -> value.asJsonArray
+                .mapNotNull { it.takeIf { element -> element.isJsonPrimitive }?.asString?.trim() }
+                .filter(String::isNotBlank)
+                .joinToString(" / ")
+            else -> ""
+        }
+    }?.normalizedJmText().orEmpty()
 
 private fun String.normalizedJmText(): String =
     replace(Regex("\\s+"), " ").trim()
