@@ -2633,7 +2633,10 @@ private fun MessageBubble(
                 hasUserImage -> Modifier.widthIn(min = 300.dp, max = maxBubbleWidth)
                 isUser -> Modifier.widthIn(max = maxBubbleWidth).width(IntrinsicSize.Max)
                 else -> Modifier.widthIn(max = maxBubbleWidth)
-            }
+            },
+            // 用户气泡始终右对齐：即使下方工具栏（时间/操作按钮）比气泡更宽，
+            // 气泡本身也紧贴右边缘，工具栏向左延伸
+            horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
         ) {
             if (!isUser && !senderName.isNullOrBlank()) {
                 Text(
