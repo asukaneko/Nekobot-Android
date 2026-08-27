@@ -36,6 +36,7 @@
         <a href="#role">角色模式</a>
         <a href="#agent">Agent</a>
         <a href="#advanced">进阶</a>
+        <a href="#plugins">插件</a>
         <a href="#changelog">日志</a>
         <a href="#download">下载</a>
         <a href="#faq">FAQ</a>
@@ -723,6 +724,59 @@
       </div>
     </section>
 
+    <!-- ======== 插件 ======== -->
+    <section class="section plugin-section" id="plugins">
+      <div class="section-head reveal">
+        <span class="section-tag">插件</span>
+        <h2>把本地会话，扩展成你的工具箱</h2>
+        <p>内置模块开箱即用，也能安装受控的 ZIP JavaScript 插件</p>
+      </div>
+      <div class="plugin-layout">
+        <div class="plugin-copy reveal">
+          <div class="plugin-symbol" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 2.5a2.5 2.5 0 0 0-5 0v2.1H6.4A2.4 2.4 0 0 0 4 7v2.1a2.5 2.5 0 1 0 0 5V17a2.4 2.4 0 0 0 2.4 2.4h2.1v2.1a2.5 2.5 0 0 0 5 0v-2.1h2.1A2.4 2.4 0 0 0 18 17v-2.9a2.5 2.5 0 1 0 0-5V7a2.4 2.4 0 0 0-2.4-2.4h-2.1z"/></svg>
+          </div>
+          <span class="plugin-kicker">本地模式专属</span>
+          <h3>内置先上手，扩展按需安装</h3>
+          <p>插件通过斜杠命令进入当前会话。内置的 JM 漫画与轻小说模块可以单独停用；第三方插件则以 ZIP 包安装，不需要修改 APK。</p>
+          <ul class="plugin-list">
+            <li><span class="plugin-list-mark">01</span><span><b>命令即入口</b>，安装后自动出现在输入建议和 <code>/help</code>。</span></li>
+            <li><span class="plugin-list-mark">02</span><span><b>权限自己声明</b>，会话读取、存储、通知和网络能力按需开放。</span></li>
+            <li><span class="plugin-list-mark">03</span><span><b>数据互不混用</b>，每个插件拥有独立的本地存储空间。</span></li>
+          </ul>
+          <div class="plugin-actions">
+            <a class="btn btn-primary" href="https://github.com/asukaneko/Nekobot-Android/blob/main/docs/plugin-development.md" target="_blank" rel="noopener">阅读插件开发指南</a>
+            <span>仅在本地模式执行</span>
+          </div>
+        </div>
+        <div class="plugin-modules">
+          <article class="plugin-module reveal d1">
+            <div class="plugin-module-head">
+              <div class="plugin-module-icon jm" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="m10 8 4 4-4 4"/></svg></div>
+              <div><span>内置插件</span><h3>JM 漫画</h3></div>
+              <em>可停用</em>
+            </div>
+            <p>下载漫画、搜索作品，或生成带封面和详情链接的周榜、月榜 HTML。</p>
+            <div class="command-pills"><code>/jm</code><code>/jm_search</code><code>/jmrank</code></div>
+          </article>
+          <article class="plugin-module reveal d2">
+            <div class="plugin-module-head">
+              <div class="plugin-module-icon novel" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v17H6.5A2.5 2.5 0 0 0 4 22z"/><path d="M4 5.5v16.5"/><path d="M8 7h8"/><path d="M8 11h6"/></svg></div>
+              <div><span>内置插件</span><h3>轻小说</h3></div>
+              <em>可停用</em>
+            </div>
+            <p>搜索、下载和管理 Wenku8 轻小说；登录后可继续使用会话内的书目选择流程。</p>
+            <div class="command-pills"><code>/findbook</code><code>/select</code><code>/wenku8_login</code></div>
+          </article>
+        </div>
+      </div>
+      <div class="plugin-facts">
+        <article class="plugin-fact reveal"><span>plugin.json</span><h3>清晰的命令清单</h3><p>声明命令、别名、用法、入口脚本与所需权限，安装时自动校验冲突。</p></article>
+        <article class="plugin-fact reveal d1"><span>JavaScript</span><h3>受限运行时</h3><p>脚本不能直接读取文件或自行联网，只能调用应用开放的受控接口。</p></article>
+        <article class="plugin-fact reveal d2"><span>HTTPS GET</span><h3>网络有边界</h3><p>声明网络权限后可请求 HTTPS 地址，响应大小和运行时间均有限制。</p></article>
+      </div>
+    </section>
+
     <!-- ======== 更新日志 ======== -->
     <section class="section" id="changelog">
       <div class="section-head reveal">
@@ -838,12 +892,14 @@
         <a href="#role">角色模式</a>
         <a href="#agent">Agent 模式</a>
         <a href="#advanced">进阶能力</a>
+        <a href="#plugins">插件</a>
         <a href="#download">下载</a>
       </div>
       <div class="footer-col">
         <b>资源</b>
         <a href="#changelog">更新日志</a>
         <a href="#faq">常见问题</a>
+        <a href="https://github.com/asukaneko/Nekobot-Android/blob/main/docs/plugin-development.md" target="_blank" rel="noopener">插件开发指南</a>
         <a href="https://github.com/asukaneko/Nekobot-Android" target="_blank" rel="noopener">GitHub</a>
       </div>
       <div class="footer-col">

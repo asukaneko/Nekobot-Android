@@ -100,4 +100,31 @@
     <string name="apikeys_name_required">이름(필수)</string>
     <string name="apikeys_key_required">Key(필수, 여러 줄 가능)</string>
     <string name="apikeys_view_full_key">전체 Key 보기</string>
+
+    <!-- ==================== 플러그인 ==================== -->
+    <string name="extensions_plugins">플러그인</string>
+    <string name="extensions_plugins_desc">내장 모듈과 로컬 ZIP 플러그인을 관리해요</string>
+    <string name="plugins_title">플러그인</string>
+    <string name="plugins_install">플러그인 설치</string>
+    <string name="plugins_install_title">타사 플러그인 설치</string>
+    <string name="plugins_install_file">파일: %1$s</string>
+    <string name="plugins_third_party_warning">플러그인 코드는 타사가 제공합니다. 선언한 권한에 따라 채팅 내용 읽기, 네트워크 접근 또는 알림 표시를 할 수 있어요. 신뢰할 수 있는 출처만 설치하세요.</string>
+    <string name="plugins_third_party_agreement">타사 플러그인 면책 조항을 읽었으며 설치와 사용의 위험을 스스로 부담하는 데 동의합니다.</string>
+    <string name="plugins_info_title">내장 및 ZIP 플러그인</string>
+    <string name="plugins_info_desc">JM 만화와 라이트 노벨은 비활성화할 수 있는 내장 플러그인이에요. 타사 ZIP 플러그인은 제한된 런타임에서 실행되며 선언한 권한으로 제어된 인터페이스를 통해서만 기능에 접근할 수 있어요. 활성 플러그인은 명령 추천, /help 및 로컬 채팅에서 사용할 수 있어요.</string>
+    <string name="plugins_server_hint">현재 서버 모드예요. 플러그인 관리는 가능하지만 플러그인 슬래시 명령은 로컬 모드에서만 실행돼요.</string>
+    <string name="plugins_empty_title">설치된 플러그인이 없어요</string>
+    <string name="plugins_empty_hint">오른쪽 위 +를 누르고 개발자가 제공한 .zip 플러그인 패키지를 선택하세요.</string>
+    <string name="plugins_installed">플러그인 설치 완료: %1$s</string>
+    <string name="plugins_version_author">버전 %1$s · 제작자 %2$s</string>
+    <string name="plugins_command_count">등록된 명령: %1$d</string>
+    <string name="plugins_command_default_desc">플러그인 명령</string>
+    <string name="plugins_permissions">권한: %1$s</string>
+    <string name="plugins_delete_title">플러그인 제거</string>
+    <string name="plugins_delete_message">“%1$s” 플러그인을 제거할까요? 플러그인 데이터도 이 기기에서 삭제돼요.</string>
+    <string name="plugins_builtin">내장 플러그인</string>
+    <string name="plugins_builtin_jm_name">JM 만화</string>
+    <string name="plugins_builtin_jm_desc">JM 만화 순위를 탐색하고 검색하거나 다운로드해요.</string>
+    <string name="plugins_builtin_light_novel_name">라이트 노벨</string>
+    <string name="plugins_builtin_light_novel_desc">Wenku8 라이트 노벨을 검색, 다운로드, 관리해요.</string>
 </resources>

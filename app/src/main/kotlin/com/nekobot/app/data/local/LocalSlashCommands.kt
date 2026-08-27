@@ -1,8 +1,10 @@
 package com.nekobot.app.data.local
 
 import com.nekobot.app.data.local.db.LocalMessageEntity
+import com.nekobot.app.data.local.plugin.BuiltInPlugins
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.remote.RealtimeEvent
+import com.nekobot.app.ServiceContainer
 
 internal const val LOCAL_COMMAND_MODEL = "local-command"
 
@@ -152,80 +154,8 @@ internal object LocalSlashCommands {
             action = LocalCommandAction.FORTUNE
         ),
         LocalCommandSpec(
-            aliases = listOf("/jmrank"),
-            usage = "/jmrank [周排行|月排行]",
-            description = "生成带封面和详情链接的 JM 周榜或月榜 HTML",
-            action = LocalCommandAction.JM_RANK
-        ),
-        LocalCommandSpec(
-            aliases = listOf("/jm"),
-            usage = "/jm <漫画ID> [--force]",
-            description = "下载漫画并保存为当前会话工作区 PDF",
-            action = LocalCommandAction.JM_DOWNLOAD
-        ),
-        LocalCommandSpec(
-            aliases = listOf("/jm_search"),
-            usage = "/jm_search <关键词或漫画ID>",
-            description = "搜索 JM 漫画并生成带封面的 HTML",
-            action = LocalCommandAction.JM_SEARCH
-        ),
-        LocalCommandSpec(
-            aliases = listOf("/findbook", "/fb"),
-            usage = "/findbook <书名>",
-            description = "搜索轻小说并生成卡片网格 HTML",
-            action = LocalCommandAction.NOVEL_SEARCH
-        ),
-        LocalCommandSpec(
-            aliases = listOf("/fa"),
-            usage = "/fa <作者>",
-            description = "按作者搜索轻小说",
-            action = LocalCommandAction.NOVEL_SEARCH_AUTHOR
-        ),
-        LocalCommandSpec(
-            aliases = listOf("/select"),
-            usage = "/select <编号>",
-            description = "选择要下载的轻小说（先 /findbook 或 /fb 搜索）",
-            action = LocalCommandAction.NOVEL_SELECT
-        ),
-        LocalCommandSpec(
-            aliases = listOf("/info"),
-            usage = "/info <编号>",
-            description = "获取轻小说详情（先 /findbook 或 /fb 搜索）",
-            action = LocalCommandAction.NOVEL_INFO
-        ),
-        LocalCommandSpec(
-            aliases = listOf("/hotnovel"),
-            usage = "/hotnovel <day|month> [数量]",
-            description = "获取今日/本月热门轻小说榜单",
-            action = LocalCommandAction.NOVEL_HOT
-        ),
-        LocalCommandSpec(
-            aliases = listOf("/random_novel", "/rn"),
-            usage = "/random_novel",
-            description = "随机推荐一本轻小说",
-            action = LocalCommandAction.NOVEL_RANDOM
-        ),
-        LocalCommandSpec(
-            aliases = listOf("/novel_res"),
-            usage = "/novel_res <res值>",
-            description = "根据 wenku8 编号下载轻小说 TXT",
-            action = LocalCommandAction.NOVEL_RES
-        ),
-        LocalCommandSpec(
-            aliases = listOf("/wenku8_login", "/wenku_login"),
-            usage = "/wenku8_login",
-            description = "打开 wenku8 登录界面并自动保存 Cookie + UA",
-            action = LocalCommandAction.WENKU8_LOGIN
-        ),
-        LocalCommandSpec(
-            aliases = listOf("/set_wenku_cookie"),
-            usage = "/set_wenku_cookie <Cookie> || <UA>",
-            description = "手动更新文库8的 Cookie",
-            action = LocalCommandAction.NOVEL_SET_COOKIE
-        ),
-        LocalCommandSpec(
             aliases = listOf(
-                "/jm_tag", "/jm_clear",
+                "/jm_clear",
                 "/get_fav", "/add_fav", "/list_fav", "/del_fav",
                 "/add_black_list", "/abl", "/del_black_list", "/dbl",
                 "/list_black_list", "/lbl"
@@ -276,18 +206,34 @@ internal object LocalSlashCommands {
                 known = true
             )
         } else {
-            LocalParsedCommand(
-                name = commandName,
-                args = args,
-                action = LocalCommandAction.UNKNOWN,
-                known = false
-            )
+            val pluginCommand = runCatching {
+                ServiceContainer.pluginManager.findCommand(commandName)
+            }.getOrElse {
+                // 单元测试与应用初始化前默认启用内置插件。
+                BuiltInPlugins.findDefaultCommand(commandName)
+            }
+            if (pluginCommand != null) {
+                LocalParsedCommand(
+                    name = commandName,
+                    args = args,
+                    action = pluginCommand.builtInAction ?: LocalCommandAction.PLUGIN,
+                    known = true,
+                    pluginCommand = pluginCommand
+                )
+            } else {
+                LocalParsedCommand(
+                    name = commandName,
+                    args = args,
+                    action = LocalCommandAction.UNKNOWN,
+                    known = false
+                )
+            }
         }
     }
 
     fun suggestions(query: String): List<LocalCommandSuggestion> {
         val normalized = query.trim().lowercase()
-        return commands
+        val native = commands
             .asSequence()
             .filter { spec ->
                 normalized.isBlank() || normalized == "/" ||
@@ -304,6 +250,18 @@ internal object LocalSlashCommands {
             }
             .distinctBy(LocalCommandSuggestion::command)
             .toList()
+        val plugins = runCatching {
+            ServiceContainer.pluginManager.commandSuggestions(normalized)
+        }.getOrElse {
+            BuiltInPlugins.defaultCommandSuggestions(normalized)
+        }.map { binding ->
+            LocalCommandSuggestion(
+                command = binding.trigger,
+                aliases = binding.aliases,
+                takesArguments = '<' in binding.usage || '[' in binding.usage
+            )
+        }
+        return (native + plugins).distinctBy(LocalCommandSuggestion::command)
     }
 
     fun helpText(): String = buildString {
@@ -312,9 +270,23 @@ internal object LocalSlashCommands {
         commands
             .filter { it.action.isNative }
             .forEach { appendLine("• `${it.usage}` — ${it.description}") }
+        val plugins = runCatching { ServiceContainer.pluginManager.commandSuggestions("") }
+            .getOrElse { BuiltInPlugins.defaultCommandSuggestions("") }
+        if (plugins.isNotEmpty()) {
+            appendLine()
+            appendLine("插件命令")
+            plugins
+                .distinctBy { it.pluginId to it.name }
+                .forEach { command ->
+                    appendLine("- `${command.usage}` — ${command.description} (${command.pluginId})")
+                }
+        }
         appendLine()
         append("Agent 会话还支持 `/yolo`，用于在当前会话中跳过常规命令授权；高风险操作仍会阻止。")
     }.trim()
+
+    /** 供插件安装器检查命令冲突；返回值统一为带 / 的形式。 */
+    internal fun reservedCommandAliases(): Set<String> = aliases.keys
 
     fun pythonRuntimeMessage(commandName: String): String = buildString {
         appendLine("`$commandName` 暂不能在纯本地模式执行。")
@@ -336,7 +308,8 @@ internal data class LocalParsedCommand(
     val name: String,
     val args: String,
     val action: LocalCommandAction,
-    val known: Boolean
+    val known: Boolean,
+    val pluginCommand: com.nekobot.app.data.local.plugin.PluginCommandBinding? = null
 )
 
 internal data class LocalCommandSuggestion(
@@ -374,6 +347,7 @@ internal enum class LocalCommandAction(val isNative: Boolean) {
     NOVEL_RES(true),
     WENKU8_LOGIN(true),
     NOVEL_SET_COOKIE(true),
+    PLUGIN(true),
     PYTHON_RUNTIME_REQUIRED(false),
     REMOTE_RUNTIME_REQUIRED(false),
     UNKNOWN(false)

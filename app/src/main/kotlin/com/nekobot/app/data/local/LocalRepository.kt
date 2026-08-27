@@ -1971,6 +1971,15 @@ class LocalRepository(
                 "请在聊天框输入 `/wenku8_login` 打开 wenku8 登录界面。"
             LocalCommandAction.NOVEL_SET_COOKIE ->
                 localNovelSetCookieText(command.args)
+            LocalCommandAction.PLUGIN ->
+                command.pluginCommand?.let { binding ->
+                    ServiceContainer.pluginManager.execute(
+                        binding = binding,
+                        sessionId = session.id,
+                        args = command.args,
+                        repository = this@LocalRepository
+                    )
+                } ?: "插件命令绑定已失效，请重新打开会话后重试。"
             LocalCommandAction.PYTHON_RUNTIME_REQUIRED ->
                 LocalSlashCommands.pythonRuntimeMessage(command.name)
             LocalCommandAction.REMOTE_RUNTIME_REQUIRED ->

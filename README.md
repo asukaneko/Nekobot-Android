@@ -81,6 +81,7 @@
 - **🎤 语音与 TTS** — 录音转写为文字（服务器模式）、TTS 试听
 - **📝 Markdown 渲染** — 内独白折叠、全角括号斜体、带语言标签与复制按钮的代码块、横滑表格
 - **🗂 工作区** — 文件引用、预览与下载
+- **🧩 插件系统** — 本地模式支持内置模块与 ZIP JavaScript 插件，命令、会话读取、隔离存储、通知和受控 HTTPS 请求均由显式权限管理；开发方式见[插件开发指南](docs/plugin-development.md)
 - **🧰 12+ 扩展功能** — API Keys、频道、钩子、知识库、登录令牌、MCP 服务器、消息过滤、技能、任务中心、工具、工作流
 - **⚙️ 系统设置** — 服务器地址切换、设置 JSON 编辑器、功能开关、数据维护、配置迁移、WebDAV 备份
 
@@ -297,7 +298,7 @@ adb logcat -s NekoSocket:V
 
 ## 🤝 参与贡献
 
-欢迎提交 Issue 与 Pull Request！版本变更记录见 [changelog.md](changelog.md)。
+欢迎提交 Issue 与 Pull Request！版本变更记录见 [changelog.md](changelog.md)，插件开发请阅读[插件开发指南](docs/plugin-development.md)。
 
 ---
 

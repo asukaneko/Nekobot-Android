@@ -106,6 +106,7 @@ import com.nekobot.app.ui.screens.extensions.ImageGenerationPlaygroundScreen
 import com.nekobot.app.ui.screens.extensions.LoginTokensScreen
 import com.nekobot.app.ui.screens.extensions.ApiKeysScreen
 import com.nekobot.app.ui.screens.extensions.AchievementsScreen
+import com.nekobot.app.ui.screens.extensions.PluginsScreen
 import com.nekobot.app.ui.components.AchievementUnlockHost
 import com.nekobot.app.update.UpdateChecker
 import kotlinx.coroutines.Job
@@ -687,6 +688,9 @@ fun NekobotNavGraph() {
             }
             composable(Routes.API_KEYS) {
                 ApiKeysScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.PLUGINS) {
+                PluginsScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.DB_PROFILE) {
                 DbProfileScreen(onBack = { navController.popBackStack() })

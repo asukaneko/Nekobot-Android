@@ -2,6 +2,10 @@
 -keep class com.nekobot.app.data.model.** { *; }
 # 本地备份、增量清单和 OAuth/模型快照使用 Gson 反射读取字段；字段名属于持久化格式。
 -keepclassmembers class com.nekobot.app.data.local.** { <fields>; }
+# WebView 通过注解反射调用插件 Bridge。
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
 
 # Retrofit / OkHttp / Gson
 -dontwarn okhttp3.**

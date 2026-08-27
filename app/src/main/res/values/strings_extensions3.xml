@@ -100,4 +100,31 @@
     <string name="apikeys_name_required">名称（必填）</string>
     <string name="apikeys_key_required">Key（必填，多行）</string>
     <string name="apikeys_view_full_key">查看完整 Key</string>
+
+    <!-- ==================== 插件 ==================== -->
+    <string name="extensions_plugins">插件</string>
+    <string name="extensions_plugins_desc">管理内置模块和本地 ZIP 插件</string>
+    <string name="plugins_title">插件</string>
+    <string name="plugins_install">安装插件</string>
+    <string name="plugins_install_title">安装第三方插件</string>
+    <string name="plugins_install_file">文件：%1$s</string>
+    <string name="plugins_third_party_warning">插件代码由第三方提供。插件可能读取会话内容、访问网络或显示通知，具体能力取决于它声明的权限。请只安装你信任的来源。</string>
+    <string name="plugins_third_party_agreement">我已阅读并同意第三方插件免责协议，愿意自行承担安装和使用风险。</string>
+    <string name="plugins_info_title">内置与 ZIP 插件</string>
+    <string name="plugins_info_desc">JM 漫画与轻小说是可停用的内置插件。第三方 ZIP 插件在受限运行时中执行，只能通过声明权限后的受控接口访问功能；已启用插件会出现在命令建议、/help 和本地会话中。</string>
+    <string name="plugins_server_hint">当前是服务器模式。插件管理可用，但插件斜杠命令只会在本地模式执行。</string>
+    <string name="plugins_empty_title">还没有安装插件</string>
+    <string name="plugins_empty_hint">点击右上角 +，选择开发者提供的 .zip 插件包。</string>
+    <string name="plugins_installed">已安装插件：%1$s</string>
+    <string name="plugins_version_author">版本 %1$s · 作者 %2$s</string>
+    <string name="plugins_command_count">已注册命令：%1$d</string>
+    <string name="plugins_command_default_desc">插件命令</string>
+    <string name="plugins_permissions">权限：%1$s</string>
+    <string name="plugins_delete_title">卸载插件</string>
+    <string name="plugins_delete_message">确定卸载“%1$s”吗？插件数据也会从本机移除。</string>
+    <string name="plugins_builtin">内置插件</string>
+    <string name="plugins_builtin_jm_name">JM 漫画</string>
+    <string name="plugins_builtin_jm_desc">下载、搜索与浏览 JM 漫画排行。</string>
+    <string name="plugins_builtin_light_novel_name">轻小说</string>
+    <string name="plugins_builtin_light_novel_desc">搜索、下载与管理 Wenku8 轻小说。</string>
 </resources>

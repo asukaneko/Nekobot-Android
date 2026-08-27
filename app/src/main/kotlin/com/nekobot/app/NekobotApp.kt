@@ -14,6 +14,7 @@ import com.nekobot.app.data.local.ai.GlobalAgentMemoryStore
 import com.nekobot.app.data.local.ai.ModelPricingCatalog
 import com.nekobot.app.data.local.db.NekobotDatabase
 import com.nekobot.app.data.local.LocalRepository
+import com.nekobot.app.data.local.plugin.PluginManager
 import com.nekobot.app.data.remote.NetworkClient
 import com.nekobot.app.data.remote.SocketManager
 import com.nekobot.app.data.repository.NekobotRepository
@@ -53,6 +54,9 @@ object ServiceContainer {
     lateinit var unified: UnifiedRepository
         private set
     lateinit var localRepository: LocalRepository
+        private set
+    /** 本地 ZIP 插件管理器；插件命令会在本地斜杠命令解析阶段动态注册。 */
+    lateinit var pluginManager: PluginManager
         private set
     internal lateinit var realtimeCredentialStore: RealtimeCredentialStore
         private set
@@ -126,6 +130,7 @@ object ServiceContainer {
         migrateLegacyPlotStoryProfile(app, prefs.activeDbName, db)
         localRepository = LocalRepository(db, LocalAiClient(), app)
         unified = UnifiedRepository(prefs, repository, localRepository, app)
+        pluginManager = PluginManager(app)
         unified.migrateLocalSecurePreferences()
         socket = SocketManager(prefs)
         ModelPricingCatalog.loadCached(app)

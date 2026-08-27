@@ -76,13 +76,14 @@ fun ExtensionsScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
         ExtensionItem(stringResource(R.string.extensions_message_filter), stringResource(R.string.extensions_message_filter_desc), Icons.Filled.FilterAlt, Routes.MESSAGE_FILTER),
         ExtensionItem(stringResource(R.string.extensions_tts_playground), stringResource(R.string.extensions_tts_playground_desc), Icons.Filled.PlayCircle, Routes.TTS_PLAYGROUND),
         ExtensionItem(stringResource(R.string.extensions_image_generation), stringResource(R.string.extensions_image_generation_desc), Icons.Filled.Image, Routes.IMAGE_GENERATION_PLAYGROUND),
-        ExtensionItem(stringResource(R.string.extensions_login_tokens), stringResource(R.string.extensions_login_tokens_desc), Icons.Filled.VpnKey, Routes.LOGIN_TOKENS)
+        ExtensionItem(stringResource(R.string.extensions_login_tokens), stringResource(R.string.extensions_login_tokens_desc), Icons.Filled.VpnKey, Routes.LOGIN_TOKENS),
+        ExtensionItem(stringResource(R.string.extensions_plugins), stringResource(R.string.extensions_plugins_desc), Icons.Filled.Extension, Routes.PLUGINS)
     )
     // 本地模式仅展示本地已实现的模块（含 TTS/图片生成实验室）
     val localSupportedRoutes = setOf(
         Routes.ACHIEVEMENTS, Routes.HOOKS, Routes.TASK_CENTER, Routes.WORKFLOWS,
         Routes.KNOWLEDGE, Routes.SKILLS, Routes.TOOLS, Routes.MCP_SERVERS,
-        Routes.TTS_PLAYGROUND, Routes.IMAGE_GENERATION_PLAYGROUND
+        Routes.TTS_PLAYGROUND, Routes.IMAGE_GENERATION_PLAYGROUND, Routes.PLUGINS
     )
     val items = if (isLocalMode) allItems.filter { it.route in localSupportedRoutes } else allItems
 

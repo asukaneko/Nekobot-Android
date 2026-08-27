@@ -34,7 +34,7 @@
   });
 
   /* ---------- 3. 滚动高亮当前导航（Scroll Spy） ---------- */
-  const sections = ['screenshots', 'features', 'modes', 'role', 'agent', 'advanced', 'changelog', 'faq', 'download']
+  const sections = ['screenshots', 'features', 'modes', 'role', 'agent', 'advanced', 'plugins', 'changelog', 'faq', 'download']
     .map((id) => document.getElementById(id))
     .filter(Boolean);
   const linkMap = new Map(

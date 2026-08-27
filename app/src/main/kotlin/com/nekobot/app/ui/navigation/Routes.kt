@@ -104,6 +104,7 @@ object Routes {
     const val IMAGE_GENERATION_PLAYGROUND = "image_generation_playground"
     const val LOGIN_TOKENS = "login_tokens"
     const val API_KEYS = "api_keys"
+    const val PLUGINS = "plugins"
 
     // wenku8 内置浏览器登录页（自动提取 Cookie + UA）
     const val WENKU_LOGIN = "wenku_login"

@@ -100,4 +100,31 @@
     <string name="apikeys_name_required">名称 (必須)</string>
     <string name="apikeys_key_required">Key (必須、複数行可)</string>
     <string name="apikeys_view_full_key">完全な Key を表示</string>
+
+    <!-- ==================== プラグイン ==================== -->
+    <string name="extensions_plugins">プラグイン</string>
+    <string name="extensions_plugins_desc">内蔵モジュールとローカル ZIP プラグインを管理</string>
+    <string name="plugins_title">プラグイン</string>
+    <string name="plugins_install">プラグインをインストール</string>
+    <string name="plugins_install_title">サードパーティ製プラグインをインストール</string>
+    <string name="plugins_install_file">ファイル: %1$s</string>
+    <string name="plugins_third_party_warning">プラグインのコードは第三者が提供します。宣言された権限に応じて、チャット内容の読み取り、ネットワークアクセス、通知表示を行う場合があります。信頼できる提供元だけをインストールしてください。</string>
+    <string name="plugins_third_party_agreement">第三者製プラグインの免責事項を読み、インストールと利用のリスクを自分で負担することに同意します。</string>
+    <string name="plugins_info_title">内蔵・ZIP プラグイン</string>
+    <string name="plugins_info_desc">JM 漫画とライトノベルは無効化できる内蔵プラグインです。サードパーティ製 ZIP プラグインは制限付きランタイムで実行され、宣言された権限を通じてのみ機能へアクセスできます。有効なプラグインは候補、/help、ローカルチャットで利用できます。</string>
+    <string name="plugins_server_hint">現在はサーバーモードです。管理はできますが、プラグインのスラッシュコマンドはローカルモードでのみ実行されます。</string>
+    <string name="plugins_empty_title">インストール済みプラグインはありません</string>
+    <string name="plugins_empty_hint">右上の + をタップし、開発者が提供した .zip パッケージを選択してください。</string>
+    <string name="plugins_installed">インストールしました: %1$s</string>
+    <string name="plugins_version_author">バージョン %1$s · 作者 %2$s</string>
+    <string name="plugins_command_count">登録コマンド: %1$d</string>
+    <string name="plugins_command_default_desc">プラグインコマンド</string>
+    <string name="plugins_permissions">権限: %1$s</string>
+    <string name="plugins_delete_title">プラグインをアンインストール</string>
+    <string name="plugins_delete_message">「%1$s」をアンインストールしますか？プラグインデータもこの端末から削除されます。</string>
+    <string name="plugins_builtin">内蔵プラグイン</string>
+    <string name="plugins_builtin_jm_name">JM 漫画</string>
+    <string name="plugins_builtin_jm_desc">JM 漫画のダウンロード、検索、ランキング閲覧。</string>
+    <string name="plugins_builtin_light_novel_name">ライトノベル</string>
+    <string name="plugins_builtin_light_novel_desc">Wenku8 ライトノベルの検索、ダウンロード、管理。</string>
 </resources>

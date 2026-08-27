@@ -100,4 +100,31 @@
     <string name="apikeys_name_required">Name (required)</string>
     <string name="apikeys_key_required">Key (required, multi-line)</string>
     <string name="apikeys_view_full_key">View Full Key</string>
+
+    <!-- ==================== Plugins ==================== -->
+    <string name="extensions_plugins">Plugins</string>
+    <string name="extensions_plugins_desc">Manage built-in modules and local ZIP plugins</string>
+    <string name="plugins_title">Plugins</string>
+    <string name="plugins_install">Install plugin</string>
+    <string name="plugins_install_title">Install third-party plugin</string>
+    <string name="plugins_install_file">File: %1$s</string>
+    <string name="plugins_third_party_warning">Plugin code is provided by a third party. A plugin may read chat content, access the network, or show notifications depending on its declared permissions. Install only sources you trust.</string>
+    <string name="plugins_third_party_agreement">I have read and agree to the third-party plugin disclaimer and accept the risks of installing and using it.</string>
+    <string name="plugins_info_title">Built-in and ZIP plugins</string>
+    <string name="plugins_info_desc">JM Comics and Light Novels are built-in plugins that can be disabled. Third-party ZIP plugins run in a restricted runtime and can access features only through declared, controlled permissions. Enabled plugins appear in command suggestions, /help, and local chats.</string>
+    <string name="plugins_server_hint">Server mode is active. Plugin management is available, but plugin slash commands execute only in local mode.</string>
+    <string name="plugins_empty_title">No plugins installed</string>
+    <string name="plugins_empty_hint">Tap + in the top right and choose a developer-provided .zip plugin package.</string>
+    <string name="plugins_installed">Installed plugin: %1$s</string>
+    <string name="plugins_version_author">Version %1$s · Author %2$s</string>
+    <string name="plugins_command_count">Registered commands: %1$d</string>
+    <string name="plugins_command_default_desc">Plugin command</string>
+    <string name="plugins_permissions">Permissions: %1$s</string>
+    <string name="plugins_delete_title">Uninstall plugin</string>
+    <string name="plugins_delete_message">Uninstall “%1$s”? Its plugin data will also be removed from this device.</string>
+    <string name="plugins_builtin">Built-in plugin</string>
+    <string name="plugins_builtin_jm_name">JM Comics</string>
+    <string name="plugins_builtin_jm_desc">Download, search, and browse JM Comics rankings.</string>
+    <string name="plugins_builtin_light_novel_name">Light Novels</string>
+    <string name="plugins_builtin_light_novel_desc">Search, download, and manage Wenku8 light novels.</string>
 </resources>
