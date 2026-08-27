@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -270,6 +271,7 @@ fun SessionsScreen(
     val titleText = stringResource(R.string.sessions_title)
     val refreshDesc = stringResource(R.string.sessions_refresh)
     val newSessionDesc = stringResource(R.string.sessions_new)
+    val agentChatName = stringResource(R.string.sessions_agent_chat)
     val noMatchTitle = stringResource(R.string.sessions_no_match)
     val filterEmptyTitle = stringResource(R.string.sessions_filter_empty)
     val emptyTitleText = stringResource(R.string.sessions_empty)
@@ -313,7 +315,8 @@ fun SessionsScreen(
     }
 
     // 弹窗状态
-    var showCreate by rememberSaveable { mutableStateOf(false) }
+    var showCreateModeMenu by remember { mutableStateOf(false) }
+    var createConfigMode by rememberSaveable { mutableStateOf<String?>(null) }
     var renaming by remember { mutableStateOf<SessionListRow?>(null) }
     var deleting by remember { mutableStateOf<SessionListRow?>(null) }
     var showSearchPanel by rememberSaveable { mutableStateOf(false) }
@@ -398,8 +401,60 @@ fun SessionsScreen(
                         IconButton(onClick = { importFileLauncher.launch("*/*") }) {
                             Icon(Icons.Filled.FileUpload, contentDescription = importDesc, tint = MaterialTheme.colorScheme.onSurface)
                         }
-                        IconButton(onClick = { showCreate = true }) {
-                            Icon(Icons.Filled.Add, contentDescription = newSessionDesc, tint = MaterialTheme.colorScheme.primary)
+                        Box {
+                            IconButton(onClick = { showCreateModeMenu = true }) {
+                                Icon(Icons.Filled.Add, contentDescription = newSessionDesc, tint = MaterialTheme.colorScheme.primary)
+                            }
+                            DropdownMenu(
+                                expanded = showCreateModeMenu,
+                                onDismissRequest = { showCreateModeMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.sessions_mode_role)) },
+                                    leadingIcon = {
+                                        Icon(Icons.Filled.Person, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        showCreateModeMenu = false
+                                        createConfigMode = "character"
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.sessions_mode_agent)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_agent_neko),
+                                            contentDescription = null
+                                        )
+                                    },
+                                    onClick = {
+                                        showCreateModeMenu = false
+                                        viewModel.createSession(
+                                            CreateSessionRequest(
+                                                name = agentChatName,
+                                                sessionMode = "agent",
+                                                systemPrompt = "",
+                                                firstMessage = "",
+                                                senderName = "Agent",
+                                                characterId = "",
+                                                userId = ServiceContainer.prefs.username.takeIf { it.isNotBlank() }
+                                            )
+                                        ) { session ->
+                                            session.id?.takeIf { it.isNotBlank() }?.let(handleOpenChat)
+                                        }
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.sessions_mode_group)) },
+                                    leadingIcon = {
+                                        Icon(Icons.Outlined.Group, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        showCreateModeMenu = false
+                                        createConfigMode = "group"
+                                    }
+                                )
+                            }
                         }
                     }
                 },
@@ -429,7 +484,7 @@ fun SessionsScreen(
                     onOpenChat = handleOpenChat,
                     onQuickAction = { action ->
                         when (action) {
-                            DashboardQuickAction.NEW_SESSION -> showCreate = true
+                            DashboardQuickAction.NEW_SESSION -> createConfigMode = "character"
                             DashboardQuickAction.AI_CONFIG -> onNavigate(Routes.AI_CONFIG_CENTER)
                             DashboardQuickAction.WORLD_BOOKS -> onNavigate(Routes.WORLD_BOOKS)
                             DashboardQuickAction.SETTINGS -> onNavigate(Routes.SETTINGS)
@@ -638,13 +693,14 @@ fun SessionsScreen(
     }
 
     // 新建会话弹窗
-    if (showCreate) {
+    createConfigMode?.let { sessionMode ->
         CreateSessionDialog(
+            initialSessionMode = sessionMode,
             characters = characters,
             isLocalMode = appMode == AppMode.LOCAL,
-            onDismiss = { showCreate = false },
+            onDismiss = { createConfigMode = null },
             onCreate = { req ->
-                viewModel.createSession(req) { showCreate = false }
+                viewModel.createSession(req) { createConfigMode = null }
             },
             onLoadCharacters = { viewModel.loadCharacters() }
         )
@@ -1120,10 +1176,11 @@ private fun SelectableChip(
     }
 }
 
-/** 新建会话弹窗：支持角色 / Agent / 群聊三种模式。 */
+/** 新建会话配置弹窗：根据入口指定角色或群聊模式。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CreateSessionDialog(
+    initialSessionMode: String,
     characters: List<CharacterPreset>,
     isLocalMode: Boolean,
     onDismiss: () -> Unit,
@@ -1134,13 +1191,8 @@ private fun CreateSessionDialog(
     val newSessionDefault = stringResource(R.string.sessions_new_default)
     val newSessionTitle = stringResource(R.string.sessions_new)
     val createText = stringResource(R.string.common_create)
-    val agentChatName = stringResource(R.string.sessions_agent_chat)
     val groupChatName = stringResource(R.string.sessions_group_chat)
-    val modeRole = stringResource(R.string.sessions_mode_role)
-    val modeAgent = stringResource(R.string.sessions_mode_agent)
-    val modeGroup = stringResource(R.string.sessions_mode_group)
     val nameOptional = stringResource(R.string.sessions_name_optional)
-    val agentNoInherit = stringResource(R.string.sessions_agent_no_inherit)
     val strategyLabel = stringResource(R.string.sessions_strategy)
     val strategyRoundRobin = stringResource(R.string.sessions_strategy_round_robin)
     val strategyMention = stringResource(R.string.sessions_strategy_mention)
@@ -1156,7 +1208,7 @@ private fun CreateSessionDialog(
     val noneSelectText = stringResource(R.string.sessions_none_select)
     val firstMessageOptional = stringResource(R.string.sessions_first_message_optional)
 
-    var sessionMode by rememberSaveable { mutableStateOf("character") }
+    val sessionMode = initialSessionMode
     var name by rememberSaveable { mutableStateOf(newSessionDefault) }
     var characterName by rememberSaveable { mutableStateOf("") }
     var firstMessage by rememberSaveable { mutableStateOf("") }
@@ -1208,17 +1260,8 @@ private fun CreateSessionDialog(
         confirmText = createText,
         onConfirm = {
             val char = selectedCharacter
-            val req = when (sessionMode) {
-                "agent" -> CreateSessionRequest(
-                    name = name.ifBlank { agentChatName },
-                    sessionMode = "agent",
-                    systemPrompt = "",
-                    firstMessage = "",
-                    senderName = "Agent",
-                    characterId = "",
-                    userId = ServiceContainer.prefs.username.takeIf { it.isNotBlank() }
-                )
-                "group" -> CreateSessionRequest(
+            val req = if (sessionMode == "group") {
+                CreateSessionRequest(
                     name = name.ifBlank { groupChatName },
                     sessionMode = "group",
                     characterIds = selectedGroupCharacterIds,
@@ -1228,7 +1271,8 @@ private fun CreateSessionDialog(
                         addProperty("speaker_strategy", speechStrategy)
                     }
                 )
-                else -> CreateSessionRequest(
+            } else {
+                CreateSessionRequest(
                     name = name.ifBlank { newSessionDefault },
                     sessionMode = "character",
                     characterId = char?.id,
@@ -1245,51 +1289,7 @@ private fun CreateSessionDialog(
             onCreate(req)
         },
         content = {
-            // 模式选择 Tab
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                SelectableChip(
-                    label = modeRole,
-                    selected = sessionMode == "character",
-                    onClick = { sessionMode = "character" }
-                )
-                SelectableChip(
-                    label = modeAgent,
-                    selected = sessionMode == "agent",
-                    onClick = { sessionMode = "agent" }
-                )
-                SelectableChip(
-                    label = modeGroup,
-                    selected = sessionMode == "group",
-                    onClick = { sessionMode = "group" }
-                )
-            }
-            Spacer(Modifier.height(12.dp))
-
             when (sessionMode) {
-                "agent" -> {
-                    OutlinedTextField(
-                        value = name,
-                        onValueChange = {
-                            name = it
-                            nameEditedByUser = it.isNotBlank()
-                        },
-                        label = { Text(nameOptional) },
-                        placeholder = { Text(agentChatName, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        agentNoInherit,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
                 "group" -> {
                     OutlinedTextField(
                         value = name,
@@ -2214,14 +2214,14 @@ class SessionsViewModel : BaseViewModel() {
         )
     }
 
-    /** 新建会话，成功后刷新并回调 [onSuccess]。 */
-    fun createSession(req: CreateSessionRequest, onSuccess: () -> Unit = {}) {
+    /** 新建会话，成功后刷新并回调新会话。 */
+    fun createSession(req: CreateSessionRequest, onSuccess: (Session) -> Unit = {}) {
         launchResult(
             block = { unified.createSession(req) },
-            onSuccess = {
+            onSuccess = { session ->
                 showToast(string(R.string.sessions_created_toast))
                 loadSessions()
-                onSuccess()
+                onSuccess(session)
             }
         )
     }
