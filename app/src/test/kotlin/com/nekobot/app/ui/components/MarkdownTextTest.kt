@@ -34,6 +34,16 @@ class MarkdownTextTest {
     }
 
     @Test
+    fun `standalone markdown image is parsed as an image block`() {
+        val block = parseBlocks("![生成图片](file:///data/user/0/com.nekobot.app/files/image.png)").single()
+
+        assertTrue(block is MdBlock.Image)
+        block as MdBlock.Image
+        assertEquals("生成图片", block.alt)
+        assertEquals("file:///data/user/0/com.nekobot.app/files/image.png", block.url)
+    }
+
+    @Test
     fun `inner monologue is parsed structurally without visible marker`() {
         val blocks = parseBlocks("前文（内心：有点紧张）后文", chatMode = true)
 

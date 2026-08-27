@@ -299,6 +299,12 @@
     <string name="chat_ai_label">AI</string>
     <string name="chat_delete_message_title">メッセージを削除</string>
     <string name="chat_delete_message_confirm">このメッセージを削除してもよろしいですか？</string>
+    <string name="chat_edit_message_title">メッセージを編集</string>
+    <string name="chat_edit_message_input">メッセージ内容</string>
+    <string name="chat_edit_message_resend">再送信</string>
+    <string name="chat_edit_message_discard_notice">保存すると、このメッセージ以降の会話を破棄し、新しい応答を生成します。</string>
+    <string name="chat_edit_message_empty">メッセージを入力してください</string>
+    <string name="chat_edit_message_failed">メッセージの編集に失敗しました</string>
     <string name="chat_message_actions">メッセージ操作</string>
     <string name="chat_multi_select">複数選択</string>
     <string name="chat_select_text_title">テキストを選択</string>

@@ -284,6 +284,7 @@ class ChatViewModel : BaseViewModel() {
         .flatMapLatest { it }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
     private val _sending: MutableStateFlow<Boolean> get() = runtime.sending
+    private val _editingMessage = MutableStateFlow(false)
 
     val agentContextCompressionInProgress: StateFlow<Boolean> = _runtime
         .map { it.agentContextCompressionInProgress }
@@ -1586,7 +1587,7 @@ class ChatViewModel : BaseViewModel() {
                             }
                             callbacks.onUserTranscript(userText, true)
                             callbacks.onAssistantTranscript(assistantText, true)
-                            when (
+                            val savedUser = when (
                                 val saved = unified.addConversationMessage(
                                     sessionId,
                                     role = "user",
@@ -1594,9 +1595,10 @@ class ChatViewModel : BaseViewModel() {
                                 )
                             ) {
                                 is Resource.Error -> throw IllegalStateException(saved.message)
-                                else -> Unit
+                                is Resource.Success -> saved.data
+                                is Resource.Loading -> throw IllegalStateException(string(R.string.chat_send_failed))
                             }
-                            when (
+                            val savedAssistant = when (
                                 val saved = unified.addConversationMessage(
                                     sessionId,
                                     role = "assistant",
@@ -1605,8 +1607,14 @@ class ChatViewModel : BaseViewModel() {
                                 )
                             ) {
                                 is Resource.Error -> throw IllegalStateException(saved.message)
-                                else -> Unit
+                                is Resource.Success -> saved.data
+                                is Resource.Loading -> throw IllegalStateException(string(R.string.chat_send_failed))
                             }
+                            // 图片工具在 Realtime 通话中先于消息落库执行；此时才能绑定到 AI 回复。
+                            toolRuntime?.persistGeneratedImages(
+                                savedAssistant.id ?: savedUser.id
+                                    ?: throw IllegalStateException(string(R.string.chat_send_failed))
+                            )
                             _sending.value = false
                             loadMessages()
                             callbacks.onCompleted()
@@ -1721,7 +1729,7 @@ class ChatViewModel : BaseViewModel() {
         val content = text.trim()
         val messageContent = buildChatMessageContent(content, attachments)
         if (messageContent.isBlank()) return
-        if (_sending.value || runtime.hasBlockingLocalChatJob() || currentSessionId.isBlank()) return
+        if (_sending.value || _editingMessage.value || runtime.hasBlockingLocalChatJob() || currentSessionId.isBlank()) return
         if (plotChoiceId != null) {
             viewModelScope.launch {
                 commitPlotChoiceSelection(plotChoiceId)
@@ -2365,6 +2373,51 @@ class ChatViewModel : BaseViewModel() {
                 onSuccess()
             }
         )
+    }
+
+    /**
+     * 重新编辑用户消息：删除该消息及其之后的全部历史，再以编辑后的文本发起新一轮对话。
+     * 通过反向删除保持远程与本地会话的上下文一致，避免服务端按消息顺序校验时产生孤儿记录。
+     */
+    fun editUserMessage(message: Message, editedContent: String) {
+        val content = editedContent.trim()
+        if (content.isBlank()) {
+            showError(string(R.string.chat_edit_message_empty))
+            return
+        }
+        if (!message.isUser || _sending.value || _editingMessage.value || runtime.hasBlockingLocalChatJob()) return
+        val sessionId = currentSessionId.takeIf(String::isNotBlank) ?: return
+        val history = _messages.value.filterNot { it.id == streamingId }
+        val messageIndex = history.indexOfFirst { it.id == message.id }
+        if (messageIndex < 0) return
+        val deleteIds = history.drop(messageIndex).mapNotNull { it.id?.takeIf(String::isNotBlank) }
+        if (deleteIds.isEmpty()) return
+
+        viewModelScope.launch {
+            _editingMessage.value = true
+            var shouldResend = false
+            try {
+                for (messageId in deleteIds.asReversed()) {
+                    when (val result = unified.deleteMessage(sessionId, messageId)) {
+                        is Resource.Success -> Unit
+                        is Resource.Error -> throw IllegalStateException(
+                            result.message ?: string(R.string.chat_edit_message_failed)
+                        )
+                        is Resource.Loading -> throw IllegalStateException(
+                            string(R.string.chat_edit_message_failed)
+                        )
+                    }
+                }
+                _messages.value = history.take(messageIndex)
+                shouldResend = true
+            } catch (error: Exception) {
+                loadMessages()
+                showError(error.message ?: string(R.string.chat_edit_message_failed))
+            } finally {
+                _editingMessage.value = false
+            }
+            if (shouldResend) sendMessage(content)
+        }
     }
 
     /** 删除消息下方失败的 AI 生图记录，使失败气泡从会话中消失。 */

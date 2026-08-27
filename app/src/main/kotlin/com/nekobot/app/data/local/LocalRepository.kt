@@ -1689,6 +1689,33 @@ class LocalRepository(
             )
         }
 
+    /** 将工具返回的图片安全地持久化并关联到指定聊天消息。 */
+    suspend fun attachGeneratedImages(
+        sessionId: String,
+        messageId: String,
+        prompt: String,
+        images: List<LocalImageResult>
+    ) = withContext(Dispatchers.IO) {
+        images.forEach { image ->
+            val task = try {
+                enqueueMessageImage(
+                    sessionId = sessionId,
+                    messageId = messageId,
+                    prompt = prompt
+                )
+            } catch (error: Exception) {
+                LocalLogger.e(TAG, "创建消息图片任务失败: ${error.message}")
+                return@forEach
+            }
+            try {
+                completeMessageImage(task.id, image)
+            } catch (error: Exception) {
+                failMessageImage(task.id, error.message ?: "图片保存失败")
+                LocalLogger.e(TAG, "保存消息图片失败: ${error.message}")
+            }
+        }
+    }
+
     suspend fun failMessageImage(id: String, error: String) = withContext(Dispatchers.IO) {
         messageImageDao.getById(id)?.let { task ->
             messageImageDao.upsert(
@@ -4735,6 +4762,7 @@ class LocalRepository(
             ?.let { LocalWorkspaceStorage.resolve(it, sessionId) }
         val sharedWorkspaceRoot = appContext?.filesDir
             ?.let { LocalWorkspaceStorage.resolveShared(it) }
+        val pendingGeneratedImages = mutableListOf<Pair<String, List<LocalImageResult>>>()
         val localTools = LocalAgentToolExecutor(
             sessionId = sessionId,
             workspaceRoot = workspaceRoot,
@@ -4769,6 +4797,11 @@ class LocalRepository(
                         requestTag = sessionId,
                         shouldStop = generationController::isStopped
                     )
+                }
+            },
+            generatedImagesSink = { prompt, images ->
+                synchronized(pendingGeneratedImages) {
+                    pendingGeneratedImages += prompt to images
                 }
             },
             generationController = generationController,
@@ -4807,6 +4840,19 @@ class LocalRepository(
                     toolName in localDbToolIds -> dbTools.execute(toolName, arguments)
                     toolName == "browser_use" -> executeLocalBrowserTool(sessionId, arguments)
                     else -> localTools.execute(toolName, arguments)
+                }
+            },
+            persistGeneratedImages = { assistantMessageId ->
+                val imageBatches = synchronized(pendingGeneratedImages) {
+                    pendingGeneratedImages.toList().also { pendingGeneratedImages.clear() }
+                }
+                imageBatches.forEach { (prompt, images) ->
+                    attachGeneratedImages(
+                        sessionId = sessionId,
+                        messageId = assistantMessageId,
+                        prompt = prompt,
+                        images = images
+                    )
                 }
             }
         )

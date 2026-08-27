@@ -2,6 +2,8 @@ package com.nekobot.app.data.local.ai
 
 import android.util.Log
 import com.google.gson.Gson
+import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.LocalImageResult
 import com.nekobot.app.data.local.VISION_FAILURE_MARKER
 import com.nekobot.app.data.local.agentContextWindow
 import com.nekobot.app.data.local.isAgentContextSummary
@@ -102,6 +104,7 @@ internal class LocalPipelineCallbacks(
     private val sessionDao = db.sessionDao()
     private val messageDao = db.messageDao()
     private val agentRunDao = db.agentRunDao()
+    private val pendingGeneratedImages = mutableListOf<Pair<String, List<LocalImageResult>>>()
     private val localToolExecutor by lazy {
         LocalAgentToolExecutor(
             sessionId = session.id,
@@ -134,6 +137,11 @@ internal class LocalPipelineCallbacks(
                 kotlinx.coroutines.runBlocking {
                     visionDescriber?.invoke(url, question)
                         ?: VISION_FAILURE_MARKER + "视觉识别运行时不可用"
+                }
+            },
+            generatedImagesSink = { prompt, images ->
+                synchronized(pendingGeneratedImages) {
+                    pendingGeneratedImages += prompt to images
                 }
             },
             generationController = generationController,
@@ -469,6 +477,8 @@ internal class LocalPipelineCallbacks(
                 reasoningContent = reasoningContent.takeIf(String::isNotBlank)
             ))
 
+            persistPendingGeneratedImages(messageId)
+
             // 更新会话元信息
             val now = com.nekobot.app.data.local.LocalRepository.nowIsoStatic()
             val msgCount = messageDao.countBySession(session.id)
@@ -579,6 +589,28 @@ internal class LocalPipelineCallbacks(
             }
         } catch (e: Exception) {
             com.nekobot.app.data.local.LocalLogger.w(TAG, "路由结果回写失败: ${e.message}")
+        }
+    }
+
+    /** 图片工具早于最终回复执行，待回复消息拥有稳定 ID 后再写入关联记录。 */
+    private suspend fun persistPendingGeneratedImages(assistantMessageId: String) {
+        val imageBatches = synchronized(pendingGeneratedImages) {
+            pendingGeneratedImages.toList().also { pendingGeneratedImages.clear() }
+        }
+        imageBatches.forEach { (prompt, images) ->
+            try {
+                ServiceContainer.localRepository.attachGeneratedImages(
+                    sessionId = session.id,
+                    messageId = assistantMessageId,
+                    prompt = prompt,
+                    images = images
+                )
+            } catch (error: Exception) {
+                com.nekobot.app.data.local.LocalLogger.e(
+                    TAG,
+                    "关联 Agent 生成图片失败: ${error.message}"
+                )
+            }
         }
     }
 

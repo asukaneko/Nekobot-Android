@@ -305,6 +305,12 @@
     <string name="chat_ai_label">AI</string>
     <string name="chat_delete_message_title">删除消息</string>
     <string name="chat_delete_message_confirm">确定删除这条消息吗？</string>
+    <string name="chat_edit_message_title">编辑消息</string>
+    <string name="chat_edit_message_input">消息内容</string>
+    <string name="chat_edit_message_resend">重新发送</string>
+    <string name="chat_edit_message_discard_notice">保存后将舍弃此消息及其之后的对话，并重新生成回复。</string>
+    <string name="chat_edit_message_empty">消息内容不能为空</string>
+    <string name="chat_edit_message_failed">编辑消息失败</string>
     <string name="chat_message_actions">消息操作</string>
     <string name="chat_multi_select">多选</string>
     <string name="chat_select_text_title">选择文本</string>

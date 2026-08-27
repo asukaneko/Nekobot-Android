@@ -2,7 +2,9 @@ package com.nekobot.app.data.local.ai
 
 import com.google.gson.Gson
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.LocalImageResult
 import com.nekobot.app.data.local.db.BuiltinTools
+import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.data.remote.ExecAuthorization
 import com.nekobot.app.data.remote.ExecConfirmationRequest
 import okhttp3.MediaType.Companion.toMediaType
@@ -33,6 +35,7 @@ internal val localExecutableToolIds = setOf(
     "send_message",
     "get_session_thinking_history",
     "understand_image",
+    "generate_image",
     "workspace_create_file",
     "workspace_read_file",
     "workspace_edit_file",
@@ -147,7 +150,9 @@ internal fun buildLocalSkillToolDefinitions(): List<Map<String, Any>> {
  */
 internal data class RealtimeAgentToolRuntime(
     val tools: List<Map<String, Any>>,
-    val execute: suspend (toolName: String, arguments: Map<String, Any>) -> Map<String, Any>
+    val execute: suspend (toolName: String, arguments: Map<String, Any>) -> Map<String, Any>,
+    /** 实时语音链路会在回复消息落库后调用，用于关联本轮工具生成的图片。 */
+    val persistGeneratedImages: suspend (assistantMessageId: String) -> Unit = {}
 )
 
 /**
@@ -163,6 +168,11 @@ internal class LocalAgentToolExecutor(
     private val thinkingHistoryProvider: (Int) -> List<Map<String, Any>>,
     /** 视觉识别函数：传入 imageUrl（http URL 或 data URI）和问题，返回描述文本（非 suspend） */
     private val visionDescriber: ((String, String) -> String)? = null,
+    /** 图片生成函数：复用当前模式下已配置的 image_generation 模型队列。 */
+    private val imageGenerator: suspend (String, String, Int) -> Resource<List<LocalImageResult>> =
+        { prompt, size, count -> ServiceContainer.unified.generateImages(prompt, size, count) },
+    /** 将图片持久化并关联到当前会话消息，避免依赖模型回写本地 URI。 */
+    private val generatedImagesSink: suspend (String, List<LocalImageResult>) -> Unit = { _, _ -> },
     private val generationController: LocalGenerationController = LocalGenerationController(),
     /** 共享工作区根目录（跨会话），为 null 时不支持 shared:// 路径 */
     sharedWorkspaceRoot: File? = null,
@@ -174,6 +184,7 @@ internal class LocalAgentToolExecutor(
         .build()
 ) {
     private val gson = Gson()
+    private val imageGenerationSizes = setOf("1024x1024", "1792x1024", "1024x1792")
     private val workspace = workspaceRoot?.canonicalFile
     private val sharedWorkspace = sharedWorkspaceRoot?.canonicalFile
     private val androidToolExecutor by lazy {
@@ -205,6 +216,7 @@ internal class LocalAgentToolExecutor(
                 "send_message" -> sendMessage(args)
                 "get_session_thinking_history" -> thinkingHistory(args)
                 "understand_image" -> understandImage(args)
+                "generate_image" -> generateImage(args)
                 "workspace_create_file", "workspace_edit_file" -> writeWorkspaceFile(args)
                 "workspace_read_file", "workspace_parse_file" -> readWorkspaceFile(args)
                 "workspace_delete_file" -> deleteWorkspaceFile(args)
@@ -610,6 +622,46 @@ internal class LocalAgentToolExecutor(
     private fun thinkingHistory(args: Map<String, Any>): Map<String, Any> {
         val limit = args.int("limit", 10).coerceIn(1, 50)
         return success("history" to thinkingHistoryProvider(limit))
+    }
+
+    /** 调用已配置的图片生成模型，并由会话调用方将结果关联到最终 AI 回复。 */
+    private suspend fun generateImage(args: Map<String, Any>): Map<String, Any> {
+        val prompt = args.string("prompt").trim()
+        if (prompt.isBlank()) return failure("prompt 不能为空")
+        val size = args.string("size").trim().ifBlank { "1024x1024" }
+        if (size !in imageGenerationSizes) {
+            return failure("size 仅支持：${imageGenerationSizes.joinToString("、")}")
+        }
+        val count = args.int("n", 1).coerceIn(1, 4)
+
+        return when (val result = imageGenerator(prompt, size, count)) {
+            is Resource.Success -> {
+                if (result.data.isEmpty()) return failure("图片生成未返回任何结果")
+                try {
+                    generatedImagesSink(prompt, result.data)
+                } catch (error: Exception) {
+                    return failure("图片生成成功，但保存到会话失败: ${error.message}")
+                }
+                val images = result.data.mapIndexed { index, image ->
+                    mapOf(
+                        "index" to index + 1,
+                        "mime_type" to image.mimeType,
+                        "model_id" to image.usedModelId,
+                        "model_name" to image.usedModelName
+                    )
+                }
+                success(
+                    "prompt" to prompt,
+                    "size" to size,
+                    "images" to images,
+                    "displayed_in_chat" to true,
+                    "instruction" to "图片会附加在本轮 AI 回复下方，请用自然语言告知用户生成完成，不要输出本地 URI 或 Markdown 图片链接。"
+                )
+            }
+
+            is Resource.Error -> failure(result.message ?: "图片生成失败")
+            is Resource.Loading -> failure("图片生成仍在处理中")
+        }
     }
 
     /**

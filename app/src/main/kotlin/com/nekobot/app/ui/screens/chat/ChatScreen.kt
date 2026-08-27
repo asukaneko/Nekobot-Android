@@ -83,6 +83,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Folder
@@ -302,6 +303,7 @@ fun ChatScreen(
     }
     var menuExpanded by rememberSaveable(sessionId) { mutableStateOf(false) }
     var deletingMessage by remember { mutableStateOf<Message?>(null) }
+    var editingMessage by remember(sessionId) { mutableStateOf<Message?>(null) }
     var messageActionTarget by remember(sessionId) { mutableStateOf<Message?>(null) }
     var previewGeneratedImage by remember(sessionId) {
         mutableStateOf<LocalMessageImageEntity?>(null)
@@ -1125,6 +1127,11 @@ fun ChatScreen(
                                     onRegenerateTts = { viewModel.regenerateMessageTts(msg) },
                                     onFork = { msg.id?.let { mid -> viewModel.forkFromMessage(mid) { onOpenChat(it) } } },
                                     onCopy = { msg.displayContent },
+                                    onEdit = if (msg.isUser && !sending) {
+                                        { editingMessage = msg }
+                                    } else {
+                                        null
+                                    },
                                     onDelete = if (
                                         ServiceContainer.prefs.isLocalMode &&
                                         msg.isLocalCommandMessage()
@@ -1348,6 +1355,54 @@ fun ChatScreen(
                 }
             )
             Spacer(Modifier.height(24.dp))
+        }
+    }
+
+    editingMessage?.let { message ->
+        var editedContent by remember(message.id, message.content) {
+            mutableStateOf(message.displayContent)
+        }
+        var showEditValidationError by remember(message.id) { mutableStateOf(false) }
+        NekoDialog(
+            onDismiss = { editingMessage = null },
+            title = stringResource(R.string.chat_edit_message_title),
+            confirmText = stringResource(R.string.chat_edit_message_resend),
+            onConfirm = {
+                if (editedContent.isBlank()) {
+                    showEditValidationError = true
+                } else {
+                    viewModel.editUserMessage(message, editedContent)
+                    editingMessage = null
+                }
+            },
+            cancelText = stringResource(R.string.common_cancel),
+            onCancel = { editingMessage = null }
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = editedContent,
+                    onValueChange = {
+                        editedContent = it
+                        showEditValidationError = false
+                    },
+                    label = { Text(stringResource(R.string.chat_edit_message_input)) },
+                    minLines = 3,
+                    maxLines = 8,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (showEditValidationError) {
+                    Text(
+                        text = stringResource(R.string.chat_edit_message_empty),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.chat_edit_message_discard_notice),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 
@@ -2496,6 +2551,7 @@ private fun MessageBubble(
     onRegenerateTts: () -> Unit = {},
     onFork: () -> Unit = {},
     onCopy: () -> String = { "" },
+    onEdit: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
     sessionId: String = "",
     selectionMode: Boolean = false,
@@ -2859,6 +2915,14 @@ private fun MessageBubble(
                                     clipboard.setText(AnnotatedString(text))
                                 }
                             )
+                            onEdit?.let { edit ->
+                                Spacer(Modifier.width(4.dp))
+                                IconActionButton(
+                                    icon = Icons.Filled.Edit,
+                                    description = stringResource(R.string.common_edit),
+                                    onClick = edit
+                                )
+                            }
                             onDelete?.let { delete ->
                                 Spacer(Modifier.width(4.dp))
                                 IconActionButton(

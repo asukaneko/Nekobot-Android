@@ -2,6 +2,8 @@ package com.nekobot.app.data.local.ai
 
 import com.nekobot.app.data.remote.ExecAuthorization
 import com.nekobot.app.data.remote.ExecConfirmationRequest
+import com.nekobot.app.data.local.LocalImageResult
+import com.nekobot.app.data.repository.Resource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -158,6 +160,7 @@ class LocalAgentToolingTest {
         assertTrue("file_write" in names)
         assertTrue("file_edit" in names)
         assertTrue("read_image" in names)
+        assertTrue("generate_image" in names)
         assertTrue("workspace_read_file" in names)
         assertTrue("workspace_extract_epub" in names)
         assertTrue("agent_memory_read" in names)
@@ -244,6 +247,49 @@ class LocalAgentToolingTest {
         assertTrue("new_tab" in actionDescription)
         assertTrue("fetch" in actionDescription)
         assertTrue("wait_for_dom_stable" in actionDescription)
+    }
+
+    @Test
+    fun generateImageToolPersistsImagesThroughConversationSink() = runBlocking {
+        var savedPrompt: String? = null
+        var savedImages: List<LocalImageResult> = emptyList()
+        val executor = LocalAgentToolExecutor(
+            sessionId = "session-image-generation",
+            workspaceRoot = null,
+            authorizationManager = LocalExecAuthorizationManager(100),
+            onConfirmationRequired = {},
+            thinkingHistoryProvider = { emptyList() },
+            imageGenerator = { prompt, size, count ->
+                assertEquals("一只在月光下的猫", prompt)
+                assertEquals("1024x1024", size)
+                assertEquals(1, count)
+                Resource.Success(
+                    listOf(
+                        LocalImageResult(
+                            cacheUri = "file:///cache/generated.png",
+                            mimeType = "image/png",
+                            usedModelId = "image-model",
+                            usedModelName = "Image Model"
+                        )
+                    )
+                )
+            },
+            generatedImagesSink = { prompt, images ->
+                savedPrompt = prompt
+                savedImages = images
+            }
+        )
+
+        val result = executor.execute(
+            "generate_image",
+            mapOf("prompt" to "一只在月光下的猫")
+        )
+
+        assertEquals(true, result["success"])
+        assertEquals(true, result["displayed_in_chat"])
+        assertEquals("一只在月光下的猫", savedPrompt)
+        assertEquals("file:///cache/generated.png", savedImages.single().cacheUri)
+        assertFalse(result.containsKey("image_markdown"))
     }
 
     @Test

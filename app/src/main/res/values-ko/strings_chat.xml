@@ -299,6 +299,12 @@
     <string name="chat_ai_label">AI</string>
     <string name="chat_delete_message_title">메시지 삭제</string>
     <string name="chat_delete_message_confirm">이 메시지를 삭제할까요?</string>
+    <string name="chat_edit_message_title">메시지 편집</string>
+    <string name="chat_edit_message_input">메시지 내용</string>
+    <string name="chat_edit_message_resend">다시 보내기</string>
+    <string name="chat_edit_message_discard_notice">저장하면 이 메시지와 이후 대화가 삭제되고 새 응답을 생성합니다.</string>
+    <string name="chat_edit_message_empty">메시지를 입력하세요</string>
+    <string name="chat_edit_message_failed">메시지 편집에 실패했습니다</string>
     <string name="chat_message_actions">메시지 작업</string>
     <string name="chat_multi_select">다중 선택</string>
     <string name="chat_select_text_title">텍스트 선택</string>

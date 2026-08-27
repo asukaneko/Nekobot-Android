@@ -237,6 +237,19 @@ object BuiltinTools {
             )
         ),
         BuiltinToolSpec(
+            id = "generate_image",
+            name = "图片生成",
+            description = "根据文本描述生成图片。仅当用户明确要求创建、绘制或生成图片时调用。成功后图片会自动附加到本轮 AI 回复下方；最终回复只需用自然语言说明生成结果，不要输出本地 URI 或 Markdown 图片链接。",
+            parametersJson = params(
+                mapOf(
+                    "prompt" to mapOf("type" to "string", "description" to "图片的详细描述，包含主体、场景、风格、构图和需要避免的内容"),
+                    "size" to mapOf("type" to "string", "description" to "可选尺寸：1024x1024（默认）、1792x1024（横向）或 1024x1792（纵向）"),
+                    "n" to mapOf("type" to "integer", "description" to "生成数量，范围 1-4，默认 1")
+                ),
+                listOf("prompt")
+            )
+        ),
+        BuiltinToolSpec(
             id = "save_to_memory",
             name = "保存到记忆",
             description = "将指定内容保存到角色长期记忆中。",

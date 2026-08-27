@@ -38,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -58,6 +59,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.nekobot.app.R
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 
 /**
  * 自定义 Markdown 渲染器，参考原仓库 nbot-methods.js 的 renderMarkdown。
@@ -117,6 +120,7 @@ sealed class MdBlock {
     data class ListItem(val ordered: Boolean, val items: List<String>) : MdBlock()
     data class Blockquote(val content: String) : MdBlock()
     data class Table(val header: List<String>, val rows: List<List<String>>) : MdBlock()
+    data class Image(val alt: String, val url: String) : MdBlock()
     object HorizontalRule : MdBlock()
     data class InnerMonologue(val content: String) : MdBlock()
     data class Paragraph(val content: String) : MdBlock()
@@ -147,6 +151,14 @@ fun parseBlocks(text: String, chatMode: Boolean = false): List<MdBlock> {
             }
             i++ // 跳过结束的 ```
             blocks.add(MdBlock.CodeBlock(language, codeLines.joinToString("\n")))
+            continue
+        }
+
+        // 独立图片块：兼容历史 AI 回复中的 ![说明](https://...) / file:// URI。
+        val imageMatch = Regex("^!\\[([^]]*)]\\(([^\\s)]+)\\)\\s*$").find(line)
+        if (imageMatch != null) {
+            blocks.add(MdBlock.Image(imageMatch.groupValues[1], imageMatch.groupValues[2]))
+            i++
             continue
         }
 
@@ -359,6 +371,7 @@ private fun RenderBlock(
             )
         }
         is MdBlock.Table -> TableRenderer(block, color, style)
+        is MdBlock.Image -> MarkdownImageRenderer(block)
         is MdBlock.HorizontalRule -> Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -403,6 +416,24 @@ private fun CodeBlockRenderer(block: MdBlock.CodeBlock) {
             )
         }
     }
+}
+
+@Composable
+private fun MarkdownImageRenderer(block: MdBlock.Image) {
+    val context = LocalContext.current
+    AsyncImage(
+        model = ImageRequest.Builder(context)
+            .data(block.url)
+            .crossfade(true)
+            .build(),
+        contentDescription = block.alt.takeIf(String::isNotBlank),
+        contentScale = ContentScale.Fit,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 360.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .padding(vertical = 4.dp)
+    )
 }
 
 @Composable
