@@ -288,6 +288,7 @@
     <string name="aimodel_editor_capability_tools">支持工具调用</string>
     <string name="aimodel_editor_capability_reasoning">支持推理 / 思考字段</string>
     <string name="aimodel_editor_capability_stream">支持流式响应</string>
+    <string name="aimodel_editor_capability_vision">支持视觉</string>
 
     <!-- TTS 配置 -->
     <string name="aimodel_editor_section_tts">TTS 语音合成</string>

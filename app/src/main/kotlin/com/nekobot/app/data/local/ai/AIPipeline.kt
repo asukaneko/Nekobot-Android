@@ -263,7 +263,15 @@ class AIPipeline {
         }
 
         // 图片视觉识别：调用 vision 模型获取描述，注入到用户消息
-        if (ctx.imageUrls.isNotEmpty()) {
+        val sendImagesDirectly =
+            ctx.imageUrls.isNotEmpty() && callbacks.supportsDirectImageInput(ctx)
+        if (sendImagesDirectly) {
+            ctx.metadata["direct_image_input"] = true
+            com.nekobot.app.data.local.LocalLogger.i(
+                TAG,
+                "Current chat model supports vision; attaching ${ctx.imageUrls.size} images directly"
+            )
+        } else if (ctx.imageUrls.isNotEmpty()) {
             val descriptions = try {
                 callbacks.resolveImages(ctx, ctx.imageUrls.toList())
             } catch (e: Exception) {
@@ -399,7 +407,11 @@ class AIPipeline {
             knowledgeText = "",
             maxTotalChars = maxContextChars
         )
-        ctx.messages = prepared.messages
+        ctx.messages = if (sendImagesDirectly) {
+            attachImagesToLatestUserMessage(prepared.messages, ctx.imageUrls)
+        } else {
+            prepared.messages
+        }
         ctx.toolCallHistory = prepared.toolCallHistory
     }
 
@@ -1098,4 +1110,25 @@ class AIPipeline {
 // ============================================================================
 
 /** 全局 AIPipeline 单例 */
+internal fun attachImagesToLatestUserMessage(
+    messages: List<Map<String, Any>>,
+    imageUrls: List<String>
+): List<Map<String, Any>> {
+    if (imageUrls.isEmpty()) return messages
+    val userIndex = messages.indexOfLast { it["role"] == "user" }
+    if (userIndex < 0) return messages
+
+    val message = messages[userIndex]
+    val text = message["content"] as? String ?: return messages
+    val content = buildList<Map<String, Any>> {
+        text.takeIf { it.isNotBlank() }?.let { add(mapOf("type" to "text", "text" to it)) }
+        imageUrls.forEach { imageUrl ->
+            add(mapOf("type" to "image_url", "image_url" to mapOf("url" to imageUrl)))
+        }
+    }
+    return messages.mapIndexed { index, item ->
+        if (index == userIndex) item.toMutableMap().apply { put("content", content) } else item
+    }
+}
+
 val aiPipeline = AIPipeline()

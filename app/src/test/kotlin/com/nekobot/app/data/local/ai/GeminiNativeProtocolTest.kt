@@ -79,6 +79,33 @@ class GeminiNativeProtocolTest {
     }
 
     @Test
+    fun `payload maps OpenAI image content blocks to Gemini inline data`() {
+        val payload = GeminiNativeProtocol.buildPayload(
+            model = "gemini-2.5-flash",
+            messages = listOf(
+                mapOf(
+                    "role" to "user",
+                    "content" to listOf(
+                        mapOf("type" to "text", "text" to "Describe this image"),
+                        mapOf(
+                            "type" to "image_url",
+                            "image_url" to mapOf("url" to "data:image/png;base64,aGVsbG8=")
+                        )
+                    )
+                )
+            ),
+            stream = false,
+            extra = emptyMap()
+        )
+
+        val contents = payload["contents"] as List<*>
+        val parts = (contents.single() as Map<*, *>)["parts"] as List<*>
+        val inlineData = (parts[1] as Map<*, *>)["inlineData"] as Map<*, *>
+        assertEquals("image/png", inlineData["mimeType"])
+        assertEquals("aGVsbG8=", inlineData["data"])
+    }
+
+    @Test
     fun `response and stream chunks expose content tools thinking and usage`() {
         val response = GeminiNativeProtocol.parseNonStreamResponse(
             mapOf(

@@ -587,6 +587,13 @@ internal class LocalPipelineCallbacks(
     /** 故障转移队列：activeModel 优先，附加 [failoverQueue] */
     private val modelQueue: List<LocalAiModelEntity> = listOf(activeModel) + failoverQueue.filter { it.id != activeModel.id }
 
+    private fun modelQueueFor(ctx: PipelineContext): List<LocalAiModelEntity> =
+        if (ctx.metadata["direct_image_input"] == true) {
+            modelQueue.filter(LocalAiModelEntity::supportsVision).ifEmpty { modelQueue }
+        } else {
+            modelQueue
+        }
+
     override fun buildModelCall(ctx: PipelineContext, tools: List<Map<String, Any>>): ModelCall {
         // 在模型调用前触发 character.before_turn.finished（此时 ctx.characterTurn 已就绪）
         triggerBeforeTurnHook(ctx)
@@ -620,7 +627,7 @@ internal class LocalPipelineCallbacks(
                     kotlinx.coroutines.runBlocking {
                         try {
                             val exec = coordinator.execute(
-                                models = modelQueue,
+                                models = modelQueueFor(ctx),
                                 purpose = activeModel.purpose.ifBlank { "chat" },
                                 requiredContextTokens = estimateLocalMessagesTokens(messages)
                             ) { model ->
@@ -639,7 +646,7 @@ internal class LocalPipelineCallbacks(
                 } else {
                     kotlinx.coroutines.runBlocking {
                         aiClient.chatOnceWithFailover(
-                            modelQueue,
+                            modelQueueFor(ctx),
                             messages,
                             extra,
                             requestTag = session.id,
@@ -704,7 +711,7 @@ internal class LocalPipelineCallbacks(
             try {
                 kotlinx.coroutines.runBlocking {
                     aiClient.chatStreamWithFailover(
-                        models = modelQueue,
+                        models = modelQueueFor(ctx),
                         messages = messages,
                         extra = extra,
                         requiredContextTokens = estimateLocalMessagesTokens(messages)
@@ -918,6 +925,9 @@ internal class LocalPipelineCallbacks(
     override fun getMemoryContext(ctx: PipelineContext): Map<String, Any> = getWorkspaceContext(ctx)
 
     // ---- 附件解析 ----
+
+    override fun supportsDirectImageInput(ctx: PipelineContext): Boolean =
+        activeModel.purpose.equals("chat", ignoreCase = true) && activeModel.supportsVision
 
     override fun resolveAttachmentData(ctx: PipelineContext, attachment: Map<String, Any>): Map<String, Any>? {
         val attType = (attachment["type"] as? String ?: "").lowercase()

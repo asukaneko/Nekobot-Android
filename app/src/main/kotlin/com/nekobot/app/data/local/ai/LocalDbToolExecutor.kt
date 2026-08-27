@@ -478,6 +478,7 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
                     "max_tokens" to int("最大输出 tokens"),
                     "top_p" to num("top_p"),
                     "supports_stream" to bool("是否支持流式，默认 true"),
+                    "supports_vision" to bool("是否支持视觉输入，仅对 chat 模型生效，默认 false"),
                     "append_base_url_path" to bool("是否追加 /v1 等路径，默认 true"),
                     "token_limit_daily" to int("每日 token 限额"),
                     "token_limit_weekly" to int("每周 token 限额"),
@@ -507,6 +508,7 @@ internal fun buildLocalDbToolDefinitions(): List<Map<String, Any>> {
                     "max_tokens" to int("最大 tokens"),
                     "top_p" to num("top_p"),
                     "supports_stream" to bool("是否支持流式"),
+                    "supports_vision" to bool("是否支持视觉输入，仅对 chat 模型生效"),
                     "append_base_url_path" to bool("是否追加 base url 路径"),
                     "token_limit_daily" to int("每日限额"),
                     "token_limit_weekly" to int("每周限额"),
@@ -1343,6 +1345,7 @@ internal class LocalDbToolExecutor(
         val baseUrl = args.string("base_url").ifBlank { return failure("base_url 不能为空") }
         val model = args.string("model").ifBlank { return failure("model 不能为空") }
         val proxyUrl = args.string("proxy_url")
+        val purpose = args.string("purpose").ifBlank { "chat" }
         runCatching { parseModelProxyUrl(proxyUrl) }.exceptionOrNull()?.let {
             return failure(it.message ?: "代理链接格式无效")
         }
@@ -1356,7 +1359,7 @@ internal class LocalDbToolExecutor(
             baseUrl = baseUrl,
             model = model,
             enabled = args.bool("enabled", true),
-            purpose = args.string("purpose").ifBlank { "chat" },
+            purpose = purpose,
             priority = args.int("priority", 0),
             active = args.bool("active", false),
             temperature = args.float("temperature"),
@@ -1364,6 +1367,7 @@ internal class LocalDbToolExecutor(
             topP = args.float("top_p"),
             appendBaseUrlPath = args.bool("append_base_url_path", true),
             supportsStream = args.bool("supports_stream", true),
+            supportsVision = purpose.equals("chat", ignoreCase = true) && args.bool("supports_vision", false),
             createdAt = nowIso(),
             tokenLimitDaily = args.long("token_limit_daily", 0L),
             tokenLimitWeekly = args.long("token_limit_weekly", 0L),
@@ -1382,6 +1386,7 @@ internal class LocalDbToolExecutor(
         runCatching { parseModelProxyUrl(proxyUrl) }.exceptionOrNull()?.let {
             return failure(it.message ?: "代理链接格式无效")
         }
+        val purpose = args.optStringNN("purpose", existing.purpose)
         val updated = existing.copy(
             name = args.string("name").ifBlank { existing.name },
             protocol = args.optStringNN("protocol", existing.protocol),
@@ -1391,13 +1396,15 @@ internal class LocalDbToolExecutor(
             baseUrl = args.optStringNN("base_url", existing.baseUrl),
             model = args.optStringNN("model", existing.model),
             enabled = args.optBool("enabled", existing.enabled),
-            purpose = args.optStringNN("purpose", existing.purpose),
+            purpose = purpose,
             priority = args.optInt("priority", existing.priority),
             temperature = args.optFloatOrNull("temperature", existing.temperature),
             maxTokens = args.optIntOrNull("max_tokens", existing.maxTokens),
             topP = args.optFloatOrNull("top_p", existing.topP),
             appendBaseUrlPath = args.optBool("append_base_url_path", existing.appendBaseUrlPath),
             supportsStream = args.optBool("supports_stream", existing.supportsStream),
+            supportsVision = purpose.equals("chat", ignoreCase = true) &&
+                args.optBool("supports_vision", existing.supportsVision),
             tokenLimitDaily = args.optLong("token_limit_daily", existing.tokenLimitDaily),
             tokenLimitWeekly = args.optLong("token_limit_weekly", existing.tokenLimitWeekly),
             inputPrice = args.optDoubleOrNull("input_price", existing.inputPrice),
@@ -1773,6 +1780,7 @@ internal class LocalDbToolExecutor(
         "purpose" to purpose,
         "priority" to priority,
         "active" to active,
+        "supports_vision" to supportsVision,
         "base_url" to baseUrl,
         "uses_proxy" to proxyUrl.isNotBlank(),
         "created_at" to createdAt
@@ -1796,6 +1804,7 @@ internal class LocalDbToolExecutor(
         "top_p" to (topP ?: 1.0f),
         "append_base_url_path" to appendBaseUrlPath,
         "supports_stream" to supportsStream,
+        "supports_vision" to supportsVision,
         "token_limit_daily" to tokenLimitDaily,
         "token_limit_weekly" to tokenLimitWeekly,
         "failover_timeout" to failoverTimeout,

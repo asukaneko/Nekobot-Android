@@ -96,7 +96,7 @@ object AnthropicMessagesProtocol : LocalProtocol {
                             )
                         )
                     )
-                    else -> mapOf("role" to "user", "content" to (msg["content"] ?: ""))
+                    else -> mapOf("role" to "user", "content" to userContent(msg["content"]))
                 }
             }
         // Anthropic 要求 user/assistant 角色交替；一次返回多个工具调用时，
@@ -165,6 +165,38 @@ object AnthropicMessagesProtocol : LocalProtocol {
                 }
             }
         return payload
+    }
+
+    private fun userContent(content: Any?): Any {
+        if (content !is List<*>) return content ?: ""
+        val blocks = content.mapNotNull { raw ->
+            val block = raw as? Map<*, *> ?: return@mapNotNull null
+            when (block["type"] as? String) {
+                "text" -> (block["text"] as? String)
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { mapOf("type" to "text", "text" to it) }
+                "image_url" -> imageBlock(block)
+                else -> null
+            }
+        }
+        return blocks.takeIf { it.isNotEmpty() } ?: ""
+    }
+
+    private fun imageBlock(block: Map<*, *>): Map<String, Any>? {
+        val imageUrl = when (val image = block["image_url"]) {
+            is Map<*, *> -> image["url"] as? String
+            is String -> image
+            else -> null
+        }?.takeIf { it.isNotBlank() } ?: return null
+        val source = if (imageUrl.startsWith("data:")) {
+            val mediaType = imageUrl.substringAfter("data:", "").substringBefore(';')
+            val data = imageUrl.substringAfter("base64,", "")
+            if (mediaType.isBlank() || data.isBlank()) return null
+            mapOf("type" to "base64", "media_type" to mediaType, "data" to data)
+        } else {
+            mapOf("type" to "url", "url" to imageUrl)
+        }
+        return mapOf("type" to "image", "source" to source)
     }
 
     override fun parseStreamThinkingChunk(chunkJson: String): String? {

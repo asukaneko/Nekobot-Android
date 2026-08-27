@@ -213,6 +213,36 @@ class LocalProtocolToolCallingTest {
     }
 
     @Test
+    fun anthropicPayloadMapsOpenAiImageContentBlocks() {
+        val payload = AnthropicMessagesProtocol.buildPayload(
+            model = "claude-test",
+            messages = listOf(
+                mapOf(
+                    "role" to "user",
+                    "content" to listOf(
+                        mapOf("type" to "text", "text" to "Describe this image"),
+                        mapOf(
+                            "type" to "image_url",
+                            "image_url" to mapOf("url" to "data:image/png;base64,aGVsbG8=")
+                        )
+                    )
+                )
+            ),
+            stream = false,
+            extra = emptyMap()
+        )
+
+        val messages = payload["messages"] as List<*>
+        val content = (messages.single() as Map<*, *>)["content"] as List<*>
+        val image = content[1] as Map<*, *>
+        assertEquals("image", image["type"])
+        val source = image["source"] as Map<*, *>
+        assertEquals("base64", source["type"])
+        assertEquals("image/png", source["media_type"])
+        assertEquals("aGVsbG8=", source["data"])
+    }
+
+    @Test
     fun anthropicAdaptiveThinkingParsesDeltasAndResponse() {
         val payload = AnthropicMessagesProtocol.buildPayload(
             model = "claude-test",

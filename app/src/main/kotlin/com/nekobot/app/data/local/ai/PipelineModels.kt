@@ -284,6 +284,9 @@ open class PipelineCallbacks {
      */
     open fun resolveAttachmentData(ctx: PipelineContext, attachment: Map<String, Any>): Map<String, Any>? = null
 
+    /** 当前对话模型是否可直接接收图片内容块。 */
+    open fun supportsDirectImageInput(ctx: PipelineContext): Boolean = false
+
     /**
      * 调用视觉模型识别图片内容，返回每张图片的文本描述。
      *

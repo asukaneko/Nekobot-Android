@@ -278,6 +278,7 @@
     <string name="aimodel_editor_capability_tools">ツール呼び出しをサポート</string>
     <string name="aimodel_editor_capability_reasoning">推論 / 思考フィールドをサポート</string>
     <string name="aimodel_editor_capability_stream">ストリーミング応答をサポート</string>
+    <string name="aimodel_editor_capability_vision">視覚入力をサポート</string>
 
     <string name="aimodel_editor_section_tts">TTS 音声合成</string>
     <string name="aimodel_editor_section_live">Realtime 音声</string>

@@ -279,6 +279,7 @@
     <string name="aimodel_editor_capability_tools">Supports tool calling</string>
     <string name="aimodel_editor_capability_reasoning">Supports reasoning / thinking field</string>
     <string name="aimodel_editor_capability_stream">Supports streaming responses</string>
+    <string name="aimodel_editor_capability_vision">Supports vision</string>
 
     <string name="aimodel_editor_section_tts">TTS</string>
     <string name="aimodel_editor_section_live">Realtime voice</string>

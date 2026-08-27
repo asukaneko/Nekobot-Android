@@ -41,7 +41,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalKnowledgeChunkEntity::class,
         RoutingDecisionLogEntity::class
     ],
-    version = 35,
+    version = 36,
     exportSchema = true
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -754,6 +754,15 @@ abstract class NekobotDatabase : RoomDatabase() {
             }
         }
 
+        /** v35 → v36：为对话模型增加视觉输入能力开关。 */
+        val MIGRATION_35_36 = object : Migration(35, 36) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE local_ai_models ADD COLUMN supports_vision INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+        }
+
         /**
          * 完整迁移链同时供生产数据库构建和迁移回归测试使用。
          * 新版本必须把迁移追加到这里；缺少迁移时直接失败，绝不静默清空用户数据。
@@ -767,7 +776,7 @@ abstract class NekobotDatabase : RoomDatabase() {
             MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25,
             MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29,
             MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33,
-            MIGRATION_33_34, MIGRATION_34_35
+            MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36
         )
 
         fun get(context: Context): NekobotDatabase =

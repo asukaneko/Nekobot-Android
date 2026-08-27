@@ -103,6 +103,7 @@ data class AiModelEditorState(
     val supportsTools: Boolean = true,
     val supportsReasoning: Boolean = true,
     val supportsStream: Boolean = true,
+    val supportsVision: Boolean = false,
     val ttsProvider: String = "openai",
     val ttsUrl: String = "",
     val ttsModel: String = "",
@@ -612,6 +613,11 @@ fun AiModelEditorDialog(
             EditorSwitch(stringResource(R.string.aimodel_editor_capability_stream), state.supportsStream) {
                 state = state.copy(supportsStream = it)
             }
+            if (state.purpose == "chat") {
+                EditorSwitch(stringResource(R.string.aimodel_editor_capability_vision), state.supportsVision) {
+                    state = state.copy(supportsVision = it)
+                }
+            }
 
             when (state.purpose) {
                 "live" -> {
@@ -971,7 +977,8 @@ private fun AiModelEditorState.applyPricing(
         maxContextLength
     },
     supportsTools = if (overwrite) entry.supportsTools else supportsTools,
-    supportsReasoning = if (overwrite) entry.supportsReasoning else supportsReasoning
+    supportsReasoning = if (overwrite) entry.supportsReasoning else supportsReasoning,
+    supportsVision = if (purpose == "chat") supportsVision else false
 )
 
 @Composable
@@ -1021,6 +1028,7 @@ private fun AiModelEditorState.applyPreset(
         supportsTools = !isImageGeneration && preset.provider != "google",
         supportsReasoning = !isImageGeneration && preset.provider !in setOf("google", "minimax"),
         supportsStream = !isImageGeneration,
+        supportsVision = if (targetPurpose == "chat") supportsVision else false,
         ttsVoice = liveDefaults?.voice ?: ttsVoice,
         sttModel = liveDefaults?.transcriptionModel ?: sttModel
     )
@@ -1042,7 +1050,8 @@ private fun AiModelEditorState.applyPurpose(
             maxTokens = "2000",
             supportsTools = true,
             supportsReasoning = true,
-            supportsStream = true
+            supportsStream = true,
+            supportsVision = supportsVision
         )
         "live" -> {
             // 保留当前 provider：若已是 qwen/dashscope 则沿用 Qwen Realtime 默认配置，
@@ -1060,6 +1069,7 @@ private fun AiModelEditorState.applyPurpose(
                 supportsTools = false,
                 supportsReasoning = false,
                 supportsStream = true,
+                supportsVision = false,
                 ttsVoice = defaults.voice,
                 sttModel = defaults.transcriptionModel,
                 language = language.ifBlank { "zh" }
@@ -1072,7 +1082,8 @@ private fun AiModelEditorState.applyPurpose(
             maxTokens = "1000",
             supportsTools = false,
             supportsReasoning = false,
-            supportsStream = true
+            supportsStream = true,
+            supportsVision = false
         )
         "video" -> copy(
             name = renamed,
@@ -1081,7 +1092,8 @@ private fun AiModelEditorState.applyPurpose(
             maxTokens = "1500",
             supportsTools = false,
             supportsReasoning = false,
-            supportsStream = true
+            supportsStream = true,
+            supportsVision = false
         )
         "tts" -> copy(
             name = renamed,
@@ -1089,6 +1101,7 @@ private fun AiModelEditorState.applyPurpose(
             supportsTools = false,
             supportsReasoning = false,
             supportsStream = false,
+            supportsVision = false,
             ttsVoice = ttsVoice.ifBlank { "default" }
         )
         "stt" -> copy(
@@ -1097,6 +1110,7 @@ private fun AiModelEditorState.applyPurpose(
             supportsTools = false,
             supportsReasoning = false,
             supportsStream = false,
+            supportsVision = false,
             language = language.ifBlank { "zh" }
         )
         "embedding" -> copy(
@@ -1105,6 +1119,7 @@ private fun AiModelEditorState.applyPurpose(
             supportsTools = false,
             supportsReasoning = false,
             supportsStream = false,
+            supportsVision = false,
             dimensions = dimensions.ifBlank { "1536" }
         )
         "image_generation" -> copy(
@@ -1114,9 +1129,10 @@ private fun AiModelEditorState.applyPurpose(
             supportsTools = false,
             supportsReasoning = false,
             supportsStream = false,
+            supportsVision = false,
             size = size.ifBlank { "1024x1024" }
         )
-        else -> copy(name = renamed, purpose = purpose)
+        else -> copy(name = renamed, purpose = purpose, supportsVision = false)
     }
 }
 
@@ -1144,6 +1160,7 @@ fun AiModel?.toEditorState(protocols: List<ProtocolOption>): AiModelEditorState 
         supportsTools = model.supportsTools ?: true,
         supportsReasoning = model.supportsReasoning ?: true,
         supportsStream = model.supportsStream ?: true,
+        supportsVision = model.supportsVision ?: false,
         ttsProvider = model.ttsProvider ?: "openai",
         ttsUrl = model.ttsUrl.orEmpty(),
         ttsModel = model.ttsModel.orEmpty(),
@@ -1195,6 +1212,7 @@ fun LocalAiModelEntity?.toEditorState(protocols: List<ProtocolOption>): AiModelE
         supportsTools = model.supportsTools,
         supportsReasoning = model.supportsReasoning,
         supportsStream = model.supportsStream,
+        supportsVision = model.supportsVision,
         ttsProvider = model.ttsProvider,
         ttsUrl = model.ttsUrl,
         ttsModel = model.ttsModel,
@@ -1240,6 +1258,7 @@ fun AiModelEditorState.toRequest(): AiModelRequest = AiModelRequest(
     supportsTools = supportsTools,
     supportsReasoning = supportsReasoning,
     supportsStream = supportsStream,
+    supportsVision = if (purpose == "chat") supportsVision else false,
     ttsProvider = ttsProvider,
     ttsUrl = ttsUrl.ifBlank { null },
     ttsModel = ttsModel.ifBlank { null },
@@ -1288,6 +1307,7 @@ fun AiModelEditorState.toLocalEntity(existing: LocalAiModelEntity?): LocalAiMode
         supportsTools = supportsTools,
         supportsReasoning = supportsReasoning,
         supportsStream = supportsStream,
+        supportsVision = purpose == "chat" && supportsVision,
         ttsProvider = ttsProvider,
         ttsUrl = ttsUrl,
         ttsModel = ttsModel,

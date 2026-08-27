@@ -278,6 +278,7 @@
     <string name="aimodel_editor_capability_tools">도구 호출 지원</string>
     <string name="aimodel_editor_capability_reasoning">추론 / 사고 필드 지원</string>
     <string name="aimodel_editor_capability_stream">스트리밍 응답 지원</string>
+    <string name="aimodel_editor_capability_vision">시각 입력 지원</string>
 
     <string name="aimodel_editor_section_tts">TTS 음성 합성</string>
     <string name="aimodel_editor_section_live">Realtime 음성</string>

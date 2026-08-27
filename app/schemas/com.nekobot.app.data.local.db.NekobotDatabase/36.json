@@ -1,0 +1,2889 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 36,
+    "identityHash": "b832e875bf7208996aa49675cd1754a0",
+    "entities": [
+      {
+        "tableName": "local_sessions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `character_id` TEXT, `system_prompt` TEXT, `first_message` TEXT, `scenario` TEXT, `sender_name` TEXT, `sender_avatar` TEXT, `character_name` TEXT, `character_avatar` TEXT, `portrait` TEXT, `tags` TEXT, `favorite` INTEGER NOT NULL, `pinned` INTEGER NOT NULL, `archived` INTEGER NOT NULL, `created_at` TEXT NOT NULL, `updated_at` TEXT NOT NULL, `last_message` TEXT, `message_count` INTEGER NOT NULL, `plot_mode` INTEGER NOT NULL, `plot_realtime_sync` INTEGER NOT NULL, `plot_choice_style` TEXT, `plot_outline` TEXT, `user_persona` TEXT, `auto_state_interval` INTEGER NOT NULL, `disabled_prompt_keys` TEXT, `custom_prompts` TEXT, `prompt_stack_debug` TEXT, `composed_system_prompt` TEXT, `is_public` INTEGER NOT NULL, `proactive_chat` TEXT, `tts_config` TEXT, `share_config` TEXT, `archive_session_id` TEXT, `session_mode` TEXT NOT NULL DEFAULT 'character', `group_id` TEXT, `character_ids` TEXT, `group_config` TEXT, `group_active_speaker` TEXT, `group_turn_count` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "characterId",
+            "columnName": "character_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "systemPrompt",
+            "columnName": "system_prompt",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "firstMessage",
+            "columnName": "first_message",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "scenario",
+            "columnName": "scenario",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "senderName",
+            "columnName": "sender_name",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "senderAvatar",
+            "columnName": "sender_avatar",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "characterName",
+            "columnName": "character_name",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "characterAvatar",
+            "columnName": "character_avatar",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "portrait",
+            "columnName": "portrait",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "tags",
+            "columnName": "tags",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "favorite",
+            "columnName": "favorite",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pinned",
+            "columnName": "pinned",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "archived",
+            "columnName": "archived",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastMessage",
+            "columnName": "last_message",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "messageCount",
+            "columnName": "message_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "plotMode",
+            "columnName": "plot_mode",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "plotRealTimeSync",
+            "columnName": "plot_realtime_sync",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "plotChoiceStyle",
+            "columnName": "plot_choice_style",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "plotOutline",
+            "columnName": "plot_outline",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "userPersona",
+            "columnName": "user_persona",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "autoStateInterval",
+            "columnName": "auto_state_interval",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "disabledPromptKeys",
+            "columnName": "disabled_prompt_keys",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "customPrompts",
+            "columnName": "custom_prompts",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "promptStackDebug",
+            "columnName": "prompt_stack_debug",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "composedSystemPrompt",
+            "columnName": "composed_system_prompt",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "isPublic",
+            "columnName": "is_public",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "proactiveChat",
+            "columnName": "proactive_chat",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "ttsConfig",
+            "columnName": "tts_config",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "shareConfig",
+            "columnName": "share_config",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "archiveSessionId",
+            "columnName": "archive_session_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sessionMode",
+            "columnName": "session_mode",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'character'"
+          },
+          {
+            "fieldPath": "groupId",
+            "columnName": "group_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "characterIds",
+            "columnName": "character_ids",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "groupConfig",
+            "columnName": "group_config",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "groupActiveSpeaker",
+            "columnName": "group_active_speaker",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "groupTurnCount",
+            "columnName": "group_turn_count",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_messages",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `session_id` TEXT NOT NULL, `role` TEXT NOT NULL, `content` TEXT NOT NULL, `reasoning_content` TEXT, `sender` TEXT, `timestamp` TEXT NOT NULL, `model` TEXT, `input_tokens` INTEGER, `output_tokens` INTEGER, `audio_url` TEXT, `audio_updated_at` TEXT, `created_at` TEXT NOT NULL, `thinking_cards` TEXT, `tool_call_history` TEXT, `source` TEXT, `knowledge_citations` TEXT, `routing_decision_id` TEXT, PRIMARY KEY(`id`), FOREIGN KEY(`session_id`) REFERENCES `local_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "session_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "role",
+            "columnName": "role",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "content",
+            "columnName": "content",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reasoningContent",
+            "columnName": "reasoning_content",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sender",
+            "columnName": "sender",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "model",
+            "columnName": "model",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "inputTokens",
+            "columnName": "input_tokens",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "outputTokens",
+            "columnName": "output_tokens",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "audioUrl",
+            "columnName": "audio_url",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "audioUpdatedAt",
+            "columnName": "audio_updated_at",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "thinkingCards",
+            "columnName": "thinking_cards",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "toolCallHistory",
+            "columnName": "tool_call_history",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "knowledgeCitations",
+            "columnName": "knowledge_citations",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "routingDecisionId",
+            "columnName": "routing_decision_id",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_local_messages_session_id",
+            "unique": false,
+            "columnNames": [
+              "session_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_messages_session_id` ON `${TABLE_NAME}` (`session_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "local_sessions",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "session_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "local_message_images",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `session_id` TEXT NOT NULL, `message_id` TEXT NOT NULL, `prompt` TEXT NOT NULL, `reference_image_path` TEXT, `reference_image_mime_type` TEXT, `status` TEXT NOT NULL, `file_name` TEXT, `file_path` TEXT, `mime_type` TEXT, `model_id` TEXT, `model_name` TEXT, `error_message` TEXT, `created_at` TEXT NOT NULL, `updated_at` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "session_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageId",
+            "columnName": "message_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "prompt",
+            "columnName": "prompt",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "referenceImagePath",
+            "columnName": "reference_image_path",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "referenceImageMimeType",
+            "columnName": "reference_image_mime_type",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileName",
+            "columnName": "file_name",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "filePath",
+            "columnName": "file_path",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "mimeType",
+            "columnName": "mime_type",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "modelId",
+            "columnName": "model_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "modelName",
+            "columnName": "model_name",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "errorMessage",
+            "columnName": "error_message",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_local_message_images_session_id",
+            "unique": false,
+            "columnNames": [
+              "session_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_message_images_session_id` ON `${TABLE_NAME}` (`session_id`)"
+          },
+          {
+            "name": "index_local_message_images_message_id",
+            "unique": false,
+            "columnNames": [
+              "message_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_message_images_message_id` ON `${TABLE_NAME}` (`message_id`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_agent_runs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`session_id` TEXT NOT NULL, `run_id` TEXT NOT NULL, `user_message_id` TEXT NOT NULL, `prompt` TEXT NOT NULL, `attachments_json` TEXT, `status` TEXT NOT NULL, `stage` TEXT NOT NULL, `checkpoint_history` TEXT, `completed_tool_calls` INTEGER NOT NULL, `last_tool_name` TEXT, `last_error` TEXT, `assistant_message_id` TEXT, `created_at` TEXT NOT NULL, `updated_at` TEXT NOT NULL, PRIMARY KEY(`session_id`), FOREIGN KEY(`session_id`) REFERENCES `local_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "sessionId",
+            "columnName": "session_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "runId",
+            "columnName": "run_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userMessageId",
+            "columnName": "user_message_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "prompt",
+            "columnName": "prompt",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attachmentsJson",
+            "columnName": "attachments_json",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stage",
+            "columnName": "stage",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "checkpointHistory",
+            "columnName": "checkpoint_history",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "completedToolCalls",
+            "columnName": "completed_tool_calls",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastToolName",
+            "columnName": "last_tool_name",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "last_error",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "assistantMessageId",
+            "columnName": "assistant_message_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "session_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_local_agent_runs_user_message_id",
+            "unique": false,
+            "columnNames": [
+              "user_message_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_agent_runs_user_message_id` ON `${TABLE_NAME}` (`user_message_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "local_sessions",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "session_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "local_characters",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `description` TEXT, `avatar` TEXT, `portrait` TEXT, `tags` TEXT, `basic_info` TEXT, `personality` TEXT, `scenario` TEXT, `first_message` TEXT, `alternate_greetings` TEXT, `example_dialogues` TEXT, `response_format` TEXT, `rules` TEXT, `state` TEXT, `system_prompt` TEXT, `greeting` TEXT, `created_at` TEXT NOT NULL, `updated_at` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "avatar",
+            "columnName": "avatar",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "portrait",
+            "columnName": "portrait",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "tags",
+            "columnName": "tags",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "basicInfo",
+            "columnName": "basic_info",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "personality",
+            "columnName": "personality",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "scenario",
+            "columnName": "scenario",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "firstMessage",
+            "columnName": "first_message",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "alternateGreetings",
+            "columnName": "alternate_greetings",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "exampleDialogues",
+            "columnName": "example_dialogues",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "responseFormat",
+            "columnName": "response_format",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "rules",
+            "columnName": "rules",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "systemPrompt",
+            "columnName": "system_prompt",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "greeting",
+            "columnName": "greeting",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_world_books",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `description` TEXT, `cover_url` TEXT, `character_id` TEXT, `enabled` INTEGER NOT NULL, `created_at` TEXT NOT NULL, `updated_at` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "coverUrl",
+            "columnName": "cover_url",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "characterId",
+            "columnName": "character_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_world_book_entries",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `book_id` TEXT NOT NULL, `keys` TEXT, `content` TEXT, `comment` TEXT, `enabled` INTEGER NOT NULL, `constant` INTEGER NOT NULL, `selective` INTEGER NOT NULL, `insertion_order` INTEGER NOT NULL, `priority` INTEGER NOT NULL, `position` TEXT, `case_sensitive` INTEGER NOT NULL, `display_index` INTEGER NOT NULL, `trigger_sources_json` TEXT, `state_triggers_json` TEXT, `match_mode` TEXT NOT NULL, `entry_type` TEXT NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`book_id`) REFERENCES `local_world_books`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bookId",
+            "columnName": "book_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "keys",
+            "columnName": "keys",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "content",
+            "columnName": "content",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "comment",
+            "columnName": "comment",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "constant",
+            "columnName": "constant",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "selective",
+            "columnName": "selective",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "insertionOrder",
+            "columnName": "insertion_order",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "priority",
+            "columnName": "priority",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "position",
+            "columnName": "position",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "caseSensitive",
+            "columnName": "case_sensitive",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayIndex",
+            "columnName": "display_index",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "triggerSourcesJson",
+            "columnName": "trigger_sources_json",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "stateTriggersJson",
+            "columnName": "state_triggers_json",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "matchMode",
+            "columnName": "match_mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "entryType",
+            "columnName": "entry_type",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_local_world_book_entries_book_id",
+            "unique": false,
+            "columnNames": [
+              "book_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_world_book_entries_book_id` ON `${TABLE_NAME}` (`book_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "local_world_books",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "book_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "local_ai_models",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `protocol` TEXT NOT NULL, `provider` TEXT, `api_key` TEXT NOT NULL, `proxy_url` TEXT NOT NULL, `base_url` TEXT NOT NULL, `model` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `purpose` TEXT NOT NULL, `priority` INTEGER NOT NULL, `active` INTEGER NOT NULL, `temperature` REAL, `max_tokens` INTEGER, `max_context_length` INTEGER, `top_p` REAL, `append_base_url_path` INTEGER NOT NULL, `supports_tools` INTEGER NOT NULL, `supports_reasoning` INTEGER NOT NULL, `supports_stream` INTEGER NOT NULL, `supports_vision` INTEGER NOT NULL, `tts_provider` TEXT NOT NULL, `tts_url` TEXT NOT NULL, `tts_model` TEXT NOT NULL, `tts_voice` TEXT NOT NULL, `tts_speed` REAL NOT NULL, `tts_pitch` REAL NOT NULL, `tts_volume` REAL NOT NULL, `tts_format` TEXT NOT NULL, `tts_upload_url` TEXT NOT NULL, `tts_headers` TEXT NOT NULL, `tts_body_template` TEXT NOT NULL, `tts_resource_id` TEXT NOT NULL, `tts_ref_audio` TEXT NOT NULL, `tts_user` TEXT NOT NULL, `language` TEXT NOT NULL, `stt_provider` TEXT NOT NULL, `stt_url` TEXT NOT NULL, `stt_model` TEXT NOT NULL, `stt_headers` TEXT NOT NULL, `dimensions` INTEGER NOT NULL, `size` TEXT NOT NULL, `prompt_template` TEXT NOT NULL, `created_at` TEXT NOT NULL, `token_limit_daily` INTEGER NOT NULL, `token_limit_weekly` INTEGER NOT NULL, `failover_timeout` INTEGER NOT NULL, `input_price` REAL, `output_price` REAL, `oauth_account_id` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "protocol",
+            "columnName": "protocol",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "provider",
+            "columnName": "provider",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "apiKey",
+            "columnName": "api_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "proxyUrl",
+            "columnName": "proxy_url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "baseUrl",
+            "columnName": "base_url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "model",
+            "columnName": "model",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "purpose",
+            "columnName": "purpose",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "priority",
+            "columnName": "priority",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "active",
+            "columnName": "active",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "temperature",
+            "columnName": "temperature",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "maxTokens",
+            "columnName": "max_tokens",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "maxContextLength",
+            "columnName": "max_context_length",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "topP",
+            "columnName": "top_p",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "appendBaseUrlPath",
+            "columnName": "append_base_url_path",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "supportsTools",
+            "columnName": "supports_tools",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "supportsReasoning",
+            "columnName": "supports_reasoning",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "supportsStream",
+            "columnName": "supports_stream",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "supportsVision",
+            "columnName": "supports_vision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ttsProvider",
+            "columnName": "tts_provider",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ttsUrl",
+            "columnName": "tts_url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ttsModel",
+            "columnName": "tts_model",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ttsVoice",
+            "columnName": "tts_voice",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ttsSpeed",
+            "columnName": "tts_speed",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ttsPitch",
+            "columnName": "tts_pitch",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ttsVolume",
+            "columnName": "tts_volume",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ttsFormat",
+            "columnName": "tts_format",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ttsUploadUrl",
+            "columnName": "tts_upload_url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ttsHeaders",
+            "columnName": "tts_headers",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ttsBodyTemplate",
+            "columnName": "tts_body_template",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ttsResourceId",
+            "columnName": "tts_resource_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ttsRefAudio",
+            "columnName": "tts_ref_audio",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ttsUser",
+            "columnName": "tts_user",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "language",
+            "columnName": "language",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sttProvider",
+            "columnName": "stt_provider",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sttUrl",
+            "columnName": "stt_url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sttModel",
+            "columnName": "stt_model",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sttHeaders",
+            "columnName": "stt_headers",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dimensions",
+            "columnName": "dimensions",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "size",
+            "columnName": "size",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "promptTemplate",
+            "columnName": "prompt_template",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tokenLimitDaily",
+            "columnName": "token_limit_daily",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tokenLimitWeekly",
+            "columnName": "token_limit_weekly",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "failoverTimeout",
+            "columnName": "failover_timeout",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inputPrice",
+            "columnName": "input_price",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "outputPrice",
+            "columnName": "output_price",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "oauthAccountId",
+            "columnName": "oauth_account_id",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_local_ai_models_oauth_account_id",
+            "unique": false,
+            "columnNames": [
+              "oauth_account_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_ai_models_oauth_account_id` ON `${TABLE_NAME}` (`oauth_account_id`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_failover_health",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`model_id` TEXT NOT NULL, `consecutive_failures` INTEGER NOT NULL, `last_failure_code` INTEGER NOT NULL, `last_failure_at_ms` INTEGER NOT NULL, `cooldown_until_ms` INTEGER NOT NULL, `daily_failures` INTEGER NOT NULL, `daily_failures_date` TEXT NOT NULL, PRIMARY KEY(`model_id`))",
+        "fields": [
+          {
+            "fieldPath": "modelId",
+            "columnName": "model_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "consecutiveFailures",
+            "columnName": "consecutive_failures",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastFailureCode",
+            "columnName": "last_failure_code",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastFailureAtMs",
+            "columnName": "last_failure_at_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cooldownUntilMs",
+            "columnName": "cooldown_until_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dailyFailures",
+            "columnName": "daily_failures",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dailyFailuresDate",
+            "columnName": "daily_failures_date",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "model_id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_character_states",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `character_id` TEXT NOT NULL, `scope_id` TEXT NOT NULL, `data_json` TEXT NOT NULL, `updated_at` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "characterId",
+            "columnName": "character_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scopeId",
+            "columnName": "scope_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dataJson",
+            "columnName": "data_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_local_character_states_character_id_scope_id",
+            "unique": true,
+            "columnNames": [
+              "character_id",
+              "scope_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_local_character_states_character_id_scope_id` ON `${TABLE_NAME}` (`character_id`, `scope_id`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_relationship_states",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `character_id` TEXT NOT NULL, `target_id` TEXT NOT NULL, `data_json` TEXT NOT NULL, `updated_at` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "characterId",
+            "columnName": "character_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetId",
+            "columnName": "target_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dataJson",
+            "columnName": "data_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_local_relationship_states_character_id_target_id",
+            "unique": true,
+            "columnNames": [
+              "character_id",
+              "target_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_local_relationship_states_character_id_target_id` ON `${TABLE_NAME}` (`character_id`, `target_id`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_character_memories",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `character_id` TEXT NOT NULL, `target_id` TEXT NOT NULL, `type` TEXT NOT NULL, `category` TEXT NOT NULL, `title` TEXT NOT NULL, `summary` TEXT NOT NULL, `content` TEXT NOT NULL, `importance` INTEGER NOT NULL, `emotion_impact` TEXT, `source_turn_id` TEXT, `created_at` TEXT NOT NULL, `expires_at` TEXT, `memory_path` TEXT, `version` INTEGER NOT NULL, `updated_at` TEXT, `conversation_id` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "characterId",
+            "columnName": "character_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetId",
+            "columnName": "target_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "category",
+            "columnName": "category",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "summary",
+            "columnName": "summary",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "content",
+            "columnName": "content",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "importance",
+            "columnName": "importance",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "emotionImpact",
+            "columnName": "emotion_impact",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sourceTurnId",
+            "columnName": "source_turn_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expiresAt",
+            "columnName": "expires_at",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "memoryPath",
+            "columnName": "memory_path",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "conversationId",
+            "columnName": "conversation_id",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_local_character_memories_character_id",
+            "unique": false,
+            "columnNames": [
+              "character_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_character_memories_character_id` ON `${TABLE_NAME}` (`character_id`)"
+          },
+          {
+            "name": "index_local_character_memories_target_id",
+            "unique": false,
+            "columnNames": [
+              "target_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_character_memories_target_id` ON `${TABLE_NAME}` (`target_id`)"
+          },
+          {
+            "name": "index_local_character_memories_character_id_target_id",
+            "unique": false,
+            "columnNames": [
+              "character_id",
+              "target_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_character_memories_character_id_target_id` ON `${TABLE_NAME}` (`character_id`, `target_id`)"
+          },
+          {
+            "name": "index_local_character_memories_character_id_category",
+            "unique": false,
+            "columnNames": [
+              "character_id",
+              "category"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_character_memories_character_id_category` ON `${TABLE_NAME}` (`character_id`, `category`)"
+          },
+          {
+            "name": "index_local_character_memories_character_id_target_id_category",
+            "unique": false,
+            "columnNames": [
+              "character_id",
+              "target_id",
+              "category"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_character_memories_character_id_target_id_category` ON `${TABLE_NAME}` (`character_id`, `target_id`, `category`)"
+          },
+          {
+            "name": "index_local_character_memories_memory_path",
+            "unique": false,
+            "columnNames": [
+              "memory_path"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_character_memories_memory_path` ON `${TABLE_NAME}` (`memory_path`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_state_snapshots",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `session_id` TEXT NOT NULL, `character_id` TEXT NOT NULL, `target_id` TEXT NOT NULL, `timestamp` TEXT NOT NULL, `mood` TEXT NOT NULL, `mood_intensity` REAL NOT NULL, `energy` INTEGER NOT NULL, `affection` INTEGER NOT NULL, `trust` INTEGER NOT NULL, `familiarity` INTEGER NOT NULL, `dependency` INTEGER NOT NULL, `security` INTEGER NOT NULL, `jealousy` INTEGER NOT NULL, `quality_scores_json` TEXT, `trigger_type` TEXT NOT NULL, `user_message` TEXT, `assistant_message` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "session_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "characterId",
+            "columnName": "character_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetId",
+            "columnName": "target_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mood",
+            "columnName": "mood",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "moodIntensity",
+            "columnName": "mood_intensity",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "energy",
+            "columnName": "energy",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "affection",
+            "columnName": "affection",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "trust",
+            "columnName": "trust",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "familiarity",
+            "columnName": "familiarity",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dependency",
+            "columnName": "dependency",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "security",
+            "columnName": "security",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "jealousy",
+            "columnName": "jealousy",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "qualityScoresJson",
+            "columnName": "quality_scores_json",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "triggerType",
+            "columnName": "trigger_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userMessage",
+            "columnName": "user_message",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "assistantMessage",
+            "columnName": "assistant_message",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_local_state_snapshots_session_id",
+            "unique": false,
+            "columnNames": [
+              "session_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_state_snapshots_session_id` ON `${TABLE_NAME}` (`session_id`)"
+          },
+          {
+            "name": "index_local_state_snapshots_character_id_target_id",
+            "unique": false,
+            "columnNames": [
+              "character_id",
+              "target_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_state_snapshots_character_id_target_id` ON `${TABLE_NAME}` (`character_id`, `target_id`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_hooks",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `event` TEXT NOT NULL, `description` TEXT, `enabled` INTEGER NOT NULL, `scope` TEXT NOT NULL, `priority` INTEGER NOT NULL, `actions_json` TEXT NOT NULL, `conditions_json` TEXT, `permissions_json` TEXT, `timeout_ms` INTEGER NOT NULL, `max_retries` INTEGER NOT NULL, `trigger_mode` TEXT NOT NULL, `condition_logic` TEXT NOT NULL, `character_id` TEXT, `conversation_id` TEXT, `user_id` TEXT, `created_at` TEXT NOT NULL, `updated_at` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "event",
+            "columnName": "event",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "priority",
+            "columnName": "priority",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "actionsJson",
+            "columnName": "actions_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "conditionsJson",
+            "columnName": "conditions_json",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "permissionsJson",
+            "columnName": "permissions_json",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "timeoutMs",
+            "columnName": "timeout_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maxRetries",
+            "columnName": "max_retries",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "triggerMode",
+            "columnName": "trigger_mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "conditionLogic",
+            "columnName": "condition_logic",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "characterId",
+            "columnName": "character_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "conversationId",
+            "columnName": "conversation_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "userId",
+            "columnName": "user_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_hook_logs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `hook_id` TEXT NOT NULL, `event_id` TEXT, `status` TEXT NOT NULL, `actions_executed` INTEGER NOT NULL, `error` TEXT, `duration_ms` INTEGER NOT NULL, `conversation_id` TEXT, `event_type` TEXT, `created_at` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hookId",
+            "columnName": "hook_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "event_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "actionsExecuted",
+            "columnName": "actions_executed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "error",
+            "columnName": "error",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "durationMs",
+            "columnName": "duration_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "conversationId",
+            "columnName": "conversation_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "eventType",
+            "columnName": "event_type",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_local_hook_logs_hook_id",
+            "unique": false,
+            "columnNames": [
+              "hook_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_hook_logs_hook_id` ON `${TABLE_NAME}` (`hook_id`)"
+          },
+          {
+            "name": "index_local_hook_logs_created_at",
+            "unique": false,
+            "columnNames": [
+              "created_at"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_hook_logs_created_at` ON `${TABLE_NAME}` (`created_at`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_tasks",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `kind` TEXT NOT NULL, `name` TEXT NOT NULL, `description` TEXT, `enabled` INTEGER NOT NULL, `trigger` TEXT NOT NULL, `config_json` TEXT, `target_session_id` TEXT, `prompt` TEXT, `created_at` TEXT NOT NULL, `last_run` TEXT, `next_run` TEXT, `status` TEXT NOT NULL, `last_error` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "trigger",
+            "columnName": "trigger",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "configJson",
+            "columnName": "config_json",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "targetSessionId",
+            "columnName": "target_session_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "prompt",
+            "columnName": "prompt",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastRun",
+            "columnName": "last_run",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "nextRun",
+            "columnName": "next_run",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "last_error",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_workflows",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `description` TEXT, `enabled` INTEGER NOT NULL, `trigger` TEXT NOT NULL, `config_json` TEXT, `created_at` TEXT NOT NULL, `session_id` TEXT, `last_run` TEXT, `next_run` TEXT, `status` TEXT NOT NULL, `last_error` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "trigger",
+            "columnName": "trigger",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "configJson",
+            "columnName": "config_json",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "session_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "lastRun",
+            "columnName": "last_run",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "nextRun",
+            "columnName": "next_run",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "last_error",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_skills",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `description` TEXT, `aliases_json` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `parameters_json` TEXT, `created_at` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "aliasesJson",
+            "columnName": "aliases_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parametersJson",
+            "columnName": "parameters_json",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_tools",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `description` TEXT, `enabled` INTEGER NOT NULL, `parameters_json` TEXT, `implementation_json` TEXT, `builtin` INTEGER NOT NULL, `created_at` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parametersJson",
+            "columnName": "parameters_json",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "implementationJson",
+            "columnName": "implementation_json",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "builtin",
+            "columnName": "builtin",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_mcp_servers",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `transport` TEXT NOT NULL, `description` TEXT, `enabled` INTEGER NOT NULL, `auto_connect` INTEGER NOT NULL, `connected` INTEGER NOT NULL, `tool_count` INTEGER NOT NULL, `url` TEXT, `headers_json` TEXT, `command` TEXT, `args_json` TEXT, `env_json` TEXT, `builtin` INTEGER NOT NULL, `created_at` TEXT NOT NULL, `last_connected_at` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transport",
+            "columnName": "transport",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "autoConnect",
+            "columnName": "auto_connect",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "connected",
+            "columnName": "connected",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "toolCount",
+            "columnName": "tool_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "url",
+            "columnName": "url",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "headersJson",
+            "columnName": "headers_json",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "command",
+            "columnName": "command",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "argsJson",
+            "columnName": "args_json",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "envJson",
+            "columnName": "env_json",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "builtin",
+            "columnName": "builtin",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastConnectedAt",
+            "columnName": "last_connected_at",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_api_keys",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `key` TEXT NOT NULL, `created_at` TEXT NOT NULL, `updated_at` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_message_favorites",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `session_id` TEXT NOT NULL, `title` TEXT NOT NULL, `message_ids_json` TEXT NOT NULL, `created_at` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "session_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageIdsJson",
+            "columnName": "message_ids_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_local_message_favorites_session_id",
+            "unique": false,
+            "columnNames": [
+              "session_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_message_favorites_session_id` ON `${TABLE_NAME}` (`session_id`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_oauth_accounts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `provider` TEXT NOT NULL, `label` TEXT NOT NULL, `encrypted_credentials` TEXT NOT NULL, `metadata_json` TEXT NOT NULL, `status` TEXT NOT NULL, `expires_at` INTEGER, `created_at` TEXT NOT NULL, `updated_at` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "provider",
+            "columnName": "provider",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "label",
+            "columnName": "label",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "encryptedCredentials",
+            "columnName": "encrypted_credentials",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "metadataJson",
+            "columnName": "metadata_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expiresAt",
+            "columnName": "expires_at",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_local_oauth_accounts_provider",
+            "unique": false,
+            "columnNames": [
+              "provider"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_oauth_accounts_provider` ON `${TABLE_NAME}` (`provider`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_knowledge_documents",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `content` TEXT NOT NULL, `source` TEXT, `tags_json` TEXT NOT NULL, `metadata_json` TEXT, `indexed` INTEGER NOT NULL, `created_at` TEXT NOT NULL, `updated_at` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "content",
+            "columnName": "content",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "tagsJson",
+            "columnName": "tags_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "metadataJson",
+            "columnName": "metadata_json",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "indexed",
+            "columnName": "indexed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "local_knowledge_chunks",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `document_id` TEXT NOT NULL, `chunk_index` INTEGER NOT NULL, `content` TEXT NOT NULL, `embedding_json` TEXT, `char_offset` INTEGER NOT NULL, `char_end` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`document_id`) REFERENCES `local_knowledge_documents`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "documentId",
+            "columnName": "document_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chunkIndex",
+            "columnName": "chunk_index",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "content",
+            "columnName": "content",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "embeddingJson",
+            "columnName": "embedding_json",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "charOffset",
+            "columnName": "char_offset",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "charEnd",
+            "columnName": "char_end",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_local_knowledge_chunks_document_id",
+            "unique": false,
+            "columnNames": [
+              "document_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_knowledge_chunks_document_id` ON `${TABLE_NAME}` (`document_id`)"
+          },
+          {
+            "name": "index_local_knowledge_chunks_document_id_chunk_index",
+            "unique": true,
+            "columnNames": [
+              "document_id",
+              "chunk_index"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_local_knowledge_chunks_document_id_chunk_index` ON `${TABLE_NAME}` (`document_id`, `chunk_index`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "local_knowledge_documents",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "document_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "routing_decision_logs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `session_id` TEXT NOT NULL, `created_at` TEXT NOT NULL, `decision_json` TEXT NOT NULL, `selected_model_id` TEXT NOT NULL, `selected_model_name` TEXT NOT NULL, `estimated_cost_usd` REAL NOT NULL, `actual_cost_usd` REAL, `actual_duration_ms` INTEGER, `actual_ttft_ms` INTEGER, `success` INTEGER NOT NULL, `failure_reason` TEXT, `quality_score` INTEGER NOT NULL, `is_ab_test` INTEGER NOT NULL, `ab_test_group` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "session_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "decisionJson",
+            "columnName": "decision_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "selectedModelId",
+            "columnName": "selected_model_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "selectedModelName",
+            "columnName": "selected_model_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "estimatedCostUsd",
+            "columnName": "estimated_cost_usd",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "actualCostUsd",
+            "columnName": "actual_cost_usd",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "actualDurationMs",
+            "columnName": "actual_duration_ms",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "actualTtftMs",
+            "columnName": "actual_ttft_ms",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "success",
+            "columnName": "success",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "failureReason",
+            "columnName": "failure_reason",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "qualityScore",
+            "columnName": "quality_score",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isAbTest",
+            "columnName": "is_ab_test",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "abTestGroup",
+            "columnName": "ab_test_group",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_routing_decision_logs_session_id",
+            "unique": false,
+            "columnNames": [
+              "session_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_routing_decision_logs_session_id` ON `${TABLE_NAME}` (`session_id`)"
+          },
+          {
+            "name": "index_routing_decision_logs_created_at",
+            "unique": false,
+            "columnNames": [
+              "created_at"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_routing_decision_logs_created_at` ON `${TABLE_NAME}` (`created_at`)"
+          },
+          {
+            "name": "index_routing_decision_logs_selected_model_id",
+            "unique": false,
+            "columnNames": [
+              "selected_model_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_routing_decision_logs_selected_model_id` ON `${TABLE_NAME}` (`selected_model_id`)"
+          }
+        ],
+        "foreignKeys": []
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'b832e875bf7208996aa49675cd1754a0')"
+    ]
+  }
+}

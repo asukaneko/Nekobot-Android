@@ -294,6 +294,7 @@ data class LocalAiModelEntity(
     @ColumnInfo(name = "supports_tools") val supportsTools: Boolean = true,
     @ColumnInfo(name = "supports_reasoning") val supportsReasoning: Boolean = true,
     @ColumnInfo(name = "supports_stream") val supportsStream: Boolean = true,
+    @ColumnInfo(name = "supports_vision") val supportsVision: Boolean = false,
     @ColumnInfo(name = "tts_provider") val ttsProvider: String = "openai",
     @ColumnInfo(name = "tts_url") val ttsUrl: String = "",
     @ColumnInfo(name = "tts_model") val ttsModel: String = "",
