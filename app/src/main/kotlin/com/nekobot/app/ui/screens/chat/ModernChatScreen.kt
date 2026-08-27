@@ -289,7 +289,8 @@ private fun buildChatCommandCandidates(
 
     val commands = LocalSlashCommands.suggestions(token)
         .map(ChatCommandCandidate::Command)
-    if (!skillsEnabled) return commands.take(8)
+    val showAllCommands = token == "/"
+    if (!skillsEnabled) return if (showAllCommands) commands else commands.take(8)
     val skillQuery = token.removePrefix("/")
     val skillCommands = skills.asSequence()
         .filter { skill ->
@@ -298,7 +299,9 @@ private fun buildChatCommandCandidates(
         }
         .map { ChatCommandCandidate.SkillCommand(it) }
         .toList()
-    return if (skillQuery.isBlank() && skillCommands.isNotEmpty()) {
+    return if (showAllCommands) {
+        commands + skillCommands
+    } else if (skillQuery.isBlank() && skillCommands.isNotEmpty()) {
         (commands.take(5) + skillCommands.take(3)).take(8)
     } else {
         (commands + skillCommands).take(8)
@@ -308,8 +311,13 @@ private fun buildChatCommandCandidates(
 @Composable
 private fun CommandSuggestionPanel(
     candidates: List<ChatCommandCandidate>,
+    showAllCommands: Boolean,
     onPick: (ChatCommandCandidate) -> Unit
 ) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(candidates) {
+        listState.scrollToItem(0)
+    }
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -323,7 +331,8 @@ private fun CommandSuggestionPanel(
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 288.dp),
+                .heightIn(max = if (showAllCommands) 360.dp else 288.dp),
+            state = listState,
             contentPadding = PaddingValues(vertical = 6.dp)
         ) {
             items(candidates, key = ChatCommandCandidate::key) { candidate ->
@@ -910,6 +919,7 @@ private fun ModernChatComposer(
                     if (commandCandidates.isNotEmpty()) {
                         CommandSuggestionPanel(
                             candidates = commandCandidates,
+                            showAllCommands = input.trimStart() == "/",
                             onPick = { candidate ->
                                 updateInput(candidate.insertion)
                                 dismissedCommandCandidateInput = candidate.insertion
