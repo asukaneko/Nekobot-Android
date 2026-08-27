@@ -8,6 +8,7 @@ import android.os.ParcelFileDescriptor
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.VideoView
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -720,7 +721,13 @@ fun HtmlRenderer(html: String, url: String, modifier: Modifier = Modifier) {
 @Composable
 private fun FullscreenHtmlDialog(content: String, onDismiss: () -> Unit) {
     val exitFullscreenDesc = stringResource(R.string.chat_media_exit_fullscreen)
+    var webView by remember { mutableStateOf<WebView?>(null) }
+
     Dialog(onDismissRequest = onDismiss) {
+        BackHandler {
+            webView?.takeIf(WebView::canGoBack)?.goBack() ?: onDismiss()
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -761,10 +768,8 @@ private fun FullscreenHtmlDialog(content: String, onDismiss: () -> Unit) {
                         settings.displayZoomControls = false
                         webViewClient = WebViewClient()
                         loadDataWithBaseURL(null, content, "text/html", "UTF-8", null)
+                        webView = this
                     }
-                },
-                update = { webView ->
-                    webView.loadDataWithBaseURL(null, content, "text/html", "UTF-8", null)
                 },
                 modifier = Modifier.fillMaxSize()
             )
@@ -1467,7 +1472,13 @@ fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
     val loadFailedFmt = stringResource(R.string.chat_media_load_failed)
     val unsupportedPreview = stringResource(R.string.chat_media_unsupported_preview)
     val fileDownloadedTo = stringResource(R.string.chat_media_file_downloaded_to, file.name)
+    var webView by remember { mutableStateOf<WebView?>(null) }
+
     Dialog(onDismissRequest = onDismiss) {
+        BackHandler {
+            webView?.takeIf(WebView::canGoBack)?.goBack() ?: onDismiss()
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -1570,6 +1581,7 @@ fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
                                             settings.useWideViewPort = true
                                             webViewClient = WebViewClient()
                                             loadDataWithBaseURL("about:blank", content, "text/html", "UTF-8", null)
+                                            webView = this
                                         }
                                     },
                                     modifier = Modifier.fillMaxSize()
