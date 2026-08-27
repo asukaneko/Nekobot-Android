@@ -1101,6 +1101,7 @@ fun ChatScreen(
                                     message = msg,
                                     generatedImages = messageImagesByMessage[msg.id].orEmpty(),
                                     onGeneratedImageClick = { previewGeneratedImage = it },
+                                    onFailedGeneratedImageLongClick = { viewModel.deleteMessageImage(it.id) },
                                     ttsState = msg.id?.let { ttsStates[it] },
                                     portraitUrl = groupIdentity.portraitUrl ?: session?.portraitUrl,
                                     senderName = groupIdentity.name,
@@ -2484,6 +2485,7 @@ private fun MessageBubble(
     message: Message,
     generatedImages: List<LocalMessageImageEntity> = emptyList(),
     onGeneratedImageClick: (LocalMessageImageEntity) -> Unit = {},
+    onFailedGeneratedImageLongClick: (LocalMessageImageEntity) -> Unit = {},
     ttsState: MessageTtsUiState? = null,
     portraitUrl: String? = null,
     senderName: String? = null,
@@ -2793,7 +2795,11 @@ private fun MessageBubble(
             if (generatedImages.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))
                 generatedImages.forEachIndexed { index, image ->
-                    MessageGeneratedImageCard(image, onGeneratedImageClick)
+                    MessageGeneratedImageCard(
+                        image = image,
+                        onClick = onGeneratedImageClick,
+                        onFailedLongClick = onFailedGeneratedImageLongClick
+                    )
                     if (index < generatedImages.lastIndex) Spacer(Modifier.height(8.dp))
                 }
             }
@@ -2950,16 +2956,28 @@ private suspend fun saveGeneratedImageToDownloads(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageGeneratedImageCard(
     image: LocalMessageImageEntity,
-    onClick: (LocalMessageImageEntity) -> Unit = {}
+    onClick: (LocalMessageImageEntity) -> Unit = {},
+    onFailedLongClick: (LocalMessageImageEntity) -> Unit = {}
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f))
+            .then(
+                if (image.status == "failed") {
+                    Modifier.combinedClickable(
+                        onClick = {},
+                        onLongClick = { onFailedLongClick(image) }
+                    )
+                } else {
+                    Modifier
+                }
+            )
             .padding(8.dp)
     ) {
         when (image.status) {

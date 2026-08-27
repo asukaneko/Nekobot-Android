@@ -2367,6 +2367,11 @@ class ChatViewModel : BaseViewModel() {
         )
     }
 
+    /** 删除消息下方失败的 AI 生图记录，使失败气泡从会话中消失。 */
+    fun deleteMessageImage(imageId: String) {
+        launchWith(block = { unified.deleteMessageImage(imageId) })
+    }
+
     /** 根据长按的消息内容创建持久生图任务，并交给 WorkManager 异步执行。 */
     fun generateImageForMessage(message: Message) {
         val sessionId = currentSessionId.takeIf(String::isNotBlank) ?: return

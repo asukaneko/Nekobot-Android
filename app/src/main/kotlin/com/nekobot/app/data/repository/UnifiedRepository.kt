@@ -713,6 +713,14 @@ class UnifiedRepository(
         Resource.Error(e.message ?: "无法创建图片生成任务")
     }
 
+    /** 删除消息关联的生图任务及其本地缓存文件。 */
+    suspend fun deleteMessageImage(id: String): Resource<Unit> = try {
+        local.deleteMessageImage(id)
+        Resource.Success(Unit)
+    } catch (e: Exception) {
+        Resource.Error(e.message ?: "无法删除图片生成记录")
+    }
+
     fun observeLocalAgentRun(sessionId: String): Flow<LocalAgentRunEntity?>? =
         if (isLocal) local.observeAgentRun(sessionId) else null
 
