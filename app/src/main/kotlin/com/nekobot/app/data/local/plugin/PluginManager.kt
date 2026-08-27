@@ -303,7 +303,7 @@ class PluginManager(context: Context) {
         if (!file.isFile || file.length() > MAX_MANIFEST_BYTES) {
             throw PluginInstallException("plugin.json 不存在或过大")
         }
-        return runCatching { gson.fromJson(file.readText(Charsets.UTF_8), PluginManifest::class.java) }
+        return runCatching { gson.fromJson(PluginManifestValidator.sanitizeManifestJson(file.readText(Charsets.UTF_8)), PluginManifest::class.java) }
             .getOrElse { throw PluginInstallException("plugin.json 格式无效：${it.message ?: "未知错误"}") }
     }
 
@@ -456,7 +456,7 @@ class PluginManager(context: Context) {
               var __pending = Object.create(null);
               var __nextRequestId = 0;
               function __commandName(value) {
-                return String(value || "").trim().replace(/^\\/+/, "").toLowerCase();
+                return String(value || "").trim().replace(/^\/+/, "").toLowerCase();
               }
               function __api(name, payload) {
                 return new Promise(function(resolve, reject) {

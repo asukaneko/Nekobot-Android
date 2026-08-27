@@ -1,0 +1,90 @@
+{
+  "api_version": 1,
+  "id": "nekopet.cattery",
+  "name": "喵窝养成所",
+  "version": "1.0.1",
+  "author": "Codex",
+  "description": "在你的本地会话里养一只电子猫：喂食、撸猫、逗猫、打工赚小鱼币、每日签到，长期饿着不管它可是会离家出走的！需要存储权限保存宠物状态。",
+  "entry": "main.js",
+  "permissions": ["storage", "notify"],
+  "commands": [
+    {
+      "name": "pet",
+      "aliases": ["nekopet"],
+      "usage": "/pet",
+      "description": "查看你家小猫的状态面板"
+    },
+    {
+      "name": "adopt",
+      "aliases": [],
+      "usage": "/adopt <名字>",
+      "description": "领养一只属于这个会话的小猫"
+    },
+    {
+      "name": "feed",
+      "aliases": [],
+      "usage": "/feed",
+      "description": "用背包里的小鱼干或猫奶喂猫（15 分钟冷却）"
+    },
+    {
+      "name": "pat",
+      "aliases": ["touch"],
+      "usage": "/pat",
+      "description": "摸摸猫头，提升心情（10 分钟冷却）"
+    },
+    {
+      "name": "play",
+      "aliases": ["game"],
+      "usage": "/play [逗猫棒|激光笔|毛线球|纸箱]",
+      "description": "陪猫玩玩具小游戏，消耗能量换心情"
+    },
+    {
+      "name": "sleep",
+      "aliases": ["nap"],
+      "usage": "/sleep",
+      "description": "哄猫睡觉 / 再发一次唤醒它"
+    },
+    {
+      "name": "work",
+      "aliases": [],
+      "usage": "/work",
+      "description": "让猫出门打工赚小鱼币（45 分钟冷却）"
+    },
+    {
+      "name": "daily",
+      "aliases": ["signin", "checkin"],
+      "usage": "/daily",
+      "description": "每日签到领取奖励，连续签到有加成"
+    },
+    {
+      "name": "shop",
+      "aliases": [],
+      "usage": "/shop",
+      "description": "逛喵窝商店"
+    },
+    {
+      "name": "buy",
+      "aliases": [],
+      "usage": "/buy <编号>",
+      "description": "购买商品；鱼干和牛奶入背包，其余当场生效"
+    },
+    {
+      "name": "bag",
+      "aliases": ["items"],
+      "usage": "/bag",
+      "description": "查看背包里的食物储备"
+    },
+    {
+      "name": "rank",
+      "aliases": ["top"],
+      "usage": "/rank",
+      "description": "本机所有会话的猫咪排行榜"
+    },
+    {
+      "name": "rename",
+      "aliases": [],
+      "usage": "/rename <新名字>",
+      "description": "给猫改名（6 小时一次，改多了它记不住自己是谁）"
+    }
+  ]
+}
