@@ -383,18 +383,11 @@ fun AiModelEditorDialog(
                 value = state.provider,
                 options = providerLabels.keys.toList(),
                 labelFor = { providerLabels[it] ?: it },
+                // 切换服务商仅更新服务商字段，不再套用预设覆盖已填写的配置内容；
+                // 需要一键填入默认参数请使用上方的“快速预设”。
                 onSelect = { provider ->
-                    val preset = providerPresets.firstOrNull { it.provider == provider }
                     allowAutomaticPricing = true
-                    state = preset?.let {
-                        state.applyPreset(
-                            it,
-                            protocolOptions,
-                            presetConfigTemplate,
-                            it.labelRes?.let(context::getString) ?: it.label
-                        )
-                    }
-                        ?: state.copy(provider = provider, protocol = protocolFor(provider, protocolOptions))
+                    state = state.copy(provider = provider)
                 }
             )
 

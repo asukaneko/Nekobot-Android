@@ -108,7 +108,23 @@ internal class LocalPluginTool(
         )
     }
 
-    private fun help(): Map<String, Any> = success("content" to PLUGIN_DEV_GUIDE)
+    private fun help(): Map<String, Any> {
+        // 优先读取打包在 assets 中的完整开发文档；读取失败时回退到内置精简指南。
+        val bundled = runCatching { ServiceContainer.appContext }.getOrNull()?.let { appContext ->
+            runCatching {
+                appContext.assets.open(PLUGIN_GUIDE_ASSET).use { input ->
+                    input.readBytes().toString(Charsets.UTF_8)
+                }
+            }.getOrNull()
+        }
+        val usingBundled = !bundled.isNullOrBlank()
+        val content = (if (usingBundled) bundled else PLUGIN_DEV_GUIDE) + PLUGIN_USE_WORKFLOW
+        return success(
+            "content" to content,
+            "guide_source" to (if (usingBundled) PLUGIN_GUIDE_ASSET else "内置精简指南"),
+            "hint" to "请先通读本文档与附录的推荐流程，再按流程编写并安装插件；文档会随版本更新"
+        )
+    }
 
     // ---- 创建 / 安装 ----
 
@@ -320,7 +336,26 @@ internal class LocalPluginTool(
         }
 
     private companion object {
-        /** 插件开发指南；help 动作返回，内容与 PluginManager 的 JS 运行时保持一致。 */
+        /** assets 中打包的完整插件开发文档；help 动作优先返回它。 */
+        const val PLUGIN_GUIDE_ASSET = "plugin-development.md"
+
+        /** plugin_use 专用附录：把文档规范映射到本工具的推荐工作流。 */
+        val PLUGIN_USE_WORKFLOW: String = """
+
+            ————————————————
+            plugin_use 工具推荐流程（AI 附录）
+            1. 通读本文档，理解清单规范、权限与运行时限制
+            2. list 查看已安装插件，避免 id 与命令名冲突（内置 builtin.jm、builtin.light-novel 不可占用）
+            3. create 编写完整 manifest_json + main_js 并安装（多文件用 extra_files_json，遵守第 7 节大小限制）
+            4. execute 逐条测试命令（用 args 模拟用户输入）
+            5. 出错时 view 读取实际落盘源码，update 修复后复测
+            6. enable/disable/uninstall 管理生命周期；install_url 安装第三方 ZIP 与 uninstall 均需用户确认
+            7. 交付时告知用户可用的斜杠命令与用法
+
+            注意：插件命令只在本地模式执行；运行时只会加载 entry 指定的一个 JS 文件，静态数据应直接写进入口脚本；不要调用 NekoAndroid 等运行时内部对象，它们不是稳定的插件 API。
+        """.trimIndent()
+
+        /** 插件开发指南回退版本；仅在 assets 文档读取失败时使用。 */
         val PLUGIN_DEV_GUIDE: String = """
             Nekobot 插件开发指南（api_version 1）
 
