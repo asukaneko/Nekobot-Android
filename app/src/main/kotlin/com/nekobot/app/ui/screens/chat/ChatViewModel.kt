@@ -1043,7 +1043,9 @@ class ChatViewModel : BaseViewModel() {
                     .mapTo(mutableSetOf()) { it.content }
                 val orphanAssistants = currentAssistantByContent.values.filter { msg ->
                     val idAlreadyLoaded = !msg.id.isNullOrBlank() && merged.any { it.id == msg.id }
-                    !idAlreadyLoaded &&
+                    // 用户已删除的消息不算孤儿，禁止被兜底逻辑重新加回列表
+                    val userDeleted = msg.id?.let(runtime.deletedMessageIds::contains) == true
+                    !idAlreadyLoaded && !userDeleted &&
                         (msg.content to msg.timestamp) !in freshAssistantKeys &&
                         !(msg.id?.startsWith(STREAM_FALLBACK_PREFIX) == true &&
                             msg.content in freshAssistantContents)
@@ -2365,14 +2367,31 @@ class ChatViewModel : BaseViewModel() {
 
     /** 删除单条消息，成功后回调 [onSuccess]。 */
     fun deleteMessage(sessionId: String, messageId: String, onSuccess: () -> Unit = {}) {
+        // 先从列表移除：孤儿 assistant 保留逻辑会跳过这里记录的 id，
+        // 避免随后的 loadMessages 把刚删除的消息当作未落库的孤儿重新加回。
+        runtime.deletedMessageIds.add(messageId)
         launchResult(
             block = { unified.deleteMessage(sessionId, messageId) },
             onSuccess = {
                 showToast(string(R.string.chat_deleted_toast))
-                loadMessages()
+                removeMessageFromUi(messageId)
                 onSuccess()
+            },
+            onError = { message ->
+                runtime.deletedMessageIds.remove(messageId)
+                showError(message)
             }
         )
+    }
+
+    /** 从 UI 列表移除单条消息；消息本不在列表时退回为整体刷新。 */
+    private fun removeMessageFromUi(messageId: String) {
+        val current = _messages.value
+        if (current.none { it.id == messageId }) {
+            loadMessages()
+            return
+        }
+        _messages.value = current.filterNot { it.id == messageId }
     }
 
     /**
@@ -2392,6 +2411,8 @@ class ChatViewModel : BaseViewModel() {
         if (messageIndex < 0) return
         val deleteIds = history.drop(messageIndex).mapNotNull { it.id?.takeIf(String::isNotBlank) }
         if (deleteIds.isEmpty()) return
+        // 登记待删 id：反向删除期间若触发 loadMessages，孤儿保留逻辑不应复活这些消息。
+        runtime.deletedMessageIds.addAll(deleteIds)
 
         viewModelScope.launch {
             _editingMessage.value = true
@@ -2538,11 +2559,14 @@ class ChatViewModel : BaseViewModel() {
         val ids = _selectedMessageIds.value.toList()
         if (ids.isEmpty()) return
         val sid = currentSessionId
+        // 与单条删除一致：先登记，防止 loadMessages 的孤儿保留逻辑复活已删消息。
+        runtime.deletedMessageIds.addAll(ids)
         viewModelScope.launch {
             ids.forEach { id ->
                 try { unified.deleteMessage(sid, id) } catch (_: Exception) {}
             }
             exitSelectionMode()
+            _messages.value = _messages.value.filterNot { it.id in ids }
             loadMessages()
         }
     }

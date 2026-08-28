@@ -39,6 +39,13 @@ class ChatSessionState(val sessionId: String) {
     val ttsStates = MutableStateFlow<Map<String, MessageTtsUiState>>(emptyMap())
     val agentContextCompressionInProgress = MutableStateFlow(false)
 
+    /**
+     * 本次运行时生命周期内被用户删除的消息 id。
+     * loadMessages 的孤儿 assistant 保留逻辑需要跳过这些消息，
+     * 否则刚删除的命令回复会因 Room 异步竞态兜底被重新加回列表。
+     */
+    val deletedMessageIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
     // ============ 流式生成的临时可变状态 ============
     /** 流式生成中的临时消息内容累加器 */
     val streamingContent = StringBuilder()

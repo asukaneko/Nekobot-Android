@@ -155,7 +155,6 @@ internal object LocalSlashCommands {
         ),
         LocalCommandSpec(
             aliases = listOf(
-                "/jm_clear",
                 "/get_fav", "/add_fav", "/list_fav", "/del_fav",
                 "/add_black_list", "/abl", "/del_black_list", "/dbl",
                 "/list_black_list", "/lbl"
