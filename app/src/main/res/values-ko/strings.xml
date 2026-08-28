@@ -274,4 +274,26 @@
     <string name="portability_category_global_memory">전역 Agent 메모리</string>
     <string name="portability_category_global_memory_desc">대화 전반에 주입되는 장기 Agent 메모리</string>
     <string name="portability_detail_tts_audio">채팅 생성 음성</string>
+
+    <!-- Agent progress card -->
+    <string name="agent_progress_preparing">Agent 준비 중...</string>
+    <string name="agent_progress_thinking">AI가 생각하는 중...</string>
+    <string name="agent_progress_processing">AI가 처리하는 중...</string>
+    <string name="agent_progress_processing_iteration">AI가 처리하는 중... (%1$d)</string>
+    <string name="agent_progress_tool_call">도구 호출: %1$s</string>
+    <string name="agent_progress_tool_done">도구 완료: %1$s</string>
+    <string name="agent_progress_wait_confirm_step">명령 승인 대기 중</string>
+    <string name="agent_progress_wait_confirm">명령 승인 대기 중...</string>
+    <string name="agent_progress_send_message_step">진행 메시지 전송</string>
+    <string name="agent_progress_message_sent">진행 메시지 전송됨</string>
+    <string name="agent_progress_file_step">파일 준비 중: %1$s</string>
+    <string name="agent_progress_file_done">파일 처리 완료</string>
+    <string name="agent_progress_attachments_step">첨부 파일 %1$d개 처리 중...</string>
+    <string name="agent_progress_attachments">첨부 파일 처리 중...</string>
+    <string name="agent_progress_attachments_done">첨부 파일 처리 완료</string>
+    <string name="agent_progress_knowledge_step">지식 베이스 검색 중...</string>
+    <string name="agent_progress_knowledge_hit">관련 항목 발견</string>
+    <string name="agent_progress_knowledge_miss">관련 항목 없음</string>
+    <string name="agent_progress_knowledge_done">지식 베이스 검색 완료</string>
+    <string name="agent_progress_done">처리 완료</string>
 </resources>

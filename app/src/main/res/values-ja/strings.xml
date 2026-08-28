@@ -274,4 +274,26 @@
     <string name="portability_category_global_memory">グローバル Agent 記憶</string>
     <string name="portability_category_global_memory_desc">チャットをまたいで注入される長期 Agent 記憶</string>
     <string name="portability_detail_tts_audio">チャット生成音声</string>
+
+    <!-- Agent progress card -->
+    <string name="agent_progress_preparing">Agentを準備中...</string>
+    <string name="agent_progress_thinking">AIが考えています...</string>
+    <string name="agent_progress_processing">AIが処理中...</string>
+    <string name="agent_progress_processing_iteration">AIが処理中... (%1$d)</string>
+    <string name="agent_progress_tool_call">ツールを呼び出し: %1$s</string>
+    <string name="agent_progress_tool_done">ツール完了: %1$s</string>
+    <string name="agent_progress_wait_confirm_step">コマンド承認待ち</string>
+    <string name="agent_progress_wait_confirm">コマンド承認待ち...</string>
+    <string name="agent_progress_send_message_step">進捗メッセージを送信</string>
+    <string name="agent_progress_message_sent">進捗メッセージを送信しました</string>
+    <string name="agent_progress_file_step">ファイルを準備中: %1$s</string>
+    <string name="agent_progress_file_done">ファイル処理が完了</string>
+    <string name="agent_progress_attachments_step">%1$d 個の添付ファイルを処理中...</string>
+    <string name="agent_progress_attachments">添付ファイルを処理中...</string>
+    <string name="agent_progress_attachments_done">添付ファイルの処理が完了</string>
+    <string name="agent_progress_knowledge_step">ナレッジベースを検索中...</string>
+    <string name="agent_progress_knowledge_hit">関連エントリが見つかりました</string>
+    <string name="agent_progress_knowledge_miss">該当なし</string>
+    <string name="agent_progress_knowledge_done">ナレッジベースの検索が完了</string>
+    <string name="agent_progress_done">処理完了</string>
 </resources>

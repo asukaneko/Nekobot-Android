@@ -1,8 +1,11 @@
 package com.nekobot.app.data.local.ai
 
+import com.nekobot.app.R
+import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalRepository
 import com.nekobot.app.data.model.ThinkingCard
 import com.nekobot.app.data.model.ThinkingStep
+import java.util.Locale
 import java.util.UUID
 
 /**
@@ -19,6 +22,14 @@ internal class LocalAgentProgressReporter(
     private val streamCharBatch: Int = 96,
     private val cardId: String = UUID.randomUUID().toString()
 ) : ProgressReporter() {
+
+    /** 优先从本地化上下文取资源；JVM 单测等无上下文场景回落到中文默认文案。 */
+    private fun progressText(resId: Int, fallback: String): String =
+        ServiceContainer.localizedContext?.getString(resId) ?: fallback
+
+    private fun progressText(resId: Int, fallback: String, arg: Any): String =
+        ServiceContainer.localizedContext?.getString(resId, arg)
+            ?: String.format(Locale.getDefault(), fallback, arg)
 
     private val steps = mutableListOf<ThinkingStep>()
     private val reasoningContent = StringBuilder()
@@ -61,9 +72,15 @@ internal class LocalAgentProgressReporter(
 
     override fun onPreparingStart(ctx: PipelineContext) {
         if (steps.none { it.type == "preparing" }) {
-            steps.add(ThinkingStep(type = "preparing", name = "正在准备 Agent...", status = "active"))
+            steps.add(
+                ThinkingStep(
+                    type = "preparing",
+                    name = progressText(R.string.agent_progress_preparing, "正在准备 Agent..."),
+                    status = "active"
+                )
+            )
         }
-        emit("正在准备 Agent...")
+        emit(progressText(R.string.agent_progress_preparing, "正在准备 Agent..."))
     }
 
     override fun onThinkingStart(ctx: PipelineContext) {
@@ -71,9 +88,15 @@ internal class LocalAgentProgressReporter(
             steps[index] = steps[index].copy(status = "done")
         }
         if (steps.none { it.type == "thinking" }) {
-            steps.add(ThinkingStep(type = "thinking", name = "AI 正在思考...", status = "active"))
+            steps.add(
+                ThinkingStep(
+                    type = "thinking",
+                    name = progressText(R.string.agent_progress_thinking, "AI 正在思考..."),
+                    status = "active"
+                )
+            )
         }
-        emit("AI 正在处理...")
+        emit(progressText(R.string.agent_progress_processing, "AI 正在处理..."))
     }
 
     override fun onThinkingContent(ctx: PipelineContext, content: String) {
@@ -87,7 +110,7 @@ internal class LocalAgentProgressReporter(
             elapsed >= streamIntervalNanos ||
             pendingChars >= streamCharBatch
         ) {
-            emit("AI 正在思考...", checkpoint = false)
+            emit(progressText(R.string.agent_progress_thinking, "AI 正在思考..."), checkpoint = false)
         }
     }
 
@@ -116,7 +139,7 @@ internal class LocalAgentProgressReporter(
                 )
             )
         )
-        emit("调用工具: $toolName")
+        emit(progressText(R.string.agent_progress_tool_call, "调用工具: %1\$s", toolName))
     }
 
     override fun onToolDone(
@@ -155,86 +178,89 @@ internal class LocalAgentProgressReporter(
                 )
             )
         }
-        emit("工具完成: $toolName")
+        emit(progressText(R.string.agent_progress_tool_done, "工具完成: %1\$s", toolName))
     }
 
     override fun onToolIteration(ctx: PipelineContext, iteration: Int) {
-        emit("AI 正在处理... ($iteration)")
+        emit(progressText(R.string.agent_progress_processing_iteration, "AI 正在处理... (%1\$d)", iteration))
     }
 
     override fun onWaitingConfirmation(ctx: PipelineContext, command: String, requestId: String) {
         steps.add(
             ThinkingStep(
                 type = "tool",
-                name = "等待命令授权",
+                name = progressText(R.string.agent_progress_wait_confirm_step, "等待命令授权"),
                 status = "active",
                 detail = command.take(120)
             )
         )
-        emit("等待命令授权...")
+        emit(progressText(R.string.agent_progress_wait_confirm, "等待命令授权..."))
     }
 
     override fun onSendMessage(ctx: PipelineContext, content: String) {
         steps.add(
             ThinkingStep(
                 type = "send_message",
-                name = "发送进度消息",
+                name = progressText(R.string.agent_progress_send_message_step, "发送进度消息"),
                 status = "done",
                 detail = content.take(120)
             )
         )
-        emit("已发送进度消息")
+        emit(progressText(R.string.agent_progress_message_sent, "已发送进度消息"))
     }
 
     override fun onSendFile(ctx: PipelineContext, filePath: String, filename: String) {
         steps.add(
             ThinkingStep(
                 type = "file",
-                name = "准备文件: $filename",
+                name = progressText(R.string.agent_progress_file_step, "准备文件: %1\$s", filename),
                 status = "done",
                 detail = filePath.take(120)
             )
         )
-        emit("文件处理完成")
+        emit(progressText(R.string.agent_progress_file_done, "文件处理完成"))
     }
 
     override fun onAttachmentStart(ctx: PipelineContext, count: Int) {
         steps.add(
             ThinkingStep(
                 type = "upload",
-                name = "正在处理 $count 个附件...",
+                name = progressText(R.string.agent_progress_attachments_step, "正在处理 %1\$d 个附件...", count),
                 status = "running"
             )
         )
-        emit("正在处理附件...")
+        emit(progressText(R.string.agent_progress_attachments, "正在处理附件..."))
     }
 
     override fun onAttachmentsDone(ctx: PipelineContext) {
         steps.indexOfLast { it.type == "upload" }.takeIf { it >= 0 }?.let { index ->
             steps[index] = steps[index].copy(status = "done")
         }
-        emit("附件处理完成")
+        emit(progressText(R.string.agent_progress_attachments_done, "附件处理完成"))
     }
 
     override fun onKnowledgeStart(ctx: PipelineContext) {
         steps.add(
             ThinkingStep(
                 type = "knowledge",
-                name = "正在检索知识库...",
+                name = progressText(R.string.agent_progress_knowledge_step, "正在检索知识库..."),
                 status = "running"
             )
         )
-        emit("正在检索知识库...")
+        emit(progressText(R.string.agent_progress_knowledge_step, "正在检索知识库..."))
     }
 
     override fun onKnowledgeDone(ctx: PipelineContext, retrieved: Boolean) {
         steps.indexOfLast { it.type == "knowledge" }.takeIf { it >= 0 }?.let { index ->
             steps[index] = steps[index].copy(
                 status = "done",
-                detail = if (retrieved) "命中相关条目" else "未命中"
+                detail = progressText(
+                    if (retrieved) R.string.agent_progress_knowledge_hit else R.string.agent_progress_knowledge_miss,
+                    if (retrieved) "命中相关条目" else "未命中"
+                )
             )
         }
-        emit("知识库检索完成")
+        emit(progressText(R.string.agent_progress_knowledge_done, "知识库检索完成"))
     }
 
     override fun onDone(ctx: PipelineContext) {
@@ -244,7 +270,8 @@ internal class LocalAgentProgressReporter(
                 steps[index] = step.copy(status = "done")
             }
         }
-        steps.add(ThinkingStep(type = "done", name = "处理完成", status = "done"))
-        emit("处理完成", isComplete = true)
+        val doneText = progressText(R.string.agent_progress_done, "处理完成")
+        steps.add(ThinkingStep(type = "done", name = doneText, status = "done"))
+        emit(doneText, isComplete = true)
     }
 }

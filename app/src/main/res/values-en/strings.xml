@@ -274,4 +274,26 @@
     <string name="portability_category_global_memory">Global Agent memory</string>
     <string name="portability_category_global_memory_desc">Long-term Agent memory injected across chats</string>
     <string name="portability_detail_tts_audio">Generated chat audio</string>
+
+    <!-- Agent progress card -->
+    <string name="agent_progress_preparing">Preparing Agent...</string>
+    <string name="agent_progress_thinking">AI is thinking...</string>
+    <string name="agent_progress_processing">AI is working...</string>
+    <string name="agent_progress_processing_iteration">AI is working... (%1$d)</string>
+    <string name="agent_progress_tool_call">Calling tool: %1$s</string>
+    <string name="agent_progress_tool_done">Tool finished: %1$s</string>
+    <string name="agent_progress_wait_confirm_step">Waiting for command approval</string>
+    <string name="agent_progress_wait_confirm">Waiting for command approval...</string>
+    <string name="agent_progress_send_message_step">Sending progress message</string>
+    <string name="agent_progress_message_sent">Progress message sent</string>
+    <string name="agent_progress_file_step">Preparing file: %1$s</string>
+    <string name="agent_progress_file_done">File processing finished</string>
+    <string name="agent_progress_attachments_step">Processing %1$d attachments...</string>
+    <string name="agent_progress_attachments">Processing attachments...</string>
+    <string name="agent_progress_attachments_done">Attachments processed</string>
+    <string name="agent_progress_knowledge_step">Searching knowledge base...</string>
+    <string name="agent_progress_knowledge_hit">Matching entries found</string>
+    <string name="agent_progress_knowledge_miss">No matching entries</string>
+    <string name="agent_progress_knowledge_done">Knowledge base search finished</string>
+    <string name="agent_progress_done">Processing finished</string>
 </resources>

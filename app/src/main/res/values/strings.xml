@@ -294,4 +294,26 @@
     <string name="portability_category_global_memory">全局 Agent 记忆</string>
     <string name="portability_category_global_memory_desc">跨会话注入的长期 Agent 记忆文件</string>
     <string name="portability_detail_tts_audio">聊天生成音频</string>
+
+    <!-- Agent 进度卡片 -->
+    <string name="agent_progress_preparing">正在准备 Agent...</string>
+    <string name="agent_progress_thinking">AI 正在思考...</string>
+    <string name="agent_progress_processing">AI 正在处理...</string>
+    <string name="agent_progress_processing_iteration">AI 正在处理... (%1$d)</string>
+    <string name="agent_progress_tool_call">调用工具: %1$s</string>
+    <string name="agent_progress_tool_done">工具完成: %1$s</string>
+    <string name="agent_progress_wait_confirm_step">等待命令授权</string>
+    <string name="agent_progress_wait_confirm">等待命令授权...</string>
+    <string name="agent_progress_send_message_step">发送进度消息</string>
+    <string name="agent_progress_message_sent">已发送进度消息</string>
+    <string name="agent_progress_file_step">准备文件: %1$s</string>
+    <string name="agent_progress_file_done">文件处理完成</string>
+    <string name="agent_progress_attachments_step">正在处理 %1$d 个附件...</string>
+    <string name="agent_progress_attachments">正在处理附件...</string>
+    <string name="agent_progress_attachments_done">附件处理完成</string>
+    <string name="agent_progress_knowledge_step">正在检索知识库...</string>
+    <string name="agent_progress_knowledge_hit">命中相关条目</string>
+    <string name="agent_progress_knowledge_miss">未命中</string>
+    <string name="agent_progress_knowledge_done">知识库检索完成</string>
+    <string name="agent_progress_done">处理完成</string>
 </resources>
