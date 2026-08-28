@@ -1221,6 +1221,8 @@ private fun TokenRecordCard(
     }.orEmpty()
     val isChatChannelSource = record.purpose.equals("chat", ignoreCase = true) &&
         record.source.equals("web", ignoreCase = true)
+    // 模型ID：优先展示实际请求的模型标识，无 actual_model 时回退到 model 字段
+    val modelIdDisplay = record.actualModel.ifBlank { record.model }
     val sourceDisplay = record.source
         .takeIf { it.isNotBlank() && !isChatChannelSource }
         ?.let { stringResource(R.string.tokens_source_prefix, sourceLabel(it)) }
@@ -1322,6 +1324,18 @@ private fun TokenRecordCard(
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(20.dp)
+            )
+        }
+
+        if (modelIdDisplay.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = stringResource(R.string.tokens_model_id, modelIdDisplay),
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
 

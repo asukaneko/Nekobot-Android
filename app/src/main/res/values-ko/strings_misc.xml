@@ -54,6 +54,7 @@
     <string name="tokens_stat_avg_price">평균 가격</string>
     <string name="tokens_session_prefix">대화 %1$s</string>
     <string name="tokens_unknown_model">알 수 없는 모델</string>
+    <string name="tokens_model_id">모델 ID: %1$s</string>
     <string name="tokens_source_prefix">출처 %1$s</string>
     <string name="tokens_cost">비용 ¥%1$s</string>
     <string name="tokens_duration">소요 %1$s</string>

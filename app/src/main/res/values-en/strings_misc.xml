@@ -54,6 +54,7 @@
     <string name="tokens_stat_avg_price">Average price</string>
     <string name="tokens_session_prefix">Session %1$s</string>
     <string name="tokens_unknown_model">Unknown model</string>
+    <string name="tokens_model_id">Model ID: %1$s</string>
     <string name="tokens_source_prefix">Source %1$s</string>
     <string name="tokens_cost">Cost ¥%1$s</string>
     <string name="tokens_estimated_price">Estimated price $%1$s</string>

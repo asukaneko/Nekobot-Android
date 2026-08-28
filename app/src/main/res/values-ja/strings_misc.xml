@@ -54,6 +54,7 @@
     <string name="tokens_stat_avg_price">平均価格</string>
     <string name="tokens_session_prefix">セッション %1$s</string>
     <string name="tokens_unknown_model">不明なモデル</string>
+    <string name="tokens_model_id">モデルID：%1$s</string>
     <string name="tokens_source_prefix">ソース %1$s</string>
     <string name="tokens_cost">コスト ¥%1$s</string>
     <string name="tokens_duration">実行時間 %1$s</string>
