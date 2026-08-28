@@ -24,6 +24,7 @@ internal val localExecutableToolIds = setOf(
     "get_weather",
     "search_web",
     "browser_use",
+    "plugin_use",
     "get_date_time",
     "http_get",
     "exec_command",
@@ -196,6 +197,13 @@ internal class LocalAgentToolExecutor(
             onConfirmationRequired = onConfirmationRequired
         )
     }
+    private val pluginTool by lazy {
+        LocalPluginTool(
+            sessionId = sessionId,
+            authorizationManager = authorizationManager,
+            onConfirmationRequired = onConfirmationRequired
+        )
+    }
 
     suspend fun execute(toolName: String, args: Map<String, Any>): Map<String, Any> {
         if (generationController.isStopped) return stoppedFailure()
@@ -203,6 +211,7 @@ internal class LocalAgentToolExecutor(
             when (toolName) {
                 "get_weather" -> getWeather(args)
                 "search_web" -> searchWeb(args)
+                "plugin_use" -> pluginTool.execute(args)
                 "get_date_time" -> getDateTime(args)
                 "http_get" -> httpGet(args)
                 "exec_command" -> execCommand(args)

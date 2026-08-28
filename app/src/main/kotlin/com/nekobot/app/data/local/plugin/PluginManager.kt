@@ -102,6 +102,71 @@ class PluginManager(context: Context) {
             }
         }
 
+    /**
+     * 以源码方式直接创建并安装插件（供 Agent 的 plugin_use 工具使用）。
+     *
+     * 与 ZIP 安装走同一套清单校验和落位流程；同 ID 插件会被覆盖更新，
+     * 并保留其原有启用状态。
+     */
+    suspend fun installFromSource(
+        manifestJson: String,
+        entrySource: String,
+        extraFiles: Map<String, String> = emptyMap()
+    ): InstalledPlugin = installMutex.withLock {
+        withContext(Dispatchers.IO) {
+            installFromSourceBlocking(manifestJson, entrySource, extraFiles)
+        }
+    }
+
+    /** 从 HTTPS 地址下载插件 ZIP 并安装；调用方负责第三方免责协议确认。 */
+    suspend fun installFromUrl(url: String, acceptedThirdPartyAgreement: Boolean): InstalledPlugin =
+        installMutex.withLock {
+            withContext(Dispatchers.IO) {
+                if (!acceptedThirdPartyAgreement) {
+                    throw PluginInstallException("安装第三方插件前必须同意免责协议")
+                }
+                installFromUrlBlocking(url)
+            }
+        }
+
+    /** 修改已安装插件的清单和/或入口源码；保留启用状态与安装时间。 */
+    suspend fun updatePlugin(
+        pluginId: String,
+        manifestJson: String? = null,
+        entrySource: String? = null,
+        extraFiles: Map<String, String> = emptyMap()
+    ): InstalledPlugin = installMutex.withLock {
+        withContext(Dispatchers.IO) {
+            updatePluginBlocking(pluginId, manifestJson, entrySource, extraFiles)
+        }
+    }
+
+    /** 读取非内置插件的清单原文与入口源码；不存在时返回 null。 */
+    fun readPluginDetail(pluginId: String): PluginDetail? {
+        if (BuiltInPlugins.isBuiltIn(pluginId)) return null
+        val directory = pluginDirectory(pluginId)?.takeIf { it.isDirectory } ?: return null
+        val plugin = _installed.value.firstOrNull { it.id == pluginId } ?: return null
+        val manifestJson = runCatching {
+            File(directory, MANIFEST_ENTRY).readText(Charsets.UTF_8)
+        }.getOrNull() ?: return null
+        val entrySource = runCatching {
+            val entry = File(directory, plugin.entry).canonicalFile
+            if (!entry.path.startsWith(directory.canonicalPath + File.separator) || !entry.isFile) null
+            else entry.readText(Charsets.UTF_8)
+        }.getOrNull()
+        return PluginDetail(plugin, manifestJson, entrySource)
+    }
+
+    /** 按插件 ID + 命令名/别名查找命令绑定；包含停用插件，便于调用方给出准确错误。 */
+    internal fun findPluginCommand(pluginId: String, command: String): Pair<InstalledPlugin, PluginCommandBinding>? {
+        val plugin = _installed.value.firstOrNull { it.id == pluginId } ?: return null
+        val normalized = PluginManifestValidator.normalizeCommand(command)
+        val binding = pluginCommandBindings(listOf(plugin), includeDisabled = true)
+            .firstOrNull { normalized in it.aliases }
+            ?: return null
+        return plugin to binding
+    }
+
     suspend fun setEnabled(pluginId: String, enabled: Boolean) =
         installMutex.withLock {
             withContext(Dispatchers.IO) {
@@ -165,78 +230,236 @@ class PluginManager(context: Context) {
 
     private fun installBlocking(uri: Uri): InstalledPlugin {
         val tempZip = File.createTempFile("nekobot-plugin-", ".zip", appContext.cacheDir)
-        val staging = File(pluginRoot, ".staging-${UUID.randomUUID()}")
         try {
             copyUriToFile(uri, tempZip)
+            return installZipBlocking(tempZip)
+        } finally {
+            tempZip.delete()
+        }
+    }
+
+    /**
+     * 从已下载的 ZIP 安装插件。
+     *
+     * 安装成功时 staging 目录会被整体重命名为插件目录，finally 的清理不会影响
+     * 已安装内容；任何失败都会清理 staging，保持插件根目录干净。
+     */
+    private fun installZipBlocking(zip: File): InstalledPlugin {
+        val staging = File(pluginRoot, ".staging-${UUID.randomUUID()}")
+        try {
             staging.mkdirs()
-            var manifestFound = false
-            var totalBytes = 0L
-            val names = mutableSetOf<String>()
-            ZipInputStream(tempZip.inputStream().buffered()).use { zip ->
-                var entry = zip.nextEntry
-                var count = 0
-                while (entry != null) {
-                    if (++count > MAX_ENTRIES) throw PluginInstallException("插件文件数量超过 $MAX_ENTRIES")
-                    val name = entry.name.replace('\\', '/')
-                    if (!PluginManifestValidator.isSafeRelativePath(name)) {
-                        throw PluginInstallException("ZIP 包含不安全路径：${entry.name}")
-                    }
-                    if (!names.add(name)) throw PluginInstallException("ZIP 包含重复文件：$name")
-                    if (!entry.isDirectory) {
-                        val target = File(staging, name).canonicalFile
-                        val root = staging.canonicalFile
-                        if (!target.path.startsWith(root.path + File.separator)) {
-                            throw PluginInstallException("ZIP 路径越界：$name")
-                        }
-                        target.parentFile?.mkdirs()
-                        val limit = when {
-                            name == MANIFEST_ENTRY -> MAX_MANIFEST_BYTES
-                            name.endsWith(".js", ignoreCase = true) -> MAX_SCRIPT_BYTES
-                            else -> MAX_RESOURCE_BYTES
-                        }
-                        target.outputStream().use { output ->
-                            totalBytes += copyLimited(zip, output, limit, totalBytes)
-                        }
-                        if (name == MANIFEST_ENTRY) manifestFound = true
-                    }
-                    zip.closeEntry()
-                    entry = zip.nextEntry
-                }
+            unzipToStaging(zip, staging)
+            if (!File(staging, MANIFEST_ENTRY).isFile) {
+                throw PluginInstallException("ZIP 根目录缺少 plugin.json")
             }
-            if (!manifestFound) throw PluginInstallException("ZIP 根目录缺少 plugin.json")
-            val manifestFile = File(staging, MANIFEST_ENTRY)
-            val manifest = parseManifest(manifestFile)
+            return installStaging(staging)
+        } finally {
+            if (staging.exists()) staging.deleteRecursively()
+        }
+    }
+
+    /** 解压 ZIP 到 staging，执行路径安全、数量和大小检查。 */
+    private fun unzipToStaging(zip: File, staging: File) {
+        var totalBytes = 0L
+        val names = mutableSetOf<String>()
+        ZipInputStream(zip.inputStream().buffered()).use { zipStream ->
+            var entry = zipStream.nextEntry
+            var count = 0
+            while (entry != null) {
+                if (++count > MAX_ENTRIES) throw PluginInstallException("插件文件数量超过 $MAX_ENTRIES")
+                val name = entry.name.replace('\\', '/')
+                if (!PluginManifestValidator.isSafeRelativePath(name)) {
+                    throw PluginInstallException("ZIP 包含不安全路径：${entry.name}")
+                }
+                if (!names.add(name)) throw PluginInstallException("ZIP 包含重复文件：$name")
+                if (!entry.isDirectory) {
+                    val target = File(staging, name).canonicalFile
+                    val root = staging.canonicalFile
+                    if (!target.path.startsWith(root.path + File.separator)) {
+                        throw PluginInstallException("ZIP 路径越界：$name")
+                    }
+                    target.parentFile?.mkdirs()
+                    val limit = when {
+                        name == MANIFEST_ENTRY -> MAX_MANIFEST_BYTES
+                        name.endsWith(".js", ignoreCase = true) -> MAX_SCRIPT_BYTES
+                        else -> MAX_RESOURCE_BYTES
+                    }
+                    target.outputStream().use { output ->
+                        totalBytes += copyLimited(zipStream, output, limit, totalBytes)
+                    }
+                }
+                zipStream.closeEntry()
+                entry = zipStream.nextEntry
+            }
+        }
+    }
+
+    /** 校验 staging 中的清单并落位为正式插件目录；调用方负责清理 staging。 */
+    private fun installStaging(staging: File): InstalledPlugin {
+        val manifest = parseManifest(File(staging, MANIFEST_ENTRY))
+        if (BuiltInPlugins.isBuiltIn(manifest.id)) {
+            throw PluginInstallException("插件 ID 已被内置插件保留：${manifest.id}")
+        }
+        val old = _installed.value.firstOrNull { it.id == manifest.id }
+        val errors = PluginManifestValidator.validate(manifest, manifestValidationScopes(manifest.id))
+        if (errors.isNotEmpty()) throw PluginInstallException(errors.joinToString("；"))
+
+        val entryFile = File(staging, manifest.entry).canonicalFile
+        if (!entryFile.path.startsWith(staging.canonicalPath + File.separator) || !entryFile.isFile) {
+            throw PluginInstallException("插件入口文件不存在：${manifest.entry}")
+        }
+        val installedAt = old?.installedAt ?: System.currentTimeMillis()
+        writeState(
+            staging,
+            PluginState(enabled = old?.enabled ?: true, installedAt = installedAt)
+        )
+        val target = File(pluginRoot, manifest.id)
+        if (target.exists()) target.deleteRecursively()
+        if (!staging.renameTo(target)) throw PluginInstallException("无法保存插件文件")
+        reload()
+        return _installed.value.firstOrNull { it.id == manifest.id }
+            ?: throw PluginInstallException("插件安装后加载失败")
+    }
+
+    /** 其他插件与内置命令占用的命令名集合；安装/更新校验时排除插件自身。 */
+    private fun manifestValidationScopes(excludePluginId: String): Set<String> {
+        val reserved = LocalSlashCommands.reservedCommandAliases()
+        val existing = commandBindings(includeDisabled = true)
+            .filter { it.pluginId != excludePluginId }
+            .flatMap { listOf(it.trigger) + it.aliases }
+        return reserved + existing
+    }
+
+    private fun installFromSourceBlocking(
+        manifestJson: String,
+        entrySource: String,
+        extraFiles: Map<String, String>
+    ): InstalledPlugin {
+        val staging = File(pluginRoot, ".staging-${UUID.randomUUID()}")
+        try {
+            staging.mkdirs()
+            // 先完整解析并校验清单，再写任何文件，避免恶意 entry 路径在校验前写出 staging。
+            val manifest = parseManifestText(manifestJson)
             if (BuiltInPlugins.isBuiltIn(manifest.id)) {
                 throw PluginInstallException("插件 ID 已被内置插件保留：${manifest.id}")
             }
-            val old = _installed.value.firstOrNull { it.id == manifest.id }
-            val reserved = LocalSlashCommands.reservedCommandAliases()
-            val existing = commandBindings(includeDisabled = true)
-                .filter { it.pluginId != manifest.id }
-                .flatMap { listOf(it.trigger) + it.aliases }
-                .toSet()
-            val errors = PluginManifestValidator.validate(manifest, reserved + existing)
-            if (errors.isNotEmpty()) throw PluginInstallException(errors.joinToString("；"))
-
-            val entryFile = File(staging, manifest.entry).canonicalFile
-            if (!entryFile.path.startsWith(staging.canonicalPath + File.separator) || !entryFile.isFile) {
-                throw PluginInstallException("插件入口文件不存在：${manifest.entry}")
+            if (!PluginManifestValidator.isSafeRelativePath(manifest.entry) ||
+                !manifest.entry.endsWith(".js", ignoreCase = true)
+            ) {
+                throw PluginInstallException("插件 entry 必须是安全的 .js 相对路径")
             }
-            val installedAt = old?.installedAt ?: System.currentTimeMillis()
-            writeState(
-                staging,
-                PluginState(enabled = old?.enabled ?: true, installedAt = installedAt)
+            if (manifestJson.toByteArray(Charsets.UTF_8).size > MAX_MANIFEST_BYTES) {
+                throw PluginInstallException("plugin.json 超过大小限制")
+            }
+            if (entrySource.toByteArray(Charsets.UTF_8).size > MAX_SCRIPT_BYTES) {
+                throw PluginInstallException("插件入口源码超过大小限制")
+            }
+            File(staging, MANIFEST_ENTRY).writeText(
+                PluginManifestValidator.sanitizeManifestJson(manifestJson),
+                Charsets.UTF_8
             )
-            val target = File(pluginRoot, manifest.id)
-            if (target.exists()) target.deleteRecursively()
-            if (!staging.renameTo(target)) throw PluginInstallException("无法保存插件文件")
-            reload()
-            return _installed.value.firstOrNull { it.id == manifest.id }
-                ?: throw PluginInstallException("插件安装后加载失败")
+            val entry = File(staging, manifest.entry).canonicalFile
+            entry.parentFile?.mkdirs()
+            entry.writeText(entrySource, Charsets.UTF_8)
+            extraFiles.forEach { (path, content) -> writePluginFile(staging, path, content, manifest.entry) }
+            return installStaging(staging)
         } finally {
-            tempZip.delete()
             if (staging.exists()) staging.deleteRecursively()
         }
+    }
+
+    private fun installFromUrlBlocking(url: String): InstalledPlugin {
+        val trimmed = url.trim()
+        if (!trimmed.startsWith("https://", ignoreCase = true)) {
+            throw PluginInstallException("只允许从 HTTPS 地址安装插件")
+        }
+        val tempZip = File.createTempFile("nekobot-plugin-", ".zip", appContext.cacheDir)
+        try {
+            val request = Request.Builder().url(trimmed).get().build()
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw PluginInstallException("插件下载失败：HTTP ${response.code}")
+                val body = response.body ?: throw PluginInstallException("插件下载失败：响应为空")
+                body.byteStream().use { input ->
+                    tempZip.outputStream().use { output ->
+                        copyLimited(input, output, MAX_ARCHIVE_BYTES, 0L)
+                    }
+                }
+            }
+            return installZipBlocking(tempZip)
+        } finally {
+            tempZip.delete()
+        }
+    }
+
+    private fun updatePluginBlocking(
+        pluginId: String,
+        manifestJson: String?,
+        entrySource: String?,
+        extraFiles: Map<String, String>
+    ): InstalledPlugin {
+        if (BuiltInPlugins.isBuiltIn(pluginId)) {
+            throw PluginInstallException("内置插件不能修改")
+        }
+        val directory = pluginDirectory(pluginId)?.takeIf { it.isDirectory }
+            ?: throw PluginInstallException("插件不存在：$pluginId")
+        val manifestFile = File(directory, MANIFEST_ENTRY)
+        val current = parseManifest(manifestFile)
+        val manifest = if (manifestJson != null) parseManifestText(manifestJson) else current
+        if (manifest.id != pluginId) {
+            throw PluginInstallException("修改清单时插件 id 不能变更（当前 $pluginId，清单 ${manifest.id}）")
+        }
+        if (manifestJson != null && manifestJson.toByteArray(Charsets.UTF_8).size > MAX_MANIFEST_BYTES) {
+            throw PluginInstallException("plugin.json 超过大小限制")
+        }
+        if (!PluginManifestValidator.isSafeRelativePath(manifest.entry) ||
+            !manifest.entry.endsWith(".js", ignoreCase = true)
+        ) {
+            throw PluginInstallException("插件 entry 必须是安全的 .js 相对路径")
+        }
+        val errors = PluginManifestValidator.validate(manifest, manifestValidationScopes(pluginId))
+        if (errors.isNotEmpty()) throw PluginInstallException(errors.joinToString("；"))
+        if (entrySource != null && entrySource.toByteArray(Charsets.UTF_8).size > MAX_SCRIPT_BYTES) {
+            throw PluginInstallException("插件入口源码超过大小限制")
+        }
+        if (manifestJson != null) {
+            manifestFile.writeText(
+                PluginManifestValidator.sanitizeManifestJson(manifestJson),
+                Charsets.UTF_8
+            )
+        }
+        if (entrySource != null) {
+            val entry = File(directory, manifest.entry).canonicalFile
+            entry.parentFile?.mkdirs()
+            entry.writeText(entrySource, Charsets.UTF_8)
+        } else {
+            val entryFile = File(directory, manifest.entry).canonicalFile
+            if (!entryFile.path.startsWith(directory.canonicalPath + File.separator) || !entryFile.isFile) {
+                throw PluginInstallException("插件入口文件不存在：${manifest.entry}")
+            }
+        }
+        extraFiles.forEach { (path, content) -> writePluginFile(directory, path, content, manifest.entry) }
+        reload()
+        return _installed.value.firstOrNull { it.id == pluginId }
+            ?: throw PluginInstallException("插件修改后加载失败，请用 view 检查插件内容")
+    }
+
+    /** 写入插件包内的附加文件；清单与入口必须分别通过 manifest_json / main_js 提供。 */
+    private fun writePluginFile(root: File, relativePath: String, content: String, entryPath: String) {
+        if (!PluginManifestValidator.isSafeRelativePath(relativePath)) {
+            throw PluginInstallException("不安全的文件路径：$relativePath")
+        }
+        if (relativePath == MANIFEST_ENTRY || relativePath == entryPath) {
+            throw PluginInstallException("该文件必须通过 manifest_json / main_js 提供：$relativePath")
+        }
+        val limit = if (relativePath.endsWith(".js", ignoreCase = true)) MAX_SCRIPT_BYTES else MAX_RESOURCE_BYTES
+        val bytes = content.toByteArray(Charsets.UTF_8)
+        if (bytes.size > limit) throw PluginInstallException("文件超过大小限制：$relativePath")
+        val target = File(root, relativePath).canonicalFile
+        if (!target.path.startsWith(root.canonicalPath + File.separator)) {
+            throw PluginInstallException("文件路径越界：$relativePath")
+        }
+        target.parentFile?.mkdirs()
+        target.writeBytes(bytes)
     }
 
     private fun copyUriToFile(uri: Uri, target: File) {
@@ -303,9 +526,13 @@ class PluginManager(context: Context) {
         if (!file.isFile || file.length() > MAX_MANIFEST_BYTES) {
             throw PluginInstallException("plugin.json 不存在或过大")
         }
-        return runCatching { gson.fromJson(PluginManifestValidator.sanitizeManifestJson(file.readText(Charsets.UTF_8)), PluginManifest::class.java) }
-            .getOrElse { throw PluginInstallException("plugin.json 格式无效：${it.message ?: "未知错误"}") }
+        return parseManifestText(file.readText(Charsets.UTF_8))
     }
+
+    private fun parseManifestText(raw: String): PluginManifest =
+        runCatching {
+            gson.fromJson(PluginManifestValidator.sanitizeManifestJson(raw), PluginManifest::class.java)
+        }.getOrElse { throw PluginInstallException("plugin.json 格式无效：${it.message ?: "未知错误"}") }
 
     private fun readState(directory: File): PluginState = runCatching {
         gson.fromJson(directory.resolve(STATE_ENTRY).readText(Charsets.UTF_8), PluginState::class.java)

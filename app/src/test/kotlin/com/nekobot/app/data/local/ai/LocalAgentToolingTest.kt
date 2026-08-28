@@ -250,6 +250,39 @@ class LocalAgentToolingTest {
     }
 
     @Test
+    fun pluginUseToolDefinitionExposesAllActionsAndRequiresAction() {
+        val pluginFunction = buildLocalAgentToolDefinitions()
+            .mapNotNull { it["function"] as? Map<*, *> }
+            .first { it["name"] == "plugin_use" }
+        val pluginParameters = pluginFunction["parameters"] as Map<*, *>
+        assertTrue("action" in (pluginParameters["required"] as List<*>))
+        val pluginProperties = pluginParameters["properties"] as Map<*, *>
+        assertTrue("plugin_id" in pluginProperties)
+        assertTrue("manifest_json" in pluginProperties)
+        assertTrue("main_js" in pluginProperties)
+        assertTrue("extra_files_json" in pluginProperties)
+        assertTrue("url" in pluginProperties)
+        assertTrue("command" in pluginProperties)
+        assertTrue("args" in pluginProperties)
+        val actionDescription =
+            ((pluginProperties["action"] as Map<*, *>)["description"] as String)
+        listOf(
+            "list", "view", "help", "create", "install_url",
+            "update", "enable", "disable", "uninstall", "execute"
+        ).forEach { action -> assertTrue(action in actionDescription) }
+
+        val missingAction = normalizeAgentToolCall(
+            mapOf("name" to "plugin_use", "arguments" to mapOf("plugin_id" to "demo.notes"))
+        )
+        assertTrue(validateAgentToolCall(missingAction)?.contains("action") == true)
+
+        val withAction = normalizeAgentToolCall(
+            mapOf("name" to "plugin_use", "arguments" to mapOf("action" to "list"))
+        )
+        assertEquals(null, validateAgentToolCall(withAction))
+    }
+
+    @Test
     fun generateImageToolPersistsImagesThroughConversationSink() = runBlocking {
         var savedPrompt: String? = null
         var savedImages: List<LocalImageResult> = emptyList()

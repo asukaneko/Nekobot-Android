@@ -16,6 +16,7 @@ private val toolCallHistoryType =
 
 private val requiredToolArguments = mapOf(
     "browser_use" to setOf("action"),
+    "plugin_use" to setOf("action"),
     "exec_command" to setOf("command"),
     "file_read" to setOf("path"),
     "file_write" to setOf("path", "content"),

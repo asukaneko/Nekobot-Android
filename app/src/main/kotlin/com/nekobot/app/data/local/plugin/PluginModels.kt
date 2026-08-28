@@ -39,6 +39,13 @@ data class InstalledPlugin(
     val isBuiltIn: Boolean = false
 )
 
+/** 供 Agent 插件工具读取的插件详情：清单原文与入口源码。 */
+data class PluginDetail(
+    val plugin: InstalledPlugin,
+    val manifestJson: String,
+    val entrySource: String?
+)
+
 /** 解析器和运行时使用的命令绑定；trigger 是用户实际输入的命令。 */
 internal data class PluginCommandBinding(
     val pluginId: String,
