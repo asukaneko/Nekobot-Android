@@ -110,6 +110,8 @@ import com.nekobot.app.ui.theme.OnPrimary
 import com.nekobot.app.ui.theme.OnSurface
 import com.nekobot.app.ui.theme.OnSurfaceVariant
 import com.nekobot.app.ui.theme.Primary
+import com.nekobot.app.ui.theme.accentSecondary
+import com.nekobot.app.ui.theme.accentWarning
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -1004,8 +1006,8 @@ private fun LanguagePickerDialog(
 private fun LogCard(log: LogEntry) {
     val levelColor = when (log.level.lowercase()) {
         "error" -> MaterialTheme.colorScheme.error
-        "warning", "warn" -> Color(0xFFFFB347)
-        "debug" -> Color(0xFF6BAED6)
+        "warning", "warn" -> accentWarning()
+        "debug" -> accentSecondary()
         else -> MaterialTheme.colorScheme.primary
     }
     val levelLabel = when (log.level.lowercase()) {

@@ -1054,7 +1054,7 @@ private fun ModernChatComposer(
                                 targetValue = when (action) {
                                     ModernComposerAction.VOICE -> idleActionColor
                                     ModernComposerAction.SEND -> MaterialTheme.colorScheme.primary
-                                    ModernComposerAction.STOP -> Color(0xFFFF6B6B)
+                                    ModernComposerAction.STOP -> MaterialTheme.colorScheme.error
                                 },
                                 animationSpec = tween(durationMillis = 180),
                                 label = "composer_action_start"
@@ -1063,7 +1063,7 @@ private fun ModernChatComposer(
                                 targetValue = when (action) {
                                     ModernComposerAction.VOICE -> idleActionColor
                                     ModernComposerAction.SEND -> MaterialTheme.colorScheme.primary.copy(alpha = 0.72f)
-                                    ModernComposerAction.STOP -> Color(0xFFFF6B6B)
+                                    ModernComposerAction.STOP -> MaterialTheme.colorScheme.error
                                 },
                                 animationSpec = tween(durationMillis = 180),
                                 label = "composer_action_end"
@@ -1429,7 +1429,7 @@ private fun ModernPlotChoices(
                     Icon(
                         Icons.Filled.Stop,
                         contentDescription = stringResource(R.string.chat_stop_generation),
-                        tint = Color(0xFFFF6B6B),
+                        tint = MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(19.dp)
                     )
                 }
@@ -1482,8 +1482,8 @@ private fun ModernPlotChoices(
                 choices.take(3).forEach { choice ->
                     // 剧情等级配色：转折点红、重要琥珀、普通主题色
                     val levelColor = when (choice.level) {
-                        "turning_point" -> Color(0xFFFF6B6B)
-                        "important" -> Color(0xFFFFB347)
+                        "turning_point" -> MaterialTheme.colorScheme.error
+                        "important" -> com.nekobot.app.ui.theme.accentWarning()
                         else -> MaterialTheme.colorScheme.primary
                     }
                     val selected = choice.id == selectedId || choice.selected
@@ -1540,8 +1540,8 @@ private fun ModernPlotChoices(
     // 长按查看完整内容
     detailChoice?.let { choice ->
         val levelColor = when (choice.level) {
-            "turning_point" -> Color(0xFFFF6B6B)
-            "important" -> Color(0xFFFFB347)
+            "turning_point" -> MaterialTheme.colorScheme.error
+            "important" -> com.nekobot.app.ui.theme.accentWarning()
             else -> MaterialTheme.colorScheme.primary
         }
         AlertDialog(

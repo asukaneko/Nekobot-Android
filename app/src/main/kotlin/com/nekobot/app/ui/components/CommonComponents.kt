@@ -341,8 +341,38 @@ fun EmptyState(title: String, hint: String? = null, icon: @Composable (() -> Uni
         verticalArrangement = Arrangement.Center
     ) {
         if (icon != null) {
-            icon()
-            Spacer(Modifier.height(16.dp))
+            // 柔和渐变圆形底座 + 微光晕，让空状态图标更精致
+            Box(
+                modifier = Modifier.size(96.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                // 外围光晕
+                Box(
+                    modifier = Modifier
+                        .size(96.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(
+                            Brush.radialGradient(
+                                listOf(
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.08f),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
+                // 图标底色圆盘
+                Box(
+                    modifier = Modifier
+                        .size(68.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    icon()
+                }
+            }
+            Spacer(Modifier.height(20.dp))
         }
         Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
         if (!hint.isNullOrBlank()) {

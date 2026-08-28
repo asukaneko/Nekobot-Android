@@ -3,6 +3,7 @@ package com.nekobot.app.ui.screens.sessions
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.clickable
@@ -110,11 +111,6 @@ import com.nekobot.app.ui.components.resolveAvatarUrl
 import com.nekobot.app.ui.adaptive.listItemSemantics
 import com.nekobot.app.ui.adaptive.rememberShouldUseTwoPane
 import com.nekobot.app.ui.screens.chat.ModernChatScreen
-import com.nekobot.app.ui.theme.BgSurface
-import com.nekobot.app.ui.theme.BgSurfaceVariant
-import com.nekobot.app.ui.theme.OnSurface
-import com.nekobot.app.ui.theme.OnSurfaceVariant
-import com.nekobot.app.ui.theme.Primary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -851,18 +847,25 @@ private fun RowScope.StatFilterCard(
     val contentColor =
         if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     val containerColor =
-        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
         else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-    Column(
-        modifier = Modifier
-            .weight(1f)
-            .clip(RoundedCornerShape(14.dp))
-            .background(containerColor)
-            .clickable(onClick = onClick)
-            .padding(vertical = 9.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+    // 选中时加一条主题色描边，增强点按反馈与可辨识性
+    val borderStroke = if (selected) {
+        BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f))
+    } else null
+    Surface(
+        modifier = Modifier.weight(1f),
+        shape = RoundedCornerShape(14.dp),
+        color = containerColor,
+        border = borderStroke
     ) {
+        Column(
+            modifier = Modifier
+                .clickable(onClick = onClick)
+                .padding(vertical = 9.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 imageVector = icon,
@@ -887,6 +890,7 @@ private fun RowScope.StatFilterCard(
             softWrap = false,
             overflow = TextOverflow.Ellipsis
         )
+        }
     }
 }
 

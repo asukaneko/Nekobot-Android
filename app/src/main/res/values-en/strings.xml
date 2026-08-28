@@ -81,6 +81,15 @@
     <string name="more_settings_desc">Server, system config, logs, account</string>
     <string name="more_logout">Log out</string>
     <string name="more_current_user">Current: %1$s</string>
+    <string name="more_group_appearance">Appearance</string>
+    <string name="more_group_ai">AI</string>
+    <string name="more_group_features">Features</string>
+    <string name="more_group_system">System</string>
+    <string name="extensions_group_automation">Automation</string>
+    <string name="extensions_group_ai">AI extensions</string>
+    <string name="extensions_group_messaging">Messaging</string>
+    <string name="extensions_group_labs">Labs</string>
+    <string name="extensions_group_growth">Growth &amp; security</string>
 
     <!-- ==================== Settings screen ==================== -->
     <string name="settings_title">Settings</string>

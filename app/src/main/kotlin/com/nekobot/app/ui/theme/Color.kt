@@ -102,3 +102,27 @@ fun parseHexColor(hex: String?): Color? {
 @Composable
 fun defaultPrimaryColor(): Color =
     if (isSystemInDarkTheme()) Primary else PrimaryLight
+
+// ==================== 深浅色自适应语义色 ====================
+// 用于图标着色、日志等级、剧情事件等"点缀色"场景，
+// 避免硬编码 hex 导致浅色主题下对比度错误。
+
+/** 蓝（深色 Secondary / 浅色 SecondaryLight） */
+@Composable
+fun accentSecondary(): Color =
+    if (isSystemInDarkTheme()) Secondary else SecondaryLight
+
+/** 紫（深色 Tertiary / 浅色 TertiaryLight） */
+@Composable
+fun accentTertiary(): Color =
+    if (isSystemInDarkTheme()) Tertiary else TertiaryLight
+
+/** 琥珀（深色 WarningAmber / 浅色 WarningAmberLight） */
+@Composable
+fun accentWarning(): Color =
+    if (isSystemInDarkTheme()) WarningAmber else WarningAmberLight
+
+/** 绿（深色 SuccessGreen / 浅色 SuccessGreenLight） */
+@Composable
+fun accentSuccess(): Color =
+    if (isSystemInDarkTheme()) SuccessGreen else SuccessGreenLight

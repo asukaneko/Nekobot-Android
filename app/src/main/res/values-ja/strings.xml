@@ -81,6 +81,15 @@
     <string name="more_settings_desc">サーバー、システム設定、ログ、アカウント</string>
     <string name="more_logout">ログアウト</string>
     <string name="more_current_user">現在: %1$s</string>
+    <string name="more_group_appearance">外観</string>
+    <string name="more_group_ai">AI</string>
+    <string name="more_group_features">機能</string>
+    <string name="more_group_system">システム</string>
+    <string name="extensions_group_automation">自動化</string>
+    <string name="extensions_group_ai">AI 拡張</string>
+    <string name="extensions_group_messaging">メッセージ</string>
+    <string name="extensions_group_labs">ラボ</string>
+    <string name="extensions_group_growth">成長とセキュリティ</string>
 
     <!-- ==================== 設定画面 ==================== -->
     <string name="settings_title">設定</string>
