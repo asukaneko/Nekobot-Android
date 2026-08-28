@@ -254,14 +254,18 @@ internal object LocalSlashCommands {
             ServiceContainer.pluginManager.commandSuggestions(normalized)
         }.getOrElse {
             BuiltInPlugins.defaultCommandSuggestions(normalized)
-        }.map { binding ->
-            LocalCommandSuggestion(
-                command = binding.trigger,
-                aliases = binding.aliases,
-                takesArguments = '<' in binding.usage || '[' in binding.usage
-            )
         }
-        return (native + plugins).distinctBy(LocalCommandSuggestion::command)
+        // 每条插件命令只保留完整的主命令，别名不再单独出现在补全列表中
+        val pluginSuggestions = plugins
+            .distinctBy { it.pluginId to it.name }
+            .map { binding ->
+                LocalCommandSuggestion(
+                    command = "/" + binding.name,
+                    aliases = binding.aliases,
+                    takesArguments = '<' in binding.usage || '[' in binding.usage
+                )
+            }
+        return (native + pluginSuggestions).distinctBy(LocalCommandSuggestion::command)
     }
 
     fun helpText(): String = buildString {

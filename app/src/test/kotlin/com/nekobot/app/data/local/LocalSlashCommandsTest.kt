@@ -21,6 +21,23 @@ class LocalSlashCommandsTest {
         assertEquals("/local_status", LocalSlashCommands.suggestions("/stat").single().command)
         assertTrue(LocalSlashCommands.suggestions("/").isNotEmpty())
     }
+
+    @Test
+    fun suggestions_only_show_full_primary_commands() {
+        val all = LocalSlashCommands.suggestions("/").map { it.command }
+        assertTrue(all.contains("/findbook"))
+        assertTrue(all.contains("/random_novel"))
+        assertTrue(all.contains("/wenku8_login"))
+        assertFalse(all.contains("/fb"))
+        assertFalse(all.contains("/rn"))
+        assertFalse(all.contains("/wenku_login"))
+    }
+
+    @Test
+    fun alias_query_resolves_to_primary_command() {
+        assertEquals("/findbook", LocalSlashCommands.suggestions("/fb").single().command)
+        assertEquals("/random_novel", LocalSlashCommands.suggestions("/rn").single().command)
+    }
     @Test
     fun ignoresOrdinaryChatMessages() {
         assertNull(LocalSlashCommands.parse("你好"))
