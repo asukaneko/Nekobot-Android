@@ -528,7 +528,7 @@ class UnifiedRepository(
      */
     suspend fun aiGenerateCharacter(
         description: String,
-        language: String = "zh"
+        language: String = com.nekobot.app.data.local.ai.AiOutputLanguage.languageTag()
     ): Resource<CharacterPreset> =
         if (isLocal) {
             try {

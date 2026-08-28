@@ -179,6 +179,9 @@ internal class SessionNameGenerator(
             append("- 自然口语化，像聊天记录名称\n")
             append("- 有趣或有诗意更好\n")
             append("- 直接返回标题，不要引号、标点或解释")
+            // 输出语言跟随应用当前设置的语言
+            append("\n\n")
+            append(AiOutputLanguage.directive())
         }
 
         val conversationText = messages.takeLast(12).joinToString("\n") { msg ->

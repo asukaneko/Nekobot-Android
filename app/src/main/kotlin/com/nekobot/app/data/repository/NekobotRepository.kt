@@ -258,7 +258,10 @@ class NekobotRepository(
      * AI 生成角色卡：调用 /api/personality/ai-generate，返回完整 CharacterPreset。
      * 后端返回 {"success": true, "character": {...}}，提取 character 字段。
      */
-    suspend fun aiGenerateCharacter(description: String, language: String = "zh"): Resource<CharacterPreset> {
+    suspend fun aiGenerateCharacter(
+        description: String,
+        language: String = com.nekobot.app.data.local.ai.AiOutputLanguage.languageTag()
+    ): Resource<CharacterPreset> {
         val raw: Resource<JsonElement> = safeCall {
             api.aiGenerateCharacter(mapOf("description" to description, "language" to language))
         }

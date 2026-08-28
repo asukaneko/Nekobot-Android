@@ -8,6 +8,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
+import com.nekobot.app.data.local.ai.AiOutputLanguage
 import com.nekobot.app.data.local.ai.FailoverAllFailedException
 import com.nekobot.app.data.local.ai.AgentRunStage
 import com.nekobot.app.data.local.ai.AgentRunStatus
@@ -6499,7 +6500,7 @@ class LocalRepository(
      * AI 生成角色卡：使用 chat 故障转移队列，按后端相同的 system prompt 生成。
      * @return 生成的 CharacterPreset（未持久化，由调用方决定 createCharacter 保存）
      */
-    suspend fun aiGenerateCharacter(description: String, language: String = "zh"): CharacterPreset = withContext(Dispatchers.IO) {
+    suspend fun aiGenerateCharacter(description: String, language: String = AiOutputLanguage.languageTag()): CharacterPreset = withContext(Dispatchers.IO) {
         val systemPrompt = buildCharacterSystemPromptForLanguage(language)
         val messages = listOf(
             mapOf("role" to "system", "content" to systemPrompt),
@@ -6786,7 +6787,9 @@ class LocalRepository(
 2. title 简洁有辨识度
 3. description 要有画面感，让用户一眼想聊
 4. tags 2-4 个，准确概括角色标签
-5. 所有内容用中文填写"""
+5. 所有内容用${AiOutputLanguage.languageName()}填写
+
+${AiOutputLanguage.directive()}"""
 
     /** 世界书 AI 生成的 system prompt（与后端 world_book.py 一致） */
     private fun buildWorldBookSystemPrompt(charInfos: List<String>, topic: String?): String {
@@ -6855,6 +6858,9 @@ $charSection$topicSection
 5. entry_type 和 trigger_sources 要根据条目内容合理选择
 6. 地点、NPC、事件类条目的 trigger_sources 建议包含 "assistant_recent"
 7. secret 类型不要设置 "assistant_recent" 触发源，防止提前暴露
+8. 所有生成内容（条目名称、关键词、注入内容）使用${AiOutputLanguage.languageName()}书写
+
+${AiOutputLanguage.directive()}
 """
     }
 
@@ -8899,6 +8905,9 @@ $charSection$topicSection
 4. cron 表达式使用 5 字段标准格式（分 时 日 月 周）。
 5. name 必须简短且能体现工作流用途。
 6. description 应说明工作流的目的和预期效果。
+7. name 与 description 使用${AiOutputLanguage.languageName()}书写。
+
+${AiOutputLanguage.directive()}
 """.trimIndent()
 
     private fun LocalWorkflowEntity.toWorkflow(): Workflow = Workflow(

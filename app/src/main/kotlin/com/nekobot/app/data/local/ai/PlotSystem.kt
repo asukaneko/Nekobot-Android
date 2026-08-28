@@ -758,7 +758,9 @@ class PlotChoiceGenerator(
 - text: 点击后直接发送给角色的玩家消息（简短，建议 8-24 字）
 - intent: 选择的意图说明（一句话描述这个选择会把剧情带向哪个新方向）
 
-只返回 JSON 数组，不要包含其他内容。"""
+只返回 JSON 数组，不要包含其他内容。
+
+${AiOutputLanguage.directive()}"""
         val styleHint = STYLE_PRESETS[style] ?: ""
         val outlineHint = if (outline.isNotBlank()) {
             "\n\n【剧情大纲已启用】\n本次会话存在一份用户提供的剧情大纲。生成的 3 个选择必须契合该大纲的整体走向与既定目标，但每个选择仍必须引入一个新的推进元素（新动作/新话题/新场景/时间推移/新人物/突发事件），禁止直接复述大纲原文，也不要把三个选择都写成大纲的同一种实现路径。上文'必须推进剧情'的铁律与文本写法要求仍然全部适用。"

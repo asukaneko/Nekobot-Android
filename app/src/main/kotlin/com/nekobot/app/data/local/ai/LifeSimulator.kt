@@ -86,6 +86,9 @@ object LifeSimulator {
             )
         }
 
+        // 输出语言跟随应用当前设置的语言
+        system += "\n\n" + AiOutputLanguage.directive()
+
         val userParts = mutableListOf<String>()
         if (profileText.isNotBlank()) userParts.add(profileText)
         if (circadianText.isNotBlank()) userParts.add("【当前时段】\n$circadianText")

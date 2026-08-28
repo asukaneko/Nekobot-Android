@@ -246,7 +246,9 @@ class AutoState(
 - personality_evolution 仅重大经历才加，普通聊天为空数组
 - quality_scores 基于对话质量评估
 
-只返回 JSON，不要其他文字。"""
+只返回 JSON，不要其他文字。
+
+${AiOutputLanguage.directive()}"""
     }
 
     /** 构建状态评估 user prompt */
