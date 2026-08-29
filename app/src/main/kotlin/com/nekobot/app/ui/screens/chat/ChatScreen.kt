@@ -2794,7 +2794,9 @@ private fun MessageBubble(
                                         segments = group,
                                         textColor = MaterialTheme.colorScheme.onSurface,
                                         modifier = Modifier.fillMaxWidth(),
-                                        sessionId = sessionId
+                                        sessionId = sessionId,
+                                        chatMode = true,
+                                        processParens = !isUser
                                     )
                                 } else {
                                     Box(
@@ -2808,7 +2810,9 @@ private fun MessageBubble(
                                             segments = group,
                                             textColor = textColor,
                                             modifier = Modifier.widthIn(max = maxBubbleWidth),
-                                            sessionId = sessionId
+                                            sessionId = sessionId,
+                                            chatMode = true,
+                                            processParens = !isUser
                                         )
                                     }
                                 }
@@ -2820,7 +2824,9 @@ private fun MessageBubble(
                             segments = contentSegments,
                             textColor = textColor,
                             modifier = Modifier.widthIn(max = 360.dp),
-                            sessionId = sessionId
+                            sessionId = sessionId,
+                            chatMode = true,
+                            processParens = !isUser
                         )
                     } else {
                         // 文本内容：用 Markdown 渲染

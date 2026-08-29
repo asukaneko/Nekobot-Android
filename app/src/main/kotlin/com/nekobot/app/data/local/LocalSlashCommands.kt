@@ -244,7 +244,8 @@ internal object LocalSlashCommands {
                 LocalCommandSuggestion(
                     command = spec.aliases.first(),
                     aliases = spec.aliases,
-                    takesArguments = '<' in spec.usage || '[' in spec.usage
+                    takesArguments = '<' in spec.usage || '[' in spec.usage,
+                    description = spec.description
                 )
             }
             .distinctBy(LocalCommandSuggestion::command)
@@ -261,7 +262,8 @@ internal object LocalSlashCommands {
                 LocalCommandSuggestion(
                     command = "/" + binding.name,
                     aliases = binding.aliases,
-                    takesArguments = '<' in binding.usage || '[' in binding.usage
+                    takesArguments = '<' in binding.usage || '[' in binding.usage,
+                    description = binding.description
                 )
             }
         return (native + pluginSuggestions).distinctBy(LocalCommandSuggestion::command)
@@ -318,7 +320,9 @@ internal data class LocalParsedCommand(
 internal data class LocalCommandSuggestion(
     val command: String,
     val aliases: List<String>,
-    val takesArguments: Boolean
+    val takesArguments: Boolean,
+    /** 补全面板在主命令下方展示的命令说明。 */
+    val description: String = ""
 )
 
 internal enum class LocalCommandAction(val isNative: Boolean) {

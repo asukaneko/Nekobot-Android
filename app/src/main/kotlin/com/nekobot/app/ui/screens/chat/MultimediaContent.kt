@@ -83,6 +83,7 @@ import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalWorkspaceStorage
 import com.nekobot.app.ui.components.GlassCard
+import com.nekobot.app.ui.components.MarkdownText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -778,22 +779,29 @@ private fun FullscreenHtmlDialog(content: String, onDismiss: () -> Unit) {
 }
 
 /**
- * 渲染内容段列表：文本段用 Text，多媒体段用对应渲染器。
+ * 渲染内容段列表：文本段用 MarkdownText（支持 Markdown），多媒体段用对应渲染器。
+ *
+ * [chatMode]/[processParens] 与普通文本气泡保持一致：
+ * chatMode 开启内心独白折叠块等聊天特化处理；processParens 控制括号旁白斜体（用户消息不处理）。
  */
 @Composable
 fun RenderContentSegments(
     segments: List<ContentSegment>,
     textColor: Color,
     modifier: Modifier = Modifier,
-    sessionId: String = ""
+    sessionId: String = "",
+    chatMode: Boolean = false,
+    processParens: Boolean = true
 ) {
     Column(modifier = modifier) {
         segments.forEachIndexed { idx, segment ->
             when (segment.type) {
-                SegmentType.TEXT -> Text(
+                SegmentType.TEXT -> MarkdownText(
                     text = segment.text,
                     color = textColor,
-                    style = MaterialTheme.typography.bodyMedium
+                    style = MaterialTheme.typography.bodyMedium,
+                    chatMode = chatMode,
+                    processParens = processParens
                 )
                 SegmentType.IMAGE -> ImageRenderer(url = segment.url)
                 SegmentType.VIDEO -> VideoRenderer(url = segment.url)

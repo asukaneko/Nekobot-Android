@@ -368,7 +368,9 @@ private fun CommandSuggestionPanel(
                         )
                         Text(
                             text = when (candidate) {
-                                is ChatCommandCandidate.Command -> stringResource(R.string.command_suggestion_hint)
+                                is ChatCommandCandidate.Command -> candidate.suggestion.description
+                                    .takeIf(String::isNotBlank)
+                                    ?: stringResource(R.string.command_suggestion_hint)
                                 is ChatCommandCandidate.SkillCommand -> candidate.skill.description
                                     ?.takeIf(String::isNotBlank)
                                     ?: stringResource(R.string.command_suggestion_skill_hint)
