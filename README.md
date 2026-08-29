@@ -52,7 +52,7 @@
   <tr>
     <td align="center"><img src="docs/assets/screenshots/state-history-trend.jpg" alt="角色状态趋势" /><br /><sub>状态趋势与差分</sub></td>
     <td align="center"><img src="docs/assets/screenshots/more.jpg" alt="更多功能" /><br /><sub>更多功能</sub></td>
-    <td></td>
+    <td align="center"><img src="docs/assets/screenshots/expansion.jpg" alt="拓展功能" /><br /><sub>拓展功能</sub></td>
   </tr>
 </table>
 

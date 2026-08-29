@@ -52,7 +52,7 @@ Native Android client · Server / Local dual mode · Dark glassmorphism UI
   <tr>
     <td align="center"><img src="docs/assets/screenshots/state-history-trend.jpg" alt="State Trends" /><br /><sub>Trends & Diff</sub></td>
     <td align="center"><img src="docs/assets/screenshots/more.jpg" alt="More" /><br /><sub>More Features</sub></td>
-    <td></td>
+    <td align="center"><img src="docs/assets/screenshots/expansion.jpg" alt="Expansion" /><br /><sub>Extended Features</sub></td>
   </tr>
 </table>
 
@@ -93,18 +93,18 @@ Native Android client · Server / Local dual mode · Dark glassmorphism UI
 
 Agent mode runs in local mode, allowing models that support Function Calling / Tool Use not only to generate text, but also to browse the web, manipulate files, execute Linux commands and continuously complete multi-step tasks within a session.
 
-| Capability               | Description                                                     |
-| ---------------- | ------------------------------------------------------ |
-| **Multi-turn Tool Execution** | Models can plan and call tools continuously; the progress card displays reasoning, parameters, results and errors in real time, and the expanded state is preserved across new tool events. |
-| **Native Browser**        | Multi-tab support, click, input, scroll, forward/back, JavaScript, viewport and User-Agent switching. |
-| **Web Reading**           | Read body content, dynamic DOM source, interaction skeletons and structured URLs; supports Cookie-authenticated requests and file downloads. |
-| **Browser Preview**       | View the current page in real time on the chat screen with full-screen zoom; AI can capture the current page or long pages and send them to a vision model to understand images, charts and complex layouts. |
-| **Linux Sandbox**         | Built-in Alpine Linux + PRoot, supports package installation, running scripts, launching background processes and reusing the command-line environment. |
-| **Session Terminal**      | A full-screen command line can be opened from the top-right menu of an Agent session, directly operating the session's `/workspace`. |
-| **Files & Images**        | Read, write, edit precisely, list, parse and send workspace files; can call vision models to understand local images. |
-| **Skills & MCP**          | Agent can read enabled local Skills and call tools provided by connected MCP servers. |
-| **Execution Guard**       | High-risk commands require confirmation; tool parameters are fixed and validated before execution; repeated, no-progress calls are auto-stopped. |
-| **Background Execution**  | Foreground service and persistent notification are enabled during Agent work, reducing the chance of Android killing tasks when going to the background. |
+| Capability                    | Description                                                                                                                                                                                                  |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Multi-turn Tool Execution** | Models can plan and call tools continuously; the progress card displays reasoning, parameters, results and errors in real time, and the expanded state is preserved across new tool events.                  |
+| **Native Browser**            | Multi-tab support, click, input, scroll, forward/back, JavaScript, viewport and User-Agent switching.                                                                                                        |
+| **Web Reading**               | Read body content, dynamic DOM source, interaction skeletons and structured URLs; supports Cookie-authenticated requests and file downloads.                                                                 |
+| **Browser Preview**           | View the current page in real time on the chat screen with full-screen zoom; AI can capture the current page or long pages and send them to a vision model to understand images, charts and complex layouts. |
+| **Linux Sandbox**             | Built-in Alpine Linux + PRoot, supports package installation, running scripts, launching background processes and reusing the command-line environment.                                                      |
+| **Session Terminal**          | A full-screen command line can be opened from the top-right menu of an Agent session, directly operating the session's `/workspace`.                                                                         |
+| **Files & Images**            | Read, write, edit precisely, list, parse and send workspace files; can call vision models to understand local images.                                                                                        |
+| **Skills & MCP**              | Agent can read enabled local Skills and call tools provided by connected MCP servers.                                                                                                                        |
+| **Execution Guard**           | High-risk commands require confirmation; tool parameters are fixed and validated before execution; repeated, no-progress calls are auto-stopped.                                                             |
+| **Background Execution**      | Foreground service and persistent notification are enabled during Agent work, reducing the chance of Android killing tasks when going to the background.                                                     |
 
 ### Sandbox Data & Session Isolation
 
@@ -117,13 +117,13 @@ Agent mode runs in local mode, allowing models that support Function Calling / T
 
 ## 🔄 Dual Mode Architecture
 
-|           | 🌐 Server Mode                | 📱 Local Mode                            |
-| --------- | ----------------------- | ---------------------------------- |
-| **Backend**    | Connect to the NekoBot Web backend       | No backend, direct connection to OpenAI-compatible API |
-| **Communication**    | REST + Socket.IO real-time streaming | Local direct AI API requests |
-| **Data Storage**  | Server + local cache              | Room database + session workspace + writable Linux rootfs |
-| **Agent** | Depends on server capabilities                | Built-in browser, Linux sandbox, terminal, Skills and MCP |
-| **Use Cases**  | Full feature ecosystem, multi-device sync             | Privacy-first, local data, your own API keys, on-device Agent |
+|                   | 🌐 Server Mode                            | 📱 Local Mode                                                 |
+| ----------------- | ----------------------------------------- | ------------------------------------------------------------- |
+| **Backend**       | Connect to the NekoBot Web backend        | No backend, direct connection to OpenAI-compatible API        |
+| **Communication** | REST + Socket.IO real-time streaming      | Local direct AI API requests                                  |
+| **Data Storage**  | Server + local cache                      | Room database + session workspace + writable Linux rootfs     |
+| **Agent**         | Depends on server capabilities            | Built-in browser, Linux sandbox, terminal, Skills and MCP     |
+| **Use Cases**     | Full feature ecosystem, multi-device sync | Privacy-first, local data, your own API keys, on-device Agent |
 
 ## 📦 Install
 
@@ -163,19 +163,19 @@ Agent mode runs in local mode, allowing models that support Function Calling / T
 
 ## 🛠 Tech Stack
 
-| Category        | Stack                                         |
-| --------- | ------------------------------------------ |
-| Language        | Kotlin 2.0.21                              |
-| UI        | Jetpack Compose (BOM 2024.09.02) + Material3 |
-| Architecture        | MVVM (BaseViewModel + StateFlow)            |
-| Async        | Kotlin Coroutines 1.9.0                    |
-| Network        | Retrofit 2.11 + OkHttp 4.12 + Gson         |
-| Real-time      | socket.io-client-java 2.1.0                |
-| Database       | Room 2.6.1 (KSP annotation processing)                       |
-| Image Loading      | Coil 2.7.0 (crossfade + 256MB disk cache)         |
-| Navigation        | Navigation Compose 2.8.2                   |
-| Agent Runtime | Android WebView + Alpine Linux + PRoot     |
-| Build        | Gradle 8.11.1 + AGP 8.9.1 + KSP            |
+| Category      | Stack                                        |
+| ------------- | -------------------------------------------- |
+| Language      | Kotlin 2.0.21                                |
+| UI            | Jetpack Compose (BOM 2024.09.02) + Material3 |
+| Architecture  | MVVM (BaseViewModel + StateFlow)             |
+| Async         | Kotlin Coroutines 1.9.0                      |
+| Network       | Retrofit 2.11 + OkHttp 4.12 + Gson           |
+| Real-time     | socket.io-client-java 2.1.0                  |
+| Database      | Room 2.6.1 (KSP annotation processing)       |
+| Image Loading | Coil 2.7.0 (crossfade + 256MB disk cache)    |
+| Navigation    | Navigation Compose 2.8.2                     |
+| Agent Runtime | Android WebView + Alpine Linux + PRoot       |
+| Build         | Gradle 8.11.1 + AGP 8.9.1 + KSP              |
 
 ## 🔧 Build from Source
 
@@ -278,14 +278,14 @@ app/src/main/kotlin/com/nekobot/app/
 
 ## 🔐 Permissions
 
-| Permission                                                    | Purpose                    |
-| ----------------------------------------------------- | --------------------- |
+| Permission                                            | Purpose                                                         |
+| ----------------------------------------------------- | --------------------------------------------------------------- |
 | `INTERNET`                                            | Network communication, Agent browser and sandbox network access |
-| `ACCESS_NETWORK_STATE`                                | Detect network status                |
-| `RECORD_AUDIO`                                        | Voice input (server mode)           |
-| `POST_NOTIFICATIONS`                                  | Session notifications and Agent background status    |
-| `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_DATA_SYNC` | Agent long-running tasks continue in the foreground service   |
-| `WAKE_LOCK`                                           | Avoid early CPU sleep during Agent execution |
+| `ACCESS_NETWORK_STATE`                                | Detect network status                                           |
+| `RECORD_AUDIO`                                        | Voice input (server mode)                                       |
+| `POST_NOTIFICATIONS`                                  | Session notifications and Agent background status               |
+| `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_DATA_SYNC` | Agent long-running tasks continue in the foreground service     |
+| `WAKE_LOCK`                                           | Avoid early CPU sleep during Agent execution                    |
 
 ## 🐞 Debugging
 
