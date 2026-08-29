@@ -155,7 +155,7 @@ internal object LocalSlashCommands {
         ),
         LocalCommandSpec(
             aliases = listOf(
-                "/get_fav", "/add_fav", "/list_fav", "/del_fav",
+                "/add_fav", "/list_fav", "/del_fav",
                 "/add_black_list", "/abl", "/del_black_list", "/dbl",
                 "/list_black_list", "/lbl"
             ),
@@ -165,7 +165,7 @@ internal object LocalSlashCommands {
         ),
         LocalCommandSpec(
             aliases = listOf(
-                "/agree", "/restart", "/shutdown", "/set_admin", "/sa",
+                "/restart", "/shutdown", "/set_admin", "/sa",
                 "/del_admin", "/da", "/get_admin", "/ga", "/myid", "/id",
                 "/get_friends", "/set_qq_avatar", "/send_like",
                 "/set_group_admin", "/del_group_admin", "/at_all",
