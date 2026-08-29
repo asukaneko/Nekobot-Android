@@ -52,8 +52,6 @@ internal fun localCommandCompletionEvents(
  * 本地模式斜杠命令目录。
  *
  * 命令在进入 AI Pipeline 前解析，避免把 `/help`、`/jm` 等命令误当作普通对话交给模型。
- * 能由 Android 本身完成的命令通过 [LocalCommandAction.isNative] 标记；依赖 NekoBot Python/QQ
- * 运行时的命令会给出明确提示，不在 APK 内动态安装或执行不受控的 Python 包。
  */
 internal object LocalSlashCommands {
     private val commands = listOf(
@@ -152,28 +150,6 @@ internal object LocalSlashCommands {
             usage = "/fortune",
             description = "查看今日运势",
             action = LocalCommandAction.FORTUNE
-        ),
-        LocalCommandSpec(
-            aliases = listOf(
-                "/add_fav", "/list_fav", "/del_fav",
-                "/add_black_list", "/abl", "/del_black_list", "/dbl",
-                "/list_black_list", "/lbl"
-            ),
-            usage = "/jm <漫画ID>",
-            description = "JM 漫画命令",
-            action = LocalCommandAction.PYTHON_RUNTIME_REQUIRED
-        ),
-        LocalCommandSpec(
-            aliases = listOf(
-                "/restart", "/shutdown", "/set_admin", "/sa",
-                "/del_admin", "/da", "/get_admin", "/ga", "/myid", "/id",
-                "/get_friends", "/set_qq_avatar", "/send_like",
-                "/set_group_admin", "/del_group_admin", "/at_all",
-                "/task", "/list_tasks", "/lt", "/cancel_tasks", "/ct"
-            ),
-            usage = "",
-            description = "QQ/机器人管理命令",
-            action = LocalCommandAction.REMOTE_RUNTIME_REQUIRED
         )
     )
 
@@ -293,18 +269,6 @@ internal object LocalSlashCommands {
     /** 供插件安装器检查命令冲突；返回值统一为带 / 的形式。 */
     internal fun reservedCommandAliases(): Set<String> = aliases.keys
 
-    fun pythonRuntimeMessage(commandName: String): String = buildString {
-        appendLine("`$commandName` 暂不能在纯本地模式执行。")
-        appendLine()
-        appendLine("这组高级搜索、收藏或黑名单命令仍依赖 NekoBot 的 Python 运行时。")
-        appendLine("Android APK 不会在运行时安装这些包，也不会把命令伪装成普通 AI 对话。")
-        appendLine()
-        append("请切换到服务器模式执行该命令；其他本地可用命令可输入 `/help` 查看。")
-    }.trim()
-
-    fun remoteRuntimeMessage(commandName: String): String =
-        "`$commandName` 依赖 QQ Bot 或服务器管理运行时，本地模式无法执行。请切换到服务器模式后重试。"
-
     fun unknownMessage(commandName: String): String =
         "未知的本地命令：`$commandName`\n\n输入 `/help` 查看本地可用命令。"
 }
@@ -355,8 +319,6 @@ internal enum class LocalCommandAction(val isNative: Boolean) {
     WENKU8_LOGIN(true),
     NOVEL_SET_COOKIE(true),
     PLUGIN(true),
-    PYTHON_RUNTIME_REQUIRED(false),
-    REMOTE_RUNTIME_REQUIRED(false),
     UNKNOWN(false)
 }
 

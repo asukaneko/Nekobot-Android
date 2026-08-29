@@ -2008,10 +2008,6 @@ class LocalRepository(
                         repository = this@LocalRepository
                     )
                 } ?: "插件命令绑定已失效，请重新打开会话后重试。"
-            LocalCommandAction.PYTHON_RUNTIME_REQUIRED ->
-                LocalSlashCommands.pythonRuntimeMessage(command.name)
-            LocalCommandAction.REMOTE_RUNTIME_REQUIRED ->
-                LocalSlashCommands.remoteRuntimeMessage(command.name)
             LocalCommandAction.UNKNOWN -> LocalSlashCommands.unknownMessage(command.name)
         }
         return addAssistantMessage(
