@@ -9,6 +9,7 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.min
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -77,7 +78,7 @@ class FailoverCoordinator(
 
             try {
                 val timeout = model.failoverTimeout.takeIf { it > 0 }?.seconds
-                    ?: defaultTimeout(purpose)
+                    ?: defaultFailoverTimeout(purpose)
                 val result = withTimeout(timeout) { block(model) }
 
                 // 成功：重置健康状态
@@ -184,16 +185,23 @@ class FailoverCoordinator(
         return now + (cooldownSec * 1000).toLong()
     }
 
-    private fun defaultTimeout(purpose: String): Duration = when (purpose) {
-        "chat" -> 120.seconds
-        "vision" -> 60.seconds
-        "tts" -> 30.seconds
-        "stt" -> 60.seconds
-        "image_generation" -> 120.seconds
-        "embedding" -> 30.seconds
-        else -> 60.seconds
-    }
-
     private fun todayString(): String =
         SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(clock()))
+}
+
+/**
+ * 未设置模型级超时时的默认值。
+ *
+ * Agent 工具循环中的每一次模型调用都可能包含较长的 reasoning 输出，因此不能复用普通
+ * 聊天的 120 秒上限；工具执行与普通聊天仍各自遵循原有策略。
+ */
+internal fun defaultFailoverTimeout(purpose: String): Duration = when (purpose) {
+    "agent" -> 10.minutes
+    "chat" -> 120.seconds
+    "vision" -> 60.seconds
+    "tts" -> 30.seconds
+    "stt" -> 60.seconds
+    "image_generation" -> 120.seconds
+    "embedding" -> 30.seconds
+    else -> 60.seconds
 }

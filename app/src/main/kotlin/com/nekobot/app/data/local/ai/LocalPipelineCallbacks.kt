@@ -660,7 +660,13 @@ internal class LocalPipelineCallbacks(
                         try {
                             val exec = coordinator.execute(
                                 models = modelQueueFor(ctx),
-                                purpose = activeModel.purpose.ifBlank { "chat" },
+                                // Agent 的单次模型调用可能长时间输出 reasoning；使用独立的
+                                // 默认超时，避免普通聊天的 120 秒故障转移时钟中断工具循环。
+                                purpose = if (session.sessionMode.equals("agent", ignoreCase = true)) {
+                                    "agent"
+                                } else {
+                                    activeModel.purpose.ifBlank { "chat" }
+                                },
                                 requiredContextTokens = estimateLocalMessagesTokens(messages)
                             ) { model ->
                                 chatOnceForGeneration(model, messages, extra, streamCallbacks)

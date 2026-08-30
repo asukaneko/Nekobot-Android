@@ -6,8 +6,16 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Test
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 class FailoverCoordinatorTest {
+
+    @Test
+    fun agentDefaultTimeoutIsIndependentFromChatTimeout() {
+        assertEquals(10.minutes, defaultFailoverTimeout("agent"))
+        assertEquals(120.seconds, defaultFailoverTimeout("chat"))
+    }
 
     @Test
     fun executeSwitchesToNextModelAndRecordsActualAttempt() = runBlocking {
