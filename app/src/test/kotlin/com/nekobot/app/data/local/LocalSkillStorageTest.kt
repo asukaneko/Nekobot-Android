@@ -140,6 +140,62 @@ class LocalSkillStorageTest {
         assertTrue(storage.exists("renamed"))
     }
 
+    @Test
+    fun `install preserves arbitrary sibling files and folders next to SKILL md`() {
+        val root = temporaryFolder.newFolder("skills-siblings")
+        val storage = LocalSkillStorage(root)
+        val pkg = DownloadedSkillPackage(
+            name = "sibling-demo",
+            description = "Demo",
+            aliases = emptyList(),
+            skillMd = "# sibling-demo",
+            referenceMd = "reference",
+            sourceUrl = "https://example.com/sibling.zip",
+            files = mapOf(
+                "SKILL.md" to "# sibling-demo".toByteArray(),
+                // 非固定目录的中文说明 / 自定义子目录。
+                "说明.md" to "同级的自定义 Markdown".toByteArray(),
+                "configs/app.toml" to "enabled = true".toByteArray(),
+                "assets/logo.txt" to "logo".toByteArray(),
+                "scripts/tool.py" to "print('ok')".toByteArray()
+            )
+        )
+
+        storage.install(pkg, overwrite = false)
+
+        assertTrue(storage.readText("sibling-demo", "说明.md").contains("自定义 Markdown"))
+        assertTrue(storage.readText("sibling-demo", "configs/app.toml").contains("enabled"))
+        assertTrue(storage.readText("sibling-demo", "assets/logo.txt").contains("logo"))
+        assertTrue(storage.readText("sibling-demo", "scripts/tool.py").contains("ok"))
+        val paths = storage.listFiles("sibling-demo").map { it.path }.toSet()
+        assertTrue(paths.containsAll(listOf("说明.md", "configs/app.toml", "assets/logo.txt", "scripts/tool.py")))
+    }
+
+    @Test
+    fun `save keeps untouched sibling files`() {
+        val root = temporaryFolder.newFolder("skills-preserve")
+        val storage = LocalSkillStorage(root)
+        val pkg = DownloadedSkillPackage(
+            name = "preserve",
+            description = "Demo",
+            aliases = emptyList(),
+            skillMd = "# preserve",
+            referenceMd = null,
+            sourceUrl = "https://example.com/preserve.zip",
+            files = mapOf(
+                "SKILL.md" to "# preserve".toByteArray(),
+                "SIBLING.txt" to "keep me".toByteArray()
+            )
+        )
+        storage.install(pkg, overwrite = false)
+
+        // 更新 SKILL.md / reference.md 时，不应吞掉 SKILL.md 同级已有文件。
+        storage.save("preserve", skillMd = "# preserve v2", referenceMd = "ref", sourceUrl = "https://example.com/preserve.zip")
+
+        assertTrue(storage.readText("preserve", "SIBLING.txt").contains("keep me"))
+        assertEquals("# preserve v2", storage.skillMd("preserve"))
+    }
+
     private fun clientReturning(bytes: ByteArray, contentType: String): OkHttpClient =
         OkHttpClient.Builder().addInterceptor { chain ->
             Response.Builder()
