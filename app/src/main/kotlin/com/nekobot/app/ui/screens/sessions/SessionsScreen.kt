@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -294,6 +295,7 @@ fun SessionsScreen(
     }
 
     val pagerState = rememberPagerState(initialPage = 1, pageCount = { 2 })
+    val sessionListState = rememberLazyListState()
     val dashboardVisible = pagerState.currentPage == 0
 
     // 模式切换时自动刷新会话列表
@@ -591,6 +593,7 @@ fun SessionsScreen(
                         // 列表不为空时，搜索框作为 LazyColumn 的第一个 item，跟随列表滚动
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
+                            state = sessionListState,
                             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 110.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
