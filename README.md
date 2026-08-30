@@ -33,8 +33,8 @@
   </tr>
   <tr>
     <td align="center"><img src="docs/assets/screenshots/dashboard-widget.jpg" alt="负一屏数据概览" /><br /><sub>负一屏数据概览</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/achievements.jpg" alt="成就系统" /><br /><sub>成就系统</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/state-history-overview.jpg" alt="角色状态历程" /><br /><sub>关系状态历程</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/usage.jpg" alt="Token 用量统计" /><br /><sub>Token 用量</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/more.jpg" alt="更多功能" /><br /><sub>更多功能</sub></td>
   </tr>
 </table>
 
@@ -47,11 +47,11 @@
   <tr>
     <td align="center"><img src="docs/assets/screenshots/worldbooks.jpg" alt="世界书" /><br /><sub>世界书</sub></td>
     <td align="center"><img src="docs/assets/screenshots/memories.jpg" alt="角色记忆" /><br /><sub>角色记忆</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/usage.jpg" alt="Token 用量统计" /><br /><sub>Token 用量</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/achievements.jpg" alt="成就系统" /><br /><sub>成就系统</sub></td>
   </tr>
   <tr>
     <td align="center"><img src="docs/assets/screenshots/state-history-trend.jpg" alt="角色状态趋势" /><br /><sub>状态趋势与差分</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/more.jpg" alt="更多功能" /><br /><sub>更多功能</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/state-history-overview.jpg" alt="角色状态历程" /><br /><sub>关系状态历程</sub></td>
     <td align="center"><img src="docs/assets/screenshots/expansion.jpg" alt="拓展功能" /><br /><sub>拓展功能</sub></td>
   </tr>
 </table>

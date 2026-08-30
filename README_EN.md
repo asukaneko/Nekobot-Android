@@ -33,8 +33,8 @@ Native Android client · Server / Local dual mode · Dark glassmorphism UI
   </tr>
   <tr>
     <td align="center"><img src="docs/assets/screenshots/dashboard-widget.jpg" alt="Dashboard Widget" /><br /><sub>Dashboard Widget</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/achievements.jpg" alt="Achievements" /><br /><sub>Achievement System</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/state-history-overview.jpg" alt="State History" /><br /><sub>Relationship Timeline</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/usage.jpg" alt="Token Usage" /><br /><sub>Token Usage</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/more.jpg" alt="More" /><br /><sub>More Features</sub></td>
   </tr>
 </table>
 
@@ -47,11 +47,11 @@ Native Android client · Server / Local dual mode · Dark glassmorphism UI
   <tr>
     <td align="center"><img src="docs/assets/screenshots/worldbooks.jpg" alt="World Books" /><br /><sub>World Books</sub></td>
     <td align="center"><img src="docs/assets/screenshots/memories.jpg" alt="Character Memory" /><br /><sub>Character Memory</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/usage.jpg" alt="Token Usage" /><br /><sub>Token Usage</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/achievements.jpg" alt="Achievements" /><br /><sub>Achievement System</sub></td>
   </tr>
   <tr>
     <td align="center"><img src="docs/assets/screenshots/state-history-trend.jpg" alt="State Trends" /><br /><sub>Trends & Diff</sub></td>
-    <td align="center"><img src="docs/assets/screenshots/more.jpg" alt="More" /><br /><sub>More Features</sub></td>
+    <td align="center"><img src="docs/assets/screenshots/state-history-overview.jpg" alt="State History" /><br /><sub>Relationship Timeline</sub></td>
     <td align="center"><img src="docs/assets/screenshots/expansion.jpg" alt="Expansion" /><br /><sub>Extended Features</sub></td>
   </tr>
 </table>
