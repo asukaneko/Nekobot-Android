@@ -1859,7 +1859,7 @@ private fun ModernChatActionPanel(
                         title = stringResource(R.string.chat_yolo_mode),
                         subtitle = stringResource(R.string.chat_yolo_mode_subtitle),
                         checked = yoloEnabled,
-                        enabled = !sending,
+                        enabled = true,
                         onCheckedChange = { onToggleYolo() }
                     )
                 }
