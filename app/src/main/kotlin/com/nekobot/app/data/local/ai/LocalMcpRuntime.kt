@@ -433,15 +433,16 @@ private class HttpMcpTransportSession(
         expectedId: Long?,
         expectResponse: Boolean
     ): JsonObject? {
+        val method = message.string("method")
         val request = Request.Builder()
             .url(url)
             .post(message.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
             .apply { headers.forEach { (name, value) -> header(name, value) } }
             .header("Content-Type", "application/json; charset=utf-8")
             .header("Accept", "application/json, text/event-stream")
+            .header("MCP-Protocol-Version", protocolVersion ?: MCP_PROTOCOL_VERSION)
             .apply {
                 sessionId?.let { header("Mcp-Session-Id", it) }
-                protocolVersion?.let { header("MCP-Protocol-Version", it) }
             }
             .build()
 
@@ -460,7 +461,13 @@ private class HttpMcpTransportSession(
                         ?.string("message")
                         ?.takeIf { it.isNotBlank() }
                         ?: body.take(500).ifBlank { response.message }
-                    throw IllegalStateException("MCP HTTP ${response.code}: $detail")
+                    LocalLogger.e(
+                        "LocalMcpRuntime",
+                        "MCP HTTP 请求失败 [$method] ${url.substringBefore('?')} -> ${response.code}: $detail"
+                    )
+                    throw IllegalStateException(
+                        "MCP HTTP ${response.code} [$method] ${url.substringBefore('?')}: $detail"
+                    )
                 }
                 if (!expectResponse || response.code == 202) return null
 
@@ -487,7 +494,7 @@ private class HttpMcpTransportSession(
             .apply { headers.forEach { (name, value) -> header(name, value) } }
             .header("Accept", "application/json, text/event-stream")
             .header("Mcp-Session-Id", activeSessionId)
-            .apply { protocolVersion?.let { header("MCP-Protocol-Version", it) } }
+            .header("MCP-Protocol-Version", protocolVersion ?: MCP_PROTOCOL_VERSION)
             .build()
         runCatching { client.newCall(request).execute().close() }
         sessionId = null

@@ -381,13 +381,14 @@ internal class LocalAgentToolExecutor(
 
         // 1. Initialize 请求，建立 MCP 会话
         val initPayload = """
-            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"nekobot-android","version":"1.0"}}}
+            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"nekobot-android","version":"1.0"}}}
         """.trimIndent().toRequestBody(jsonMediaType)
         val initRequest = Request.Builder()
             .url(baseUrl)
             .post(initPayload)
             .header("Accept", "application/json, text/event-stream")
             .header("Content-Type", "application/json")
+            .header("MCP-Protocol-Version", "2025-11-25")
             .apply { exaApiKey.takeIf(String::isNotBlank)?.let { header("Authorization", "Bearer $it") } }
             .build()
         var sessionId: String? = null
@@ -411,6 +412,7 @@ internal class LocalAgentToolExecutor(
                 .post(notifPayload)
                 .header("Accept", "application/json, text/event-stream")
                 .header("Content-Type", "application/json")
+                .header("MCP-Protocol-Version", "2025-11-25")
                 .apply { exaApiKey.takeIf(String::isNotBlank)?.let { header("Authorization", "Bearer $it") } }
                 .apply { sessionId?.let { header("Mcp-Session-Id", it) } }
                 .build()
@@ -435,6 +437,7 @@ internal class LocalAgentToolExecutor(
             .post(callPayload.toRequestBody(jsonMediaType))
             .header("Accept", "application/json, text/event-stream")
             .header("Content-Type", "application/json")
+            .header("MCP-Protocol-Version", "2025-11-25")
             .apply { exaApiKey.takeIf(String::isNotBlank)?.let { header("Authorization", "Bearer $it") } }
             .apply { sessionId?.let { header("Mcp-Session-Id", it) } }
             .build()

@@ -123,9 +123,8 @@ class LocalMcpRuntimeTest {
             )
             assertTrue(server.headers.all { it["authorization"] == "Bearer secret" })
             assertTrue(server.headers.all { it["x-tenant"] == "demo" })
-            val operationalHeaders = server.headers.drop(1)
-            assertTrue(operationalHeaders.all { it["mcp-session-id"] == "fake-session" })
-            assertTrue(operationalHeaders.all { it["mcp-protocol-version"] == "2025-11-25" })
+            assertTrue(server.headers.drop(1).all { it["mcp-session-id"] == "fake-session" })
+            assertTrue(server.headers.all { it["mcp-protocol-version"] == "2025-11-25" })
             assertFalse(runtime.isConnected(config.id))
         }
     }
