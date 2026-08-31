@@ -393,6 +393,7 @@
     <string name="chat_stop_requested">Stop requested</string>
     <string name="chat_context_compressed">Context compressed</string>
     <string name="chat_context_compression_not_needed">The conversation is too short to compress</string>
+    <string name="chat_context_compression_in_progress">Compression is already in progress</string>
     <string name="chat_agent_context_compressing">Compressing conversation</string>
     <string name="chat_agent_context_compressed">Conversation compressed</string>
     <string name="chat_extracted_from_archive">Extracted %1$d turns from archive</string>

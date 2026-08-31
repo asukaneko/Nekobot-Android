@@ -399,6 +399,7 @@
     <string name="chat_stop_requested">已请求停止</string>
     <string name="chat_context_compressed">上下文已压缩</string>
     <string name="chat_context_compression_not_needed">对话过短，暂无可压缩内容</string>
+    <string name="chat_context_compression_in_progress">正在压缩中，请稍候</string>
     <string name="chat_agent_context_compressing">正在压缩对话</string>
     <string name="chat_agent_context_compressed">已压缩对话</string>
     <string name="chat_extracted_from_archive">已从归档提取 %1$d 轮对话</string>

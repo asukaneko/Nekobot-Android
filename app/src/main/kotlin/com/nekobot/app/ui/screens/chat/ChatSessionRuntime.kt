@@ -5,6 +5,7 @@ import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.remote.ExecConfirmationRequest
 import com.nekobot.app.data.remote.HookNotification
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,6 +15,19 @@ enum class MessageTtsStatus { Generating, Ready, Error }
 
 data class MessageTtsUiState(
     val status: MessageTtsStatus,
+    val error: String? = null
+)
+
+/**
+ * 本地后台手动压缩的结果事件。
+ *
+ * [ChatSessionState.compressionEvents] replay=0：仅通知当前存活的订阅者；
+ * 页面退出期间完成的压缩由重新 loadMessages 恢复显示。
+ */
+data class ContextCompressionEvent(
+    val sessionId: String,
+    val compressed: Boolean,
+    val archiveSessionId: String? = null,
     val error: String? = null
 )
 
@@ -38,6 +52,13 @@ class ChatSessionState(val sessionId: String) {
     val hookNotifications = MutableStateFlow<List<HookNotification>>(emptyList())
     val ttsStates = MutableStateFlow<Map<String, MessageTtsUiState>>(emptyMap())
     val agentContextCompressionInProgress = MutableStateFlow(false)
+
+    // ============ 后台压缩 Job（挂到 applicationScope，不随 VM 销毁）============
+    /** 本地模式手动上下文压缩的后台 Job：退出会话页面后仍继续执行。 */
+    @Volatile
+    var compressionJob: Job? = null
+    /** 手动压缩结果事件：replay=0，仅投递给当前存活的订阅者。 */
+    val compressionEvents = MutableSharedFlow<ContextCompressionEvent>(extraBufferCapacity = 8)
 
     /**
      * 本次运行时生命周期内被用户删除的消息 id。
@@ -125,6 +146,22 @@ class ChatSessionState(val sessionId: String) {
         return true
     }
 
+    /** 同一会话同时只允许一个后台手动压缩；LAZY Job 先安装再 start，避免重复触发。 */
+    @Synchronized
+    fun installCompressionJob(job: Job): Boolean {
+        if (compressionJob?.isActive == true) return false
+        compressionJob = job
+        return true
+    }
+
+    /** 仅允许压缩 Job 自身的 completion 清理，避免误清新一轮压缩。 */
+    @Synchronized
+    fun clearCompressionJob(job: Job): Boolean {
+        if (compressionJob !== job) return false
+        compressionJob = null
+        return true
+    }
+
     /** 只有尚未产出最终回复的 Job 才阻塞下一条消息。 */
     fun hasBlockingLocalChatJob(): Boolean =
         localChatJob?.isActive == true && !localResponseComplete
@@ -147,6 +184,7 @@ class ChatSessionState(val sessionId: String) {
     fun hasRetainedWork(): Boolean =
         sending.value ||
             localChatJob?.isActive == true ||
+            compressionJob?.isActive == true ||
             ttsJobs.values.any { it.isActive }
 }
 
@@ -202,6 +240,7 @@ object ChatSessionManager {
     fun releaseAll() {
         sessions.values.forEach { state ->
             state.localChatJob?.cancel()
+            state.compressionJob?.cancel()
             state.eventsJob?.cancel()
             state.ttsJobs.values.forEach { it.cancel() }
         }

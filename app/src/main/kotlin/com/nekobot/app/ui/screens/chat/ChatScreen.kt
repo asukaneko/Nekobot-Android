@@ -1153,8 +1153,10 @@ fun ChatScreen(
                             // 远程模式只有 Agent 会话显示进度卡片；本地模式还需要支持角色/群聊的耗时命令。
                             if (
                                 index == visibleMessages.lastIndex &&
-                                session?.sessionMode.equals("agent", ignoreCase = true) &&
-                                agentContextCompressionInProgress
+                                agentContextCompressionInProgress &&
+                                // 本地模式手动压缩已改为后台执行，普通会话也需要可见的压缩进度反馈。
+                                (session?.sessionMode.equals("agent", ignoreCase = true) ||
+                                    ServiceContainer.prefs.isLocalMode)
                             ) {
                                 Spacer(Modifier.height(4.dp))
                                 AgentContextCompressionDivider(inProgress = true)

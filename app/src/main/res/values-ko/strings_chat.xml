@@ -393,6 +393,7 @@
     <string name="chat_stop_requested">중지 요청됨</string>
     <string name="chat_context_compressed">컨텍스트가 압축되었어요</string>
     <string name="chat_context_compression_not_needed">대화가 너무 짧아 압축할 내용이 없습니다</string>
+    <string name="chat_context_compression_in_progress">압축이 진행 중입니다. 잠시만 기다려 주세요</string>
     <string name="chat_agent_context_compressing">대화를 압축하는 중</string>
     <string name="chat_agent_context_compressed">대화를 압축했어요</string>
     <string name="chat_extracted_from_archive">보관함에서 %1$d턴 추출했어요</string>

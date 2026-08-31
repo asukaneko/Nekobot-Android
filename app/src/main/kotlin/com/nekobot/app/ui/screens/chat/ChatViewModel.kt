@@ -414,6 +414,8 @@ class ChatViewModel : BaseViewModel() {
     private val _messageImages = MutableStateFlow<List<LocalMessageImageEntity>>(emptyList())
     val messageImages: StateFlow<List<LocalMessageImageEntity>> = _messageImages.asStateFlow()
     private var messageImagesJob: kotlinx.coroutines.Job? = null
+    /** 本地后台手动压缩结果事件订阅（随 VM 生命周期；退出页面后再进入时由 loadMessages 恢复状态）。 */
+    private var compressionEventsJob: kotlinx.coroutines.Job? = null
 
     private var currentSessionId: String = ""
     private var realtimeLiveJob: kotlinx.coroutines.Job? = null
@@ -508,6 +510,24 @@ class ChatViewModel : BaseViewModel() {
         // 获取（或创建）跨 VM 共享的运行时状态，引用计数 +1
         // 通过 _runtime.value 赋值使 Compose 的 flatMapLatest 自动切换到新 runtime
         _runtime.value = ChatSessionManager.acquire(sessionId)
+        // 订阅本地后台压缩结果：仅通知当前存活界面（退出期间完成的压缩由 loadMessages 恢复）。
+        compressionEventsJob?.cancel()
+        compressionEventsJob = viewModelScope.launch {
+            runtime.compressionEvents.collect { event ->
+                if (event.sessionId != currentSessionId) return@collect
+                when {
+                    event.error != null -> showError(event.error)
+                    event.compressed -> {
+                        event.archiveSessionId?.let { aid ->
+                            _session.value = _session.value?.copy(archiveSessionId = aid)
+                        }
+                        showToast(string(R.string.chat_context_compressed))
+                        loadMessages()
+                    }
+                    else -> showToast(string(R.string.chat_context_compression_not_needed))
+                }
+            }
+        }
         observeAgentRecovery(sessionId)
         _groupCharacters.value = emptyList()
         loadSession(sessionId)
@@ -2209,12 +2229,15 @@ class ChatViewModel : BaseViewModel() {
     /** 压缩上下文：将早期消息摘要化以节省 token。 */
     fun compressContext() {
         if (currentSessionId.isBlank()) return
-        val showAgentCompressionState = isLocalMode && isAgentSession()
-        if (showAgentCompressionState) _agentContextCompressionInProgress.value = true
+        // 本地模式：压缩挂到应用级作用域后台执行，退出会话页面后仍继续，直到完成或应用退出。
+        if (isLocalMode) {
+            startBackgroundCompression()
+            return
+        }
+        // 远程模式：压缩由服务端执行，维持原有请求-响应行为。
         launchResult(
             block = { unified.compressContext(currentSessionId) },
             onSuccess = { json ->
-                if (showAgentCompressionState) _agentContextCompressionInProgress.value = false
                 val compressed = json?.takeIf { it.isJsonObject }
                     ?.asJsonObject?.get("compressed")?.asBoolean ?: true
                 // 后端返回 archive_session_id，写回当前 session 状态
@@ -2231,10 +2254,68 @@ class ChatViewModel : BaseViewModel() {
                 }
             },
             onError = { message ->
-                if (showAgentCompressionState) _agentContextCompressionInProgress.value = false
                 showError(message)
             }
         )
+    }
+
+    /**
+     * 本地模式：在 [ServiceContainer.applicationScope] 中执行手动上下文压缩。
+     *
+     * Job 安装到 [ChatSessionState.compressionJob]（计入 hasRetainedWork），
+     * 因此退出会话页面后 ChatSessionState 不会被回收，压缩继续执行；
+     * 完成结果通过 [ChatSessionState.compressionEvents] 通知当前存活的界面。
+     */
+    private fun startBackgroundCompression() {
+        val target = runtime
+        val sessionId = currentSessionId
+        // LAZY 启动：先安装再 start，与 startLocalChatCollection 相同的防重复/防竞态模式。
+        val job = ServiceContainer.applicationScope.launch(
+            start = kotlinx.coroutines.CoroutineStart.LAZY
+        ) {
+            target.agentContextCompressionInProgress.value = true
+            try {
+                val result = unified.compressContext(sessionId)
+                when (result) {
+                    is Resource.Success -> {
+                        val json = result.data
+                        val compressed = json?.takeIf { it.isJsonObject }
+                            ?.asJsonObject?.get("compressed")?.asBoolean ?: true
+                        val archiveId = json?.takeIf { it.isJsonObject }
+                            ?.asJsonObject?.get("archive_session_id")?.asString
+                        target.compressionEvents.tryEmit(
+                            ContextCompressionEvent(
+                                sessionId = sessionId,
+                                compressed = compressed,
+                                archiveSessionId = archiveId
+                            )
+                        )
+                    }
+                    is Resource.Error -> target.compressionEvents.tryEmit(
+                        ContextCompressionEvent(
+                            sessionId = sessionId,
+                            compressed = false,
+                            error = result.message
+                        )
+                    )
+                    is Resource.Loading -> Unit
+                }
+            } finally {
+                target.agentContextCompressionInProgress.value = false
+            }
+        }
+        if (!target.installCompressionJob(job)) {
+            job.cancel()
+            showToast(string(R.string.chat_context_compression_in_progress))
+            return
+        }
+        job.invokeOnCompletion {
+            if (target.clearCompressionJob(job)) {
+                target.agentContextCompressionInProgress.value = false
+            }
+            ChatSessionManager.pruneIfIdle(target.sessionId)
+        }
+        job.start()
     }
 
     /**
