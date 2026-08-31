@@ -9114,8 +9114,9 @@ ${AiOutputLanguage.directive()}
                         "success" to true,
                         "skills_root" to "应用私有目录/skills",
                         "skills_count" to enabled.size,
-                        "structure" to listOf("SKILL.md", "reference.md", "LICENSE.txt", "scripts/", "resources/"),
-                        "note" to "Skill 脚本不会被自动执行"
+                        // 存储不再局限于固定目录：安装/编辑会保留 SKILL.md 同级的全部文件与文件夹。
+                        "structure" to listOf("SKILL.md", "reference.md", "LICENSE.txt", "scripts/", "resources/", "任意同级文件与目录"),
+                        "note" to "Skill 脚本不会被自动执行；SKILL.md 同级的所有文件与原目录都会被保存和读取"
                     )
                     "skill_list" -> mapOf(
                         "success" to true,

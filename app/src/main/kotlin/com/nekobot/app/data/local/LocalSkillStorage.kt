@@ -22,6 +22,10 @@ internal data class DownloadedSkillPackage(
     val skillMd: String,
     val referenceMd: String?,
     val sourceUrl: String,
+    /**
+     * 该 Skill 目录下的全部文件（任意同名文件与文件夹，含 SKILL.md 同级的所有内容）。
+     * 安装时会原样写盘，不做固定目录白名单过滤。
+     */
     val files: Map<String, ByteArray>
 )
 
@@ -302,6 +306,8 @@ internal class SkillPackageDownloader(
 
         return roots.map { root ->
             val prefix = root.takeIf { it.isNotBlank() }?.plus("/") ?: ""
+            // packageFiles 保留该 Skill 根目录下的所有文件与文件夹（含 SKILL.md 同级内容），
+            // 不按 scripts/、resources/ 等固定目录做白名单过滤，安装后原样保存。
             val packageFiles = scopedEntries
                 .filterKeys { root.isBlank() || it.startsWith(prefix) }
                 .mapKeys { (path, _) -> path.removePrefix(prefix) }
@@ -427,6 +433,13 @@ internal class LocalSkillStorage(private val root: File) {
         root.mkdirs()
     }
 
+    /**
+     * 保存/更新 Skill 的核心 Markdown 文件。
+     *
+     * 存储目录不再假设固定结构：SKILL.md 同级目录下的所有文件和文件夹（包括
+     * 安装来源带来的任意目录）都会原样保留，本方法只写入传入的字段，
+     * 不会删除或覆盖其他同级内容。
+     */
     fun save(
         name: String,
         skillMd: String?,
@@ -435,8 +448,6 @@ internal class LocalSkillStorage(private val root: File) {
     ) {
         val directory = directoryFor(name)
         directory.mkdirs()
-        File(directory, "scripts").mkdirs()
-        File(directory, "resources").mkdirs()
         File(directory, "SKILL.md").writeText(
             skillMd?.takeIf { it.isNotBlank() } ?: defaultSkillMd(name),
             Charsets.UTF_8
@@ -460,6 +471,8 @@ internal class LocalSkillStorage(private val root: File) {
             if (!File(staging, "SKILL.md").exists()) {
                 File(staging, "SKILL.md").writeText(pkg.skillMd, Charsets.UTF_8)
             }
+            // SKILL.md 同级的所有文件与文件夹（含自定义目录）都已由 pkg.files 原样写盘，
+            // 这里仅保证 scripts/、resources/ 目录存在，即使源包未提供也不会重建/清空。
             File(staging, "scripts").mkdirs()
             File(staging, "resources").mkdirs()
             saveSource(staging, pkg.sourceUrl)
@@ -582,6 +595,7 @@ internal class LocalSkillStorage(private val root: File) {
 
         ## 参考资料
 
-        详细资料可写入 [reference.md](reference.md)，附加文件放入 resources/，脚本放入 scripts/。
+        详细资料可写入 [reference.md](reference.md)，脚本放入 scripts/，附加文件放入 resources/；
+        也可以把任意同级的文件与目录放在 SKILL.md 旁边，它们都会被原样保存并在运行时读取。
     """.trimIndent()
 }
