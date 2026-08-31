@@ -175,6 +175,9 @@ private const val AGENT_SUMMARY_INPUT_OVERHEAD_TOKENS = 1_024
 private const val AGENT_CONTEXT_MESSAGE_OVERHEAD_TOKENS = 8
 private const val DEFAULT_AGENT_CONTEXT_TOKENS = 100_000
 
+/** 手动压缩的兜底阈值：消息数不足时，上下文占用超过该比例也允许压缩。 */
+internal const val MANUAL_COMPRESSION_CONTEXT_RATIO = 0.10f
+
 /** 兼容旧版 Agent 会话中未写入 source 的历史摘要。 */
 internal fun LocalMessageEntity.isAgentContextSummary(): Boolean =
     role.equals("system", ignoreCase = true) && (
@@ -201,6 +204,31 @@ internal fun List<LocalMessageEntity>.agentContextWindow(): List<LocalMessageEnt
         add(summary)
         addAll(this@agentContextWindow.drop(boundaryIndex + 1).filterNot { it.isAgentContextSummary() })
     }
+}
+
+/**
+ * 计算手动压缩应保留的最近消息数。
+ *
+ * 消息数充足（超过 [keepRecent] + [margin]）时按 [keepRecent] 保留；消息数不足时，
+ * 只有上下文占用比例超过 [MANUAL_COMPRESSION_CONTEXT_RATIO]（少量超长消息把上下文顶高）
+ * 才缩小保留窗口继续压缩，避免"对话过短"的提示掩盖高上下文占用。
+ *
+ * @param messageCount 参与压缩判定的消息数（普通会话为上下文消息总数，Agent 会话为窗口内非 system 消息数）
+ * @param keepRecent 默认保留的最近消息数
+ * @param contextUsageRatio 当前上下文占用比例（0-1），无法估算时传 0
+ * @param margin 消息数充足判定在 [keepRecent] 之外要求的额外余量
+ * @return 实际保留的最近消息数；-1 表示无需压缩
+ */
+internal fun resolveManualCompressionKeepCount(
+    messageCount: Int,
+    keepRecent: Int,
+    contextUsageRatio: Float,
+    margin: Int
+): Int {
+    if (messageCount > keepRecent + margin) return keepRecent
+    if (contextUsageRatio <= MANUAL_COMPRESSION_CONTEXT_RATIO || messageCount < 2) return -1
+    // 保留最近一半（至少 2 条），并确保至少有 1 条消息可被压缩。
+    return minOf(keepRecent, maxOf(2, messageCount / 2)).coerceIn(1, messageCount - 1)
 }
 
 /** UI 只识别新版摘要，旧摘要会在下一次 Agent 压缩时自动迁移。 */
@@ -6037,12 +6065,23 @@ class LocalRepository(
         }
 
         val messages = listAiContextMessages(sessionId)
-        if (messages.size <= keepRecent + 2) {
+        // 占用比例与聊天页上下文圆环同一口径：sessionContextTokenUsage / 激活模型上下文窗口。
+        val maxContextTokens = aiModelDao.getActive()?.maxContextLength?.takeIf { it > 0 }
+        val usageRatio = maxContextTokens
+            ?.let { sessionContextTokenUsage(sessionId).toFloat() / it.toFloat() }
+            ?: 0f
+        val keepCount = resolveManualCompressionKeepCount(
+            messageCount = messages.size,
+            keepRecent = keepRecent,
+            contextUsageRatio = usageRatio,
+            margin = 2
+        )
+        if (keepCount < 0) {
             return@withContext ContextCompressionResult(compressed = false)
         }
 
-        val toCompress = messages.dropLast(keepRecent)
-        val toKeep = messages.takeLast(keepRecent)
+        val toCompress = messages.dropLast(keepCount)
+        val toKeep = messages.takeLast(keepCount)
 
         // 构造摘要请求
         val dialogText = toCompress.joinToString("\n") { m ->
@@ -6152,7 +6191,8 @@ class LocalRepository(
     ): ContextCompressionResult {
         val messages = listAiContextMessages(sessionId)
         val currentSummary = messages.asReversed().firstOrNull(LocalMessageEntity::isAgentContextSummary)
-        val activeNonSystemMessages = messages.agentContextWindow()
+        val contextWindow = messages.agentContextWindow()
+        val activeNonSystemMessages = contextWindow
             .filterNot { it.role.equals("system", ignoreCase = true) }
         if (activeNonSystemMessages.isEmpty()) return ContextCompressionResult(compressed = false)
 
@@ -6163,7 +6203,22 @@ class LocalRepository(
         val retainedMessages = if (automatic) {
             retainAgentMessagesWithinLimit(activeNonSystemMessages, maxContextTokens)
         } else {
-            activeNonSystemMessages.takeLast(keepRecent.coerceAtLeast(1))
+            val baseKeep = keepRecent.coerceAtLeast(1)
+            // 占用比例与 Agent 自动压缩、聊天页上下文圆环同一口径：
+            // 统计窗口内非 system 消息与压缩摘要的估算 token。
+            val usageRatio = contextWindow
+                .filter { !it.role.equals("system", ignoreCase = true) || it.isAgentContextSummary() }
+                .sumOf { it.agentContextTokenCount() }
+                .toFloat() / maxContextTokens.toFloat()
+            val keepCount = resolveManualCompressionKeepCount(
+                messageCount = activeNonSystemMessages.size,
+                keepRecent = baseKeep,
+                contextUsageRatio = usageRatio,
+                margin = 0
+            )
+            // 消息数不足 keepRecent 时，只有占用超阈值才缩小保留窗口继续压缩，
+            // 否则维持原窗口，由下方 toCompress 判定并返回"无需压缩"。
+            activeNonSystemMessages.takeLast(if (keepCount < 0) baseKeep else keepCount)
         }
         val retainedIds = retainedMessages.mapTo(hashSetOf()) { it.id }
         val toCompress = activeNonSystemMessages.filterNot { it.id in retainedIds }
