@@ -4540,7 +4540,8 @@ class LocalRepository(
     suspend fun resumeAgentRun(
         sessionId: String,
         reasoningEffort: com.nekobot.app.data.model.ReasoningEffort =
-            com.nekobot.app.data.model.ReasoningEffort.NONE
+            com.nekobot.app.data.model.ReasoningEffort.NONE,
+        pendingUserMessages: (() -> List<String>)? = null
     ): Flow<RealtimeEvent>? = withContext(Dispatchers.IO) {
         val run = agentRunDao.getBySession(sessionId) ?: return@withContext null
         val session = sessionDao.getById(sessionId) ?: return@withContext null
@@ -4590,7 +4591,8 @@ class LocalRepository(
                 sessionId = sessionId,
                 userMessage = "继续",
                 activeModel = model,
-                reasoningEffort = reasoningEffort
+                reasoningEffort = reasoningEffort,
+                pendingUserMessages = pendingUserMessages
             )
         }
 
@@ -4603,7 +4605,8 @@ class LocalRepository(
             attachments = attachments,
             persistUserMessage = false,
             existingParentMessageId = originalUser.id,
-            reasoningEffort = reasoningEffort
+            reasoningEffort = reasoningEffort,
+            pendingUserMessages = pendingUserMessages
         )
     }
 
@@ -4910,7 +4913,12 @@ class LocalRepository(
         internalMetadata: Map<String, Any> = emptyMap(),
         assistantSource: String? = null,
         allowTools: Boolean = true,
-        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort = com.nekobot.app.data.model.ReasoningEffort.NONE
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort = com.nekobot.app.data.model.ReasoningEffort.NONE,
+        /**
+         * 排队消息“立即发送”提供者：工具循环每轮模型调用前取出待注入的用户消息。
+         * 取出的消息在此处持久化为 Room 用户消息，再以 user 角色注入模型上下文。
+         */
+        pendingUserMessages: (() -> List<String>)? = null
     ): Flow<RealtimeEvent> = flow {
         val generationController = LocalGenerationController()
         var agentForegroundStarted = false
@@ -5111,6 +5119,27 @@ class LocalRepository(
             sessionModeOverride = session.sessionMode
         )
         val failoverQueue = routePlan.models.filter { it.id != activeModel.id }
+        // 排队消息注入：取出即持久化为用户消息，保证“继续”恢复时上下文完整
+        val pendingUserMessageProvider: (() -> List<String>)? = pendingUserMessages?.let { provider ->
+            {
+                val drained = provider().filter(String::isNotBlank)
+                if (drained.isEmpty()) {
+                    emptyList()
+                } else {
+                    runCatching {
+                        kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                            drained.forEach { content -> addMessage(sessionId, "user", content) }
+                        }
+                    }.onFailure { error ->
+                        com.nekobot.app.data.local.LocalLogger.w(
+                            TAG,
+                            "持久化排队注入消息失败: ${error.message}"
+                        )
+                    }
+                    drained
+                }
+            }
+        }
         val callbacks = com.nekobot.app.data.local.ai.LocalPipelineCallbacks(
             db, aiClient, activeModel, session, character, worldBookEntries, runtime, identity,
             parentMessageId = parentMessageId,
@@ -5177,6 +5206,7 @@ class LocalRepository(
             generationController = generationController,
             agentRunId = agentRunId,
             reasoningEffort = reasoningEffort,
+            pendingUserMessageProvider = pendingUserMessageProvider,
             execConfirmationEmitter = { request -> _execConfirmationEvents.tryEmit(request) }
         )
 

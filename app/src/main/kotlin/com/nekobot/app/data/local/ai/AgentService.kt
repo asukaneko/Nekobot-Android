@@ -158,7 +158,12 @@ data class ToolLoopSession(
     val maxIterations: Int = 150,
     val maxConsecutiveErrors: Int = 3,
     val hooks: ToolLoopHooks? = null,
-    val shouldStop: () -> Boolean = { false }
+    val shouldStop: () -> Boolean = { false },
+    /**
+     * 每轮模型调用前取出的待注入用户消息（Agent 排队“立即发送”场景）。
+     * 返回的内容会按顺序以 user 消息插入下一轮模型上下文。
+     */
+    val pendingUserMessages: () -> List<String> = { emptyList() }
 )
 
 /** 准备好的聊天上下文 */
@@ -448,7 +453,8 @@ suspend fun runToolCallLoop(
     maxIterations: Int = 150,
     maxConsecutiveErrors: Int = 3,
     hooks: ToolLoopHooks? = null,
-    shouldStop: () -> Boolean = { false }
+    shouldStop: () -> Boolean = { false },
+    pendingUserMessages: () -> List<String> = { emptyList() }
 ): ToolLoopResult {
     val toolMessages = initialMessages.map { it.toMutableMap() }.toMutableList()
     var finalContent = ""
@@ -484,6 +490,16 @@ suspend fun runToolCallLoop(
     for (iteration in 0 until maxIterations) {
         if (shouldStop()) {
             return result(stopped = true, iterations = iteration)
+        }
+
+        // 注入排队用户消息：在下一轮模型调用（即下一次工具决策）前插入上下文，
+        // 使用户的加急消息先于后续工具调用被模型看到。
+        val injectedUserMessages = pendingUserMessages()
+            .filter(String::isNotBlank)
+        if (injectedUserMessages.isNotEmpty()) {
+            for (content in injectedUserMessages) {
+                toolMessages.add(mutableMapOf("role" to "user", "content" to content))
+            }
         }
 
         hooks?.onIterationStart?.invoke(iteration, toolMessages.map { it.toMap() })
@@ -648,7 +664,8 @@ suspend fun runToolLoopSession(session: ToolLoopSession): ToolExecutionResult {
         maxIterations = session.maxIterations,
         maxConsecutiveErrors = session.maxConsecutiveErrors,
         hooks = session.hooks,
-        shouldStop = session.shouldStop
+        shouldStop = session.shouldStop,
+        pendingUserMessages = session.pendingUserMessages
     )
     return ToolExecutionResult(loopResult = loopResult, preparedMessages = preparedMessages)
 }

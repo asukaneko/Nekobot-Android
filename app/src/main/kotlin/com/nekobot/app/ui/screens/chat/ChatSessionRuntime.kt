@@ -2,6 +2,7 @@ package com.nekobot.app.ui.screens.chat
 
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.Message
+import com.nekobot.app.data.model.ReasoningEffort
 import com.nekobot.app.data.remote.ExecConfirmationRequest
 import com.nekobot.app.data.remote.HookNotification
 import kotlinx.coroutines.Job
@@ -32,6 +33,24 @@ data class ContextCompressionEvent(
 )
 
 /**
+ * Agent 会话在 AI 生成期间排队的待发送消息。
+ *
+ * - 生成结束后自动发送队顶消息（[ChatSessionState.queuedMessages]）
+ * - 用户点击“立即发送”时进入 [ChatSessionState.urgentMessages]，
+ *   由本地 Agent 工具循环在下一次模型调用前注入上下文
+ */
+data class QueuedChatMessage(
+    val id: String,
+    /** 用户输入的原始文本 */
+    val content: String,
+    /** 随消息发送的附件（自动发送时完整重建消息内容） */
+    val attachments: List<Map<String, Any>> = emptyList(),
+    /** 排队时的思考强度选择 */
+    val reasoningEffort: ReasoningEffort = ReasoningEffort.NONE,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+/**
  * 单个会话的跨 ViewModel 共享运行时状态。
  *
  * 设计动机：聊天界面的 AI 生成流程（chatStream / 命名 / 故事图 / life_sim / TTS / 通知等）
@@ -52,6 +71,30 @@ class ChatSessionState(val sessionId: String) {
     val hookNotifications = MutableStateFlow<List<HookNotification>>(emptyList())
     val ttsStates = MutableStateFlow<Map<String, MessageTtsUiState>>(emptyMap())
     val agentContextCompressionInProgress = MutableStateFlow(false)
+
+    // ============ Agent 会话消息排队 ============
+    /**
+     * AI 生成期间用户发送的消息队列（FIFO）。
+     * 当前生成结束后自动发送队顶消息；用户也可手动“立即发送”。
+     */
+    val queuedMessages = MutableStateFlow<List<QueuedChatMessage>>(emptyList())
+    /**
+     * 请求“立即发送”的排队消息：由本地 Agent 工具循环在下一次模型调用前
+     * 消费并注入上下文；线程安全队列，跨线程 drain/enqueue。
+     */
+    val urgentMessages = java.util.concurrent.ConcurrentLinkedQueue<QueuedChatMessage>()
+
+    /** 将未消费的加急消息移回排队队列队首（生成已结束时兜底回收）。 */
+    fun recycleUrgentMessages() {
+        if (urgentMessages.isEmpty()) return
+        val leftovers = mutableListOf<QueuedChatMessage>()
+        while (true) {
+            val item = urgentMessages.poll() ?: break
+            leftovers += item
+        }
+        if (leftovers.isEmpty()) return
+        queuedMessages.value = leftovers + queuedMessages.value
+    }
 
     // ============ 后台压缩 Job（挂到 applicationScope，不随 VM 销毁）============
     /** 本地模式手动上下文压缩的后台 Job：退出会话页面后仍继续执行。 */
@@ -185,7 +228,9 @@ class ChatSessionState(val sessionId: String) {
         sending.value ||
             localChatJob?.isActive == true ||
             compressionJob?.isActive == true ||
-            ttsJobs.values.any { it.isActive }
+            ttsJobs.values.any { it.isActive } ||
+            queuedMessages.value.isNotEmpty() ||
+            urgentMessages.isNotEmpty()
 }
 
 /**

@@ -582,4 +582,13 @@
     <string name="chat_context_analysis_system_prompt">System prompt</string>
     <string name="chat_context_analysis_tool_content">Tool calls</string>
     <string name="chat_context_analysis_other_messages">Other messages</string>
+    <string name="chat_queue_title">Queued messages (%1$d)</string>
+    <string name="chat_queue_send_now">Send now</string>
+    <string name="chat_queue_remove">Remove</string>
+    <string name="chat_queue_attachment_only">(%1$d attachments)</string>
+    <string name="chat_queue_hint">The top message will be sent automatically when generation finishes</string>
+    <string name="chat_queue_input_hint">Agent running, sends will queue</string>
+    <string name="chat_queue_enqueued">Message queued</string>
+    <string name="chat_queue_injecting">Will be sent to the AI before the next tool call</string>
+    <string name="chat_queue_sent_now">Sent immediately</string>
 </resources>

@@ -588,4 +588,13 @@
     <string name="chat_context_analysis_system_prompt">系统提示词</string>
     <string name="chat_context_analysis_tool_content">工具调用</string>
     <string name="chat_context_analysis_other_messages">其他消息</string>
+    <string name="chat_queue_title">排队消息（%1$d）</string>
+    <string name="chat_queue_send_now">立即发送</string>
+    <string name="chat_queue_remove">移除</string>
+    <string name="chat_queue_attachment_only">（附件 %1$d 个）</string>
+    <string name="chat_queue_hint">生成结束后将自动发送队顶消息</string>
+    <string name="chat_queue_input_hint">AI 执行中，发送将排队</string>
+    <string name="chat_queue_enqueued">已加入排队队列</string>
+    <string name="chat_queue_injecting">将在下一次工具调用前发送给 AI</string>
+    <string name="chat_queue_sent_now">已立即发送</string>
 </resources>

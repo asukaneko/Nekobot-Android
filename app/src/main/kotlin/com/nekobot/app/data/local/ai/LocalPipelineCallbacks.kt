@@ -93,7 +93,12 @@ internal class LocalPipelineCallbacks(
      * 内部的 ExecConfirmationRequest 路由到 LocalRepository 的 execConfirmationEvents
      * SharedFlow（由 ChatViewModel 收集弹窗）。为空时降级到 eventChannel。
      */
-    private val execConfirmationEmitter: ((com.nekobot.app.data.remote.ExecConfirmationRequest) -> Unit)? = null
+    private val execConfirmationEmitter: ((com.nekobot.app.data.remote.ExecConfirmationRequest) -> Unit)? = null,
+    /**
+     * 排队消息“立即发送”提供者：工具循环每轮模型调用前调用，
+     * 返回待注入的排队用户消息文本（取出即消费）。非空时由 [LocalRepository] 负责持久化。
+     */
+    private val pendingUserMessageProvider: (() -> List<String>)? = null
 ) : PipelineCallbacks() {
 
     companion object {
@@ -934,6 +939,19 @@ internal class LocalPipelineCallbacks(
                 lastToolName = toolName.takeIf(String::isNotBlank),
                 updatedAt = com.nekobot.app.data.local.LocalRepository.nowIsoStatic()
             )
+        }
+    }
+
+    // ---- 排队消息注入 ----
+
+    override fun drainPendingUserMessages(ctx: PipelineContext): List<String> {
+        val provider = pendingUserMessageProvider ?: return emptyList()
+        return runCatching { provider() }.getOrElse { error ->
+            com.nekobot.app.data.local.LocalLogger.w(
+                TAG,
+                "取出排队消息失败: ${error.message}"
+            )
+            emptyList()
         }
     }
 

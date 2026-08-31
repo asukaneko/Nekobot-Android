@@ -170,6 +170,7 @@ fun ModernChatScreen(
     val plotChoicesLoading by viewModel.plotChoicesLoading.collectAsStateWithLifecycle()
     val session by viewModel.session.collectAsStateWithLifecycle()
     val agentRecovery by viewModel.agentRecovery.collectAsStateWithLifecycle()
+    val queuedMessages by viewModel.queuedMessages.collectAsStateWithLifecycle()
     val isAgentSession = session?.sessionMode.equals("agent", ignoreCase = true)
     val yoloAvailable = isAgentSession && ServiceContainer.prefs.isLocalMode
     var yoloEnabled by remember(sessionId, yoloAvailable) {
@@ -205,6 +206,9 @@ fun ModernChatScreen(
             plotMode = session?.plotMode == true,
             plotRealTimeSync = session?.plotRealTimeSync == true,
             isAgentSession = isAgentSession,
+            queuedMessages = queuedMessages,
+            onSendQueuedNow = viewModel::sendQueuedNow,
+            onRemoveQueued = viewModel::removeQueuedMessage,
             yoloEnabled = yoloEnabled,
             yoloAvailable = yoloAvailable,
             onToggleYolo = {
@@ -308,6 +312,100 @@ private fun buildChatCommandCandidates(
     }
 }
 
+/**
+ * Agent 排队消息条：展示 AI 生成期间排队的待发送消息。
+ * 队顶消息提供“立即发送”按钮（本地模式注入下一次模型调用，先于下一次工具调用被 AI 看到）。
+ */
+@Composable
+private fun QueuedMessagesBar(
+    items: List<QueuedChatMessage>,
+    sending: Boolean,
+    onSendNow: (String?) -> Unit,
+    onRemove: (String) -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 1.dp
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.Schedule,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = stringResource(R.string.chat_queue_title, items.size),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            items.forEachIndexed { index, item ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = item.content.ifBlank {
+                            stringResource(R.string.chat_queue_attachment_only, item.attachments.size)
+                        },
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (index == 0) {
+                        TextButton(
+                            onClick = { onSendNow(item.id) },
+                            enabled = true,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Text(
+                                stringResource(R.string.chat_queue_send_now),
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = { onRemove(item.id) },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.chat_queue_remove),
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                if (index != items.lastIndex) Spacer(Modifier.height(4.dp))
+            }
+            if (sending) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.chat_queue_hint),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun CommandSuggestionPanel(
     candidates: List<ChatCommandCandidate>,
@@ -407,6 +505,9 @@ private fun ModernChatComposer(
     plotMode: Boolean,
     plotRealTimeSync: Boolean,
     isAgentSession: Boolean,
+    queuedMessages: List<QueuedChatMessage> = emptyList(),
+    onSendQueuedNow: (String?) -> Unit = {},
+    onRemoveQueued: (String) -> Unit = {},
     yoloEnabled: Boolean,
     yoloAvailable: Boolean,
     skillsEnabled: Boolean,
@@ -839,6 +940,16 @@ private fun ModernChatComposer(
                 )
             }
 
+            if (isAgentSession && queuedMessages.isNotEmpty()) {
+                // Agent 排队消息条：生成期间发送的消息在此排队，队顶可“立即发送”注入
+                QueuedMessagesBar(
+                    items = queuedMessages,
+                    sending = sending,
+                    onSendNow = onSendQueuedNow,
+                    onRemove = onRemoveQueued
+                )
+            }
+
             AnimatedVisibility(
                 visible = panelExpanded,
                 enter = expandVertically() + fadeIn(),
@@ -1019,7 +1130,8 @@ private fun ModernChatComposer(
                                             pendingPlotChoiceId = null
                                         }
                                     },
-                                    enabled = !sending,
+                                    // Agent 会话生成中仍可输入，发送的消息会进入排队队列
+                                    enabled = !sending || isAgentSession,
                                     maxLines = 5,
                                     textStyle = MaterialTheme.typography.bodyLarge.copy(
                                         color = MaterialTheme.colorScheme.onSurface
@@ -1034,7 +1146,12 @@ private fun ModernChatComposer(
                                         ) {
                                             if (input.isEmpty()) {
                                                 Text(
-                                                    text = if (sending) stringResource(R.string.chat_ai_thinking) else stringResource(R.string.chat_input_placeholder),
+                                                    text = when {
+                                                        sending && isAgentSession ->
+                                                            stringResource(R.string.chat_queue_input_hint)
+                                                        sending -> stringResource(R.string.chat_ai_thinking)
+                                                        else -> stringResource(R.string.chat_input_placeholder)
+                                                    },
                                                     style = MaterialTheme.typography.bodyLarge,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
                                                 )
@@ -1046,9 +1163,12 @@ private fun ModernChatComposer(
                             }
 
                             // 主操作按钮：背景和图标同步过渡，避免语音/发送/停止状态生硬跳变
+                            // Agent 会话生成中：已输入内容时切换为发送（消息进入排队队列），否则保持停止
+                            val hasDraft = input.isNotBlank() || pendingImageAttachments.isNotEmpty()
                             val action = when {
+                                sending && isAgentSession && hasDraft -> ModernComposerAction.SEND
                                 sending -> ModernComposerAction.STOP
-                                input.isNotBlank() || pendingImageAttachments.isNotEmpty() -> ModernComposerAction.SEND
+                                hasDraft -> ModernComposerAction.SEND
                                 else -> ModernComposerAction.VOICE
                             }
                             val idleActionColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f)

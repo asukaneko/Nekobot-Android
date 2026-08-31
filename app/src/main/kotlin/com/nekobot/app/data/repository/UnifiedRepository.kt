@@ -305,12 +305,17 @@ class UnifiedRepository(
         id: String,
         message: String,
         attachments: List<Map<String, Any>> = emptyList(),
-        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort = com.nekobot.app.data.model.ReasoningEffort.NONE
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort = com.nekobot.app.data.model.ReasoningEffort.NONE,
+        pendingUserMessages: (() -> List<String>)? = null
     ): Flow<RealtimeEvent>? {
         if (!isLocal) return null
         val model = local.getRoutedModel(id, message, attachments) ?: return null
         // 启用角色运行时的会话走 Pipeline，否则走旧流程
-        return local.chatWithPipeline(id, message, model, attachments, reasoningEffort = reasoningEffort)
+        return local.chatWithPipeline(
+            id, message, model, attachments,
+            reasoningEffort = reasoningEffort,
+            pendingUserMessages = pendingUserMessages
+        )
     }
 
     /**
@@ -327,9 +332,10 @@ class UnifiedRepository(
     suspend fun resumeAgentRunStream(
         id: String,
         reasoningEffort: com.nekobot.app.data.model.ReasoningEffort =
-            com.nekobot.app.data.model.ReasoningEffort.NONE
+            com.nekobot.app.data.model.ReasoningEffort.NONE,
+        pendingUserMessages: (() -> List<String>)? = null
     ): Flow<RealtimeEvent>? = if (isLocal) {
-        local.resumeAgentRun(id, reasoningEffort)
+        local.resumeAgentRun(id, reasoningEffort, pendingUserMessages)
     } else {
         null
     }

@@ -583,4 +583,13 @@
     <string name="chat_context_analysis_system_prompt">システムプロンプト</string>
     <string name="chat_context_analysis_tool_content">ツール呼び出し</string>
     <string name="chat_context_analysis_other_messages">その他のメッセージ</string>
+    <string name="chat_queue_title">送信待ちメッセージ（%1$d）</string>
+    <string name="chat_queue_send_now">今すぐ送信</string>
+    <string name="chat_queue_remove">削除</string>
+    <string name="chat_queue_attachment_only">（添付 %1$d 件）</string>
+    <string name="chat_queue_hint">生成終了後、先頭のメッセージを自動送信します</string>
+    <string name="chat_queue_input_hint">実行中、送信はキューに入ります</string>
+    <string name="chat_queue_enqueued">メッセージをキューに追加しました</string>
+    <string name="chat_queue_injecting">次のツール呼び出し前に AI へ送信されます</string>
+    <string name="chat_queue_sent_now">今すぐ送信しました</string>
 </resources>

@@ -216,6 +216,15 @@ open class PipelineCallbacks {
     /** 记录当前正在执行的工具；此时仍保留上一个安全检查点。 */
     open fun markAgentToolRunning(ctx: PipelineContext, toolName: String) {}
 
+    /**
+     * 取出（并清空）当前待注入的用户消息，在工具循环每轮模型调用前调用。
+     *
+     * 用于 Agent 会话“排队消息立即发送”：返回的消息文本会以 user 角色
+     * 插入下一轮模型上下文，先于后续工具调用被模型看到。
+     * 返回空列表表示当前没有待注入消息。
+     */
+    open fun drainPendingUserMessages(ctx: PipelineContext): List<String> = emptyList()
+
     // ---- AI 模型交互 ----
 
     /**

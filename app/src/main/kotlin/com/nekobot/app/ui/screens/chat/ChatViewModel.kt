@@ -322,6 +322,17 @@ class ChatViewModel : BaseViewModel() {
     private val _plotChoicesLoading: MutableStateFlow<Boolean> get() = runtime.plotChoicesLoading
 
     /**
+     * Agent 会话生成期间的排队消息队列（FIFO）。
+     * 生成结束后自动发送队顶；也可在队列条上“立即发送”提前注入。
+     */
+    val queuedMessages: StateFlow<List<QueuedChatMessage>> = _runtime
+        .map { it.queuedMessages }
+        .distinctUntilChanged()
+        .flatMapLatest { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    private val _queuedMessages: MutableStateFlow<List<QueuedChatMessage>> get() = runtime.queuedMessages
+
+    /**
      * Hook 触发通知列表（成就式弹窗）。
      *
      * - 远程模式：服务端通过 `hook_notification` Socket.IO 事件推送
@@ -470,6 +481,16 @@ class ChatViewModel : BaseViewModel() {
                     target.streamingReasoningPreview.value = ""
                     target.messages.value = target.messages.value.filter { it.id != streamingId }
                 }
+                // 兜底：任何结束路径（正常/异常/取消）都把未完成的进度卡片标记为完成，
+                // 避免上一轮被打断的卡片在下一轮完成后仍停留在加载中。
+                target.messages.value = target.messages.value.map { message ->
+                    val cards = message.thinkingCards?.map { card ->
+                        if (card.isComplete) card else card.copy(isComplete = true)
+                    }
+                    if (cards != null) message.copy(thinkingCards = cards) else message
+                }
+                // 未被工具循环消费的“立即发送”消息移回队首，等待自动发送或手动处理
+                target.recycleUrgentMessages()
             }
             ChatSessionManager.pruneIfIdle(target.sessionId)
         }
@@ -510,6 +531,7 @@ class ChatViewModel : BaseViewModel() {
         // 获取（或创建）跨 VM 共享的运行时状态，引用计数 +1
         // 通过 _runtime.value 赋值使 Compose 的 flatMapLatest 自动切换到新 runtime
         _runtime.value = ChatSessionManager.acquire(sessionId)
+        startQueuedAutoSendWatcher()
         // 订阅本地后台压缩结果：仅通知当前存活界面（退出期间完成的压缩由 loadMessages 恢复）。
         compressionEventsJob?.cancel()
         compressionEventsJob = viewModelScope.launch {
@@ -948,6 +970,8 @@ class ChatViewModel : BaseViewModel() {
                 } else {
                     _groupCharacters.value = emptyList()
                 }
+                // 会话模式就绪后重试一次：进入会话时可能已有排队的待发送消息
+                maybeAutoSendQueuedMessage()
                 // 剧情模式：立即标记加载中，避免输入框先出现再消失的滑动动画
                 if (it?.plotMode == true) {
                     _plotChoicesLoading.value = true
@@ -1683,6 +1707,15 @@ class ChatViewModel : BaseViewModel() {
         runtime.streamingContentPreview.value = ""
         runtime.streamingReasoningPreview.value = ""
 
+        // 恢复会开启新一轮卡片；上一轮被打断的旧卡片必须先标记完成，
+        // 否则新卡片完成后旧卡片仍会停留在加载中。
+        _messages.value = _messages.value.map { message ->
+            val cards = message.thinkingCards?.map { card ->
+                if (card.isComplete) card else card.copy(isComplete = true)
+            }
+            if (cards != null) message.copy(thinkingCards = cards) else message
+        }
+
         if (recovery.canContinueFromCheckpoint) {
             _messages.value = _messages.value + Message(
                 role = "user",
@@ -1701,7 +1734,8 @@ class ChatViewModel : BaseViewModel() {
             val flow = try {
                 unified.resumeAgentRunStream(
                     currentSessionId,
-                    currentReasoningEffort()
+                    currentReasoningEffort(),
+                    pendingUserMessages = ::drainUrgentMessagesForInjection
                 )
             } catch (_: kotlinx.coroutines.CancellationException) {
                 return@startLocalChatCollection
@@ -1742,6 +1776,132 @@ class ChatViewModel : BaseViewModel() {
         }
     }
 
+    // ==================== Agent 会话消息排队 ====================
+
+    /** 排队消息“立即发送”的乐观气泡 id 前缀（本地注入/服务器直发期间显示） */
+    private fun queuedUrgentBubbleId(itemId: String) = "_queued_urgent_$itemId"
+
+    /**
+     * 取出（并清空）请求“立即发送”的排队消息。
+     * 由本地 Agent 工具循环在每轮模型调用前调用；返回内容会以 user 角色
+     * 注入下一次模型上下文，先于后续工具调用被 AI 看到。
+     * 持久化由 LocalRepository 在注入时完成。
+     */
+    private fun drainUrgentMessagesForInjection(): List<String> {
+        val target = runtime
+        if (target.urgentMessages.isEmpty()) return emptyList()
+        val drained = mutableListOf<String>()
+        while (true) {
+            val item = target.urgentMessages.poll() ?: break
+            if (item.content.isNotBlank()) drained += item.content
+        }
+        return drained
+    }
+
+    /** 将消息加入排队队列（AI 生成期间在 Agent 会话中发送的消息）。 */
+    private fun enqueueQueuedMessage(
+        content: String,
+        attachments: List<Map<String, Any>>,
+        reasoningEffort: com.nekobot.app.data.model.ReasoningEffort
+    ) {
+        val item = QueuedChatMessage(
+            id = java.util.UUID.randomUUID().toString(),
+            content = content,
+            attachments = attachments,
+            reasoningEffort = reasoningEffort
+        )
+        _queuedMessages.value = _queuedMessages.value + item
+        showToast(string(R.string.chat_queue_enqueued))
+    }
+
+    /** 移除一条排队消息。 */
+    fun removeQueuedMessage(id: String) {
+        _queuedMessages.value = _queuedMessages.value.filter { it.id != id }
+    }
+
+    /**
+     * 立即发送排队消息：
+     * - 本地 Agent 正在执行 → 注入下一次模型调用（在下一次工具调用前被 AI 看到）
+     * - 服务器模式生成中 → 直接通过 Socket 发送
+     * - 空闲 → 按正常发送流程立即开始新一轮
+     */
+    fun sendQueuedNow(id: String? = null) {
+        val queue = _queuedMessages.value
+        if (queue.isEmpty()) return
+        val target = id?.let { targetId -> queue.firstOrNull { it.id == targetId } } ?: queue.first()
+        _queuedMessages.value = queue.filterNot { it.id == target.id }
+        _messages.value = _messages.value.filter { it.id != queuedUrgentBubbleId(target.id) }
+        val busyGenerating = _sending.value || runtime.hasBlockingLocalChatJob()
+        if (!busyGenerating) {
+            sendMessage(target.content, attachments = target.attachments, reasoningEffort = target.reasoningEffort)
+            return
+        }
+        if (isLocalMode) {
+            // 注入进行中的本地 Agent 工具循环：乐观气泡 + 等待下一次模型调用前注入
+            _messages.value = _messages.value + Message(
+                id = queuedUrgentBubbleId(target.id),
+                role = "user",
+                content = buildChatMessageContent(target.content, target.attachments),
+                timestamp = System.currentTimeMillis().toString()
+            )
+            runtime.urgentMessages.add(target)
+            showToast(string(R.string.chat_queue_injecting))
+            return
+        }
+        // 服务器模式无法中途注入：直接经 Socket 发送
+        _messages.value = _messages.value + Message(
+            id = queuedUrgentBubbleId(target.id),
+            role = "user",
+            content = buildChatMessageContent(target.content, target.attachments),
+            timestamp = System.currentTimeMillis().toString()
+        )
+        socket.sendMessage(
+            currentSessionId,
+            buildChatMessageContent(target.content, target.attachments),
+            target.attachments,
+            target.reasoningEffort
+        )
+        showToast(string(R.string.chat_queue_sent_now))
+    }
+
+    /**
+     * 生成结束后自动发送队顶排队消息（Agent 会话）。
+     * 用户手动停止、等待工具确认或存在可恢复任务时不自动发送。
+     */
+    private fun maybeAutoSendQueuedMessage() {
+        if (currentSessionId.isBlank()) return
+        if (!_session.value?.sessionMode.equals("agent", ignoreCase = true)) return
+        if (_sending.value || runtime.hasBlockingLocalChatJob()) return
+        if (generationStopRequested) return
+        if (_execConfirmation.value != null) return
+        if (_agentRecovery.value != null) return
+        val queue = _queuedMessages.value
+        if (queue.isEmpty()) return
+        val top = queue.first()
+        _queuedMessages.value = queue.drop(1)
+        _messages.value = _messages.value.filter { it.id != queuedUrgentBubbleId(top.id) }
+        sendMessage(top.content, attachments = top.attachments, reasoningEffort = top.reasoningEffort)
+    }
+
+    /** 订阅生成状态/队列变化，在每轮生成结束后自动发送队顶排队消息。 */
+    private fun startQueuedAutoSendWatcher() {
+        if (queuedAutoSendJob?.isActive == true) return
+        queuedAutoSendJob = viewModelScope.launch {
+            _runtime.flatMapLatest { state ->
+                kotlinx.coroutines.flow.combine(
+                    state.sending,
+                    state.queuedMessages,
+                    state.execConfirmation
+                ) { sending, queue, _ -> sending to queue }
+            }.collect {
+                kotlinx.coroutines.delay(200)
+                maybeAutoSendQueuedMessage()
+            }
+        }
+    }
+
+    private var queuedAutoSendJob: kotlinx.coroutines.Job? = null
+
     fun sendMessage(
         text: String,
         plotChoiceId: String? = null,
@@ -1751,7 +1911,18 @@ class ChatViewModel : BaseViewModel() {
         val content = text.trim()
         val messageContent = buildChatMessageContent(content, attachments)
         if (messageContent.isBlank()) return
-        if (_sending.value || _editingMessage.value || runtime.hasBlockingLocalChatJob() || currentSessionId.isBlank()) return
+        if (currentSessionId.isBlank()) return
+        // Agent 会话：AI 生成期间发送的消息进入排队队列，生成结束后自动发送队顶
+        val busyGenerating = _sending.value || runtime.hasBlockingLocalChatJob()
+        if (
+            busyGenerating &&
+            plotChoiceId == null &&
+            _session.value?.sessionMode.equals("agent", ignoreCase = true)
+        ) {
+            enqueueQueuedMessage(content, attachments, reasoningEffort)
+            return
+        }
+        if (_sending.value || _editingMessage.value || runtime.hasBlockingLocalChatJob()) return
         if (plotChoiceId != null) {
             viewModelScope.launch {
                 commitPlotChoiceSelection(plotChoiceId)
@@ -1788,7 +1959,13 @@ class ChatViewModel : BaseViewModel() {
             // 挂到 applicationScope：退出聊天界面后 AI 生成继续后台运行
             startLocalChatCollection { chatJob ->
                 val flow = try {
-                    unified.chatStream(currentSessionId, messageContent, attachments, reasoningEffort)
+                    unified.chatStream(
+                        currentSessionId,
+                        messageContent,
+                        attachments,
+                        reasoningEffort,
+                        pendingUserMessages = ::drainUrgentMessagesForInjection
+                    )
                 } catch (_: kotlinx.coroutines.CancellationException) {
                     return@startLocalChatCollection
                 } catch (e: Exception) {

@@ -711,7 +711,8 @@ class AIPipeline {
             toolCallHistory = ctx.toolCallHistory,
             maxIterations = maxToolIterations,
             hooks = hooks,
-            shouldStop = ctx::shouldStop
+            shouldStop = ctx::shouldStop,
+            pendingUserMessages = { callbacks.drainPendingUserMessages(ctx) }
         )
 
         try {
