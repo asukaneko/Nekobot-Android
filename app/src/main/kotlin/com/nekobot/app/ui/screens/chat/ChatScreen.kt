@@ -4608,6 +4608,9 @@ internal fun AgentRecoveryBar(
     }
 }
 
+/** 任务列表展开时的最大显示高度（dp），超过后内部垂直滚动。 */
+private val AGENT_TODOS_MAX_HEIGHT = 280.dp
+
 /**
  * Agent 任务列表面板（输入框上方，可折叠）。
  *
@@ -4700,7 +4703,13 @@ internal fun AgentTodosPanel(todos: List<AgentTodo>) {
             )
             Spacer(Modifier.height(6.dp))
             AnimatedVisibility(visible = expanded) {
-                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) {
+                // 任务较多时限制高度，超出部分用垂直滚动展示，避免面板撑满整个屏幕。
+                Column(
+                    modifier = Modifier
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                        .heightIn(max = AGENT_TODOS_MAX_HEIGHT)
+                        .verticalScroll(rememberScrollState())
+                ) {
                     todos.forEachIndexed { index, todo ->
                         AgentTodoRow(todo = todo, index = index)
                     }
