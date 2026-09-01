@@ -264,6 +264,14 @@ sealed class RealtimeEvent {
     data class ForegroundComplete(val sessionId: String) : RealtimeEvent()
     /** 本地标题总结后处理已结束；TTS 必须等到此事件后才能启动，避免争用模型请求。 */
     data class ReplyPostProcessed(val sessionId: String, val contents: List<String>) : RealtimeEvent()
+    /**
+     * Agent 任务列表更新（todo_write 工具触发，仅本地管线发出）。
+     * UI 在输入框上方渲染可折叠任务面板，并随事件实时刷新进度。
+     */
+    data class AgentTodosUpdated(
+        val sessionId: String,
+        val todos: List<com.nekobot.app.data.model.AgentTodo>
+    ) : RealtimeEvent()
 }
 
 /** 返回事件所属会话；远程聊天使用它做严格隔离，避免全局 SharedFlow 串到其他页面。 */
@@ -285,6 +293,7 @@ fun RealtimeEvent.targetSessionId(): String? = when (this) {
     is RealtimeEvent.SessionRenamed -> sessionId
     is RealtimeEvent.ForegroundComplete -> sessionId
     is RealtimeEvent.ReplyPostProcessed -> sessionId
+    is RealtimeEvent.AgentTodosUpdated -> sessionId
     is RealtimeEvent.Usage -> null
 }
 

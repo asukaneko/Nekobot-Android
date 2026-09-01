@@ -26,6 +26,7 @@ internal val localExecutableToolIds = setOf(
     "browser_use",
     "plugin_use",
     "get_date_time",
+    "todo_write",
     "http_get",
     "exec_command",
     "file_read",
@@ -179,6 +180,11 @@ internal class LocalAgentToolExecutor(
     sharedWorkspaceRoot: File? = null,
     private val globalAgentMemoryStore: GlobalAgentMemoryStore? =
         runCatching { ServiceContainer.globalAgentMemory }.getOrNull(),
+    /**
+     * 任务列表更新回调（todo_write 工具）：把解析后的任务列表交给管线
+     * 持久化到会话实体并推送 AgentTodosUpdated 事件刷新 UI。
+     */
+    private val onTodosUpdated: (List<com.nekobot.app.data.model.AgentTodo>) -> Unit = {},
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -186,6 +192,10 @@ internal class LocalAgentToolExecutor(
 ) {
     private val gson = Gson()
     private val imageGenerationSizes = setOf("1024x1024", "1792x1024", "1024x1792")
+    /** 任务列表上限：避免 AI 生成超长列表刷屏 */
+    private val MAX_TODO_ITEMS = 50
+    /** 单条任务内容长度上限 */
+    private val MAX_TODO_CONTENT_LENGTH = 200
     private val workspace = workspaceRoot?.canonicalFile
     private val sharedWorkspace = sharedWorkspaceRoot?.canonicalFile
     private val androidToolExecutor by lazy {
@@ -213,6 +223,7 @@ internal class LocalAgentToolExecutor(
                 "search_web" -> searchWeb(args)
                 "plugin_use" -> pluginTool.execute(args)
                 "get_date_time" -> getDateTime(args)
+                "todo_write" -> writeTodos(args)
                 "http_get" -> httpGet(args)
                 "exec_command" -> execCommand(args)
                 "file_read" -> readWorkspaceFile(args)
@@ -331,8 +342,48 @@ internal class LocalAgentToolExecutor(
         )
     }
 
-    private fun getWeather(args: Map<String, Any>): Map<String, Any> {
-        val city = args.string("city").ifBlank { "北京" }
+    /**
+     * todo_write：全量替换当前会话的任务列表。
+     * 参考 Claude Code / opencode 的 todowrite：AI 每次传入完整列表，
+     * 无效项被丢弃，非法 status/priority 归一化为默认值。
+     */
+    private fun writeTodos(args: Map<String, Any>): Map<String, Any> {
+        val rawTodos = args["todos"] as? List<*>
+        if (rawTodos == null) return failure("todos 必须是任务数组")
+        if (rawTodos.isEmpty()) {
+            // 空数组 = 清空任务列表
+            onTodosUpdated(emptyList())
+            return success("total" to 0, "todos" to emptyList<Any>())
+        }
+        if (rawTodos.size > MAX_TODO_ITEMS) {
+            return failure("任务数量过多（最多 $MAX_TODO_ITEMS 项），请拆分或精简")
+        }
+        val todos = rawTodos.mapIndexedNotNull { index, item ->
+            val map = (item as? Map<*, *>) ?: return@mapIndexedNotNull null
+            val content = map["content"]?.toString()?.trim().orEmpty()
+            if (content.isEmpty()) return@mapIndexedNotNull null
+            com.nekobot.app.data.model.AgentTodo(
+                id = map["id"]?.toString()?.takeIf(String::isNotBlank)
+                    ?: "todo_${index + 1}",
+                content = content.take(MAX_TODO_CONTENT_LENGTH),
+                status = com.nekobot.app.data.model.AgentTodo.normalizeStatus(
+                    map["status"]?.toString()
+                ),
+                priority = com.nekobot.app.data.model.AgentTodo.normalizePriority(
+                    map["priority"]?.toString()
+                )
+            )
+        }
+        if (todos.isEmpty()) return failure("任务列表为空：每项必须包含非空 content")
+        onTodosUpdated(todos)
+        return success(
+            "total" to todos.size,
+            "completed" to todos.count { it.status == com.nekobot.app.data.model.AgentTodo.STATUS_COMPLETED },
+            "todos" to todos
+        )
+    }
+
+    private fun getWeather(args: Map<String, Any>): Map<String, Any> {        val city = args.string("city").ifBlank { "北京" }
         val encoded = URLEncoder.encode(city, StandardCharsets.UTF_8.name())
         val raw = fetchText("https://wttr.in/$encoded?format=j1")
         @Suppress("UNCHECKED_CAST")

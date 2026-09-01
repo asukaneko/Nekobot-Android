@@ -305,4 +305,7 @@
     <string name="agent_progress_knowledge_miss">관련 항목 없음</string>
     <string name="agent_progress_knowledge_done">지식 베이스 검색 완료</string>
     <string name="agent_progress_done">처리 완료</string>
+    <string name="agent_todos_title">작업 목록</string>
+    <string name="agent_todos_progress">%1$d/%2$d 완료</string>
+    <string name="agent_todos_all_done">모든 작업 완료</string>
 </resources>

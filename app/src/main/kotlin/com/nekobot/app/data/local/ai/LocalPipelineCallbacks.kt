@@ -150,7 +150,26 @@ internal class LocalPipelineCallbacks(
                 }
             },
             generationController = generationController,
-            sharedWorkspaceRoot = sharedWorkspaceRoot
+            sharedWorkspaceRoot = sharedWorkspaceRoot,
+            onTodosUpdated = { todos ->
+                // 任务列表持久化到会话实体，并推送事件刷新输入框上方可视化面板
+                kotlinx.coroutines.runBlocking {
+                    runCatching {
+                        sessionDao.updateAgentTodos(
+                            session.id,
+                            com.nekobot.app.data.model.AgentTodo.encodeList(todos)
+                        )
+                    }.onFailure { error ->
+                        com.nekobot.app.data.local.LocalLogger.w(
+                            TAG,
+                            "持久化 Agent 任务列表失败: ${error.message}"
+                        )
+                    }
+                }
+                emitEvent(
+                    RealtimeEvent.AgentTodosUpdated(session.id, todos)
+                )
+            }
         )
     }
 

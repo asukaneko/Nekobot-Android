@@ -71,6 +71,8 @@ class ChatSessionState(val sessionId: String) {
     val hookNotifications = MutableStateFlow<List<HookNotification>>(emptyList())
     val ttsStates = MutableStateFlow<Map<String, MessageTtsUiState>>(emptyMap())
     val agentContextCompressionInProgress = MutableStateFlow(false)
+    /** Agent 任务列表（todo_write 工具更新；输入框上方可折叠面板展示）。 */
+    val agentTodos = MutableStateFlow<List<com.nekobot.app.data.model.AgentTodo>>(emptyList())
 
     // ============ Agent 会话消息排队 ============
     /**

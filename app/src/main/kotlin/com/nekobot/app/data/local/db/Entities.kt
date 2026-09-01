@@ -70,7 +70,9 @@ data class LocalSessionEntity(
     /** 上一个发言角色 ID，供轮询策略跨轮次续接。 */
     @ColumnInfo(name = "group_active_speaker") val groupActiveSpeaker: String? = null,
     /** 已完成的群聊用户轮次数。 */
-    @ColumnInfo(name = "group_turn_count", defaultValue = "0") val groupTurnCount: Int = 0
+    @ColumnInfo(name = "group_turn_count", defaultValue = "0") val groupTurnCount: Int = 0,
+    /** Agent 任务列表 JSON（todo_write 工具全量写入；输入框上方可视化面板展示）。 */
+    @ColumnInfo(name = "agent_todos") val agentTodos: String? = null
 )
 
 /**

@@ -98,7 +98,9 @@ data class Session(
     /** 已禁用的注入项 key 列表（用户可切换某项的启用状态） */
     @SerializedName("disabled_prompt_keys") val disabledPromptKeys: List<String>? = null,
     /** 运行时合成后的完整系统提示词（每次对话后更新，只读展示） */
-    @SerializedName("composed_system_prompt") val composedSystemPrompt: String? = null
+    @SerializedName("composed_system_prompt") val composedSystemPrompt: String? = null,
+    /** Agent 任务列表 JSON（todo_write 工具写入；本地模式持久化，UI 输入框上方展示） */
+    @SerializedName(value = "agent_todos", alternate = ["agentTodos"]) val agentTodos: String? = null
 ) {
     val displayName: String get() = name?.takeIf { it.isNotBlank() } ?: "未命名会话"
     /** 角色立绘 URL：优先 portrait，回退 characterAvatar */
@@ -296,6 +298,58 @@ data class ThinkingCard(
     /** 关联的父用户消息 id；用于在用户气泡与 AI 气泡之间渲染，并持久化到父消息 */
     @SerializedName("parent_message_id") val parentMessageId: String? = null
 )
+
+/**
+ * Agent 任务列表单项（todo_write 工具全量写入，会话级持久化）。
+ *
+ * 参考 Claude Code / opencode 的 todowrite 设计：AI 每次传入完整任务列表，
+ * 客户端不做增量合并，避免多轮更新时状态漂移。
+ */
+data class AgentTodo(
+    val id: String = "",
+    val content: String = "",
+    /** pending / in_progress / completed / cancelled */
+    val status: String = STATUS_PENDING,
+    /** high / medium / low */
+    val priority: String = PRIORITY_MEDIUM
+) {
+    companion object {
+        const val STATUS_PENDING = "pending"
+        const val STATUS_IN_PROGRESS = "in_progress"
+        const val STATUS_COMPLETED = "completed"
+        const val STATUS_CANCELLED = "cancelled"
+
+        const val PRIORITY_HIGH = "high"
+        const val PRIORITY_MEDIUM = "medium"
+        const val PRIORITY_LOW = "low"
+
+        fun normalizeStatus(raw: String?): String = when (raw?.trim()?.lowercase()) {
+            STATUS_IN_PROGRESS, "active", "running" -> STATUS_IN_PROGRESS
+            STATUS_COMPLETED, "done", "finished" -> STATUS_COMPLETED
+            STATUS_CANCELLED, "canceled" -> STATUS_CANCELLED
+            else -> STATUS_PENDING
+        }
+
+        fun normalizePriority(raw: String?): String = when (raw?.trim()?.lowercase()) {
+            PRIORITY_HIGH, "urgent" -> PRIORITY_HIGH
+            PRIORITY_LOW -> PRIORITY_LOW
+            else -> PRIORITY_MEDIUM
+        }
+
+        /** 解析会话实体上的 agent_todos JSON 列；解析失败返回空列表。 */
+        fun fromJsonList(raw: String?): List<AgentTodo> {
+            if (raw.isNullOrBlank()) return emptyList()
+            return runCatching {
+                val type = object : com.google.gson.reflect.TypeToken<List<AgentTodo>>() {}.type
+                com.google.gson.Gson().fromJson<List<AgentTodo>>(raw, type).orEmpty()
+            }.getOrDefault(emptyList())
+        }
+
+        /** 序列化任务列表为 JSON；空列表返回 null 以清空数据库列。 */
+        fun encodeList(todos: List<AgentTodo>): String? =
+            if (todos.isEmpty()) null else com.google.gson.Gson().toJson(todos)
+    }
+}
 
 data class ChatRequest(
     val message: String? = null,

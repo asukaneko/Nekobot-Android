@@ -99,3 +99,42 @@ internal fun PromptStack.addLocalAgentBasePrompt(language: String = "zh") {
         scope = "global"
     )
 }
+
+/** 任务列表注入项 key（todo_write 持久化状态回灌上下文，防止多轮/压缩后失忆）。 */
+internal const val AGENT_TODOS_PROMPT_KEY = "agent.todos"
+
+/**
+ * 把当前会话的 Agent 任务列表注入提示词。
+ * 有进行中的任务时优先标注；列表为空时不注入。
+ */
+internal fun PromptStack.addAgentTodosPrompt(todos: List<com.nekobot.app.data.model.AgentTodo>) {
+    val active = todos.filterNot {
+        it.status == com.nekobot.app.data.model.AgentTodo.STATUS_COMPLETED ||
+            it.status == com.nekobot.app.data.model.AgentTodo.STATUS_CANCELLED
+    }
+    if (todos.isEmpty()) return
+    val statusMark = mapOf(
+        com.nekobot.app.data.model.AgentTodo.STATUS_PENDING to "[ ]",
+        com.nekobot.app.data.model.AgentTodo.STATUS_IN_PROGRESS to "[~]",
+        com.nekobot.app.data.model.AgentTodo.STATUS_COMPLETED to "[x]",
+        com.nekobot.app.data.model.AgentTodo.STATUS_CANCELLED to "[-]"
+    )
+    val lines = todos.map { todo ->
+        "${statusMark[todo.status] ?: "[ ]"} ${todo.content}${if (todo.priority == com.nekobot.app.data.model.AgentTodo.PRIORITY_HIGH) "（高优先级）" else ""}"
+    }
+    val content = buildString {
+        appendLine("## 当前任务列表")
+        if (active.isEmpty()) {
+            appendLine("列表中的任务均已完成或取消。除非用户提出新需求，不要重复或重写已有任务。")
+        } else {
+            appendLine("存在未完成任务。执行多步骤工作时先用 todo_write 更新进度，再继续处理未完成任务。")
+        }
+        appendLine(lines.joinToString("\n"))
+    }
+    add(
+        key = AGENT_TODOS_PROMPT_KEY,
+        content = content,
+        priority = PromptStack.Priority.TOOL_INSTRUCTIONS,
+        scope = "session"
+    )
+}

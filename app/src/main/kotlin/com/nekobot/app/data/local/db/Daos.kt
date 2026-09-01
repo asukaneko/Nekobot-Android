@@ -85,6 +85,10 @@ interface SessionDao {
      */
     @Query("UPDATE local_sessions SET character_avatar = :characterAvatar, portrait = CASE WHEN :portrait IS NULL OR :portrait = '' THEN portrait ELSE :portrait END WHERE character_id = :characterId")
     suspend fun updatePortraitsByCharacterId(characterId: String, portrait: String?, characterAvatar: String?)
+
+    /** Agent 任务列表（todo_write 工具）持久化；不触碰 updated_at，避免影响会话排序。 */
+    @Query("UPDATE local_sessions SET agent_todos = :todosJson WHERE id = :id")
+    suspend fun updateAgentTodos(id: String, todosJson: String?)
 }
 
 @Dao

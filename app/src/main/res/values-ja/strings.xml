@@ -305,4 +305,7 @@
     <string name="agent_progress_knowledge_miss">該当なし</string>
     <string name="agent_progress_knowledge_done">ナレッジベースの検索が完了</string>
     <string name="agent_progress_done">処理完了</string>
+    <string name="agent_todos_title">タスクリスト</string>
+    <string name="agent_todos_progress">%1$d/%2$d 完了</string>
+    <string name="agent_todos_all_done">すべてのタスクが完了しました</string>
 </resources>

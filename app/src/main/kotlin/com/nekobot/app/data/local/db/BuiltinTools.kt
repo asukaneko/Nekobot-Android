@@ -262,6 +262,41 @@ object BuiltinTools {
             )
         ),
         BuiltinToolSpec(
+            id = "todo_write",
+            name = "任务列表",
+            description = "创建或更新当前会话的任务列表。接到需要多个步骤的复杂任务后，先分析任务并创建任务列表，再逐项执行。每次调用传入完整任务列表（全量替换，不是增量修改）。任务状态约定：开始某项任务前先把该任务置为 in_progress（同时只能有一个 in_progress）；完成后立即置为 completed 并开始下一项；需求变化时新增或 cancelled 对应任务；不要把未开始的任务写成 in_progress，也不要批量完成。全部任务完成后不要再修改列表。",
+            parametersJson = """
+                {
+                  "type": "object",
+                  "properties": {
+                    "todos": {
+                      "type": "array",
+                      "description": "完整的任务列表（全量替换现有列表）",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "content": {
+                            "type": "string",
+                            "description": "任务内容，简短明确的祈使句，如“读取配置文件”"
+                          },
+                          "status": {
+                            "type": "string",
+                            "description": "任务状态：pending（待处理）/ in_progress（进行中）/ completed（已完成）/ cancelled（已取消）"
+                          },
+                          "priority": {
+                            "type": "string",
+                            "description": "优先级：high / medium / low，默认 medium"
+                          }
+                        },
+                        "required": ["content", "status"]
+                      }
+                    }
+                  },
+                  "required": ["todos"]
+                }
+            """.trimIndent()
+        ),
+        BuiltinToolSpec(
             id = "http_get",
             name = "HTTP GET 请求",
             description = "向指定 URL 发起 GET 请求，返回响应内容。",

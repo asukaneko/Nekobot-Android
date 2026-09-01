@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.StartOffset
 import androidx.compose.animation.core.LinearEasing
@@ -97,9 +98,11 @@ import androidx.compose.material.icons.filled.KeyboardHide
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.filled.Upload
@@ -110,6 +113,7 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.SmartToy
+import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material3.BottomSheetDefaults
@@ -156,6 +160,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.painterResource
@@ -183,6 +188,7 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import com.nekobot.app.R
 import com.nekobot.app.data.model.Message
+import com.nekobot.app.data.model.AgentTodo
 import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.model.ReasoningEffort
 import com.nekobot.app.data.model.ThinkingCard
@@ -267,6 +273,7 @@ fun ChatScreen(
     val hookNotifications by viewModel.hookNotifications.collectAsStateWithLifecycle()
     val agentRecovery by viewModel.agentRecovery.collectAsStateWithLifecycle()
     val agentContextCompressionInProgress by viewModel.agentContextCompressionInProgress.collectAsStateWithLifecycle()
+    val agentTodos by viewModel.agentTodos.collectAsStateWithLifecycle()
     // 摘要可能先于会话元数据加载完成；直接以消息自身的压缩边界驱动分隔线。
     val agentCompressionBoundaryIds = messages.mapNotNull { it.agentContextSummaryBoundaryId() }.toSet()
     // 摘要本身仅供请求上下文使用，聊天列表仍展示完整原始历史。
@@ -892,6 +899,8 @@ fun ChatScreen(
                                 onDiscard = viewModel::discardAgentRun
                             )
                         }
+                        // Agent 任务列表（todo_write 工具写入，输入框上方可折叠面板）
+                        AgentTodosPanel(todos = agentTodos)
                         // 底部输入栏：左侧 + 按钮展开数据/操作面板，中间输入框，右侧发送
                         ChatInputBar(
                     input = input,
@@ -4595,6 +4604,187 @@ internal fun AgentRecoveryBar(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Agent 任务列表面板（输入框上方，可折叠）。
+ *
+ * 数据由 todo_write 工具全量写入并持久化到会话；设计参考 opencode / Claude Code
+ * 的任务列表可视化：头部显示完成进度，折叠时仅显示进行中的任务，展开查看全部。
+ * 同时挂载在 ChatScreen 内置 bottomBar 与 ModernChatScreen 的 customBottomBar 中。
+ */
+@Composable
+internal fun AgentTodosPanel(todos: List<AgentTodo>) {
+    if (todos.isEmpty()) return
+    var expanded by rememberSaveable { mutableStateOf(true) }
+    val completedCount = todos.count { it.status == AgentTodo.STATUS_COMPLETED }
+    val cancelledCount = todos.count { it.status == AgentTodo.STATUS_CANCELLED }
+    val activeCount = todos.size - completedCount - cancelledCount
+    val activeTodo = todos.firstOrNull { it.status == AgentTodo.STATUS_IN_PROGRESS }
+    val progress = if (todos.isEmpty()) 0f
+    else (completedCount + cancelledCount).toFloat() / todos.size
+    androidx.compose.material3.Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 1.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .animateContentSize()
+        ) {
+            // 头部：进度概览 + 折叠开关
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.Checklist,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.agent_todos_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = stringResource(
+                        R.string.agent_todos_progress,
+                        completedCount,
+                        todos.size
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.weight(1f))
+                if (activeTodo != null) {
+                    Text(
+                        text = activeTodo.content,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(2.2f, fill = false)
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
+                Icon(
+                    if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            // 完成度进度条
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp)
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(2.dp)),
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+            Spacer(Modifier.height(6.dp))
+            AnimatedVisibility(visible = expanded) {
+                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) {
+                    todos.forEachIndexed { index, todo ->
+                        AgentTodoRow(todo = todo, index = index)
+                    }
+                    if (activeCount == 0) {
+                        Text(
+                            text = stringResource(R.string.agent_todos_all_done),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                }
+            }
+        }
+    }
+}
+
+/** 任务列表单行：状态图标 + 内容（高优先级红点标注，取消项删除线）。 */
+@Composable
+private fun AgentTodoRow(todo: AgentTodo, index: Int) {
+    val contentColor = when (todo.status) {
+        AgentTodo.STATUS_COMPLETED -> MaterialTheme.colorScheme.onSurfaceVariant
+        AgentTodo.STATUS_CANCELLED -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    val decoration = when (todo.status) {
+        AgentTodo.STATUS_COMPLETED -> TextDecoration.LineThrough
+        AgentTodo.STATUS_CANCELLED -> TextDecoration.LineThrough
+        else -> TextDecoration.None
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier.size(20.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            when (todo.status) {
+                AgentTodo.STATUS_COMPLETED -> Icon(
+                    Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                AgentTodo.STATUS_IN_PROGRESS -> CircularProgressIndicator(
+                    modifier = Modifier.size(15.dp),
+                    strokeWidth = 2.dp
+                )
+                AgentTodo.STATUS_CANCELLED -> Icon(
+                    Icons.Filled.RemoveCircleOutline,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.size(18.dp)
+                )
+                else -> Icon(
+                    Icons.Outlined.RadioButtonUnchecked,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(17.dp)
+                )
+            }
+        }
+        Spacer(Modifier.width(9.dp))
+        Text(
+            text = todo.content,
+            style = MaterialTheme.typography.bodySmall,
+            color = contentColor,
+            textDecoration = decoration,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        if (todo.priority == AgentTodo.PRIORITY_HIGH && todo.status != AgentTodo.STATUS_COMPLETED) {
+            Spacer(Modifier.width(6.dp))
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFFF6B6B))
+            )
         }
     }
 }

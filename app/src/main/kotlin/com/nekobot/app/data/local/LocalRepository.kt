@@ -45,6 +45,7 @@ import com.nekobot.app.data.local.ai.RoutingDecisionLogger
 import com.nekobot.app.data.local.ai.TokenStatsManager
 import com.nekobot.app.data.local.ai.currentLocalContextTokens
 import com.nekobot.app.data.local.ai.addLocalAgentBasePrompt
+import com.nekobot.app.data.local.ai.addAgentTodosPrompt
 import com.nekobot.app.data.local.ai.addGlobalAgentMemory
 import com.nekobot.app.data.local.ai.buildLocalAgentToolDefinitions
 import com.nekobot.app.data.local.ai.buildLocalDbToolDefinitions
@@ -4735,6 +4736,9 @@ class LocalRepository(
                 LocaleHelper.getEffectiveLocale(it, ServiceContainer.prefs.language).language
             } ?: Locale.getDefault().language
             ctx.promptStack.addLocalAgentBasePrompt(promptLanguage)
+            ctx.promptStack.addAgentTodosPrompt(
+                com.nekobot.app.data.model.AgentTodo.fromJsonList(session.agentTodos)
+            )
             val globalAgentMemory = runCatching { ServiceContainer.globalAgentMemory.read().content }
                 .onFailure {
                     LocalLogger.w(TAG, "读取全局 Agent 记忆失败: ${it.message}")
@@ -5243,6 +5247,9 @@ class LocalRepository(
                 LocaleHelper.getEffectiveLocale(it, ServiceContainer.prefs.language).language
             } ?: Locale.getDefault().language
             ctx.promptStack.addLocalAgentBasePrompt(promptLanguage)
+            ctx.promptStack.addAgentTodosPrompt(
+                com.nekobot.app.data.model.AgentTodo.fromJsonList(session.agentTodos)
+            )
             val globalAgentMemory = runCatching { ServiceContainer.globalAgentMemory.read().content }
                 .onFailure {
                     com.nekobot.app.data.local.LocalLogger.w(
@@ -7940,7 +7947,8 @@ ${AiOutputLanguage.directive()}
                 gson.fromJson<List<String>>(it, type)
             }.getOrNull()
         },
-        groupConfig = groupConfig?.let { runCatching { JsonParser.parseString(it) }.getOrNull() }
+        groupConfig = groupConfig?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
+        agentTodos = agentTodos
     )
 
     private fun LocalMessageEntity.toMessage(): Message = Message(

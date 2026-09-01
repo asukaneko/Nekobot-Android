@@ -171,6 +171,8 @@ fun ModernChatScreen(
     val session by viewModel.session.collectAsStateWithLifecycle()
     val agentRecovery by viewModel.agentRecovery.collectAsStateWithLifecycle()
     val queuedMessages by viewModel.queuedMessages.collectAsStateWithLifecycle()
+    // Agent 任务列表（todo_write 工具写入；输入框上方可折叠面板）
+    val agentTodos by viewModel.agentTodos.collectAsStateWithLifecycle()
     val isAgentSession = session?.sessionMode.equals("agent", ignoreCase = true)
     val yoloAvailable = isAgentSession && ServiceContainer.prefs.isLocalMode
     var yoloEnabled by remember(sessionId, yoloAvailable) {
@@ -196,6 +198,8 @@ fun ModernChatScreen(
                     onDiscard = viewModel::discardAgentRun
                 )
             }
+            // Agent 任务列表（todo_write 工具写入，输入框上方可折叠面板）
+            AgentTodosPanel(todos = agentTodos)
             ModernChatComposer(
             modifier = Modifier.fillMaxWidth(),
             sessionId = sessionId,

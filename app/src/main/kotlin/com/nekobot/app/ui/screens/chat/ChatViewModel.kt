@@ -294,6 +294,18 @@ class ChatViewModel : BaseViewModel() {
     private val _agentContextCompressionInProgress: MutableStateFlow<Boolean>
         get() = runtime.agentContextCompressionInProgress
 
+    /**
+     * Agent 任务列表（todo_write 工具写入，会话级持久化）。
+     * 输入框上方的可折叠面板按此状态渲染；进入会话时从会话实体恢复。
+     */
+    val agentTodos: StateFlow<List<com.nekobot.app.data.model.AgentTodo>> = _runtime
+        .map { it.agentTodos }
+        .distinctUntilChanged()
+        .flatMapLatest { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    private val _agentTodos: MutableStateFlow<List<com.nekobot.app.data.model.AgentTodo>>
+        get() = runtime.agentTodos
+
     val execConfirmation: StateFlow<ExecConfirmationRequest?> = _runtime
         .map { it.execConfirmation }
         .distinctUntilChanged()
@@ -868,6 +880,11 @@ class ChatViewModel : BaseViewModel() {
                     if (!event.inProgress && event.compressed) loadMessages()
                 }
             }
+            is RealtimeEvent.AgentTodosUpdated -> {
+                if (event.sessionId == currentSessionId) {
+                    _agentTodos.value = event.todos
+                }
+            }
             is RealtimeEvent.HookNotificationEvent -> {
                 // Hook 触发通知：仅处理当前会话的通知（与远程模式 conversationId 路由一致）
                 val notif = event.notification
@@ -965,6 +982,8 @@ class ChatViewModel : BaseViewModel() {
             block = { unified.getSession(sessionId) },
             onSuccess = {
                 _session.value = it
+                // Agent 任务列表：进入会话时从持久化数据恢复
+                _agentTodos.value = com.nekobot.app.data.model.AgentTodo.fromJsonList(it?.agentTodos)
                 if (it?.sessionMode.equals("group", ignoreCase = true)) {
                     loadGroupCharacters(it?.characterIds.orEmpty())
                 } else {
