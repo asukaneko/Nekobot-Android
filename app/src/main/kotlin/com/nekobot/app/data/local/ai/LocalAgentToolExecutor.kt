@@ -27,6 +27,7 @@ internal val localExecutableToolIds = setOf(
     "plugin_use",
     "get_date_time",
     "todo_write",
+    "ask_user_question",
     "http_get",
     "exec_command",
     "file_read",
@@ -185,6 +186,14 @@ internal class LocalAgentToolExecutor(
      * 持久化到会话实体并推送 AgentTodosUpdated 事件刷新 UI。
      */
     private val onTodosUpdated: (List<com.nekobot.app.data.model.AgentTodo>) -> Unit = {},
+    /**
+     * ask_user_question 等待管理器：AI 调用提问工具时在此挂起，
+     * 用户在会话界面回答后通过 [LocalAskUserQuestionManager.resolve] 回填结果。
+     * 为 null 时（如实时语音链路）工具返回不可用。
+     */
+    private val askUserQuestionManager: LocalAskUserQuestionManager? = null,
+    /** 提问请求回调：把 AskUserQuestionRequest 转发到会话界面弹窗。 */
+    private val onAskUserQuestionRequired: (AskUserQuestionRequest) -> Unit = {},
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -224,6 +233,7 @@ internal class LocalAgentToolExecutor(
                 "plugin_use" -> pluginTool.execute(args)
                 "get_date_time" -> getDateTime(args)
                 "todo_write" -> writeTodos(args)
+                "ask_user_question" -> askUserQuestion(args)
                 "http_get" -> httpGet(args)
                 "exec_command" -> execCommand(args)
                 "file_read" -> readWorkspaceFile(args)
@@ -380,6 +390,26 @@ internal class LocalAgentToolExecutor(
             "total" to todos.size,
             "completed" to todos.count { it.status == com.nekobot.app.data.model.AgentTodo.STATUS_COMPLETED },
             "todos" to todos
+        )
+    }
+
+    /**
+     * ask_user_question：向用户发起结构化提问并挂起等待回答。
+     *
+     * 流程：解析并校验问题 → 通过回调把请求推到会话界面弹窗 →
+     * [LocalAskUserQuestionManager.requestAnswer] 挂起 → 用户回答/跳过/超时后返回结果。
+     * 停止生成时由 stopGeneration 触发 cancelSession 立即解除等待。
+     */
+    private suspend fun askUserQuestion(args: Map<String, Any>): Map<String, Any> {
+        val manager = askUserQuestionManager ?: return failure("提问运行时不可用（当前链路不支持向用户提问）")
+        if (generationController.isStopped) return stoppedFailure()
+        val questions = AskUserQuestionCodec.parse(args).getOrElse { error ->
+            return failure(error.message ?: "ask_user_question 参数无效")
+        }
+        return manager.requestAnswer(
+            sessionId = sessionId,
+            questions = questions,
+            onRequest = onAskUserQuestionRequired
         )
     }
 

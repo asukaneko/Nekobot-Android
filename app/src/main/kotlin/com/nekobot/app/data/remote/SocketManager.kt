@@ -272,6 +272,14 @@ sealed class RealtimeEvent {
         val sessionId: String,
         val todos: List<com.nekobot.app.data.model.AgentTodo>
     ) : RealtimeEvent()
+    /**
+     * ask_user_question 提问请求（仅本地管线发出）。
+     * AI 调用提问工具后管线挂起等待，UI 弹窗收集用户回答后经
+     * LocalRepository.respondToAskUserQuestion 回填工具结果。
+     */
+    data class AskUserQuestionRequired(
+        val request: com.nekobot.app.data.local.ai.AskUserQuestionRequest
+    ) : RealtimeEvent()
 }
 
 /** 返回事件所属会话；远程聊天使用它做严格隔离，避免全局 SharedFlow 串到其他页面。 */
@@ -294,6 +302,7 @@ fun RealtimeEvent.targetSessionId(): String? = when (this) {
     is RealtimeEvent.ForegroundComplete -> sessionId
     is RealtimeEvent.ReplyPostProcessed -> sessionId
     is RealtimeEvent.AgentTodosUpdated -> sessionId
+    is RealtimeEvent.AskUserQuestionRequired -> request.sessionId
     is RealtimeEvent.Usage -> null
 }
 

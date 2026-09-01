@@ -270,6 +270,7 @@ fun ChatScreen(
     val selectionMode by viewModel.selectionMode.collectAsStateWithLifecycle()
     val selectedIds by viewModel.selectedMessageIds.collectAsStateWithLifecycle()
     val execConfirmation by viewModel.execConfirmation.collectAsStateWithLifecycle()
+    val askUserQuestion by viewModel.askUserQuestion.collectAsStateWithLifecycle()
     val hookNotifications by viewModel.hookNotifications.collectAsStateWithLifecycle()
     val agentRecovery by viewModel.agentRecovery.collectAsStateWithLifecycle()
     val agentContextCompressionInProgress by viewModel.agentContextCompressionInProgress.collectAsStateWithLifecycle()
@@ -1539,6 +1540,15 @@ fun ChatScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+
+    // ask_user_question：AI 向用户发起结构化提问，回答作为工具结果回传
+    askUserQuestion?.let { questionRequest ->
+        AskUserQuestionDialog(
+            request = questionRequest,
+            onAnswer = { answers -> viewModel.respondToAskUserQuestion(answers) },
+            onSkip = { viewModel.skipAskUserQuestion() }
+        )
     }
 
     // 删除消息确认

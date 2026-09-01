@@ -279,6 +279,9 @@ class LocalRepository(
     private val failoverHealthDao = db.failoverHealthDao()
     private val localExecAuthorizationManager =
         com.nekobot.app.data.local.ai.LocalExecAuthorizationManager()
+    /** ask_user_question 提问等待管理器：AI 提问后挂起，UI 回答后 resolve。 */
+    private val askUserQuestionManager =
+        com.nekobot.app.data.local.ai.LocalAskUserQuestionManager()
     private val localMcpRuntime = LocalMcpRuntime()
     private val mcpAutoConnectRunning = AtomicBoolean(false)
     @Volatile
@@ -819,6 +822,18 @@ class LocalRepository(
     )
     val execConfirmationEvents: kotlinx.coroutines.flow.SharedFlow<com.nekobot.app.data.remote.ExecConfirmationRequest> =
         _execConfirmationEvents
+
+    /**
+     * ask_user_question 提问请求流：AI 调用提问工具后发出，由 ChatViewModel
+     * 收集并在会话界面弹窗展示；用户回答/跳过后经 respondToAskUserQuestion /
+     * cancelAskUserQuestion 解除 LocalAskUserQuestionManager 中的挂起等待。
+     */
+    private val _askUserQuestionEvents =
+        kotlinx.coroutines.flow.MutableSharedFlow<com.nekobot.app.data.local.ai.AskUserQuestionRequest>(
+            extraBufferCapacity = 16
+        )
+    val askUserQuestionEvents: kotlinx.coroutines.flow.SharedFlow<com.nekobot.app.data.local.ai.AskUserQuestionRequest> =
+        _askUserQuestionEvents
 
     /** 本地模式会话自动命名器（跨会话保持 autoNamed/lastRenameCount 状态） */
     private val sessionNameGenerator by lazy {
@@ -4637,6 +4652,7 @@ class LocalRepository(
             activeGenerations[id]?.requestStop()
             LocalLinuxSandboxCoordinator.stopSession(id)
             localExecAuthorizationManager.cancelSession(id)
+            askUserQuestionManager.cancelSession(id)
             aiClient.cancelRequests(id)
             localMcpRuntime.cancelActiveToolCall(id)
         }
@@ -4801,6 +4817,10 @@ class LocalRepository(
             authorizationManager = localExecAuthorizationManager,
             onConfirmationRequired = { request ->
                 _execConfirmationEvents.tryEmit(request)
+            },
+            askUserQuestionManager = askUserQuestionManager,
+            onAskUserQuestionRequired = { request ->
+                _askUserQuestionEvents.tryEmit(request)
             },
             thinkingHistoryProvider = { limit ->
                 kotlinx.coroutines.runBlocking(Dispatchers.IO) {
@@ -5211,7 +5231,9 @@ class LocalRepository(
             agentRunId = agentRunId,
             reasoningEffort = reasoningEffort,
             pendingUserMessageProvider = pendingUserMessageProvider,
-            execConfirmationEmitter = { request -> _execConfirmationEvents.tryEmit(request) }
+            execConfirmationEmitter = { request -> _execConfirmationEvents.tryEmit(request) },
+            askUserQuestionManager = askUserQuestionManager,
+            askUserQuestionEmitter = { request -> _askUserQuestionEvents.tryEmit(request) }
         )
 
         // 5. 构建上下文（含会话级配置：剧情模式、禁用注入项、自动状态间隔等）
@@ -5779,7 +5801,9 @@ class LocalRepository(
                 },
                 generationController = generationController,
                 reasoningEffort = reasoningEffort,
-                execConfirmationEmitter = { request -> _execConfirmationEvents.tryEmit(request) }
+                execConfirmationEmitter = { request -> _execConfirmationEvents.tryEmit(request) },
+                askUserQuestionManager = askUserQuestionManager,
+                askUserQuestionEmitter = { request -> _askUserQuestionEvents.tryEmit(request) }
             )
 
             val metadata = buildMap<String, Any> {
@@ -5950,6 +5974,26 @@ class LocalRepository(
         requestId = requestId,
         sessionId = sessionId,
         authorization = authorization
+    )
+
+    /** 提交 ask_user_question 的用户回答；requestId 失效或会话不匹配时返回 false。 */
+    fun respondToAskUserQuestion(
+        requestId: String,
+        sessionId: String,
+        answers: List<com.nekobot.app.data.local.ai.AskUserQuestionAnswer>
+    ): Boolean = askUserQuestionManager.resolve(
+        requestId = requestId,
+        sessionId = sessionId,
+        answers = answers
+    )
+
+    /** 用户跳过 ask_user_question 提问；AI 收到 cancelled 结果后继续任务。 */
+    fun cancelAskUserQuestion(
+        requestId: String,
+        sessionId: String
+    ): Boolean = askUserQuestionManager.cancel(
+        requestId = requestId,
+        sessionId = sessionId
     )
 
     /**

@@ -297,6 +297,63 @@ object BuiltinTools {
             """.trimIndent()
         ),
         BuiltinToolSpec(
+            id = "ask_user_question",
+            name = "向用户提问",
+            description = "向用户发起结构化提问并等待其回答，适合在关键节点让用户做决策。适用场景：缺失的信息会实质改变执行结果、存在多个可行方案需要用户取舍、需要用户确认偏好或授权范围。一次调用可包含 1-4 个问题，每个问题可附 2-6 个预设选项；用户也可以自由输入。用户回答后结果在 answers 中返回（answer 为每个问题的合并文本，selected 为勾选项，custom_text 为自由输入）；用户跳过时 cancelled=true。注意：任务明确且风险可控时直接执行，不要滥用本工具反复提问；同一批决策尽量合并为一次调用；等待回答期间不要臆测答案。",
+            parametersJson = """
+                {
+                  "type": "object",
+                  "properties": {
+                    "questions": {
+                      "type": "array",
+                      "description": "问题列表，1-4 个。只有一个问题时也使用数组形式",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "问题标识（可选），回答结果会原样返回，便于关联答案"
+                          },
+                          "question": {
+                            "type": "string",
+                            "description": "问题正文，简洁明确，说清需要用户决定什么"
+                          },
+                          "header": {
+                            "type": "string",
+                            "description": "短标题（12 字以内），如“方案选择”“确认范围”"
+                          },
+                          "options": {
+                            "type": "array",
+                            "description": "预设选项，2-6 个。有明确候选时提供；开放式问题可省略",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "label": {
+                                  "type": "string",
+                                  "description": "选项标签，简短（10 字以内）"
+                                },
+                                "description": {
+                                  "type": "string",
+                                  "description": "选项说明（可选），解释该选项的含义或影响"
+                                }
+                              },
+                              "required": ["label"]
+                            }
+                          },
+                          "multi_select": {
+                            "type": "boolean",
+                            "description": "是否允许用户多选，默认 false"
+                          }
+                        },
+                        "required": ["question"]
+                      }
+                    }
+                  },
+                  "required": ["questions"]
+                }
+            """.trimIndent()
+        ),
+        BuiltinToolSpec(
             id = "http_get",
             name = "HTTP GET 请求",
             description = "向指定 URL 发起 GET 请求，返回响应内容。",

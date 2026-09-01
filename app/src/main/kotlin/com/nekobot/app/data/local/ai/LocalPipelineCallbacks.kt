@@ -98,7 +98,18 @@ internal class LocalPipelineCallbacks(
      * 排队消息“立即发送”提供者：工具循环每轮模型调用前调用，
      * 返回待注入的排队用户消息文本（取出即消费）。非空时由 [LocalRepository] 负责持久化。
      */
-    private val pendingUserMessageProvider: (() -> List<String>)? = null
+    private val pendingUserMessageProvider: (() -> List<String>)? = null,
+    /**
+     * ask_user_question 等待管理器：非空时 AI 可调用提问工具挂起等待用户回答。
+     * 由 LocalRepository 传入以跨轮共享 pending 状态。
+     */
+    private val askUserQuestionManager: LocalAskUserQuestionManager? = null,
+    /**
+     * 提问请求桥接 emitter：把 ask_user_question 的请求路由到 LocalRepository 的
+     * askUserQuestionEvents SharedFlow（由 ChatViewModel 收集弹窗）。
+     * 为空时降级到 eventChannel。
+     */
+    private val askUserQuestionEmitter: ((AskUserQuestionRequest) -> Unit)? = null
 ) : PipelineCallbacks() {
 
     companion object {
@@ -151,6 +162,13 @@ internal class LocalPipelineCallbacks(
             },
             generationController = generationController,
             sharedWorkspaceRoot = sharedWorkspaceRoot,
+            askUserQuestionManager = askUserQuestionManager,
+            onAskUserQuestionRequired = { request ->
+                // 与命令授权一致：优先走 LocalRepository SharedFlow（ChatViewModel 始终收集），
+                // 避免依赖 eventChannel 的收集时序导致挂起无人解除。
+                askUserQuestionEmitter?.invoke(request)
+                    ?: emitEvent(RealtimeEvent.AskUserQuestionRequired(request))
+            },
             onTodosUpdated = { todos ->
                 // 任务列表持久化到会话实体，并推送事件刷新输入框上方可视化面板
                 kotlinx.coroutines.runBlocking {

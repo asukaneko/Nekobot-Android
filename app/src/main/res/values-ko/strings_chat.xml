@@ -488,6 +488,18 @@
     <string name="chat_exec_confirm_always_approved">이 명령만 이 세션에서 항상 허용했어요. 실행 중이에요…</string>
     <string name="chat_exec_confirm_rejected">명령 실행을 거부했어요</string>
 
+    <!-- ==================== ask_user_question 도구 ==================== -->
+    <string name="chat_ask_question_title">AI가 질문합니다</string>
+    <string name="chat_ask_question_submit">답변 제출</string>
+    <string name="chat_ask_question_skip">건너뛰기</string>
+    <string name="chat_ask_question_number">질문 %1$d</string>
+    <string name="chat_ask_question_multi_hint">다중 선택 가능</string>
+    <string name="chat_ask_question_custom_hint">또는 직접 입력…</string>
+    <string name="chat_ask_question_custom_hint_open">답변을 입력하세요…</string>
+    <string name="chat_ask_question_answered">답변을 제출했습니다. AI가 계속 진행합니다…</string>
+    <string name="chat_ask_question_skipped">질문을 건너뛰었습니다</string>
+    <string name="chat_ask_question_expired">이 질문은 만료되어 AI가 계속 진행합니다</string>
+
     <!-- ==================== Hook 알림 (업적 팝업) ==================== -->
     <string name="chat_hook_notif_title">트리거</string>
     <string name="chat_hook_notif_close">알림 닫기</string>

@@ -313,6 +313,15 @@ class ChatViewModel : BaseViewModel() {
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
     private val _execConfirmation: MutableStateFlow<ExecConfirmationRequest?> get() = runtime.execConfirmation
 
+    /** ask_user_question 提问请求；非空时会话界面展示回答弹窗。 */
+    val askUserQuestion: StateFlow<com.nekobot.app.data.local.ai.AskUserQuestionRequest?> = _runtime
+        .map { it.askUserQuestion }
+        .distinctUntilChanged()
+        .flatMapLatest { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    private val _askUserQuestion: MutableStateFlow<com.nekobot.app.data.local.ai.AskUserQuestionRequest?>
+        get() = runtime.askUserQuestion
+
     private val _agentRecovery = MutableStateFlow<AgentRecoveryState?>(null)
     val agentRecovery: StateFlow<AgentRecoveryState?> = _agentRecovery.asStateFlow()
     private var agentRecoveryJob: kotlinx.coroutines.Job? = null
@@ -588,15 +597,19 @@ class ChatViewModel : BaseViewModel() {
         val hookEvents = com.nekobot.app.ServiceContainer.localRepository.hookExecutor.events
         val confirmationEvents = com.nekobot.app.ServiceContainer.localRepository.execConfirmationEvents
             .map { request -> RealtimeEvent.ExecConfirmationRequired(request) }
-        // 同时收集两路：
+        val askQuestionEvents = com.nekobot.app.ServiceContainer.localRepository.askUserQuestionEvents
+            .map { request -> RealtimeEvent.AskUserQuestionRequired(request) }
+        // 同时收集三路：
         // 1. hookExecutor.events → HookNotificationEvent
         // 2. localRepository.execConfirmationEvents → 高风险工具（删除角色卡等）的确认请求
         //    修复"删除角色卡卡住"：原实现把确认事件 emit 到 LocalPipelineCallbacks.eventChannel
         //    但 eventChannel 没人 collect，导致 requestAuthorization 的 runBlocking 永远等待。
+        // 3. localRepository.askUserQuestionEvents → ask_user_question 提问请求（挂起等待用户回答）
         eventsJob = ServiceContainer.applicationScope.launch {
             kotlinx.coroutines.flow.merge(
                 hookEvents,
-                confirmationEvents
+                confirmationEvents,
+                askQuestionEvents
             ).collect { event ->
                 // 这里不能调用 ChatViewModel.handleRealtimeEvent：eventsJob 跨页面存活，捕获 this
                 // 会永久保留已经退出的 ViewModel 和 Agent 大消息列表。
@@ -620,6 +633,14 @@ class ChatViewModel : BaseViewModel() {
                         val request = event.request
                         if (request.sessionId.isBlank() || request.sessionId == targetSessionId) {
                             target.execConfirmation.value = request.copy(
+                                sessionId = request.sessionId.ifBlank { targetSessionId }
+                            )
+                        }
+                    }
+                    is RealtimeEvent.AskUserQuestionRequired -> {
+                        val request = event.request
+                        if (request.sessionId.isBlank() || request.sessionId == targetSessionId) {
+                            target.askUserQuestion.value = request.copy(
                                 sessionId = request.sessionId.ifBlank { targetSessionId }
                             )
                         }
@@ -777,6 +798,7 @@ class ChatViewModel : BaseViewModel() {
             is RealtimeEvent.AiResponse -> {
                 if (!isLocalMode) _sending.value = false
                 _execConfirmation.value = null
+                _askUserQuestion.value = null
                 val msg = event.message?.let { incoming ->
                     if (isReasoningEnabled() && !isAgentSession()) incoming
                     else incoming.copy(reasoningContent = null)
@@ -849,6 +871,15 @@ class ChatViewModel : BaseViewModel() {
                     if (!isLocalMode) _sending.value = false
                     _messages.value = _messages.value.filter { it.id != streamingId }
                     _execConfirmation.value = request.copy(
+                        sessionId = request.sessionId.ifBlank { currentSessionId }
+                    )
+                }
+            }
+            is RealtimeEvent.AskUserQuestionRequired -> {
+                // 本地 ask_user_question：AI 提问后在会话界面弹窗收集回答
+                val request = event.request
+                if (request.sessionId.isBlank() || request.sessionId == currentSessionId) {
+                    _askUserQuestion.value = request.copy(
                         sessionId = request.sessionId.ifBlank { currentSessionId }
                     )
                 }
@@ -974,6 +1005,37 @@ class ChatViewModel : BaseViewModel() {
                 }
             )
         )
+    }
+
+    /** 提交 ask_user_question 的用户回答，解除 AI 工具循环的挂起等待。 */
+    fun respondToAskUserQuestion(answers: List<com.nekobot.app.data.local.ai.AskUserQuestionAnswer>) {
+        val request = _askUserQuestion.value ?: return
+        val sessionId = request.sessionId.ifBlank { currentSessionId }
+        val submitted = unified.respondToAskUserQuestion(
+            requestId = request.requestId,
+            sessionId = sessionId,
+            answers = answers
+        )
+        _askUserQuestion.value = null
+        if (submitted) {
+            _sending.value = true
+            showToast(string(R.string.chat_ask_question_answered))
+        } else {
+            // requestId 已失效（超时/停止后残留），提示后关闭弹窗即可
+            showError(string(R.string.chat_ask_question_expired))
+        }
+    }
+
+    /** 跳过 ask_user_question 提问：AI 收到 cancelled 结果后自行继续。 */
+    fun skipAskUserQuestion() {
+        val request = _askUserQuestion.value ?: return
+        val sessionId = request.sessionId.ifBlank { currentSessionId }
+        unified.cancelAskUserQuestion(
+            requestId = request.requestId,
+            sessionId = sessionId
+        )
+        _askUserQuestion.value = null
+        showToast(string(R.string.chat_ask_question_skipped))
     }
 
     /** 加载会话信息。 */
@@ -1893,6 +1955,8 @@ class ChatViewModel : BaseViewModel() {
         if (_sending.value || runtime.hasBlockingLocalChatJob()) return
         if (generationStopRequested) return
         if (_execConfirmation.value != null) return
+        // AI 正在等待用户回答提问时，不自动发送排队消息
+        if (_askUserQuestion.value != null) return
         if (_agentRecovery.value != null) return
         val queue = _queuedMessages.value
         if (queue.isEmpty()) return
@@ -1910,8 +1974,9 @@ class ChatViewModel : BaseViewModel() {
                 kotlinx.coroutines.flow.combine(
                     state.sending,
                     state.queuedMessages,
-                    state.execConfirmation
-                ) { sending, queue, _ -> sending to queue }
+                    state.execConfirmation,
+                    state.askUserQuestion
+                ) { sending, queue, _, ask -> sending to (queue to ask) }
             }.collect {
                 kotlinx.coroutines.delay(200)
                 maybeAutoSendQueuedMessage()
@@ -2354,6 +2419,16 @@ class ChatViewModel : BaseViewModel() {
             }
         }
         _execConfirmation.value = null
+        // 停止生成同时取消待回答提问，解除 AI 工具循环中的挂起等待
+        _askUserQuestion.value?.let { request ->
+            if (isLocalMode) {
+                unified.cancelAskUserQuestion(
+                    requestId = request.requestId,
+                    sessionId = request.sessionId.ifBlank { sessionId }
+                )
+            }
+        }
+        _askUserQuestion.value = null
         _sending.value = false
         _plotChoicesLoading.value = false
         streamingContent.setLength(0)

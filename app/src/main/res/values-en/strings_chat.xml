@@ -471,6 +471,18 @@
     <string name="chat_exec_confirm_always_approved">This exact command is always allowed for this session. Running…</string>
     <string name="chat_exec_confirm_rejected">Command execution rejected</string>
 
+    <!-- ==================== ask_user_question tool ==================== -->
+    <string name="chat_ask_question_title">AI wants to ask you</string>
+    <string name="chat_ask_question_submit">Submit answer</string>
+    <string name="chat_ask_question_skip">Skip</string>
+    <string name="chat_ask_question_number">Question %1$d</string>
+    <string name="chat_ask_question_multi_hint">Multiple selection</string>
+    <string name="chat_ask_question_custom_hint">Or type your own answer…</string>
+    <string name="chat_ask_question_custom_hint_open">Type your answer…</string>
+    <string name="chat_ask_question_answered">Answer submitted. AI is continuing…</string>
+    <string name="chat_ask_question_skipped">Question skipped</string>
+    <string name="chat_ask_question_expired">This question has expired; AI will continue</string>
+
     <!-- ==================== Hook notification (achievement popup) ==================== -->
     <string name="chat_hook_notif_title">Triggered</string>
     <string name="chat_hook_notif_close">Dismiss notification</string>

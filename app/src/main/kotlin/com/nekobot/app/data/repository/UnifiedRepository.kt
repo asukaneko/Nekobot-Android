@@ -417,6 +417,26 @@ class UnifiedRepository(
         authorization = authorization
     )
 
+    /** ask_user_question 用户回答提交；仅本地模式有效。 */
+    fun respondToAskUserQuestion(
+        requestId: String,
+        sessionId: String,
+        answers: List<com.nekobot.app.data.local.ai.AskUserQuestionAnswer>
+    ): Boolean = isLocal && local.respondToAskUserQuestion(
+        requestId = requestId,
+        sessionId = sessionId,
+        answers = answers
+    )
+
+    /** ask_user_question 跳过提问；仅本地模式有效。 */
+    fun cancelAskUserQuestion(
+        requestId: String,
+        sessionId: String
+    ): Boolean = isLocal && local.cancelAskUserQuestion(
+        requestId = requestId,
+        sessionId = sessionId
+    )
+
     // ==================== 会话 Fork / 压缩 ====================
 
     suspend fun forkSession(id: String, messageId: String): Resource<JsonElement> =

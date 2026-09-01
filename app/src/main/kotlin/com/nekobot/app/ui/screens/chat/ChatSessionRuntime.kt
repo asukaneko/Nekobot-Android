@@ -66,6 +66,9 @@ class ChatSessionState(val sessionId: String) {
     val messages = MutableStateFlow<List<Message>>(emptyList())
     val sending = MutableStateFlow(false)
     val execConfirmation = MutableStateFlow<ExecConfirmationRequest?>(null)
+    /** ask_user_question 提问请求（AI 调用提问工具后挂起等待用户回答）。 */
+    val askUserQuestion =
+        MutableStateFlow<com.nekobot.app.data.local.ai.AskUserQuestionRequest?>(null)
     val plotChoices = MutableStateFlow<List<PlotChoice>>(emptyList())
     val plotChoicesLoading = MutableStateFlow(false)
     val hookNotifications = MutableStateFlow<List<HookNotification>>(emptyList())

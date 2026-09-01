@@ -488,6 +488,18 @@
     <string name="chat_exec_confirm_always_approved">このコマンドのみこのセッションで常に許可します。実行中…</string>
     <string name="chat_exec_confirm_rejected">コマンドの実行を拒否しました</string>
 
+    <!-- ==================== ask_user_question ツール ==================== -->
+    <string name="chat_ask_question_title">AI からの質問</string>
+    <string name="chat_ask_question_submit">回答を送信</string>
+    <string name="chat_ask_question_skip">スキップ</string>
+    <string name="chat_ask_question_number">質問 %1$d</string>
+    <string name="chat_ask_question_multi_hint">複数選択可</string>
+    <string name="chat_ask_question_custom_hint">または自由に回答…</string>
+    <string name="chat_ask_question_custom_hint_open">回答を入力…</string>
+    <string name="chat_ask_question_answered">回答を送信しました。AI が続行します…</string>
+    <string name="chat_ask_question_skipped">質問をスキップしました</string>
+    <string name="chat_ask_question_expired">この質問は無効になりました。AI が続行します</string>
+
     <!-- ==================== Hook 通知（実績ポップアップ） ==================== -->
     <string name="chat_hook_notif_title">トリガー</string>
     <string name="chat_hook_notif_close">通知を閉じる</string>

@@ -477,6 +477,18 @@
     <string name="chat_exec_confirm_always_approved">已设为本会话始终允许这一条命令，正在执行…</string>
     <string name="chat_exec_confirm_rejected">已拒绝执行命令</string>
 
+    <!-- ==================== ask_user_question 提问工具 ==================== -->
+    <string name="chat_ask_question_title">AI 向你提问</string>
+    <string name="chat_ask_question_submit">提交回答</string>
+    <string name="chat_ask_question_skip">跳过</string>
+    <string name="chat_ask_question_number">问题 %1$d</string>
+    <string name="chat_ask_question_multi_hint">可多选</string>
+    <string name="chat_ask_question_custom_hint">或输入自定义回答…</string>
+    <string name="chat_ask_question_custom_hint_open">输入你的回答…</string>
+    <string name="chat_ask_question_answered">已提交回答，AI 继续执行…</string>
+    <string name="chat_ask_question_skipped">已跳过提问</string>
+    <string name="chat_ask_question_expired">该提问已失效，AI 将继续处理</string>
+
     <!-- ==================== Hook 触发通知（成就式弹窗） ==================== -->
     <string name="chat_hook_notif_title">触发</string>
     <string name="chat_hook_notif_close">关闭通知</string>
