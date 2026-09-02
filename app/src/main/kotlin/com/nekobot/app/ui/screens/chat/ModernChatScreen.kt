@@ -281,7 +281,8 @@ private sealed interface ChatCommandCandidate {
 private fun buildChatCommandCandidates(
     input: String,
     skills: List<Skill>,
-    skillsEnabled: Boolean
+    skillsEnabled: Boolean,
+    context: android.content.Context
 ): List<ChatCommandCandidate> {
     val value = input.trimStart()
     if (!value.startsWith('/') || '\n' in value) return emptyList()
@@ -300,7 +301,7 @@ private fun buildChatCommandCandidates(
     }
     if (' ' in value) return emptyList()
 
-    val commands = LocalSlashCommands.suggestions(token)
+    val commands = LocalSlashCommands.suggestions(token, context)
         .map(ChatCommandCandidate::Command)
     val showAllCommands = token == "/"
     if (!skillsEnabled) return if (showAllCommands) commands else commands.take(8)
@@ -1015,7 +1016,7 @@ private fun ModernChatComposer(
         if (input == dismissedCommandCandidateInput) {
             emptyList()
         } else {
-            buildChatCommandCandidates(input, enabledSkills, skillsEnabled)
+            buildChatCommandCandidates(input, enabledSkills, skillsEnabled, context)
         }
     }
 

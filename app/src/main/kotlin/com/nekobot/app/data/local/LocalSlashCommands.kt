@@ -1,5 +1,6 @@
 package com.nekobot.app.data.local
 
+import com.nekobot.app.R
 import com.nekobot.app.data.local.db.LocalMessageEntity
 import com.nekobot.app.data.local.plugin.BuiltInPlugins
 import com.nekobot.app.data.model.Message
@@ -218,7 +219,10 @@ internal object LocalSlashCommands {
         }
     }
 
-    fun suggestions(query: String): List<LocalCommandSuggestion> {
+    fun suggestions(
+        query: String,
+        context: android.content.Context? = null
+    ): List<LocalCommandSuggestion> {
         val normalized = query.trim().lowercase()
         val native = commands
             .asSequence()
@@ -233,7 +237,7 @@ internal object LocalSlashCommands {
                     command = spec.aliases.first(),
                     aliases = spec.aliases,
                     takesArguments = '<' in spec.usage || '[' in spec.usage,
-                    description = spec.description
+                    description = spec.localizedDescription(context)
                 )
             }
             .distinctBy(LocalCommandSuggestion::command)
@@ -257,17 +261,17 @@ internal object LocalSlashCommands {
         return (native + pluginSuggestions).distinctBy(LocalCommandSuggestion::command)
     }
 
-    fun helpText(): String = buildString {
-        appendLine("本地模式命令")
+    fun helpText(context: android.content.Context? = null): String = buildString {
+        appendLine(context?.let { it.getString(R.string.cmd_help_native_title) } ?: "本地模式命令")
         appendLine()
         commands
             .filter { it.action.isNative }
-            .forEach { appendLine("• `${it.usage}` — ${it.description}") }
+            .forEach { appendLine("• `${it.localizedUsage(context)}` — ${it.localizedDescription(context)}") }
         val plugins = runCatching { ServiceContainer.pluginManager.commandSuggestions("") }
             .getOrElse { BuiltInPlugins.defaultCommandSuggestions("") }
         if (plugins.isNotEmpty()) {
             appendLine()
-            appendLine("插件命令")
+            appendLine(context?.let { it.getString(R.string.cmd_help_plugin_title) } ?: "插件命令")
             plugins
                 .distinctBy { it.pluginId to it.name }
                 .forEach { command ->
@@ -275,15 +279,23 @@ internal object LocalSlashCommands {
                 }
         }
         appendLine()
-        append("Agent 会话还支持 `/yolo`，用于在当前会话中跳过常规命令授权；高风险操作仍会阻止。")
-        append("\nAgent 会话可用 `/goal` 设置长期目标，用 `/spec` 启动规格驱动开发：起草规格 → `/spec approve` 批准 → 按规格实现。")
+        append(context?.let { it.getString(R.string.cmd_help_yolo) } ?: "Agent 会话还支持 `/yolo`，用于在当前会话中跳过常规命令授权；高风险操作仍会阻止。")
+        append("\n" + (context?.let { it.getString(R.string.cmd_help_goal_spec) } ?: "Agent 会话可用 `/goal` 设置长期目标，用 `/spec` 启动规格驱动开发：起草规格 → `/spec approve` 批准 → 按规格实现。"))
     }.trim()
+
+
 
     /** 供插件安装器检查命令冲突；返回值统一为带 / 的形式。 */
     internal fun reservedCommandAliases(): Set<String> = aliases.keys
 
-    fun unknownMessage(commandName: String): String =
-        "未知的本地命令：`$commandName`\n\n输入 `/help` 查看本地可用命令。"
+    fun unknownMessage(commandName: String, context: android.content.Context? = null): String {
+        val message = context?.let { it.getString(R.string.cmd_unknown_message, commandName) }
+            ?: "未知的本地命令：`$commandName`"
+        val hint = context?.let { it.getString(R.string.cmd_unknown_hint) }
+            ?: "输入 `/help` 查看本地可用命令。"
+        return "$message\n\n$hint"
+    }
+
 }
 
 internal data class LocalParsedCommand(
@@ -336,10 +348,68 @@ internal enum class LocalCommandAction(val isNative: Boolean) {
     PLUGIN(true),
     UNKNOWN(false)
 }
+/** 内置命令本地化「说明」资源 id；未覆盖或非内置命令返回 null。 */
+private val LocalCommandAction.descriptionResId: Int?
+    get() = when (this) {
+        LocalCommandAction.HELP -> R.string.cmd_help_desc
+        LocalCommandAction.LOCAL_STATUS -> R.string.cmd_status_desc
+        LocalCommandAction.EXPORT_CHAT -> R.string.cmd_export_desc
+        LocalCommandAction.NOTE_ADD -> R.string.cmd_note_desc
+        LocalCommandAction.NOTES_SHOW -> R.string.cmd_notes_desc
+        LocalCommandAction.TTS -> R.string.cmd_tts_desc
+        LocalCommandAction.WORKSPACE_LIST -> R.string.cmd_workspace_desc
+        LocalCommandAction.WORKSPACE_SEND -> R.string.cmd_ws_send_desc
+        LocalCommandAction.ROLL -> R.string.cmd_roll_desc
+        LocalCommandAction.RANDOM_RPS -> R.string.cmd_rps_desc
+        LocalCommandAction.COIN -> R.string.cmd_coin_desc
+        LocalCommandAction.PICK -> R.string.cmd_pick_desc
+        LocalCommandAction.CALCULATE -> R.string.cmd_calc_desc
+        LocalCommandAction.PASSWORD -> R.string.cmd_password_desc
+        LocalCommandAction.HASH -> R.string.cmd_sha256_desc
+        LocalCommandAction.FORTUNE -> R.string.cmd_fortune_desc
+        LocalCommandAction.GOAL -> R.string.cmd_goal_desc
+        LocalCommandAction.SPEC -> R.string.cmd_spec_desc
+        else -> null
+    }
+
+
+/** 内置命令本地化「用法」资源 id；未覆盖或非内置命令返回 null。 */
+private val LocalCommandAction.usageResId: Int?
+    get() = when (this) {
+        LocalCommandAction.HELP -> R.string.cmd_help_usage
+        LocalCommandAction.LOCAL_STATUS -> R.string.cmd_status_usage
+        LocalCommandAction.EXPORT_CHAT -> R.string.cmd_export_usage
+        LocalCommandAction.NOTE_ADD -> R.string.cmd_note_usage
+        LocalCommandAction.NOTES_SHOW -> R.string.cmd_notes_usage
+        LocalCommandAction.TTS -> R.string.cmd_tts_usage
+        LocalCommandAction.WORKSPACE_LIST -> R.string.cmd_workspace_usage
+        LocalCommandAction.WORKSPACE_SEND -> R.string.cmd_ws_send_usage
+        LocalCommandAction.ROLL -> R.string.cmd_roll_usage
+        LocalCommandAction.RANDOM_RPS -> R.string.cmd_rps_usage
+        LocalCommandAction.COIN -> R.string.cmd_coin_usage
+        LocalCommandAction.PICK -> R.string.cmd_pick_usage
+        LocalCommandAction.CALCULATE -> R.string.cmd_calc_usage
+        LocalCommandAction.PASSWORD -> R.string.cmd_password_usage
+        LocalCommandAction.HASH -> R.string.cmd_sha256_usage
+        LocalCommandAction.FORTUNE -> R.string.cmd_fortune_usage
+        LocalCommandAction.GOAL -> R.string.cmd_goal_usage
+        LocalCommandAction.SPEC -> R.string.cmd_spec_usage
+        else -> null
+    }
 
 private data class LocalCommandSpec(
     val aliases: List<String>,
     val usage: String,
     val description: String,
     val action: LocalCommandAction
-)
+) {
+    /** 有 context 时用本地化文案，否则退回默认（中文）文案。 */
+    fun localizedDescription(context: android.content.Context?): String =
+        context?.getStringOrNull(action.descriptionResId) ?: description
+
+    fun localizedUsage(context: android.content.Context?): String =
+        context?.getStringOrNull(action.usageResId) ?: usage
+}
+
+private fun android.content.Context.getStringOrNull(resId: Int?): String? =
+    if (resId == null) null else getString(resId)

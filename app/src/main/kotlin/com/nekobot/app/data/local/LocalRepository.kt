@@ -2202,7 +2202,7 @@ class LocalRepository(
             else -> null
         }
         val content = when (command.action) {
-            LocalCommandAction.HELP -> LocalSlashCommands.helpText()
+            LocalCommandAction.HELP -> LocalSlashCommands.helpText(appContext)
             LocalCommandAction.LOCAL_STATUS -> localStatusText(session, activeModel)
             LocalCommandAction.EXPORT_CHAT -> localExportChatText(session)
             LocalCommandAction.NOTE_ADD -> localNoteAddText(session.id, command.args)
@@ -2272,7 +2272,7 @@ class LocalRepository(
                         repository = this@LocalRepository
                     )
                 } ?: "插件命令绑定已失效，请重新打开会话后重试。"
-            LocalCommandAction.UNKNOWN -> LocalSlashCommands.unknownMessage(command.name)
+            LocalCommandAction.UNKNOWN -> LocalSlashCommands.unknownMessage(command.name, appContext)
         }
         return addAssistantMessage(
             sessionId = session.id,
