@@ -337,9 +337,9 @@
 
   /* ---------- 11. 从 GitHub Releases 拉取更新日志 ---------- */
   const FALLBACK_RELEASES = [
+    { tag_name: 'v0.6.4', published_at: '2026-09-02', body: '- Agent 会话新增 /goal 目标命令与 /spec 规格驱动开发命令\n- Agent 会话新增 todo_write 任务列表工具与可折叠任务面板\n- Agent 新增 ask_user_question 结构化问答工具\n- Agent 会话支持生成期间消息排队与立即发送\n- 会话数据新增目标 / 规格字段（数据库 v37→v38 迁移）\n- 输入框上方新增目标 / 规格横幅，支持中 / 英 / 日 / 韩多语言' },
     { tag_name: 'v0.6.3', published_at: '2026-08-31', body: '- 本地模式手动上下文压缩改为后台任务，离开会话后仍会继续执行\n- 消息数量不足但上下文占用较高时也可手动压缩\n- 从 GitHub 安装 Skill 时保留 SKILL.md 同级的全部文件和目录\n- 本地 MCP 请求统一使用最新协议版本头，并完善 HTTP 错误诊断\n- Agent 会话使用独立的长故障转移超时，避免工具循环被中断\n- 发送消息期间可切换 YOLO 模式，移除本地模式的无效运行时命令' },
     { tag_name: 'v0.6.2', published_at: '2026-08-29', body: '- Agent 新增 plugin_use 内置工具，支持查看、创建、安装、更新、启停与卸载本地插件\n- 新增应用内完整插件开发文档，编写插件前引导阅读\n- 多媒体文本内容启用 Markdown 渲染，令牌记录卡片展示模型 ID\n- AI 生成内容输出语言跟随应用当前语言设置\n- 修复删除消息后被重新加回、插件命令补全出现别名的问题\n- 切换服务商不再覆盖已填写配置，移除本地命令 /get_fav 与 /agree' },
-    { tag_name: 'v0.6.1', published_at: '2026-08-28', body: '- 新增本地 ZIP 插件系统，JM 漫画与轻小说重构为内置插件\n- 本地 Agent 新增图片生成工具，用户消息支持编辑并重新发送\n- 输入 “/” 时展示全部斜杠命令\n- 新建会话按钮改为菜单，可直接选择角色 / Agent / 群聊模式\n- 支持长按删除失败的 AI 生图记录\n- 修复插件清单缺省字段导致的 NPE 崩溃与用户消息气泡右对齐问题' },
   ];
   function renderReleases(releases) {
     const container = $('#changelogList');
