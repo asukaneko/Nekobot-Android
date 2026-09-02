@@ -247,7 +247,8 @@ internal class LocalAgentToolExecutor(
                 "get_session_thinking_history" -> thinkingHistory(args)
                 "understand_image" -> understandImage(args)
                 "generate_image" -> generateImage(args)
-                "workspace_create_file", "workspace_edit_file" -> writeWorkspaceFile(args)
+                "workspace_create_file" -> writeWorkspaceFile(args)
+                "workspace_edit_file" -> editWorkspaceFile(args)
                 "workspace_read_file", "workspace_parse_file" -> readWorkspaceFile(args)
                 "workspace_delete_file" -> deleteWorkspaceFile(args)
                 "workspace_list_files" -> listWorkspaceFiles(args)
@@ -869,6 +870,41 @@ internal class LocalAgentToolExecutor(
         return success(
             "path" to relativeWorkspacePath(target),
             "absolute_path" to target.canonicalPath,
+            "size" to target.length()
+        )
+    }
+
+    /**
+     * workspace_edit_file：对工作区内已存在文件做精准局部编辑（替换 old_string 为 new_string）。
+     * 与 file_edit 行为对齐：默认要求原文本只出现一次；replace_all=true 时替换全部匹配。
+     * 避免整文件重写，减少上下文 token 占用与误覆盖风险。
+     */
+    private fun editWorkspaceFile(args: Map<String, Any>): Map<String, Any> {
+        val target = resolveWorkspacePath(args.workspacePath())
+            ?: return failure("路径为空或超出会话工作区")
+        if (!target.isFile) return failure("文件不存在")
+        if (!args.containsKey("old_string")) return failure("workspace_edit_file 缺少 old_string")
+        if (!args.containsKey("new_string")) return failure("workspace_edit_file 缺少 new_string")
+        val oldString = args.string("old_string")
+        if (oldString.isEmpty()) return failure("old_string 不能为空")
+        val newString = args.string("new_string")
+        val original = target.readText(Charsets.UTF_8)
+        val occurrences = Regex(Regex.escape(oldString)).findAll(original).count()
+        if (occurrences == 0) return failure("未找到要替换的原文本")
+        val replaceAll = args.boolean("replace_all")
+        if (!replaceAll && occurrences > 1) {
+            return failure("原文本出现 $occurrences 次；请提供更精确的 old_string 或设置 replace_all=true")
+        }
+        val updated = if (replaceAll) {
+            original.replace(oldString, newString)
+        } else {
+            original.replaceFirst(oldString, newString)
+        }
+        target.writeText(updated, Charsets.UTF_8)
+        return success(
+            "path" to relativeWorkspacePath(target),
+            "absolute_path" to target.canonicalPath,
+            "replacements" to if (replaceAll) occurrences else 1,
             "size" to target.length()
         )
     }

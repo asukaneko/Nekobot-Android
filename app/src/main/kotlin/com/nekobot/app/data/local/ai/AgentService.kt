@@ -24,7 +24,7 @@ private val requiredToolArguments = mapOf(
     "read_image" to setOf("path"),
     "workspace_create_file" to setOf("path", "content"),
     "workspace_read_file" to setOf("path"),
-    "workspace_edit_file" to setOf("path", "content"),
+    "workspace_edit_file" to setOf("path", "old_string", "new_string"),
     "workspace_delete_file" to setOf("path"),
     "workspace_send_file" to setOf("path")
 )

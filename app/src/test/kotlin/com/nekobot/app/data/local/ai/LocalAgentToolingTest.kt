@@ -541,6 +541,87 @@ class LocalAgentToolingTest {
     }
 
     @Test
+    fun workspaceEditFileReplacesSingleOccurrenceAndSupportsReplaceAll() = runBlocking {
+        val root = Files.createTempDirectory("nekobot-workspace-edit").toFile()
+        try {
+            val executor = LocalAgentToolExecutor(
+                sessionId = "session-edit",
+                workspaceRoot = root,
+                authorizationManager = LocalExecAuthorizationManager(100),
+                onConfirmationRequired = {},
+                thinkingHistoryProvider = { emptyList() }
+            )
+
+            val doc = root.resolve("notes/config.txt")
+            doc.parentFile?.mkdirs()
+            doc.writeText("version=1\nname=alpha\nversion=1\n", Charsets.UTF_8)
+
+            // 单次替换（old_string 只出现一次）
+            val edited = executor.execute(
+                "workspace_edit_file",
+                mapOf(
+                    "path" to "notes/config.txt",
+                    "old_string" to "name=alpha",
+                    "new_string" to "name=beta"
+                )
+            )
+            assertEquals(true, edited["success"])
+            assertEquals(1, edited["replacements"])
+            assertEquals("version=1\nname=beta\nversion=1\n", doc.readText(Charsets.UTF_8))
+
+            // 出现多次且未设置 replace_all → 拒绝
+            val ambiguous = executor.execute(
+                "workspace_edit_file",
+                mapOf(
+                    "path" to "notes/config.txt",
+                    "old_string" to "version=1",
+                    "new_string" to "version=2"
+                )
+            )
+            assertEquals(false, ambiguous["success"])
+            assertTrue((ambiguous["error"] as String).contains("2 次"))
+
+            // replace_all=true 替换全部
+            val all = executor.execute(
+                "workspace_edit_file",
+                mapOf(
+                    "path" to "notes/config.txt",
+                    "old_string" to "version=1",
+                    "new_string" to "version=2",
+                    "replace_all" to true
+                )
+            )
+            assertEquals(true, all["success"])
+            assertEquals(2, all["replacements"])
+            assertEquals("version=2\nname=beta\nversion=2\n", doc.readText(Charsets.UTF_8))
+
+            // 不存在的 old_string → 失败
+            val notFound = executor.execute(
+                "workspace_edit_file",
+                mapOf(
+                    "path" to "notes/config.txt",
+                    "old_string" to "no-such-text",
+                    "new_string" to "x"
+                )
+            )
+            assertEquals(false, notFound["success"])
+
+            // 不存在的文件 → 失败
+            val missing = executor.execute(
+                "workspace_edit_file",
+                mapOf(
+                    "path" to "notes/absent.txt",
+                    "old_string" to "a",
+                    "new_string" to "b"
+                )
+            )
+            assertEquals(false, missing["success"])
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun standardLinuxFileToolsSupportWorkspacePathsAppendAndExactEdit() = runBlocking {
         val root = Files.createTempDirectory("nekobot-linux-file-tools").toFile()
         try {

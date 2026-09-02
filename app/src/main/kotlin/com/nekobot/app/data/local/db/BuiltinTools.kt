@@ -540,14 +540,16 @@ object BuiltinTools {
         ),
         BuiltinToolSpec(
             id = "workspace_edit_file",
-            name = "工作区-编辑文件",
-            description = "编辑工作区中已存在的文件内容。path 使用 shared:// 前缀可编辑共享工作区文件。",
+            name = "工作区-精准编辑文件",
+            description = "在工作区已存在的文本文件中精准替换 old_string 为 new_string，避免整文件重写。默认要求原文本只出现一次；replace_all=true 可替换全部匹配。path 使用 shared:// 前缀可编辑共享工作区文件。",
             parametersJson = params(
                 mapOf(
                     "path" to mapOf("type" to "string", "description" to "文件路径。使用 shared://filename 编辑共享工作区文件，或直接使用相对路径编辑当前会话工作区文件"),
-                    "content" to mapOf("type" to "string", "description" to "新文件内容")
+                    "old_string" to mapOf("type" to "string", "description" to "必须精确匹配的原文本"),
+                    "new_string" to mapOf("type" to "string", "description" to "替换后的文本"),
+                    "replace_all" to mapOf("type" to "boolean", "description" to "是否替换全部匹配，默认 false")
                 ),
-                listOf("path", "content")
+                listOf("path", "old_string", "new_string")
             )
         ),
         BuiltinToolSpec(
