@@ -100,7 +100,11 @@ data class Session(
     /** 运行时合成后的完整系统提示词（每次对话后更新，只读展示） */
     @SerializedName("composed_system_prompt") val composedSystemPrompt: String? = null,
     /** Agent 任务列表 JSON（todo_write 工具写入；本地模式持久化，UI 输入框上方展示） */
-    @SerializedName(value = "agent_todos", alternate = ["agentTodos"]) val agentTodos: String? = null
+    @SerializedName(value = "agent_todos", alternate = ["agentTodos"]) val agentTodos: String? = null,
+    /** Agent 会话目标（/goal 命令设置；本地模式持久化，UI 输入框上方展示） */
+    @SerializedName(value = "agent_goal", alternate = ["agentGoal"]) val agentGoal: String? = null,
+    /** Agent 规格任务 JSON（/spec 命令设置；本地模式持久化，UI 输入框上方展示） */
+    @SerializedName(value = "agent_spec", alternate = ["agentSpec"]) val agentSpec: String? = null
 ) {
     val displayName: String get() = name?.takeIf { it.isNotBlank() } ?: "未命名会话"
     /** 角色立绘 URL：优先 portrait，回退 characterAvatar */
@@ -348,6 +352,61 @@ data class AgentTodo(
         /** 序列化任务列表为 JSON；空列表返回 null 以清空数据库列。 */
         fun encodeList(todos: List<AgentTodo>): String? =
             if (todos.isEmpty()) null else com.google.gson.Gson().toJson(todos)
+    }
+}
+
+/**
+ * Agent 规格任务（/spec 命令设置，会话级持久化）。
+ *
+ * 参考 GitHub Spec Kit /specify 与 Kiro Specs 的规格驱动开发流程：
+ * 先让 Agent 把需求固化为规格文档（背景/需求/方案/任务清单/验收标准），
+ * 用户确认批准后再按规格实现，避免大型任务未经对齐就动手。
+ */
+data class AgentSessionSpec(
+    /** 用户通过 /spec 输入的功能描述（一句话需求） */
+    val feature: String = "",
+    /** 规格文档在会话工作区内的相对路径，如 specs/todo-app-1a2b/spec.md */
+    val path: String = "",
+    /** draft（起草中，待用户确认）/ approved（已批准，按规格实现） */
+    val status: String = STATUS_DRAFT,
+    val createdAt: String = ""
+) {
+    companion object {
+        const val STATUS_DRAFT = "draft"
+        const val STATUS_APPROVED = "approved"
+
+        fun normalizeStatus(raw: String?): String = when (raw?.trim()?.lowercase()) {
+            STATUS_APPROVED, "approved", "implementing" -> STATUS_APPROVED
+            else -> STATUS_DRAFT
+        }
+
+        /** 解析会话实体上的 agent_spec JSON 列；解析失败返回 null。 */
+        fun fromJson(raw: String?): AgentSessionSpec? {
+            if (raw.isNullOrBlank()) return null
+            return runCatching {
+                com.google.gson.Gson().fromJson(raw, AgentSessionSpec::class.java)
+            }.getOrNull()
+        }
+
+        /** 序列化规格任务为 JSON；null 直接清空数据库列。 */
+        fun encode(spec: AgentSessionSpec?): String? = spec?.let { com.google.gson.Gson().toJson(it) }
+
+        /**
+         * 由功能描述生成规格目录名：清洗文件系统非法字符并截断，
+         * 追加短随机后缀避免同名功能互相覆盖。仅返回目录名（不含 specs/ 前缀）。
+         */
+        fun slugify(feature: String): String {
+            val cleaned = feature
+                .trim()
+                .replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"), "")
+                .replace(Regex("\\s+"), "-")
+                .trim('-')
+                .take(32)
+                .trim('-')
+            val base = cleaned.ifBlank { "spec" }
+            val suffix = java.util.UUID.randomUUID().toString().substring(0, 4)
+            return "$base-$suffix"
+        }
     }
 }
 

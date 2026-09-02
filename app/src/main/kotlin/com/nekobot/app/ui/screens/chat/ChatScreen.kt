@@ -77,6 +77,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.CloudUpload
@@ -275,6 +276,9 @@ fun ChatScreen(
     val agentRecovery by viewModel.agentRecovery.collectAsStateWithLifecycle()
     val agentContextCompressionInProgress by viewModel.agentContextCompressionInProgress.collectAsStateWithLifecycle()
     val agentTodos by viewModel.agentTodos.collectAsStateWithLifecycle()
+    // Agent 会话目标/规格任务（/goal、/spec 命令设置，输入框上方横幅展示）
+    val agentGoal by viewModel.agentGoal.collectAsStateWithLifecycle()
+    val agentSpec by viewModel.agentSpec.collectAsStateWithLifecycle()
     // 摘要可能先于会话元数据加载完成；直接以消息自身的压缩边界驱动分隔线。
     val agentCompressionBoundaryIds = messages.mapNotNull { it.agentContextSummaryBoundaryId() }.toSet()
     // 摘要本身仅供请求上下文使用，聊天列表仍展示完整原始历史。
@@ -900,6 +904,8 @@ fun ChatScreen(
                                 onDiscard = viewModel::discardAgentRun
                             )
                         }
+                        // Agent 会话目标/规格任务横幅（/goal、/spec 命令设置）
+                        GoalSpecBanner(goal = agentGoal, spec = agentSpec)
                         // Agent 任务列表（todo_write 工具写入，输入框上方可折叠面板）
                         AgentTodosPanel(todos = agentTodos)
                         // 底部输入栏：左侧 + 按钮展开数据/操作面板，中间输入框，右侧发送
@@ -4620,6 +4626,97 @@ internal fun AgentRecoveryBar(
 
 /** 任务列表展开时的最大显示高度（dp），超过后内部垂直滚动。 */
 private val AGENT_TODOS_MAX_HEIGHT = 280.dp
+
+/**
+ * Agent 会话目标/规格任务横幅：/goal 与 /spec 命令设置的持久状态在输入框上方的可视化展示。
+ * 参考 Claude Code 会话内目标横幅与 Kiro 规格状态展示；目标与规格均不存在时不渲染。
+ * 同时挂载在 ChatScreen 内置 bottomBar 与 ModernChatScreen 的 customBottomBar 中。
+ */
+@Composable
+internal fun GoalSpecBanner(
+    goal: String?,
+    spec: com.nekobot.app.data.model.AgentSessionSpec?
+) {
+    val goalText = goal?.trim().orEmpty()
+    if (goalText.isEmpty() && spec == null) return
+    androidx.compose.material3.Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 1.dp
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            if (goalText.isNotEmpty()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Filled.Flag,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.agent_goal_banner_label),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = goalText,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            if (goalText.isNotEmpty() && spec != null) {
+                Spacer(Modifier.height(6.dp))
+            }
+            if (spec != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Filled.TaskAlt,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.agent_spec_banner_label),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = spec.feature,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(
+                            if (spec.status == com.nekobot.app.data.model.AgentSessionSpec.STATUS_APPROVED) {
+                                R.string.agent_spec_status_approved
+                            } else {
+                                R.string.agent_spec_status_draft
+                            }
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+    }
+}
 
 /**
  * Agent 任务列表面板（输入框上方，可折叠）。

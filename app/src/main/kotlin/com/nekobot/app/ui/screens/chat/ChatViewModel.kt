@@ -306,6 +306,26 @@ class ChatViewModel : BaseViewModel() {
     private val _agentTodos: MutableStateFlow<List<com.nekobot.app.data.model.AgentTodo>>
         get() = runtime.agentTodos
 
+    /**
+     * Agent 会话目标（/goal 命令设置，会话级持久化）。
+     * 输入框上方横幅展示；进入会话时从会话实体恢复。
+     */
+    val agentGoal: StateFlow<String?> = _runtime
+        .map { it.agentGoal }
+        .distinctUntilChanged()
+        .flatMapLatest { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    private val _agentGoal: MutableStateFlow<String?> get() = runtime.agentGoal
+
+    /** Agent 规格任务（/spec 命令设置，会话级持久化）。 */
+    val agentSpec: StateFlow<com.nekobot.app.data.model.AgentSessionSpec?> = _runtime
+        .map { it.agentSpec }
+        .distinctUntilChanged()
+        .flatMapLatest { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    private val _agentSpec: MutableStateFlow<com.nekobot.app.data.model.AgentSessionSpec?>
+        get() = runtime.agentSpec
+
     val execConfirmation: StateFlow<ExecConfirmationRequest?> = _runtime
         .map { it.execConfirmation }
         .distinctUntilChanged()
@@ -916,6 +936,16 @@ class ChatViewModel : BaseViewModel() {
                     _agentTodos.value = event.todos
                 }
             }
+            is RealtimeEvent.AgentGoalUpdated -> {
+                if (event.sessionId == currentSessionId) {
+                    _agentGoal.value = event.goal
+                }
+            }
+            is RealtimeEvent.AgentSpecUpdated -> {
+                if (event.sessionId == currentSessionId) {
+                    _agentSpec.value = event.spec
+                }
+            }
             is RealtimeEvent.HookNotificationEvent -> {
                 // Hook 触发通知：仅处理当前会话的通知（与远程模式 conversationId 路由一致）
                 val notif = event.notification
@@ -1046,6 +1076,9 @@ class ChatViewModel : BaseViewModel() {
                 _session.value = it
                 // Agent 任务列表：进入会话时从持久化数据恢复
                 _agentTodos.value = com.nekobot.app.data.model.AgentTodo.fromJsonList(it?.agentTodos)
+                // Agent 会话目标与规格任务：进入会话时从持久化数据恢复
+                _agentGoal.value = it?.agentGoal?.takeIf(String::isNotBlank)
+                _agentSpec.value = com.nekobot.app.data.model.AgentSessionSpec.fromJson(it?.agentSpec)
                 if (it?.sessionMode.equals("group", ignoreCase = true)) {
                     loadGroupCharacters(it?.characterIds.orEmpty())
                 } else {

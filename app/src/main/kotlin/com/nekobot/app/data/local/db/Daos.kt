@@ -89,6 +89,14 @@ interface SessionDao {
     /** Agent 任务列表（todo_write 工具）持久化；不触碰 updated_at，避免影响会话排序。 */
     @Query("UPDATE local_sessions SET agent_todos = :todosJson WHERE id = :id")
     suspend fun updateAgentTodos(id: String, todosJson: String?)
+
+    /** Agent 会话目标（/goal 命令）持久化；不触碰 updated_at，避免影响会话排序。 */
+    @Query("UPDATE local_sessions SET agent_goal = :goal WHERE id = :id")
+    suspend fun updateAgentGoal(id: String, goal: String?)
+
+    /** Agent 规格任务（/spec 命令）持久化；不触碰 updated_at，避免影响会话排序。 */
+    @Query("UPDATE local_sessions SET agent_spec = :specJson WHERE id = :id")
+    suspend fun updateAgentSpec(id: String, specJson: String?)
 }
 
 @Dao

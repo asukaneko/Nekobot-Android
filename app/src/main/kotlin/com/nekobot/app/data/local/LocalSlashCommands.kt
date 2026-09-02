@@ -150,6 +150,18 @@ internal object LocalSlashCommands {
             usage = "/fortune",
             description = "查看今日运势",
             action = LocalCommandAction.FORTUNE
+        ),
+        LocalCommandSpec(
+            aliases = listOf("/goal"),
+            usage = "/goal <目标> | /goal done | /goal clear",
+            description = "设置 Agent 会话长期目标，AI 每轮围绕目标推进（仅 Agent 会话）",
+            action = LocalCommandAction.GOAL
+        ),
+        LocalCommandSpec(
+            aliases = listOf("/spec"),
+            usage = "/spec <功能> | /spec approve | /spec done",
+            description = "规格驱动开发：先起草规格文档，批准后按规格实现（仅 Agent 会话）",
+            action = LocalCommandAction.SPEC
         )
     )
 
@@ -264,6 +276,7 @@ internal object LocalSlashCommands {
         }
         appendLine()
         append("Agent 会话还支持 `/yolo`，用于在当前会话中跳过常规命令授权；高风险操作仍会阻止。")
+        append("\nAgent 会话可用 `/goal` 设置长期目标，用 `/spec` 启动规格驱动开发：起草规格 → `/spec approve` 批准 → 按规格实现。")
     }.trim()
 
     /** 供插件安装器检查命令冲突；返回值统一为带 / 的形式。 */
@@ -306,6 +319,8 @@ internal enum class LocalCommandAction(val isNative: Boolean) {
     PASSWORD(true),
     HASH(true),
     FORTUNE(true),
+    GOAL(true),
+    SPEC(true),
     JM_RANK(true),
     JM_DOWNLOAD(true),
     JM_SEARCH(true),

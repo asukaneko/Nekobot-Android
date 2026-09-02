@@ -142,3 +142,84 @@ internal fun PromptStack.addAgentTodosPrompt(todos: List<com.nekobot.app.data.mo
         scope = "session"
     )
 }
+
+/** 会话目标注入项 key（/goal 命令设置，跨轮回灌上下文，防止多轮/压缩后失忆）。 */
+internal const val AGENT_GOAL_PROMPT_KEY = "agent.goal"
+
+/**
+ * 把当前会话目标注入提示词（/goal 命令设置）。
+ *
+ * 参考 DSH/Claude Code 的持久目标语义：目标一旦设置就长期有效，
+ * 每轮都围绕目标推进，未达成前不得自行宣布完成；只有用户通过
+ * /goal done 或 /goal clear 移除后目标才失效。
+ */
+internal fun PromptStack.addAgentGoalPrompt(goal: String?) {
+    if (goal.isNullOrBlank()) return
+    val content = buildString {
+        appendLine("## 当前会话目标")
+        appendLine(goal.trim())
+        appendLine()
+        append(
+            "这是用户通过 /goal 命令设置的长期目标，在用户移除前一直有效。" +
+                "每轮回复都优先围绕该目标推进：与目标直接相关的工作优先处理；" +
+                "已完成的部分简要说明，未完成的部分继续推进。" +
+                "只有目标真正达成且经过验证后才宣布完成；遇到阻塞时明确说明阻塞点和已完成部分，不要无意义空转。" +
+                "不要擅自修改或扩大目标范围；用户通常会在设置目标后另行给出具体指令，以最新消息为准。"
+        )
+    }
+    add(
+        key = AGENT_GOAL_PROMPT_KEY,
+        content = content,
+        priority = PromptStack.Priority.TOOL_INSTRUCTIONS,
+        scope = "session"
+    )
+}
+
+/** 规格任务注入项 key（/spec 命令设置，跨轮回灌上下文，防止多轮/压缩后失忆）。 */
+internal const val AGENT_SPEC_PROMPT_KEY = "agent.spec"
+
+/**
+ * 把当前规格任务注入提示词（/spec 命令设置）。
+ *
+ * 参考 GitHub Spec Kit /specify 与 Kiro Specs 的规格驱动开发流程：
+ * draft 状态下先固化规格文档并等待用户批准；approved 状态下严格按规格
+ * 的任务清单实现，并用 todo_write 同步任务进度。规格文档保存在会话工作区。
+ */
+internal fun PromptStack.addAgentSpecPrompt(spec: com.nekobot.app.data.model.AgentSessionSpec?) {
+    if (spec == null || spec.feature.isBlank()) return
+    val content = buildString {
+        appendLine("## 规格任务（spec 模式）")
+        appendLine("功能：${spec.feature.trim()}")
+        appendLine("规格文档：${spec.path}（会话工作区相对路径）")
+        when (spec.status) {
+            com.nekobot.app.data.model.AgentSessionSpec.STATUS_APPROVED -> {
+                appendLine("状态：用户已批准，按规格实现")
+                appendLine()
+                append(
+                    "严格按规格文档实现：先读取规格文档，用 todo_write 把任务清单同步为任务列表，" +
+                        "然后逐项实现；每完成一项更新任务状态并勾选规格文档中的对应任务。" +
+                        "发现规格本身有问题时先说明并征求用户意见，不要擅自偏离规格。" +
+                        "全部完成后对照验收标准逐条验证并在最终回复中汇报结果。"
+                )
+            }
+            else -> {
+                appendLine("状态：待起草/待用户确认")
+                appendLine()
+                append(
+                    "如果规格文档尚不存在：先检查工作区确认，然后立即起草并保存规格文档，" +
+                        "内容包含：背景与目标、需求清单（每条附可验证的验收标准）、总体方案、" +
+                        "任务清单（用 Markdown 勾选框逐项列出）、范围外事项。" +
+                        "完成后在回复中给出规格摘要，并提示用户输入 /spec approve 批准，或直接提出修改意见。" +
+                        "如果文档已存在：按用户最新反馈修订规格文档，修订后同样提示确认。" +
+                        "用户未用 /spec approve 批准前，只完善规格，不要开始正式实现。"
+                )
+            }
+        }
+    }
+    add(
+        key = AGENT_SPEC_PROMPT_KEY,
+        content = content,
+        priority = PromptStack.Priority.TOOL_INSTRUCTIONS,
+        scope = "session"
+    )
+}

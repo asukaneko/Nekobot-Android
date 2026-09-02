@@ -76,6 +76,10 @@ class ChatSessionState(val sessionId: String) {
     val agentContextCompressionInProgress = MutableStateFlow(false)
     /** Agent 任务列表（todo_write 工具更新；输入框上方可折叠面板展示）。 */
     val agentTodos = MutableStateFlow<List<com.nekobot.app.data.model.AgentTodo>>(emptyList())
+    /** Agent 会话目标（/goal 命令更新；输入框上方横幅展示）。 */
+    val agentGoal = MutableStateFlow<String?>(null)
+    /** Agent 规格任务（/spec 命令更新；输入框上方横幅展示）。 */
+    val agentSpec = MutableStateFlow<com.nekobot.app.data.model.AgentSessionSpec?>(null)
 
     // ============ Agent 会话消息排队 ============
     /**

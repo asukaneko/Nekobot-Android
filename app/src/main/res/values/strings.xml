@@ -202,6 +202,10 @@
     <string name="agent_todos_title">任务列表</string>
     <string name="agent_todos_progress">%1$d/%2$d 已完成</string>
     <string name="agent_todos_all_done">全部任务已完成</string>
+    <string name="agent_goal_banner_label">目标</string>
+    <string name="agent_spec_banner_label">规格</string>
+    <string name="agent_spec_status_draft">待确认</string>
+    <string name="agent_spec_status_approved">实现中</string>
     <string name="settings_recent_sessions_include_archived">在最近会话中显示归档会话</string>
     <string name="settings_recent_sessions_include_archived_desc">开启后，已归档会话也会出现在首页的最近会话列表中</string>
     <string name="settings_open_latest_session_on_launch">打开应用时进入最新会话</string>

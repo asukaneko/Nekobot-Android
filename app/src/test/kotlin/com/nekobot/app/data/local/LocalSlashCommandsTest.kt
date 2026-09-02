@@ -92,6 +92,58 @@ class LocalSlashCommandsTest {
     }
 
     @Test
+    fun goalCommandParsesWithAndWithoutArguments() {
+        val set = LocalSlashCommands.parse("/goal 完成登录页重构并验证")
+        assertEquals(LocalCommandAction.GOAL, set?.action)
+        assertTrue(set?.known == true)
+        assertEquals("完成登录页重构并验证", set?.args)
+
+        val view = LocalSlashCommands.parse("/goal")
+        assertEquals(LocalCommandAction.GOAL, view?.action)
+        assertEquals("", view?.args)
+
+        val done = LocalSlashCommands.parse("/goal done")
+        assertEquals(LocalCommandAction.GOAL, done?.action)
+        assertEquals("done", done?.args)
+    }
+
+    @Test
+    fun specCommandParsesWorkflowSubcommands() {
+        val set = LocalSlashCommands.parse("/spec 写一个 TODO 应用")
+        assertEquals(LocalCommandAction.SPEC, set?.action)
+        assertTrue(set?.known == true)
+        assertEquals("写一个 TODO 应用", set?.args)
+
+        val approve = LocalSlashCommands.parse("/spec approve")
+        assertEquals(LocalCommandAction.SPEC, approve?.action)
+        assertEquals("approve", approve?.args)
+
+        val clear = LocalSlashCommands.parse("/spec clear")
+        assertEquals(LocalCommandAction.SPEC, clear?.action)
+    }
+
+    @Test
+    fun goalAndSpecAppearInSuggestionsAndHelp() {
+        val all = LocalSlashCommands.suggestions("/").map { it.command }
+        assertTrue(all.contains("/goal"))
+        assertTrue(all.contains("/spec"))
+        assertEquals("/goal", LocalSlashCommands.suggestions("/go").single().command)
+        assertEquals("/spec", LocalSlashCommands.suggestions("/spec").first().command)
+
+        val help = LocalSlashCommands.helpText()
+        assertTrue(help.contains("/goal"))
+        assertTrue(help.contains("/spec"))
+        assertTrue(help.contains("/spec approve"))
+    }
+
+    @Test
+    fun goalAndSpecAreReservedAliasesForPlugins() {
+        val reserved = LocalSlashCommands.reservedCommandAliases()
+        assertTrue("/goal" in reserved)
+        assertTrue("/spec" in reserved)
+    }
+
+    @Test
     fun commandInputAndResultAreExcludedFromAiContext() {
         assertTrue(isLocalCommandMessage("user", "/password 24", null))
         assertTrue(isLocalCommandMessage("human", "/does_not_exist", null))

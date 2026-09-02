@@ -308,4 +308,8 @@
     <string name="agent_todos_title">작업 목록</string>
     <string name="agent_todos_progress">%1$d/%2$d 완료</string>
     <string name="agent_todos_all_done">모든 작업 완료</string>
+    <string name="agent_goal_banner_label">목표</string>
+    <string name="agent_spec_banner_label">명세</string>
+    <string name="agent_spec_status_draft">승인 대기</string>
+    <string name="agent_spec_status_approved">구현 중</string>
 </resources>

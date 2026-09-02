@@ -72,7 +72,11 @@ data class LocalSessionEntity(
     /** 已完成的群聊用户轮次数。 */
     @ColumnInfo(name = "group_turn_count", defaultValue = "0") val groupTurnCount: Int = 0,
     /** Agent 任务列表 JSON（todo_write 工具全量写入；输入框上方可视化面板展示）。 */
-    @ColumnInfo(name = "agent_todos") val agentTodos: String? = null
+    @ColumnInfo(name = "agent_todos") val agentTodos: String? = null,
+    /** Agent 会话目标文本（/goal 命令设置；每轮注入提示词，输入框上方展示）。 */
+    @ColumnInfo(name = "agent_goal") val agentGoal: String? = null,
+    /** Agent 规格任务 JSON（/spec 命令设置；规格驱动开发状态机，输入框上方展示）。 */
+    @ColumnInfo(name = "agent_spec") val agentSpec: String? = null
 )
 
 /**

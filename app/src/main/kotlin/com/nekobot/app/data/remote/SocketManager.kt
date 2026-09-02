@@ -273,6 +273,22 @@ sealed class RealtimeEvent {
         val todos: List<com.nekobot.app.data.model.AgentTodo>
     ) : RealtimeEvent()
     /**
+     * Agent 会话目标更新（/goal 命令触发，仅本地管线发出）。
+     * UI 在输入框上方渲染目标横幅；goal 为 null 表示目标已清除。
+     */
+    data class AgentGoalUpdated(
+        val sessionId: String,
+        val goal: String?
+    ) : RealtimeEvent()
+    /**
+     * Agent 规格任务更新（/spec 命令触发，仅本地管线发出）。
+     * UI 在输入框上方渲染规格状态横幅；spec 为 null 表示任务已结束。
+     */
+    data class AgentSpecUpdated(
+        val sessionId: String,
+        val spec: com.nekobot.app.data.model.AgentSessionSpec?
+    ) : RealtimeEvent()
+    /**
      * ask_user_question 提问请求（仅本地管线发出）。
      * AI 调用提问工具后管线挂起等待，UI 弹窗收集用户回答后经
      * LocalRepository.respondToAskUserQuestion 回填工具结果。
@@ -302,6 +318,8 @@ fun RealtimeEvent.targetSessionId(): String? = when (this) {
     is RealtimeEvent.ForegroundComplete -> sessionId
     is RealtimeEvent.ReplyPostProcessed -> sessionId
     is RealtimeEvent.AgentTodosUpdated -> sessionId
+    is RealtimeEvent.AgentGoalUpdated -> sessionId
+    is RealtimeEvent.AgentSpecUpdated -> sessionId
     is RealtimeEvent.AskUserQuestionRequired -> request.sessionId
     is RealtimeEvent.Usage -> null
 }

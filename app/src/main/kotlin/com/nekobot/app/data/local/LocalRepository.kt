@@ -46,6 +46,8 @@ import com.nekobot.app.data.local.ai.TokenStatsManager
 import com.nekobot.app.data.local.ai.currentLocalContextTokens
 import com.nekobot.app.data.local.ai.addLocalAgentBasePrompt
 import com.nekobot.app.data.local.ai.addAgentTodosPrompt
+import com.nekobot.app.data.local.ai.addAgentGoalPrompt
+import com.nekobot.app.data.local.ai.addAgentSpecPrompt
 import com.nekobot.app.data.local.ai.addGlobalAgentMemory
 import com.nekobot.app.data.local.ai.buildLocalAgentToolDefinitions
 import com.nekobot.app.data.local.ai.buildLocalDbToolDefinitions
@@ -1953,6 +1955,220 @@ class LocalRepository(
         msg.toMessage()
     }
 
+    /** /goal、/spec 命令的处理结果。 */
+    private sealed class AgentSessionCommandOutcome {
+        /** 已完成处理：向聊天返回本地说明，本轮结束。 */
+        data class Reply(val content: String) : AgentSessionCommandOutcome()
+
+        /**
+         * 状态已更新且需要立即驱动 Agent：instruction 将接管本轮用户消息
+         * （命令原文已被 isLocalCommandMessage 过滤，不进入模型上下文）。
+         */
+        data class Kickoff(val instruction: String) : AgentSessionCommandOutcome()
+    }
+
+    /**
+     * 处理 Agent 会话目标命令（/goal、/spec）。
+     *
+     * 设计参考主流 harness：
+     * - /goal：DSH / Claude Code 的持久目标语义 —— 目标持久化到会话并注入每轮提示词，
+     *   AI 跨轮围绕目标推进；/goal done、/goal clear 结束目标。
+     * - /spec：GitHub Spec Kit /specify 与 Kiro Specs 的规格驱动开发 —— 先让 AI 起草
+     *   规格文档（specs/&lt;功能&gt;/spec.md），用户 /spec approve 批准后按规格任务清单实现。
+     *
+     * 仅 Agent 会话可用；其他会话模式一律返回说明文本。
+     */
+    private suspend fun handleAgentSessionCommand(
+        session: LocalSessionEntity,
+        command: LocalParsedCommand,
+        onStateEvent: suspend (RealtimeEvent) -> Unit
+    ): AgentSessionCommandOutcome {
+        if (!session.sessionMode.equals("agent", ignoreCase = true)) {
+            return AgentSessionCommandOutcome.Reply(
+                "`${command.name}` 仅支持在 Agent 会话中使用；请先把会话切换为 Agent 模式。"
+            )
+        }
+        val args = command.args.trim()
+        return if (command.action == LocalCommandAction.GOAL) {
+            handleAgentGoalCommand(session, args, onStateEvent)
+        } else {
+            handleAgentSpecCommand(session, args, onStateEvent)
+        }
+    }
+
+    /** /goal 子命令：无参数查看、done/complete 完成、clear/cancel 取消、其余为目标文本。 */
+    private suspend fun handleAgentGoalCommand(
+        session: LocalSessionEntity,
+        args: String,
+        onStateEvent: suspend (RealtimeEvent) -> Unit
+    ): AgentSessionCommandOutcome {
+        val sub = args.lowercase()
+        val hasGoal = !session.agentGoal.isNullOrBlank()
+        return when {
+            args.isEmpty() -> {
+                val current = session.agentGoal?.trim().orEmpty()
+                AgentSessionCommandOutcome.Reply(
+                    if (current.isBlank()) {
+                        "当前会话没有设置目标。\n\n用法：`/goal <目标描述>` 设置目标；设置后 AI 每轮都会围绕目标推进。" +
+                            "`/goal done` 标记完成，`/goal clear` 取消。"
+                    } else {
+                        buildString {
+                            appendLine("🎯 **当前会话目标**")
+                            appendLine()
+                            appendLine(current)
+                            appendLine()
+                            append("`/goal <新目标>` 替换；`/goal done` 标记完成；`/goal clear` 取消。")
+                        }
+                    }
+                )
+            }
+            sub == "done" || sub == "complete" || sub == "完成" -> {
+                sessionDao.updateAgentGoal(session.id, null)
+                onStateEvent(RealtimeEvent.AgentGoalUpdated(session.id, null))
+                AgentSessionCommandOutcome.Reply(
+                    if (hasGoal) "✅ 会话目标已完成并移除。聊天记录与工作区不受影响。"
+                    else "当前会话没有进行中的目标。用 `/goal <目标描述>` 设置一个。"
+                )
+            }
+            sub == "clear" || sub == "cancel" || sub == "清除" || sub == "取消" || sub == "off" -> {
+                sessionDao.updateAgentGoal(session.id, null)
+                onStateEvent(RealtimeEvent.AgentGoalUpdated(session.id, null))
+                AgentSessionCommandOutcome.Reply(
+                    if (hasGoal) "🧹 已取消当前会话目标，AI 不再围绕它推进。"
+                    else "当前会话没有进行中的目标。"
+                )
+            }
+            else -> {
+                sessionDao.updateAgentGoal(session.id, args)
+                onStateEvent(RealtimeEvent.AgentGoalUpdated(session.id, args))
+                AgentSessionCommandOutcome.Reply(
+                    buildString {
+                        appendLine("🎯 **会话目标已设置**")
+                        appendLine()
+                        appendLine(args)
+                        appendLine()
+                        append(
+                            "该目标已持久化并注入 AI 的每轮上下文，跨多轮持续有效，直到完成或取消。" +
+                                "直接发送消息即可让 AI 围绕目标推进；`/goal` 查看，`/goal done` 标记完成，`/goal clear` 取消。"
+                        )
+                    }
+                )
+            }
+        }
+    }
+
+    /** /spec 子命令：无参数查看、approve 批准、done 完成、clear 取消、其余为新规格任务。 */
+    private suspend fun handleAgentSpecCommand(
+        session: LocalSessionEntity,
+        args: String,
+        onStateEvent: suspend (RealtimeEvent) -> Unit
+    ): AgentSessionCommandOutcome {
+        val current = com.nekobot.app.data.model.AgentSessionSpec.fromJson(session.agentSpec)
+        val sub = args.lowercase()
+        return when {
+            args.isEmpty() -> AgentSessionCommandOutcome.Reply(agentSpecStatusText(current))
+            sub == "approve" || sub == "approved" || sub == "批准" || sub == "同意" -> {
+                if (current == null) {
+                    AgentSessionCommandOutcome.Reply(
+                        "当前没有规格任务。用 `/spec <功能描述>` 发起一个：AI 会先起草规格文档，确认后再实现。"
+                    )
+                } else {
+                    val approved = current.copy(
+                        status = com.nekobot.app.data.model.AgentSessionSpec.STATUS_APPROVED
+                    )
+                    sessionDao.updateAgentSpec(
+                        session.id,
+                        com.nekobot.app.data.model.AgentSessionSpec.encode(approved)
+                    )
+                    onStateEvent(RealtimeEvent.AgentSpecUpdated(session.id, approved))
+                    AgentSessionCommandOutcome.Kickoff(agentSpecApprovedInstruction(approved))
+                }
+            }
+            sub == "done" || sub == "complete" || sub == "完成" -> {
+                if (current == null) {
+                    AgentSessionCommandOutcome.Reply("当前没有规格任务。")
+                } else {
+                    sessionDao.updateAgentSpec(session.id, null)
+                    onStateEvent(RealtimeEvent.AgentSpecUpdated(session.id, null))
+                    AgentSessionCommandOutcome.Reply(
+                        "✅ 规格任务「${current.feature}」已完成并移除；规格文档保留在 `${current.path}`，可随时查阅。"
+                    )
+                }
+            }
+            sub == "clear" || sub == "cancel" || sub == "清除" || sub == "取消" || sub == "off" -> {
+                if (current == null) {
+                    AgentSessionCommandOutcome.Reply("当前没有规格任务。")
+                } else {
+                    sessionDao.updateAgentSpec(session.id, null)
+                    onStateEvent(RealtimeEvent.AgentSpecUpdated(session.id, null))
+                    AgentSessionCommandOutcome.Reply(
+                        "🧹 已取消规格任务「${current.feature}」；规格文档保留在 `${current.path}`。"
+                    )
+                }
+            }
+            else -> {
+                val spec = com.nekobot.app.data.model.AgentSessionSpec(
+                    feature = args,
+                    path = "specs/${com.nekobot.app.data.model.AgentSessionSpec.slugify(args)}/spec.md",
+                    status = com.nekobot.app.data.model.AgentSessionSpec.STATUS_DRAFT,
+                    createdAt = nowIso()
+                )
+                sessionDao.updateAgentSpec(
+                    session.id,
+                    com.nekobot.app.data.model.AgentSessionSpec.encode(spec)
+                )
+                onStateEvent(RealtimeEvent.AgentSpecUpdated(session.id, spec))
+                AgentSessionCommandOutcome.Kickoff(agentSpecDraftInstruction(spec))
+            }
+        }
+    }
+
+    /** /spec 无参数时返回的规格任务状态说明。 */
+    private fun agentSpecStatusText(
+        spec: com.nekobot.app.data.model.AgentSessionSpec?
+    ): String {
+        if (spec == null) {
+            return "当前会话没有规格任务。\n\n用法：`/spec <功能描述>` 发起规格任务，AI 先起草规格文档；" +
+                "`/spec approve` 批准后按规格实现；`/spec done` 标记完成；`/spec clear` 取消。"
+        }
+        val statusText = when (spec.status) {
+            com.nekobot.app.data.model.AgentSessionSpec.STATUS_APPROVED -> "已批准，实现中"
+            else -> "起草中，待确认"
+        }
+        return buildString {
+            appendLine("📋 **规格任务**")
+            appendLine()
+            appendLine("• 功能：${spec.feature}")
+            appendLine("• 状态：$statusText")
+            appendLine("• 规格：`${spec.path}`")
+            appendLine("• 创建：${spec.createdAt}")
+            appendLine()
+            append(
+                when (spec.status) {
+                    com.nekobot.app.data.model.AgentSessionSpec.STATUS_APPROVED ->
+                        "AI 会按规格任务清单实现；`/spec done` 标记完成，`/spec clear` 取消。"
+                    else ->
+                        "阅读规格文档后输入 `/spec approve` 批准实现，或直接发送修改意见；`/spec clear` 取消。"
+                }
+            )
+        }
+    }
+
+    /** /spec 设置后立即驱动 Agent 起草规格文档的合成用户指令。 */
+    private fun agentSpecDraftInstruction(
+        spec: com.nekobot.app.data.model.AgentSessionSpec
+    ): String =
+        "【规格任务】用户刚通过 /spec 发起规格任务：「${spec.feature}」。" +
+            "请立即按系统提示中的规格工作流起草规格文档 ${spec.path}，" +
+            "完成后在回复中给出规格摘要，并提示用户输入 /spec approve 批准，或直接提出修改意见。"
+
+    /** /spec approve 后立即驱动 Agent 按规格实现的合成用户指令。 */
+    private fun agentSpecApprovedInstruction(
+        spec: com.nekobot.app.data.model.AgentSessionSpec
+    ): String =
+        "【规格任务】用户已通过 /spec approve 批准规格「${spec.feature}」，规格文档位于 ${spec.path}。" +
+            "请立即读取规格文档，按系统提示中的规格工作流开始实现：用 todo_write 同步任务清单，逐项实现并验证。"
+
     /**
      * 执行本地斜杠命令并保存一条普通 assistant 回复。
      *
@@ -2043,6 +2259,10 @@ class LocalRepository(
                 "请在聊天框输入 `/wenku8_login` 打开 wenku8 登录界面。"
             LocalCommandAction.NOVEL_SET_COOKIE ->
                 localNovelSetCookieText(command.args)
+            // /goal、/spec 在 chatWithPipeline 的命令拦截阶段处理，
+            // 这里只是穷尽 when 的防御分支，正常不会到达。
+            LocalCommandAction.GOAL, LocalCommandAction.SPEC ->
+                "`${command.name}` 仅支持在 Agent 会话中使用。"
             LocalCommandAction.PLUGIN ->
                 command.pluginCommand?.let { binding ->
                     ServiceContainer.pluginManager.execute(
@@ -4755,6 +4975,10 @@ class LocalRepository(
             ctx.promptStack.addAgentTodosPrompt(
                 com.nekobot.app.data.model.AgentTodo.fromJsonList(session.agentTodos)
             )
+            ctx.promptStack.addAgentGoalPrompt(session.agentGoal)
+            ctx.promptStack.addAgentSpecPrompt(
+                com.nekobot.app.data.model.AgentSessionSpec.fromJson(session.agentSpec)
+            )
             val globalAgentMemory = runCatching { ServiceContainer.globalAgentMemory.read().content }
                 .onFailure {
                     LocalLogger.w(TAG, "读取全局 Agent 记忆失败: ${it.message}")
@@ -4979,37 +5203,73 @@ class LocalRepository(
             return@flow
         }
 
+        // /goal、/spec 命令可能以合成用户指令接管本轮消息（命令原文不进入模型上下文）。
+        var effectiveUserMessage = userMessage
+
         if (persistUserMessage) LocalSlashCommands.parse(userMessage)?.let { command ->
             val commandParentId = parentMessageId ?: java.util.UUID.randomUUID().toString()
-            if (
-                command.action == LocalCommandAction.JM_RANK ||
-                command.action == LocalCommandAction.JM_DOWNLOAD ||
-                command.action == LocalCommandAction.JM_SEARCH
+
+            // /goal、/spec 是 Agent 会话目标命令：先更新会话持久状态。
+            // Reply → 返回本地说明并结束本轮；Kickoff → 用合成指令接管本轮用户消息，
+            // fall through 进入 AI 管线立即驱动 Agent（命令原文已被 isLocalCommandMessage 过滤）。
+            val kickoffInstruction = if (
+                command.action == LocalCommandAction.GOAL ||
+                command.action == LocalCommandAction.SPEC
             ) {
-                // Room 持久化不会在命令执行期间自动刷新 ChatViewModel。
-                // 用 channelFlow 把并发封面/章节任务的卡片安全地实时推给聊天界面。
-                channelFlow {
+                when (
+                    val outcome = handleAgentSessionCommand(
+                        session = session,
+                        command = command,
+                        onStateEvent = { emit(it) }
+                    )
+                ) {
+                    is AgentSessionCommandOutcome.Reply -> {
+                        val reply = addAssistantMessage(
+                            sessionId = sessionId,
+                            content = outcome.content,
+                            model = LOCAL_COMMAND_MODEL
+                        )
+                        localCommandCompletionEvents(sessionId, reply).forEach { emit(it) }
+                        return@flow
+                    }
+                    is AgentSessionCommandOutcome.Kickoff -> outcome.instruction
+                }
+            } else {
+                null
+            }
+            if (kickoffInstruction != null) {
+                effectiveUserMessage = kickoffInstruction
+            } else {
+                if (
+                    command.action == LocalCommandAction.JM_RANK ||
+                    command.action == LocalCommandAction.JM_DOWNLOAD ||
+                    command.action == LocalCommandAction.JM_SEARCH
+                ) {
+                    // Room 持久化不会在命令执行期间自动刷新 ChatViewModel。
+                    // 用 channelFlow 把并发封面/章节任务的卡片安全地实时推给聊天界面。
+                    channelFlow {
+                        val reply = executeLocalSlashCommand(
+                            session = session,
+                            activeModel = activeModel,
+                            command = command,
+                            parentMessageId = commandParentId,
+                            onProgress = { card ->
+                                send(RealtimeEvent.ThinkingCardUpdate(card))
+                            }
+                        )
+                        localCommandCompletionEvents(sessionId, reply).forEach { send(it) }
+                    }.collect { event -> emit(event) }
+                } else {
                     val reply = executeLocalSlashCommand(
                         session = session,
                         activeModel = activeModel,
                         command = command,
-                        parentMessageId = commandParentId,
-                        onProgress = { card ->
-                            send(RealtimeEvent.ThinkingCardUpdate(card))
-                        }
+                        parentMessageId = commandParentId
                     )
-                    localCommandCompletionEvents(sessionId, reply).forEach { send(it) }
-                }.collect { event -> emit(event) }
-            } else {
-                val reply = executeLocalSlashCommand(
-                    session = session,
-                    activeModel = activeModel,
-                    command = command,
-                    parentMessageId = commandParentId
-                )
-                localCommandCompletionEvents(sessionId, reply).forEach { emit(it) }
+                    localCommandCompletionEvents(sessionId, reply).forEach { emit(it) }
+                }
+                return@flow
             }
-            return@flow
         }
 
         // 群聊会话没有单一 character_id：按 group_config 调度一个或多个角色，
@@ -5049,7 +5309,7 @@ class LocalRepository(
         if (session.sessionMode.equals("group", ignoreCase = true)) {
             chatGroupWithPipeline(
                 session = session,
-                userMessage = userMessage,
+                userMessage = effectiveUserMessage,
                 activeModel = activeModel,
                 attachments = attachments,
                 parentMessageId = parentMessageId ?: java.util.UUID.randomUUID().toString(),
@@ -5071,7 +5331,7 @@ class LocalRepository(
             messageDao.listBySession(sessionId).lastOrNull { it.role == "user" }?.let {
                 messageDao.deleteById(it.id)
             }
-            chat(sessionId, userMessage, activeModel, reasoningEffort).collect { emit(it) }
+            chat(sessionId, effectiveUserMessage, activeModel, reasoningEffort).collect { emit(it) }
             return@flow
         }
 
@@ -5096,7 +5356,7 @@ class LocalRepository(
                     sessionId = sessionId,
                     runId = runId,
                     userMessageId = parentMessageId,
-                    prompt = userMessage,
+                    prompt = effectiveUserMessage,
                     attachmentsJson = attachments.takeIf { it.isNotEmpty() }
                         ?.let(gson::toJson),
                     status = AgentRunStatus.RUNNING,
@@ -5138,7 +5398,7 @@ class LocalRepository(
         // 4. 构建回调（传入故障转移备选队列：同 purpose 其他启用模型 + 持久化协调器）
         val routePlan = routedChatPlan(
             sessionId = sessionId,
-            prompt = userMessage,
+            prompt = effectiveUserMessage,
             attachments = attachments,
             sessionModeOverride = session.sessionMode
         )
@@ -5243,7 +5503,7 @@ class LocalRepository(
             ?: emptyList()
         val chatRequest = com.nekobot.app.data.local.ai.ChatRequest.forLocal(
             sessionId = sessionId,
-            content = userMessage,
+            content = effectiveUserMessage,
             userId = "local-user",
             attachments = attachments,
             metadata = buildMap {
@@ -5268,9 +5528,16 @@ class LocalRepository(
             val promptLanguage = appContext?.let {
                 LocaleHelper.getEffectiveLocale(it, ServiceContainer.prefs.language).language
             } ?: Locale.getDefault().language
+            // /goal、/spec 命令可能在命令拦截阶段刚写入会话状态（如 /spec 立即起草），
+            // 重新读取会话实体，确保注入的是最新持久化的目标与规格任务。
+            val promptSession = sessionDao.getById(sessionId) ?: session
             ctx.promptStack.addLocalAgentBasePrompt(promptLanguage)
             ctx.promptStack.addAgentTodosPrompt(
-                com.nekobot.app.data.model.AgentTodo.fromJsonList(session.agentTodos)
+                com.nekobot.app.data.model.AgentTodo.fromJsonList(promptSession.agentTodos)
+            )
+            ctx.promptStack.addAgentGoalPrompt(promptSession.agentGoal)
+            ctx.promptStack.addAgentSpecPrompt(
+                com.nekobot.app.data.model.AgentSessionSpec.fromJson(promptSession.agentSpec)
             )
             val globalAgentMemory = runCatching { ServiceContainer.globalAgentMemory.read().content }
                 .onFailure {
@@ -7992,7 +8259,9 @@ ${AiOutputLanguage.directive()}
             }.getOrNull()
         },
         groupConfig = groupConfig?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
-        agentTodos = agentTodos
+        agentTodos = agentTodos,
+        agentGoal = agentGoal,
+        agentSpec = agentSpec
     )
 
     private fun LocalMessageEntity.toMessage(): Message = Message(

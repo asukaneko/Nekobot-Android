@@ -308,4 +308,8 @@
     <string name="agent_todos_title">タスクリスト</string>
     <string name="agent_todos_progress">%1$d/%2$d 完了</string>
     <string name="agent_todos_all_done">すべてのタスクが完了しました</string>
+    <string name="agent_goal_banner_label">目標</string>
+    <string name="agent_spec_banner_label">仕様</string>
+    <string name="agent_spec_status_draft">承認待ち</string>
+    <string name="agent_spec_status_approved">実装中</string>
 </resources>
