@@ -5,4 +5,7 @@
     <string name="command_suggestion_hint">点击补全</string>
     <string name="command_suggestion_skill_hint">选择后使用此 Skill 处理请求</string>
     <string name="command_suggestion_skill_prefix">/skill %1$s</string>
+    <string name="command_suggestion_detail_title">命令详情</string>
+    <string name="command_suggestion_detail_hint">长按选项可查看完整说明</string>
+    <string name="command_suggestion_aliases">别名：%1$s</string>
 </resources>

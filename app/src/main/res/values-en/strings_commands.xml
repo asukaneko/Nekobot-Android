@@ -5,4 +5,7 @@
     <string name="command_suggestion_hint">Tap to complete</string>
     <string name="command_suggestion_skill_hint">Use this Skill for your request</string>
     <string name="command_suggestion_skill_prefix">/skill %1$s</string>
+    <string name="command_suggestion_detail_title">Command Details</string>
+    <string name="command_suggestion_detail_hint">Long-press an option to see the full description</string>
+    <string name="command_suggestion_aliases">Aliases: %1$s</string>
 </resources>

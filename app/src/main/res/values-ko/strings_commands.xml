@@ -5,4 +5,7 @@
     <string name="command_suggestion_hint">눌러서 자동 완성</string>
     <string name="command_suggestion_skill_hint">이 Skill로 요청을 처리합니다</string>
     <string name="command_suggestion_skill_prefix">/skill %1$s</string>
+    <string name="command_suggestion_detail_title">명령 상세</string>
+    <string name="command_suggestion_detail_hint">옵션을 길게 눌러 전체 설명 보기</string>
+    <string name="command_suggestion_aliases">별칭: %1$s</string>
 </resources>

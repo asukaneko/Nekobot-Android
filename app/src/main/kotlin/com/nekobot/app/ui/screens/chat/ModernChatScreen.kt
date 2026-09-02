@@ -415,6 +415,7 @@ private fun QueuedMessagesBar(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun CommandSuggestionPanel(
     candidates: List<ChatCommandCandidate>,
@@ -422,8 +423,15 @@ private fun CommandSuggestionPanel(
     onPick: (ChatCommandCandidate) -> Unit
 ) {
     val listState = rememberLazyListState()
+    // 长按选项后展示完整命令说明的弹窗状态
+    var detailCandidate by remember { mutableStateOf<ChatCommandCandidate?>(null) }
     LaunchedEffect(candidates) {
         listState.scrollToItem(0)
+        if (detailCandidate != null &&
+            candidates.none { it.key == detailCandidate!!.key }
+        ) {
+            detailCandidate = null
+        }
     }
     Surface(
         modifier = Modifier
@@ -435,18 +443,46 @@ private fun CommandSuggestionPanel(
         shadowElevation = 8.dp,
         border = null
     ) {
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = if (showAllCommands) 360.dp else 288.dp),
-            state = listState,
-            contentPadding = PaddingValues(vertical = 6.dp)
+                .padding(vertical = 4.dp)
         ) {
+            // 长按查看完整说明的提示，帮助用户发现交互方式
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Keyboard,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(13.dp)
+                )
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    text = stringResource(R.string.command_suggestion_detail_hint),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+            }
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = if (showAllCommands) 360.dp else 288.dp),
+                state = listState,
+                contentPadding = PaddingValues(vertical = 6.dp)
+            ) {
             items(candidates, key = ChatCommandCandidate::key) { candidate ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onPick(candidate) }
+                        .combinedClickable(
+                            onClick = { onPick(candidate) },
+                            onLongClick = { detailCandidate = candidate }
+                        )
                         .padding(horizontal = 12.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -498,6 +534,83 @@ private fun CommandSuggestionPanel(
                         else MaterialTheme.colorScheme.primary
                     )
                 }
+            }
+        }
+    }
+}
+
+    CommandDetailDialog(
+        candidate = detailCandidate,
+        onDismiss = { detailCandidate = null }
+    )
+}
+
+/**
+ * 命令/ Skill 选项的完整说明弹窗：长按建议面板条目时展示。
+ * [candidate] 为 null 时不渲染。
+ */
+@Composable
+private fun CommandDetailDialog(
+    candidate: ChatCommandCandidate?,
+    onDismiss: () -> Unit
+) {
+    if (candidate == null) return
+    val title = when (candidate) {
+        is ChatCommandCandidate.Command -> candidate.suggestion.command
+        is ChatCommandCandidate.SkillCommand -> stringResource(
+            R.string.command_suggestion_skill_prefix,
+            candidate.skill.name
+        )
+    }
+    NekoDialog(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.command_suggestion_detail_title),
+        confirmText = stringResource(R.string.common_close),
+        onConfirm = onDismiss,
+        contentScrollable = true
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.height(8.dp))
+
+        // 完整命令说明：短描述 + (命令) 用法/别名
+        when (candidate) {
+            is ChatCommandCandidate.Command -> {
+                val suggestion = candidate.suggestion
+                val description = suggestion.description
+                    .takeIf(String::isNotBlank)
+                    ?: stringResource(R.string.command_suggestion_hint)
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                // 别名
+                if (suggestion.aliases.size > 1) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = stringResource(
+                            R.string.command_suggestion_aliases,
+                            suggestion.aliases.joinToString(" / ")
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            is ChatCommandCandidate.SkillCommand -> {
+                val description = candidate.skill.description
+                    ?.takeIf(String::isNotBlank)
+                    ?: stringResource(R.string.command_suggestion_skill_hint)
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
             }
         }
     }

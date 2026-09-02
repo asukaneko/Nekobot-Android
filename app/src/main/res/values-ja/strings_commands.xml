@@ -5,4 +5,7 @@
     <string name="command_suggestion_hint">タップして補完</string>
     <string name="command_suggestion_skill_hint">この Skill で依頼を処理します</string>
     <string name="command_suggestion_skill_prefix">/skill %1$s</string>
+    <string name="command_suggestion_detail_title">コマンド詳細</string>
+    <string name="command_suggestion_detail_hint">項目を長押しすると完全な説明を表示します</string>
+    <string name="command_suggestion_aliases">別名：%1$s</string>
 </resources>
