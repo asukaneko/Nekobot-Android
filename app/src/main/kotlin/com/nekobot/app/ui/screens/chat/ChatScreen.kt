@@ -4728,7 +4728,7 @@ internal fun GoalSpecBanner(
 @Composable
 internal fun AgentTodosPanel(todos: List<AgentTodo>) {
     if (todos.isEmpty()) return
-    var expanded by rememberSaveable { mutableStateOf(true) }
+    var expanded by rememberSaveable { mutableStateOf(false) }
     val completedCount = todos.count { it.status == AgentTodo.STATUS_COMPLETED }
     val cancelledCount = todos.count { it.status == AgentTodo.STATUS_CANCELLED }
     val activeCount = todos.size - completedCount - cancelledCount
