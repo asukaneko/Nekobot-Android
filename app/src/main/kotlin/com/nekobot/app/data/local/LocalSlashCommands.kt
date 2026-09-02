@@ -237,7 +237,8 @@ internal object LocalSlashCommands {
                     command = spec.aliases.first(),
                     aliases = spec.aliases,
                     takesArguments = '<' in spec.usage || '[' in spec.usage,
-                    description = spec.localizedDescription(context)
+                    description = spec.localizedDescription(context),
+                    detail = spec.localizedDetail(context)
                 )
             }
             .distinctBy(LocalCommandSuggestion::command)
@@ -311,7 +312,9 @@ internal data class LocalCommandSuggestion(
     val aliases: List<String>,
     val takesArguments: Boolean,
     /** 补全面板在主命令下方展示的命令说明。 */
-    val description: String = ""
+    val description: String = "",
+    /** 长按详情弹窗展示的完整用法说明；为空时回退到 [description]。 */
+    val detail: String = ""
 )
 
 internal enum class LocalCommandAction(val isNative: Boolean) {
@@ -397,6 +400,14 @@ private val LocalCommandAction.usageResId: Int?
         else -> null
     }
 
+/** 内置命令本地化「完整用法」资源 id（长按详情弹窗）；未覆盖或非内置命令返回 null。 */
+private val LocalCommandAction.detailResId: Int?
+    get() = when (this) {
+        LocalCommandAction.GOAL -> R.string.cmd_goal_detail
+        LocalCommandAction.SPEC -> R.string.cmd_spec_detail
+        else -> null
+    }
+
 private data class LocalCommandSpec(
     val aliases: List<String>,
     val usage: String,
@@ -409,6 +420,10 @@ private data class LocalCommandSpec(
 
     fun localizedUsage(context: android.content.Context?): String =
         context?.getStringOrNull(action.usageResId) ?: usage
+
+    /** 完整用法说明：有专门详情文案时优先，否则回退到简介。 */
+    fun localizedDetail(context: android.content.Context?): String =
+        context?.getStringOrNull(action.detailResId) ?: description
 }
 
 private fun android.content.Context.getStringOrNull(resId: Int?): String? =

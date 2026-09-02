@@ -582,7 +582,8 @@ private fun CommandDetailDialog(
         when (candidate) {
             is ChatCommandCandidate.Command -> {
                 val suggestion = candidate.suggestion
-                val description = suggestion.description
+                val description = suggestion.detail
+                    .takeIf(String::isNotBlank) ?: suggestion.description
                     .takeIf(String::isNotBlank)
                     ?: stringResource(R.string.command_suggestion_hint)
                 Text(

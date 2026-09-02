@@ -42,12 +42,14 @@
     <string name="cmd_fortune_desc">Show today\'s fortune</string>
     <string name="cmd_goal_usage">/goal &lt;goal&gt; | /goal done | /goal clear</string>
     <string name="cmd_goal_desc">Set a long-term goal for the Agent session; the AI works toward it each turn (Agent sessions only)</string>
+    <string name="cmd_goal_detail">Agent session goal (Agent sessions only):\n\n/goal &lt;goal&gt;\n  Set the goal and inject it into each turn\'s context; the AI works toward it.\n/goal\n  Show the current goal.\n/goal done\n  Mark the goal complete and clear it.\n/goal clear\n  Cancel and clear the goal.\n\nThe goal stays active across turns until completed or cleared; you can also send any message to have the AI continue working on it.</string>
     <string name="cmd_spec_usage">/spec &lt;feature&gt; | /spec approve | /spec done</string>
     <string name="cmd_spec_desc">Spec-driven development: draft a spec, then /spec approve and implement it (Agent sessions only)</string>
+    <string name="cmd_spec_detail">Agent spec task (Agent sessions only):\n\n/spec &lt;feature&gt;\n  Start a spec task; the AI immediately drafts the spec and submits it for confirmation.\n/spec\n  Show the current spec task status.\n/spec approve\n  Approve the spec; the AI immediately implements it item by item with todo_write.\n/spec done\n  Mark complete and remove (the spec document is kept).\n/spec clear\n  Cancel the spec task (the spec document is kept).\n\nThe spec is saved to the session workspace as specs/&lt;feature&gt;/spec.md by default.</string>
     <string name="cmd_help_native_title">Local commands</string>
     <string name="cmd_help_plugin_title">Plugin commands</string>
     <string name="cmd_help_yolo">In Agent sessions you can use `/yolo` to skip normal command authorization for the current session; high-risk actions are still blocked.</string>
-    <string name="cmd_help_goal_spec">In Agent sessions, use `/goal` to set a long-term goal and `/spec` to run spec-driven development: draft a spec → `/spec approve` → implement it.</string>
+    <string name="cmd_help_goal_spec">Agent session goal and spec commands (long-press a command for the full usage):\n\n/goal &lt;goal&gt;: set the goal and inject it into each turn\'s context\n/goal: show · /goal done: complete and clear · /goal clear: cancel\n\n/spec &lt;feature&gt;: start a spec task; the AI immediately drafts the spec\n/spec: show status · /spec approve: approve and implement · /spec done: complete and remove · /spec clear: cancel</string>
     <string name="cmd_unknown_message">Unknown local command: `%1$s`</string>
     <string name="cmd_unknown_hint">Type `/help` to see the available local commands.</string>
 </resources>

@@ -42,12 +42,14 @@
     <string name="cmd_fortune_desc">今日の運勢を表示</string>
     <string name="cmd_goal_usage">/goal &lt;目標&gt; | /goal done | /goal clear</string>
     <string name="cmd_goal_desc">Agentセッションの長期的な目標を設定。AIは毎ターンその目標に向けて推進します（Agentセッションのみ）</string>
+    <string name="cmd_goal_detail">Agentセッション目標（Agentセッションのみ）：\n\n/goal &lt;目標&gt;\n  目標を設定し、毎ターンの文脈に注入。AIは目標に向けて推進します。\n/goal\n  現在の目標を表示。\n/goal done\n  目標を完了としてクリア。\n/goal clear\n  目標をキャンセルしてクリア。\n\n目標は完了またはクリアされるまで複数ターン有効です。メッセージを送ればAIが目標に向けて作業を続けます。</string>
     <string name="cmd_spec_usage">/spec &lt;機能&gt; | /spec approve | /spec done</string>
     <string name="cmd_spec_desc">仕様駆動開発：先に仕様書を起草し、承認後に仕様に沿って実装します（Agentセッションのみ）</string>
+    <string name="cmd_spec_detail">Agent仕様タスク（Agentセッションのみ）：\n\n/spec &lt;機能&gt;\n  仕様タスクを開始。AIが即座に仕様書を起草し、確認を求めます。\n/spec\n  現在の仕様タスクの状態を表示。\n/spec approve\n  仕様を承認。AIが即座にtodo_writeで仕様に沿って順に実装します。\n/spec done\n  完了として終了（仕様書は保持）。\n/spec clear\n  仕様タスクをキャンセル（仕様書は保持）。\n\n仕様書は既定でセッションワークスペースの specs/&lt;機能&gt;/spec.md に保存されます。</string>
     <string name="cmd_help_native_title">ローカルモードコマンド</string>
     <string name="cmd_help_plugin_title">プラグインコマンド</string>
     <string name="cmd_help_yolo">Agentセッションでは `/yolo` を使用して通常のコマンド許可をスキップできます。高リスク操作は引き続きブロックされます。</string>
-    <string name="cmd_help_goal_spec">Agentセッションでは `/goal` で長期目標を設定し、`/spec` で仕様駆動開発を開始できます：仕様起草 → `/spec approve` 承認 → 実装。</string>
+    <string name="cmd_help_goal_spec">Agentセッション目標・仕様コマンドの使い方（コマンド長押しで完全な説明）：\n\n/goal &lt;目標&gt;：目標を設定し毎ターンの文脈に注入\n/goal：表示 · /goal done：完了してクリア · /goal clear：キャンセル\n\n/spec &lt;機能&gt;：仕様タスクを開始し、AIが即座に仕様書を起草\n/spec：状態表示 · /spec approve：承認して実装 · /spec done：完了して終了 · /spec clear：キャンセル</string>
     <string name="cmd_unknown_message">未知のローカルコマンド：`%1$s`</string>
     <string name="cmd_unknown_hint">利用可能なコマンドは `/help` で確認できます。</string>
 </resources>

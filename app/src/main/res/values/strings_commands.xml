@@ -36,8 +36,10 @@
     <string name="cmd_fortune_desc">查看今日运势</string>
     <string name="cmd_goal_usage">/goal &lt;目标&gt; | /goal done | /goal clear</string>
     <string name="cmd_goal_desc">设置 Agent 会话长期目标，AI 每轮围绕目标推进（仅 Agent 会话）</string>
+    <string name="cmd_goal_detail">Agent 会话目标（仅 Agent 会话）：\n\n/goal &lt;目标&gt;\n  设置目标并注入每轮上下文，AI 围绕目标推进。\n/goal\n  查看当前目标。\n/goal done\n  标记目标完成并清除。\n/goal clear\n  取消目标并清除。\n\n设置后目标跨多轮持续有效，直到完成或取消；也可直接发送消息让 AI 围绕目标推进。</string>
     <string name="cmd_spec_usage">/spec &lt;功能&gt; | /spec approve | /spec done</string>
     <string name="cmd_spec_desc">规格驱动开发：先起草规格文档，批准后按规格实现（仅 Agent 会话）</string>
+    <string name="cmd_spec_detail">Agent 规格任务（仅 Agent 会话）：\n\n/spec &lt;功能&gt;\n  设置规格任务，AI 立即起草规格文档并提交确认。\n/spec\n  查看当前规格任务状态。\n/spec approve\n  批准规格，AI 立即按规格用 todo_write 逐项实现。\n/spec done\n  标记完成并移除（规格文档保留）。\n/spec clear\n  取消规格任务（规格文档保留）。\n\n规格文档默认保存到会话工作区 specs/&lt;功能&gt;/spec.md。</string>
     <string name="cmd_help_usage">/help</string>
     <string name="cmd_help_desc">查看本地命令帮助</string>
     <string name="cmd_status_usage">/status</string>
@@ -47,7 +49,7 @@
     <string name="cmd_help_native_title">本地模式命令</string>
     <string name="cmd_help_plugin_title">插件命令</string>
     <string name="cmd_help_yolo">Agent 会话还支持 `/yolo`，用于在当前会话中跳过常规命令授权；高风险操作仍会阻止。</string>
-    <string name="cmd_help_goal_spec">Agent 会话可用 `/goal` 设置长期目标，用 `/spec` 启动规格驱动开发：起草规格 → `/spec approve` 批准 → 按规格实现。</string>
+    <string name="cmd_help_goal_spec">Agent 会话目标与规格命令用法（长按命令可查看完整说明）：\n\n/goal &lt;目标&gt;：设置目标并注入每轮上下文\n/goal：查看当前目标 · /goal done：完成并清除 · /goal clear：取消\n\n/spec &lt;功能&gt;：设置规格任务，AI 立即起草规格文档\n/spec：查看状态 · /spec approve：批准后按规格实现 · /spec done：完成并移除 · /spec clear：取消</string>
     <string name="cmd_unknown_message">未知的本地命令：`%1$s`</string>
     <string name="cmd_unknown_hint">输入 `/help` 查看本地可用命令。</string>
 </resources>
