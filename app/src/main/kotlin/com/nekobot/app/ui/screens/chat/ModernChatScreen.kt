@@ -117,6 +117,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -161,7 +162,12 @@ fun ModernChatScreen(
     onOpenWorkspace: (String) -> Unit = {},
     onOpenStoryGraph: (String) -> Unit = {},
     onOpenWenku8Login: () -> Unit = {},
-    onJumpToLatest: () -> Unit = {}
+    onJumpToLatest: () -> Unit = {},
+    /**
+     * 底部悬浮导航栏避让间距：平板双栏嵌入会话页时，底栏胶囊悬浮在输入框之上，
+     * 传入 [LiquidGlassBottomBarClearance] 让输入区整体抬升；独立聊天页为 0。
+     */
+    embeddedBottomBarClearance: Dp = 0.dp
 ) {
     val viewModel: ChatViewModel = viewModel()
     val messages by viewModel.messages.collectAsStateWithLifecycle()
@@ -193,7 +199,9 @@ fun ModernChatScreen(
     onOpenStoryGraph = onOpenStoryGraph,
     externalListState = listState,
     customBottomBar = {
-        Column {
+        Column(
+            modifier = Modifier.padding(bottom = embeddedBottomBarClearance)
+        ) {
             if (agentRecovery != null && !sending) {
                 AgentRecoveryBar(
                     state = agentRecovery!!,

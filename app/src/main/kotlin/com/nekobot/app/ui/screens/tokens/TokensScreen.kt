@@ -437,10 +437,12 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(padding),
+            // 平板适配：宽屏下内容约束到最大宽度并水平居中，避免卡片整行拉伸
+            contentAlignment = Alignment.TopCenter
         ) {
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.widthIn(max = 720.dp).fillMaxSize(),
                 contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 110.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -976,8 +978,14 @@ private fun TokenHeroMetric(
 
 @Composable
 private fun TokenKeyMetrics(stats: TokenStats, records: List<TokenRecordUi>) {
-    val singleColumn = LocalConfiguration.current.screenWidthDp < 340 ||
-        LocalDensity.current.fontScale >= 1.3f
+    // 指标瓦片布局：窄屏或大字体单列；宽屏（>=720dp）一行四个；其余两列
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val bigFont = LocalDensity.current.fontScale >= 1.3f
+    val tilesPerRow = when {
+        screenWidthDp < 340 || bigFont -> 1
+        screenWidthDp >= 720 -> 4
+        else -> 2
+    }
     val activeSessionCount = stats.activeSessions?.takeIf { it > 0 }
         ?: records.asSequence()
             .map { it.sessionId.trim() }
@@ -1025,7 +1033,7 @@ private fun TokenKeyMetrics(stats: TokenStats, records: List<TokenRecordUi>) {
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         SectionHeader(title = stringResource(R.string.tokens_metrics_title))
         Spacer(Modifier.height(12.dp))
-        if (singleColumn) {
+        if (tilesPerRow == 1) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items.forEach { item ->
                     TokenStatTile(
@@ -1038,7 +1046,7 @@ private fun TokenKeyMetrics(stats: TokenStats, records: List<TokenRecordUi>) {
                 }
             }
         } else {
-            items.chunked(2).forEachIndexed { index, rowItems ->
+            items.chunked(tilesPerRow).forEachIndexed { index, rowItems ->
                 if (index > 0) Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     rowItems.forEach { item ->

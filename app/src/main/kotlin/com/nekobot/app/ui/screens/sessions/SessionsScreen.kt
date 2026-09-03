@@ -104,6 +104,7 @@ import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.EmptyState
 import com.nekobot.app.ui.navigation.Routes
+import com.nekobot.app.ui.navigation.LiquidGlassBottomBarClearance
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.NekoDialog
@@ -215,7 +216,9 @@ private fun TwoPaneSessionsWrapper(
                         onOpenWorkspace = {},
                         onOpenStoryGraph = onOpenStoryGraph,
                         onOpenWenku8Login = onOpenWenku8Login,
-                        onJumpToLatest = {}
+                        onJumpToLatest = {},
+                        // 平板双栏：底部悬浮导航栏盖住输入框，输入区整体抬升避让
+                        embeddedBottomBarClearance = LiquidGlassBottomBarClearance
                     )
                 } else {
                     Box(

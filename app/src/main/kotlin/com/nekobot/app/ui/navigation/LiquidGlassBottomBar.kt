@@ -59,6 +59,12 @@ private val IndicatorInset = 6.dp
 private val IndicatorCorner = 22.dp
 
 /**
+ * 悬浮底栏（含上下边距）在系统导航栏之上占据的总高度：64 + 10 * 2 = 84dp。
+ * 平板双栏等场景下，嵌入内容底部需要预留该高度，避免被底栏胶囊遮挡。
+ */
+val LiquidGlassBottomBarClearance: Dp = BarHeight + BarVerticalPadding * 2
+
+/**
  * 苹果风格「圆岛」底部导航：悬浮的液态玻璃胶囊 + 在标签间平滑滚动切换的选中指示器。
  * 指示器的左右两条边采用不同刚度的弹簧，滑动过程中会短暂拉伸再回弹，营造液态形变效果。
  *

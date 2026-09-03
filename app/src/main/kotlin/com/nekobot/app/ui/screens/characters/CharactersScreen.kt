@@ -245,7 +245,9 @@ fun CharactersScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(MaterialTheme.colorScheme.background)
+                .background(MaterialTheme.colorScheme.background),
+            // 宽屏下列表视图被约束到最大宽度后水平居中（网格视图铺满全宽不受影响）
+            contentAlignment = Alignment.TopCenter
         ) {
             if (characters.isEmpty() && !loading) {
                 EmptyState(
@@ -262,7 +264,8 @@ fun CharactersScreen(
                 )
             } else if (viewMode == CharacterViewMode.LIST) {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    // 平板宽屏：列表卡片约束最大宽度居中，避免整行卡片被横向拉伸
+                    modifier = Modifier.widthIn(max = 720.dp).fillMaxSize(),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 110.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -283,14 +286,16 @@ fun CharactersScreen(
             } else {
                 // 卡片网格视图
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
+                    // 平板适配：按宽度自适应列数（每列最小 160dp），
+                    // 避免固定 2 列在宽屏下把卡片拉成横长方形
+                    columns = GridCells.Adaptive(160.dp),
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 110.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     if (error != null) {
-                        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
+                        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                             ErrorBanner(message = error!!, onRetry = {
                                 viewModel.clearError()
                                 viewModel.load()
@@ -427,12 +432,12 @@ private fun CharacterGridItem(character: CharacterPreset, onClick: () -> Unit) {
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 上方：角色立绘（方形，圆角）
+            // 上方：角色立绘（1:1 方形，圆角）——随卡片宽度等比缩放，宽屏下不再被压扁成横长方形
             val portraitUrl = character.avatarUrl?.let { resolveImageUrl(it) }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp)
+                    .aspectRatio(1f)
                     .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center
