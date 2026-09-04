@@ -312,4 +312,15 @@
     <string name="agent_spec_banner_label">Spec</string>
     <string name="agent_spec_status_draft">Awaiting approval</string>
     <string name="agent_spec_status_approved">Implementing</string>
+
+    <!-- ==================== Git change summary card ==================== -->
+    <string name="agent_git_step_name">File changes (git)</string>
+    <string name="agent_git_files_changed">%1$d files changed</string>
+    <string name="agent_git_modified">Modified</string>
+    <string name="agent_git_added">Added</string>
+    <string name="agent_git_deleted">Deleted</string>
+    <string name="agent_git_files_truncated">Too many files; showing first 30</string>
+    <string name="agent_git_binary">Binary file, no text diff</string>
+    <string name="agent_git_unavailable">Baseline unreadable; status only</string>
+    <string name="agent_git_truncated">Diff too long, truncated</string>
 </resources>

@@ -3,8 +3,10 @@ package com.nekobot.app.data.local.ai
 import com.google.gson.Gson
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalImageResult
+import com.nekobot.app.data.local.WorkspaceGitDiff
 import com.nekobot.app.data.local.db.BuiltinTools
 import com.nekobot.app.data.repository.Resource
+import com.nekobot.app.data.model.GitDiffSummary
 import com.nekobot.app.data.remote.ExecAuthorization
 import com.nekobot.app.data.remote.ExecConfirmationRequest
 import okhttp3.MediaType.Companion.toMediaType
@@ -207,6 +209,11 @@ internal class LocalAgentToolExecutor(
     private val MAX_TODO_CONTENT_LENGTH = 200
     private val workspace = workspaceRoot?.canonicalFile
     private val sharedWorkspace = sharedWorkspaceRoot?.canonicalFile
+    /**
+     * 本次会话中已成功变更（创建/编辑/删除）的工作区文件相对路径集合（去重、保持顺序）。
+     * 用于 Agent 工具执行成功后，在进度卡片上展示 git 变更摘要与逐文件 diff。
+     */
+    private val changedPaths = LinkedHashSet<String>()
     private val androidToolExecutor by lazy {
         LocalAndroidToolExecutor(
             context = ServiceContainer.appContext,
@@ -638,6 +645,9 @@ internal class LocalAgentToolExecutor(
 
         val context = ServiceContainer.appContext
             ?: return failure("应用上下文不可用，无法启动 Linux 沙盒")
+        // exec 可能通过 shell 直接创建/修改/删除工作区文件（echo > file、cp、git 等），
+        // 执行前后对工作区做快照对比，把这些变更纳入 git 摘要追踪。
+        val snapshotBefore = snapshotWorkspaceFiles()
         val result = runCatching {
             LocalLinuxSandboxCoordinator.execute(
                 context = context,
@@ -656,6 +666,7 @@ internal class LocalAgentToolExecutor(
                 "working_directory" to "/workspace",
             )
         }
+        recordWorkspaceChanges(snapshotBefore)
 
         if (result.stopped || generationController.isStopped) {
             return stoppedFailure(
@@ -867,6 +878,7 @@ internal class LocalAgentToolExecutor(
             ?: return failure("路径为空或超出会话工作区")
         target.parentFile?.mkdirs()
         target.writeText(args.string("content"), Charsets.UTF_8)
+        recordChangedPath(relativeWorkspacePath(target))
         return success(
             "path" to relativeWorkspacePath(target),
             "absolute_path" to target.canonicalPath,
@@ -901,6 +913,7 @@ internal class LocalAgentToolExecutor(
             original.replaceFirst(oldString, newString)
         }
         target.writeText(updated, Charsets.UTF_8)
+        recordChangedPath(relativeWorkspacePath(target))
         return success(
             "path" to relativeWorkspacePath(target),
             "absolute_path" to target.canonicalPath,
@@ -920,6 +933,7 @@ internal class LocalAgentToolExecutor(
         } else {
             target.writeText(content, Charsets.UTF_8)
         }
+        recordChangedPath(relativeWorkspacePath(target))
         return success(
             "path" to "/workspace/${relativeWorkspacePath(target)}",
             "absolute_path" to target.canonicalPath,
@@ -950,6 +964,7 @@ internal class LocalAgentToolExecutor(
             original.replaceFirst(oldString, newString)
         }
         target.writeText(updated, Charsets.UTF_8)
+        recordChangedPath(relativeWorkspacePath(target))
         return success(
             "path" to "/workspace/${relativeWorkspacePath(target)}",
             "absolute_path" to target.canonicalPath,
@@ -1035,6 +1050,7 @@ internal class LocalAgentToolExecutor(
         val relativePath = relativeWorkspacePath(target)
         val absolutePath = target.canonicalPath
         return if (target.delete()) {
+            recordChangedPath(relativePath)
             success("path" to relativePath, "absolute_path" to absolutePath)
         }
         else failure("删除失败")
@@ -1096,6 +1112,7 @@ internal class LocalAgentToolExecutor(
         }
 
         val result = EpubTextExtractor.extract(source, output)
+        recordChangedPath(relativeWorkspacePath(output))
         return success(
             "source_path" to relativeWorkspacePath(source),
             "source_absolute_path" to source.canonicalPath,
@@ -1163,6 +1180,76 @@ internal class LocalAgentToolExecutor(
         }
         val root = workspace ?: return file.name
         return file.relativeTo(root).path.replace(File.separatorChar, '/').ifBlank { "." }
+    }
+
+    /** 记录一次成功变更的相对路径（去重保序）。 */
+    private fun recordChangedPath(relativePath: String) {
+        if (relativePath.isNotBlank() && relativePath != ".") {
+            changedPaths.add(relativePath.removePrefix("/workspace/"))
+        }
+    }
+
+    /**
+     * 工作区文件快照：相对路径 → (size, lastModified)。
+     * 仅覆盖会话工作区（exec 沙盒挂载点）；跳过 .git 内部，避免把仓库元数据当变更。
+     * 大数据量时截断扫描，保证 exec 高频调用不卡顿。
+     */
+    internal fun snapshotWorkspaceFiles(): Map<String, Pair<Long, Long>> {
+        val root = workspace ?: return emptyMap()
+        if (!root.isDirectory) return emptyMap()
+        val result = LinkedHashMap<String, Pair<Long, Long>>()
+        val MAX_SNAPSHOT_FILES = 20_000
+        val MAX_SNAPSHOT_DEPTH = 24
+        fun walk(dir: File, prefix: String, depth: Int) {
+            if (result.size >= MAX_SNAPSHOT_FILES || depth > MAX_SNAPSHOT_DEPTH) return
+            val children = dir.listFiles() ?: return
+            for (child in children) {
+                if (result.size >= MAX_SNAPSHOT_FILES) return
+                val name = child.name
+                if (name == ".git") continue
+                val rel = if (prefix.isEmpty()) name else "$prefix/$name"
+                if (child.isDirectory) {
+                    walk(child, rel, depth + 1)
+                } else if (child.isFile) {
+                    result[rel] = child.length() to child.lastModified()
+                }
+            }
+        }
+        walk(root, "", 0)
+        return result
+    }
+
+    /** 对比 exec 前后快照，把新增/修改/删除的文件纳入 [changedPaths]。 */
+    internal fun recordWorkspaceChanges(before: Map<String, Pair<Long, Long>>) {
+        val after = snapshotWorkspaceFiles()
+        val keys = LinkedHashSet<String>()
+        keys.addAll(before.keys)
+        keys.addAll(after.keys)
+        for (rel in keys) {
+            val prev = before[rel]
+            val next = after[rel]
+            if (prev == next) continue // 均不存在或完全一致
+            recordChangedPath(rel)
+        }
+    }
+
+    /** 当前会话已成功变更的工作区相对路径快照（诊断与测试共用）。 */
+    fun currentChangedPaths(): Set<String> = changedPaths.toSet()
+
+    /**
+     * 计算当前工作区在已变更路径上的 git 变更摘要。
+     * - 仅本地 Agent 模式、且工作区位于 git 追踪目录时才返回非空。
+     * - 无变更路径、无可追踪 git 仓库或 HEAD 缺失时返回 null（UI 不渲染）。
+     * 内部自行容错，绝不会抛异常。
+     */
+    fun currentGitDiffSummary(): GitDiffSummary? {
+        val root = workspace ?: return null
+        if (changedPaths.isEmpty()) return null
+        return try {
+            WorkspaceGitDiff.summarize(root, changedPaths.toList())
+        } catch (e: Exception) {
+            null
+        }
     }
 
     private fun fetchText(url: String): String {

@@ -277,7 +277,9 @@ data class ThinkingStep(
     val arguments: Map<String, Any>? = null,
     @SerializedName("full_result") val fullResult: Any? = null,
     @SerializedName("result_truncated") val resultTruncated: Boolean? = null,
-    @SerializedName("thinking_content") val thinkingContent: String? = null
+    @SerializedName("thinking_content") val thinkingContent: String? = null,
+    /** 文件变更 git 摘要（仅本地 Agent 模式成功变更 git 追踪文件时产生）；未用 Gson 默认忽略 */
+    val gitDiff: GitDiffSummary? = null
 )
 
 /**

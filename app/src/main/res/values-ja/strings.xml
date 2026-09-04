@@ -312,4 +312,15 @@
     <string name="agent_spec_banner_label">仕様</string>
     <string name="agent_spec_status_draft">承認待ち</string>
     <string name="agent_spec_status_approved">実装中</string>
+
+    <!-- ==================== ファイル変更 git サマリーカード ==================== -->
+    <string name="agent_git_step_name">ファイル変更（git）</string>
+    <string name="agent_git_files_changed">全 %1$d ファイルが変更</string>
+    <string name="agent_git_modified">変更</string>
+    <string name="agent_git_added">追加</string>
+    <string name="agent_git_deleted">削除</string>
+    <string name="agent_git_files_truncated">ファイルが多すぎるため先頭 30 件のみ表示</string>
+    <string name="agent_git_binary">バイナリファイルのため差分を非表示</string>
+    <string name="agent_git_unavailable">ベースラインを読めないため状態のみ表示</string>
+    <string name="agent_git_truncated">差分が長すぎるため省略</string>
 </resources>

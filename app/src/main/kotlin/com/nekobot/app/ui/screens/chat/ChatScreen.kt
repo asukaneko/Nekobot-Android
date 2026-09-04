@@ -3246,11 +3246,16 @@ private fun ProgressCard(
         borderWidth = 0,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 10.dp)
     ) {
-        // 头部：图标 + 内容文本 + 展开开关
+        // 头部：图标 + 内容文本 + 展开开关（禁用水波纹遮罩）
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onExpandedChange(!expanded) },
+                .clickable(
+                    interactionSource = remember {
+                        androidx.compose.foundation.interaction.MutableInteractionSource()
+                    },
+                    indication = null
+                ) { onExpandedChange(!expanded) },
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (hasError) {
@@ -3322,6 +3327,18 @@ private fun ProgressCard(
             LocalBrowserPreview(sessionId = sessionId)
         }
 
+        // 文件变更 git 摘要区域：始终渲染（不随卡片折叠），逐文件 diff 可展开
+        val gitSummary = card.steps.firstNotNullOfOrNull { it.gitDiff }
+        if (gitSummary != null && gitSummary.hasChanges) {
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                thickness = 0.5.dp
+            )
+            Spacer(Modifier.height(6.dp))
+            GitDiffSummarySection(summary = gitSummary)
+        }
+
         // 步骤列表（可折叠）
         if (expanded && card.steps.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
@@ -3332,7 +3349,10 @@ private fun ProgressCard(
             Spacer(Modifier.height(6.dp))
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 card.steps.forEach { step ->
-                    ProgressStepRow(step, onStepClick = onStepClick)
+                    // git_diff 步骤的内容已在卡片头部的摘要区展示，避免重复
+                    if (!step.type.equals("git_diff", ignoreCase = true)) {
+                        ProgressStepRow(step, onStepClick = onStepClick)
+                    }
                 }
             }
         }
@@ -3462,6 +3482,267 @@ private fun ProgressStepRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 文件变更 git 摘要卡片区域：始终显示于进度卡片头部之下。
+ *
+ * 顶部展示仓库名/分支与总增减行数；下方列出变更文件，每个文件可展开查看
+ * 完整的统一 diff 内容（上下文 3 行）。超过上限或被截断的文件显示提示。
+ */
+@Composable
+private fun GitDiffSummarySection(
+    summary: com.nekobot.app.data.model.GitDiffSummary
+) {
+    val addColor = Color(0xFF2EA043)
+    val delColor = Color(0xFFCF6679)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // 头部：标题 + 仓库/分支 + 总增减
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = summary.repoName.ifBlank { "git" },
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (!summary.branch.isNullOrBlank()) {
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = summary.branch,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
+            }
+            if (summary.totalAdditions > 0 || summary.totalDeletions > 0) {
+                Spacer(Modifier.width(10.dp))
+                DiffStatText(
+                    additions = summary.totalAdditions,
+                    deletions = summary.totalDeletions,
+                    addColor = addColor,
+                    delColor = delColor
+                )
+            }
+        }
+
+        if (summary.filesTruncated) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = stringResource(R.string.agent_git_files_truncated),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Spacer(Modifier.height(6.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            summary.files.forEach { file ->
+                GitDiffFileRow(file, addColor = addColor, delColor = delColor)
+            }
+        }
+    }
+}
+
+/** 新增/删除行数统计，绿色 + 红色。 */
+@Composable
+private fun DiffStatText(
+    additions: Int,
+    deletions: Int,
+    addColor: Color,
+    delColor: Color
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (additions > 0) {
+            Text(
+                text = "+$additions",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = addColor
+            )
+        }
+        if (deletions > 0) {
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = "−$deletions",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = delColor
+            )
+        }
+    }
+}
+
+/** 单个变更文件行：路径 + 状态标签 + 增删计数，可展开查看 diff 块。 */
+@Composable
+private fun GitDiffFileRow(
+    file: com.nekobot.app.data.model.GitDiffFile,
+    addColor: Color,
+    delColor: Color
+) {
+    var expanded by remember(file.path) { mutableStateOf(false) }
+    // 禁用点击时的白色圆形水波纹遮罩（ripple），仅保留展开/收起行为
+    val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val (statusLabel, statusColor) = when (file.status) {
+        com.nekobot.app.data.model.GitDiffFile.STATUS_ADDED -> {
+            stringResource(R.string.agent_git_added) to addColor
+        }
+        com.nekobot.app.data.model.GitDiffFile.STATUS_DELETED -> {
+            stringResource(R.string.agent_git_deleted) to delColor
+        }
+        else -> stringResource(R.string.agent_git_modified) to MaterialTheme.colorScheme.primary
+    }
+    val hasContent = file.hunks.isNotEmpty()
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.35f))
+            .then(
+                if (hasContent) {
+                    Modifier.clickable(
+                        interactionSource = interactionSource,
+                        indication = null
+                    ) { expanded = !expanded }
+                } else {
+                    Modifier
+                }
+            )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = file.path,
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (file.additions > 0 || file.deletions > 0) {
+                Spacer(Modifier.width(6.dp))
+                DiffStatText(file.additions, file.deletions, addColor, delColor)
+            }
+            Spacer(Modifier.width(6.dp))
+            androidx.compose.material3.Surface(
+                shape = RoundedCornerShape(4.dp),
+                color = statusColor.copy(alpha = 0.14f)
+            ) {
+                Text(
+                    text = statusLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = statusColor,
+                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                )
+            }
+            if (hasContent) {
+                Spacer(Modifier.width(4.dp))
+                Icon(
+                    imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+
+        if (expanded && hasContent) {
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                thickness = 0.5.dp
+            )
+            // LazyColumn 子项以无限高度测量：内嵌滚动必须给出有界最大高度，
+            // 否则触发 "Vertically scrollable component was measured with an infinity
+            // maximum height constraints" 崩溃。
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 320.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                file.hunks.forEach { hunk ->
+                    Text(
+                        text = hunk.header,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                    hunk.lines.forEach { line ->
+                        val bg = when (line.kind) {
+                            com.nekobot.app.data.model.GitDiffLine.KIND_ADD -> addColor.copy(alpha = 0.14f)
+                            com.nekobot.app.data.model.GitDiffLine.KIND_DEL -> delColor.copy(alpha = 0.14f)
+                            else -> Color.Transparent
+                        }
+                        val textColor = when (line.kind) {
+                            com.nekobot.app.data.model.GitDiffLine.KIND_ADD -> addColor
+                            com.nekobot.app.data.model.GitDiffLine.KIND_DEL -> delColor
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                        val prefix = when (line.kind) {
+                            com.nekobot.app.data.model.GitDiffLine.KIND_ADD -> "+"
+                            com.nekobot.app.data.model.GitDiffLine.KIND_DEL -> "−"
+                            else -> " "
+                        }
+                        Text(
+                            text = prefix + " " + line.text,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            color = textColor,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(bg)
+                                .padding(horizontal = 10.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
+            if (file.truncated) {
+                Text(
+                    text = stringResource(R.string.agent_git_truncated),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                )
+            }
+        } else if (expanded || !hasContent) {
+            // 二进制/不可读/被截断：即使没有可展开内容也给出状态说明
+            val note = when {
+                file.binary -> stringResource(R.string.agent_git_binary)
+                file.unavailable -> stringResource(R.string.agent_git_unavailable)
+                else -> null
+            }
+            if (note != null) {
+                Text(
+                    text = note,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                 )
             }
         }

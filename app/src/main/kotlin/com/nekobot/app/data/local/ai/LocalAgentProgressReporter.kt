@@ -3,6 +3,7 @@ package com.nekobot.app.data.local.ai
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalRepository
+import com.nekobot.app.data.model.GitDiffSummary
 import com.nekobot.app.data.model.ThinkingCard
 import com.nekobot.app.data.model.ThinkingStep
 import java.util.Locale
@@ -273,5 +274,32 @@ internal class LocalAgentProgressReporter(
         val doneText = progressText(R.string.agent_progress_done, "处理完成")
         steps.add(ThinkingStep(type = "done", name = doneText, status = "done"))
         emit(doneText, isComplete = true)
+    }
+
+    /**
+     * 将最新的 git 变更摘要附加到进度卡片（类型 git_diff，status=done）。
+     * 覆盖或追加一个 git_diff 步骤，使进度卡与列表 UI 都能通过 _reported_ git 摘要展示变更。
+     * 若 summary 为 null（无 git 追踪/无变更），则不改变已有步骤。
+     */
+    fun attachGitDiff(summary: GitDiffSummary?, contentOverride: String? = null) {
+        if (summary == null) return
+        val index = steps.indexOfLast { it.type == "git_diff" }
+        val step = ThinkingStep(
+            type = "git_diff",
+            name = progressText(
+                R.string.agent_git_step_name,
+                "文件变更（git）"
+            ),
+            status = "done",
+            detail = contentOverride
+                ?: progressText(R.string.agent_git_files_changed, "共 %1\$d 个文件变更", summary.files.size),
+            gitDiff = summary
+        )
+        if (index >= 0) {
+            steps[index] = step
+        } else {
+            steps.add(step)
+        }
+        emit(contentOverride ?: progressText(R.string.agent_git_files_changed, "共 %1\$d 个文件变更", summary.files.size))
     }
 }

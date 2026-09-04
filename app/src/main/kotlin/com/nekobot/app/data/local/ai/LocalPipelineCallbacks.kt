@@ -1212,7 +1212,51 @@ internal class LocalPipelineCallbacks(
         if (toolName in localDbToolIds) {
             return dbToolExecutor?.invoke(toolName, args) ?: localDbToolExecutor.execute(toolName, args)
         }
-        return localToolExecutor.execute(toolName, args)
+        val result = localToolExecutor.execute(toolName, args)
+        maybeAttachGitDiff(toolName, result)
+        return result
+    }
+
+    /** 文件变更类工具集：工具成功后据此刷新 git 变更摘要卡片。 */
+    private val fileMutationTools = setOf(
+        "workspace_create_file",
+        "workspace_edit_file",
+        "file_write",
+        "file_edit",
+        "workspace_delete_file",
+        "workspace_extract_epub",
+        // exec 可经由 shell 直接写工作区（echo > file、cp、git 等），
+        // 执行前后快照对比纳入追踪。
+        "exec_command"
+    )
+
+    /**
+     * 本地 Agent 模式下，文件变更类工具成功后把最新的 git 变更摘要附加到当前进度卡片。
+     * 非 Agent 会话、非文件工具或摘要为空时直接跳过，绝不抛异常。
+     */
+    private fun maybeAttachGitDiff(toolName: String, result: Map<String, Any>) {
+        if (!session.sessionMode.equals("agent", ignoreCase = true)) return
+        if (toolName !in fileMutationTools) return
+        if (result["success"] != true) return
+        val reporter = activeAgentProgressReporter ?: run {
+            com.nekobot.app.data.local.LocalLogger.w(TAG, "maybeAttachGitDiff: activeAgentProgressReporter 为空，跳过 git 摘要")
+            return
+        }
+        val changed = localToolExecutor.currentChangedPaths()
+        if (changed.isEmpty()) {
+            com.nekobot.app.data.local.LocalLogger.w(TAG, "maybeAttachGitDiff: changedPaths 为空，跳过 git 摘要")
+            return
+        }
+        runCatching {
+            val summary = localToolExecutor.currentGitDiffSummary()
+            com.nekobot.app.data.local.LocalLogger.i(
+                TAG,
+                "maybeAttachGitDiff: tool=$toolName changed=$changed summary=${summary?.files?.size ?: "null"}"
+            )
+            reporter.attachGitDiff(summary)
+        }.onFailure { e ->
+            com.nekobot.app.data.local.LocalLogger.w(TAG, "附加 git 变更摘要失败: ${e.message}")
+        }
     }
 
     /**
