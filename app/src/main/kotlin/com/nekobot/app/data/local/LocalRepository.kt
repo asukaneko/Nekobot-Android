@@ -2519,10 +2519,10 @@ class LocalRepository(
         rawPeriod: String,
         progressReporter: LocalCommandProgressReporter?
     ): String {
-        val period = try {
-            parseLocalJmRankingPeriod(rawPeriod)
+        val rankingRequest = try {
+            parseLocalJmRankingRequest(rawPeriod)
         } catch (error: Exception) {
-            val message = error.message ?: "格式：`/jmrank [周排行|月排行]`"
+            val message = error.message ?: "格式：`/jmrank [周排行|月排行] [数量]`"
             progressReporter?.update(
                 content = "JM 排行参数错误",
                 progress = 0,
@@ -2534,6 +2534,7 @@ class LocalRepository(
             )
             return message
         }
+        val period = rankingRequest.period
         val currentProgress = AtomicInteger(0)
 
         suspend fun report(
@@ -2563,7 +2564,7 @@ class LocalRepository(
 
         return try {
             val entries = withContext(Dispatchers.IO) {
-                localJmRankingClient.fetchRanking(period)
+                localJmRankingClient.fetchRanking(period, limit = rankingRequest.limit)
             }
             report(
                 content = "处理 JM ${period.displayName}",
@@ -2716,9 +2717,10 @@ class LocalRepository(
         rawQuery: String,
         progressReporter: LocalCommandProgressReporter?
     ): String {
-        val query = rawQuery.trim()
-        if (query.isBlank()) {
-            val message = "格式：`/jm_search <关键词或漫画ID>`"
+        val searchRequest = try {
+            parseLocalJmSearchRequest(rawQuery)
+        } catch (error: Exception) {
+            val message = error.message ?: "格式：`/jm_search <关键词或漫画ID> [数量]`"
             progressReporter?.update(
                 content = "JM 搜索参数错误",
                 progress = 0,
@@ -2730,6 +2732,7 @@ class LocalRepository(
             )
             return message
         }
+        val query = searchRequest.query
         val directAlbumId = query.takeIf { it.matches(Regex("\\d+")) }
         val currentProgress = AtomicInteger(0)
 
@@ -2761,7 +2764,7 @@ class LocalRepository(
         return try {
             val entries = withContext(Dispatchers.IO) {
                 if (directAlbumId == null) {
-                    localJmRankingClient.searchSite(query)
+                    localJmRankingClient.searchSite(query, limit = searchRequest.limit)
                 } else {
                     localJmRankingClient.fetchAlbum(directAlbumId).let { album ->
                         listOf(LocalJmSearchEntry(album.id, album.title))

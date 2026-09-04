@@ -25,8 +25,8 @@ internal object BuiltInPlugins {
                 commands = listOf(
                     PluginCommandManifest(
                         name = "jmrank",
-                        usage = "/jmrank [周排行|月排行]",
-                        description = "生成带封面和详情链接的 JM 周榜或月榜 HTML"
+                        usage = "/jmrank [周排行|月排行] [数量]",
+                        description = "生成带封面和详情链接的 JM 周榜或月榜 HTML，末尾可加数量（1-150）"
                     ),
                     PluginCommandManifest(
                         name = "jm",
@@ -35,8 +35,8 @@ internal object BuiltInPlugins {
                     ),
                     PluginCommandManifest(
                         name = "jm_search",
-                        usage = "/jm_search <关键词或漫画ID>",
-                        description = "搜索 JM 漫画并生成带封面的 HTML"
+                        usage = "/jm_search <关键词或漫画ID> [数量]",
+                        description = "搜索 JM 漫画并生成带封面的 HTML，末尾可加数量（1-150）"
                     )
                 ),
                 enabled = true,

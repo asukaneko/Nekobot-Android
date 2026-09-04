@@ -79,8 +79,16 @@ class LocalSlashCommandsTest {
         val rank = LocalSlashCommands.parse("/jmrank 周排行")
         assertEquals(LocalCommandAction.JM_RANK, rank?.action)
 
+        val rankWithCount = LocalSlashCommands.parse("/jmrank 月排行 20")
+        assertEquals(LocalCommandAction.JM_RANK, rankWithCount?.action)
+        assertEquals("月排行 20", rankWithCount?.args)
+
         val search = LocalSlashCommands.parse("/jm_search 测试")
         assertEquals(LocalCommandAction.JM_SEARCH, search?.action)
+
+        val searchWithCount = LocalSlashCommands.parse("/jm_search 测试 20")
+        assertEquals(LocalCommandAction.JM_SEARCH, searchWithCount?.action)
+        assertEquals("测试 20", searchWithCount?.args)
     }
 
     @Test
@@ -201,9 +209,9 @@ class LocalSlashCommandsTest {
         assertTrue(help.contains("/calc"))
         assertTrue(help.contains("/export"))
         assertTrue(help.contains("/note"))
-        assertTrue(help.contains("/jmrank"))
+        assertTrue(help.contains("/jmrank [周排行|月排行] [数量]"))
         assertTrue(help.contains("/jm <漫画ID>"))
-        assertTrue(help.contains("/jm_search <关键词或漫画ID>"))
+        assertTrue(help.contains("/jm_search <关键词或漫画ID> [数量]"))
         assertTrue(help.contains("/wenku8_login"))
         assertTrue(help.contains("/yolo"))
         assertFalse(help.contains("依赖 Python"))

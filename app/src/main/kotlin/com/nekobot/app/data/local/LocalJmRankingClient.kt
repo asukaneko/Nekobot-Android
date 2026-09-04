@@ -71,6 +71,16 @@ internal data class LocalJmDownloadRequest(
     val force: Boolean
 )
 
+internal data class LocalJmRankingRequest(
+    val period: LocalJmRankingPeriod,
+    val limit: Int
+)
+
+internal data class LocalJmSearchRequest(
+    val query: String,
+    val limit: Int
+)
+
 internal data class LocalJmApiSession(
     val domain: String,
     val appVersion: String,
@@ -115,7 +125,7 @@ internal class LocalJmRankingClient(
 
     /**
      * 搜索 JM 站内漫画。协议与 jmcomic 的 search_site 保持一致：
-     * `main_tag=0`、按最新排序，并最多合并前五页结果。
+     * `main_tag=0`、按最新排序，并最多合并前十页结果。
      */
     fun searchSite(
         query: String,
@@ -322,17 +332,27 @@ internal class LocalJmRankingClient(
         limit: Int
     ): List<LocalJmRankingEntry> {
         val session = createApiSession(domain)
-        val rankingPayload = requestEncryptedApi(
-            session = session,
-            path = "categories/filter",
-            query = mapOf(
-                "page" to "1",
-                "order" to "",
-                "c" to "0",
-                "o" to period.order
+        val entries = mutableListOf<LocalJmRankingEntry>()
+        val seenIds = mutableSetOf<String>()
+        for (page in 1..MAX_RANKING_PAGES) {
+            val payload = requestEncryptedApi(
+                session = session,
+                path = "categories/filter",
+                query = mapOf(
+                    "page" to page.toString(),
+                    "order" to "",
+                    "c" to "0",
+                    "o" to period.order
+                )
             )
-        )
-        return parseJmRankingPayload(rankingPayload, limit)
+            val pageEntries = parseJmRankingPayload(payload, limit - entries.size)
+            if (pageEntries.isEmpty()) break
+            pageEntries.forEach { entry ->
+                if (seenIds.add(entry.id)) entries += entry
+            }
+            if (entries.size >= limit) break
+        }
+        return entries.take(limit)
     }
 
     private fun searchSiteFromDomain(
@@ -484,9 +504,10 @@ internal class LocalJmRankingClient(
     )
 
     companion object {
-        private const val MAX_RANKING_SIZE = 50
-        private const val MAX_SEARCH_PAGES = 5
-        private const val MAX_SEARCH_SIZE = 50
+        private const val MAX_RANKING_SIZE = 150
+        private const val MAX_RANKING_PAGES = 10
+        private const val MAX_SEARCH_PAGES = 10
+        private const val MAX_SEARCH_SIZE = 150
         private const val INITIAL_APP_VERSION = "2.0.28"
         private const val APP_SECRET = "185Hcomic3PAPP7R"
         private const val APP_CONTENT_SECRET = "18comicAPPContent"
@@ -537,8 +558,53 @@ internal fun parseLocalJmRankingPeriod(raw: String): LocalJmRankingPeriod =
     when (raw.trim().lowercase()) {
         "", "周", "周排行", "week", "w" -> LocalJmRankingPeriod.WEEK
         "月", "月排行", "month", "m" -> LocalJmRankingPeriod.MONTH
-        else -> throw IllegalArgumentException("格式：`/jmrank [周排行|月排行]`")
+        else -> throw IllegalArgumentException("格式：`/jmrank [周排行|月排行] [数量]`")
     }
+
+/**
+ * 解析 `/jmrank [周排行|月排行] [数量]`：周期缺省为周排行，数量缺省为 150（1..150）。
+ */
+internal fun parseLocalJmRankingRequest(raw: String): LocalJmRankingRequest {
+    val parts = raw.trim()
+        .split(Regex("\\s+"))
+        .filter { it.isNotBlank() }
+    var period: LocalJmRankingPeriod? = null
+    var limit: Int? = null
+    for (part in parts) {
+        val periodCandidate = runCatching { parseLocalJmRankingPeriod(part) }.getOrNull()
+        when {
+            periodCandidate != null -> period = periodCandidate
+            part.matches(Regex("\\d+")) -> limit = part.toInt().coerceIn(1, 150)
+            else -> throw IllegalArgumentException("格式：`/jmrank [周排行|月排行] [数量]`")
+        }
+    }
+    return LocalJmRankingRequest(
+        period = period ?: LocalJmRankingPeriod.WEEK,
+        limit = limit ?: 150
+    )
+}
+
+/**
+ * 解析 `/jm_search <关键词或漫画ID> [数量]`：末尾的纯数字视为数量（1..150），
+ * 其余部分作为搜索关键词；缺省数量为 150。
+ */
+internal fun parseLocalJmSearchRequest(raw: String): LocalJmSearchRequest {
+    val trimmed = raw.trim()
+    require(trimmed.isNotBlank()) { "格式：`/jm_search <关键词或漫画ID> [数量]`" }
+    val parts = trimmed
+        .split(Regex("\\s+"))
+        .filter { it.isNotBlank() }
+    val last = parts.last()
+    val trailingCount = parts.size >= 2 && last.matches(Regex("\\d+"))
+    return if (trailingCount) {
+        LocalJmSearchRequest(
+            query = parts.dropLast(1).joinToString(" "),
+            limit = last.toInt().coerceIn(1, 150)
+        )
+    } else {
+        LocalJmSearchRequest(query = trimmed, limit = 150)
+    }
+}
 
 internal fun parseLocalJmDownloadRequest(raw: String): LocalJmDownloadRequest {
     val parts = raw.trim()
@@ -560,7 +626,7 @@ internal fun parseLocalJmDownloadRequest(raw: String): LocalJmDownloadRequest {
 
 internal fun parseJmRankingPayload(
     payload: JsonObject,
-    limit: Int = 50
+    limit: Int = 150
 ): List<LocalJmRankingEntry> =
     payload.getAsJsonArray("content")
         ?.mapNotNull { element ->
@@ -578,12 +644,12 @@ internal fun parseJmRankingPayload(
                 .orEmpty()
             if (id.isBlank() || title.isBlank()) null else LocalJmRankingEntry(id, title)
         }
-        ?.take(limit.coerceIn(1, 50))
+        ?.take(limit.coerceIn(1, 150))
         .orEmpty()
 
 internal fun parseJmSearchPayload(
     payload: JsonObject,
-    limit: Int = 50
+    limit: Int = 150
 ): List<LocalJmSearchEntry> =
     payload.getAsJsonArray("content")
         ?.mapNotNull { element ->
@@ -597,7 +663,7 @@ internal fun parseJmSearchPayload(
                 author = item.jmAuthorValue()
             )
         }
-        ?.take(limit.coerceIn(1, 50))
+        ?.take(limit.coerceIn(1, 150))
         .orEmpty()
 
 internal fun buildJmCoverCandidates(albumId: String): List<LocalJmCoverCandidate> {

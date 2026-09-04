@@ -24,6 +24,72 @@ class LocalJmRankingClientTest {
         assertEquals(LocalJmRankingPeriod.MONTH, parseLocalJmRankingPeriod("month"))
     }
 
+    @Test
+    fun parsesRankingRequestWithOptionalCount() {
+        assertEquals(
+            LocalJmRankingRequest(LocalJmRankingPeriod.WEEK, 150),
+            parseLocalJmRankingRequest("")
+        )
+        assertEquals(
+            LocalJmRankingRequest(LocalJmRankingPeriod.WEEK, 10),
+            parseLocalJmRankingRequest("周排行 10")
+        )
+        assertEquals(
+            LocalJmRankingRequest(LocalJmRankingPeriod.MONTH, 5),
+            parseLocalJmRankingRequest("月排行 5")
+        )
+        assertEquals(
+            LocalJmRankingRequest(LocalJmRankingPeriod.WEEK, 10),
+            parseLocalJmRankingRequest("10")
+        )
+        assertEquals(
+            LocalJmRankingRequest(LocalJmRankingPeriod.WEEK, 150),
+            parseLocalJmRankingRequest("150 周排行")
+        )
+        assertEquals(
+            LocalJmRankingRequest(LocalJmRankingPeriod.WEEK, 150),
+            parseLocalJmRankingRequest("周排行 999")
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsRankingRequestWithInvalidToken() {
+        parseLocalJmRankingRequest("周排行 abc")
+    }
+
+    @Test
+    fun parsesSearchRequestWithOptionalCount() {
+        assertEquals(
+            LocalJmSearchRequest("测试", 150),
+            parseLocalJmSearchRequest("测试")
+        )
+        assertEquals(
+            LocalJmSearchRequest("测试", 20),
+            parseLocalJmSearchRequest("测试 20")
+        )
+        assertEquals(
+            LocalJmSearchRequest("测试 漫画", 5),
+            parseLocalJmSearchRequest("测试 漫画 5")
+        )
+        assertEquals(
+            LocalJmSearchRequest("123456", 150),
+            parseLocalJmSearchRequest("123456")
+        )
+        assertEquals(
+            LocalJmSearchRequest("123456", 3),
+            parseLocalJmSearchRequest("123456 3")
+        )
+        assertEquals(
+            LocalJmSearchRequest("测试 漫画", 150),
+            parseLocalJmSearchRequest("测试 漫画")
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsBlankSearchRequest() {
+        parseLocalJmSearchRequest("   ")
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun rejectsUnsupportedRankingPeriod() {
         parseLocalJmRankingPeriod("日排行")
