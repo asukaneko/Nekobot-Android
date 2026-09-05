@@ -46,6 +46,8 @@ import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocaleHelper
 import com.nekobot.app.data.model.CharacterPreset
+import com.nekobot.app.ui.adaptive.WindowWidthClass
+import com.nekobot.app.ui.adaptive.rememberWindowWidthClass
 import com.nekobot.app.ui.components.EmptyState
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
@@ -150,6 +152,8 @@ fun CharactersScreen(
                 .getOrDefault(CharacterViewMode.LIST)
         )
     }
+    // 窗口宽度断点：手机（紧凑）固定 2 列，平板（Medium/Expanded）按宽度自适应列数
+    val widthClass = rememberWindowWidthClass()
     var showAddMenu by remember { mutableStateOf(false) }
     var showAiDialog by remember { mutableStateOf(false) }
     var showAiGeneratingHint by remember { mutableStateOf(false) }
@@ -286,9 +290,14 @@ fun CharactersScreen(
             } else {
                 // 卡片网格视图
                 LazyVerticalGrid(
-                    // 平板适配：按宽度自适应列数（每列最小 160dp），
+                    // 手机（紧凑宽度）：固定 2 列，保持原有双列卡片展示；
+                    // 平板（Medium/Expanded）：按宽度自适应列数（每列最小 160dp），
                     // 避免固定 2 列在宽屏下把卡片拉成横长方形
-                    columns = GridCells.Adaptive(160.dp),
+                    columns = if (widthClass == WindowWidthClass.Compact) {
+                        GridCells.Fixed(2)
+                    } else {
+                        GridCells.Adaptive(160.dp)
+                    },
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 110.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -432,12 +441,13 @@ private fun CharacterGridItem(character: CharacterPreset, onClick: () -> Unit) {
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 上方：角色立绘（1:1 方形，圆角）——随卡片宽度等比缩放，宽屏下不再被压扁成横长方形
+            // 上方：角色立绘（竖版 0.78:1，与世界书网格卡片封面比例一致）——
+            // 随卡片宽度等比缩放，宽屏下不再被压扁成横长方形，同时保持卡片更高挑
             val portraitUrl = character.avatarUrl?.let { resolveImageUrl(it) }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(1f)
+                    .aspectRatio(0.78f)
                     .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center
