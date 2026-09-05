@@ -54,6 +54,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -91,12 +92,13 @@ fun MarkdownText(
     val blocks = remember(preprocessed, chatMode) { parseBlocks(preprocessed, chatMode) }
 
     Column(modifier = modifier) {
-        blocks.forEach { block ->
+        blocks.forEachIndexed { index, block ->
             RenderBlock(
                 block = block,
                 color = color,
                 style = style,
-                styleParentheses = chatMode && processParens
+                styleParentheses = chatMode && processParens,
+                modifier = blockSpacing(block, isFirst = index == 0, isLast = index == blocks.lastIndex)
             )
         }
     }
@@ -333,6 +335,80 @@ private fun splitInnerSegments(line: String): List<Pair<Int, String>> {
     return result
 }
 
+// ==================== 区块间距与行高 ====================
+
+/**
+ * 排版参考主流设计（GitHub markdown-css、ChatGPT / Claude 对话流）：
+ * - 正文行高约 1.5~1.65，这里取 1.6，长文本更易读；
+ * - 标题行高收紧到 1.35，标题更紧凑、更有力；
+ * - 段落之间留约 0.5em 段距；
+ * - 标题上方留白大于下方（标题与后文更亲近），层级一目了然。
+ */
+private const val MARKDOWN_BODY_LINE_HEIGHT_RATIO = 1.6f
+private const val MARKDOWN_HEADING_LINE_HEIGHT_RATIO = 1.35f
+
+/** 兜底基准字号：调用方未指定 fontSize 时按 14sp 计算行高。 */
+private const val MARKDOWN_DEFAULT_FONT_SIZE_SP = 14f
+
+private fun markdownBaseFontSize(style: androidx.compose.ui.text.TextStyle): Float =
+    style.fontSize.value.takeIf { it > 0f } ?: MARKDOWN_DEFAULT_FONT_SIZE_SP
+
+/** 正文行高：fontSize * 1.6 */
+private fun markdownBodyLineHeight(style: androidx.compose.ui.text.TextStyle): TextUnit =
+    (markdownBaseFontSize(style) * MARKDOWN_BODY_LINE_HEIGHT_RATIO).sp
+
+/** 标题行高：标题字号 * 1.35 */
+private fun markdownHeadingLineHeight(fontSize: TextUnit): TextUnit =
+    (fontSize.value * MARKDOWN_HEADING_LINE_HEIGHT_RATIO).sp
+
+/**
+ * 每个区块的垂直间距。上边距主要给标题（拉开标题与上文的间隔），
+ * 下边距给所有区块统一的段距；首块不加顶部、末块不加底部，避免与气泡内边距叠加。
+ */
+private fun blockSpacing(block: MdBlock, isFirst: Boolean, isLast: Boolean): Modifier {
+    val top = when (block) {
+        is MdBlock.Header -> when (block.level) {
+            1 -> 16.dp
+            2 -> 14.dp
+            3 -> 12.dp
+            else -> 10.dp
+        }
+        else -> 0.dp
+    }
+    val bottom = when (block) {
+        is MdBlock.Header -> when (block.level) {
+            1 -> 10.dp
+            2, 3 -> 8.dp
+            else -> 6.dp
+        }
+        // 水平分割线自带上下 padding，不需要额外段距
+        is MdBlock.HorizontalRule -> 0.dp
+        else -> 8.dp
+    }
+    return Modifier
+        .then(if (!isFirst && top > 0.dp) Modifier.padding(top = top) else Modifier)
+        .then(if (!isLast && bottom > 0.dp) Modifier.padding(bottom = bottom) else Modifier)
+}
+
+/** 标题样式：按层级放大字号并收紧行高（GitHub 风格：2em / 1.5em / 1.25em…）。 */
+private fun headerStyle(style: androidx.compose.ui.text.TextStyle, level: Int): androidx.compose.ui.text.TextStyle {
+    val base = markdownBaseFontSize(style)
+    val (size, weight) = when (level) {
+        1 -> (base * 1.8f) to FontWeight.Bold
+        2 -> (base * 1.5f) to FontWeight.Bold
+        3 -> (base * 1.3f) to FontWeight.Bold
+        4 -> (base * 1.2f) to FontWeight.SemiBold
+        5 -> (base * 1.1f) to FontWeight.SemiBold
+        else -> base to FontWeight.SemiBold
+    }
+    val fontSize = size.sp
+    return style.copy(
+        fontSize = fontSize,
+        lineHeight = markdownHeadingLineHeight(fontSize),
+        fontWeight = weight
+    )
+}
+
 // ==================== 区块渲染 ====================
 
 @Composable
@@ -340,25 +416,20 @@ private fun RenderBlock(
     block: MdBlock,
     color: androidx.compose.ui.graphics.Color,
     style: androidx.compose.ui.text.TextStyle,
-    styleParentheses: Boolean
+    styleParentheses: Boolean,
+    modifier: Modifier = Modifier
 ) {
     when (block) {
-        is MdBlock.CodeBlock -> CodeBlockRenderer(block)
+        is MdBlock.CodeBlock -> CodeBlockRenderer(block, modifier)
         is MdBlock.Header -> MarkdownInlineText(
             text = parseInline(block.content, color, style, styleParentheses),
-            style = when (block.level) {
-                1 -> style.copy(fontSize = (style.fontSize.value * 1.8).sp, fontWeight = FontWeight.Bold)
-                2 -> style.copy(fontSize = (style.fontSize.value * 1.5).sp, fontWeight = FontWeight.Bold)
-                3 -> style.copy(fontSize = (style.fontSize.value * 1.3).sp, fontWeight = FontWeight.Bold)
-                4 -> style.copy(fontSize = (style.fontSize.value * 1.2).sp, fontWeight = FontWeight.SemiBold)
-                5 -> style.copy(fontSize = (style.fontSize.value * 1.1).sp, fontWeight = FontWeight.SemiBold)
-                else -> style.copy(fontWeight = FontWeight.SemiBold)
-            },
-            color = color
+            style = headerStyle(style, block.level),
+            color = color,
+            modifier = modifier
         )
-        is MdBlock.ListItem -> ListRenderer(block, color, style, styleParentheses)
+        is MdBlock.ListItem -> ListRenderer(block, color, style, styleParentheses, modifier)
         is MdBlock.Blockquote -> Box(
-            modifier = Modifier
+            modifier = modifier
                 .fillMaxWidth()
                 .padding(start = 8.dp)
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
@@ -366,35 +437,36 @@ private fun RenderBlock(
         ) {
             MarkdownInlineText(
                 text = parseInline(block.content, color, style, styleParentheses),
-                style = style,
+                style = style.copy(lineHeight = markdownBodyLineHeight(style)),
                 color = color
             )
         }
-        is MdBlock.Table -> TableRenderer(block, color, style)
-        is MdBlock.Image -> MarkdownImageRenderer(block)
+        is MdBlock.Table -> TableRenderer(block, color, style, modifier = modifier)
+        is MdBlock.Image -> MarkdownImageRenderer(block, modifier)
         is MdBlock.HorizontalRule -> Box(
-            modifier = Modifier
+            modifier = modifier
                 .fillMaxWidth()
-                .padding(vertical = 6.dp)
+                .padding(vertical = 8.dp)
                 .height(1.dp)
                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
         )
-        is MdBlock.InnerMonologue -> InnerMonologueRenderer(block, color, style)
+        is MdBlock.InnerMonologue -> InnerMonologueRenderer(block, color, style, modifier)
         is MdBlock.Paragraph -> MarkdownInlineText(
             text = parseInline(block.content, color, style, styleParentheses),
-            style = style,
-            color = color
+            style = style.copy(lineHeight = markdownBodyLineHeight(style)),
+            color = color,
+            modifier = modifier
         )
     }
 }
 
 @Composable
-private fun CodeBlockRenderer(block: MdBlock.CodeBlock) {
+private fun CodeBlockRenderer(block: MdBlock.CodeBlock, modifier: Modifier = Modifier) {
     var fullscreen by remember { mutableStateOf(false) }
 
     CodeBlockContent(
         block = block,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
         showToolbar = true,
@@ -419,7 +491,7 @@ private fun CodeBlockRenderer(block: MdBlock.CodeBlock) {
 }
 
 @Composable
-private fun MarkdownImageRenderer(block: MdBlock.Image) {
+private fun MarkdownImageRenderer(block: MdBlock.Image, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     AsyncImage(
         model = ImageRequest.Builder(context)
@@ -428,7 +500,7 @@ private fun MarkdownImageRenderer(block: MdBlock.Image) {
             .build(),
         contentDescription = block.alt.takeIf(String::isNotBlank),
         contentScale = ContentScale.Fit,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .heightIn(max = 360.dp)
             .clip(RoundedCornerShape(8.dp))
@@ -483,19 +555,20 @@ private fun ListRenderer(
     block: MdBlock.ListItem,
     color: androidx.compose.ui.graphics.Color,
     style: androidx.compose.ui.text.TextStyle,
-    styleParentheses: Boolean
+    styleParentheses: Boolean,
+    modifier: Modifier = Modifier
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = modifier.fillMaxWidth()) {
         block.items.forEachIndexed { idx, item ->
-            Row(modifier = Modifier.padding(vertical = 1.dp)) {
+            Row(modifier = Modifier.padding(vertical = 3.dp)) {
                 Text(
                     text = if (block.ordered) "${idx + 1}. " else "• ",
-                    style = style,
+                    style = style.copy(lineHeight = markdownBodyLineHeight(style)),
                     color = color
                 )
                 MarkdownInlineText(
                     text = parseInline(item, color, style, styleParentheses),
-                    style = style,
+                    style = style.copy(lineHeight = markdownBodyLineHeight(style)),
                     color = color,
                     modifier = Modifier.weight(1f)
                 )
@@ -801,10 +874,15 @@ internal fun tableToTsv(
 }
 
 @Composable
-private fun InnerMonologueRenderer(block: MdBlock.InnerMonologue, color: androidx.compose.ui.graphics.Color, style: androidx.compose.ui.text.TextStyle) {
+private fun InnerMonologueRenderer(
+    block: MdBlock.InnerMonologue,
+    color: androidx.compose.ui.graphics.Color,
+    style: androidx.compose.ui.text.TextStyle,
+    modifier: Modifier = Modifier
+) {
     var expanded by remember { mutableStateOf(false) }
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 2.dp)
             .clip(RoundedCornerShape(8.dp))
