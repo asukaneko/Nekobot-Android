@@ -320,6 +320,8 @@ fun ChatScreen(
     var showRestoreArchiveDialog by rememberSaveable(sessionId) { mutableStateOf(false) }
     var showArchiveViewer by rememberSaveable(sessionId) { mutableStateOf(false) }
     var showSandboxTerminal by rememberSaveable(sessionId) { mutableStateOf(false) }
+    // 沙盒文件浏览器：覆盖在终端之上，复用同一会话沙盒 shell 的命令通道
+    var showSandboxFiles by rememberSaveable(sessionId) { mutableStateOf(false) }
     var sandboxTerminalEntries by remember(sessionId) {
         mutableStateOf<List<SandboxTerminalEntry>>(emptyList())
     }
@@ -1883,7 +1885,14 @@ fun ChatScreen(
             onClear = {
                 if (!sandboxTerminalRunning) sandboxTerminalEntries = emptyList()
             },
+            onOpenFiles = { showSandboxFiles = true },
             onDismiss = { showSandboxTerminal = false },
+        )
+    }
+    if (showSandboxFiles) {
+        SandboxFileBrowserOverlay(
+            onRunCommand = viewModel::executeSandboxCommand,
+            onDismiss = { showSandboxFiles = false },
         )
     }
 }
@@ -1926,6 +1935,7 @@ private fun SandboxTerminalOverlay(
     onRunCommand: (String) -> Unit,
     onStop: () -> Unit,
     onClear: () -> Unit,
+    onOpenFiles: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val background = Color(0xFF0B0F14)
@@ -2003,6 +2013,13 @@ private fun SandboxTerminalOverlay(
                             text = stringResource(R.string.chat_sandbox_terminal_subtitle),
                             style = MaterialTheme.typography.labelSmall,
                             color = muted,
+                        )
+                    }
+                    IconButton(onClick = onOpenFiles) {
+                        Icon(
+                            Icons.Filled.Folder,
+                            contentDescription = stringResource(R.string.chat_sandbox_files_open),
+                            tint = foreground,
                         )
                     }
                     IconButton(
