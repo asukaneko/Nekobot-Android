@@ -534,7 +534,7 @@
     <string name="chat_sandbox_terminal_title">Sandbox terminal</string>
     <string name="chat_sandbox_terminal_subtitle">Alpine Linux · Current session /workspace</string>
     <string name="chat_sandbox_terminal_empty">Enter a command to operate this Agent session\'s sandbox</string>
-    <string name="chat_sandbox_terminal_hint">Enter a command, such as pwd or ls -la</string>
+    <string name="chat_sandbox_terminal_hint">Enter a command</string>
     <string name="chat_sandbox_terminal_running">Command is running…</string>
     <string name="chat_sandbox_terminal_no_output">(no output)</string>
     <string name="chat_sandbox_terminal_timeout">Command timed out and was terminated</string>

@@ -535,7 +535,7 @@
     <string name="chat_sandbox_terminal_title">サンドボックス端末</string>
     <string name="chat_sandbox_terminal_subtitle">Alpine Linux · 現在のセッション /workspace</string>
     <string name="chat_sandbox_terminal_empty">コマンドを入力して、この Agent セッションのサンドボックスを操作します</string>
-    <string name="chat_sandbox_terminal_hint">pwd や ls -la などのコマンドを入力</string>
+    <string name="chat_sandbox_terminal_hint">コマンドを入力</string>
     <string name="chat_sandbox_terminal_running">コマンドを実行中…</string>
     <string name="chat_sandbox_terminal_no_output">（出力なし）</string>
     <string name="chat_sandbox_terminal_timeout">タイムアウトしたためコマンドを終了しました</string>

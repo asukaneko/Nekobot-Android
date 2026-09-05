@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -39,22 +40,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -840,12 +834,6 @@ fun ChatScreen(
                                     ) {
                                         DropdownMenuItem(
                                             text = { Text(stringResource(R.string.chat_sandbox_terminal)) },
-                                            leadingIcon = {
-                                                Icon(
-                                                    Icons.Filled.Keyboard,
-                                                    contentDescription = null
-                                                )
-                                            },
                                             onClick = {
                                                 menuExpanded = false
                                                 showSandboxTerminal = true
@@ -1845,7 +1833,7 @@ fun ChatScreen(
     }
 
     if (showSandboxTerminal) {
-        SandboxTerminalDialog(
+        SandboxTerminalOverlay(
             entries = sandboxTerminalEntries,
             running = sandboxTerminalRunning,
             onRunCommand = { rawCommand ->
@@ -1925,9 +1913,14 @@ private data class SandboxTerminalEntry(
  *
  * 终端只负责展示和输入，命令状态由 ChatScreen 提升持有，因此关闭再打开时
  * 本次页面生命周期内的输出仍在；底层 shell 则由会话级 coordinator 长期持有。
+ *
+ * 实现说明：使用与主界面同窗口的全屏覆盖层而非独立 Dialog 窗口。
+ * Dialog 窗口对 navigationBars/IME insets 的派发不可靠——正常态导航栏 inset
+ * 丢失导致输入框底边贴出屏幕，键盘弹出时系统位移又与 ime inset 叠加产生
+ * 双重空隙。覆盖层与主聊天输入栏共用同一套 insets 行为，表现一致。
  */
 @Composable
-private fun SandboxTerminalDialog(
+private fun SandboxTerminalOverlay(
     entries: List<SandboxTerminalEntry>,
     running: Boolean,
     onRunCommand: (String) -> Unit,
@@ -1944,9 +1937,7 @@ private fun SandboxTerminalDialog(
     var input by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
-    val terminalBottomInsets = WindowInsets.navigationBars
-        .union(WindowInsets.ime)
-        .only(WindowInsetsSides.Bottom)
+    val keyboard = LocalSoftwareKeyboardController.current
 
     fun submit() {
         val command = input.trim()
@@ -1955,30 +1946,36 @@ private fun SandboxTerminalDialog(
         onRunCommand(command)
     }
 
+    // 覆盖层不是独立窗口，返回键需自行接管以关闭终端
+    BackHandler(onBack = onDismiss)
+
     LaunchedEffect(Unit) {
         delay(120)
         focusRequester.requestFocus()
+        keyboard?.show()
     }
     LaunchedEffect(entries.size, entries.lastOrNull()?.isRunning) {
         if (entries.isNotEmpty()) listState.animateScrollToItem(entries.lastIndex)
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-        ),
+    // 全屏覆盖层：与主界面同一窗口，导航栏/键盘 insets 派发可靠；
+    // 拦截空白区域点击，避免透传到下层聊天界面
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(background)
+            .clickable(
+                interactionSource = remember {
+                    androidx.compose.foundation.interaction.MutableInteractionSource()
+                },
+                indication = null,
+            ) {}
     ) {
-        androidx.compose.material3.Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = background,
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2137,7 +2134,11 @@ private fun SandboxTerminalDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .windowInsetsPadding(terminalBottomInsets)
+                            // 与主聊天输入栏一致：导航栏 padding 叠加键盘 padding
+                            // （imePadding 会扣除已消费部分），键盘弹出时输入框
+                            // 紧贴键盘上方，无双重空隙
+                            .navigationBarsPadding()
+                            .imePadding()
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -2204,7 +2205,6 @@ private fun SandboxTerminalDialog(
                     }
                 }
             }
-        }
     }
 }
 
