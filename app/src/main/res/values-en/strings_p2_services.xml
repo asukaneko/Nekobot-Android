@@ -16,6 +16,17 @@
     <string name="accessibility_screenshot_saved">Screenshot saved</string>
     <string name="accessibility_screenshot_failed">System screenshot failed with error code %1$d</string>
     <string name="accessibility_screenshot_timeout">Timed out waiting for the system screenshot</string>
+    <string name="accessibility_invalid_coordinates">Invalid coordinates</string>
+    <string name="accessibility_element_bounds_empty">The matching element has no screen bounds</string>
+    <string name="accessibility_gesture_completed">Gesture performed</string>
+    <string name="accessibility_gesture_cancelled">Gesture cancelled by the system</string>
+    <string name="accessibility_gesture_timeout">Timed out waiting for the gesture</string>
+    <string name="accessibility_gesture_no_result">The system returned no gesture result</string>
+    <string name="accessibility_ime_target_not_found">No input field found to trigger the IME action</string>
+    <string name="accessibility_ime_enter_requested">IME enter requested</string>
+    <string name="accessibility_ime_enter_failed">IME enter failed</string>
+    <string name="accessibility_paste_requested">Paste requested</string>
+    <string name="accessibility_paste_failed">Paste failed (make sure the clipboard has content)</string>
     <string name="accessibility_screenshot_no_result">The system returned no screenshot result</string>
     <string name="notification_not_found">Notification not found</string>
     <string name="notification_no_open_content">This notification has no content to open</string>

@@ -16,6 +16,17 @@
     <string name="accessibility_screenshot_saved">스크린샷을 저장했습니다</string>
     <string name="accessibility_screenshot_failed">시스템 스크린샷 실패, 오류 코드 %1$d</string>
     <string name="accessibility_screenshot_timeout">시스템 스크린샷 대기 시간이 초과되었습니다</string>
+    <string name="accessibility_invalid_coordinates">좌표가 유효하지 않습니다</string>
+    <string name="accessibility_element_bounds_empty">일치한 요소의 화면 영역이 비어 있습니다</string>
+    <string name="accessibility_gesture_completed">제스처를 실행했습니다</string>
+    <string name="accessibility_gesture_cancelled">제스처가 시스템에 의해 취소되었습니다</string>
+    <string name="accessibility_gesture_timeout">제스처 완료 대기 시간이 초과되었습니다</string>
+    <string name="accessibility_gesture_no_result">시스템에서 제스처 결과를 반환하지 않았습니다</string>
+    <string name="accessibility_ime_target_not_found">IME 작업을 실행할 입력 상자를 찾을 수 없습니다</string>
+    <string name="accessibility_ime_enter_requested">IME Enter를 요청했습니다</string>
+    <string name="accessibility_ime_enter_failed">IME Enter 실패</string>
+    <string name="accessibility_paste_requested">붙여넣기를 요청했습니다</string>
+    <string name="accessibility_paste_failed">붙여넣기 실패(클립보드에 내용이 있는지 확인하세요)</string>
     <string name="accessibility_screenshot_no_result">시스템에서 스크린샷 결과를 반환하지 않았습니다</string>
     <string name="notification_not_found">지정한 알림을 찾을 수 없습니다</string>
     <string name="notification_no_open_content">이 알림에는 열 수 있는 내용이 없습니다</string>

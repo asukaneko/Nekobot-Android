@@ -645,6 +645,14 @@ object BuiltinTools {
     /** Android 原生能力：只通过公开 Android API 或系统确认页工作，不绕过权限。 */
     private val androidTools = listOf(
         BuiltinToolSpec(
+            id = "android_help",
+            name = "Android 操作指南",
+            description = "返回操作 Android 界面的完整指南：权限要求、标准操作流程、元素定位（文字/编号）、坐标手势、文本输入、滚动加载、观察诊断、常见陷阱与安全规则。首次操作 Android 或不确定如何操作时，先调用本工具阅读指南；topic 参数可只查看指定章节（permissions/flow/selectors/index/gestures/input/scroll/observe/troubleshooting/safety），省略则返回完整指南。",
+            parametersJson = params(
+                mapOf("topic" to mapOf("type" to "string", "description" to "可选章节名：permissions、flow、selectors、index、gestures、input、scroll、observe、troubleshooting、safety；省略返回完整指南"))
+            )
+        ),
+        BuiltinToolSpec(
             id = "android_device_info",
             name = "读取 Android 设备信息",
             description = "读取当前设备型号、Android 版本、网络类型、语言、时区和省电模式等非敏感状态。",
@@ -764,50 +772,130 @@ object BuiltinTools {
         BuiltinToolSpec(
             id = "android_ui_tree",
             name = "读取当前 Android 界面",
-            description = "经用户授权后读取当前窗口的结构化界面树。密码字段始终脱敏，结果限制节点数。",
+            description = "经用户授权后读取当前窗口的结构化界面树。密码字段始终脱敏，结果限制节点数。返回的 interactive 列表为可点击/可输入/可滚动元素分配了从 0 开始的编号（含 role、text、bounds），点击/输入/滚动可直接传 index。列表类界面存在大量重复文本，优先使用 index 定位。",
             parametersJson = params(
-                mapOf("max_nodes" to mapOf("type" to "integer", "description" to "最多返回节点数，默认 250，最大 800"))
+                mapOf(
+                    "max_nodes" to mapOf("type" to "integer", "description" to "最多返回节点数，默认 250，最大 800"),
+                    "interactive_only" to mapOf("type" to "boolean", "description" to "true 时只返回可交互元素编号列表，体积更小、更适合定位；默认 false"),
+                    "max_interactive" to mapOf("type" to "integer", "description" to "interactive 列表最多返回条数，默认 100，最大 100")
+                )
             )
         ),
         BuiltinToolSpec(
             id = "android_ui_click",
             name = "点击 Android 界面元素",
-            description = "经用户授权后，按文字、内容描述或资源 ID 查找并点击当前界面元素。",
+            description = "经用户授权后点击当前界面元素。优先传 index（android_ui_tree 返回的 interactive 编号）；也可按文字、内容描述或资源 ID 查找。ACTION_CLICK 无响应（自绘/Flutter/游戏等应用）时传 fallback_gesture=true 会自动改用元素中心坐标手势点击。",
             parametersJson = params(
                 mapOf(
-                    "selector" to mapOf("type" to "string", "description" to "要查找的文字、内容描述或资源 ID"),
+                    "index" to mapOf("type" to "integer", "description" to "interactive 编号（android_ui_tree 返回），与 selector 二选一"),
+                    "selector" to mapOf("type" to "string", "description" to "要查找的文字、内容描述或资源 ID，与 index 二选一"),
                     "field" to mapOf("type" to "string", "description" to "auto、text、description、view_id 或 class"),
-                    "exact" to mapOf("type" to "boolean", "description" to "是否要求完整匹配")
-                ),
-                listOf("selector")
+                    "exact" to mapOf("type" to "boolean", "description" to "是否要求完整匹配"),
+                    "fallback_gesture" to mapOf("type" to "boolean", "description" to "ACTION_CLICK 失败时是否自动改用元素中心坐标手势点击，默认 false")
+                )
             )
         ),
         BuiltinToolSpec(
             id = "android_ui_set_text",
             name = "向 Android 输入框写入文字",
-            description = "经用户授权后，定位可编辑界面元素并写入文字。不会向密码节点回读内容。",
+            description = "经用户授权后，定位可编辑界面元素并写入文字。优先传 index；也可按文字、描述或资源 ID 查找。不会向密码节点回读内容。输入后如需触发搜索/确认，再调用 android_ui_ime_action。",
             parametersJson = params(
                 mapOf(
-                    "selector" to mapOf("type" to "string", "description" to "输入框的文字、描述或资源 ID"),
+                    "index" to mapOf("type" to "integer", "description" to "interactive 编号，与 selector 二选一"),
+                    "selector" to mapOf("type" to "string", "description" to "输入框的文字、描述或资源 ID，与 index 二选一"),
                     "text" to mapOf("type" to "string", "description" to "要写入的文字"),
                     "field" to mapOf("type" to "string", "description" to "auto、text、description、view_id 或 class"),
                     "exact" to mapOf("type" to "boolean", "description" to "是否要求完整匹配")
                 ),
-                listOf("selector", "text")
+                listOf("text")
             )
         ),
         BuiltinToolSpec(
             id = "android_ui_scroll",
             name = "滚动 Android 界面",
-            description = "经用户授权后滚动当前界面或指定可滚动元素。",
+            description = "经用户授权后滚动当前界面或指定可滚动元素。可传 index（interactive 编号）或 selector 指定滚动区域，省略时滚动首个可滚动区域。注意：列表（RecyclerView）是虚拟化的，屏幕外的项不在界面树中，滚动后需重新读取 android_ui_tree。",
             parametersJson = params(
                 mapOf(
                     "direction" to mapOf("type" to "string", "description" to "up、down、forward、backward、left 或 right"),
+                    "index" to mapOf("type" to "integer", "description" to "可选的 interactive 编号，指定滚动区域"),
                     "selector" to mapOf("type" to "string", "description" to "可选的滚动区域选择器"),
                     "field" to mapOf("type" to "string", "description" to "选择器字段，默认 auto"),
                     "exact" to mapOf("type" to "boolean", "description" to "是否要求完整匹配")
                 ),
                 listOf("direction")
+            )
+        ),
+        BuiltinToolSpec(
+            id = "android_ui_tap",
+            name = "Android 坐标点击",
+            description = "经用户授权后在指定坐标执行手势点击；或按 index/selector 定位元素后自动点击其区域中心。适用于游戏、自绘 View、Flutter/React Native 等不暴露可点击节点或对 ACTION_CLICK 无响应的应用。长按可传 duration_ms 大于 600。",
+            parametersJson = params(
+                mapOf(
+                    "x" to mapOf("type" to "integer", "description" to "屏幕像素 X 坐标；与 y 同时提供时按坐标点击"),
+                    "y" to mapOf("type" to "integer", "description" to "屏幕像素 Y 坐标；与 x 同时提供时按坐标点击"),
+                    "index" to mapOf("type" to "integer", "description" to "interactive 编号，点击其区域中心"),
+                    "selector" to mapOf("type" to "string", "description" to "要查找的文字、内容描述或资源 ID，点击其区域中心"),
+                    "field" to mapOf("type" to "string", "description" to "auto、text、description、view_id 或 class"),
+                    "exact" to mapOf("type" to "boolean", "description" to "是否要求完整匹配"),
+                    "duration_ms" to mapOf("type" to "integer", "description" to "按压时长毫秒，默认 80；长按请传 600 以上")
+                )
+            )
+        ),
+        BuiltinToolSpec(
+            id = "android_ui_swipe",
+            name = "Android 滑动",
+            description = "经用户授权后执行滑动：传 x1,y1,x2,y2 精确滑动坐标，或传 direction + index/selector 在元素区域内滑动（如滑动列表项）。适用于手势翻页、游戏拖动等场景。",
+            parametersJson = params(
+                mapOf(
+                    "x1" to mapOf("type" to "integer", "description" to "起点 X 坐标"),
+                    "y1" to mapOf("type" to "integer", "description" to "起点 Y 坐标"),
+                    "x2" to mapOf("type" to "integer", "description" to "终点 X 坐标"),
+                    "y2" to mapOf("type" to "integer", "description" to "终点 Y 坐标"),
+                    "direction" to mapOf("type" to "string", "description" to "up、down、left、right；与 index/selector 配合在元素区域内滑动"),
+                    "index" to mapOf("type" to "integer", "description" to "interactive 编号，指定滑动区域"),
+                    "selector" to mapOf("type" to "string", "description" to "滑动区域选择器"),
+                    "field" to mapOf("type" to "string", "description" to "auto、text、description、view_id 或 class"),
+                    "exact" to mapOf("type" to "boolean", "description" to "是否要求完整匹配"),
+                    "duration_ms" to mapOf("type" to "integer", "description" to "滑动时长毫秒，默认 300")
+                )
+            )
+        ),
+        BuiltinToolSpec(
+            id = "android_ui_ime_action",
+            name = "Android 输入法回车",
+            description = "经用户授权后对输入框执行输入法回车（IME Enter），常用于输入搜索词后触发搜索或确认。可传 index/selector 指定输入框，省略时使用当前焦点或首个可编辑输入框。",
+            parametersJson = params(
+                mapOf(
+                    "index" to mapOf("type" to "integer", "description" to "interactive 编号，指定输入框"),
+                    "selector" to mapOf("type" to "string", "description" to "输入框的文字、描述或资源 ID"),
+                    "field" to mapOf("type" to "string", "description" to "auto、text、description、view_id 或 class"),
+                    "exact" to mapOf("type" to "boolean", "description" to "是否要求完整匹配")
+                )
+            )
+        ),
+        BuiltinToolSpec(
+            id = "android_ui_paste",
+            name = "Android 粘贴文本",
+            description = "经用户授权后聚焦输入框并粘贴文本。传 text 参数时先写入系统剪贴板再粘贴（一步完成）；不传 text 则粘贴剪贴板当前内容。适用于不接受 ACTION_SET_TEXT 的输入框。",
+            parametersJson = params(
+                mapOf(
+                    "text" to mapOf("type" to "string", "description" to "可选；要粘贴的文本，提供时自动先写入剪贴板"),
+                    "index" to mapOf("type" to "integer", "description" to "interactive 编号，指定输入框"),
+                    "selector" to mapOf("type" to "string", "description" to "输入框的文字、描述或资源 ID"),
+                    "field" to mapOf("type" to "string", "description" to "auto、text、description、view_id 或 class"),
+                    "exact" to mapOf("type" to "boolean", "description" to "是否要求完整匹配")
+                )
+            )
+        ),
+        BuiltinToolSpec(
+            id = "android_wait_for_idle",
+            name = "等待 Android 界面稳定",
+            description = "等待当前界面加载/动画结束、窗口树不再变化。操作后、读取界面树前建议先调用，避免读到加载中间状态。不需要用户授权。",
+            parametersJson = params(
+                mapOf(
+                    "timeout_ms" to mapOf("type" to "integer", "description" to "最长等待毫秒数，默认 2000，最大 15000"),
+                    "min_stable_ms" to mapOf("type" to "integer", "description" to "界面连续稳定多少毫秒视为结束，默认 300")
+                )
             )
         ),
         BuiltinToolSpec(

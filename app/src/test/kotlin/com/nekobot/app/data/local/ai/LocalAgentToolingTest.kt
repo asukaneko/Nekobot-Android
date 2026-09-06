@@ -216,13 +216,19 @@ class LocalAgentToolingTest {
             .mapNotNull { it["function"] as? Map<*, *> }
             .first { it["name"] == "android_ui_click" }
         val clickParameters = clickFunction["parameters"] as Map<*, *>
-        assertEquals(listOf("selector"), clickParameters["required"])
+        // index 与 selector 二选一，因此不再强制 required；属性必须齐全
+        assertFalse("required" in clickParameters)
+        val clickProperties = clickParameters["properties"] as Map<*, *>
+        assertTrue("index" in clickProperties)
+        assertTrue("selector" in clickProperties)
+        assertTrue("fallback_gesture" in clickProperties)
 
         val textFunction = buildLocalAgentToolDefinitions()
             .mapNotNull { it["function"] as? Map<*, *> }
             .first { it["name"] == "android_ui_set_text" }
         val textParameters = textFunction["parameters"] as Map<*, *>
-        assertEquals(listOf("selector", "text"), textParameters["required"])
+        // selector 与 index 二选一，text 仍为必需
+        assertEquals(listOf("text"), textParameters["required"])
 
         val browserFunction = buildLocalAgentToolDefinitions()
             .mapNotNull { it["function"] as? Map<*, *> }

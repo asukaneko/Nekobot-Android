@@ -16,6 +16,17 @@
     <string name="accessibility_screenshot_saved">スクリーンショットを保存しました</string>
     <string name="accessibility_screenshot_failed">システムのスクリーンショットに失敗しました。エラーコード %1$d</string>
     <string name="accessibility_screenshot_timeout">システムのスクリーンショット待機がタイムアウトしました</string>
+    <string name="accessibility_invalid_coordinates">座標が無効です</string>
+    <string name="accessibility_element_bounds_empty">一致した要素の画面領域が空です</string>
+    <string name="accessibility_gesture_completed">ジェスチャーを実行しました</string>
+    <string name="accessibility_gesture_cancelled">ジェスチャーはシステムによりキャンセルされました</string>
+    <string name="accessibility_gesture_timeout">ジェスチャー完了の待機がタイムアウトしました</string>
+    <string name="accessibility_gesture_no_result">システムからジェスチャー結果が返されませんでした</string>
+    <string name="accessibility_ime_target_not_found">IME アクションを実行できる入力欄が見つかりません</string>
+    <string name="accessibility_ime_enter_requested">IME の Enter を要求しました</string>
+    <string name="accessibility_ime_enter_failed">IME の Enter に失敗しました</string>
+    <string name="accessibility_paste_requested">貼り付けを要求しました</string>
+    <string name="accessibility_paste_failed">貼り付けに失敗しました（クリップボードに内容があるか確認してください）</string>
     <string name="accessibility_screenshot_no_result">システムからスクリーンショット結果が返されませんでした</string>
     <string name="notification_not_found">指定した通知が見つかりません</string>
     <string name="notification_no_open_content">この通知には開ける内容がありません</string>

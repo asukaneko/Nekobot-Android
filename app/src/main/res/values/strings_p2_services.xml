@@ -16,6 +16,17 @@
     <string name="accessibility_screenshot_saved">截图已保存</string>
     <string name="accessibility_screenshot_failed">系统截图失败，错误码 %1$d</string>
     <string name="accessibility_screenshot_timeout">等待系统截图超时</string>
+    <string name="accessibility_invalid_coordinates">坐标无效</string>
+    <string name="accessibility_element_bounds_empty">匹配元素的屏幕区域为空</string>
+    <string name="accessibility_gesture_completed">手势已执行</string>
+    <string name="accessibility_gesture_cancelled">手势被系统取消</string>
+    <string name="accessibility_gesture_timeout">等待手势完成超时</string>
+    <string name="accessibility_gesture_no_result">系统未返回手势结果</string>
+    <string name="accessibility_ime_target_not_found">未找到可触发输入法回车的输入框</string>
+    <string name="accessibility_ime_enter_requested">已请求输入法回车</string>
+    <string name="accessibility_ime_enter_failed">输入法回车失败</string>
+    <string name="accessibility_paste_requested">已请求粘贴文本</string>
+    <string name="accessibility_paste_failed">粘贴失败（请确认剪贴板已有内容）</string>
     <string name="accessibility_screenshot_no_result">系统未返回截图结果</string>
 
     <string name="notification_not_found">未找到指定通知</string>

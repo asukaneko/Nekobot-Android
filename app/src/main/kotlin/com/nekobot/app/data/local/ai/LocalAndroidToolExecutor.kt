@@ -16,6 +16,8 @@ import android.os.PowerManager
 import android.provider.CalendarContract
 import android.provider.AlarmClock
 import android.provider.Settings
+import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.LocaleHelper
 import com.nekobot.app.data.remote.ExecAuthorization
 import com.nekobot.app.data.remote.ExecConfirmationRequest
 import com.nekobot.app.integration.NekobotAccessibilityService
@@ -90,10 +92,16 @@ internal class LocalAndroidToolExecutor(
                 "android_set_alarm" -> setAlarm(appContext, args)
                 "android_volume" -> volume(appContext, args)
                 "android_accessibility_status" -> accessibilityStatus(appContext)
+                "android_help" -> help(args)
                 "android_ui_tree" -> uiTree(args)
                 "android_ui_click" -> uiClick(args)
                 "android_ui_set_text" -> uiSetText(args)
                 "android_ui_scroll" -> uiScroll(args)
+                "android_ui_tap" -> uiTap(args)
+                "android_ui_swipe" -> uiSwipe(args)
+                "android_ui_ime_action" -> uiImeAction(args)
+                "android_ui_paste" -> uiPaste(args)
+                "android_wait_for_idle" -> waitForIdle(args)
                 "android_global_action" -> globalAction(args)
                 "android_screenshot" -> screenshot()
                 "android_notifications" -> notifications(args)
@@ -436,52 +444,200 @@ internal class LocalAndroidToolExecutor(
     private suspend fun uiTree(args: Map<String, Any>): Map<String, Any> {
         if (!authorize("android_ui_tree", "read current UI tree")) return failure("用户拒绝读取当前界面")
         val service = accessibilityService() ?: return accessibilityUnavailable()
-        val snapshot = service.snapshot(args.int("max_nodes", NekobotAccessibilityService.DEFAULT_MAX_NODES))
+        val snapshot = service.snapshot(
+            args.int("max_nodes", NekobotAccessibilityService.DEFAULT_MAX_NODES),
+            args.int("max_interactive", NekobotAccessibilityService.MAX_INTERACTIVE)
+        )
+        if (args.boolean("interactive_only")) {
+            return success(
+                "package_name" to snapshot.packageName,
+                "window_count" to snapshot.windowCount,
+                "interactive" to snapshot.interactive,
+                "interactive_count" to snapshot.interactive.size,
+                "note" to "interactive_only=true：仅返回可交互元素编号列表；点击/输入/滚动可直接传 index"
+            )
+        }
         return success(
             "package_name" to snapshot.packageName,
             "window_count" to snapshot.windowCount,
             "nodes" to snapshot.nodes,
             "node_count" to snapshot.nodes.size,
+            "interactive" to snapshot.interactive,
+            "interactive_count" to snapshot.interactive.size,
             "truncated" to snapshot.truncated
         )
     }
 
     private suspend fun uiClick(args: Map<String, Any>): Map<String, Any> {
+        val index = args.intOrNull("index")
         val selector = args.string("selector")
-        if (selector.isBlank()) return failure("selector 不能为空")
-        if (!authorize("android_ui_click", "click $selector")) return failure("用户拒绝点击界面元素")
-        val result = accessibilityService()?.click(
-            selector,
-            args.string("field").ifBlank { "auto" },
-            args.boolean("exact")
-        ) ?: return accessibilityUnavailable()
+        if (index == null && selector.isBlank()) return failure("需要提供 selector 或 index")
+        if (!authorize("android_ui_click", if (index != null) "click index=$index" else "click $selector")) {
+            return failure("用户拒绝点击界面元素")
+        }
+        val service = accessibilityService() ?: return accessibilityUnavailable()
+        var result = if (index != null) {
+            service.clickByIndex(index)
+        } else {
+            service.click(selector, args.string("field").ifBlank { "auto" }, args.boolean("exact"))
+        }
+        // ACTION_CLICK 失败时回退为 bounds 中心手势点击（自绘/Flutter/RN 等应用）
+        if (!result.success && args.boolean("fallback_gesture")) {
+            result = if (index != null) {
+                service.tapByIndex(index)
+            } else {
+                service.tapBySelector(selector, args.string("field").ifBlank { "auto" }, args.boolean("exact"))
+            }
+        }
         return actionResult(result.success, result.message, result.matched, result.metadata)
     }
 
     private suspend fun uiSetText(args: Map<String, Any>): Map<String, Any> {
+        val index = args.intOrNull("index")
         val selector = args.string("selector")
         val text = args.string("text")
-        if (selector.isBlank()) return failure("selector 不能为空")
-        if (!authorize("android_ui_set_text", "set text on $selector")) return failure("用户拒绝向界面输入文字")
-        val result = accessibilityService()?.setText(
-            selector,
-            text,
-            args.string("field").ifBlank { "auto" },
-            args.boolean("exact")
-        ) ?: return accessibilityUnavailable()
+        if (index == null && selector.isBlank()) return failure("需要提供 selector 或 index")
+        if (!authorize("android_ui_set_text", if (index != null) "set text on index=$index" else "set text on $selector")) {
+            return failure("用户拒绝向界面输入文字")
+        }
+        val service = accessibilityService() ?: return accessibilityUnavailable()
+        val result = if (index != null) {
+            service.setTextByIndex(index, text)
+        } else {
+            service.setText(selector, text, args.string("field").ifBlank { "auto" }, args.boolean("exact"))
+        }
         return actionResult(result.success, result.message, result.matched, result.metadata)
     }
 
     private suspend fun uiScroll(args: Map<String, Any>): Map<String, Any> {
         val direction = args.string("direction").ifBlank { "down" }
         if (!authorize("android_ui_scroll", "scroll $direction")) return failure("用户拒绝滚动当前界面")
-        val result = accessibilityService()?.scroll(
-            direction,
-            args.string("selector").takeIf(String::isNotBlank),
-            args.string("field").ifBlank { "auto" },
-            args.boolean("exact")
-        ) ?: return accessibilityUnavailable()
+        val service = accessibilityService() ?: return accessibilityUnavailable()
+        val index = args.intOrNull("index")
+        val result = if (index != null) {
+            service.scrollByIndex(index, direction)
+        } else {
+            service.scroll(
+                direction,
+                args.string("selector").takeIf(String::isNotBlank),
+                args.string("field").ifBlank { "auto" },
+                args.boolean("exact")
+            )
+        }
         return actionResult(result.success, result.message, result.matched, result.metadata)
+    }
+
+    /** android_help：返回操作 Android 界面的指南（多语言，可按主题过滤）。 */
+    private fun help(args: Map<String, Any>): Map<String, Any> {
+        val appContext = context?.applicationContext ?: return failure("Android 应用上下文不可用")
+        val language = runCatching {
+            LocaleHelper.getEffectiveLocale(appContext, ServiceContainer.prefs.language).language
+        }.getOrDefault(Locale.getDefault().language)
+        val topic = args.string("topic")
+        val guide = AndroidUsageGuide.build(language, topic.takeIf(String::isNotBlank))
+        return success("topic" to topic.ifBlank { "all" }, "guide" to guide)
+    }
+
+    /** android_ui_tap：坐标点击或按编号/文字定位后在其 bounds 中心手势点击。 */
+    private suspend fun uiTap(args: Map<String, Any>): Map<String, Any> {
+        val x = args.floatOrNull("x")
+        val y = args.floatOrNull("y")
+        if (x != null && y != null) {
+            if (!authorize("android_ui_tap", "tap ($x, $y)")) return failure("用户拒绝坐标点击")
+            val service = accessibilityService() ?: return accessibilityUnavailable()
+            val result = service.gestureTap(x, y, args.long("duration_ms", 80))
+            return actionResult(result.success, result.message, result.matched, result.metadata)
+        }
+        val index = args.intOrNull("index")
+        val selector = args.string("selector")
+        if (index == null && selector.isBlank()) return failure("需要提供 x/y 坐标，或 selector/index 定位元素")
+        if (!authorize("android_ui_tap", if (index != null) "tap index=$index" else "tap $selector")) {
+            return failure("用户拒绝点击界面元素")
+        }
+        val service = accessibilityService() ?: return accessibilityUnavailable()
+        val result = if (index != null) {
+            service.tapByIndex(index)
+        } else {
+            service.tapBySelector(selector, args.string("field").ifBlank { "auto" }, args.boolean("exact"))
+        }
+        return actionResult(result.success, result.message, result.matched, result.metadata)
+    }
+
+    /** android_ui_swipe：坐标滑动或按编号/文字定位后在元素 bounds 内沿方向滑动。 */
+    private suspend fun uiSwipe(args: Map<String, Any>): Map<String, Any> {
+        val x1 = args.floatOrNull("x1")
+        val y1 = args.floatOrNull("y1")
+        val x2 = args.floatOrNull("x2")
+        val y2 = args.floatOrNull("y2")
+        if (x1 != null && y1 != null && x2 != null && y2 != null) {
+            if (!authorize("android_ui_swipe", "swipe ($x1,$y1)->($x2,$y2)")) return failure("用户拒绝坐标滑动")
+            val service = accessibilityService() ?: return accessibilityUnavailable()
+            val result = service.gestureSwipe(x1, y1, x2, y2, args.long("duration_ms", 300))
+            return actionResult(result.success, result.message, result.matched, result.metadata)
+        }
+        val direction = args.string("direction").ifBlank { "down" }
+        val index = args.intOrNull("index")
+        val selector = args.string("selector")
+        if (index == null && selector.isBlank()) return failure("需要提供 x1,y1,x2,y2 坐标，或 direction + selector/index")
+        if (!authorize("android_ui_swipe", "swipe $direction on ${if (index != null) "index=$index" else selector}")) {
+            return failure("用户拒绝滑动界面元素")
+        }
+        val service = accessibilityService() ?: return accessibilityUnavailable()
+        val result = if (index != null) {
+            service.swipeByIndex(index, direction)
+        } else {
+            service.swipeBySelector(selector, args.string("field").ifBlank { "auto" }, args.boolean("exact"), direction)
+        }
+        return actionResult(result.success, result.message, result.matched, result.metadata)
+    }
+
+    /** android_ui_ime_action：对输入框执行 IME 回车（触发搜索/确认）。 */
+    private suspend fun uiImeAction(args: Map<String, Any>): Map<String, Any> {
+        if (!authorize("android_ui_ime_action", "trigger IME enter")) return failure("用户拒绝执行输入法回车")
+        val service = accessibilityService() ?: return accessibilityUnavailable()
+        val index = args.intOrNull("index")
+        val selector = args.string("selector")
+        val result = when {
+            index != null -> service.imeEnterByIndex(index)
+            selector.isNotBlank() -> service.imeEnterBySelector(selector, args.string("field").ifBlank { "auto" }, args.boolean("exact"))
+            else -> service.imeEnter(null)
+        }
+        return actionResult(result.success, result.message, result.matched, result.metadata)
+    }
+
+    /** android_ui_paste：把 text 写入剪贴板（可选）后聚焦输入框并粘贴。 */
+    private suspend fun uiPaste(args: Map<String, Any>): Map<String, Any> {
+        val text = args.string("text")
+        if (text.isNotBlank()) {
+            val appContext = context?.applicationContext ?: return failure("Android 应用上下文不可用")
+            val written = writeClipboard(appContext, args + ("text" to text))
+            if ((written["success"] as? Boolean) != true) return written
+        }
+        if (!authorize("android_ui_paste", "paste into input")) return failure("用户拒绝粘贴文本")
+        val service = accessibilityService() ?: return accessibilityUnavailable()
+        val index = args.intOrNull("index")
+        val selector = args.string("selector")
+        val result = when {
+            index != null -> service.pasteIntoByIndex(index)
+            selector.isNotBlank() -> service.pasteIntoBySelector(selector, args.string("field").ifBlank { "auto" }, args.boolean("exact"))
+            else -> service.pasteInto(null)
+        }
+        return actionResult(result.success, result.message, result.matched, result.metadata)
+    }
+
+    /** android_wait_for_idle：等待界面稳定（加载/动画结束）。 */
+    private suspend fun waitForIdle(args: Map<String, Any>): Map<String, Any> {
+        val service = accessibilityService() ?: return accessibilityUnavailable()
+        // 等待本身不修改界面状态，无需用户授权
+        val result = service.waitForStable(
+            args.long("timeout_ms", 2000),
+            args.long("min_stable_ms", 300)
+        )
+        return success(
+            "stable" to (result["stable"] as? Boolean ?: false),
+            "elapsed_ms" to (result["elapsed_ms"] as? Long ?: 0L),
+            "message" to (if (result["stable"] == true) "界面已稳定" else "等待超时，界面仍在变化")
+        )
     }
 
     private suspend fun globalAction(args: Map<String, Any>): Map<String, Any> {
@@ -639,6 +795,12 @@ internal class LocalAndroidToolExecutor(
         is String -> value.equals("true", ignoreCase = true) || value == "1"
         else -> default
     }
+
+    private fun Map<String, Any>.floatOrNull(key: String): Float? =
+        (this[key] as? Number)?.toFloat() ?: this[key]?.toString()?.toFloatOrNull()
+
+    private fun Map<String, Any>.intOrNull(key: String): Int? =
+        (this[key] as? Number)?.toInt() ?: this[key]?.toString()?.toIntOrNull()
 
     private fun success(vararg values: Pair<String, Any?>): Map<String, Any> = buildMap {
         put("success", true)

@@ -64,12 +64,19 @@ internal val localExecutableToolIds = setOf(
     "android_set_alarm",
     "android_volume",
     "android_accessibility_status",
+    "android_help",
     "android_ui_tree",
     "android_ui_click",
     "android_ui_set_text",
     "android_ui_scroll",
+    "android_ui_tap",
+    "android_ui_swipe",
+    "android_ui_ime_action",
+    "android_ui_paste",
+    "android_wait_for_idle",
     "android_global_action",
     "android_screenshot",
+    "android_step",
     "android_notifications",
     "android_notification_action",
     "android_media_control"
@@ -264,6 +271,7 @@ internal class LocalAgentToolExecutor(
                 "workspace_file_info" -> workspaceFileInfo(args)
                 "agent_memory_read" -> readGlobalAgentMemory()
                 "agent_memory_update" -> updateGlobalAgentMemory(args)
+                "android_step" -> androidStep(args)
                 "android_device_info",
                 "android_battery_status",
                 "android_clipboard_read",
@@ -276,10 +284,16 @@ internal class LocalAgentToolExecutor(
                 "android_set_alarm",
                 "android_volume",
                 "android_accessibility_status",
+                "android_help",
                 "android_ui_tree",
                 "android_ui_click",
                 "android_ui_set_text",
                 "android_ui_scroll",
+                "android_ui_tap",
+                "android_ui_swipe",
+                "android_ui_ime_action",
+                "android_ui_paste",
+                "android_wait_for_idle",
                 "android_global_action",
                 "android_screenshot",
                 "android_notifications",
@@ -293,6 +307,61 @@ internal class LocalAgentToolExecutor(
             if (generationController.isStopped) stoppedFailure()
             else failure(e.message ?: "工具执行失败")
         }
+    }
+
+    /**
+     * android_step：执行一个 Android 界面动作后自动等待稳定、截图并调用视觉模型描述结果。
+     *
+     * 把「动作 → 观察」合并为一步，减少模型必须显式串联
+     * android_ui_* → android_wait_for_idle → android_screenshot → understand_image 的轮次。
+     * 视觉描述失败时降级返回，不影响动作结果本身。
+     */
+    private suspend fun androidStep(args: Map<String, Any>): Map<String, Any> {
+        val action = args.string("action")
+        if (action.isBlank()) return failure("android_step 需要 action 参数")
+        val supported = setOf(
+            "android_ui_click", "android_ui_tap", "android_ui_swipe", "android_ui_set_text",
+            "android_ui_scroll", "android_ui_ime_action", "android_ui_paste", "android_global_action"
+        )
+        if (action !in supported) {
+            return failure("android_step 不支持的 action: $action（支持：${supported.joinToString("、")}）")
+        }
+        // 透传动作参数（去掉 action 本身）
+        val actionArgs = args.filterKeys { it != "action" }.toMap()
+        val actionResult = androidToolExecutor.execute(action, actionArgs)
+        // 等待界面稳定（加载/动画结束）
+        val wait = androidToolExecutor.execute("android_wait_for_idle", mapOf("timeout_ms" to 1500))
+        // 自动截图并视觉描述（失败时降级，不影响主结果）
+        var screenshotPath: String? = null
+        var observation: String? = null
+        try {
+            val shot = androidToolExecutor.execute("android_screenshot", emptyMap())
+            if ((shot["success"] as? Boolean) == true) {
+                screenshotPath = (shot["path"] as? String) ?: (shot["absolute_path"] as? String)
+                if (screenshotPath != null) {
+                    val described = understandImage(
+                        mapOf(
+                            "image_url" to screenshotPath,
+                            "question" to "描述当前屏幕的主要内容：可见的标题、按钮、输入框、列表项、价格和任何弹窗。"
+                        )
+                    )
+                    observation = if ((described["success"] as? Boolean) == true) {
+                        described["description"] as? String
+                    } else {
+                        "（视觉描述失败：${described["error"]}）"
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            observation = "（截图/视觉描述异常：${e.message?.take(120)}）"
+        }
+        return success(
+            "action" to action,
+            "action_result" to actionResult,
+            "wait" to wait,
+            "screenshot_path" to (screenshotPath ?: ""),
+            "observation" to (observation ?: "")
+        )
     }
 
     private fun readGlobalAgentMemory(): Map<String, Any> {
