@@ -361,6 +361,30 @@ fun extractCurrentTurnToolCallHistory(
 // 响应内容处理
 // ============================================================================
 
+/**
+ * 构建工具消息 content。
+ *
+ * 工具结果默认序列化为 JSON 文本。若结果含 _image_urls（data URI 列表，
+ * 由 android_screenshot / android_step 在支持视觉的模型下注入），则返回
+ * 多模态 content 数组：[文本 JSON, image_url parts]，让视觉模型直接看到截图，
+ * 无需再调用 understand_image。协议层（Gemini/Anthropic/OpenAI Chat）已支持
+ * 解析该数组；OpenAI Responses 协议只取文本部分（图片降级为文本提示）。
+ */
+internal fun buildToolMessageContent(toolResult: Map<String, Any>): Any {
+    val images = (toolResult["_image_urls"] as? List<*>)
+        ?.mapNotNull { it?.toString() }
+        ?.filter { it.isNotBlank() }
+        .orEmpty()
+    val textJson = agentGson.toJson(toolResult.filterKeys { it != "_image_urls" })
+    if (images.isEmpty()) return textJson
+    return buildList {
+        add(mapOf("type" to "text", "text" to textJson))
+        images.forEach { url ->
+            add(mapOf("type" to "image_url", "image_url" to mapOf("url" to url)))
+        }
+    }
+}
+
 /** 清理响应内容：去除 markdown 代码块包裹 */
 fun cleanResponseContent(content: String): String {
     var cleaned = content.trim()
@@ -602,7 +626,7 @@ suspend fun runToolCallLoop(
                         "role" to "tool",
                         "tool_call_id" to (toolCall["id"] as? String ?: ""),
                         "name" to (toolCall["name"] as? String ?: ""),
-                        "content" to agentGson.toJson(toolResult)
+                        "content" to buildToolMessageContent(toolResult)
                     )
                 }
 

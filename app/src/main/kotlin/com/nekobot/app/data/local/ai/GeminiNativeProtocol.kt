@@ -180,8 +180,29 @@ object GeminiNativeProtocol : LocalProtocol {
 
     private fun toolResponsePart(message: Map<String, Any>): Map<String, Any>? {
         val name = message["name"] as? String ?: return null
-        val response = (message["content"] as? String)?.let(::parseJson)
-            ?: mapOf("result" to (message["content"]?.toString() ?: ""))
+        val response = when (val content = message["content"]) {
+            // 多模态 content 数组（buildToolMessageContent 生成）：
+            // 文本部分作为 response JSON，image_url 部分转为 Gemini inlineData 图片
+            // （functionResponse 的 "image" 字段，Gemini 支持函数返回图片给模型直接观察）。
+            is List<*> -> {
+                val text = content.mapNotNull { (it as? Map<*, *>)?.get("text") as? String }
+                    .joinToString("")
+                val images = content.mapNotNull { block ->
+                    val map = block as? Map<*, *> ?: return@mapNotNull null
+                    imagePart(map)
+                }
+                buildMap<String, Any> {
+                    val parsed = runCatching { parseJson(text) as? Map<String, Any> }.getOrNull()
+                    if (parsed != null && parsed.isNotEmpty()) putAll(parsed) else put("result", text)
+                    images.forEachIndexed { index, inlineData ->
+                        put(if (index == 0) "image" else "image_$index", inlineData)
+                    }
+                }
+            }
+            is String -> parseJson(content) as? Map<String, Any>
+                ?: mapOf("result" to content)
+            else -> mapOf("result" to (message["content"]?.toString() ?: ""))
+        }
         return mapOf(
             "functionResponse" to mapOf(
                 "id" to (message["tool_call_id"] as? String ?: ""),

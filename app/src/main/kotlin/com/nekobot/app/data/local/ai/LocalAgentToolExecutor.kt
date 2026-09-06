@@ -180,6 +180,12 @@ internal class LocalAgentToolExecutor(
     private val thinkingHistoryProvider: (Int) -> List<Map<String, Any>>,
     /** 视觉识别函数：传入 imageUrl（http URL 或 data URI）和问题，返回描述文本（非 suspend） */
     private val visionDescriber: ((String, String) -> String)? = null,
+    /**
+     * 当前对话模型是否支持视觉（supportsVision）。为 true 时，
+     * android_screenshot / android_step 会把截图以 data URI 附加到工具结果
+     * （_image_urls），让多模态模型直接看截图，无需再调用 understand_image。
+     */
+    private val supportsVision: Boolean = false,
     /** 图片生成函数：复用当前模式下已配置的 image_generation 模型队列。 */
     private val imageGenerator: suspend (String, String, Int) -> Resource<List<LocalImageResult>> =
         { prompt, size, count -> ServiceContainer.unified.generateImages(prompt, size, count) },
@@ -272,6 +278,7 @@ internal class LocalAgentToolExecutor(
                 "agent_memory_read" -> readGlobalAgentMemory()
                 "agent_memory_update" -> updateGlobalAgentMemory(args)
                 "android_step" -> androidStep(args)
+                "android_screenshot" -> attachScreenshotToResult(androidToolExecutor.execute(toolName, args))
                 "android_device_info",
                 "android_battery_status",
                 "android_clipboard_read",
@@ -295,7 +302,6 @@ internal class LocalAgentToolExecutor(
                 "android_ui_paste",
                 "android_wait_for_idle",
                 "android_global_action",
-                "android_screenshot",
                 "android_notifications",
                 "android_notification_action",
                 "android_media_control" -> androidToolExecutor.execute(toolName, args)
@@ -307,6 +313,19 @@ internal class LocalAgentToolExecutor(
             if (generationController.isStopped) stoppedFailure()
             else failure(e.message ?: "工具执行失败")
         }
+    }
+
+    /**
+     * android_screenshot 结果增强：当对话模型支持视觉时，把截图文件转为 data URI
+     * 附加到 _image_urls，让模型直接看到截图，无需再调用 understand_image。
+     */
+    private fun attachScreenshotToResult(result: Map<String, Any>): Map<String, Any> {
+        if (!supportsVision) return result
+        if ((result["success"] as? Boolean) != true) return result
+        val path = (result["absolute_path"] as? String) ?: (result["path"] as? String)
+            ?: return result
+        val dataUri = fileToDataUri(File(path)) ?: return result
+        return result + ("_image_urls" to listOf(dataUri))
     }
 
     /**
@@ -355,12 +374,18 @@ internal class LocalAgentToolExecutor(
         } catch (e: Exception) {
             observation = "（截图/视觉描述异常：${e.message?.take(120)}）"
         }
+        val imageUrls = if (supportsVision && screenshotPath != null) {
+            fileToDataUri(File(screenshotPath))?.let(::listOf).orEmpty()
+        } else {
+            emptyList()
+        }
         return success(
             "action" to action,
             "action_result" to actionResult,
             "wait" to wait,
             "screenshot_path" to (screenshotPath ?: ""),
-            "observation" to (observation ?: "")
+            "observation" to (observation ?: ""),
+            "_image_urls" to imageUrls
         )
     }
 

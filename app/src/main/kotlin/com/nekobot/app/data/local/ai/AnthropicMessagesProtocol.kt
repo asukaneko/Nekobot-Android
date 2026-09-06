@@ -92,7 +92,7 @@ object AnthropicMessagesProtocol : LocalProtocol {
                             mapOf(
                                 "type" to "tool_result",
                                 "tool_use_id" to (msg["tool_call_id"] ?: ""),
-                                "content" to (msg["content"] ?: "")
+                                "content" to toolResultContent(msg["content"])
                             )
                         )
                     )
@@ -180,6 +180,24 @@ object AnthropicMessagesProtocol : LocalProtocol {
             }
         }
         return blocks.takeIf { it.isNotEmpty() } ?: ""
+    }
+
+    /** 工具结果 content：多模态数组（text + image_url parts）转 Anthropic tool_result blocks。 */
+    private fun toolResultContent(content: Any?): Any = when (content) {
+        is List<*> -> {
+            val blocks = content.mapNotNull { raw ->
+                val block = raw as? Map<*, *> ?: return@mapNotNull null
+                when (block["type"] as? String) {
+                    "text" -> (block["text"] as? String)
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { mapOf("type" to "text", "text" to it) }
+                    "image_url" -> imageBlock(block)
+                    else -> null
+                }
+            }
+            blocks.takeIf { it.isNotEmpty() } ?: ""
+        }
+        else -> content ?: ""
     }
 
     private fun imageBlock(block: Map<*, *>): Map<String, Any>? {

@@ -126,6 +126,9 @@ internal class LocalPipelineCallbacks(
             sessionId = session.id,
             workspaceRoot = workspaceRoot,
             authorizationManager = execAuthorizationManager,
+            // 对话模型支持视觉时，android_screenshot/android_step 截图直接以
+            // data URI 注入工具结果（_image_urls），模型可直接看截图。
+            supportsVision = activeModel.purpose.equals("chat", ignoreCase = true) && activeModel.supportsVision,
             onConfirmationRequired = { request ->
                 emitEvent(RealtimeEvent.ExecConfirmationRequired(request))
             },

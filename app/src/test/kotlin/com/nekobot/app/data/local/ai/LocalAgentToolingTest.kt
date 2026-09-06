@@ -817,4 +817,41 @@ class LocalAgentToolingTest {
             )
         }
     }
+@Test
+    fun buildToolMessageContentWithoutImagesReturnsJsonText() {
+        val content = buildToolMessageContent(mapOf("success" to true, "path" to "screenshots/a.png"))
+        assertTrue(content is String)
+        val text = content as String
+        assertTrue(text.contains("screenshots/a.png"))
+        assertFalse(text.contains("image_url"))
+    }
+
+    @Test
+    fun buildToolMessageContentWithImagesReturnsMultimodalParts() {
+        val content = buildToolMessageContent(
+            mapOf(
+                "success" to true,
+                "path" to "screenshots/a.png",
+                "_image_urls" to listOf("data:image/png;base64,AAAA")
+            )
+        )
+        assertTrue(content is List<*>)
+        @Suppress("UNCHECKED_CAST")
+        val parts = content as List<Map<String, Any>>
+        assertTrue(parts.any { it["type"] == "text" })
+        val imagePart = parts.first { it["type"] == "image_url" }
+        @Suppress("UNCHECKED_CAST")
+        val imageUrl = (imagePart["image_url"] as Map<String, Any>)["url"] as String
+        assertEquals("data:image/png;base64,AAAA", imageUrl)
+        // 文本 part 不应再包含 _image_urls 字段
+        val textPart = parts.first { it["type"] == "text" }
+        assertFalse((textPart["text"] as String).contains("_image_urls"))
+    }
+
+    @Test
+    fun buildToolMessageContentWithEmptyImagesReturnsJsonText() {
+        val content = buildToolMessageContent(mapOf("success" to true, "_image_urls" to emptyList<String>()))
+        assertTrue(content is String)
+    }
+
 }
