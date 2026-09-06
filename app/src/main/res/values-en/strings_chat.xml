@@ -559,6 +559,8 @@
     <string name="chat_sandbox_files_unsaved_title">Discard unsaved changes?</string>
     <string name="chat_sandbox_files_discard">Discard</string>
     <string name="chat_sandbox_files_keep_editing">Keep editing</string>
+    <string name="chat_sandbox_terminal_interactive">Interactive session running: input is sent directly to the program, use the stop button to interrupt</string>
+    <string name="chat_sandbox_terminal_interactive_failed">Cannot start interactive session</string>
     <string name="live_start">Start Live conversation</string>
     <string name="live_title">Live conversation</string>
     <string name="live_pipeline_label">Conversation flow</string>

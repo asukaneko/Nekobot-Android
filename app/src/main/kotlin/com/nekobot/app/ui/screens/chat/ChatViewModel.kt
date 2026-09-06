@@ -175,6 +175,7 @@ import com.nekobot.app.data.local.isAgentContextSummary
 import com.nekobot.app.data.local.isLocalCommandMessage
 import com.nekobot.app.data.local.db.LocalMessageImageEntity
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
+import com.nekobot.app.data.local.ai.LocalInteractiveSession
 import com.nekobot.app.data.local.ai.AgentRecoveryState
 import com.nekobot.app.data.local.ai.toRecoveryState
 import com.nekobot.app.data.local.ai.RealtimeContextMessage
@@ -208,6 +209,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
@@ -2509,6 +2511,40 @@ class ChatViewModel : BaseViewModel() {
 
     fun stopSandboxCommand() {
         currentSessionId.takeIf(String::isNotBlank)?.let(unified::stopSandboxCommand)
+    }
+
+    private var interactiveSession: LocalInteractiveSession? = null
+
+    /** 启动交互式沙盒会话（python3 等），输出/退出经主线程回调；已有存活会话时返回 false。 */
+    fun startSandboxInteractiveSession(
+        command: String,
+        onOutput: (String) -> Unit,
+        onExit: (Int) -> Unit,
+    ): Boolean {
+        val sessionId = currentSessionId
+        if (sessionId.isBlank() || !isLocalMode) return false
+        if (interactiveSession?.isAlive == true) return false
+        viewModelScope.launch {
+            val session = unified.startSandboxInteractiveSession(sessionId, command) { code ->
+                // 读线程回调：切回主线程再通知 UI
+                interactiveSession = null
+                viewModelScope.launch { onExit(code) }
+            } ?: return@launch
+            interactiveSession = session
+            session.output.collect { chunk -> onOutput(chunk) }
+        }
+        return true
+    }
+
+    /** 发送一行输入给当前交互式会话。 */
+    fun sendSandboxInteractiveInput(line: String) {
+        interactiveSession?.takeIf { it.isAlive }?.sendLine(line)
+    }
+
+    /** 终止当前交互式会话（进程结束会触发 onExit 回调）。 */
+    fun stopSandboxInteractiveSession() {
+        interactiveSession?.stop()
+        interactiveSession = null
     }
 
     /** 群聊气泡需要按每条消息的 sender 匹配成员角色卡头像。 */

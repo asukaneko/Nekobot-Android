@@ -565,6 +565,8 @@
     <string name="chat_sandbox_files_unsaved_title">放弃未保存的修改？</string>
     <string name="chat_sandbox_files_discard">放弃</string>
     <string name="chat_sandbox_files_keep_editing">继续编辑</string>
+    <string name="chat_sandbox_terminal_interactive">交互会话运行中：输入将直接发送给当前程序，可用停止按钮中断</string>
+    <string name="chat_sandbox_terminal_interactive_failed">无法启动交互式会话</string>
     <string name="live_start">开始 Live 对话</string>
     <string name="live_title">Live 对话</string>
     <string name="live_pipeline_label">对话流程</string>

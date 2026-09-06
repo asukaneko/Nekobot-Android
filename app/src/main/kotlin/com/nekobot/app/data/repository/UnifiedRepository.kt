@@ -7,6 +7,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalRepository
+import com.nekobot.app.data.local.ai.LocalInteractiveSession
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
 import com.nekobot.app.data.local.ai.RealtimeAgentToolRuntime
 import com.nekobot.app.data.local.ai.RealtimeModelConfig
@@ -210,6 +211,14 @@ class UnifiedRepository(
     fun stopSandboxCommand(sessionId: String) {
         if (isLocal) local.stopSandboxCommand(sessionId)
     }
+
+    /** 启动交互式沙盒会话（python3 等持续程序），仅本地模式可用。 */
+    internal suspend fun startSandboxInteractiveSession(
+        sessionId: String,
+        command: String,
+        onExit: (Int) -> Unit,
+    ): LocalInteractiveSession? =
+        if (isLocal) local.startSandboxInteractiveSession(sessionId, command, onExit) else null
 
     /**
      * 导入会话：本地模式写入 Room；远程模式透传给后端 /api/sessions/import。

@@ -560,6 +560,8 @@
     <string name="chat_sandbox_files_unsaved_title">未保存の変更を破棄しますか？</string>
     <string name="chat_sandbox_files_discard">破棄</string>
     <string name="chat_sandbox_files_keep_editing">編集を続ける</string>
+    <string name="chat_sandbox_terminal_interactive">対話セッション実行中：入力は現在のプログラムに直接送信されます。停止ボタンで中断できます</string>
+    <string name="chat_sandbox_terminal_interactive_failed">対話セッションを開始できません</string>
     <string name="live_start">Live 会話を開始</string>
     <string name="live_title">Live 会話</string>
     <string name="live_pipeline_label">会話フロー</string>

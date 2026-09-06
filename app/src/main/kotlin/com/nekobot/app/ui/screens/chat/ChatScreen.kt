@@ -326,6 +326,9 @@ fun ChatScreen(
         mutableStateOf<List<SandboxTerminalEntry>>(emptyList())
     }
     var sandboxTerminalRunning by remember(sessionId) { mutableStateOf(false) }
+    // 交互式会话（python3 等持续程序）运行状态：运行中输入直通程序 stdin
+    var interactiveRunning by remember(sessionId) { mutableStateOf(false) }
+    var interactiveEntryId by remember(sessionId) { mutableStateOf<Long?>(null) }
     // 展开状态必须高于 LazyColumn item：工具步骤更新或卡片离屏回收后仍保留用户选择。
     val progressCardExpansionOverrides = remember(sessionId) {
         mutableStateMapOf<String, Boolean>()
@@ -1834,16 +1837,79 @@ fun ChatScreen(
         }
     }
 
+    // ===== 沙箱交互式会话（python3 等持续程序） =====
+    val interactiveFailedText = stringResource(R.string.chat_sandbox_terminal_interactive_failed)
+
+    fun isInteractiveSandboxCommand(command: String): Boolean {
+        val program = command.trim().substringBefore(' ').substringAfterLast('/').lowercase()
+        return program in interactiveSandboxPrograms
+    }
+
+    /** 把一段文本追加到当前交互式会话对应的终端条目输出上。 */
+    fun appendInteractiveOutput(text: String) {
+        val targetId = interactiveEntryId ?: return
+        sandboxTerminalEntries = sandboxTerminalEntries.map { entry ->
+            if (entry.id == targetId) entry.copy(output = entry.output + text) else entry
+        }
+    }
+
+    /** 启动交互式会话：新增运行中条目，输出流式写入，退出时补退出码。 */
+    fun startInteractiveSession(rawCommand: String) {
+        if (interactiveRunning) return
+        val command = normalizeInteractiveCommand(rawCommand)
+        val entryId = System.nanoTime()
+        interactiveEntryId = entryId
+        sandboxTerminalEntries = sandboxTerminalEntries + SandboxTerminalEntry(
+            id = entryId,
+            command = command,
+            isRunning = true,
+        )
+        interactiveRunning = true
+        val started = viewModel.startSandboxInteractiveSession(
+            command = command,
+            onOutput = { chunk -> appendInteractiveOutput(chunk) },
+            onExit = { code ->
+                interactiveRunning = false
+                interactiveEntryId = null
+                sandboxTerminalEntries = sandboxTerminalEntries.map { entry ->
+                    if (entry.id == entryId) {
+                        entry.copy(isRunning = false, exitCode = code)
+                    } else {
+                        entry
+                    }
+                }
+            },
+        )
+        if (!started) {
+            interactiveRunning = false
+            interactiveEntryId = null
+            sandboxTerminalEntries = sandboxTerminalEntries.map { entry ->
+                if (entry.id == entryId) {
+                    entry.copy(isRunning = false, error = interactiveFailedText)
+                } else {
+                    entry
+                }
+            }
+        }
+    }
+
     if (showSandboxTerminal) {
         SandboxTerminalOverlay(
             entries = sandboxTerminalEntries,
             running = sandboxTerminalRunning,
+            interactiveRunning = interactiveRunning,
             onRunCommand = { rawCommand ->
                 val command = rawCommand.trim()
                 when {
                     command.isEmpty() -> Unit
-                    command == "clear" -> sandboxTerminalEntries = emptyList()
-                    command == "exit" -> showSandboxTerminal = false
+                    command == "clear" && !interactiveRunning -> sandboxTerminalEntries = emptyList()
+                    command == "exit" && !interactiveRunning -> showSandboxTerminal = false
+                    interactiveRunning -> {
+                        // 交互式会话中：输入直通程序 stdin，并本地回显一行
+                        appendInteractiveOutput("$command\n")
+                        viewModel.sendSandboxInteractiveInput(command)
+                    }
+                    isInteractiveSandboxCommand(command) -> startInteractiveSession(command)
                     !sandboxTerminalRunning -> {
                         val entryId = System.nanoTime()
                         sandboxTerminalEntries = sandboxTerminalEntries + SandboxTerminalEntry(
@@ -1868,25 +1934,34 @@ fun ChatScreen(
                 }
             },
             onStop = {
-                viewModel.stopSandboxCommand()
-                sandboxTerminalEntries = sandboxTerminalEntries.map { entry ->
-                    if (entry.isRunning) {
-                        entry.copy(
-                            output = "^C",
-                            exitCode = 130,
-                            isRunning = false,
-                        )
-                    } else {
-                        entry
+                if (interactiveRunning) {
+                    // 交互式会话：终止进程（退出码经 onExit 回写条目）
+                    viewModel.stopSandboxInteractiveSession()
+                } else {
+                    viewModel.stopSandboxCommand()
+                    sandboxTerminalEntries = sandboxTerminalEntries.map { entry ->
+                        if (entry.isRunning) {
+                            entry.copy(
+                                output = "^C",
+                                exitCode = 130,
+                                isRunning = false,
+                            )
+                        } else {
+                            entry
+                        }
                     }
+                    sandboxTerminalRunning = false
                 }
-                sandboxTerminalRunning = false
             },
             onClear = {
-                if (!sandboxTerminalRunning) sandboxTerminalEntries = emptyList()
+                if (!sandboxTerminalRunning && !interactiveRunning) sandboxTerminalEntries = emptyList()
             },
             onOpenFiles = { showSandboxFiles = true },
-            onDismiss = { showSandboxTerminal = false },
+            onDismiss = {
+                showSandboxTerminal = false
+                // 关闭终端时终止仍在运行的交互式会话，避免进程残留
+                if (interactiveRunning) viewModel.stopSandboxInteractiveSession()
+            },
         )
     }
     if (showSandboxFiles) {
@@ -1894,6 +1969,10 @@ fun ChatScreen(
             onRunCommand = viewModel::executeSandboxCommand,
             onDismiss = { showSandboxFiles = false },
         )
+    }
+    // 离开聊天页或切换会话时终止交互式会话
+    DisposableEffect(sessionId) {
+        onDispose { viewModel.stopSandboxInteractiveSession() }
     }
 }
 
@@ -1917,6 +1996,27 @@ private data class SandboxTerminalEntry(
     )
 }
 
+/** 需要持续交互的沙盒程序（解释器/REPL 类），命中后走交互式会话通道。 */
+private val interactiveSandboxPrograms = setOf(
+    "python", "python3", "node", "irb", "sqlite3", "bc",
+    "sh", "bash", "zsh", "fish",
+)
+
+/**
+ * python/node 在管道 stdin 下默认按“脚本”读取（不打印提示符、不回显表达式结果），
+ * 无 -i/-c/其他参数时补上 -i 强制以 REPL 方式运行。
+ */
+private fun normalizeInteractiveCommand(command: String): String {
+    val tokens = command.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+    if (tokens.isEmpty()) return command
+    val program = tokens.first().substringAfterLast('/').lowercase()
+    val hasModeFlag = tokens.drop(1).any { it == "-i" || it == "-c" || it.startsWith("-") }
+    return when {
+        program in setOf("python", "python3", "node") && !hasModeFlag -> "$command -i"
+        else -> command
+    }
+}
+
 /**
  * 当前 Agent 会话的全屏沙箱终端。
  *
@@ -1932,6 +2032,7 @@ private data class SandboxTerminalEntry(
 private fun SandboxTerminalOverlay(
     entries: List<SandboxTerminalEntry>,
     running: Boolean,
+    interactiveRunning: Boolean,
     onRunCommand: (String) -> Unit,
     onStop: () -> Unit,
     onClear: () -> Unit,
@@ -1951,7 +2052,9 @@ private fun SandboxTerminalOverlay(
 
     fun submit() {
         val command = input.trim()
-        if (command.isBlank() || running) return
+        if (command.isBlank()) return
+        // 普通命令运行中不允许再提交；交互式会话中运行标记为 false，可直接提交
+        if (running && !interactiveRunning) return
         input = ""
         onRunCommand(command)
     }
@@ -1964,7 +2067,12 @@ private fun SandboxTerminalOverlay(
         focusRequester.requestFocus()
         keyboard?.show()
     }
-    LaunchedEffect(entries.size, entries.lastOrNull()?.isRunning) {
+    // 输出流式增长时也自动滚到底部
+    LaunchedEffect(
+        entries.size,
+        entries.lastOrNull()?.isRunning,
+        entries.lastOrNull()?.output?.length,
+    ) {
         if (entries.isNotEmpty()) listState.animateScrollToItem(entries.lastIndex)
     }
 
@@ -2100,6 +2208,18 @@ private fun SandboxTerminalOverlay(
                                                 color = muted,
                                             )
                                         }
+                                        // 交互式会话：运行中实时展示流式输出
+                                        if (entry.output.isNotBlank()) {
+                                            Spacer(Modifier.height(6.dp))
+                                            SelectionContainer {
+                                                Text(
+                                                    text = entry.output,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    color = foreground,
+                                                )
+                                            }
+                                        }
                                     }
                                     entry.error != null -> {
                                         SelectionContainer {
@@ -2142,6 +2262,20 @@ private fun SandboxTerminalOverlay(
                             }
                         }
                     }
+                }
+
+                // 交互式会话运行中的提示横幅
+                if (interactiveRunning) {
+                    Text(
+                        text = stringResource(R.string.chat_sandbox_terminal_interactive),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = muted,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(panel)
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                    )
                 }
 
                 androidx.compose.material3.Surface(
@@ -2200,23 +2334,24 @@ private fun SandboxTerminalOverlay(
                             ),
                         )
                         Spacer(Modifier.width(8.dp))
+                        val anyRunning = running || interactiveRunning
                         IconButton(
-                            onClick = if (running) onStop else ::submit,
+                            onClick = if (anyRunning) onStop else ::submit,
                         ) {
                             Icon(
-                                imageVector = if (running) {
+                                imageVector = if (anyRunning) {
                                     Icons.Filled.Stop
                                 } else {
                                     Icons.AutoMirrored.Filled.Send
                                 },
                                 contentDescription = stringResource(
-                                    if (running) {
+                                    if (anyRunning) {
                                         R.string.chat_sandbox_terminal_stop
                                     } else {
                                         R.string.chat_sandbox_terminal_run
                                     }
                                 ),
-                                tint = if (running) errorColor else prompt,
+                                tint = if (anyRunning) errorColor else prompt,
                             )
                         }
                     }

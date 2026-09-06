@@ -26,6 +26,7 @@ import com.nekobot.app.data.local.ai.LocalChatFailoverExecutor
 import com.nekobot.app.data.local.ai.LocalContextTokenMessage
 import com.nekobot.app.data.local.ai.LocalDbToolExecutor
 import com.nekobot.app.data.local.ai.LocalGenerationController
+import com.nekobot.app.data.local.ai.LocalInteractiveSession
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
 import com.nekobot.app.data.local.ai.LocalLinuxSandboxCoordinator
 import com.nekobot.app.data.local.ai.LocalMcpRuntime
@@ -965,9 +966,39 @@ class LocalRepository(
         )
     }
 
-    /** 中断命令行界面或 Agent 当前正在运行的沙箱命令。 */
+    /**
+     * 启动交互式沙盒会话（python3 等持续程序）：独立进程 + 流式输出。
+     *
+     * 校验与 [executeSandboxCommand] 一致：仅本地 Agent 会话可用。
+     * 输出通过返回句柄的 output 流获取；进程退出后经 onExit 回调退出码（读线程）。
+     */
+    internal suspend fun startSandboxInteractiveSession(
+        sessionId: String,
+        command: String,
+        onExit: (Int) -> Unit,
+    ): LocalInteractiveSession? = withContext(Dispatchers.IO) {
+        val normalized = command.trim()
+        if (normalized.isEmpty()) return@withContext null
+        val session = sessionDao.getById(sessionId) ?: return@withContext null
+        if (!session.sessionMode.equals("agent", ignoreCase = true)) return@withContext null
+        val context = appContext ?: return@withContext null
+        val workspace = LocalWorkspaceStorage.resolve(context.filesDir, sessionId)
+            ?: return@withContext null
+        runCatching {
+            LocalLinuxSandboxCoordinator.startInteractiveSession(
+                context = context,
+                sessionId = sessionId,
+                workspace = workspace,
+                command = normalized,
+                onExit = onExit,
+            )
+        }.getOrNull()
+    }
+
+    /** 中断命令行界面或 Agent 当前正在运行的沙箱命令/交互式会话。 */
     fun stopSandboxCommand(sessionId: String) {
         LocalLinuxSandboxCoordinator.stopSession(sessionId)
+        LocalLinuxSandboxCoordinator.stopInteractiveSession(sessionId)
     }
 
     suspend fun createSession(req: CreateSessionRequest): Session = withContext(Dispatchers.IO) {
