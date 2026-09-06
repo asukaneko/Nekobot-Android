@@ -337,9 +337,9 @@
 
   /* ---------- 11. 从 GitHub Releases 拉取更新日志 ---------- */
   const FALLBACK_RELEASES = [
+    { tag_name: 'v0.6.6', published_at: '2026-09-06', body: '- 支持沙箱交互式会话（python3 等持续程序），输入直通 stdin 并流式输出，自动补 -i 强制 REPL\n- 沙箱支持跨会话共享工作区挂载到 /shared\n- 新增沙盒文件浏览器：目录浏览、文本查看/编辑保存、二进制识别\n- Agent 工具进度中展示工具执行耗时\n- /jmrank 与 /jm_search 支持末尾数量参数，上限提升至 150\n- 沙箱终端改为全屏覆盖层，修复键盘弹出与输入框位置问题\n- 角色卡网格手机端恢复双列，卡片立绘加高\n- Markdown 渲染排版优化：行距段距与标题留白' },
     { tag_name: 'v0.6.5', published_at: '2026-09-04', body: '- Agent 会话展示文件变更 git 摘要卡片与逐文件 diff\n- 本地斜杠命令增加多语言本地化支持（中 / 英 / 日 / 韩）\n- 支持长按命令建议查看完整说明弹窗\n- 平板模式下聊天输入框避让悬浮底栏，角色页自适应列数，用量页宽屏限宽居中\n- workspace_edit_file 改为精准局部编辑（old_string → new_string）\n- 进入会话后 Agent 任务列表默认折叠，/help 补充 /goal 与 /spec 用法' },
     { tag_name: 'v0.6.4', published_at: '2026-09-02', body: '- Agent 会话新增 /goal 目标命令与 /spec 规格驱动开发命令\n- Agent 会话新增 todo_write 任务列表工具与可折叠任务面板\n- Agent 新增 ask_user_question 结构化问答工具\n- Agent 会话支持生成期间消息排队与立即发送\n- 会话数据新增目标 / 规格字段（数据库 v37→v38 迁移）\n- 输入框上方新增目标 / 规格横幅，支持中 / 英 / 日 / 韩多语言' },
-    { tag_name: 'v0.6.3', published_at: '2026-08-31', body: '- 本地模式手动上下文压缩改为后台任务，离开会话后仍会继续执行\n- 消息数量不足但上下文占用较高时也可手动压缩\n- 从 GitHub 安装 Skill 时保留 SKILL.md 同级的全部文件和目录\n- 本地 MCP 请求统一使用最新协议版本头，并完善 HTTP 错误诊断\n- Agent 会话使用独立的长故障转移超时，避免工具循环被中断\n- 发送消息期间可切换 YOLO 模式，移除本地模式的无效运行时命令' },
   ];
   function renderReleases(releases) {
     const container = $('#changelogList');
