@@ -50,6 +50,35 @@ class LocalLinuxSandboxTest {
         assertTrue(command.windowed(2).contains(listOf("-w", "/workspace")))
         assertEquals("/bin/sh", command.last())
         assertFalse(command.joinToString(" ").contains("session-b"))
+        // 未提供共享工作区时不挂载 /shared
+        assertFalse(command.windowed(2).contains(listOf("-b", ":/shared")))
+        assertFalse(command.joinToString(" ").contains("/shared"))
+    }
+
+    @Test
+    fun `proot command mounts shared workspace when provided`() {
+        val proot = File("native/libproot.so").absoluteFile
+        val rootfs = File("data/alpine-rootfs").absoluteFile
+        val workspace = File("data/workspace/session-a").absoluteFile
+        val shared = File("data/workspace/shared").absoluteFile
+        val command = buildLocalProotCommand(
+            proot = proot,
+            rootfs = rootfs,
+            workspace = workspace,
+            sharedWorkspace = shared,
+        )
+
+        assertTrue(
+            command.windowed(2).contains(
+                listOf("-b", "${shared.absolutePath}:/shared")
+            )
+        )
+        // 会话工作区挂载仍然存在
+        assertTrue(
+            command.windowed(2).contains(
+                listOf("-b", "${workspace.absolutePath}:/workspace")
+            )
+        )
     }
 
     @Test

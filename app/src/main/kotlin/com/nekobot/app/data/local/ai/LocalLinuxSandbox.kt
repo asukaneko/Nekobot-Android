@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.os.Build
 import android.util.Log
+import com.nekobot.app.data.local.LocalWorkspaceStorage
 import java.io.BufferedWriter
 import java.io.File
 import java.io.InputStream
@@ -36,7 +37,8 @@ data class LocalSandboxCommandResult(
  * Agent 模式使用的 Alpine Linux 沙盒。
  *
  * rootfs 在应用内全局共享，软件安装和 /root 数据可以跨 Agent 会话保留；
- * 每个会话拥有独立的持久 shell，并把自己的 Android 工作区挂载到 /workspace。
+ * 每个会话拥有独立的持久 shell，并把自己的 Android 工作区挂载到 /workspace，
+ * 跨会话共享工作区（filesDir/workspace/shared/）挂载到 /shared。
  */
 internal object LocalLinuxSandboxCoordinator {
     private const val TAG = "LocalLinuxSandbox"
@@ -96,10 +98,13 @@ internal object LocalLinuxSandboxCoordinator {
         runtime: LocalLinuxRuntime,
     ): LocalPersistentLinuxShell {
         shells.remove(sessionId)?.stop()
+        // 跨会话共享工作区（filesDir/workspace/shared/）一并挂载到沙箱 /shared
+        val sharedWorkspace = LocalWorkspaceStorage.resolveShared(context.filesDir)
         val shell = LocalPersistentLinuxShell(
             context = context.applicationContext,
             sessionId = sessionId,
             workspace = workspace.canonicalFile,
+            sharedWorkspace = sharedWorkspace,
             runtime = runtime,
         )
         shell.start()
@@ -315,6 +320,7 @@ internal class LocalPersistentLinuxShell(
     private val context: Context,
     private val sessionId: String,
     val workspace: File,
+    private val sharedWorkspace: File?,
     private val runtime: LocalLinuxRuntime,
 ) {
     @Volatile
@@ -333,11 +339,17 @@ internal class LocalPersistentLinuxShell(
     fun start() {
         if (isAlive) return
         workspace.mkdirs()
+        // 挂载点 /shared 若不存在则先在 rootfs 内补建（与 /workspace 同理），
+        // 保证 PRoot -b 绑定目标可用；对已安装的旧 rootfs 也无需重装。
+        if (sharedWorkspace != null) {
+            File(runtime.rootfs, "shared").mkdirs()
+        }
 
         val command = buildLocalProotCommand(
             proot = runtime.proot,
             rootfs = runtime.rootfs,
             workspace = workspace,
+            sharedWorkspace = sharedWorkspace,
         )
         val builder = ProcessBuilder(command)
             .directory(context.filesDir)
@@ -557,24 +569,29 @@ internal fun buildLocalProotCommand(
     proot: File,
     rootfs: File,
     workspace: File,
-): List<String> = listOf(
-    proot.absolutePath,
-    "-0",
-    "--link2symlink",
-    "-r",
-    rootfs.absolutePath,
-    "-b",
-    "/dev",
-    "-b",
-    "/proc",
-    "-b",
-    "/sys",
-    "-b",
-    "${workspace.absolutePath}:/workspace",
-    "-w",
-    "/workspace",
-    "/bin/sh",
-)
+    sharedWorkspace: File? = null,
+): List<String> = buildList {
+    add(proot.absolutePath)
+    add("-0")
+    add("--link2symlink")
+    add("-r")
+    add(rootfs.absolutePath)
+    add("-b")
+    add("/dev")
+    add("-b")
+    add("/proc")
+    add("-b")
+    add("/sys")
+    add("-b")
+    add("${workspace.absolutePath}:/workspace")
+    if (sharedWorkspace != null) {
+        add("-b")
+        add("${sharedWorkspace.absolutePath}:/shared")
+    }
+    add("-w")
+    add("/workspace")
+    add("/bin/sh")
+}
 
 private fun localPosixTimezone(): String {
     val offsetMs = TimeZone.getDefault().getOffset(System.currentTimeMillis())
