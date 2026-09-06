@@ -100,6 +100,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.TaskAlt
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.VerticalSplit
 import androidx.compose.material.icons.filled.ViewAgenda
@@ -3550,6 +3551,8 @@ private fun ProgressStepRow(
     val name = step.name?.stripEmoji()?.takeIf { it.isNotBlank() }
         ?: stringResource(R.string.chat_step)
     val detail = step.detail?.stripEmoji()?.takeIf { it.isNotBlank() }
+    // 工具执行耗时（本地 Agent 模式在工具完成后写入；远程/运行中为 null 时不展示）
+    val durationLabel = step.durationMs?.let { formatToolDuration(it) }
     val isStreamingThinking = step.type.equals("thinking", ignoreCase = true) &&
         (step.status.equals("running", ignoreCase = true) ||
             step.status.equals("active", ignoreCase = true))
@@ -3600,6 +3603,15 @@ private fun ProgressStepRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
+                if (durationLabel != null) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(R.string.chat_step_duration, durationLabel),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
+                }
                 if (canOpenDetail) {
                     Spacer(Modifier.width(4.dp))
                     Icon(
@@ -3638,6 +3650,15 @@ private fun ProgressStepRow(
             }
         }
     }
+}
+
+/**
+ * 工具耗时格式化：不足 1 秒显示毫秒，否则以秒显示（保留 1 位小数）。
+ * 单位 ms / s 为通用写法，不随语言变化，仅标签部分走多语言资源。
+ */
+internal fun formatToolDuration(durationMs: Long): String {
+    val ms = durationMs.coerceAtLeast(0L)
+    return if (ms < 1_000) "${ms}ms" else "%.1f".format(ms / 1000.0) + "s"
 }
 
 /**
@@ -3928,6 +3949,7 @@ private fun StepDetailDialog(
     val fullResultJson = step.fullResult?.let { formatJsonForDisplay(it) }
     val toolOutputWasTruncated = step.resultTruncated == true ||
         fullResultIndicatesTruncation(step.fullResult)
+    val durationLabel = step.durationMs?.let { formatToolDuration(it) }
     val hasAny = detail != null || thinkingContent != null ||
         !argumentsJson.isNullOrBlank() || !fullResultJson.isNullOrBlank()
 
@@ -3946,52 +3968,71 @@ private fun StepDetailDialog(
                 .heightIn(max = 480.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            if (!hasAny) {
-                Text(
-                    text = stringResource(R.string.chat_step_no_details),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (!detail.isNullOrBlank()) {
-                        StepDetailSection(
-                            label = stringResource(R.string.chat_step_description),
-                            content = detail
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (durationLabel != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Filled.Timer,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.chat_step_duration, durationLabel),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    if (!thinkingContent.isNullOrBlank()) {
-                        StepDetailSection(
-                            label = if (thinkingWasTruncated) {
-                                stringResource(R.string.chat_ai_reasoning_truncated)
-                            } else {
-                                stringResource(R.string.chat_ai_reasoning)
-                            },
-                            icon = Icons.Filled.Psychology,
-                            content = thinkingContent,
-                            accent = true
-                        )
-                    }
-                    if (!argumentsJson.isNullOrBlank()) {
-                        StepDetailSection(
-                            label = stringResource(R.string.chat_step_arguments),
-                            icon = Icons.Filled.Key,
-                            content = argumentsJson,
-                            isCode = true
-                        )
-                    }
-                    if (!fullResultJson.isNullOrBlank()) {
-                        StepDetailSection(
-                            label = stringResource(R.string.chat_step_result),
-                            icon = Icons.Filled.CheckCircle,
-                            content = fullResultJson,
-                            isCode = true,
-                            notice = if (toolOutputWasTruncated) {
-                                stringResource(R.string.chat_step_result_truncated)
-                            } else {
-                                null
-                            }
-                        )
+                }
+                if (!hasAny) {
+                    Text(
+                        text = stringResource(R.string.chat_step_no_details),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (!detail.isNullOrBlank()) {
+                            StepDetailSection(
+                                label = stringResource(R.string.chat_step_description),
+                                content = detail
+                            )
+                        }
+                        if (!thinkingContent.isNullOrBlank()) {
+                            StepDetailSection(
+                                label = if (thinkingWasTruncated) {
+                                    stringResource(R.string.chat_ai_reasoning_truncated)
+                                } else {
+                                    stringResource(R.string.chat_ai_reasoning)
+                                },
+                                icon = Icons.Filled.Psychology,
+                                content = thinkingContent,
+                                accent = true
+                            )
+                        }
+                        if (!argumentsJson.isNullOrBlank()) {
+                            StepDetailSection(
+                                label = stringResource(R.string.chat_step_arguments),
+                                icon = Icons.Filled.Key,
+                                content = argumentsJson,
+                                isCode = true
+                            )
+                        }
+                        if (!fullResultJson.isNullOrBlank()) {
+                            StepDetailSection(
+                                label = stringResource(R.string.chat_step_result),
+                                icon = Icons.Filled.CheckCircle,
+                                content = fullResultJson,
+                                isCode = true,
+                                notice = if (toolOutputWasTruncated) {
+                                    stringResource(R.string.chat_step_result_truncated)
+                                } else {
+                                    null
+                                }
+                            )
+                        }
                     }
                 }
             }

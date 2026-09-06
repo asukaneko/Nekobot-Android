@@ -52,6 +52,7 @@
     <string name="chat_step_arguments">Arguments</string>
     <string name="chat_step_result">Result</string>
     <string name="chat_step_result_truncated">Tool output was truncated; the displayed content may be incomplete</string>
+    <string name="chat_step_duration">Elapsed %1$s</string>
     <string name="chat_stream_prefix_omitted">…Earlier content is still being generated and will be saved in full\n</string>
     <string name="chat_tool">Tool</string>
     <string name="common_expand">Expand</string>

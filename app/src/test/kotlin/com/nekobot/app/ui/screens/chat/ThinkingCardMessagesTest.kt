@@ -93,4 +93,24 @@ class ThinkingCardMessagesTest {
         assertTrue(shouldRenderProgressCards(isLocalMode = false, sessionMode = "agent"))
         assertTrue(shouldRenderProgressCards(isLocalMode = true, sessionMode = "character"))
     }
+
+    @Test
+    fun formatToolDurationShowsMillisecondsUnderOneSecond() {
+        assertEquals("0ms", formatToolDuration(0))
+        assertEquals("320ms", formatToolDuration(320))
+        assertEquals("999ms", formatToolDuration(999))
+    }
+
+    @Test
+    fun formatToolDurationShowsSecondsAtOrOverOneSecond() {
+        assertEquals("1.0s", formatToolDuration(1_000))
+        assertEquals("1.5s", formatToolDuration(1_500))
+        assertEquals("12.3s", formatToolDuration(12_345))
+        assertEquals("75.0s", formatToolDuration(75_000))
+    }
+
+    @Test
+    fun formatToolDurationClampsNegativeInput() {
+        assertEquals("0ms", formatToolDuration(-5))
+    }
 }

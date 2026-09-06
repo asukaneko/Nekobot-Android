@@ -172,5 +172,86 @@ class LocalAgentProgressReporterTest {
         assertEquals("fun main() {}", gitStep.gitDiff!!.files[0].hunks[0].lines[0].text)
     }
 
+    @Test
+    fun toolDurationIsMeasuredBetweenStartAndDone() {
+        val updates = mutableListOf<ThinkingCard>()
+        var now = 0L
+        val reporter = LocalAgentProgressReporter(
+            parentMessageId = "user-1",
+            onUpdate = updates::add,
+            // 每次 nowNanos() 调用前进 500ms：start 取 0，done 取 500ms → 耗时 500ms
+            nowNanos = { now.also { now += 500_000_000L } },
+            cardId = "card-1"
+        )
+        val context = PipelineContext(
+            ChatRequest.forLocal(sessionId = "session-1", content = "test")
+        )
+
+        reporter.onToolStart(
+            context,
+            toolName = "workspace_read_file",
+            arguments = mapOf("path" to "a.txt"),
+            thinking = ""
+        )
+        reporter.onToolDone(
+            context,
+            toolName = "workspace_read_file",
+            result = mapOf("content" to "x"),
+            thinking = ""
+        )
+
+        val toolStep = updates.last().steps.single { it.type == "tool" }
+        assertEquals("done", toolStep.status)
+        assertEquals(500L, toolStep.durationMs)
+    }
+
+    @Test
+    fun sameToolCalledTwicePairsEachDurationWithItsOwnStep() {
+        val updates = mutableListOf<ThinkingCard>()
+        var now = 0L
+        val reporter = LocalAgentProgressReporter(
+            parentMessageId = "user-1",
+            onUpdate = updates::add,
+            // start1=0, done1=500ms; start2=1000ms, done2=1500ms → 各 500ms
+            nowNanos = { now.also { now += 500_000_000L } },
+            cardId = "card-1"
+        )
+        val context = PipelineContext(
+            ChatRequest.forLocal(sessionId = "session-1", content = "test")
+        )
+
+        repeat(2) {
+            reporter.onToolStart(context, toolName = "exec_command", arguments = emptyMap(), thinking = "")
+            reporter.onToolDone(context, toolName = "exec_command", result = mapOf("stdout" to "ok"), thinking = "")
+        }
+
+        val toolSteps = updates.last().steps.filter { it.type == "tool" }
+        assertEquals(2, toolSteps.size)
+        assertEquals(listOf(500L, 500L), toolSteps.map { it.durationMs })
+    }
+
+    @Test
+    fun interruptedToolWithoutDoneLeavesNoDurationOnFinalCard() {
+        val updates = mutableListOf<ThinkingCard>()
+        val reporter = LocalAgentProgressReporter(
+            parentMessageId = "user-1",
+            onUpdate = updates::add,
+            cardId = "card-1"
+        )
+        val context = PipelineContext(
+            ChatRequest.forLocal(sessionId = "session-1", content = "test")
+        )
+
+        // onToolStart 后直接结束（模拟用户停止），无 onToolDone
+        reporter.onToolStart(context, toolName = "exec_command", arguments = emptyMap(), thinking = "")
+        reporter.onDone(context)
+
+        val finalSteps = updates.last().steps
+        // onDone 会把 running 步骤标记为 done，但无耗时
+        val toolStep = finalSteps.single { it.type == "tool" }
+        assertEquals("done", toolStep.status)
+        assertEquals(null, toolStep.durationMs)
+    }
+
     private var decoded: List<ThinkingCard>? = null
 }

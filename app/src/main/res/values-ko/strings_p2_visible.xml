@@ -52,6 +52,7 @@
     <string name="chat_step_arguments">인수 (Arguments)</string>
     <string name="chat_step_result">결과 (Result)</string>
     <string name="chat_step_result_truncated">도구 출력이 잘렸습니다. 표시된 내용이 불완전할 수 있습니다</string>
+    <string name="chat_step_duration">소요 시간 %1$s</string>
     <string name="chat_stream_prefix_omitted">…이전 내용도 생성 중이며 전체 내용이 저장됩니다\n</string>
     <string name="chat_tool">도구</string>
     <string name="common_expand">펼치기</string>

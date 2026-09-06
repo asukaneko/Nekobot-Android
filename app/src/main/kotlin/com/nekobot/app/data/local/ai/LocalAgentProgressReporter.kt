@@ -36,6 +36,13 @@ internal class LocalAgentProgressReporter(
     private val reasoningContent = StringBuilder()
     private var lastStreamingEmitNanos: Long? = null
     private var lastEmittedReasoningLength: Int = 0
+    /**
+     * 每个工具开始执行的时间戳（nanoTime）堆栈，按工具名分组。
+     * 同一批次可能连续调用多个同名工具（顺序执行），后开始的后完成，
+     * 因此 onToolDone 弹出该工具名最近一次的开始时间即与之配对。
+     * 被中断（onToolStart 后无 onToolDone）的残留条目在 onDone 统一清理。
+     */
+    private val toolStartNanosStack = mutableMapOf<String, MutableList<Long>>()
 
     private fun syncThinkingStep() {
         if (reasoningContent.isEmpty()) return
@@ -121,6 +128,8 @@ internal class LocalAgentProgressReporter(
         arguments: Map<String, Any>,
         thinking: String
     ) {
+        // 记录开始时间；onToolDone 时弹出并计算耗时。
+        toolStartNanosStack.getOrPut(toolName) { mutableListOf() }.add(nowNanos())
         if (thinking.isNotBlank() && ctx.metadata["agent_reasoning_streamed"] != true) {
             onThinkingContent(ctx, thinking)
         }
@@ -149,6 +158,10 @@ internal class LocalAgentProgressReporter(
         result: Map<String, Any>,
         thinking: String
     ) {
+        // 计算工具执行耗时：最近一次 onToolStart 到本回调之间的毫秒数。
+        val durationMs = toolStartNanosStack[toolName]?.removeLastOrNull()?.let { start ->
+            ((nowNanos() - start) / 1_000_000L).coerceAtLeast(0L)
+        }
         val resultPreview = boundedAgentValuePreview(result, 120)
         val resultTruncated = isAgentToolOutputTruncated(result)
         val index = steps.indexOfLast {
@@ -162,7 +175,8 @@ internal class LocalAgentProgressReporter(
                     result,
                     MAX_AGENT_PROGRESS_RESULT_PREVIEW_CHARS
                 ),
-                resultTruncated = resultTruncated
+                resultTruncated = resultTruncated,
+                durationMs = durationMs
             )
         } else {
             steps.add(
@@ -175,7 +189,8 @@ internal class LocalAgentProgressReporter(
                         result,
                         MAX_AGENT_PROGRESS_RESULT_PREVIEW_CHARS
                     ),
-                    resultTruncated = resultTruncated
+                    resultTruncated = resultTruncated,
+                    durationMs = durationMs
                 )
             )
         }
@@ -265,6 +280,8 @@ internal class LocalAgentProgressReporter(
     }
 
     override fun onDone(ctx: PipelineContext) {
+        // 清理被中断工具（onToolStart 后未配对 onToolDone）残留的开始时间戳。
+        toolStartNanosStack.clear()
         for (index in steps.indices) {
             val step = steps[index]
             if (step.status == "running" || step.status == "active") {

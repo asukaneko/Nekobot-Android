@@ -56,6 +56,7 @@
     <string name="chat_step_arguments">参数 (Arguments)</string>
     <string name="chat_step_result">返回结果 (Result)</string>
     <string name="chat_step_result_truncated">工具输出已截断，显示内容可能不完整</string>
+    <string name="chat_step_duration">耗时 %1$s</string>
     <string name="chat_stream_prefix_omitted">…前文仍在生成并会完整保存\n</string>
     <string name="chat_tool">工具</string>
     <string name="common_expand">展开</string>

@@ -279,7 +279,15 @@ data class ThinkingStep(
     @SerializedName("result_truncated") val resultTruncated: Boolean? = null,
     @SerializedName("thinking_content") val thinkingContent: String? = null,
     /** 文件变更 git 摘要（仅本地 Agent 模式成功变更 git 追踪文件时产生）；未用 Gson 默认忽略 */
-    val gitDiff: GitDiffSummary? = null
+    val gitDiff: GitDiffSummary? = null,
+    /**
+     * 步骤执行耗时（毫秒）。
+     * - 本地 Agent 模式：进度报告器在 onToolStart / onToolDone 之间计时，工具完成后写入该步骤；
+     *   仍在执行或未记录开始时间的步骤为 null。
+     * - 远程模式：服务端暂不下发该字段，为 null 时 UI 不展示。
+     */
+    @SerializedName(value = "duration_ms", alternate = ["duration"])
+    val durationMs: Long? = null
 )
 
 /**
