@@ -9724,7 +9724,7 @@ ${AiOutputLanguage.directive()}
             description = req.description,
             enabled = req.enabled,
             autoConnect = req.autoConnect,
-            url = req.url?.trim(),
+            url = normalizeMcpUrl(req.url),
             headersJson = req.headers?.let { gson.toJson(it) },
             command = req.command?.trim(),
             argsJson = gson.toJson(req.args),
@@ -9748,7 +9748,7 @@ ${AiOutputLanguage.directive()}
             autoConnect = req.autoConnect,
             connected = false,
             toolCount = 0,
-            url = req.url?.trim(),
+            url = normalizeMcpUrl(req.url),
             headersJson = req.headers?.let { gson.toJson(it) },
             command = req.command?.trim(),
             argsJson = gson.toJson(req.args),
@@ -9774,7 +9774,7 @@ ${AiOutputLanguage.directive()}
             localMcpRuntime.connect(server)
         } catch (error: Throwable) {
             db.mcpServerDao().setRuntimeState(id, false, 0, null)
-            throw IllegalStateException(error.message ?: "MCP 连接失败", error)
+            throw IllegalStateException("${server.name}: ${error.message ?: "MCP 连接失败"}", error)
         }
         db.mcpServerDao().setRuntimeState(id, true, tools.size, nowIso())
         JsonObject().apply {
@@ -9808,7 +9808,11 @@ ${AiOutputLanguage.directive()}
     suspend fun testMcpServer(id: String): JsonElement = withContext(Dispatchers.IO) {
         val server = db.mcpServerDao().getById(id)
             ?: throw IllegalStateException("MCP 服务不存在")
-        val tools = localMcpRuntime.test(server)
+        val tools = try {
+            localMcpRuntime.test(server)
+        } catch (error: Throwable) {
+            throw IllegalStateException("${server.name}: ${error.message ?: "MCP 测试失败"}", error)
+        }
         JsonObject().apply {
             addProperty("success", true)
             addProperty("tool_count", tools.size)
@@ -9885,7 +9889,7 @@ ${AiOutputLanguage.directive()}
         when (req.transport.lowercase()) {
             "stdio" -> require(!req.command.isNullOrBlank()) { "stdio 模式需要 command 参数" }
             "streamable-http", "http" -> {
-                require(!req.url.isNullOrBlank()) { "HTTP 模式需要 url 参数" }
+                normalizeMcpUrl(req.url) // 校验 scheme 并去尾部斜杠
                 req.headers?.let { headers ->
                     require(headers.isJsonObject) { "HTTP 请求头必须是键值对象" }
                     headers.asJsonObject.entrySet().forEach { (name, value) ->
@@ -9896,6 +9900,24 @@ ${AiOutputLanguage.directive()}
             }
             else -> throw IllegalArgumentException("不支持的 MCP transport: ${req.transport}")
         }
+    }
+
+    /**
+     * 规范化 MCP HTTP 端点 URL：去除首尾空白、校验 scheme、去除尾部斜杠（保留查询串）。
+     * 部分 Streamable HTTP 服务端按路径精确匹配（如 mcp.exa.ai 的 mcp-handler 只认 /mcp 与 /），
+     * 尾部多一个斜杠会返回 404 Not Found。
+     */
+    private fun normalizeMcpUrl(raw: String?): String? {
+        if (raw.isNullOrBlank()) return null
+        val trimmed = raw.trim()
+        val lower = trimmed.lowercase()
+        require(lower.startsWith("https://") || lower.startsWith("http://")) {
+            "HTTP 模式 url 必须以 http:// 或 https:// 开头"
+        }
+        val qIndex = trimmed.indexOf('?')
+        val base = if (qIndex >= 0) trimmed.substring(0, qIndex) else trimmed
+        val normalizedBase = base.trimEnd('/')
+        return if (qIndex >= 0) normalizedBase + trimmed.substring(qIndex) else normalizedBase
     }
 
     private fun LocalMcpServerEntity.toMcpServer(

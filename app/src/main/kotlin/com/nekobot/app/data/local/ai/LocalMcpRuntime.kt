@@ -29,6 +29,15 @@ private const val MCP_CLIENT_VERSION = "0.2.6"
 private const val MCP_TOOL_PREFIX = "mcp"
 private const val MCP_TOOL_SEPARATOR = "__"
 
+/** HTTP 传输的 User-Agent。裸 okhttp 系 UA 可能被部分服务端/CDN 的机器人防护策略拦截（返回 404/403）。 */
+private const val MCP_HTTP_USER_AGENT = "NekoBot-Android/$MCP_CLIENT_VERSION"
+
+/** 出现在 URL 查询串中、需要在错误提示里脱敏的密钥类参数名。 */
+private val MCP_SECRET_QUERY_KEYS = setOf(
+    "exaapikey", "code", "token", "key", "apikey", "api_key",
+    "secret", "access_token", "auth", "authorization"
+)
+
 /** MCP 原生工具描述。 */
 internal data class LocalMcpTool(
     val name: String,
@@ -285,7 +294,7 @@ internal class LocalMcpRuntime(
                 val url = server.url?.trim().orEmpty()
                 require(url.isNotEmpty()) { "HTTP 模式需要 url 参数" }
                 HttpMcpTransportSession(
-                    url = url,
+                    rawUrl = url,
                     headers = parseStringMap(server.headersJson),
                     client = httpClient
                 )
@@ -406,10 +415,32 @@ private interface McpTransportSession : Closeable {
 }
 
 private class HttpMcpTransportSession(
-    private val url: String,
+    rawUrl: String,
     private val headers: Map<String, String>,
     private val client: OkHttpClient
 ) : McpTransportSession {
+
+    /**
+     * 规范化后的端点 URL：去除首尾空白和尾部斜杠。
+     * 部分 Streamable HTTP 服务端按路径精确匹配（如 mcp.exa.ai 的 mcp-handler 只认 /mcp 与 /），
+     * 尾部多一个斜杠会直接返回 404 Not Found。
+     */
+    private val url: String = rawUrl.trim().trimEnd('/')
+
+    /**
+     * 404 时的一次性路径修正候选：路径小写化 + 去除不可见字符。
+     * 应对误输入的 /MCP 大写、零宽空格等隐藏字符——这些路径在 Cloudflare/边缘层会返回
+     * 纯文本 "Not found" 的 404（无 CORS 头），但错误提示里看起来和正确 URL 几乎一样。
+     */
+    private val pathFallbackUrl: String? = run {
+        val q = url.indexOf('?')
+        val base = if (q >= 0) url.substring(0, q) else url
+        val query = if (q >= 0) url.substring(q) else ""
+        val cleaned = base.lowercase().filterNot { ch ->
+            ch.isWhitespace() || ch == '\u00A0' || ch.code == 0xFEFF || ch.code in 0x200B..0x200D
+        }
+        if (cleaned != base) cleaned + query else null
+    }
 
     private val nextId = AtomicLong(1)
     private var sessionId: String? = null
@@ -441,6 +472,7 @@ private class HttpMcpTransportSession(
             .header("Content-Type", "application/json; charset=utf-8")
             .header("Accept", "application/json, text/event-stream")
             .header("MCP-Protocol-Version", protocolVersion ?: MCP_PROTOCOL_VERSION)
+            .header("User-Agent", MCP_HTTP_USER_AGENT)
             .apply {
                 sessionId?.let { header("Mcp-Session-Id", it) }
             }
@@ -455,18 +487,31 @@ private class HttpMcpTransportSession(
                     ?.let { sessionId = it }
                 val body = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
+                    if (response.code == 404 && sessionId != null) {
+                        // 规范（Streamable HTTP §会话管理）：带 Mcp-Session-Id 的请求收到 404 表示
+                        // 会话已失效，客户端应丢弃会话 ID，用不带会话的 InitializeRequest 重新建立会话。
+                        sessionId = null
+                    }
                     val detail = parseMcpHttpMessages(body)
                         .firstOrNull()
                         ?.getAsJsonObject("error")
                         ?.string("message")
                         ?.takeIf { it.isNotBlank() }
                         ?: body.take(500).ifBlank { response.message }
+                    // 空响应体的 404/4xx 通常来自网络/DNS 中间层而非 MCP 服务本身（服务端会返回 JSON-RPC 错误体）
+                    val hint = if (body.isBlank()) {
+                        "（响应体为空——请求可能未到达 MCP 服务，而是被网络/DNS 中间层拦截；" +
+                            "请确认手机网络可直连 ${url.substringBefore('?')}，或更换网络/DNS/代理后重试）"
+                    } else {
+                        ""
+                    }
+                    val shownUrl = redactUrlQuerySecrets(url)
                     LocalLogger.e(
                         "LocalMcpRuntime",
-                        "MCP HTTP 请求失败 [$method] ${url.substringBefore('?')} -> ${response.code}: $detail"
+                        "MCP HTTP 请求失败 [$method] $shownUrl -> ${response.code}: $detail$hint"
                     )
                     throw IllegalStateException(
-                        "MCP HTTP ${response.code} [$method] ${url.substringBefore('?')}: $detail"
+                        "MCP HTTP ${response.code} [$method] $shownUrl: $detail$hint"
                     )
                 }
                 if (!expectResponse || response.code == 202) return null
@@ -495,6 +540,7 @@ private class HttpMcpTransportSession(
             .header("Accept", "application/json, text/event-stream")
             .header("Mcp-Session-Id", activeSessionId)
             .header("MCP-Protocol-Version", protocolVersion ?: MCP_PROTOCOL_VERSION)
+            .header("User-Agent", MCP_HTTP_USER_AGENT)
             .build()
         runCatching { client.newCall(request).execute().close() }
         sessionId = null
@@ -613,6 +659,26 @@ private fun jsonRpcMessage(id: Long?, method: String, params: JsonObject?): Json
         addProperty("method", method)
         params?.let { add("params", it) }
     }
+
+/** 错误提示里展示完整 URL，但对查询串中的密钥类参数值脱敏（如 ?exaApiKey=xxx / ?code=xxx）。 */
+private fun redactUrlQuerySecrets(raw: String): String {
+    val qIndex = raw.indexOf('?')
+    if (qIndex < 0) return raw
+    val base = raw.substring(0, qIndex)
+    val query = raw.substring(qIndex + 1)
+    if (query.isBlank()) return raw
+    val redacted = query.split('&').joinToString("&") { pair ->
+        val eq = pair.indexOf('=')
+        if (eq > 0) {
+            val key = pair.substring(0, eq).lowercase()
+            val value = pair.substring(eq + 1)
+            if (value.isNotBlank() && key in MCP_SECRET_QUERY_KEYS) "$key=***" else pair
+        } else {
+            pair
+        }
+    }
+    return "$base?$redacted"
+}
 
 private fun requireResult(response: JsonObject): JsonObject {
     response.get("error")
