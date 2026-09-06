@@ -54,6 +54,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.nekobot.app.R
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
@@ -102,6 +103,8 @@ private data class SandboxFileEditorState(
 internal fun SandboxFileBrowserOverlay(
     onRunCommand: (String, (LocalSandboxCommandResult) -> Unit) -> Unit,
     onDismiss: () -> Unit,
+    // 平板双栏嵌入会话页时抬升整体内容，避开底部悬浮导航栏
+    bottomClearance: Dp = 0.dp,
 ) {
     val context = LocalContext.current
     var currentPath by rememberSaveable { mutableStateOf("/") }
@@ -291,6 +294,8 @@ internal fun SandboxFileBrowserOverlay(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
+                // 平板双栏嵌入时整体抬升，避开底部悬浮导航栏
+                .padding(bottom = bottomClearance)
         ) {
             val editorState = editor
             // 顶栏：返回 + 标题/路径 +（列表：上一级/刷新 | 编辑：保存）

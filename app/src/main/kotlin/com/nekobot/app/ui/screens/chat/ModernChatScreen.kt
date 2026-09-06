@@ -198,6 +198,7 @@ fun ModernChatScreen(
     onOpenWorkspace = onOpenWorkspace,
     onOpenStoryGraph = onOpenStoryGraph,
     externalListState = listState,
+    embeddedBottomBarClearance = embeddedBottomBarClearance,
     customBottomBar = {
         Column(
             modifier = Modifier.padding(bottom = embeddedBottomBarClearance)

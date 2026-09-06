@@ -162,6 +162,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -248,7 +249,9 @@ fun ChatScreen(
     onOpenWorkspace: (String) -> Unit = {},
     onOpenStoryGraph: (String) -> Unit = {},
     externalListState: androidx.compose.foundation.lazy.LazyListState? = null,
-    customBottomBar: (@Composable () -> Unit)? = null
+    customBottomBar: (@Composable () -> Unit)? = null,
+    // 平板双栏嵌入会话页时，底部悬浮导航栏盖住覆盖层输入区，需要整体抬升避让
+    embeddedBottomBarClearance: Dp = 0.dp
 ) {
     val viewModel: ChatViewModel = viewModel()
     val messages by viewModel.messages.collectAsStateWithLifecycle()
@@ -1963,12 +1966,14 @@ fun ChatScreen(
                 // 关闭终端时终止仍在运行的交互式会话，避免进程残留
                 if (interactiveRunning) viewModel.stopSandboxInteractiveSession()
             },
+            bottomClearance = embeddedBottomBarClearance,
         )
     }
     if (showSandboxFiles) {
         SandboxFileBrowserOverlay(
             onRunCommand = viewModel::executeSandboxCommand,
             onDismiss = { showSandboxFiles = false },
+            bottomClearance = embeddedBottomBarClearance,
         )
     }
     // 离开聊天页或切换会话时终止交互式会话
@@ -2039,6 +2044,7 @@ private fun SandboxTerminalOverlay(
     onClear: () -> Unit,
     onOpenFiles: () -> Unit,
     onDismiss: () -> Unit,
+    bottomClearance: Dp = 0.dp,
 ) {
     val background = Color(0xFF0B0F14)
     val panel = Color(0xFF111820)
@@ -2094,6 +2100,8 @@ private fun SandboxTerminalOverlay(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
+                // 平板双栏嵌入时整体抬升，避开底部悬浮导航栏
+                .padding(bottom = bottomClearance)
         ) {
                 Row(
                     modifier = Modifier
