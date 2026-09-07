@@ -29,6 +29,8 @@ data class SessionListRow(
     val updatedAt: String?,
     val lastMessage: String?,
     val messageCount: Int?,
+    /** 会话标签（详情页设置，列表展示）。 */
+    val tags: List<String> = emptyList(),
     val pinned: Boolean,
     val favorite: Boolean,
     val archived: Boolean,
@@ -160,6 +162,7 @@ fun buildSessionListRows(
             updatedAt = formatSessionListDate(session.updatedAt),
             lastMessage = session.lastMessage?.takeIf { it.isNotBlank() },
             messageCount = session.messageCount,
+            tags = session.tags.orEmpty().map { it.trim() }.filter { it.isNotEmpty() }.distinct(),
             pinned = session.pinned == true,
             favorite = session.favorite == true,
             archived = session.archived == true,

@@ -1596,6 +1596,24 @@ private fun SessionMetaLabel(text: String, emphasized: Boolean = false) {
 }
 
 @Composable
+private fun SessionTagChip(tag: String) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(MaterialTheme.colorScheme.tertiary.copy(alpha = 0.14f))
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Text(
+            text = tag,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.tertiary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
 private fun SessionStatusIcon(icon: ImageVector, description: String) {
     Icon(
         imageVector = icon,
@@ -1764,6 +1782,18 @@ private fun SessionItem(
                     if (row.pinned) SessionStatusIcon(Icons.Filled.PushPin, pinnedBadge)
                     if (row.favorite) SessionStatusIcon(Icons.Filled.Favorite, favoritedBadge)
                     if (row.archived) SessionStatusIcon(Icons.Filled.Archive, archivedBadge)
+                }
+                if (row.tags.isNotEmpty()) {
+                    Spacer(Modifier.height(5.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        row.tags.take(3).forEach { tag ->
+                            SessionTagChip(tag = tag)
+                        }
+                    }
                 }
             }
 

@@ -4,6 +4,7 @@ import com.nekobot.app.data.model.CharacterPreset
 import com.nekobot.app.data.model.Session
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SessionListPresentationTest {
@@ -114,5 +115,20 @@ class SessionListPresentationTest {
         assertEquals(false, rows[2].isGroupSession)
         // 仅有 characterIds 也标记为群聊
         assertEquals(true, rows[3].isGroupSession)
+    }
+
+    @Test
+    fun buildSessionListRows_mapsTagsTrimDeduplicatesAndIgnoresBlank() {
+        val sessions = listOf(
+            Session(id = "tagged", tags = listOf("  省钱  ", "喵", "  ", "喵")),
+            Session(id = "blank", tags = emptyList()),
+            Session(id = "null-tags", tags = null)
+        )
+
+        val rows = buildSessionListRows(sessions, emptyList()) { it }
+
+        assertEquals(listOf("省钱", "喵"), rows[0].tags)
+        assertTrue(rows[1].tags.isEmpty())
+        assertTrue(rows[2].tags.isEmpty())
     }
 }
