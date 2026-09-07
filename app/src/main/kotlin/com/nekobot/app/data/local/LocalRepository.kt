@@ -5027,6 +5027,25 @@ class LocalRepository(
                     scope = "global"
                 )
             }
+            // 工作区根目录 AGENTS.md：每轮对话开始前检查，存在则注入提示词，指导 Agent 行为。
+            // 对齐 DSH / Claude Code 约定：会话工作区根目录的 AGENTS.md（不区分大小写）作为
+            // 项目级行为指导自动生效。它属于用户维护的补充指引，优先级置于核心规则与动态工具
+            // 说明之间，不能覆盖 agent.core / 安全策略 / 当前用户请求，冲突时以更高优先级信息为准。
+            val agentsGuideline = runCatching {
+                localWorkspaceRoot(sessionId)
+                    ?.listFiles()
+                    ?.firstOrNull { it.isFile && it.name.equals("AGENTS.md", ignoreCase = true) }
+                    ?.let { file -> file.readText() }
+                    ?.takeIf { it.isNotBlank() }
+            }.getOrNull()
+            if (agentsGuideline != null) {
+                ctx.promptStack.add(
+                    key = "agent.workspace_instructions",
+                    content = agentsGuideline,
+                    priority = com.nekobot.app.data.local.ai.PromptStack.Priority.AGENT_MEMORY,
+                    scope = "turn"
+                )
+            }
         }
 
         if (character != null && !session.customPrompts.isNullOrBlank()) {
@@ -5589,6 +5608,25 @@ class LocalRepository(
                     content = skillsPrompt,
                     priority = com.nekobot.app.data.local.ai.PromptStack.Priority.TOOL_INSTRUCTIONS,
                     scope = "global"
+                )
+            }
+            // 工作区根目录 AGENTS.md：每轮对话开始前检查，存在则注入提示词，指导 Agent 行为。
+            // 对齐 DSH / Claude Code 约定：会话工作区根目录的 AGENTS.md（不区分大小写）作为
+            // 项目级行为指导自动生效。它属于用户维护的补充指引，优先级置于核心规则与动态工具
+            // 说明之间，不能覆盖 agent.core / 安全策略 / 当前用户请求，冲突时以更高优先级信息为准。
+            val agentsGuideline = runCatching {
+                localWorkspaceRoot(sessionId)
+                    ?.listFiles()
+                    ?.firstOrNull { it.isFile && it.name.equals("AGENTS.md", ignoreCase = true) }
+                    ?.let { file -> file.readText() }
+                    ?.takeIf { it.isNotBlank() }
+            }.getOrNull()
+            if (agentsGuideline != null) {
+                ctx.promptStack.add(
+                    key = "agent.workspace_instructions",
+                    content = agentsGuideline,
+                    priority = com.nekobot.app.data.local.ai.PromptStack.Priority.AGENT_MEMORY,
+                    scope = "turn"
                 )
             }
         }
