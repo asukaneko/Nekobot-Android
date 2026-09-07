@@ -219,6 +219,13 @@
     <string name="dbprofile_please_select">Please select</string>
     <string name="dbprofile_new_display_name">New database display name</string>
     <string name="dbprofile_display_name_placeholder">e.g. Server A config</string>
+    <string name="dbprofile_create_new">Create blank database</string>
+    <string name="dbprofile_create_dialog_title">Create blank database</string>
+    <string name="dbprofile_create_confirm">Create</string>
+    <string name="dbprofile_create_dialog_tip">Creates a brand-new empty local database with the full default structure (character cards, sessions, world books, etc. all start empty). The app will switch to the new database automatically.</string>
+    <string name="dbprofile_display_name_placeholder_new">e.g. My new database</string>
+    <string name="dbprofile_created">Created blank database \"%1$s\"</string>
+    <string name="dbprofile_create_failed">Failed to create database</string>
     <string name="dbprofile_downloading">Downloading and decrypting config package…</string>
     <string name="dbprofile_dialog_tip">The config package is automatically encrypted during transfer; no manual password is needed. After a successful import, the app will switch to the new database automatically.</string>
     <!-- ViewModel toasts -->

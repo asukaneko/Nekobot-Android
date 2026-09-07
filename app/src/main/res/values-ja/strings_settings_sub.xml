@@ -219,6 +219,13 @@
     <string name="dbprofile_please_select">選択してください</string>
     <string name="dbprofile_new_display_name">新しいデータベースの表示名</string>
     <string name="dbprofile_display_name_placeholder">例: サーバー A 設定</string>
+    <string name="dbprofile_create_new">空のデータベースを作成</string>
+    <string name="dbprofile_create_dialog_title">空のデータベースを作成</string>
+    <string name="dbprofile_create_confirm">作成</string>
+    <string name="dbprofile_create_dialog_tip">完全に新しい空のローカルデータベースを作成します（キャラカード、セッション、ワールドブックなどはすべて空から始まります）。作成後、自動的に新しいデータベースへ切り替わります。</string>
+    <string name="dbprofile_display_name_placeholder_new">例: 新しいデータベース</string>
+    <string name="dbprofile_created">空のデータベース「%1$s」を作成しました</string>
+    <string name="dbprofile_create_failed">データベースの作成に失敗しました</string>
     <string name="dbprofile_downloading">設定パッケージをダウンロードして復号中…</string>
     <string name="dbprofile_dialog_tip">設定パッケージは転送中に自動的に暗号化されます、手動パスワードは不要です。インポート成功後、アプリは自動的に新しいデータベースに切り替わります。</string>
     <!-- ViewModel トースト -->

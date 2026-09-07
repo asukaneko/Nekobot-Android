@@ -225,6 +225,13 @@
     <string name="dbprofile_please_select">请选择</string>
     <string name="dbprofile_new_display_name">新数据库显示名</string>
     <string name="dbprofile_display_name_placeholder">如：服务器A 配置</string>
+    <string name="dbprofile_create_new">新建空白数据库</string>
+    <string name="dbprofile_create_dialog_title">新建空白数据库</string>
+    <string name="dbprofile_create_confirm">创建</string>
+    <string name="dbprofile_create_dialog_tip">将创建一个全新的空白本地数据库，包含完整的默认数据结构（角色卡、会话、世界书等均从空开始）。创建后会自动切换到新数据库。</string>
+    <string name="dbprofile_display_name_placeholder_new">如：我的新数据库</string>
+    <string name="dbprofile_created">已创建空白数据库「%1$s」</string>
+    <string name="dbprofile_create_failed">创建数据库失败</string>
     <string name="dbprofile_downloading">正在下载并解密配置包…</string>
     <string name="dbprofile_dialog_tip">配置包在传输过程中会自动加密，无需手动输入密码。导入成功后将自动切换到新数据库。</string>
     <!-- ViewModel 提示 -->

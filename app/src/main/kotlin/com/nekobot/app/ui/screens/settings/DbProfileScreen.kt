@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.FileUpload
@@ -246,6 +247,71 @@ class DbProfileViewModel : ViewModel() {
             } else {
                 if (wasActive) ServiceContainer.switchLocalDb(profileName)
                 _toast.value = result.message
+            }
+        }
+    }
+
+    /**
+     * 创建一个全新的空白本地数据库 profile。
+     *
+     * 流程：
+     * 1. 由显示名清洗出唯一 db 文件名（冲突时追加序号）
+     * 2. 通过 Room 初始化该 db 文件与完整 schema
+     * 3. 注册 profile 并自动切换到新库
+     */
+    fun createBlank(displayNameStr: String) {
+        val trimmed = displayNameStr.trim()
+        if (trimmed.isBlank()) {
+            _toast.value = ServiceContainer.getString(R.string.dbprofile_input_display_name)
+            return
+        }
+        val ctx = ServiceContainer.appContext ?: run {
+            _toast.value = ServiceContainer.getString(R.string.dbprofile_create_failed)
+            return
+        }
+        val baseName = sanitizeProfileName(trimmed)
+        // 生成不与现有 profile 冲突的文件名
+        val existing = prefs.listDbProfiles().map { it.name }.toMutableSet()
+        if (baseName != PrefsManager.DEFAULT_DB_NAME) existing.add(PrefsManager.DEFAULT_DB_NAME)
+        var profileName = baseName
+        var suffix = 2
+        while (profileName in existing) {
+            profileName = "${baseName}_$suffix"
+            suffix++
+        }
+        _importing.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // 打开并创建 schema（触发 Room 建表，生成空白 db 文件）
+                val db = NekobotDatabase.get(ctx, profileName)
+                runCatching { db.openHelper.writableDatabase }
+
+                prefs.saveDbProfile(
+                    PrefsManager.DbProfile(
+                        name = profileName,
+                        displayName = trimmed,
+                        source = "local",
+                        createdAt = System.currentTimeMillis()
+                    )
+                )
+                // 自动切换到新创建的空白 db
+                ServiceContainer.switchLocalDb(profileName)
+                withContext(Dispatchers.Main) {
+                    _importing.value = false
+                    _activeName.value = profileName
+                    reload()
+                    _toast.value = ServiceContainer.localizedContext?.getString(
+                        R.string.dbprofile_created, trimmed
+                    ) ?: ""
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                withContext(Dispatchers.Main) {
+                    _importing.value = false
+                    _toast.value = ServiceContainer.localizedContext?.getString(
+                        R.string.dbprofile_create_failed
+                    ) ?: ""
+                }
             }
         }
     }
@@ -996,6 +1062,7 @@ fun DbProfileScreen(onBack: () -> Unit) {
     val context = LocalContext.current
 
     var showImportDialog by remember { mutableStateOf(false) }
+    var showCreateDialog by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<PrefsManager.DbProfile?>(null) }
     var showImportFilePrompt by remember { mutableStateOf(false) }
     var pendingFileUri by remember { mutableStateOf<Uri?>(null) }
@@ -1057,6 +1124,9 @@ fun DbProfileScreen(onBack: () -> Unit) {
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showCreateDialog = true }) {
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.dbprofile_create_new), tint = MaterialTheme.colorScheme.primary)
+                    }
                     IconButton(onClick = { vm.reload() }) {
                         Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.dbprofile_refresh), tint = MaterialTheme.colorScheme.onSurface)
                     }
@@ -1228,6 +1298,38 @@ fun DbProfileScreen(onBack: () -> Unit) {
                         color = MaterialTheme.colorScheme.error
                     )
                 }
+            }
+        }
+    }
+
+    // 新建空白本地数据库：输入显示名
+    if (showCreateDialog) {
+        var nameInput by remember { mutableStateOf("") }
+        NekoDialog(
+            onDismiss = { showCreateDialog = false },
+            title = stringResource(R.string.dbprofile_create_dialog_title),
+            confirmText = stringResource(R.string.dbprofile_create_confirm),
+            confirmEnabled = nameInput.isNotBlank() && !importing,
+            onConfirm = {
+                vm.createBlank(nameInput)
+                showCreateDialog = false
+            }
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    stringResource(R.string.dbprofile_create_dialog_tip),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = nameInput,
+                    onValueChange = { nameInput = it },
+                    label = { Text(stringResource(R.string.dbprofile_new_display_name)) },
+                    placeholder = { Text(stringResource(R.string.dbprofile_display_name_placeholder_new)) },
+                    singleLine = true,
+                    enabled = !importing,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }

@@ -219,6 +219,13 @@
     <string name="dbprofile_please_select">선택해 주세요</string>
     <string name="dbprofile_new_display_name">새 데이터베이스 표시 이름</string>
     <string name="dbprofile_display_name_placeholder">예: 서버 A 설정</string>
+    <string name="dbprofile_create_new">빈 데이터베이스 만들기</string>
+    <string name="dbprofile_create_dialog_title">빈 데이터베이스 만들기</string>
+    <string name="dbprofile_create_confirm">만들기</string>
+    <string name="dbprofile_create_dialog_tip">완전히 새로운 빈 로컬 데이터베이스를 만듭니다(캐릭터 카드, 세션, 월드북 등이 모두 빈 상태로 시작됩니다). 만든 후 자동으로 새 데이터베이스로 전환돼요.</string>
+    <string name="dbprofile_display_name_placeholder_new">예: 새 데이터베이스</string>
+    <string name="dbprofile_created">빈 데이터베이스 \"%1$s\"를 만들었어요</string>
+    <string name="dbprofile_create_failed">데이터베이스를 만들지 못했어요</string>
     <string name="dbprofile_downloading">설정 패키지 다운로드 및 복호화 중…</string>
     <string name="dbprofile_dialog_tip">설정 패키지는 전송 중에 자동으로 암호화돼요. 수동 비밀번호는 필요 없어요. 가져오기 성공 후 앱이 자동으로 새 데이터베이스로 전환돼요.</string>
     <!-- ViewModel 토스트 -->
