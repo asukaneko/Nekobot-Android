@@ -440,7 +440,8 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
 @Composable
 fun WorldBookDetailScreen(
     bookId: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onBookDeleted: (() -> Unit)? = null
 ) {
     val vm: WorldBookViewModel = viewModel(
         key = "wb_$bookId",
@@ -608,7 +609,10 @@ fun WorldBookDetailScreen(
             cancelText = stringResource(R.string.common_cancel),
             onConfirm = {
                 showDeleteBookDialog = false
-                vm.deleteBook(onBack)
+                vm.deleteBook {
+                    onBookDeleted?.invoke()
+                    onBack()
+                }
             },
             onCancel = { showDeleteBookDialog = false }
         )
