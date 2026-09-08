@@ -7961,6 +7961,48 @@ ${AiOutputLanguage.directive()}
         currentLocalContextTokens(contextMessages)
     }
 
+    /**
+     * Agent 会话运行期间的实时上下文用量。
+     *
+     * Agent 处于思考/工具调用循环中时，本轮新增的助手与工具消息尚未落库，
+     * 但它们会在下一轮模型请求中随 tool_call_history 注入，属于真实上下文。
+     * 这里叠加 agent_run 检查点中已完成的历史估算，使 + 面板的上下文占比与
+     * 分析能随工具调用步骤动态增长；未运行时仅返回持久化窗口用量。
+     */
+    suspend fun agentLiveContextUsage(sessionId: String): AgentLiveContextUsage = withContext(Dispatchers.IO) {
+        val baseTokens = sessionContextTokenUsage(sessionId)
+        val run = agentRunDao.getBySession(sessionId)
+        val checkpoint = run?.checkpointHistory
+        if (run == null || run.status != AgentRunStatus.RUNNING || checkpoint.isNullOrBlank()) {
+            return@withContext AgentLiveContextUsage(
+                baseTokens = baseTokens,
+                liveToolTokens = 0L,
+                liveToolCount = 0,
+                stage = run?.stage,
+                lastToolName = run?.lastToolName,
+                completedToolCalls = run?.completedToolCalls ?: 0,
+                hasActiveRun = false
+            )
+        }
+        // checkpoint_history 是 role=assistant/tool 消息的 JSON 数组；条数用于分析区计数。
+        val liveToolCount = runCatching {
+            JsonParser.parseString(checkpoint)
+                .takeIf { it.isJsonArray }
+                ?.asJsonArray
+                ?.size()
+                ?: 0
+        }.getOrDefault(0)
+        AgentLiveContextUsage(
+            baseTokens = baseTokens,
+            liveToolTokens = estimateLocalTextTokens(checkpoint).toLong(),
+            liveToolCount = liveToolCount,
+            stage = run.stage,
+            lastToolName = run.lastToolName,
+            completedToolCalls = run.completedToolCalls,
+            hasActiveRun = true
+        )
+    }
+
     /** 本地 token 用量排行榜（按 model / session 聚合，从独立存储读取）。 */
     suspend fun tokenRankings(): TokenRankings = withContext(Dispatchers.IO) {
         val records = readTokenUsageRecordsReconciled()
@@ -10472,6 +10514,27 @@ data class ContextCompressionResult(
     val archiveSessionId: String? = null,
     val errorMessage: String? = null
 )
+
+/**
+ * Agent 会话上下文用量的实时快照。
+ *
+ * [baseTokens] 为已落库的上下文窗口估算（与聊天页上下文圆环同口径）；
+ * [liveToolTokens] / [liveToolCount] 为当前一轮运行中尚未落库、但会随
+ * tool_call_history 注入下一轮请求的工具调用历史（agent_run 检查点）估算。
+ * 未运行或非 Agent 会话时 [hasActiveRun] 为 false，live 部分为 0。
+ */
+data class AgentLiveContextUsage(
+    val baseTokens: Long,
+    val liveToolTokens: Long,
+    val liveToolCount: Int,
+    val stage: String?,
+    val lastToolName: String?,
+    val completedToolCalls: Int,
+    val hasActiveRun: Boolean
+) {
+    /** 计入运行中工具调用后的总用量。 */
+    val totalTokens: Long get() = baseTokens + liveToolTokens
+}
 
 /**
  * Room DAO 适配器：将 [com.nekobot.app.data.local.db.FailoverHealthDao] 暴露为

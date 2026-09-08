@@ -93,10 +93,22 @@ fun ContextAnalysisScreen(
                     is Resource.Success -> messagesResult.data
                     else -> emptyList()
                 }
+                // Agent 运行中（工具循环未结束）时，尚未落库的工具调用历史也要计入，
+                // 与 + 面板的实时占比口径保持一致。
+                val isAgentSession = session?.sessionMode.equals("agent", ignoreCase = true)
+                val live = if (isAgentSession) {
+                    ServiceContainer.unified.agentLiveContextUsage(sessionId)
+                } else {
+                    null
+                }
                 Result.success(
                     ContextAnalysisData(
-                        breakdown = buildContextBreakdown(session, messages),
-                        usedTokens = ServiceContainer.unified.sessionContextTokenUsage(sessionId),
+                        breakdown = buildContextBreakdown(session, messages)
+                            .let {
+                                if (live == null) it else it.withLiveToolTokens(live.liveToolTokens, live.liveToolCount)
+                            },
+                        usedTokens = live?.totalTokens
+                            ?: ServiceContainer.unified.sessionContextTokenUsage(sessionId),
                         maxTokens = ServiceContainer.unified.getActiveContextLength()
                     )
                 )
@@ -266,14 +278,7 @@ private fun ContextCapacityCard(usedTokens: Long, maxTokens: Int?) {
 
 @Composable
 private fun ContextTypeRow(part: ContextPart, totalTokens: Int) {
-    val color = when (part.type) {
-        ContextPartType.SYSTEM_PROMPT -> MaterialTheme.colorScheme.primary
-        ContextPartType.USER_MESSAGES -> MaterialTheme.colorScheme.secondary
-        ContextPartType.ASSISTANT_MESSAGES -> MaterialTheme.colorScheme.tertiary
-        ContextPartType.COMPRESSED_SUMMARY -> MaterialTheme.colorScheme.outline
-        ContextPartType.TOOL_CALLS -> MaterialTheme.colorScheme.error
-        ContextPartType.OTHER_MESSAGES -> MaterialTheme.colorScheme.outline
-    }
+    val color = part.type.displayColor(MaterialTheme.colorScheme)
     val share = if (totalTokens > 0) part.estimatedTokens.toFloat() / totalTokens else 0f
     val percent = (share * 100).toInt()
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -318,14 +323,4 @@ private fun ContextTypeRow(part: ContextPart, totalTokens: Int) {
             trackColor = MaterialTheme.colorScheme.surfaceVariant
         )
     }
-}
-
-@Composable
-private fun contextPartLabel(type: ContextPartType): String = when (type) {
-    ContextPartType.SYSTEM_PROMPT -> stringResource(R.string.chat_context_analysis_system_prompt)
-    ContextPartType.USER_MESSAGES -> stringResource(R.string.chat_context_analysis_user_messages)
-    ContextPartType.ASSISTANT_MESSAGES -> stringResource(R.string.chat_context_analysis_assistant_messages)
-    ContextPartType.COMPRESSED_SUMMARY -> stringResource(R.string.chat_context_analysis_summary)
-    ContextPartType.TOOL_CALLS -> stringResource(R.string.chat_context_analysis_tool_content)
-    ContextPartType.OTHER_MESSAGES -> stringResource(R.string.chat_context_analysis_other_messages)
 }

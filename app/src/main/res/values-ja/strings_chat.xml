@@ -614,6 +614,13 @@
     <string name="chat_context_analysis_system_prompt">システムプロンプト</string>
     <string name="chat_context_analysis_tool_content">ツール呼び出し</string>
     <string name="chat_context_analysis_other_messages">その他のメッセージ</string>
+
+    <string name="chat_agent_status_preparing">準備中…</string>
+    <string name="chat_agent_status_thinking">考え中…</string>
+    <string name="chat_agent_status_tool_running">ツール実行: %1$s</string>
+    <string name="chat_context_live_badge">リアルタイム</string>
+    <string name="chat_agent_context_live_desc">Agent 実行中、使用率と分析をリアルタイム更新</string>
+    <string name="chat_agent_context_live_hint">Agent 実行中: 使用率と分析は思考・ツール呼び出しに合わせてリアルタイム更新されます</string>
     <string name="chat_queue_title">送信待ちメッセージ（%1$d）</string>
     <string name="chat_queue_send_now">今すぐ送信</string>
     <string name="chat_queue_remove">削除</string>

@@ -86,6 +86,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import com.nekobot.app.ui.components.BorderlessOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.Surface
@@ -99,6 +100,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -125,6 +127,8 @@ import coil.compose.AsyncImage
 import com.google.gson.JsonObject
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.AgentLiveContextUsage
+import com.nekobot.app.data.local.ai.AgentRunStage
 import com.nekobot.app.data.local.ChatInputLayoutMode
 import com.nekobot.app.data.local.LocalCommandAction
 import com.nekobot.app.data.local.LocalCommandSuggestion
@@ -976,15 +980,42 @@ private fun ModernChatComposer(
     var maxTokens by remember { mutableStateOf<Int?>(null) }
     // 当前上下文 Token：本地模式取最近一次完整 prompt usage，避免把每轮累计计费用量重复相加
     var usedTokens by remember { mutableStateOf(0L) }
+    // Agent 运行中的实时上下文快照（stage / 工具名 / 已完成工具数 / 运行中工具调用估算）
+    var agentLiveContext by remember { mutableStateOf<AgentLiveContextUsage?>(null) }
+    // + 面板内的上下文构成分析（类型占比）；Agent 运行期间随轮询动态更新
+    var contextBreakdown by remember { mutableStateOf<ContextBreakdown?>(null) }
+    // 轮询时始终读取最新消息/会话，避免 LaunchedEffect 闭包捕获过期列表
+    val latestMessages by rememberUpdatedState(messages)
+    val latestSession by rememberUpdatedState(session)
+    // Agent 运行中的上下文刷新间隔。思考/工具调用期间新消息不落库，
+    // 页面事件不足以触发重算，需要周期性从 agent_run 检查点读取实时估算。
+    val liveContextRefreshIntervalMs = 2000L
     // 消息条数、压缩边界或发送状态变化时刷新（远程模式发送后服务端会先写 token 记录）。
+    // Agent 会话生成期间额外按 [liveContextRefreshIntervalMs] 持续重算，使 + 面板的
+    // 上下文占比与分析随思考/工具调用步骤动态更新；普通生成保持单次刷新。
     LaunchedEffect(sessionId, messageCount, contextRevision, sending) {
         // 进度条分母：当前激活聊天模型的上下文窗口长度（max_context_length）
         // 本地模式和远程模式均通过 unified.getActiveContextLength() 统一获取
         maxTokens = withContext(Dispatchers.IO) {
             ServiceContainer.unified.getActiveContextLength()
         }
-        usedTokens = withContext(Dispatchers.IO) {
-            ServiceContainer.unified.sessionContextTokenUsage(sessionId)
+        while (true) {
+            val live = sending && isAgentSession
+            withContext(Dispatchers.IO) {
+                if (live) {
+                    val liveUsage = ServiceContainer.unified.agentLiveContextUsage(sessionId)
+                    usedTokens = liveUsage.totalTokens
+                    agentLiveContext = liveUsage
+                    contextBreakdown = buildContextBreakdown(latestSession, latestMessages)
+                        .withLiveToolTokens(liveUsage.liveToolTokens, liveUsage.liveToolCount)
+                } else {
+                    usedTokens = ServiceContainer.unified.sessionContextTokenUsage(sessionId)
+                    agentLiveContext = null
+                    contextBreakdown = buildContextBreakdown(latestSession, latestMessages)
+                }
+            }
+            if (!live) break
+            delay(liveContextRefreshIntervalMs)
         }
     }
     val hasPlotSurface = plotChoicesLoading || plotChoices.isNotEmpty()
@@ -1094,6 +1125,8 @@ private fun ModernChatComposer(
                     tokenEstimate = tokenEstimate,
                     usedTokens = usedTokens,
                     maxTokens = maxTokens,
+                    agentLiveContext = agentLiveContext,
+                    contextBreakdown = contextBreakdown,
                     sending = sending,
                     fileBusy = fileBusy,
                     plotMode = plotMode,
@@ -2010,6 +2043,8 @@ private fun ModernChatActionPanel(
     usedTokens: Long,
     maxTokens: Int?,
     sending: Boolean,
+    agentLiveContext: AgentLiveContextUsage?,
+    contextBreakdown: ContextBreakdown?,
     fileBusy: Boolean,
     plotMode: Boolean,
     plotRealTimeSync: Boolean,
@@ -2053,6 +2088,8 @@ private fun ModernChatActionPanel(
                     usedTokens = usedTokens,
                     maxTokens = maxTokens,
                     sending = sending,
+                    agentLiveContext = agentLiveContext,
+                    contextBreakdown = contextBreakdown,
                     onCompress = onCompress,
                     onOpenAnalysis = onOpenContextAnalysis
                 )
@@ -2200,6 +2237,8 @@ private fun ModernContextCard(
     usedTokens: Long,
     maxTokens: Int?,
     sending: Boolean,
+    agentLiveContext: AgentLiveContextUsage?,
+    contextBreakdown: ContextBreakdown?,
     onCompress: () -> Unit,
     onOpenAnalysis: () -> Unit
 ) {
@@ -2208,6 +2247,7 @@ private fun ModernContextCard(
         (usedTokens.toFloat() / maxTokens.toFloat()).coerceIn(0f, 1f)
     } else 0f
     val percent = (progress * 100).toInt()
+    val liveRunning = agentLiveContext?.hasActiveRun == true && sending
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -2252,7 +2292,11 @@ private fun ModernContextCard(
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            stringResource(R.string.chat_context_analysis_desc),
+                            if (liveRunning) {
+                                stringResource(R.string.chat_agent_context_live_desc)
+                            } else {
+                                stringResource(R.string.chat_context_analysis_desc)
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -2274,11 +2318,132 @@ private fun ModernContextCard(
                 ModernMetric(stringResource(R.string.chat_used_tokens), usedTokens.toString(), Modifier.weight(1f))
                 ModernMetric(
                     label = stringResource(R.string.chat_status),
-                    value = if (sending) stringResource(R.string.chat_status_generating) else stringResource(R.string.chat_status_ready),
+                    value = agentStatusText(agentLiveContext, sending),
                     modifier = Modifier.weight(1f)
                 )
             }
+            if (contextBreakdown?.parts?.isNotEmpty() == true) {
+                Spacer(Modifier.height(12.dp))
+                ModernContextAnalysisSection(
+                    breakdown = contextBreakdown,
+                    liveRunning = liveRunning
+                )
+            }
         }
+    }
+}
+
+/** Agent 运行中时展示实时阶段（准备/思考/调用工具），与发送状态联动。 */
+@Composable
+private fun agentStatusText(agentLiveContext: AgentLiveContextUsage?, sending: Boolean): String {
+    if (!sending) return stringResource(R.string.chat_status_ready)
+    val live = agentLiveContext
+    if (live == null) return stringResource(R.string.chat_status_generating)
+    return when (live.stage) {
+        AgentRunStage.PREPARING -> stringResource(R.string.chat_agent_status_preparing)
+        AgentRunStage.THINKING -> stringResource(R.string.chat_agent_status_thinking)
+        AgentRunStage.TOOL ->
+            if (live.lastToolName.isNullOrBlank()) {
+                stringResource(R.string.chat_status_generating)
+            } else {
+                stringResource(R.string.chat_agent_status_tool_running, live.lastToolName)
+            }
+        else -> stringResource(R.string.chat_status_generating)
+    }
+}
+
+/**
+ * + 菜单内的上下文构成分析：类型占比精简列表。
+ * Agent 运行期间随轮询动态刷新，工具调用占比包含尚未落库的进行中历史。
+ */
+@Composable
+private fun ModernContextAnalysisSection(breakdown: ContextBreakdown, liveRunning: Boolean) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(R.string.chat_context_analysis_type_breakdown),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            if (liveRunning) {
+                Spacer(Modifier.width(7.dp))
+                Text(
+                    stringResource(R.string.chat_context_live_badge),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+        }
+        Spacer(Modifier.height(9.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            breakdown.parts.forEach { part ->
+                ModernContextPartRow(part, breakdown.estimatedTokens)
+            }
+        }
+        if (liveRunning) {
+            Spacer(Modifier.height(7.dp))
+            Text(
+                stringResource(R.string.chat_agent_context_live_hint),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun ModernContextPartRow(part: ContextPart, totalTokens: Int) {
+    val color = part.type.displayColor(MaterialTheme.colorScheme)
+    val share = if (totalTokens > 0) part.estimatedTokens.toFloat() / totalTokens else 0f
+    val percent = (share * 100).toInt()
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(color)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                contextPartLabel(part.type),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1
+            )
+            Text(
+                stringResource(
+                    R.string.chat_context_analysis_part_detail,
+                    part.estimatedTokens,
+                    part.itemCount
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "$percent%",
+                style = MaterialTheme.typography.labelSmall,
+                color = color,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        LinearProgressIndicator(
+            progress = { share },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(5.dp)
+                .clip(CircleShape),
+            color = color,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant
+        )
     }
 }
 
