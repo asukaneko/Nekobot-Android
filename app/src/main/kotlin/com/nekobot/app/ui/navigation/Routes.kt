@@ -66,6 +66,8 @@ object Routes {
     const val DATA_PORTABILITY = "data_portability"
     const val FEATURE_SWITCHES = "feature_switches"
     const val DATA_MAINTENANCE = "data_maintenance"
+    /** Agent 设置 */
+    const val AGENT_SETTINGS = "agent_settings"
     /** 路由决策历史 */
     const val ROUTING_HISTORY = "routing_history"
     /** A/B 测试配置 */

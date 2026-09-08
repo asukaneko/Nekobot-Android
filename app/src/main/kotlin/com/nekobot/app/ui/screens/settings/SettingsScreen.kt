@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Settings as SettingsIcon
@@ -741,6 +742,18 @@ fun SettingsScreen(onLogout: () -> Unit, onNavigate: (String) -> Unit, onBack: (
                             subtitle = stringResource(R.string.settings_webdav_backup_desc)
                         ) { onNavigate("webdav_backup") }
                     }
+                }
+
+                // 4.6 Agent 设置（Agent 会话运行参数）
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    SectionHeader(title = stringResource(R.string.settings_agent_settings))
+                    Spacer(Modifier.height(8.dp))
+                    SettingNavRow(
+                        icon = Icons.Filled.Psychology,
+                        iconColor = MaterialTheme.colorScheme.primary,
+                        title = stringResource(R.string.agent_settings_title),
+                        subtitle = stringResource(R.string.settings_agent_settings_desc)
+                    ) { onNavigate("agent_settings") }
                 }
 
                 // 5. 日志查看（服务器模式看服务端日志，本地模式看 LocalLogger）

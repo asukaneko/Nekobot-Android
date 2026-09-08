@@ -266,4 +266,10 @@
     <string name="webdav_auto_incremental_interval_hours_desc">可设置 1–168 小时；系统可能因省电策略延后执行</string>
     <string name="webdav_incremental_max_versions">最多保留版本数</string>
     <string name="webdav_incremental_max_versions_desc">可设置 1–50 个版本，包含当前版本；超出的历史版本会自动清理</string>
+    <string name="settings_agent_settings">Agent 设置</string>
+    <string name="settings_agent_settings_desc">Agent 会话运行参数与工具限制</string>
+    <string name="agent_settings_title">Agent 设置</string>
+    <string name="agent_settings_group_runtime">运行限制</string>
+    <string name="agent_settings_max_tool_calls">最大工具调用次数</string>
+    <string name="agent_settings_max_tool_calls_desc">单个 Agent 回合内允许的最大工具调用次数（1–1000，默认 %1$d）</string>
 </resources>

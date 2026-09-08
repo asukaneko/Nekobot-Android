@@ -230,7 +230,14 @@ class PrefsManager(context: Context) {
             prefs.edit().putString(KEY_SMART_ROUTING_BUDGET_ALERT, value).apply()
         }
 
-    // ==================== RAG 检索配置 ====================
+    // ============ Agent 运行配置 ============
+
+    /** Agent 会话单轮最大工具调用次数（默认 150，范围 1-1000） */
+    var agentMaxToolCalls: Int
+        get() = prefs.getInt(KEY_AGENT_MAX_TOOL_CALLS, 150)
+        set(value) = prefs.edit().putInt(KEY_AGENT_MAX_TOOL_CALLS, value.coerceIn(1, 1000)).apply()
+
+    // ============ RAG 检索配置 ============
 
     /** 语义检索权重（0.0~1.0） */
     var ragSemanticWeight: Float
@@ -710,6 +717,7 @@ class PrefsManager(context: Context) {
         private const val KEY_REASONING_EFFORT_LEGACY = "reasoning_effort"
         private const val KEY_AGENT_REASONING_EFFORT = "reasoning_effort_agent"
         private const val KEY_CHARACTER_REASONING_EFFORT = "reasoning_effort_character"
+        private const val KEY_AGENT_MAX_TOOL_CALLS = "agent_max_tool_calls"
         private const val KEY_SMART_ROUTING_DAILY_BUDGET = "smart_routing_daily_budget"
         private const val KEY_SMART_ROUTING_BUDGET_ALERT = "smart_routing_budget_alert"
         private const val KEY_RAG_SEMANTIC_WEIGHT = "rag_semantic_weight"

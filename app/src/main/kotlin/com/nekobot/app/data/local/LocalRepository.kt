@@ -5765,6 +5765,8 @@ class LocalRepository(
                             ctx = ctx,
                             callbacks = callbacks,
                             tools = tools,
+                            // Agent 单轮工具调用次数上限，可在 设置 → Agent 设置 中调整
+                            maxToolIterations = com.nekobot.app.ServiceContainer.prefs.agentMaxToolCalls,
                             // Pipeline 的字符窗口只作最后的防护；Agent 自动压缩的触发
                             // 已使用模型配置的 token 上限，避免过早压缩历史。
                             maxContextChars = maxContextTokens,
