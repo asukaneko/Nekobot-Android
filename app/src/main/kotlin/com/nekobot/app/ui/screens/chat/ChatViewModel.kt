@@ -228,6 +228,8 @@ class ChatViewModel : BaseViewModel() {
         const val STREAMING_ID = "_streaming_"
         /** 服务端持久化尚未刷新时使用的临时正式消息 id 前缀。 */
         const val STREAM_FALLBACK_PREFIX = "_stream_fallback_"
+        /** 排队消息“立即发送”乐观气泡的 id 前缀（本地注入/服务器直发期间显示）。 */
+        const val URGENT_BUBBLE_PREFIX = "_queued_urgent_"
     }
 
     private val socket = ServiceContainer.socket
@@ -1895,7 +1897,7 @@ class ChatViewModel : BaseViewModel() {
     // ==================== Agent 会话消息排队 ====================
 
     /** 排队消息“立即发送”的乐观气泡 id 前缀（本地注入/服务器直发期间显示） */
-    private fun queuedUrgentBubbleId(itemId: String) = "_queued_urgent_$itemId"
+    private fun queuedUrgentBubbleId(itemId: String) = "${URGENT_BUBBLE_PREFIX}$itemId"
 
     /**
      * 取出（并清空）请求“立即发送”的排队消息。
@@ -1954,22 +1956,30 @@ class ChatViewModel : BaseViewModel() {
         }
         if (isLocalMode) {
             // 注入进行中的本地 Agent 工具循环：乐观气泡 + 等待下一次模型调用前注入
-            _messages.value = _messages.value + Message(
-                id = queuedUrgentBubbleId(target.id),
-                role = "user",
-                content = buildChatMessageContent(target.content, target.attachments),
-                timestamp = System.currentTimeMillis().toString()
+            // 插入位置统一放在当前 AI 处理进度卡片（所在用户消息）的上方，多条插队消息按 FIFO 依次排列，
+            // 避免追加到列表末尾而落在 AI 输出之下、看起来像多出的新卡片。
+            _messages.value = insertUrgentBubble(
+                _messages.value,
+                Message(
+                    id = queuedUrgentBubbleId(target.id),
+                    role = "user",
+                    content = buildChatMessageContent(target.content, target.attachments),
+                    timestamp = System.currentTimeMillis().toString()
+                )
             )
             runtime.urgentMessages.add(target)
             showToast(string(R.string.chat_queue_injecting))
             return
         }
         // 服务器模式无法中途注入：直接经 Socket 发送
-        _messages.value = _messages.value + Message(
-            id = queuedUrgentBubbleId(target.id),
-            role = "user",
-            content = buildChatMessageContent(target.content, target.attachments),
-            timestamp = System.currentTimeMillis().toString()
+        _messages.value = insertUrgentBubble(
+            _messages.value,
+            Message(
+                id = queuedUrgentBubbleId(target.id),
+                role = "user",
+                content = buildChatMessageContent(target.content, target.attachments),
+                timestamp = System.currentTimeMillis().toString()
+            )
         )
         socket.sendMessage(
             currentSessionId,

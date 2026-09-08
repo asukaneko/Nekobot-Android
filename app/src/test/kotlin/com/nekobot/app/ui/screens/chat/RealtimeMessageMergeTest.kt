@@ -196,4 +196,83 @@ class RealtimeMessageMergeTest {
 
         assertEquals("服务端已经保存的更完整思考", merged.single().steps.single().thinkingContent)
     }
+
+    // ---- 排队消息“立即发送”乐观气泡 ----
+
+    private fun urgentBubble(content: String) = Message(
+        id = "${ChatViewModel.URGENT_BUBBLE_PREFIX}item-1",
+        role = "user",
+        content = content
+    )
+
+    private fun userWithCard(id: String, content: String) = Message(
+        id = id,
+        role = "user",
+        content = content,
+        thinkingCards = listOf(ThinkingCard(id = "card-$id", content = "处理中", isAgent = true))
+    )
+
+    @Test
+    fun urgentBubbleIsInsertedAboveTheLatestProgressCard() {
+        val history = Message(id = "old", role = "assistant", content = "旧回复")
+        val user = userWithCard("user-1", "当前问题")
+
+        val result = insertUrgentBubble(listOf(history, user), urgentBubble("插队消息"))
+
+        assertEquals(3, result.size)
+        // 插队消息位于进度卡片宿主消息（user-1）之前 → 渲染在进度卡片上方
+        assertEquals(ChatViewModel.URGENT_BUBBLE_PREFIX + "item-1", result[1].id)
+        assertEquals("user-1", result[2].id)
+    }
+
+    @Test
+    fun urgentBubblesKeepFifoOrderAboveProgressCard() {
+        val user = userWithCard("user-1", "当前问题")
+        val first = insertUrgentBubble(listOf(user), urgentBubble("先发送"))
+        val second = insertUrgentBubble(first, urgentBubble("后发送"))
+
+        assertEquals(3, second.size)
+        assertEquals(ChatViewModel.URGENT_BUBBLE_PREFIX + "item-1", second[0].id)
+        // 先插队的气泡保持在后面插队气泡的上方（FIFO：后插队的紧挨进度卡片）
+        assertEquals("后发送", second[1].content)
+        assertEquals("user-1", second[2].id)
+    }
+
+    @Test
+    fun urgentBubbleFallsBackToLatestUserMessageWhenNoProgressCard() {
+        val history = Message(id = "assistant-1", role = "assistant", content = "回复")
+        val user = Message(id = "user-1", role = "user", content = "问题")
+        val streaming = Message(
+            id = ChatViewModel.STREAMING_ID,
+            role = "assistant",
+            content = ""
+        )
+
+        val result = insertUrgentBubble(listOf(history, user, streaming), urgentBubble("插队消息"))
+
+        assertEquals(4, result.size)
+        assertEquals("user-1", result[1].id)
+        assertEquals(ChatViewModel.URGENT_BUBBLE_PREFIX + "item-1", result[2].id)
+        assertEquals(ChatViewModel.STREAMING_ID, result[3].id)
+    }
+
+    @Test
+    fun serverMessageReplacesUrgentBubbleInsteadOfDuplicating() {
+        val bubble = urgentBubble("插队消息")
+        val serverMessage = Message(
+            id = "server-user-1",
+            role = "user",
+            content = "插队消息",
+            sessionId = "session-a"
+        )
+
+        val merged = mergeRealtimeNewMessage(
+            current = listOf(bubble),
+            incoming = serverMessage,
+            isSending = true
+        )
+
+        assertEquals(1, merged.size)
+        assertEquals("server-user-1", merged.single().id)
+    }
 }

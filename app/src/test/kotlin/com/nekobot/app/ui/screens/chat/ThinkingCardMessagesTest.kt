@@ -44,6 +44,36 @@ class ThinkingCardMessagesTest {
     }
 
     @Test
+    fun cardFallbackSkipsUrgentBubbleSoNoSecondProgressCardAppears() {
+        val persistedUser = Message(
+            id = "persisted-user-1",
+            role = "user",
+            content = "当前问题",
+            thinkingCards = listOf(ThinkingCard(id = "card-1", content = "处理中", progress = 40))
+        )
+        // 排队消息“立即发送”的乐观气泡位于列表末尾（等待注入）
+        val urgentBubble = Message(
+            id = "${ChatViewModel.URGENT_BUBBLE_PREFIX}item-x",
+            role = "user",
+            content = "插队消息"
+        )
+        // 父消息 id 指向尚未落库的正式 id：UI 中匹配不到，必须回退到最后一条普通用户消息，
+        // 而不是回退到插队乐观气泡下形成第二个进度卡片
+        val card = ThinkingCard(
+            id = "card-2",
+            content = "继续处理中",
+            isAgent = true,
+            parentMessageId = "server-user-9"
+        )
+
+        val result = attachThinkingCardToMessages(listOf(persistedUser, urgentBubble), card)
+
+        // 新卡片与原有卡片一起挂在普通用户消息下，插队气泡不挂卡
+        assertEquals(listOf("card-1", "card-2"), result.first().thinkingCards?.map { it.id })
+        assertTrue(result.last().thinkingCards.isNullOrEmpty())
+    }
+
+    @Test
     fun replacesPreviousRealtimeUpdateForTheSameCard() {
         val first = ThinkingCard(id = "card-1", content = "下载中", progress = 20)
         val latest = first.copy(content = "继续下载", progress = 65)
