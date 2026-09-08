@@ -137,6 +137,7 @@ import com.nekobot.app.data.local.isAgentContextSummary
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.ReasoningEffort
+import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.Skill
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.components.GlassCard
@@ -221,6 +222,7 @@ fun ModernChatScreen(
             ModernChatComposer(
             modifier = Modifier.fillMaxWidth(),
             sessionId = sessionId,
+            session = session,
             messages = messages,
             sending = sending,
             plotChoices = plotChoices,
@@ -635,6 +637,7 @@ private fun CommandDetailDialog(
 private fun ModernChatComposer(
     modifier: Modifier,
     sessionId: String,
+    session: Session?,
     messages: List<Message>,
     sending: Boolean,
     plotChoices: List<PlotChoice>,

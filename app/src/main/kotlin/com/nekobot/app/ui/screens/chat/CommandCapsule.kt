@@ -123,11 +123,13 @@ internal fun CommandCapsuleChip(
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(50))
-            .background(
+            .then(
                 if (translucent) {
-                    Color.White.copy(alpha = 0.28f)
+                    Modifier.background(Color.White.copy(alpha = 0.28f))
                 } else {
-                    Brush.horizontalGradient(listOf(kind.startColor, kind.endColor))
+                    Modifier.background(
+                        Brush.horizontalGradient(listOf(kind.startColor, kind.endColor))
+                    )
                 }
             )
             .padding(horizontal = 14.dp, vertical = 5.dp),
