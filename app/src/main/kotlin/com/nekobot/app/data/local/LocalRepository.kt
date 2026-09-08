@@ -282,6 +282,13 @@ class LocalRepository(
     private val failoverHealthDao = db.failoverHealthDao()
     private val localExecAuthorizationManager =
         com.nekobot.app.data.local.ai.LocalExecAuthorizationManager()
+    /** 会话 Agent 工具集选择：大类 + 单工具可管理，按会话持久化。 */
+    private val sessionToolRegistry =
+        com.nekobot.app.data.local.ai.SessionToolRegistry(
+            loadEnabled = { sessionId -> ServiceContainer.prefs.getSessionToolSet(sessionId) },
+            saveEnabled = { sessionId, enabled -> ServiceContainer.prefs.setSessionToolSet(sessionId, enabled) },
+            clearEnabled = { sessionId -> ServiceContainer.prefs.clearSessionToolSet(sessionId) }
+        )
     /** ask_user_question 提问等待管理器：AI 提问后挂起，UI 回答后 resolve。 */
     private val askUserQuestionManager =
         com.nekobot.app.data.local.ai.LocalAskUserQuestionManager()
@@ -5147,17 +5154,20 @@ class LocalRepository(
         )
         val mcpTools = localMcpRuntime.getOpenAiToolDefinitions()
             .ifEmpty { cachedMcpAgentTools }
-        val tools = (
-            buildLocalAgentToolDefinitions() +
-                buildLocalSkillToolDefinitions() +
-                buildLocalDbToolDefinitions() +
-                mcpTools
-            ).distinctBy { definition ->
-            @Suppress("UNCHECKED_CAST")
-            (definition["function"] as? Map<String, Any>)?.get("name")?.toString()
-                ?: definition["name"]?.toString()
-                ?: definition.toString()
-        }
+        val tools = filterDefinitionsForSession(
+            sessionId = sessionId,
+            definitions = (
+                buildLocalAgentToolDefinitions() +
+                    buildLocalSkillToolDefinitions() +
+                    buildLocalDbToolDefinitions() +
+                    mcpTools
+                ).distinctBy { definition ->
+                @Suppress("UNCHECKED_CAST")
+                (definition["function"] as? Map<String, Any>)?.get("name")?.toString()
+                    ?: definition["name"]?.toString()
+                    ?: definition.toString()
+            }
+        )
 
         RealtimeAgentToolRuntime(
             tools = tools,
@@ -5754,10 +5764,13 @@ class LocalRepository(
                             null
                         }
                         val tools = if (allowTools && session.sessionMode.equals("agent", ignoreCase = true)) {
-                            com.nekobot.app.data.local.ai.buildLocalAgentToolDefinitions() +
-                                com.nekobot.app.data.local.ai.buildLocalSkillToolDefinitions() +
-                                com.nekobot.app.data.local.ai.buildLocalDbToolDefinitions() +
-                                prepareMcpAgentTools()
+                            filterDefinitionsForSession(
+                                sessionId = sessionId,
+                                definitions = com.nekobot.app.data.local.ai.buildLocalAgentToolDefinitions() +
+                                    com.nekobot.app.data.local.ai.buildLocalSkillToolDefinitions() +
+                                    com.nekobot.app.data.local.ai.buildLocalDbToolDefinitions() +
+                                    prepareMcpAgentTools()
+                            )
                         } else {
                             emptyList()
                         }
@@ -6306,6 +6319,47 @@ class LocalRepository(
         if (enabled) localExecAuthorizationManager.enableYolo(sessionId)
         else localExecAuthorizationManager.disableYolo(sessionId)
     }
+
+    // ==================== 会话 Agent 工具集选择 ====================
+
+    /** 工具大类目录（id → 包含的工具 id 列表）。 */
+    fun toolCategories(): List<Pair<String, List<String>>> =
+        com.nekobot.app.data.local.ai.SessionToolCatalog.categories
+            .map { it.id to it.toolIds }
+
+    /** 某会话当前启用的工具 id 集合（null 表示未自定义，全部启用）。 */
+    fun enabledSessionToolIds(sessionId: String): Set<String>? =
+        sessionToolRegistry.enabledToolIds(sessionId)
+
+    /** 某会话某大类是否整体启用。 */
+    fun isSessionCategoryEnabled(sessionId: String, categoryId: String): Boolean =
+        sessionToolRegistry.isCategoryEnabled(sessionId, categoryId)
+
+    /** 某会话某单个工具是否启用。 */
+    fun isSessionToolEnabled(sessionId: String, toolId: String): Boolean =
+        sessionToolRegistry.isToolEnabled(sessionId, toolId)
+
+    /** 切换某会话某大类的整体启用状态。 */
+    fun setSessionCategoryEnabled(sessionId: String, categoryId: String, enabled: Boolean) {
+        sessionToolRegistry.setCategoryEnabled(sessionId, categoryId, enabled)
+    }
+
+    /** 切换某会话某单个工具的启用状态。 */
+    fun setSessionToolEnabled(sessionId: String, toolId: String, enabled: Boolean) {
+        sessionToolRegistry.setToolEnabled(sessionId, toolId, enabled)
+    }
+
+    /** 恢复某会话工具集为全部启用。 */
+    fun resetSessionToolSet(sessionId: String) {
+        sessionToolRegistry.resetToAll(sessionId)
+    }
+
+    /** 按会话工具集过滤工具定义列表；未自定义时原样返回。 */
+    private fun filterDefinitionsForSession(
+        sessionId: String,
+        definitions: List<Map<String, Any>>
+    ): List<Map<String, Any>> =
+        sessionToolRegistry.filterDefinitions(sessionId, definitions)
 
     fun respondToExecConfirmation(
         requestId: String,

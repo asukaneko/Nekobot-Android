@@ -417,6 +417,39 @@ class UnifiedRepository(
         if (isLocal) local.setYoloEnabled(sessionId, enabled)
     }
 
+    /** 会话 Agent 工具集选择；仅本地模式有效。 */
+
+    /** 工具大类目录：id → 包含的工具 id 列表。 */
+    fun toolCategories(): List<Pair<String, List<String>>> =
+        if (isLocal) local.toolCategories() else emptyList()
+
+    /** 某会话当前启用的工具 id 集合（null 表示未自定义，全部启用）。 */
+    fun enabledSessionToolIds(sessionId: String): Set<String>? =
+        if (isLocal) local.enabledSessionToolIds(sessionId) else null
+
+    /** 某会话某大类是否整体启用。 */
+    fun isSessionCategoryEnabled(sessionId: String, categoryId: String): Boolean =
+        isLocal && local.isSessionCategoryEnabled(sessionId, categoryId)
+
+    /** 某会话某单个工具是否启用。 */
+    fun isSessionToolEnabled(sessionId: String, toolId: String): Boolean =
+        isLocal && local.isSessionToolEnabled(sessionId, toolId)
+
+    /** 切换某会话某大类的整体启用状态。 */
+    fun setSessionCategoryEnabled(sessionId: String, categoryId: String, enabled: Boolean) {
+        if (isLocal) local.setSessionCategoryEnabled(sessionId, categoryId, enabled)
+    }
+
+    /** 切换某会话某单个工具的启用状态。 */
+    fun setSessionToolEnabled(sessionId: String, toolId: String, enabled: Boolean) {
+        if (isLocal) local.setSessionToolEnabled(sessionId, toolId, enabled)
+    }
+
+    /** 恢复某会话工具集为全部启用。 */
+    fun resetSessionToolSet(sessionId: String) {
+        if (isLocal) local.resetSessionToolSet(sessionId)
+    }
+
     fun respondToLocalExecConfirmation(
         requestId: String,
         sessionId: String,

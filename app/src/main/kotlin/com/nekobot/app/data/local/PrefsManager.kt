@@ -6,6 +6,8 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.reflect.TypeToken
 import com.nekobot.app.data.local.security.SecurePreferenceStore
+import com.nekobot.app.data.local.ai.decodeToolSet
+import com.nekobot.app.data.local.ai.encodeToolSet
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -650,6 +652,28 @@ class PrefsManager(context: Context) {
     /** 清除指定会话的输入框草稿 */
     fun clearChatInputDraft(sessionId: String) {
         prefs.edit().remove("chat_draft_$sessionId").apply()
+    }
+
+    // ==================== 会话 Agent 工具集选择 ====================
+
+    /**
+     * 读取指定会话启用的工具 id 集合。
+     * 返回 null 表示该会话未自定义（默认全部启用）。
+     */
+    fun getSessionToolSet(sessionId: String): Set<String>? {
+        return decodeToolSet(prefs.getString("session_toolset_$sessionId", null))
+    }
+
+    /** 保存指定会话启用的工具 id 集合。 */
+    fun setSessionToolSet(sessionId: String, enabled: Set<String>) {
+        prefs.edit()
+            .putString("session_toolset_$sessionId", encodeToolSet(enabled))
+            .apply()
+    }
+
+    /** 清除指定会话的工具集自定义记录（恢复全部启用）。 */
+    fun clearSessionToolSet(sessionId: String) {
+        prefs.edit().remove("session_toolset_$sessionId").apply()
     }
 
     /** 获取对应会话类型的全局思考强度；Agent 与角色会话互不影响。 */
