@@ -1,5 +1,10 @@
 package com.nekobot.app.ui.screens.chat
 
+import androidx.compose.material3.ColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
+import com.nekobot.app.R
 import com.nekobot.app.data.local.agentContextSummaryBoundaryId
 import com.nekobot.app.data.local.isAgentContextSummary
 import com.nekobot.app.data.local.ai.estimateLocalTextTokens
@@ -94,6 +99,49 @@ internal fun buildContextBreakdown(
             if (tokens == 0 && count == 0) null else ContextPart(type, tokens, count)
         }
     )
+}
+
+/**
+ * 合并 Agent 运行中（尚未落库、但会随 tool_call_history 注入下一轮请求）的工具调用历史，
+ * 归入 [ContextPartType.TOOL_CALLS]，使占比与分析随工具调用步骤动态增长。
+ */
+internal fun ContextBreakdown.withLiveToolTokens(liveTokens: Long, liveCount: Int): ContextBreakdown {
+    if (liveTokens <= 0 && liveCount <= 0) return this
+    val mapped = parts.map { part ->
+        if (part.type == ContextPartType.TOOL_CALLS) {
+            part.copy(
+                estimatedTokens = part.estimatedTokens + liveTokens.toInt(),
+                itemCount = part.itemCount + liveCount
+            )
+        } else {
+            part
+        }
+    }
+    return if (mapped.none { it.type == ContextPartType.TOOL_CALLS }) {
+        ContextBreakdown(parts = mapped + ContextPart(ContextPartType.TOOL_CALLS, liveTokens.toInt(), liveCount))
+    } else {
+        ContextBreakdown(parts = mapped)
+    }
+}
+
+/** 上下文类型在占比分析中的展示颜色（全屏页与 + 菜单共用）。 */
+internal fun ContextPartType.displayColor(scheme: ColorScheme): Color = when (this) {
+    ContextPartType.SYSTEM_PROMPT -> scheme.primary
+    ContextPartType.USER_MESSAGES -> scheme.secondary
+    ContextPartType.ASSISTANT_MESSAGES -> scheme.tertiary
+    ContextPartType.COMPRESSED_SUMMARY -> scheme.outline
+    ContextPartType.TOOL_CALLS -> scheme.error
+    ContextPartType.OTHER_MESSAGES -> scheme.outline
+}
+
+@Composable
+internal fun contextPartLabel(type: ContextPartType): String = when (type) {
+    ContextPartType.SYSTEM_PROMPT -> stringResource(R.string.chat_context_analysis_system_prompt)
+    ContextPartType.USER_MESSAGES -> stringResource(R.string.chat_context_analysis_user_messages)
+    ContextPartType.ASSISTANT_MESSAGES -> stringResource(R.string.chat_context_analysis_assistant_messages)
+    ContextPartType.COMPRESSED_SUMMARY -> stringResource(R.string.chat_context_analysis_summary)
+    ContextPartType.TOOL_CALLS -> stringResource(R.string.chat_context_analysis_tool_content)
+    ContextPartType.OTHER_MESSAGES -> stringResource(R.string.chat_context_analysis_other_messages)
 }
 
 private fun List<Message>.agentContextWindow(): List<Message> {

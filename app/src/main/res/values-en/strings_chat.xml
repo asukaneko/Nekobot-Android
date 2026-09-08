@@ -613,6 +613,13 @@
     <string name="chat_context_analysis_system_prompt">System prompt</string>
     <string name="chat_context_analysis_tool_content">Tool calls</string>
     <string name="chat_context_analysis_other_messages">Other messages</string>
+
+    <string name="chat_agent_status_preparing">Preparing…</string>
+    <string name="chat_agent_status_thinking">Thinking…</string>
+    <string name="chat_agent_status_tool_running">Tool: %1$s</string>
+    <string name="chat_context_live_badge">LIVE</string>
+    <string name="chat_agent_context_live_desc">Agent running — usage and breakdown update live</string>
+    <string name="chat_agent_context_live_hint">Agent running: usage and breakdown update live with thinking and tool calls</string>
     <string name="chat_queue_title">Queued messages (%1$d)</string>
     <string name="chat_queue_send_now">Send now</string>
     <string name="chat_queue_remove">Remove</string>

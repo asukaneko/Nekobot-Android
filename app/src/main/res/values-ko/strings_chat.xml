@@ -614,6 +614,13 @@
     <string name="chat_context_analysis_system_prompt">시스템 프롬프트</string>
     <string name="chat_context_analysis_tool_content">도구 호출</string>
     <string name="chat_context_analysis_other_messages">기타 메시지</string>
+
+    <string name="chat_agent_status_preparing">준비 중…</string>
+    <string name="chat_agent_status_thinking">생각 중…</string>
+    <string name="chat_agent_status_tool_running">도구 호출 · %1$s</string>
+    <string name="chat_context_live_badge">실시간</string>
+    <string name="chat_agent_context_live_desc">Agent 실행 중, 사용량과 분석이 실시간 업데이트됩니다</string>
+    <string name="chat_agent_context_live_hint">Agent 실행 중: 사용량·분석이 사고와 도구 호출에 따라 실시간 업데이트됩니다</string>
     <string name="chat_queue_title">대기 중인 메시지 (%1$d)</string>
     <string name="chat_queue_send_now">지금 보내기</string>
     <string name="chat_queue_remove">삭제</string>
