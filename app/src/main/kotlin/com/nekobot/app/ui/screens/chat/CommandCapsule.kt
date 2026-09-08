@@ -2,15 +2,8 @@ package com.nekobot.app.ui.screens.chat
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Checklist
-import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,7 +12,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -33,7 +25,7 @@ import com.nekobot.app.R
  * 内置命令的彩色胶囊样式。
  *
  * 目前仅 /goal、/spec 使用胶囊渲染（输入框内替换命令字符、发送后用户气泡同步展示）；
- * 每种命令有独立的图标、渐变底色与多语言标签，方便后续扩展更多命令。
+ * 每种命令有独立的渐变底色与多语言文字标签，方便后续扩展更多命令。
  */
 internal enum class CommandCapsuleKind {
     GOAL,
@@ -44,12 +36,6 @@ internal enum class CommandCapsuleKind {
         get() = when (this) {
             GOAL -> R.string.command_capsule_goal
             SPEC -> R.string.command_capsule_spec
-        }
-
-    val icon: ImageVector
-        get() = when (this) {
-            GOAL -> Icons.Filled.Flag
-            SPEC -> Icons.Filled.Checklist
         }
 
     /** 胶囊渐变起始色（深色系，保证白色文字可读）。 */
@@ -122,7 +108,7 @@ internal fun commandCapsuleVisualTransformation(): VisualTransformation = Visual
 }
 
 /**
- * 命令胶囊组件：圆角胶囊 + 命令图标 + 多语言标签。
+ * 命令胶囊组件：圆角胶囊 + 多语言文字标签（纯文字，不带图标）。
  *
  * [translucent] 为 true 时使用半透明白底（适合放在已着色的气泡/背景上），
  * 否则使用命令自身的渐变底色（适合放在输入框等浅色背景上）。
@@ -131,8 +117,7 @@ internal fun commandCapsuleVisualTransformation(): VisualTransformation = Visual
 internal fun CommandCapsuleChip(
     kind: CommandCapsuleKind,
     modifier: Modifier = Modifier,
-    translucent: Boolean = false,
-    showIcon: Boolean = true
+    translucent: Boolean = false
 ) {
     val label = stringResource(kind.labelResId)
     Row(
@@ -145,18 +130,9 @@ internal fun CommandCapsuleChip(
                     Brush.horizontalGradient(listOf(kind.startColor, kind.endColor))
                 }
             )
-            .padding(horizontal = if (showIcon) 12.dp else 16.dp, vertical = 5.dp),
+            .padding(horizontal = 14.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (showIcon) {
-            Icon(
-                imageVector = kind.icon,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(15.dp)
-            )
-            Spacer(Modifier.width(6.dp))
-        }
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
