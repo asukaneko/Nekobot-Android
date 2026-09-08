@@ -8,6 +8,8 @@
     <string name="command_suggestion_detail_title">명령 상세</string>
     <string name="command_suggestion_detail_hint">옵션을 길게 눌러 전체 설명 보기</string>
     <string name="command_suggestion_aliases">별칭: %1$s</string>
+    <string name="command_capsule_goal">목표</string>
+    <string name="command_capsule_spec">명세</string>
     <string name="cmd_help_usage">/help</string>
     <string name="cmd_help_desc">로컬 명령 도움말 보기</string>
     <string name="cmd_status_usage">/status</string>

@@ -8,6 +8,8 @@
     <string name="command_suggestion_detail_title">コマンド詳細</string>
     <string name="command_suggestion_detail_hint">項目を長押しすると完全な説明を表示します</string>
     <string name="command_suggestion_aliases">別名：%1$s</string>
+    <string name="command_capsule_goal">目標</string>
+    <string name="command_capsule_spec">仕様</string>
     <string name="cmd_help_usage">/help</string>
     <string name="cmd_help_desc">ローカルコマンドのヘルプを表示</string>
     <string name="cmd_status_usage">/status</string>

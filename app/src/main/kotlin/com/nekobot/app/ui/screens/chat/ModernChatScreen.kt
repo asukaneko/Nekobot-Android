@@ -667,6 +667,10 @@ private fun ModernChatComposer(
         )
     }
     val input = inputField.text
+    // 命令胶囊：/goal、/spec 前缀在输入框内替换为彩色胶囊（视觉变换隐藏命令字符，
+    // 胶囊由 decorationBox 在同样位置绘制；发送内容不受影响，仍是原始文本）
+    val commandCapsule = remember(input) { matchCommandCapsule(input) }
+    val commandCapsuleTransformation = remember { commandCapsuleVisualTransformation() }
     // 程序化更新输入内容时光标置于末尾，方便继续输入
     fun updateInput(text: String) {
         inputField = TextFieldValue(text, TextRange(text.length))
@@ -1266,6 +1270,7 @@ private fun ModernChatComposer(
                                     // Agent 会话生成中仍可输入，发送的消息会进入排队队列
                                     enabled = !sending || isAgentSession,
                                     maxLines = 5,
+                                    visualTransformation = commandCapsuleTransformation,
                                     textStyle = MaterialTheme.typography.bodyLarge.copy(
                                         color = MaterialTheme.colorScheme.onSurface
                                     ),
@@ -1273,23 +1278,33 @@ private fun ModernChatComposer(
                                         .fillMaxWidth()
                                         .padding(horizontal = 12.dp, vertical = 10.dp),
                                     decorationBox = { innerTextField ->
-                                        Box(
+                                        Row(
                                             modifier = Modifier.fillMaxWidth(),
-                                            contentAlignment = Alignment.TopStart
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            if (input.isEmpty()) {
-                                                Text(
-                                                    text = when {
-                                                        sending && isAgentSession ->
-                                                            stringResource(R.string.chat_queue_input_hint)
-                                                        sending -> stringResource(R.string.chat_ai_thinking)
-                                                        else -> stringResource(R.string.chat_input_placeholder)
-                                                    },
-                                                    style = MaterialTheme.typography.bodyLarge,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
-                                                )
+                                            // 命令胶囊：视觉变换已隐藏原文中的 /goal、/spec 字符，这里原位绘制胶囊
+                                            if (commandCapsule != null) {
+                                                CommandCapsuleChip(kind = commandCapsule.kind)
+                                                Spacer(Modifier.width(6.dp))
                                             }
-                                            innerTextField()
+                                            Box(
+                                                modifier = Modifier.weight(1f),
+                                                contentAlignment = Alignment.TopStart
+                                            ) {
+                                                if (input.isEmpty()) {
+                                                    Text(
+                                                        text = when {
+                                                            sending && isAgentSession ->
+                                                                stringResource(R.string.chat_queue_input_hint)
+                                                            sending -> stringResource(R.string.chat_ai_thinking)
+                                                            else -> stringResource(R.string.chat_input_placeholder)
+                                                        },
+                                                        style = MaterialTheme.typography.bodyLarge,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+                                                    )
+                                                }
+                                                innerTextField()
+                                            }
                                         }
                                     }
                                 )

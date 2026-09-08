@@ -8,6 +8,8 @@
     <string name="command_suggestion_detail_title">Command Details</string>
     <string name="command_suggestion_detail_hint">Long-press an option to see the full description</string>
     <string name="command_suggestion_aliases">Aliases: %1$s</string>
+    <string name="command_capsule_goal">Goal</string>
+    <string name="command_capsule_spec">Spec</string>
     <string name="cmd_help_usage">/help</string>
     <string name="cmd_help_desc">Show local command help</string>
     <string name="cmd_status_usage">/status</string>
