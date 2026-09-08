@@ -2748,6 +2748,14 @@ private fun MessageBubble(
 ) {
     val isUser = message.isUser
     val isLocalCommand = message.isLocalCommandMessage()
+    // 命令胶囊：/goal、/spec 用户命令在气泡内显示为彩色胶囊 + 本地化标签，
+    // 气泡底色同步切换为命令专属渐变（仅单段文本消息应用，避免与多段气泡样式冲突）
+    val commandCapsule = remember(message.id, message.content, isUser) {
+        if (isUser) matchCommandCapsule(message.content.orEmpty()) else null
+    }
+    val commandCapsuleBrush = commandCapsule?.let {
+        Brush.linearGradient(listOf(it.kind.startColor, it.kind.endColor))
+    }
     // 用户气泡基色：若设置了主题色覆盖则跟随主题，否则使用默认紫色
     val userBubble = ServiceContainer.prefs.themeColorOverride?.let { parseHexColor(it) }
         ?: if (isSystemInDarkTheme()) BubbleUser else BubbleUserLight
@@ -2925,6 +2933,7 @@ private fun MessageBubble(
                 Spacer(Modifier.height(6.dp))
             }
             // 多段气泡：每段一个气泡，段间小间距
+            val commandStyle = commandCapsule?.takeIf { segments.size == 1 }
             segments.forEachIndexed { idx, segment ->
                 val isFirst = idx == 0
                 val isLast = idx == segments.lastIndex
@@ -2946,6 +2955,8 @@ private fun MessageBubble(
                         .then(if (isUser && !segHasUserImage) Modifier.shadow(2.dp, segShape, clip = false) else Modifier)
                         .then(
                             when {
+                                isUser && commandStyle != null && !segHasUserImage ->
+                                    Modifier.background(brush = commandCapsuleBrush!!, shape = segShape)
                                 isUser && !segHasUserImage ->
                                     Modifier.background(brush = userBrush, shape = segShape)
                                 !isUser ->
@@ -3016,6 +3027,34 @@ private fun MessageBubble(
                             chatMode = true,
                             processParens = !isUser
                         )
+                    } else if (commandStyle != null && isUser) {
+                        // 命令消息（/goal、/spec）：彩色胶囊 + 其余参数文本
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CommandCapsuleChip(kind = commandStyle.kind, translucent = true)
+                            val rest = segment.removePrefix(commandStyle.token).trim()
+                            if (rest.isNotEmpty()) {
+                                Spacer(Modifier.width(8.dp))
+                                if (useSafePlainText) {
+                                    SafePlainMessageText(
+                                        text = rest,
+                                        color = textColor,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                } else {
+                                    MarkdownText(
+                                        text = rest,
+                                        modifier = Modifier.weight(1f),
+                                        color = textColor,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        chatMode = true,
+                                        processParens = false
+                                    )
+                                }
+                            }
+                        }
                     } else {
                         // 文本内容：用 Markdown 渲染
                         // 用户气泡：宽度跟随实际内容（短消息不撑满）；AI 气泡：填满最大宽度
@@ -5422,6 +5461,8 @@ private fun ChatInputBar(
 ) {
     var panelExpanded by rememberSaveable { mutableStateOf(false) }
     var inputExpanded by rememberSaveable { mutableStateOf(false) }
+    // 命令胶囊：/goal、/spec 前缀显示为彩色胶囊（备用输入栏与 ModernChatComposer 保持一致）
+    val commandCapsule = remember(input) { matchCommandCapsule(input) }
     // 字符数与 token 估算：中文字符约 1 token/字，英文约 0.25 token/字符
     val charCount = input.length
     val chineseCount = input.count { it.code in 0x4E00..0x9FFF }
@@ -5635,7 +5676,14 @@ private fun ChatInputBar(
                         placeholder = { Text(if (sending) stringResource(R.string.chat_ai_thinking) else stringResource(R.string.chat_input_placeholder)) },
                         enabled = !sending,
                         maxLines = 5,
-                        shape = RoundedCornerShape(24.dp)
+                        shape = RoundedCornerShape(24.dp),
+                        visualTransformation = commandCapsuleVisualTransformation(),
+                        prefix = {
+                            if (commandCapsule != null) {
+                                CommandCapsuleChip(kind = commandCapsule.kind)
+                                Spacer(Modifier.width(6.dp))
+                            }
+                        }
                     )
                     Spacer(Modifier.width(8.dp))
                     val showSend = sending || input.isNotBlank()

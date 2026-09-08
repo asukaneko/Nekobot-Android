@@ -8,6 +8,8 @@
     <string name="command_suggestion_detail_title">命令详情</string>
     <string name="command_suggestion_detail_hint">长按选项可查看完整说明</string>
     <string name="command_suggestion_aliases">别名：%1$s</string>
+    <string name="command_capsule_goal">目标</string>
+    <string name="command_capsule_spec">规格</string>
     <string name="cmd_note_usage">/note &lt;内容&gt;</string>
     <string name="cmd_note_desc">追加一条本地工作区速记</string>
     <string name="cmd_notes_usage">/notes</string>
