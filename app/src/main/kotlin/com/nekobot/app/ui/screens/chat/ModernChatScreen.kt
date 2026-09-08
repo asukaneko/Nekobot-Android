@@ -487,7 +487,7 @@ private fun CommandSuggestionPanel(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = if (showAllCommands) 360.dp else 288.dp),
+                    .heightIn(max = if (showAllCommands) 300.dp else 240.dp),
                 state = listState,
                 contentPadding = PaddingValues(vertical = 6.dp)
             ) {
