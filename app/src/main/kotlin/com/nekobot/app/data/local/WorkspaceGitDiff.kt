@@ -64,7 +64,8 @@ object WorkspaceGitDiff {
      * 汇总工作区内被修改文件的 Git 差异摘要。
      *
      * @param workspace 会话工作区根目录
-     * @param changedPaths 相对 workspace 的改动路径（AI 本轮实际写入/删除的文件）
+     * @param changedPaths 改动路径：相对 workspace 的相对路径，或实际文件绝对路径
+     *   （如共享工作区 shared:// 解析后的真实路径 / 其他沙箱内路径），二者可混用
      * @return 非 git 仓库 / 无净变化时返回 null（调用方不渲染卡片）
      */
     fun summarize(workspace: File, changedPaths: Collection<String>): GitDiffSummary? {
@@ -85,14 +86,17 @@ object WorkspaceGitDiff {
     ): GitDiffSummary? {
         val wsRoot = runCatching { workspace.canonicalFile }.getOrNull() ?: workspace.absoluteFile
 
-        // 1. 按文件所在 git 仓库分组（支持工作区嵌套仓库 / 工作区位于仓库子目录）
+        // 1. 按文件所在 git 仓库分组（支持工作区嵌套仓库 / 工作区位于仓库子目录 /
+        //    绝对路径直达共享工作区或其他沙箱内的仓库）
         val byRepo = LinkedHashMap<File, MutableList<File>>()
         for (relative in changedPaths) {
             val rel = relative.trim().replace('\\', '/').removePrefix("./")
             if (rel.isBlank()) continue
             // 忽略 .git 内部写入
             if (rel == ".git" || rel.startsWith(".git/")) continue
-            val file = File(wsRoot, rel)
+            // 绝对路径（共享工作区 / 其他沙箱解析后的真实路径）原样使用；
+            // 相对路径按 workspace 根解析。
+            val file = if (rel.startsWith("/")) File(rel) else File(wsRoot, rel)
             val parent = file.parentFile ?: wsRoot
             val gitRoot = findGitRoot(parent, FIND_GIT_ROOT_DEPTH) ?: continue
             val canonicalRoot = runCatching { gitRoot.canonicalFile }.getOrElse { gitRoot.absoluteFile }
