@@ -2723,7 +2723,9 @@ private fun ModernContextCard(
                     modifier = Modifier.weight(1f)
                 )
             }
-            if (contextBreakdown?.parts?.isNotEmpty() == true) {
+            // 类型占比仅在 Agent 实时记录期间展示（随轮询动态刷新，含 LIVE 徽标）；
+            // 实时记录完成后自动隐藏，不再持续显示静态占比，仅保留上方的分析二级入口。
+            if (liveRunning && contextBreakdown?.parts?.isNotEmpty() == true) {
                 Spacer(Modifier.height(12.dp))
                 ModernContextAnalysisSection(
                     breakdown = contextBreakdown,
