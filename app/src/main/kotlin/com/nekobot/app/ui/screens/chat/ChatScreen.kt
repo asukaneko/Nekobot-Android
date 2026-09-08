@@ -281,6 +281,17 @@ fun ChatScreen(
     val agentCompressionBoundaryIds = messages.mapNotNull { it.agentContextSummaryBoundaryId() }.toSet()
     // 摘要本身仅供请求上下文使用，聊天列表仍展示完整原始历史。
     val visibleMessages = messages.filterNot { it.isAgentContextSummary() }
+    // 排队“立即发送”的乐观气泡渲染在宿主（前一条用户消息）item 内、进度卡片之前，
+    // 而不是作为独立 item 追加在卡片之后：让插队消息位于旧消息下方、进度卡片上方。
+    val renderMessages = ArrayList<Message>(visibleMessages.size)
+    val urgentBubblesAfter = LinkedHashMap<Int, MutableList<Message>>()
+    for (m in visibleMessages) {
+        if (isUrgentBubbleId(m.id) && renderMessages.isNotEmpty()) {
+            urgentBubblesAfter.getOrPut(renderMessages.lastIndex) { mutableListOf() }.add(m)
+        } else {
+            renderMessages.add(m)
+        }
+    }
     // 不把完整 Message 列表作为 remember key：Agent 历史可能携带较大的嵌套进度数据，
     // Compose 对 key 做 equals 时会递归比较整棵工具结果。
     val latestBrowserProgressCardId = messages.asReversed().firstNotNullOfOrNull { message ->
@@ -608,10 +619,10 @@ fun ChatScreen(
         if (visibleMessages.isNotEmpty()) {
             if (initialLoad) {
                 // 首次加载：直接跳到底部，无动画
-                listState.scrollToItem(visibleMessages.lastIndex)
+                listState.scrollToItem(renderMessages.lastIndex)
                 initialLoad = false
             } else {
-                listState.animateScrollToItem(visibleMessages.lastIndex)
+                listState.animateScrollToItem(renderMessages.lastIndex)
             }
         }
     }
@@ -930,7 +941,7 @@ fun ChatScreen(
                     },
                     onScrollToBottom = {
                         if (visibleMessages.isNotEmpty()) {
-                            scope.launch { listState.animateScrollToItem(visibleMessages.lastIndex) }
+                            scope.launch { listState.animateScrollToItem(renderMessages.lastIndex) }
                         }
                     },
                     onShowMyMessages = { showMyMessages = true },
@@ -1082,7 +1093,7 @@ fun ChatScreen(
                         }
                     }
                     itemsIndexed(
-                        visibleMessages,
+                        renderMessages,
                         key = { index, message -> chatMessageItemKey(index, message) }
                     ) { index, msg ->
                         // 注意：LazyColumn 单个 item 内的多个平级节点会像 Box 一样叠放，
@@ -1090,7 +1101,7 @@ fun ChatScreen(
                         Column {
                             // 跨天消息之间插入日期分隔条
                             val day = dayKey(msg.timestamp)
-                            val prevDay = visibleMessages.getOrNull(index - 1)?.let { dayKey(it.timestamp) }
+                            val prevDay = renderMessages.getOrNull(index - 1)?.let { dayKey(it.timestamp) }
                             if (day != null && day != prevDay) {
                                 DateSeparatorChip(label = dayLabel(day))
                                 Spacer(Modifier.height(2.dp))
@@ -1107,57 +1118,77 @@ fun ChatScreen(
                                     sessionId = sessionId
                                 )
                             } else {
-                                val groupIdentity = if (session?.sessionMode.equals("group", ignoreCase = true)) {
+                                val groupIdentityBase = if (session?.sessionMode.equals("group", ignoreCase = true)) {
                                     resolveGroupMessageIdentity(msg, groupCharacters)
                                 } else {
                                     GroupMessageIdentity()
                                 }
-                                MessageBubble(
-                                    message = msg,
-                                    generatedImages = messageImagesByMessage[msg.id].orEmpty(),
-                                    onGeneratedImageClick = { previewGeneratedImage = it },
-                                    onFailedGeneratedImageLongClick = { viewModel.deleteMessageImage(it.id) },
-                                    ttsState = msg.id?.let { ttsStates[it] },
-                                    portraitUrl = groupIdentity.portraitUrl ?: session?.portraitUrl,
-                                    senderName = groupIdentity.name,
-                                    showAiAvatar = session?.sessionMode != "agent",
-                                    fillAiWidth = session?.sessionMode == "agent",
-                                    onLongClick = {
-                                        if (selectionMode) {
-                                            msg.id?.let(viewModel::toggleSelection)
-                                        } else {
-                                            messageActionTarget = msg
-                                        }
-                                    },
-                                    onRegenerate = {
-                                        // 首条 AI 消息（开场白）使用专用开场白重新生成
-                                        if (index == 0 && !msg.isUser) {
-                                            viewModel.regenerateGreeting()
-                                        } else {
-                                            viewModel.regenerate()
-                                        }
-                                    },
-                                    onRegenerateTts = { viewModel.regenerateMessageTts(msg) },
-                                    onFork = { msg.id?.let { mid -> viewModel.forkFromMessage(mid) { onOpenChat(it) } } },
-                                    onCopy = { msg.displayContent },
-                                    onEdit = if (msg.isUser && !sending) {
-                                        { editingMessage = msg }
+                                // 渲染单个消息气泡（宿主消息与排队“立即发送”气泡复用同一逻辑）
+                                @Composable
+                                fun renderMessageBubble(target: Message) {
+                                    val groupIdentity = if (target.isUser) {
+                                        groupIdentityBase
+                                    } else if (session?.sessionMode.equals("group", ignoreCase = true)) {
+                                        resolveGroupMessageIdentity(target, groupCharacters)
                                     } else {
-                                        null
-                                    },
-                                    onDelete = if (
-                                        ServiceContainer.prefs.isLocalMode &&
-                                        msg.isLocalCommandMessage()
-                                    ) {
-                                        { deletingMessage = msg }
-                                    } else {
-                                        null
-                                    },
-                                    sessionId = sessionId,
-                                    selectionMode = selectionMode,
-                                    isSelected = msg.id != null && msg.id in selectedIds,
-                                    onToggleSelection = { msg.id?.let { viewModel.toggleSelection(it) } }
-                                )
+                                        GroupMessageIdentity()
+                                    }
+                                    MessageBubble(
+                                        message = target,
+                                        generatedImages = messageImagesByMessage[target.id].orEmpty(),
+                                        onGeneratedImageClick = { previewGeneratedImage = it },
+                                        onFailedGeneratedImageLongClick = { viewModel.deleteMessageImage(it.id) },
+                                        ttsState = target.id?.let { ttsStates[it] },
+                                        portraitUrl = groupIdentity.portraitUrl ?: session?.portraitUrl,
+                                        senderName = groupIdentity.name,
+                                        showAiAvatar = session?.sessionMode != "agent",
+                                        fillAiWidth = session?.sessionMode == "agent",
+                                        onLongClick = {
+                                            if (selectionMode) {
+                                                target.id?.let(viewModel::toggleSelection)
+                                            } else {
+                                                messageActionTarget = target
+                                            }
+                                        },
+                                        onRegenerate = {
+                                            // 首条 AI 消息（开场白）使用专用开场白重新生成
+                                            if (index == 0 && !target.isUser) {
+                                                viewModel.regenerateGreeting()
+                                            } else {
+                                                viewModel.regenerate()
+                                            }
+                                        },
+                                        onRegenerateTts = { viewModel.regenerateMessageTts(target) },
+                                        onFork = { target.id?.let { mid -> viewModel.forkFromMessage(mid) { onOpenChat(it) } } },
+                                        onCopy = { target.displayContent },
+                                        onEdit = if (target.isUser && !sending) {
+                                            { editingMessage = target }
+                                        } else {
+                                            null
+                                        },
+                                        onDelete = if (
+                                            ServiceContainer.prefs.isLocalMode &&
+                                            target.isLocalCommandMessage()
+                                        ) {
+                                            { deletingMessage = target }
+                                        } else {
+                                            null
+                                        },
+                                        sessionId = sessionId,
+                                        selectionMode = selectionMode,
+                                        isSelected = target.id != null && target.id in selectedIds,
+                                        onToggleSelection = { target.id?.let { viewModel.toggleSelection(it) } }
+                                    )
+                                }
+                                renderMessageBubble(msg)
+                                // 排队“立即发送”的乐观气泡渲染在该用户消息气泡与进度卡片之间，
+                                // 使插队消息位于旧消息下方、进度卡片上方。
+                                urgentBubblesAfter[index]?.forEach { urgent ->
+                                    Spacer(Modifier.height(6.dp))
+                                    androidx.compose.runtime.key("urgent_${urgent.id}_$index") {
+                                        renderMessageBubble(urgent)
+                                    }
+                                }
                             }
                             if (msg.id != null && msg.id in agentCompressionBoundaryIds) {
                                 Spacer(Modifier.height(4.dp))
@@ -1165,7 +1196,7 @@ fun ChatScreen(
                             }
                             // 远程模式只有 Agent 会话显示进度卡片；本地模式还需要支持角色/群聊的耗时命令。
                             if (
-                                index == visibleMessages.lastIndex &&
+                                index == renderMessages.lastIndex &&
                                 agentContextCompressionInProgress &&
                                 // 本地模式手动压缩已改为后台执行，普通会话也需要可见的压缩进度反馈。
                                 (session?.sessionMode.equals("agent", ignoreCase = true) ||
