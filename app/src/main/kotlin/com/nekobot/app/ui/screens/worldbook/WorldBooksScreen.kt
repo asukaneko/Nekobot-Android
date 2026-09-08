@@ -1,6 +1,7 @@
 package com.nekobot.app.ui.screens.worldbook
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LifecycleResumeEffect
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -146,6 +147,13 @@ fun WorldBooksScreen(
     // 模式切换时自动刷新世界书列表
     val appMode by ServiceContainer.appModeFlow.collectAsStateWithLifecycle()
     LaunchedEffect(appMode) { viewModel.load() }
+
+    // 从详情页返回（如删除世界书后 popBack）或重新回到前台时自动刷新列表，
+    // 避免列表仍展示已删除/已修改的旧数据
+    LifecycleResumeEffect(Unit) {
+        viewModel.load()
+        onPauseOrDispose { }
+    }
 
     // 双栏布局状态：大屏模式下选中的世界书 ID
     val useTwoPane = rememberShouldUseTwoPane()
@@ -313,7 +321,8 @@ fun WorldBooksScreen(
                 selectedBookId?.let { bookId ->
                     WorldBookDetailScreen(
                         bookId = bookId,
-                        onBack = { selectedBookId = null }
+                        onBack = { selectedBookId = null },
+                        onBookDeleted = { viewModel.load() }
                     )
                 } ?: Box(
                     modifier = Modifier.fillMaxSize(),
