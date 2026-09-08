@@ -259,4 +259,13 @@
     <string name="agent_settings_group_runtime">実行制限</string>
     <string name="agent_settings_max_tool_calls">最大ツール呼び出し回数</string>
     <string name="agent_settings_max_tool_calls_desc">1 つの Agent ターンで許可される最大ツール呼び出し回数（1～1000、既定 %1$d）</string>
+    <string name="agent_settings_group_subagent">サブエージェント（Subagent）</string>
+    <string name="agent_settings_subagent_enable">Subagent を有効にする</string>
+    <string name="agent_settings_subagent_enable_desc">AI に subagent ツールの呼び出しを許可し、独立したタスクを新しい子エージェントに委任させます（子エージェントも同じフェイルオーバー モデル キューを使用）。</string>
+    <string name="agent_settings_subagent_max_depth">最大ネスト深度</string>
+    <string name="agent_settings_subagent_max_depth_desc">サブエージェントがさらに子エージェントに委任できる最大深度（0 で無効、既定 %1$d）。無限再帰を防止します。</string>
+    <string name="agent_settings_subagent_max_tool_calls">サブエージェントのツール上限</string>
+    <string name="agent_settings_subagent_max_tool_calls_desc">単一サブエージェント内で許可されるツール呼び出し反復の最大数（1～500、既定 %1$d）。</string>
+    <string name="agent_settings_subagent_default_background">既定でバックグラウンド実行</string>
+    <string name="agent_settings_subagent_default_background_desc">AI が run_in_background を明示しないとき、サブエージェントを既定でバックグラウンド実行（タスク id を返す）にするかどうか。</string>
 </resources>

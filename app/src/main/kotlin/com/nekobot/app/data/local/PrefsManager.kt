@@ -239,6 +239,28 @@ class PrefsManager(context: Context) {
         get() = prefs.getInt(KEY_AGENT_MAX_TOOL_CALLS, 150)
         set(value) = prefs.edit().putInt(KEY_AGENT_MAX_TOOL_CALLS, value.coerceIn(1, 1000)).apply()
 
+    // ============ Subagent 子代理配置 ============
+
+    /** 是否对 Agent 会话暴露 subagent 工具（AI 可调用子代理执行任务）。默认开启。 */
+    var subagentEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SUBAGENT_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_SUBAGENT_ENABLED, value).apply()
+
+    /** 子代理最大嵌套深度（0 禁止委派，默认 3）。用于防止无限递归。 */
+    var subagentMaxDepth: Int
+        get() = prefs.getInt(KEY_SUBAGENT_MAX_DEPTH, 3)
+        set(value) = prefs.edit().putInt(KEY_SUBAGENT_MAX_DEPTH, value.coerceIn(0, 10)).apply()
+
+    /** 单个子代理内允许多少次工具调用迭代（默认 60，范围 1-500）。 */
+    var subagentMaxToolCalls: Int
+        get() = prefs.getInt(KEY_SUBAGENT_MAX_TOOL_CALLS, 60)
+        set(value) = prefs.edit().putInt(KEY_SUBAGENT_MAX_TOOL_CALLS, value.coerceIn(1, 500)).apply()
+
+    /** 子代理默认是否后台运行（AI 未显式指定 run_in_background 时使用）。 */
+    var subagentDefaultBackground: Boolean
+        get() = prefs.getBoolean(KEY_SUBAGENT_DEFAULT_BACKGROUND, false)
+        set(value) = prefs.edit().putBoolean(KEY_SUBAGENT_DEFAULT_BACKGROUND, value).apply()
+
     // ============ RAG 检索配置 ============
 
     /** 语义检索权重（0.0~1.0） */
@@ -742,6 +764,10 @@ class PrefsManager(context: Context) {
         private const val KEY_AGENT_REASONING_EFFORT = "reasoning_effort_agent"
         private const val KEY_CHARACTER_REASONING_EFFORT = "reasoning_effort_character"
         private const val KEY_AGENT_MAX_TOOL_CALLS = "agent_max_tool_calls"
+        private const val KEY_SUBAGENT_ENABLED = "subagent_enabled"
+        private const val KEY_SUBAGENT_MAX_DEPTH = "subagent_max_depth"
+        private const val KEY_SUBAGENT_MAX_TOOL_CALLS = "subagent_max_tool_calls"
+        private const val KEY_SUBAGENT_DEFAULT_BACKGROUND = "subagent_default_background"
         private const val KEY_SMART_ROUTING_DAILY_BUDGET = "smart_routing_daily_budget"
         private const val KEY_SMART_ROUTING_BUDGET_ALERT = "smart_routing_budget_alert"
         private const val KEY_RAG_SEMANTIC_WEIGHT = "rag_semantic_weight"

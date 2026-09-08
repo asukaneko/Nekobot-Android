@@ -266,4 +266,13 @@
     <string name="agent_settings_group_runtime">Runtime Limits</string>
     <string name="agent_settings_max_tool_calls">Max Tool Calls</string>
     <string name="agent_settings_max_tool_calls_desc">Maximum tool calls allowed in a single Agent turn (1–1000, default %1$d)</string>
+    <string name="agent_settings_group_subagent">Subagent</string>
+    <string name="agent_settings_subagent_enable">Enable Subagent</string>
+    <string name="agent_settings_subagent_enable_desc">Allow the AI to call the subagent tool and delegate self-contained tasks to a fresh child agent (which uses the same failover model queue).</string>
+    <string name="agent_settings_subagent_max_depth">Max Nesting Depth</string>
+    <string name="agent_settings_subagent_max_depth_desc">Maximum depth at which a subagent can further delegate to subagents (0 disables, default %1$d). Prevents infinite recursion.</string>
+    <string name="agent_settings_subagent_max_tool_calls">Subagent Tool Limit</string>
+    <string name="agent_settings_subagent_max_tool_calls_desc">Maximum tool-call iterations allowed inside a single subagent (1–500, default %1$d).</string>
+    <string name="agent_settings_subagent_default_background">Default to Background</string>
+    <string name="agent_settings_subagent_default_background_desc">Whether a subagent runs in the background by default (returns a task id) when the AI does not explicitly set run_in_background.</string>
 </resources>

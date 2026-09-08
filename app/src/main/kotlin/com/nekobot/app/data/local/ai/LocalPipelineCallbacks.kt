@@ -109,7 +109,11 @@ internal class LocalPipelineCallbacks(
      * askUserQuestionEvents SharedFlow（由 ChatViewModel 收集弹窗）。
      * 为空时降级到 eventChannel。
      */
-    private val askUserQuestionEmitter: ((AskUserQuestionRequest) -> Unit)? = null
+    private val askUserQuestionEmitter: ((AskUserQuestionRequest) -> Unit)? = null,
+    /**
+     * 子代理复用的 MCP 工具定义清单（与主会话一致）。为空时子代理只获得本地/Skill/数据库工具。
+     */
+    private val mcpToolDefinitions: List<Map<String, Any>> = emptyList()
 ) : PipelineCallbacks() {
 
     companion object {
@@ -121,6 +125,13 @@ internal class LocalPipelineCallbacks(
     private val messageDao = db.messageDao()
     private val agentRunDao = db.agentRunDao()
     private val pendingGeneratedImages = mutableListOf<Pair<String, List<LocalImageResult>>>()
+
+    // ---- Subagent 支持 ----
+    // 子代理复用本会话的故障转移模型队列与本地工具执行器。
+    // depth 用实例字段追踪：一个 Agent 会话同一时刻只运行一个工具循环（activeGenerations 取代旧 Job），
+    // 因此前台嵌套子代理的 depth 读写是安全的；后台子代理在独立协程运行，同样串行。
+    private val subagentDepthLock = Any()
+    private var subagentDepth = 0
     private val localToolExecutor by lazy {
         LocalAgentToolExecutor(
             sessionId = session.id,
@@ -1201,6 +1212,9 @@ internal class LocalPipelineCallbacks(
         args: Map<String, Any>,
         toolContext: Map<String, Any>
     ): Map<String, Any> {
+        if (toolName in subagentToolIds) {
+            return executeSubagentTool(toolName, args)
+        }
         if (parseMcpToolName(toolName) != null) {
             return mcpToolExecutor?.invoke(toolName, args)
                 ?: mapOf("success" to false, "error" to "MCP 工具运行时不可用")
@@ -1309,6 +1323,318 @@ internal class LocalPipelineCallbacks(
                 put("vision_error", error)
                 put("error", "浏览器截图成功，但图片理解失败：$error")
             }
+        }
+    }
+
+    // ---- Subagent 工具执行 ----
+
+    /** 当前会话使用的子代理最大深度与子代理单轮工具上限。 */
+    private fun subagentPolicy(): Pair<Int, Int> {
+        val prefs = com.nekobot.app.ServiceContainer.prefs
+        return if (!prefs.subagentEnabled) {
+            0 to prefs.subagentMaxToolCalls
+        } else {
+            prefs.subagentMaxDepth to prefs.subagentMaxToolCalls
+        }
+    }
+
+    private suspend fun executeSubagentTool(toolName: String, args: Map<String, Any>): Map<String, Any> {
+        val (maxDepth, maxToolIterations) = subagentPolicy()
+        val parentDepth = synchronized(subagentDepthLock) { subagentDepth }
+
+        when (toolName) {
+            TOOL_SUBAGENT_LIST -> return listSubagentTasks()
+            TOOL_SUBAGENT_GET -> return getSubagentTask(args)
+            TOOL_SUBAGENT -> {
+                // Subagent 功能关闭时直接拒绝，避免无谓的模型往返。
+                val guard = SubagentRunner.guardDepth(parentDepth + 1, maxDepth)
+                if (guard != null) {
+                    return mapOf("success" to false, "error" to guard)
+                }
+                val description = args["description"]?.toString()?.trim().orEmpty()
+                val prompt = args["prompt"]?.toString()?.trim().orEmpty()
+                if (prompt.isBlank()) return mapOf("success" to false, "error" to "prompt 不能为空")
+                val runInBackground = args["run_in_background"] as? Boolean
+                    ?: com.nekobot.app.ServiceContainer.prefs.subagentDefaultBackground
+
+                // 登记任务（标题/在途追踪）。
+                val task = SubagentTaskStore.register(
+                    sessionId = session.id,
+                    parentRunId = parentMessageId ?: "",
+                    description = description.ifBlank { "子代理任务" },
+                    prompt = prompt,
+                    depth = parentDepth + 1,
+                    parentTaskId = currentSubagentTaskId
+                )
+
+                if (runInBackground) {
+                    launchSubagentInBackground(task.id, task, prompt, maxToolIterations)
+                    return mapOf(
+                        "success" to true,
+                        "background" to true,
+                        "task_id" to task.id,
+                        "instruction" to "子代理已在后台运行。可用 subagent_list 查看状态、subagent_get 查询结果（任务 id=${task.id}）。"
+                    )
+                }
+
+                return runSubagentForeground(task.id, task, prompt, maxToolIterations)
+            }
+            else -> return mapOf("success" to false, "error" to "未知 subagent 工具: $toolName")
+        }
+    }
+
+    /** 当前正在执行的子代理任务 id（用于建立父子链）。 */
+    private var currentSubagentTaskId: String? = null
+
+    private fun listSubagentTasks(): Map<String, Any> {
+        val tasks = SubagentTaskStore.listForSession(session.id)
+        return mapOf(
+            "success" to true,
+            "count" to tasks.size,
+            "tasks" to tasks.take(50).map { t -> t.toMap(gson) }
+        )
+    }
+
+    private fun getSubagentTask(args: Map<String, Any>): Map<String, Any> {
+        val id = args["task_id"]?.toString()?.trim().orEmpty()
+        if (id.isBlank()) return mapOf("success" to false, "error" to "task_id 不能为空")
+        val t = SubagentTaskStore.get(id)
+        if (t == null || t.sessionId != session.id) {
+            return mapOf("success" to false, "error" to "子代理任务不存在或不属于当前会话: $id")
+        }
+        if (t.status == SubagentTaskStatus.RUNNING) {
+            return mapOf("success" to true, "status" to "running", "task_id" to id)
+        }
+        return mapOf(
+            "success" to (t.status == SubagentTaskStatus.SUCCEEDED),
+            "task_id" to id,
+            "status" to t.status.name.lowercase(),
+            "model" to t.modelUsed,
+            "tool_calls" to t.toolCalls,
+            if (t.status == SubagentTaskStatus.SUCCEEDED) "result" to t.result.take(20_000)
+            else "error" to (t.error ?: "子代理执行失败")
+        )
+    }
+
+    /** 后台运行：登记后的任务在独立协程执行，不阻塞父 Agent 的工具循环。 */
+    private fun launchSubagentInBackground(
+        taskId: String,
+        task: SubagentTask,
+        prompt: String,
+        maxToolIterations: Int
+    ) {
+        kotlinx.coroutines.GlobalScope.launch(
+            kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob()
+        ) {
+            try {
+                // 背景执行不沿用父线程的生成控制器停止信号；使用独立的停止守卫。
+                val controller = LocalGenerationController()
+                val result = SubagentRunner.runForeground(
+                    delegate = buildSubagentDelegate(maxToolIterations, controller::isStopped),
+                    taskId = taskId,
+                    description = task.description,
+                    prompt = prompt,
+                    language = subagentLanguage(),
+                    maxToolIterations = maxToolIterations,
+                    shouldStop = controller::isStopped,
+                    onProgress = buildSubagentProgressEmitter(taskId, task.description)
+                )
+                SubagentTaskStore.update(
+                    id = taskId,
+                    status = result.status,
+                    result = result.content,
+                    error = result.error,
+                    modelUsed = result.modelName,
+                    toolCalls = result.toolCalls
+                )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                SubagentTaskStore.update(id = taskId, status = SubagentTaskStatus.KILLED, error = "已取消")
+            } catch (e: Exception) {
+                SubagentTaskStore.update(id = taskId, status = SubagentTaskStatus.FAILED, error = e.message)
+            }
+        }
+    }
+
+    /** 前台运行：同步执行并返回结果，供父模型在本次工具调用内拿到结论。 */
+    private suspend fun runSubagentForeground(
+        taskId: String,
+        task: SubagentTask,
+        prompt: String,
+        maxToolIterations: Int
+    ): Map<String, Any> {
+        synchronized(subagentDepthLock) { subagentDepth++ }
+        val previousTaskId = currentSubagentTaskId
+        currentSubagentTaskId = taskId
+        return try {
+            val result = SubagentRunner.runForeground(
+                delegate = buildSubagentDelegate(maxToolIterations, { generationController.isStopped }),
+                taskId = taskId,
+                description = task.description,
+                prompt = prompt,
+                language = subagentLanguage(),
+                maxToolIterations = maxToolIterations,
+                shouldStop = { generationController.isStopped },
+                onProgress = buildSubagentProgressEmitter(taskId, task.description)
+            )
+            SubagentTaskStore.update(
+                id = taskId,
+                status = result.status,
+                result = result.content,
+                error = result.error,
+                modelUsed = result.modelName,
+                toolCalls = result.toolCalls
+            )
+            mapOf(
+                "success" to (result.status == SubagentTaskStatus.SUCCEEDED),
+                "task_id" to taskId,
+                "status" to result.status.name.lowercase(),
+                "model" to result.modelName,
+                "tool_calls" to result.toolCalls,
+                "result" to result.content.take(20_000),
+                "instruction" to "子代理执行完成。请基于 result 向用户汇报结论。"
+            )
+        } finally {
+            currentSubagentTaskId = previousTaskId
+            synchronized(subagentDepthLock) { subagentDepth-- }
+        }
+    }
+
+    /**
+     * 构建子代理进度上报回调：把子代理内部步骤推成一张独立的进度卡片（card id = 任务 id），
+     * 复用父会话的 ThinkingCardUpdate 链路：LocalRepository → ChatViewModel → 聊天界面的 ProgressCard，
+     * 从而支持"抽屉式展开/收起实时查看子代理进度"。
+     */
+    private fun buildSubagentProgressEmitter(
+        taskId: String,
+        description: String
+    ): (header: String, isComplete: Boolean, steps: List<com.nekobot.app.data.model.ThinkingStep>) -> Unit {
+        return { header, isComplete, steps ->
+            // 同步到任务存储，供 subagent_get 查询。
+            SubagentTaskStore.update(id = taskId, steps = steps)
+            val card = com.nekobot.app.data.model.ThinkingCard(
+                id = taskId,
+                content = header,
+                steps = if (isComplete) steps else steps + runningMarker(description),
+                isComplete = isComplete,
+                isAgent = true,
+                timestamp = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
+                parentMessageId = parentMessageId
+            )
+            emitEvent(RealtimeEvent.ThinkingCardUpdate(card, session.id))
+        }
+    }
+
+    /** 子代理运行中但暂无工具步骤时，显示一个进行中占位步骤。 */
+    private fun runningMarker(description: String): com.nekobot.app.data.model.ThinkingStep =
+        com.nekobot.app.data.model.ThinkingStep(
+            type = "thinking",
+            name = "子代理执行中: $description",
+            status = "active",
+            detail = "已委派独立任务，正在通过故障转移模型队列执行…"
+        )
+
+    /** 当前会话的子代理提示词语言。 */
+    private fun subagentLanguage(): String {
+        val ctx = com.nekobot.app.ServiceContainer.appContext ?: return "zh"
+        return com.nekobot.app.data.local.LocaleHelper.getEffectiveLocale(
+            ctx, com.nekobot.app.ServiceContainer.prefs.language
+        ).language
+    }
+
+    /**
+     * 构建子代理运行委托：子代理用与父会话一致的故障转移模型队列推理，
+     * 工具调用分派回父会话的本地执行器（读写文件 / 执行命令 / Android 等）。
+     */
+    private fun buildSubagentDelegate(
+        maxToolIterations: Int,
+        subagentShouldStop: () -> Boolean
+    ): SubagentDelegateScope {
+        // 子代理工具清单与父会话一致（当前会话已启用的本地工具 + MCP + Skill + 数据库工具）。
+        val toolDefinitions = mergeSubagentToolDefinitions(
+            buildLocalAgentToolDefinitions() +
+                buildLocalSkillToolDefinitions() +
+                buildLocalDbToolDefinitions() +
+                mcpToolDefinitions
+        )
+        val modelCall: ModelCall = { messages, stopped ->
+            if (stopped || generationController.isStopped || subagentShouldStop()) {
+                throw kotlinx.coroutines.CancellationException("子代理已停止")
+            }
+            val extra = buildMap<String, Any?> {
+                activeModel.temperature?.let { put("temperature", it) }
+                activeModel.maxTokens?.let { put("max_tokens", it) }
+                activeModel.topP?.let { put("top_p", it) }
+                if (toolDefinitions.isNotEmpty()) put("tools", toolDefinitions)
+                put("reasoning_effort", reasoningEffort.wireValue)
+            }
+            val result = try {
+                kotlinx.coroutines.runBlocking {
+                    coordinator?.let { c ->
+                        try {
+                            val exec = c.execute(
+                                models = modelQueue,
+                                purpose = "agent",
+                                requiredContextTokens = estimateLocalMessagesTokens(messages)
+                            ) { model -> chatOnceForGeneration(model, messages, extra) }
+                            exec.value.copy(
+                                usedModelId = exec.model.id,
+                                usedModelName = exec.model.name,
+                                usedModelActualName = exec.model.model
+                            )
+                        } catch (e: FailoverAllFailedException) {
+                            LocalAiResult("", error = e.message ?: "所有模型均失败")
+                        }
+                    } ?: aiClient.chatOnceWithFailover(
+                        modelQueue,
+                        messages,
+                        extra,
+                        requestTag = session.id,
+                        shouldStop = { generationController.isStopped || subagentShouldStop() },
+                        requiredContextTokens = estimateLocalMessagesTokens(messages)
+                    )
+                }
+            } finally {
+                // 子代理模型输入不流式到 UI；无需 coalescer。
+            }
+            if (result.error != null) {
+                throw RuntimeException(result.error)
+            }
+            buildMap<String, Any> {
+                put("content", result.content)
+                put("usage", result.usage)
+                put("finish_reason", result.finishReason.ifBlank {
+                    if (result.toolCalls.isNotEmpty()) "tool_calls" else "stop"
+                })
+                put("_model_id", result.usedModelId ?: activeModel.id)
+                put("_model_name", result.usedModelName ?: activeModel.name)
+                put("_model_actual_name", result.usedModelActualName ?: activeModel.model)
+                if (result.toolCalls.isNotEmpty()) put("tool_calls", result.toolCalls)
+            }
+        }
+        val toolExecutor: suspend (Map<String, Any>, String, Int, List<Map<String, Any>>) -> Map<String, Any> =
+            { toolCall, thinking, iteration, messages ->
+                val name = (toolCall["name"] as? String) ?: ""
+                @Suppress("UNCHECKED_CAST")
+                var callArgs = (toolCall["arguments"] as? Map<String, Any>) ?: emptyMap()
+                if (callArgs.isEmpty() && toolCall["arguments"] is String) {
+                    callArgs = parseSubagentJsonArgs(toolCall["arguments"] as String)
+                }
+                // 子代理内部仍可再委派 subagent（受深度上限约束）。
+                if (name in subagentToolIds) {
+                    executeTool(name, callArgs, emptyMap())
+                } else {
+                    executeTool(name, callArgs, emptyMap())
+                }
+            }
+        return SubagentDelegateScope(buildModelCall = { modelCall }, toolExecutor = toolExecutor)
+    }
+
+    private fun parseSubagentJsonArgs(argsStr: String): Map<String, Any> {
+        return try {
+            @Suppress("UNCHECKED_CAST")
+            com.google.gson.Gson().fromJson(argsStr, Map::class.java) as? Map<String, Any> ?: emptyMap()
+        } catch (e: Exception) {
+            emptyMap()
         }
     }
 }

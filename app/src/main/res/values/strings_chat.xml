@@ -455,6 +455,7 @@
     <string name="toolset_cat_plugin">插件与技能</string>
     <string name="toolset_cat_android">Android 系统操作</string>
     <string name="toolset_cat_db">数据管理</string>
+    <string name="toolset_cat_subagent">子代理</string>
     <string name="chat_jump_to_latest">回到最新消息</string>
     <string name="chat_jump_to_latest_subtitle">重新定位到会话底部</string>
     <string name="chat_my_messages_subtitle">浏览我发送过的内容</string>

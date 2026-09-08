@@ -110,4 +110,7 @@
     <string name="tool_name_db_set_active_model">设为激活模型</string>
     <string name="tool_name_db_get_ai_config">读取 AI 配置</string>
     <string name="tool_name_db_update_ai_config">更新 AI 配置</string>
+    <string name="tool_name_subagent">子代理委派</string>
+    <string name="tool_name_subagent_list">子代理任务列表</string>
+    <string name="tool_name_subagent_get">子代理结果查询</string>
 </resources>

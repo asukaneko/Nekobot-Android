@@ -259,4 +259,13 @@
     <string name="agent_settings_group_runtime">실행 제한</string>
     <string name="agent_settings_max_tool_calls">최대 도구 호출 횟수</string>
     <string name="agent_settings_max_tool_calls_desc">단일 Agent 턴에서 허용되는 최대 도구 호출 횟수(1–1000, 기본 %1$d)</string>
+    <string name="agent_settings_group_subagent">서브에이전트 (Subagent)</string>
+    <string name="agent_settings_subagent_enable">Subagent 활성화</string>
+    <string name="agent_settings_subagent_enable_desc">AI가 subagent 도구를 호출하여 독립적인 작업을 새 하위 에이전트에 위임할 수 있게 허용합니다(하위 에이전트도 동일한 장애 조치 모델 큐 사용).</string>
+    <string name="agent_settings_subagent_max_depth">최대 중첩 깊이</string>
+    <string name="agent_settings_subagent_max_depth_desc">서브에이전트가 다시 하위 에이전트로 위임할 수 있는 최대 깊이 (0이면 비활성, 기본 %1$d). 무한 재귀를 방지합니다.</string>
+    <string name="agent_settings_subagent_max_tool_calls">서브에이전트 도구 상한</string>
+    <string name="agent_settings_subagent_max_tool_calls_desc">단일 서브에이전트 내에서 허용되는 도구 호출 반복 최대 수 (1–500, 기본 %1$d).</string>
+    <string name="agent_settings_subagent_default_background">기본적으로 백그라운드 실행</string>
+    <string name="agent_settings_subagent_default_background_desc">AI가 run_in_background를 명시하지 않을 때 서브에이전트를 기본적으로 백그라운드 실행(태스크 id 반환)할지 여부.</string>
 </resources>

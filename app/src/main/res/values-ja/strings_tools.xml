@@ -110,4 +110,7 @@
     <string name="tool_name_db_set_active_model">アクティブモデルに設定</string>
     <string name="tool_name_db_get_ai_config">AI 設定を取得</string>
     <string name="tool_name_db_update_ai_config">AI 設定を更新</string>
+    <string name="tool_name_subagent">サブエージェント委任</string>
+    <string name="tool_name_subagent_list">サブエージェントタスク一覧</string>
+    <string name="tool_name_subagent_get">サブエージェント結果取得</string>
 </resources>

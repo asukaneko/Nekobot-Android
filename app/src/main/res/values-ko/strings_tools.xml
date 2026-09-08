@@ -110,4 +110,7 @@
     <string name="tool_name_db_set_active_model">활성 모델 설정</string>
     <string name="tool_name_db_get_ai_config">AI 설정 읽기</string>
     <string name="tool_name_db_update_ai_config">AI 설정 업데이트</string>
+    <string name="tool_name_subagent">서브에이전트 위임</string>
+    <string name="tool_name_subagent_list">서브에이전트 작업 목록</string>
+    <string name="tool_name_subagent_get">서브에이전트 결과 조회</string>
 </resources>

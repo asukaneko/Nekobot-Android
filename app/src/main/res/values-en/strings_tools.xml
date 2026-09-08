@@ -110,4 +110,7 @@
     <string name="tool_name_db_set_active_model">Set active model</string>
     <string name="tool_name_db_get_ai_config">Get AI config</string>
     <string name="tool_name_db_update_ai_config">Update AI config</string>
+    <string name="tool_name_subagent">Subagent delegation</string>
+    <string name="tool_name_subagent_list">Subagent task list</string>
+    <string name="tool_name_subagent_get">Query subagent result</string>
 </resources>

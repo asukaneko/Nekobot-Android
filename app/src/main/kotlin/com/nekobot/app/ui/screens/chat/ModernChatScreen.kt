@@ -2508,6 +2508,7 @@ private fun categoryName(categoryId: String): String = when (categoryId) {
     "plugin" -> stringResource(R.string.toolset_cat_plugin)
     "android" -> stringResource(R.string.toolset_cat_android)
     "db" -> stringResource(R.string.toolset_cat_db)
+    "subagent" -> stringResource(R.string.toolset_cat_subagent)
     else -> categoryId
 }
 
@@ -2623,6 +2624,9 @@ private fun toolNameResId(id: String): Int = when (id) {
     "db_set_active_model" -> R.string.tool_name_db_set_active_model
     "db_get_ai_config" -> R.string.tool_name_db_get_ai_config
     "db_update_ai_config" -> R.string.tool_name_db_update_ai_config
+    "subagent" -> R.string.tool_name_subagent
+    "subagent_list" -> R.string.tool_name_subagent_list
+    "subagent_get" -> R.string.tool_name_subagent_get
     else -> 0
 }
 

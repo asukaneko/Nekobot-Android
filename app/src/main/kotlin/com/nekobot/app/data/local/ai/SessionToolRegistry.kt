@@ -157,6 +157,15 @@ object SessionToolCatalog {
                 "db_update_ai_model", "db_delete_ai_model", "db_set_active_model",
                 "db_get_ai_config", "db_update_ai_config"
             )
+        ),
+        // 子代理委派
+        Category(
+            id = "subagent",
+            toolIds = listOf(
+                "subagent",
+                "subagent_list",
+                "subagent_get"
+            )
         )
     )
 

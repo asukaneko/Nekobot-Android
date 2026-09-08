@@ -272,4 +272,13 @@
     <string name="agent_settings_group_runtime">运行限制</string>
     <string name="agent_settings_max_tool_calls">最大工具调用次数</string>
     <string name="agent_settings_max_tool_calls_desc">单个 Agent 回合内允许的最大工具调用次数（1–1000，默认 %1$d）</string>
+    <string name="agent_settings_group_subagent">子代理（Subagent）</string>
+    <string name="agent_settings_subagent_enable">启用 Subagent</string>
+    <string name="agent_settings_subagent_enable_desc">允许 AI 调用 subagent 工具，将独立任务委派给新的子代理执行（子代理使用同一故障转移模型队列）。</string>
+    <string name="agent_settings_subagent_max_depth">最大嵌套深度</string>
+    <string name="agent_settings_subagent_max_depth_desc">子代理可继续委派子代理的最大层级（0 表示禁止，默认 %1$d）。防止无限递归。</string>
+    <string name="agent_settings_subagent_max_tool_calls">子代理工具上限</string>
+    <string name="agent_settings_subagent_max_tool_calls_desc">单个子代理内允许的最大工具调用迭代数（1–500，默认 %1$d）。</string>
+    <string name="agent_settings_subagent_default_background">默认后台运行</string>
+    <string name="agent_settings_subagent_default_background_desc">AI 未显式指定 run_in_background 时，子代理是否默认在后台运行并返回任务 id。</string>
 </resources>

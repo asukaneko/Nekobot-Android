@@ -5556,7 +5556,8 @@ class LocalRepository(
             pendingUserMessageProvider = pendingUserMessageProvider,
             execConfirmationEmitter = { request -> _execConfirmationEvents.tryEmit(request) },
             askUserQuestionManager = askUserQuestionManager,
-            askUserQuestionEmitter = { request -> _askUserQuestionEvents.tryEmit(request) }
+            askUserQuestionEmitter = { request -> _askUserQuestionEvents.tryEmit(request) },
+            mcpToolDefinitions = prepareMcpAgentTools()
         )
 
         // 5. 构建上下文（含会话级配置：剧情模式、禁用注入项、自动状态间隔等）
@@ -5764,13 +5765,18 @@ class LocalRepository(
                             null
                         }
                         val tools = if (allowTools && session.sessionMode.equals("agent", ignoreCase = true)) {
-                            filterDefinitionsForSession(
-                                sessionId = sessionId,
-                                definitions = com.nekobot.app.data.local.ai.buildLocalAgentToolDefinitions() +
-                                    com.nekobot.app.data.local.ai.buildLocalSkillToolDefinitions() +
-                                    com.nekobot.app.data.local.ai.buildLocalDbToolDefinitions() +
-                                    prepareMcpAgentTools()
-                            )
+                            // subagent 工具纳入工具集管理：全局开关开启时并入定义列表，
+                            // 再由会话工具集过滤（未自定义默认全启用；已自定义则按勾选决定）。
+                            val baseDefinitions = com.nekobot.app.data.local.ai.buildLocalAgentToolDefinitions() +
+                                com.nekobot.app.data.local.ai.buildLocalSkillToolDefinitions() +
+                                com.nekobot.app.data.local.ai.buildLocalDbToolDefinitions() +
+                                prepareMcpAgentTools()
+                            val withSubagent = if (ServiceContainer.prefs.subagentEnabled) {
+                                baseDefinitions + com.nekobot.app.data.local.ai.buildSubagentToolDefinitions()
+                            } else {
+                                baseDefinitions
+                            }
+                            filterDefinitionsForSession(sessionId = sessionId, definitions = withSubagent)
                         } else {
                             emptyList()
                         }
