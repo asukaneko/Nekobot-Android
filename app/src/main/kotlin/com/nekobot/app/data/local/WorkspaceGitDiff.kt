@@ -95,8 +95,9 @@ object WorkspaceGitDiff {
             // 忽略 .git 内部写入
             if (rel == ".git" || rel.startsWith(".git/")) continue
             // 绝对路径（共享工作区 / 其他沙箱解析后的真实路径）原样使用；
-            // 相对路径按 workspace 根解析。
-            val file = if (rel.startsWith("/")) File(rel) else File(wsRoot, rel)
+            // 相对路径按 workspace 根解析。用 File.isAbsolute 校验以同时兼容
+            // POSIX（/...）与 Windows（盘符 C:\...）两种绝对路径形式。
+            val file = if (File(rel).isAbsolute) File(rel) else File(wsRoot, rel)
             val parent = file.parentFile ?: wsRoot
             val gitRoot = findGitRoot(parent, FIND_GIT_ROOT_DEPTH) ?: continue
             val canonicalRoot = runCatching { gitRoot.canonicalFile }.getOrElse { gitRoot.absoluteFile }
