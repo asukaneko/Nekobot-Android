@@ -3097,7 +3097,7 @@ private fun MessageBubble(
                     }
                     message.tokens?.let { tokens ->
                         if (compactTs != null) Spacer(Modifier.width(6.dp))
-                        Text("${tokens} tok", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${formatTokenCount(tokens)} tok", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 // 用户气泡：复制按钮放最右边；AI 气泡：三个操作按钮放最右边
