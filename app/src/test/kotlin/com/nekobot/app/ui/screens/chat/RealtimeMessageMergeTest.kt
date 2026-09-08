@@ -213,29 +213,29 @@ class RealtimeMessageMergeTest {
     )
 
     @Test
-    fun urgentBubbleIsInsertedAboveTheLatestProgressCard() {
+    fun urgentBubbleIsInsertedBelowTheLatestProgressCard() {
         val history = Message(id = "old", role = "assistant", content = "旧回复")
         val user = userWithCard("user-1", "当前问题")
 
         val result = insertUrgentBubble(listOf(history, user), urgentBubble("插队消息"))
 
         assertEquals(3, result.size)
-        // 插队消息位于进度卡片宿主消息（user-1）之前 → 渲染在进度卡片上方
-        assertEquals(ChatViewModel.URGENT_BUBBLE_PREFIX + "item-1", result[1].id)
-        assertEquals("user-1", result[2].id)
+        // 插队消息位于进度卡片宿主消息（user-1）之后 → 渲染在进度卡片下方，保持发送先后顺序
+        assertEquals("user-1", result[1].id)
+        assertEquals(ChatViewModel.URGENT_BUBBLE_PREFIX + "item-1", result[2].id)
     }
 
     @Test
-    fun urgentBubblesKeepFifoOrderAboveProgressCard() {
+    fun urgentBubblesKeepFifoOrderBelowProgressCard() {
         val user = userWithCard("user-1", "当前问题")
         val first = insertUrgentBubble(listOf(user), urgentBubble("先发送"))
         val second = insertUrgentBubble(first, urgentBubble("后发送"))
 
         assertEquals(3, second.size)
-        assertEquals(ChatViewModel.URGENT_BUBBLE_PREFIX + "item-1", second[0].id)
-        // 先插队的气泡保持在后面插队气泡的上方（FIFO：后插队的紧挨进度卡片）
-        assertEquals("后发送", second[1].content)
-        assertEquals("user-1", second[2].id)
+        // 旧消息（user-1）保持在下发气泡之前；先插队的气泡在更上方，后插队的紧挨其下（FIFO）
+        assertEquals("user-1", second[0].id)
+        assertEquals("先发送", second[1].content)
+        assertEquals("后发送", second[2].content)
     }
 
     @Test

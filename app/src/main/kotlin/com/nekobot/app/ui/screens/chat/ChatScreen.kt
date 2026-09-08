@@ -5823,7 +5823,8 @@ internal fun isUrgentBubbleId(id: String?): Boolean =
 /**
  * 将排队消息“立即发送”的乐观气泡插入消息流。
  *
- * 统一放在当前 AI 处理进度卡片（最后一条带进度卡片的用户消息）的上方，
+ * 放在当前 AI 处理进度卡片（最后一条带进度卡片的用户消息）的下方，
+ * 保持发送的先后顺序（后发送的排在旧消息之下），同时仍在 AI 输出之前，
  * 多条插队消息按 FIFO 依次排列在已有插队气泡之后；不存在进度卡片时
  * 回退到最后一条用户消息之后。避免追加到列表末尾而出现在 AI 输出之下，
  * 形成多余的“第二个进度卡片”。
@@ -5835,13 +5836,13 @@ internal fun insertUrgentBubble(
     if (messages.isEmpty()) return listOf(bubble)
     // 已有插队气泡的最后一个（保持 FIFO 顺序：先插队在上方）
     val lastUrgentIndex = messages.indexOfLast { isUrgentBubbleId(it.id) }
-    // 当前处理中的进度卡片所在用户消息：插队消息渲染在其上方（其 item 内渲染进度卡片）
+    // 当前处理中的进度卡片所在用户消息：插队消息渲染在其下方（其 item 内渲染进度卡片）
     val latestCardIndex = messages.indexOfLast {
         it.isUser && !it.thinkingCards.isNullOrEmpty()
     }
     val insertIndex = when {
         lastUrgentIndex >= 0 -> lastUrgentIndex + 1
-        latestCardIndex >= 0 -> latestCardIndex
+        latestCardIndex >= 0 -> latestCardIndex + 1
         else -> messages.indexOfLast { it.isUser } + 1
     }
     return messages.toMutableList().apply {
