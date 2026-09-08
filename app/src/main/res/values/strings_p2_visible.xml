@@ -99,6 +99,7 @@
     <string name="schedule_last_success">上次执行成功</string>
     <string name="schedule_last_failed">上次执行失败</string>
     <string name="sessions_select_to_chat">选择一个会话开始聊天</string>
+    <string name="sessions_two_pane_drag_handle">拖动调整列表与聊天的宽度，拖到两端可让一侧全屏</string>
     <string name="sessions_item_description">会话：%1$s，%2$s</string>
     <string name="sessions_no_message">无消息</string>
     <string name="models_none_available">无可用模型</string>

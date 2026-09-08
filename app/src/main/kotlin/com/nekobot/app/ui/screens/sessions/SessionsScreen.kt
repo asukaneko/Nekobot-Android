@@ -2,14 +2,21 @@ package com.nekobot.app.ui.screens.sessions
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -77,9 +84,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -158,19 +169,40 @@ private data class DashboardMetricsLoadResults(
 )
 
 /**
+ * 双栏拖动条宽度：整条都可拖动，视觉上只有中间 1dp 分隔线与抓手。
+ */
+private val TwoPaneHandleWidth = 16.dp
+
+/** 双栏默认左列占比（列表 38% / 聊天 62%）。 */
+private const val TwoPaneDefaultListFraction = 0.38f
+
+/** 正常拖动时的占比上下限，避免某一侧被拖到无法使用。 */
+private const val TwoPaneMinListFraction = 0.15f
+private const val TwoPaneMaxListFraction = 0.85f
+
+/** 松手吸附阈值：小于前者 → 聊天全屏；大于后者 → 列表全屏。 */
+private const val TwoPaneCollapseThreshold = 0.12f
+private const val TwoPaneExpandThreshold = 0.88f
+
+/**
  * 会话-聊天双栏布局包装器。
  *
  * - Compact 模式：直接渲染 [content]，保持现有单栏行为
  * - Medium/Expanded 模式：Row 布局，左列显示会话列表 [content]，
- *   右列显示选中会话的聊天（ModernChatScreen）或占位文本
+ *   右列显示选中会话的聊天（ModernChatScreen）或占位文本；
+ *   两列之间是可拖动的分隔条，拖动可改变占比，拖到两端并松手
+ *   会让其中一侧全屏（列表全屏 / 聊天全屏）
  *
  * @param useTwoPane 是否使用双栏
  * @param selectedSessionId 当前选中的会话 ID（null 表示未选中）
  * @param onSessionSelected 选中会话回调
  * @param onClearSelection 清除选中回调
  * @param onOpenDetail 打开会话详情回调
+ * @param onOpenWorkspace 打开会话工作区回调
+ * @param onOpenContextAnalysis 打开上下文分析回调
  * @param onOpenStoryGraph 打开剧情图回调
  * @param onOpenWenku8Login 打开 wenku8 登录页回调
+ * @param onChatMaximizedChange 聊天全屏状态变化回调（用于隐藏底部导航栏）
  * @param content 会话列表内容（Scaffold）
  */
 @Composable
@@ -180,62 +212,162 @@ private fun TwoPaneSessionsWrapper(
     onSessionSelected: (String) -> Unit,
     onClearSelection: () -> Unit,
     onOpenDetail: (String) -> Unit,
+    onOpenWorkspace: (String) -> Unit,
+    onOpenContextAnalysis: (String) -> Unit,
     onOpenStoryGraph: (String) -> Unit,
     onOpenWenku8Login: () -> Unit,
+    onChatMaximizedChange: (Boolean) -> Unit,
     content: @Composable () -> Unit
 ) {
-    if (useTwoPane) {
+    // 左右占比：0 = 聊天全屏，1 = 列表全屏。拖动时实时跟随手指，松手时吸附。
+    var listFraction by rememberSaveable { mutableStateOf(TwoPaneDefaultListFraction) }
+    var dragging by remember { mutableStateOf(false) }
+    // 拖动中不做动画（1:1 跟随手指），松手后的吸附用短动画过渡
+    val fraction by animateFloatAsState(
+        targetValue = listFraction,
+        animationSpec = if (dragging) snap() else tween(180, easing = FastOutSlowInEasing),
+        label = "twoPaneListFraction"
+    )
+    // 聊天占满整个宽度（左列收起）时，通知上层隐藏底部导航栏。
+    // 这里用动画后的占比判断：底栏隐藏与输入区避让间距归零同时发生，不会出现跳动。
+    val chatMaximized = useTwoPane && fraction <= 0.0001f
+    LaunchedEffect(chatMaximized) { onChatMaximizedChange(chatMaximized) }
+
+    if (!useTwoPane) {
+        content()
+        return
+    }
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val availableWidth = (maxWidth - TwoPaneHandleWidth).coerceAtLeast(0.dp)
+        val availablePx = with(LocalDensity.current) { availableWidth.toPx() }
         Row(modifier = Modifier.fillMaxSize()) {
-            // 左列：会话列表
+            // 左列：会话列表（收起到 0 宽时不再组合内容，滚动位置由外部 rememberLazyListState 保留）
             Box(
                 modifier = Modifier
-                    .weight(0.38f)
+                    .width(availableWidth * fraction)
                     .fillMaxHeight()
             ) {
-                content()
+                if (fraction > 0.0001f) content()
             }
-            // 垂直分隔线
-            HorizontalDivider(
+            // 拖动条：始终存在且位置固定，拖动过程中不会被重组打断
+            TwoPaneDragHandle(
+                dragging = dragging,
+                onDragStart = { dragging = true },
+                onDrag = { deltaX ->
+                    if (availablePx > 0f) {
+                        listFraction = (listFraction + deltaX / availablePx).coerceIn(0f, 1f)
+                    }
+                },
+                onDragEnd = {
+                    dragging = false
+                    listFraction = when {
+                        listFraction < TwoPaneCollapseThreshold -> 0f
+                        listFraction > TwoPaneExpandThreshold -> 1f
+                        else -> listFraction.coerceIn(TwoPaneMinListFraction, TwoPaneMaxListFraction)
+                    }
+                },
                 modifier = Modifier
+                    .width(TwoPaneHandleWidth)
                     .fillMaxHeight()
-                    .width(1.dp)
             )
-            // 右列：聊天或占位
+            // 右列：聊天或占位（列表全屏时不再组合内容）
             Box(
                 modifier = Modifier
-                    .weight(0.62f)
+                    .width(availableWidth * (1f - fraction))
                     .fillMaxHeight()
             ) {
-                val sid = selectedSessionId
-                if (sid != null) {
-                    ModernChatScreen(
-                        sessionId = sid,
-                        onBack = onClearSelection,
-                        onOpenChat = onSessionSelected,
-                        onOpenSessionDetail = onOpenDetail,
-                        onOpenWorkspace = {},
-                        onOpenStoryGraph = onOpenStoryGraph,
-                        onOpenWenku8Login = onOpenWenku8Login,
-                        onJumpToLatest = {},
-                        // 平板双栏：底部悬浮导航栏盖住输入框，输入区整体抬升避让
-                        embeddedBottomBarClearance = LiquidGlassBottomBarClearance
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            stringResource(R.string.sessions_select_to_chat),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                if (fraction < 0.9999f) {
+                    val sid = selectedSessionId
+                    if (sid != null) {
+                        ModernChatScreen(
+                            sessionId = sid,
+                            onBack = onClearSelection,
+                            onOpenChat = onSessionSelected,
+                            onOpenSessionDetail = onOpenDetail,
+                            onOpenWorkspace = onOpenWorkspace,
+                            onOpenContextAnalysis = onOpenContextAnalysis,
+                            onOpenStoryGraph = onOpenStoryGraph,
+                            onOpenWenku8Login = onOpenWenku8Login,
+                            // 平板双栏：底部悬浮导航栏盖住输入框，输入区整体抬升避让；
+                            // 聊天全屏时底栏已隐藏，不再需要避让
+                            embeddedBottomBarClearance = if (chatMaximized) {
+                                0.dp
+                            } else {
+                                LiquidGlassBottomBarClearance
+                            }
                         )
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                stringResource(R.string.sessions_select_to_chat),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
         }
-    } else {
-        content()
+    }
+}
+
+/**
+ * 双栏拖动条：整条区域可水平拖动，中间显示 1dp 分隔线与可抓取的小胶囊。
+ * 拖动时胶囊变为主色，给出明确的"正在调整布局"反馈。
+ */
+@Composable
+private fun TwoPaneDragHandle(
+    dragging: Boolean,
+    onDragStart: () -> Unit,
+    onDrag: (Float) -> Unit,
+    onDragEnd: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val description = stringResource(R.string.sessions_two_pane_drag_handle)
+    val gripColor by animateColorAsState(
+        targetValue = if (dragging) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.outlineVariant
+        },
+        label = "twoPaneGripColor"
+    )
+    Box(
+        modifier = modifier
+            // 与左右两栏的背景保持一致，拖动条不会出现色带
+            .background(MaterialTheme.colorScheme.background)
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { onDragStart() },
+                    onDragEnd = onDragEnd,
+                    onDragCancel = onDragEnd
+                ) { change, dragAmount ->
+                    change.consume()
+                    onDrag(dragAmount.x)
+                }
+            }
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center
+    ) {
+        // 分隔线
+        Box(
+            modifier = Modifier
+                .width(1.dp)
+                .fillMaxHeight()
+                .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+        )
+        // 抓手
+        Box(
+            modifier = Modifier
+                .width(4.dp)
+                .height(44.dp)
+                .clip(RoundedCornerShape(50))
+                .background(gripColor)
+        )
     }
 }
 
@@ -249,7 +381,9 @@ fun SessionsScreen(
     onOpenChat: (String) -> Unit,
     onOpenDetail: (String) -> Unit = onOpenChat,
     onOpenStoryGraph: (String) -> Unit = onOpenChat,
-    onNavigate: (String) -> Unit = {}
+    onNavigate: (String) -> Unit = {},
+    /** 双栏模式下聊天全屏状态变化（用于隐藏底部导航栏）。 */
+    onTwoPaneChatMaximizedChange: (Boolean) -> Unit = {}
 ) {
     val viewModel: SessionsViewModel = viewModel()
     val sessionRows by viewModel.displayedSessionRows.collectAsStateWithLifecycle()
@@ -350,8 +484,11 @@ fun SessionsScreen(
         onSessionSelected = { id -> selectedSessionId = id },
         onClearSelection = { selectedSessionId = null },
         onOpenDetail = onOpenDetail,
+        onOpenWorkspace = { id -> onNavigate(Routes.workspace(id)) },
+        onOpenContextAnalysis = { id -> onNavigate(Routes.contextAnalysis(id)) },
         onOpenStoryGraph = onOpenStoryGraph,
-        onOpenWenku8Login = { onNavigate(Routes.WENKU_LOGIN) }
+        onOpenWenku8Login = { onNavigate(Routes.WENKU_LOGIN) },
+        onChatMaximizedChange = onTwoPaneChatMaximizedChange
     ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,

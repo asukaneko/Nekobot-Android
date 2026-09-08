@@ -168,7 +168,13 @@ fun ModernChatScreen(
     onOpenWorkspace: (String) -> Unit = {},
     onOpenStoryGraph: (String) -> Unit = {},
     onOpenWenku8Login: () -> Unit = {},
-    onJumpToLatest: () -> Unit = {},
+    /**
+     * 「跳到最新」处理：null 表示由本页自行滚动到底部。
+     *
+     * 独立聊天页（NavGraph）传入导航回调以重建页面回到最新；平板双栏嵌入会话页时
+     * 不传（null），改为直接滚动右侧消息列表，避免双栏下点击无响应。
+     */
+    onJumpToLatest: (() -> Unit)? = null,
     /**
      * 底部悬浮导航栏避让间距：平板双栏嵌入会话页时，底栏胶囊悬浮在输入框之上，
      * 传入 [LiquidGlassBottomBarClearance] 让输入区整体抬升；独立聊天页为 0。
@@ -195,6 +201,12 @@ fun ModernChatScreen(
     }
     val listState = rememberLazyListState()
     val composerScope = rememberCoroutineScope()
+    // 「跳到最新」：外部接管时走回调（独立聊天页重建页面回到底部），
+    // 否则（平板双栏嵌入会话页）直接滚动右侧消息列表到最后一条。
+    val jumpToLatest: () -> Unit = onJumpToLatest ?: {
+        val lastIndex = listState.layoutInfo.totalItemsCount - 1
+        if (lastIndex >= 0) composerScope.launch { listState.animateScrollToItem(lastIndex) }
+    }
 
     ChatScreen(
     sessionId = sessionId,
@@ -260,7 +272,7 @@ fun ModernChatScreen(
             onClear = { viewModel.clearMessages(sessionId) },
             onRegeneratePlotChoices = viewModel::regeneratePlotChoices,
             onOpenWorkspace = { onOpenWorkspace(sessionId) },
-            onJumpToLatest = onJumpToLatest,
+            onJumpToLatest = jumpToLatest,
             onTogglePlotMode = viewModel::togglePlotMode,
             onTogglePlotRealTimeSync = viewModel::togglePlotRealTimeSync,
             onJumpToMessage = { msg ->

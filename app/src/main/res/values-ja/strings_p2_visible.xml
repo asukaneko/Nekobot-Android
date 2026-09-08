@@ -92,6 +92,7 @@
     <string name="schedule_last_success">前回の実行は成功しました</string>
     <string name="schedule_last_failed">前回の実行は失敗しました</string>
     <string name="sessions_select_to_chat">会話を選択してチャットを開始</string>
+    <string name="sessions_two_pane_drag_handle">ドラッグしてリストとチャットの幅を調整。端までドラッグすると片側を全画面表示できます</string>
     <string name="sessions_item_description">会話：%1$s、%2$s</string>
     <string name="sessions_no_message">メッセージなし</string>
     <string name="models_none_available">使用可能なモデルがありません</string>

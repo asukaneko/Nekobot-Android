@@ -171,10 +171,17 @@ fun NekobotNavGraph() {
     var tabClickJob by remember { mutableStateOf<Job?>(null) }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-    val showBottomBar = currentRoute in mainRoutes
     val selectedMainRoute = bottomRoutes.getOrElse(mainPagerState.currentPage) {
         Routes.SESSIONS
     }
+    // 平板双栏：聊天全屏（会话列表收起）时隐藏底部导航栏，把整屏让给聊天。
+    // 仅当确实停留在会话页时才生效，避免滑动到其他 Tab 后底栏仍然消失。
+    var twoPaneChatMaximized by remember { mutableStateOf(false) }
+    val showBottomBar = currentRoute in mainRoutes && !(
+        twoPaneChatMaximized &&
+            currentRoute == Routes.SESSIONS &&
+            selectedMainRoute == Routes.SESSIONS
+        )
 
     // 观察全局登录态：登出时自动跳登录页，登录时跳会话页
     val isLoggedIn by ServiceContainer.loginStateFlow.collectAsStateWithLifecycle()
@@ -348,6 +355,9 @@ fun NekobotNavGraph() {
                                     },
                                     onNavigate = { route ->
                                         navController.navigate(route)
+                                    },
+                                    onTwoPaneChatMaximizedChange = { maximized ->
+                                        twoPaneChatMaximized = maximized
                                     }
                                 )
 

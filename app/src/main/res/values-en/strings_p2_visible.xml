@@ -92,6 +92,7 @@
     <string name="schedule_last_success">Last run succeeded</string>
     <string name="schedule_last_failed">Last run failed</string>
     <string name="sessions_select_to_chat">Select a session to start chatting</string>
+    <string name="sessions_two_pane_drag_handle">Drag to resize the list and chat; drag to either end to make one side full screen</string>
     <string name="sessions_item_description">Session: %1$s, %2$s</string>
     <string name="sessions_no_message">No messages</string>
     <string name="models_none_available">No model available</string>
