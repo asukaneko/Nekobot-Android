@@ -253,4 +253,10 @@
     <string name="webdav_auto_incremental_interval_hours_desc">1~168시간으로 설정할 수 있습니다. 배터리 최적화로 실행이 지연될 수 있습니다.</string>
     <string name="webdav_incremental_max_versions">보관할 최대 버전 수</string>
     <string name="webdav_incremental_max_versions_desc">현재 버전을 포함해 1~50개를 보관하며, 초과한 기록은 자동으로 삭제합니다.</string>
+    <string name="settings_agent_settings">Agent 설정</string>
+    <string name="settings_agent_settings_desc">Agent 세션 실행 매개변수 및 도구 제한</string>
+    <string name="agent_settings_title">Agent 설정</string>
+    <string name="agent_settings_group_runtime">실행 제한</string>
+    <string name="agent_settings_max_tool_calls">최대 도구 호출 횟수</string>
+    <string name="agent_settings_max_tool_calls_desc">단일 Agent 턴에서 허용되는 최대 도구 호출 횟수(1–1000, 기본 %1$d)</string>
 </resources>

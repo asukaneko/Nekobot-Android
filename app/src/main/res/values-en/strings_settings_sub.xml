@@ -260,4 +260,10 @@
     <string name="webdav_auto_incremental_interval_hours_desc">Set 1–168 hours. Battery optimization may delay execution.</string>
     <string name="webdav_incremental_max_versions">Maximum versions to retain</string>
     <string name="webdav_incremental_max_versions_desc">Set 1–50 versions including the current one; older history is removed automatically.</string>
+    <string name="settings_agent_settings">Agent Settings</string>
+    <string name="settings_agent_settings_desc">Agent session runtime parameters and tool limits</string>
+    <string name="agent_settings_title">Agent Settings</string>
+    <string name="agent_settings_group_runtime">Runtime Limits</string>
+    <string name="agent_settings_max_tool_calls">Max Tool Calls</string>
+    <string name="agent_settings_max_tool_calls_desc">Maximum tool calls allowed in a single Agent turn (1–1000, default %1$d)</string>
 </resources>
