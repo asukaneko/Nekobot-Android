@@ -9,6 +9,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
+import com.nekobot.app.data.local.toHex
 
 /**
  * 验证 LocalAgentToolExecutor 对文件变更工具的路径追踪，以及 git 摘要生成。
@@ -110,5 +111,112 @@ class LocalAgentGitTrackingTest {
         assertTrue("修改文件应被追踪", changed.contains("pre.txt"))
         assertTrue("删除文件应被追踪", changed.contains("gone.txt"))
         assertTrue("无关文件不应被追踪", !changed.contains("unrelated.txt"))
+    }
+
+    @Test
+    fun sharedWorkspaceChangesTrackedAndSummarized() = runBlocking {
+        val ws = Files.createTempDirectory("wgt").toFile()
+        val shared = Files.createTempDirectory("wgt-shared").toFile()
+        root = ws
+        val executor = LocalAgentToolExecutor(
+            sessionId = "session-git-shared",
+            workspaceRoot = ws,
+            sharedWorkspaceRoot = shared,
+            authorizationManager = LocalExecAuthorizationManager(100),
+            onConfirmationRequired = {},
+            thinkingHistoryProvider = { emptyList() }
+        )
+        // 共享工作区预置一个 git 仓库（HEAD 含 main.py）
+        initGitRepo(File(shared, ".git"), mapOf("main.py" to "print(1)\n".toByteArray(Charsets.UTF_8)))
+
+        // AI 通过 shared:// 前缀编辑共享工作区文件
+        val edited = executor.execute(
+            "workspace_edit_file",
+            mapOf(
+                "path" to "shared://main.py",
+                "old_string" to "print(1)",
+                "new_string" to "print(2)"
+            )
+        )
+        assertEquals(true, edited["success"])
+        assertTrue("shared:// 变更应被追踪", executor.currentChangedPaths().contains("shared://main.py"))
+
+        // 快照覆盖共享工作区（shared:// 前缀）
+        val snap = executor.snapshotWorkspaceFiles()
+        assertTrue("快照应包含共享工作区文件", snap.containsKey("shared://main.py"))
+
+        // 共享工作区仓库上的变更应能生成 git 摘要（回归：此前只查当前工作区返回 null）
+        val summary = executor.currentGitDiffSummary()
+        assertNotNull("共享工作区变更应生成 git 摘要", summary)
+        val f = summary!!.files.first { it.path == "main.py" }
+        assertEquals(com.nekobot.app.data.model.GitDiffFile.STATUS_MODIFIED, f.status)
+    }
+
+    // ---------- 手工构造 git loose object 仓库（shared 场景测试用） ----------
+
+    private fun sha1(bytes: ByteArray): String {
+        val d = java.security.MessageDigest.getInstance("SHA-1")
+        return d.digest(bytes).toHex()
+    }
+
+    private fun zlibDeflate(bytes: ByteArray): ByteArray {
+        val deflater = java.util.zip.Deflater()
+        try {
+            deflater.setInput(bytes)
+            deflater.finish()
+            val bos = java.io.ByteArrayOutputStream()
+            val buf = ByteArray(8192)
+            while (!deflater.finished()) {
+                val n = deflater.deflate(buf)
+                bos.write(buf, 0, n)
+            }
+            return bos.toByteArray()
+        } finally {
+            deflater.end()
+        }
+    }
+
+    private fun hexDecode(hex: String): ByteArray {
+        val out = ByteArray(hex.length / 2)
+        for (i in out.indices) {
+            val hi = Character.digit(hex[i * 2], 16)
+            val lo = Character.digit(hex[i * 2 + 1], 16)
+            out[i] = ((hi shl 4) or lo).toByte()
+        }
+        return out
+    }
+
+    private fun writeLooseObject(gitDir: File, type: String, content: ByteArray): String {
+        val header = "$type ${content.size}\u0000".toByteArray(Charsets.US_ASCII)
+        val sha = sha1(header + content)
+        val dir = File(gitDir, "objects/${sha.substring(0, 2)}")
+        dir.mkdirs()
+        File(dir, sha.substring(2)).writeBytes(zlibDeflate(header + content))
+        return sha
+    }
+
+    private fun initGitRepo(gitDir: File, files: Map<String, ByteArray>) {
+        File(gitDir, "objects/info").mkdirs()
+        File(gitDir, "objects/pack").mkdirs()
+        File(gitDir, "refs/heads").mkdirs()
+
+        val workspace = gitDir.parentFile
+        val treeContent = java.io.ByteArrayOutputStream()
+        for (name in files.keys.sorted()) {
+            val content = files.getValue(name)
+            val blobSha = writeLooseObject(gitDir, "blob", content)
+            treeContent.write(
+                ("100644 $name").toByteArray(Charsets.US_ASCII) + byteArrayOf(0) + hexDecode(blobSha)
+            )
+            val target = File(workspace, name)
+            target.parentFile?.mkdirs()
+            target.writeBytes(content)
+        }
+        val treeSha = writeLooseObject(gitDir, "tree", treeContent.toByteArray())
+        val commitBody = ("tree $treeSha\nauthor Test <t@t> 1700000000 +0800\n" +
+            "committer Test <t@t> 1700000000 +0800\n\ninitial\n").toByteArray(Charsets.UTF_8)
+        val commitSha = writeLooseObject(gitDir, "commit", commitBody)
+        File(gitDir, "refs/heads/main").writeText(commitSha + "\n", Charsets.UTF_8)
+        File(gitDir, "HEAD").writeText("ref: refs/heads/main\n", Charsets.UTF_8)
     }
 }

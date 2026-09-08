@@ -185,6 +185,58 @@ class WorkspaceGitDiffTest {
         assertNull("无变更应返回 null", WorkspaceGitDiff.summarize(ws, emptyList()))
     }
 
+    @Test
+    fun absolutePathsOutsideWorkspaceProduceSummary() {
+        // 模拟共享工作区：仓库位于会话工作区之外的独立根目录
+        val sharedRoot = newTempDir()
+        val ws = newTempDir()
+        val gitDir = File(sharedRoot, ".git")
+        initRepo(gitDir, mapOf("src/a.py" to "line1\nline2\n".toByteArray(Charsets.UTF_8)))
+
+        // 工作区外的仓库文件被修改 / 新增（AI 编辑共享工作区文件）
+        val target = File(sharedRoot, "src/a.py")
+        target.writeText("line1 changed\nline2\n", Charsets.UTF_8)
+        val added = File(sharedRoot, "src/b.py")
+        added.writeText("brand new\n", Charsets.UTF_8)
+
+        // changedPaths 传入真实绝对路径，workspace 参数指向会话工作区
+        val summary = WorkspaceGitDiff.summarize(
+            ws,
+            listOf(target.canonicalPath, added.canonicalPath)
+        )
+        assertNotNull("绝对路径（共享工作区）应生成 git 摘要", summary)
+        val s = summary!!
+        val a = s.files.first { it.path == "src/a.py" }
+        assertEquals(GitDiffFile.STATUS_MODIFIED, a.status)
+        assertTrue("a.py 应有新增行", a.additions > 0)
+        val b = s.files.first { it.path == "src/b.py" }
+        assertEquals(GitDiffFile.STATUS_ADDED, b.status)
+        assertTrue(b.hunks.flatMap { it.lines }.any { it.kind == GitDiffLine.KIND_ADD && it.text == "brand new" })
+    }
+
+    @Test
+    fun mixedRelativeAndAbsolutePathsPickLargestRepo() {
+        // 相对路径（会话工作区仓库）与绝对路径（共享工作区仓库）混用时，
+        // 应正确解析各自仓库并按文件数取覆盖最多的仓库生成单张摘要
+        val ws = newTempDir()
+        val wsGit = File(ws, ".git")
+        initRepo(wsGit, mapOf("keep.txt" to "x\n".toByteArray(Charsets.UTF_8)))
+        File(ws, "keep.txt").writeText("x changed\n", Charsets.UTF_8)
+
+        val sharedRoot = newTempDir()
+        val sharedGit = File(sharedRoot, ".git")
+        initRepo(sharedGit, mapOf("only.txt" to "y\n".toByteArray(Charsets.UTF_8)))
+        File(sharedRoot, "only.txt").writeText("y changed\n", Charsets.UTF_8)
+
+        // 相对 + 绝对混合，两者各 1 个变更文件 → 取 first（相对路径仓库）
+        val summary = WorkspaceGitDiff.summarize(
+            ws,
+            listOf("keep.txt", File(sharedRoot, "only.txt").canonicalPath)
+        )
+        assertNotNull(summary)
+        assertEquals("keep.txt", summary!!.files.single().path)
+    }
+
     // ---------- 纯逻辑单测 ----------
 
     @Test

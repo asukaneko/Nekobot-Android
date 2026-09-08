@@ -1285,16 +1285,16 @@ internal class LocalAgentToolExecutor(
 
     /**
      * 工作区文件快照：相对路径 → (size, lastModified)。
-     * 仅覆盖会话工作区（exec 沙盒挂载点）；跳过 .git 内部，避免把仓库元数据当变更。
+     * 覆盖会话工作区（exec 沙盒挂载点）与共享工作区两个根；共享工作区文件以
+     * shared:// 前缀记录，与 workspace_* 工具的相对路径语义一致。
+     * 跳过 .git 内部，避免把仓库元数据当变更。
      * 大数据量时截断扫描，保证 exec 高频调用不卡顿。
      */
     internal fun snapshotWorkspaceFiles(): Map<String, Pair<Long, Long>> {
-        val root = workspace ?: return emptyMap()
-        if (!root.isDirectory) return emptyMap()
         val result = LinkedHashMap<String, Pair<Long, Long>>()
         val MAX_SNAPSHOT_FILES = 20_000
         val MAX_SNAPSHOT_DEPTH = 24
-        fun walk(dir: File, prefix: String, depth: Int) {
+        fun walk(dir: File, prefix: String, depth: Int, shared: Boolean) {
             if (result.size >= MAX_SNAPSHOT_FILES || depth > MAX_SNAPSHOT_DEPTH) return
             val children = dir.listFiles() ?: return
             for (child in children) {
@@ -1302,14 +1302,16 @@ internal class LocalAgentToolExecutor(
                 val name = child.name
                 if (name == ".git") continue
                 val rel = if (prefix.isEmpty()) name else "$prefix/$name"
+                val key = if (shared) "shared://$rel" else rel
                 if (child.isDirectory) {
-                    walk(child, rel, depth + 1)
+                    walk(child, rel, depth + 1, shared)
                 } else if (child.isFile) {
-                    result[rel] = child.length() to child.lastModified()
+                    result[key] = child.length() to child.lastModified()
                 }
             }
         }
-        walk(root, "", 0)
+        workspace?.takeIf { it.isDirectory }?.let { walk(it, "", 0, false) }
+        sharedWorkspace?.takeIf { it.isDirectory }?.let { walk(it, "", 0, true) }
         return result
     }
 
@@ -1331,8 +1333,8 @@ internal class LocalAgentToolExecutor(
     fun currentChangedPaths(): Set<String> = changedPaths.toSet()
 
     /**
-     * 计算当前工作区在已变更路径上的 git 变更摘要。
-     * - 仅本地 Agent 模式、且工作区位于 git 追踪目录时才返回非空。
+     * 计算已变更文件（会话工作区 / 共享工作区 / 绝对路径）的 git 变更摘要。
+     * - 仅本地 Agent 模式、且变更文件位于 git 追踪目录时才返回非空。
      * - 无变更路径、无可追踪 git 仓库或 HEAD 缺失时返回 null（UI 不渲染）。
      * 内部自行容错，绝不会抛异常。
      */
@@ -1340,9 +1342,34 @@ internal class LocalAgentToolExecutor(
         val root = workspace ?: return null
         if (changedPaths.isEmpty()) return null
         return try {
-            WorkspaceGitDiff.summarize(root, changedPaths.toList())
+            // changedPaths 可能是 workspace 相对路径、shared:// 前缀路径或绝对路径，
+            // 统一解析为实际文件后交给差异引擎，保证共享工作区等沙箱外变更也能出卡片
+            val files = changedPaths.mapNotNull { resolveChangedFile(it) }
+            if (files.isEmpty()) return null
+            WorkspaceGitDiff.summarize(root, files.map { it.canonicalPath })
         } catch (e: Exception) {
             null
+        }
+    }
+
+    /** 把已记录的变更路径（相对路径 / shared:// 前缀 / 绝对路径）解析为实际文件。 */
+    private fun resolveChangedFile(path: String): File? {
+        val trimmed = path.trim()
+        if (trimmed.isEmpty() || trimmed == ".") return null
+        return when {
+            trimmed.startsWith("shared://", ignoreCase = true) -> {
+                val shared = sharedWorkspace ?: return null
+                val rel = trimmed.removePrefix("shared://")
+                    .replace('\\', '/')
+                    .removePrefix("/")
+                if (rel.isBlank()) return null
+                File(shared, rel).canonicalFile
+            }
+            trimmed.startsWith("/") -> File(trimmed).canonicalFile
+            else -> {
+                val root = workspace ?: return null
+                File(root, trimmed.removePrefix("/workspace/")).canonicalFile
+            }
         }
     }
 
