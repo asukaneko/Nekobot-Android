@@ -42,7 +42,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -282,6 +284,15 @@ private fun BarItem(
 ) {
     val activeColor = MaterialTheme.colorScheme.primary
     val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (dark) 0.85f else 1f)
+    val haptics = LocalHapticFeedback.current
+
+    // 轻微震动反馈：仅点击「不同」标签时触发，避免重复点击当前标签反复震动。
+    val onTabClick = {
+        if (!selected) {
+            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+        onClick()
+    }
 
     val contentColor by animateColorAsState(
         targetValue = if (selected) activeColor else inactiveColor,
@@ -308,7 +319,7 @@ private fun BarItem(
                 interactionSource = interaction,
                 indication = null,
                 role = Role.Tab,
-                onClick = onClick
+                onClick = onTabClick
             )
             // 显式设置 contentDescription，TalkBack 朗读一次即可（覆盖子节点的 text）
             .semantics { contentDescription = item.label },
