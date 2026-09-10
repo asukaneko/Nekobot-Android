@@ -260,7 +260,12 @@
     <string name="agent_settings_max_tool_calls">最大ツール呼び出し回数</string>
     <string name="agent_settings_max_tool_calls_desc">1 つの Agent ターンで許可される最大ツール呼び出し回数（1～1000、既定 %1$d）</string>
     <string name="agent_settings_group_subagent">サブエージェント（Subagent）</string>
+    <string name="agent_settings_group_tools">ツールとネットワーク</string>
     <string name="agent_settings_subagent_enable">Subagent を有効にする</string>
+    <string name="agent_settings_network_access">ネットワークアクセス</string>
+    <string name="agent_settings_network_access_desc">オフにすると Agent のネットワーク系ツール（http_get / search_web / browser_use / download_file）と MCP ツールは拒否され、ローカルツールのみ利用できます。ローカル Linux サンドボックスはネットワークを完全には分離できないため、このスイッチでポリシー側から制御します。</string>
+    <string name="agent_settings_auto_memory">長期記憶の自動保存</string>
+    <string name="agent_settings_auto_memory_desc">Agent の各ターン終了後、セッションをまたいで記憶すべき好み・取り決め・環境情報をグローバル Agent メモリへ自動保存します（セクション単位で重複排除、失敗しても会話には影響しません）。オフの場合、記憶ツールの明示的な呼び出しのみ書き込みます。</string>
     <string name="agent_settings_subagent_enable_desc">AI に subagent ツールの呼び出しを許可し、独立したタスクを新しい子エージェントに委任させます（子エージェントも同じフェイルオーバー モデル キューを使用）。</string>
     <string name="agent_settings_subagent_max_depth">最大ネスト深度</string>
     <string name="agent_settings_subagent_max_depth_desc">サブエージェントがさらに子エージェントに委任できる最大深度（0 で無効、既定 %1$d）。無限再帰を防止します。</string>

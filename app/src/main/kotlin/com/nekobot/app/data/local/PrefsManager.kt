@@ -261,6 +261,50 @@ class PrefsManager(context: Context) {
         get() = prefs.getBoolean(KEY_SUBAGENT_DEFAULT_BACKGROUND, false)
         set(value) = prefs.edit().putBoolean(KEY_SUBAGENT_DEFAULT_BACKGROUND, value).apply()
 
+    /**
+     * Agent 网络访问总开关，默认开启。
+     *
+     * 本地 Linux 沙盒（PRoot）无法真正隔离网络，因此在策略层兜底：关闭后联网类工具
+     * （http_get / search_web / browser_use / download_file 等）会被直接拒绝，而不是执行后再报错。
+     */
+    var agentNetworkAccessEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AGENT_NETWORK_ACCESS, true)
+        set(value) = prefs.edit().putBoolean(KEY_AGENT_NETWORK_ACCESS, value).apply()
+
+    /**
+     * 是否在 Agent 回合结束后自动把值得长期记住的内容写入全局 Agent 记忆。默认开启。
+     *
+     * 抽取在后台异步执行、按小节标题去重，失败不影响主流程。
+     */
+    var agentAutoMemoryEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AGENT_AUTO_MEMORY, true)
+        set(value) = prefs.edit().putBoolean(KEY_AGENT_AUTO_MEMORY, value).apply()
+
+    // ============ 会话级命令授权记忆 ============
+
+    /**
+     * 读取某会话已持久化的“始终允许”授权指纹。
+     *
+     * 指纹由 `LocalExecAuthorizationManager` 生成：普通命令是命令名，高危多用途命令
+     * 会带上子命令（`git status` ≠ `git push`），删除文件/插件安装等工具操作则是
+     * `工具名 参数摘要`。
+     */
+    fun getSessionExecAllowRules(sessionId: String): Set<String> =
+        decodeToolSet(prefs.getString("session_exec_allow_$sessionId", null)).orEmpty()
+
+    /** 保存某会话的“始终允许”授权指纹。 */
+    fun setSessionExecAllowRules(sessionId: String, rules: Set<String>) {
+        val key = "session_exec_allow_$sessionId"
+        prefs.edit().apply {
+            if (rules.isEmpty()) remove(key) else putString(key, encodeToolSet(rules))
+        }.apply()
+    }
+
+    /** 清除某会话的授权记忆（`/yolo off` 之外的“忘记已允许命令”入口）。 */
+    fun clearSessionExecAllowRules(sessionId: String) {
+        prefs.edit().remove("session_exec_allow_$sessionId").apply()
+    }
+
     // ============ RAG 检索配置 ============
 
     /** 语义检索权重（0.0~1.0） */
@@ -789,6 +833,8 @@ class PrefsManager(context: Context) {
         private const val KEY_SUBAGENT_MAX_DEPTH = "subagent_max_depth"
         private const val KEY_SUBAGENT_MAX_TOOL_CALLS = "subagent_max_tool_calls"
         private const val KEY_SUBAGENT_DEFAULT_BACKGROUND = "subagent_default_background"
+        private const val KEY_AGENT_NETWORK_ACCESS = "agent_network_access_enabled"
+        private const val KEY_AGENT_AUTO_MEMORY = "agent_auto_memory_enabled"
         private const val KEY_SMART_ROUTING_DAILY_BUDGET = "smart_routing_daily_budget"
         private const val KEY_SMART_ROUTING_BUDGET_ALERT = "smart_routing_budget_alert"
         private const val KEY_RAG_SEMANTIC_WEIGHT = "rag_semantic_weight"

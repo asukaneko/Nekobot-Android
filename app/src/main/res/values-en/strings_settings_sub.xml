@@ -267,7 +267,12 @@
     <string name="agent_settings_max_tool_calls">Max Tool Calls</string>
     <string name="agent_settings_max_tool_calls_desc">Maximum tool calls allowed in a single Agent turn (1–1000, default %1$d)</string>
     <string name="agent_settings_group_subagent">Subagent</string>
+    <string name="agent_settings_group_tools">Tools and network</string>
     <string name="agent_settings_subagent_enable">Enable Subagent</string>
+    <string name="agent_settings_network_access">Network access</string>
+    <string name="agent_settings_network_access_desc">When disabled, networked tools (http_get / search_web / browser_use / download_file) and MCP tools are rejected outright; only local tools remain. The local Linux sandbox cannot truly isolate networking, so this switch enforces the policy in-app.</string>
+    <string name="agent_settings_auto_memory">Automatic long-term memory</string>
+    <string name="agent_settings_auto_memory_desc">After each Agent turn, durable preferences, conventions, and environment facts are written to global Agent memory automatically (deduplicated by section, failures never affect the reply). When off, only explicit memory tool calls can write.</string>
     <string name="agent_settings_subagent_enable_desc">Allow the AI to call the subagent tool and delegate self-contained tasks to a fresh child agent (which uses the same failover model queue).</string>
     <string name="agent_settings_subagent_max_depth">Max Nesting Depth</string>
     <string name="agent_settings_subagent_max_depth_desc">Maximum depth at which a subagent can further delegate to subagents (0 disables, default %1$d). Prevents infinite recursion.</string>

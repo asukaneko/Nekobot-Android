@@ -372,7 +372,7 @@ class LocalAgentToolingTest {
     }
 
     @Test
-    fun alwaysAuthorizationIsReusedForMainCommandsAndTracksNewChainCommands() = runBlocking {
+    fun alwaysAuthorizationIsFingerprintBasedAndTracksNewChainCommands() = runBlocking {
         val manager = LocalExecAuthorizationManager(authorizationTimeoutMs = 100)
         val requestRef = AtomicReference<ExecConfirmationRequest>()
         val requestReady = CountDownLatch(1)
@@ -402,14 +402,26 @@ class LocalAgentToolingTest {
             )
             assertEquals(ExecAuthorization.Always, first.get(1, TimeUnit.SECONDS))
 
+            // 同一命令再次请求：命中授权指纹，不再弹窗。
             var requestedAgain = false
             val reused = manager.requestAuthorization(
                 sessionId = "session-1",
-                command = "git log --oneline",
+                command = "git status",
                 mainCommand = "git"
             ) { requestedAgain = true }
             assertEquals(ExecAuthorization.Always, reused)
             assertFalse(requestedAgain)
+
+            // 同一命令的其他子命令（git log）能力完全不同：必须重新确认，
+            // 否则"批准 git status"会顺带放行后续的 git push。
+            var requestedForNewSubcommand = false
+            val newSubcommand = manager.requestAuthorization(
+                sessionId = "session-1",
+                command = "git log --oneline",
+                mainCommand = "git"
+            ) { requestedForNewSubcommand = true }
+            assertEquals(ExecAuthorization.Reject, newSubcommand)
+            assertTrue(requestedForNewSubcommand)
 
             var requestedForNewCommand = false
             val newCommand = manager.requestAuthorization(

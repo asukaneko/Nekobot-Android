@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -182,6 +183,53 @@ fun AgentSettingsScreen(onBack: () -> Unit) {
                             onCheckedChange = {
                                 defaultBackground = it
                                 ServiceContainer.prefs.subagentDefaultBackground = it
+                            }
+                        )
+                    }
+                )
+            }
+
+            // Agent 网络访问策略分组
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = stringResource(R.string.agent_settings_group_tools),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(bottom = 6.dp, start = 2.dp)
+                )
+                var networkAccess by remember {
+                    mutableStateOf(ServiceContainer.prefs.agentNetworkAccessEnabled)
+                }
+                AgentSettingRow(
+                    icon = Icons.Filled.Cloud,
+                    tint = MaterialTheme.colorScheme.primary,
+                    title = stringResource(R.string.agent_settings_network_access),
+                    desc = stringResource(R.string.agent_settings_network_access_desc),
+                    trailing = {
+                        Switch(
+                            checked = networkAccess,
+                            onCheckedChange = {
+                                networkAccess = it
+                                ServiceContainer.prefs.agentNetworkAccessEnabled = it
+                            }
+                        )
+                    }
+                )
+                var autoMemory by remember {
+                    mutableStateOf(ServiceContainer.prefs.agentAutoMemoryEnabled)
+                }
+                AgentSettingRow(
+                    icon = Icons.Filled.Psychology,
+                    tint = MaterialTheme.colorScheme.secondary,
+                    title = stringResource(R.string.agent_settings_auto_memory),
+                    desc = stringResource(R.string.agent_settings_auto_memory_desc),
+                    trailing = {
+                        Switch(
+                            checked = autoMemory,
+                            onCheckedChange = {
+                                autoMemory = it
+                                ServiceContainer.prefs.agentAutoMemoryEnabled = it
                             }
                         )
                     }

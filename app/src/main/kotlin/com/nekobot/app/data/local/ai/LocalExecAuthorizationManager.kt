@@ -148,17 +148,150 @@ internal fun extractLocalAuthorizationCommands(
 }
 
 /**
+ * 需要连带记住“子命令”的高危多用途命令。
+ *
+ * `git`、`npm`、`python` 这类命令的能力完全取决于第一个参数：
+ * 只按命令名记忆授权会让“批准 `git status`”顺带放行后续的 `git push`。
+ */
+private val localSubcommandSensitiveCommands = setOf(
+    "git", "npm", "pnpm", "yarn", "npm.cmd", "pip", "pip3", "python", "python3", "python3.11",
+    "node", "deno", "bun", "cargo", "go", "gradle", "make", "cmake",
+    "curl", "wget", "adb", "apt", "apt-get", "apk", "pkg", "docker", "docker-compose", "gh",
+    "bash", "sh", "zsh", "fish", "busybox", "openssl", "ssh", "scp", "sftp", "rsync",
+    "tar", "unzip", "zip", "sqlite3", "psql", "mysql", "mongosh", "redis-cli", "npx"
+)
+
+/**
+ * 生成单个 Shell 分段的授权指纹。
+ *
+ * - 普通命令：指纹就是命令名（`ls` 的所有参数共用一次授权，符合直觉）；
+ * - 高危多用途命令：指纹追加首个非选项参数（`git status`、`git push`、`npm install`）。
+ */
+internal fun localAuthorizationFingerprint(segment: String, fallbackMainCommand: String): String? {
+    val tokens = localCommandTokens(segment)
+    val rawCommand = tokens.firstOrNull()
+        ?: fallbackMainCommand.takeIf(String::isNotBlank)
+        ?: return null
+    val mainCommand = normalizeLocalCommandName(rawCommand).ifBlank {
+        normalizeLocalCommandName(fallbackMainCommand)
+    }
+    if (mainCommand.isBlank()) return null
+    if (mainCommand !in localSubcommandSensitiveCommands) return mainCommand
+
+    val subcommand = tokens.drop(1)
+        .firstOrNull { token ->
+            val cleaned = token.trim('"', '\'')
+            cleaned.isNotBlank() && !cleaned.startsWith("-") &&
+                !cleaned.contains('=') && !cleaned.contains('/')
+        }
+    return if (subcommand == null) {
+        mainCommand
+    } else {
+        "$mainCommand ${subcommand.trim('"', '\'').lowercase()}"
+    }
+}
+
+/** 按 Shell 语法切分出命令分段中的“词”（引号内的空格不切分）。 */
+private fun localCommandTokens(segment: String): List<String> =
+    Regex(""""[^"]*"|'[^']*'|[^\s]+""")
+        .findAll(segment.trim())
+        .map { it.value }
+        .toList()
+
+/**
+ * 生成一次命令授权请求对应的全部指纹。
+ *
+ * 与命令分段一致：`git status && git push` 会分别生成 `git status` 与 `git push`。
+ * 非 Shell 参数（`agent_memory_update` 这类工具标签）无法解析出与调用方一致的主命令，
+ * 统一退回调用方给出的主命令。
+ */
+internal fun extractLocalAuthorizationFingerprints(
+    command: String,
+    mainCommand: String
+): Set<String> {
+    val fallback = normalizeLocalCommandName(mainCommand)
+    val fingerprints = extractLocalSegments(command)
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .mapNotNull { segment ->
+            val firstToken = localCommandTokens(segment).firstOrNull()
+                ?.let(::normalizeLocalCommandName)
+            if (firstToken.isNullOrBlank() || (fallback.isNotBlank() && firstToken != fallback)) {
+                // 段首不是预期的命令名：这是工具标签而非 Shell 命令，用主命令兜底。
+                localAuthorizationFingerprint(fallback, fallback)
+            } else {
+                localAuthorizationFingerprint(segment, fallback)
+            }
+        }
+        .toSet()
+    return fingerprints.ifEmpty {
+        localAuthorizationFingerprint(fallback, fallback)?.let(::setOf) ?: emptySet()
+    }
+}
+
+/** 按 Shell 运算符切分命令，但忽略引号内部的运算符。 */
+internal fun extractLocalSegments(command: String): List<String> {
+    val segments = mutableListOf<String>()
+    val current = StringBuilder()
+    var quote: Char? = null
+    var escaped = false
+    for (char in command) {
+        when {
+            escaped -> {
+                current.append(char)
+                escaped = false
+            }
+            char == '\\' && quote != '\'' -> {
+                current.append(char)
+                escaped = true
+            }
+            quote != null -> {
+                current.append(char)
+                if (char == quote) quote = null
+            }
+            char == '\'' || char == '"' -> {
+                quote = char
+                current.append(char)
+            }
+            char == ';' || char == '|' || char == '&' || char == '\r' || char == '\n' -> {
+                segments += current.toString()
+                current.setLength(0)
+            }
+            else -> current.append(char)
+        }
+    }
+    segments += current.toString()
+    return segments
+}
+
+/** 工具类操作（删除文件、插件安装/更新）的授权指纹：`工具名 参数摘要`。 */
+internal fun toolAuthorizationFingerprint(toolName: String, argument: String): String? {
+    val normalizedTool = toolName.trim().lowercase()
+    if (normalizedTool.isBlank()) return null
+    val argumentSummary = argument.trim()
+        .replace(Regex("""\s+"""), " ")
+        .take(120)
+        .lowercase()
+    return if (argumentSummary.isBlank()) normalizedTool else "$normalizedTool $argumentSummary"
+}
+
+/**
  * 本地 Agent 命令授权状态。
  *
- * `/yolo` 与“始终授权”都只在当前应用进程和当前会话内生效。
+ * `/yolo` 只在当前应用进程与当前会话内生效；“始终允许”按**授权指纹**记忆，
+ * 并可按会话持久化（重启后仍有效），见 [extractLocalAuthorizationFingerprints]。
  */
 class LocalExecAuthorizationManager(
-    private val authorizationTimeoutMs: Long = 10 * 60 * 1000L
+    private val authorizationTimeoutMs: Long = 10 * 60 * 1000L,
+    /** 读取某会话已持久化的“始终允许”指纹；返回 null/空集表示无记录。 */
+    private val loadPersistedRules: ((sessionId: String) -> Set<String>?)? = null,
+    /** 保存某会话的“始终允许”指纹集合。 */
+    private val savePersistedRules: ((sessionId: String, fingerprints: Set<String>) -> Unit)? = null
 ) {
     private data class Pending(
         val sessionId: String,
         val mainCommand: String,
-        val authorizationCommands: Set<String>,
+        val authorizationKeys: Set<String>,
         val decision: CompletableDeferred<ExecAuthorization>
     )
 
@@ -176,28 +309,81 @@ class LocalExecAuthorizationManager(
 
     fun isYoloEnabled(sessionId: String): Boolean = sessionId in yoloSessions
 
+    /** 某会话当前已记忆的授权指纹（含持久化恢复的部分），供测试与调试查看。 */
+    fun allowedKeys(sessionId: String): Set<String> = allowedKeySet(sessionId).toSet()
+
+    private fun allowedKeySet(sessionId: String): MutableSet<String> {
+        val keys = alwaysAllowed.computeIfAbsent(sessionId) { ConcurrentHashMap.newKeySet() }
+        val persisted = runCatching { loadPersistedRules?.invoke(sessionId) }.getOrNull().orEmpty()
+        if (persisted.isNotEmpty()) keys.addAll(persisted)
+        return keys
+    }
+
     suspend fun requestAuthorization(
         sessionId: String,
         command: String,
         mainCommand: String,
         onRequest: (ExecConfirmationRequest) -> Unit
+    ): ExecAuthorization = awaitDecision(
+        sessionId = sessionId,
+        command = command,
+        mainCommand = mainCommand,
+        authorizationKeys = extractLocalAuthorizationFingerprints(command, mainCommand),
+        message = "本地 Agent 请求执行命令",
+        onRequest = onRequest
+    )
+
+    /**
+     * 非 Shell 工具的授权确认（删除工作区文件、插件安装/更新等）。
+     *
+     * 复用与命令确认完全相同的通道：同一个弹窗、同一份“始终允许”记忆（指纹为
+     * `工具名 参数摘要`），因此用户不会遇到两套互不相识的授权体验。
+     *
+     * @return true 表示放行（本次或始终），false 表示拒绝/超时。
+     */
+    suspend fun requestToolAuthorization(
+        sessionId: String,
+        toolName: String,
+        fingerprintArgument: String,
+        message: String,
+        onRequest: (ExecConfirmationRequest) -> Unit
+    ): Boolean {
+        val decision = awaitDecision(
+            sessionId = sessionId,
+            command = message,
+            mainCommand = toolName,
+            authorizationKeys = setOfNotNull(
+                toolAuthorizationFingerprint(toolName, fingerprintArgument)
+            ),
+            message = message,
+            onRequest = onRequest
+        )
+        return decision != ExecAuthorization.Reject
+    }
+
+    private suspend fun awaitDecision(
+        sessionId: String,
+        command: String,
+        mainCommand: String,
+        authorizationKeys: Set<String>,
+        message: String,
+        onRequest: (ExecConfirmationRequest) -> Unit
     ): ExecAuthorization {
         if (isYoloEnabled(sessionId)) return ExecAuthorization.Once
-        val authorizationCommands = extractLocalAuthorizationCommands(command, mainCommand)
-        val allowedCommands = alwaysAllowed[sessionId].orEmpty()
-        if (authorizationCommands.isNotEmpty() && authorizationCommands.all { it in allowedCommands }) {
+        val allowedKeys = allowedKeySet(sessionId)
+        if (authorizationKeys.isNotEmpty() && authorizationKeys.all { it in allowedKeys }) {
             return ExecAuthorization.Always
         }
 
         val requestId = UUID.randomUUID().toString()
         val decision = CompletableDeferred<ExecAuthorization>()
-        pending[requestId] = Pending(sessionId, mainCommand, authorizationCommands, decision)
+        pending[requestId] = Pending(sessionId, mainCommand, authorizationKeys, decision)
         onRequest(
             ExecConfirmationRequest(
                 requestId = requestId,
                 command = command,
                 mainCommand = mainCommand,
-                message = "本地 Agent 请求执行命令",
+                message = message,
                 sessionId = sessionId
             )
         )
@@ -218,9 +404,9 @@ class LocalExecAuthorizationManager(
         val request = pending[requestId] ?: return false
         if (request.sessionId != sessionId) return false
         if (authorization == ExecAuthorization.Always) {
-            alwaysAllowed
-                .computeIfAbsent(sessionId) { ConcurrentHashMap.newKeySet() }
-                .addAll(request.authorizationCommands)
+            val keys = allowedKeySet(sessionId)
+            keys.addAll(request.authorizationKeys)
+            runCatching { savePersistedRules?.invoke(sessionId, keys.toSet()) }
         }
         return request.decision.complete(authorization)
     }
