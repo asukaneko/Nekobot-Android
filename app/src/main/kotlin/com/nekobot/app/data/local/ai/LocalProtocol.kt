@@ -16,7 +16,14 @@ data class LocalModelResponse(
     val usage: Map<String, Int> = emptyMap(),
     val toolCalls: List<Map<String, Any>> = emptyList(),
     val finishReason: String = "",
-    val thinkingContent: String = ""
+    val thinkingContent: String = "",
+    /**
+     * 思考块签名（Anthropic 扩展思考）。
+     *
+     * Anthropic 要求把上一轮 assistant 的 thinking 块（含签名）原样带回，
+     * 否则带工具调用的后续请求会被拒。其他协议不产生该字段。
+     */
+    val thinkingSignature: String = ""
 )
 
 /** 流式工具调用增量；由协议层解析，客户端负责按 [index] 聚合。 */
@@ -62,6 +69,14 @@ interface LocalProtocol {
 
     /** 解析模型推理/思考文本增量；协议不支持时返回 null。 */
     fun parseStreamThinkingChunk(chunkJson: String): String? = null
+
+    /**
+     * 解析思考块签名增量；协议不支持时返回 null。
+     *
+     * Anthropic 扩展思考在流式响应里用 signature_delta 单独下发签名，
+     * 该签名必须随 thinking 块一起在下一次请求中回传。
+     */
+    fun parseStreamThinkingSignature(chunkJson: String): String? = null
 
     /** 解析流式工具调用的 id/name/arguments 增量。 */
     fun parseStreamToolCallDeltas(chunkJson: String): List<LocalToolCallDelta> = emptyList()

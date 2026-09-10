@@ -773,6 +773,10 @@ internal class LocalPipelineCallbacks(
                 if (result.toolCalls.isNotEmpty()) put("tool_calls", result.toolCalls)
                 if (reasoningEffort != ReasoningEffort.NONE && result.thinkingContent.isNotBlank()) {
                     put("thinking_content", result.thinkingContent)
+                    // Anthropic 扩展思考要求把思考块签名一起带回下一轮请求。
+                    result.thinkingSignature.takeIf(String::isNotBlank)?.let {
+                        put("thinking_signature", it)
+                    }
                 }
             }
         }

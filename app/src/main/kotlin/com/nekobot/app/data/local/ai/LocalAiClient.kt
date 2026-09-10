@@ -49,7 +49,12 @@ data class LocalAiResult(
     val usedModelActualName: String? = null,
     val toolCalls: List<Map<String, Any>> = emptyList(),
     val finishReason: String = "",
-    val thinkingContent: String = ""
+    val thinkingContent: String = "",
+    /**
+     * 思考块签名（Anthropic 扩展思考）。必须在下一轮请求里与 thinking 一起回传，
+     * 否则带工具调用的后续请求会被服务端拒绝。
+     */
+    val thinkingSignature: String = ""
 )
 
 /** 模型单次请求的实时回调；Agent 工具循环用它把最终文本直接推到聊天气泡。 */
@@ -286,22 +291,17 @@ class LocalAiClient(
                     return@flow
                 }
 
+            var streamErrorMessage: String? = null
             BufferedReader(InputStreamReader(src, Charsets.UTF_8)).use { reader ->
-                while (true) {
-                    val line = reader.readLine() ?: break
-                    if (line.isEmpty()) continue
-                    if (line.startsWith("event:")) continue
-                    if (!line.startsWith("data:")) continue
-                    val data = line.removePrefix("data:").trim()
-                    if (data == "[DONE]") break
+                readSseEvents(reader) { data ->
+                    if (data == "[DONE]") return@readSseEvents false
                     // 尝试解析 usage（OpenAI 在最后 chunk、Anthropic 在 message_delta）
                     protocol.parseStreamUsage(data)?.let { (input, output, _) ->
                         emit(RealtimeEvent.Usage(input, output, runtimeModel.model, runtimeModel.name))
                     }
                     protocol.parseStreamError(data)?.let { message ->
-                        emit(RealtimeEvent.Error(message))
-                        emit(RealtimeEvent.StreamEnd(null))
-                        return@flow
+                        streamErrorMessage = message
+                        return@readSseEvents false
                     }
                     protocol.parseStreamThinkingChunk(data)?.takeIf(String::isNotEmpty)?.let {
                         fullThinking.append(it)
@@ -320,7 +320,13 @@ class LocalAiClient(
                         fullContent.append(chunk)
                         emit(RealtimeEvent.StreamChunk(chunk))
                     }
+                    true
                 }
+            }
+            streamErrorMessage?.let { message ->
+                emit(RealtimeEvent.Error(message))
+                emit(RealtimeEvent.StreamEnd(null))
+                return@flow
             }
             terminal?.content
                 ?.takeIf { it.isNotBlank() && fullContent.isEmpty() }
@@ -463,6 +469,7 @@ class LocalAiClient(
             }
             val content = StringBuilder()
             val thinking = StringBuilder()
+            val thinkingSignature = StringBuilder()
             val toolCallAccumulator = LocalToolCallStreamAccumulator()
             var usage = emptyMap<String, Int>()
             var terminal: LocalModelResponse? = null
@@ -507,17 +514,15 @@ class LocalAiClient(
                     finishReason = buffered.finishReason.ifBlank {
                         if (buffered.toolCalls.isNotEmpty()) "tool_calls" else "stop"
                     },
-                    thinkingContent = buffered.thinkingContent
+                    thinkingContent = buffered.thinkingContent,
+                    thinkingSignature = buffered.thinkingSignature
                 )
             }
             val source = response.body?.byteStream()
                 ?: throw IllegalStateException("响应体为空")
             BufferedReader(InputStreamReader(source, Charsets.UTF_8)).use { reader ->
-                while (true) {
-                    val line = reader.readLine() ?: break
-                    if (!line.startsWith("data:")) continue
-                    val data = line.removePrefix("data:").trim()
-                    if (data.isEmpty() || data == "[DONE]") continue
+                readSseEvents(reader) { data ->
+                    if (data == "[DONE]") return@readSseEvents true
                     protocol.parseStreamUsage(data)?.let { (input, output, total) ->
                         usage = mapOf(
                             "prompt" to input,
@@ -537,6 +542,9 @@ class LocalAiClient(
                         thinking.append(chunk)
                         if (callbacksReleased) streamCallbacks?.onThinkingChunk?.invoke(chunk)
                     }
+                    protocol.parseStreamThinkingSignature(data)?.takeIf(String::isNotEmpty)?.let {
+                        thinkingSignature.append(it)
+                    }
                     protocol.parseStreamChunk(data)?.takeIf(String::isNotEmpty)?.let { chunk ->
                         content.append(chunk)
                         if (callbacksReleased) {
@@ -545,6 +553,7 @@ class LocalAiClient(
                             releaseBufferedCallbacks()
                         }
                     }
+                    true
                 }
             }
             val parsed = terminal
@@ -576,7 +585,9 @@ class LocalAiClient(
                 toolCalls = toolCalls,
                 finishReason = parsed?.finishReason?.takeIf(String::isNotBlank)
                     ?: finishReason.ifBlank { if (toolCalls.isNotEmpty()) "tool_calls" else "stop" },
-                thinkingContent = finalThinking
+                thinkingContent = finalThinking,
+                thinkingSignature = parsed?.thinkingSignature?.takeIf(String::isNotEmpty)
+                    ?: thinkingSignature.toString()
             )
         }
     }
@@ -1016,6 +1027,7 @@ class LocalAiClient(
             var failed = false
             var httpCode = 0
             var contentReleased = false
+            var streamErrorMessage: String? = null
 
             // 直接复用 chatStream 的内部逻辑（避免嵌套 Flow）
             val protocol = LocalProtocols.get(runtimeModel.protocol)
@@ -1103,16 +1115,15 @@ class LocalAiClient(
                     continue
                 }
                 BufferedReader(InputStreamReader(src, Charsets.UTF_8)).use { reader ->
-                    while (true) {
-                        val line = reader.readLine() ?: break
-                        if (line.isEmpty()) continue
-                        if (line.startsWith("event:")) continue
-                        if (!line.startsWith("data:")) continue
-                        val data = line.removePrefix("data:").trim()
-                        if (data == "[DONE]") break
+                    readSseEvents(reader) { data ->
+                        if (data == "[DONE]") return@readSseEvents false
                         protocol.parseStreamUsage(data)?.let { (input, output, _) ->
                             inputTokens = input
                             outputTokens = output
+                        }
+                        protocol.parseStreamError(data)?.let { message ->
+                            streamErrorMessage = message
+                            return@readSseEvents false
                         }
                         protocol.parseStreamThinkingChunk(data)?.takeIf(String::isNotEmpty)?.let {
                             fullThinking.append(it)
@@ -1138,7 +1149,16 @@ class LocalAiClient(
                                 contentReleased = true
                             }
                         }
+                        true
                     }
+                }
+                val streamFailure = streamErrorMessage
+                if (streamFailure != null) {
+                    lastErrorMsg = streamFailure
+                    failed = true
+                    failover.recordFailure(model.id)
+                    response.close()
+                    continue
                 }
                 terminal?.content
                     ?.takeIf { it.isNotBlank() && fullContent.isEmpty() }

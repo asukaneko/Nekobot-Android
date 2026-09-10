@@ -52,10 +52,13 @@ object AnthropicMessagesProtocol : LocalProtocol {
                     "assistant" -> {
                         @Suppress("UNCHECKED_CAST")
                         val toolCalls = msg["tool_calls"] as? List<Map<String, Any>> ?: emptyList()
-                        if (toolCalls.isEmpty()) {
+                        val thinkingBlock = thinkingBlockOf(msg)
+                        if (toolCalls.isEmpty() && thinkingBlock == null) {
                             mapOf("role" to "assistant", "content" to (msg["content"] ?: ""))
                         } else {
                             val blocks = mutableListOf<Map<String, Any>>()
+                            // 扩展思考要求 thinking 块位于 assistant 内容块的最前面
+                            thinkingBlock?.let { blocks.add(it) }
                             (msg["content"] as? String)?.takeIf { it.isNotBlank() }?.let {
                                 blocks.add(mapOf("type" to "text", "text" to it))
                             }
@@ -163,8 +166,49 @@ object AnthropicMessagesProtocol : LocalProtocol {
                         put("input_schema", function["parameters"] ?: emptyMap<String, Any>())
                     }
                 }
+                // 工具定义在整轮 Agent 循环里是稳定的（前缀不变），把最后一个工具标记为缓存断点，
+                // 让后续每次工具调用都能命中 system + tools 前缀的缓存。
+                payload["tools"] = converted.mapIndexed { index, tool ->
+                    if (index == converted.lastIndex) {
+                        tool + mapOf("cache_control" to EPHEMERAL_CACHE_CONTROL)
+                    } else {
+                        tool
+                    }
+                }
             }
         return payload
+    }
+
+    /**
+     * system 提示词转为块数组并打上缓存断点。
+     *
+     * Anthropic 的 prompt caching 以"前缀命中"计费：Agent 模式下 system 提示词与工具定义
+     * 每轮都完全相同，标记断点后重复调用的输入成本大幅下降。短提示词（低于最小缓存长度）
+     * 不使用断点，避免无意义的分块。
+     */
+    private fun systemBlocksOf(systemMessage: String): List<Map<String, Any>> {
+        val block = mapOf("type" to "text", "text" to systemMessage)
+        return if (systemMessage.length >= MIN_CACHEABLE_SYSTEM_CHARS) {
+            listOf(block + mapOf("cache_control" to EPHEMERAL_CACHE_CONTROL))
+        } else {
+            listOf(block)
+        }
+    }
+
+    /**
+     * 还原上一轮 assistant 的 thinking 块。
+     *
+     * Anthropic 的扩展思考 + 工具调用要求把 thinking 块（含 signature）原样带回，
+     * 缺失会被服务端判为非法消息序列；没有签名时宁可不回传——带 thinking 无 signature
+     * 同样非法，反而会把可用的请求变成失败请求。
+     */
+    private fun thinkingBlockOf(message: Map<String, Any>): Map<String, Any>? {
+        val text = (message["reasoning_content"] as? String)
+            ?: (message["thinking_content"] as? String)
+        val signature = (message["reasoning_signature"] as? String)
+            ?: (message["thinking_signature"] as? String)
+        if (text.isNullOrBlank() || signature.isNullOrBlank()) return null
+        return mapOf("type" to "thinking", "thinking" to text, "signature" to signature)
     }
 
     private fun userContent(content: Any?): Any {
@@ -224,6 +268,33 @@ object AnthropicMessagesProtocol : LocalProtocol {
             val delta = obj.getAsJsonObject("delta") ?: return null
             if (delta.get("type")?.asString != "thinking_delta") return null
             delta.get("thinking")?.takeIf { !it.isJsonNull }?.asString?.ifEmpty { null }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * 思考块签名：流式响应里由 content_block_delta(signature_delta) 下发，
+     * 少数网关会在 content_block_start 里直接给全量签名。
+     *
+     * 该签名必须与 thinking 文本一起在下一轮请求中回传，否则扩展思考 + 工具调用会被拒。
+     */
+    override fun parseStreamThinkingSignature(chunkJson: String): String? {
+        return try {
+            val obj = JsonParser.parseString(chunkJson).asJsonObject
+            when (obj.get("type")?.asString) {
+                "content_block_delta" -> {
+                    val delta = obj.getAsJsonObject("delta") ?: return null
+                    if (delta.get("type")?.asString != "signature_delta") return null
+                    delta.get("signature")?.takeIf { !it.isJsonNull }?.asString?.ifEmpty { null }
+                }
+                "content_block_start" -> {
+                    val block = obj.getAsJsonObject("content_block") ?: return null
+                    if (block.get("type")?.asString != "thinking") return null
+                    block.get("signature")?.takeIf { !it.isJsonNull }?.asString?.ifEmpty { null }
+                }
+                else -> null
+            }
         } catch (_: Exception) {
             null
         }
@@ -322,6 +393,11 @@ object AnthropicMessagesProtocol : LocalProtocol {
             val b = block as? Map<*, *> ?: return@mapNotNull null
             if (b["type"] == "thinking") b["thinking"] as? String else null
         }?.joinToString("") ?: ""
+        val thinkingSignature = contentBlocks?.mapNotNull { block ->
+            val b = block as? Map<*, *> ?: return@mapNotNull null
+            if (b["type"] != "thinking") return@mapNotNull null
+            (b["signature"] as? String)?.takeIf { it.isNotBlank() }
+        }?.joinToString("") ?: ""
 
         val usage = (data["usage"] as? Map<*, *>)?.let { u ->
             val input = (u["input_tokens"] as? Number)?.toInt() ?: 0
@@ -352,7 +428,8 @@ object AnthropicMessagesProtocol : LocalProtocol {
             usage = usage,
             toolCalls = toolCalls,
             finishReason = (data["stop_reason"] as? String).orEmpty(),
-            thinkingContent = thinking
+            thinkingContent = thinking,
+            thinkingSignature = thinkingSignature
         )
     }
 }

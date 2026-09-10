@@ -237,23 +237,158 @@ fun restoreContinueMessages(
 }
 
 /**
- * 裁剪消息列表以控制总字符数。
- * 保留 system 消息和最近的消息，从最早的非 system 消息开始移除。
+ * 单条消息占用体积：content（字符串或多模态分块）+ 推理内容 + tool_calls 参数。
+ *
+ * 只统计 content 字符串会显著低估体积——工具调用参数与多模态分块都不在 content 里，
+ * 会让裁剪阈值失真。
+ */
+internal fun messageSizeChars(message: Map<String, Any>): Int {
+    var size = when (val content = message["content"]) {
+        is String -> content.length
+        is List<*> -> content.sumOf { part ->
+            when (part) {
+                is String -> part.length
+                is Map<*, *> -> (part["text"] as? String)?.length ?: 0
+                else -> 0
+            }
+        }
+        else -> 0
+    }
+    (message["reasoning_content"] as? String)?.let { size += it.length }
+    (message["tool_calls"] as? List<*>)?.let { size += agentGson.toJson(it).length }
+    return size
+}
+
+/**
+ * 把历史消息切成可整体丢弃的块。
+ *
+ * 带 tool_calls 的 assistant 消息与其后续的 tool 结果必须同生共死：只保留 tool 结果会让
+ * OpenAI/Anthropic 直接拒绝请求（缺少对应的 tool_call），只保留 tool_calls 则缺少工具响应。
+ * 因此裁剪必须以块为单位，而不能按单条消息删除。
+ */
+internal fun groupMessageBlocks(messages: List<Map<String, Any>>): List<List<Map<String, Any>>> {
+    val blocks = mutableListOf<List<Map<String, Any>>>()
+    var index = 0
+    while (index < messages.size) {
+        val message = messages[index]
+        val role = message["role"] as? String ?: ""
+        val hasToolCalls = (message["tool_calls"] as? List<*>)?.isNotEmpty() == true
+        when {
+            role == "assistant" && hasToolCalls -> {
+                val block = mutableListOf(message)
+                var cursor = index + 1
+                while (cursor < messages.size && (messages[cursor]["role"] as? String) == "tool") {
+                    block.add(messages[cursor])
+                    cursor++
+                }
+                blocks.add(block)
+                index = cursor
+            }
+            // 没有前置 assistant 的孤儿 tool 消息：并入上一块一起丢弃，避免裁剪后以 tool 开头。
+            role == "tool" -> {
+                if (blocks.isEmpty()) {
+                    blocks.add(listOf(message))
+                } else {
+                    blocks[blocks.lastIndex] = blocks.last() + message
+                }
+                index++
+            }
+            else -> {
+                blocks.add(listOf(message))
+                index++
+            }
+        }
+    }
+    return blocks
+}
+
+/**
+ * 裁剪消息列表以控制总体积（字符数近似）。
+ *
+ * 规则：
+ * - system 消息始终保留；
+ * - 从最早的块开始整体丢弃，块内保持工具调用/结果配对完整；
+ * - 至少保留最后一块（当前用户消息），避免把用户问题整段裁掉；
+ * - 裁剪后不会以 tool 消息开头，保证发出去的消息序列对协议合法。
  */
 fun trimMessages(messages: List<Map<String, Any>>, maxTotalChars: Int = 30000): List<Map<String, Any>> {
-    val totalChars = messages.sumOf { (it["content"] as? String ?: "").length }
-    if (totalChars <= maxTotalChars) return messages
+    if (messages.isEmpty()) return messages
+    val systemMessage = messages.first().takeIf { (it["role"] as? String) == "system" }
+    val body = if (systemMessage != null) messages.drop(1) else messages
+    if (body.isEmpty()) return messages
 
-    val systemMessage = if (messages.isNotEmpty() && messages[0]["role"] == "system") messages[0] else null
-    val nonSystem = if (systemMessage != null) messages.drop(1).toMutableList() else messages.toMutableList()
+    var currentTotal = messages.sumOf(::messageSizeChars)
+    if (currentTotal <= maxTotalChars) return messages
 
-    var currentTotal = totalChars
-    while (nonSystem.isNotEmpty() && currentTotal > maxTotalChars) {
-        val removed = nonSystem.removeAt(0)
-        currentTotal -= (removed["content"] as? String ?: "").length
+    val blocks = groupMessageBlocks(body)
+    var firstKept = 0
+    while (firstKept < blocks.size - 1 && currentTotal > maxTotalChars) {
+        currentTotal -= blocks[firstKept].sumOf(::messageSizeChars)
+        firstKept++
     }
 
-    return if (systemMessage != null) listOf(systemMessage) + nonSystem else nonSystem
+    val kept = blocks.drop(firstKept)
+        .flatten()
+        .dropWhile { (it["role"] as? String) == "tool" }
+    return if (systemMessage != null) listOf(systemMessage) + kept else kept
+}
+
+/** 循环内裁剪后工具结果正文的最小保留长度（字符）；短于此长度的结果不值得裁剪。 */
+private const val IN_LOOP_TOOL_RESULT_MIN_KEEP = 400
+
+/** 循环内裁剪保留的最近消息条数（当前工作进度通常在这几条里）。 */
+private const val IN_LOOP_RECENT_MESSAGES_KEPT = 6
+
+/**
+ * 循环内上下文管理：按 token 预算裁剪历史工具结果。
+ *
+ * 与轮次之间的自动压缩互补——一次长任务往往在"一轮"内就堆满上下文：
+ * 每个工具结果都可能上万字符，几十次调用后必然超出模型窗口，而轮次之间的压缩根本来不及触发。
+ *
+ * 只裁剪 `role == "tool"` 的消息正文（保留 role / tool_call_id / name 等结构）：
+ * 直接删除 tool 消息会让部分模型报 "tool message without preceding tool_calls"。
+ * 裁剪从最旧开始，最近 [IN_LOOP_RECENT_MESSAGES_KEPT] 条消息始终保留。
+ *
+ * @return 本次裁剪的说明文本；未发生裁剪时返回 null。
+ */
+internal fun manageInLoopContextBudget(
+    toolMessages: MutableList<MutableMap<String, Any>>,
+    budgetTokens: Int,
+    outputReserveRatio: Double = 0.2
+): String? {
+    if (budgetTokens <= 0) return null
+    val usable = (budgetTokens * (1.0 - outputReserveRatio.coerceIn(0.0, 0.6))).toInt()
+    if (usable <= 0) return null
+    val before = estimateLocalMessagesTokens(toolMessages)
+    if (before <= usable) return null
+
+    var elided = 0
+    val elisionLimit = (toolMessages.size - IN_LOOP_RECENT_MESSAGES_KEPT).coerceAtLeast(0)
+    for (index in 0 until elisionLimit) {
+        if (estimateLocalMessagesTokens(toolMessages) <= usable) break
+        val message = toolMessages[index]
+        if (!(message["role"] as? String).equals("tool", ignoreCase = true)) continue
+        val content = message["content"] as? String ?: continue
+        if (content.length <= IN_LOOP_TOOL_RESULT_MIN_KEEP) continue
+        message["content"] = "[历史工具结果已因上下文预算裁剪，原始长度 ${content.length} 字符。" +
+            "如果仍然需要这些信息，请重新调用对应工具获取。]"
+        elided++
+    }
+
+    if (elided == 0) {
+        // 没有可裁剪的历史工具结果（例如几个巨大的结果都落在最近消息里）：
+        // 用整体硬裁剪兜底，保证本轮请求不会直接超出模型窗口。
+        val allowedChars = (usable * 2).coerceAtLeast(4_000)
+        val hardTrimmed = trimMessages(toolMessages, maxTotalChars = allowedChars)
+        val removed = toolMessages.size - hardTrimmed.size
+        if (removed <= 0) return null
+        toolMessages.clear()
+        toolMessages.addAll(hardTrimmed.map { it.toMutableMap() })
+        return "硬裁剪移除 $removed 条最旧消息（预算 $usable token）"
+    }
+
+    val after = estimateLocalMessagesTokens(toolMessages)
+    return "裁剪 $elided 条工具结果（$before → $after token，预算 $usable）"
 }
 
 /** 将知识库文本注入到 system 消息中 */
@@ -582,55 +717,117 @@ suspend fun runToolCallLoop(
                 if (responseReasoning.isNotBlank()) {
                     // DeepSeek 等提供商要求后续工具轮次原样带回 reasoning_content。
                     put("reasoning_content", responseReasoning)
+                    // Anthropic 扩展思考还要求带回思考块签名（signature），
+                    // 缺失会让下一轮带工具结果的请求被服务端判为非法。
+                    (response["thinking_signature"] as? String)
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { put("reasoning_signature", it) }
                 }
             }.toMutableMap())
 
-            // 执行每个工具调用
+            // 执行每个工具调用：连续的只读工具并行执行（结果顺序与副作用顺序保持不变）
             var loopAbortMessage: String? = null
-            for (toolCall in toolCalls) {
+            var callIndex = 0
+            while (callIndex < toolCalls.size) {
                 if (shouldStop()) {
                     return result(stopped = true, iterations = iteration + 1)
                 }
-                hooks?.onToolStart?.invoke(toolCall, thinkingContent, iteration, toolMessages.map { it.toMap() })
+                val batch = nextParallelToolBatch(toolCalls, callIndex)
+                if (batch.isEmpty()) break
 
-                val loopGuardMessage = loopAbortMessage ?: loopGuard.inspect(toolCall)
-                if (loopAbortMessage == null && loopGuardMessage != null) {
-                    loopAbortMessage = loopGuardMessage
+                // 1) 预检串行执行：守卫与参数校验的顺序必须稳定，越界调用直接返回错误结果。
+                val prepared = batch.map { toolCall ->
+                    hooks?.onToolStart?.invoke(toolCall, thinkingContent, iteration, toolMessages.map { it.toMap() })
+                    val loopGuardMessage = loopAbortMessage ?: loopGuard.inspect(toolCall)
+                    if (loopAbortMessage == null && loopGuardMessage != null) {
+                        loopAbortMessage = loopGuardMessage
+                    }
+                    val validationMessage = validateAgentToolCall(toolCall)
+                    Triple(toolCall, loopGuardMessage, validationMessage)
                 }
-                val validationMessage = validateAgentToolCall(toolCall)
-                val toolResult = if (loopGuardMessage != null || validationMessage != null) {
-                    mapOf(
-                        "success" to false,
-                        "error" to (loopGuardMessage ?: validationMessage.orEmpty())
-                    )
+
+                // 2) 执行：只读工具并行，其余（含单个调用）串行。
+                val snapshot = toolMessages.map { it.toMap() }
+                val outcomes: List<ToolCallOutcome> = if (batch.size > 1) {
+                    coroutineScope {
+                        prepared.map { (toolCall, loopGuardMessage, validationMessage) ->
+                            async(Dispatchers.IO) {
+                                if (loopGuardMessage != null || validationMessage != null) {
+                                    return@async ToolCallOutcome(
+                                        toolCall,
+                                        mapOf(
+                                            "success" to false,
+                                            "error" to (loopGuardMessage ?: validationMessage.orEmpty())
+                                        ),
+                                        null
+                                    )
+                                }
+                                var exitContent: String? = null
+                                val value = try {
+                                    toolExecutor(toolCall, thinkingContent, iteration, snapshot)
+                                } catch (e: ToolLoopExit) {
+                                    exitContent = e.finalContent
+                                    emptyMap()
+                                }
+                                ToolCallOutcome(toolCall, value, exitContent)
+                            }
+                        }.map { it.await() }
+                    }
                 } else {
-                    try {
-                        toolExecutor(toolCall, thinkingContent, iteration, toolMessages.map { it.toMap() })
-                    } catch (e: ToolLoopExit) {
-                        return result(finalContentArg = e.finalContent, iterations = iteration + 1)
+                    prepared.map { (toolCall, loopGuardMessage, validationMessage) ->
+                        if (loopGuardMessage != null || validationMessage != null) {
+                            ToolCallOutcome(
+                                toolCall,
+                                mapOf(
+                                    "success" to false,
+                                    "error" to (loopGuardMessage ?: validationMessage.orEmpty())
+                                ),
+                                null
+                            )
+                        } else {
+                            var exitContent: String? = null
+                            val value = try {
+                                toolExecutor(toolCall, thinkingContent, iteration, snapshot)
+                            } catch (e: ToolLoopExit) {
+                                exitContent = e.finalContent
+                                emptyMap()
+                            }
+                            ToolCallOutcome(toolCall, value, exitContent)
+                        }
                     }
                 }
-                if (shouldStop()) {
-                    return result(stopped = true, iterations = iteration + 1)
+
+                // 3) 结果处理串行执行：保证 tool 消息顺序与模型给出的 tool_calls 顺序一致。
+                for (outcome in outcomes) {
+                    if (outcome.exitContent != null) {
+                        return result(finalContentArg = outcome.exitContent, iterations = iteration + 1)
+                    }
+                    if (shouldStop()) {
+                        return result(stopped = true, iterations = iteration + 1)
+                    }
+                    val toolCall = outcome.toolCall
+                    val toolResult = outcome.result
+
+                    var toolHistoryMessage: Map<String, Any>? = null
+                    if (hooks?.onToolResult != null) {
+                        toolHistoryMessage = hooks.onToolResult.invoke(
+                            toolCall, toolResult, thinkingContent, iteration, toolMessages.map { it.toMap() }
+                        )
+                    }
+
+                    if (toolHistoryMessage == null) {
+                        toolHistoryMessage = mapOf(
+                            "role" to "tool",
+                            "tool_call_id" to (toolCall["id"] as? String ?: ""),
+                            "name" to (toolCall["name"] as? String ?: ""),
+                            "content" to buildToolMessageContent(toolResult)
+                        )
+                    }
+
+                    toolMessages.add(toolHistoryMessage.toMutableMap())
                 }
 
-                var toolHistoryMessage: Map<String, Any>? = null
-                if (hooks?.onToolResult != null) {
-                    toolHistoryMessage = hooks.onToolResult.invoke(
-                        toolCall, toolResult, thinkingContent, iteration, toolMessages.map { it.toMap() }
-                    )
-                }
-
-                if (toolHistoryMessage == null) {
-                    toolHistoryMessage = mapOf(
-                        "role" to "tool",
-                        "tool_call_id" to (toolCall["id"] as? String ?: ""),
-                        "name" to (toolCall["name"] as? String ?: ""),
-                        "content" to buildToolMessageContent(toolResult)
-                    )
-                }
-
-                toolMessages.add(toolHistoryMessage.toMutableMap())
+                callIndex += batch.size
             }
             hooks?.onCheckpoint?.invoke(iteration, toolMessages.map { it.toMap() })
             loopAbortMessage?.let { message ->
