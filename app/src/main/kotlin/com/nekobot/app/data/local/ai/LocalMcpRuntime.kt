@@ -148,24 +148,46 @@ internal class LocalMcpRuntime(
     )
 
     private val connections = linkedMapOf<String, Connection>()
+    /** 连接表的读写锁：只保护 connections / 连接建立与断开，不覆盖工具调用本身。 */
+    private val connectionsLock = Any()
+    /**
+     * 每个 MCP 服务一把调用锁。
+     *
+     * 原实现对整个运行时用 @Synchronized，导致"调用任何一个 MCP 工具"都会阻塞其他会话、
+     * 其他服务的调用，也让工具循环里的并行执行退化为串行。MCP 传输层不支持单连接并发请求，
+     * 因此保留"同连接串行、不同连接并行"的粒度。
+     */
+    private val connectionLocks = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.locks.ReentrantLock>()
+    /**
+     * 正在执行的 MCP 工具调用：会话 → 请求标签（空串表示未带标签）。
+     * 用映射而非单字段，保证并发调用时中断能精确命中对应会话；
+     * 注意 ConcurrentHashMap 不接受 null 值，因此 null 标签统一存为空串。
+     */
+    private val activeToolCalls =
+        java.util.concurrent.ConcurrentHashMap<McpTransportSession, String>()
+
     @Volatile
     private var activeToolSession: McpTransportSession? = null
     @Volatile
     private var activeToolRequestTag: String? = null
 
-    @Synchronized
+    private fun connectionLockFor(serverId: String): java.util.concurrent.locks.ReentrantLock =
+        connectionLocks.computeIfAbsent(serverId) { java.util.concurrent.locks.ReentrantLock() }
+
     fun connect(server: LocalMcpServerEntity): List<LocalMcpTool> {
         disconnect(server.id)
         val session = createSession(server)
         return try {
             val initialized = initialize(session)
-            connections[server.id] = Connection(
-                serverId = server.id,
-                session = session,
-                tools = initialized.tools,
-                protocolVersion = initialized.protocolVersion,
-                serverInfo = initialized.serverInfo
-            )
+            synchronized(connectionsLock) {
+                connections[server.id] = Connection(
+                    serverId = server.id,
+                    session = session,
+                    tools = initialized.tools,
+                    protocolVersion = initialized.protocolVersion,
+                    serverInfo = initialized.serverInfo
+                )
+            }
             runCatching {
                 LocalLogger.i(
                     TAG,
@@ -189,26 +211,24 @@ internal class LocalMcpRuntime(
         }
     }
 
-    @Synchronized
     fun disconnect(serverId: String) {
-        val connection = connections.remove(serverId) ?: return
+        val connection = synchronized(connectionsLock) { connections.remove(serverId) } ?: return
         runCatching { connection.session.close() }
             .onFailure { LocalLogger.w(TAG, "断开 MCP 失败: $serverId", it) }
     }
 
-    @Synchronized
-    fun isConnected(serverId: String): Boolean = connections.containsKey(serverId)
+    fun isConnected(serverId: String): Boolean =
+        synchronized(connectionsLock) { connections.containsKey(serverId) }
 
-    @Synchronized
-    fun toolCount(serverId: String): Int = connections[serverId]?.tools?.size ?: 0
+    fun toolCount(serverId: String): Int =
+        synchronized(connectionsLock) { connections[serverId]?.tools?.size ?: 0 }
 
-    @Synchronized
     fun getServerTools(serverId: String): List<LocalMcpTool> =
-        connections[serverId]?.tools.orEmpty()
+        synchronized(connectionsLock) { connections[serverId]?.tools.orEmpty() }
 
-    @Synchronized
     fun getOpenAiToolDefinitions(serverIds: Set<String>? = null): List<Map<String, Any>> {
-        return connections.values
+        val snapshot = synchronized(connectionsLock) { connections.values.toList() }
+        return snapshot
             .filter { serverIds == null || it.serverId in serverIds }
             .flatMap { connection ->
                 connection.tools.map { tool ->
@@ -230,8 +250,9 @@ internal class LocalMcpRuntime(
     /**
      * 按 Agent 中的完整工具名调用 MCP 工具。
      * 返回 Map 是为了直接接入现有 AIPipeline 的工具结果消息。
+     *
+     * 并发粒度：同一 MCP 服务串行（传输层一次只处理一个请求），不同服务可并行。
      */
-    @Synchronized
     fun executeByFullName(
         fullName: String,
         arguments: Map<String, Any>,
@@ -240,12 +261,19 @@ internal class LocalMcpRuntime(
         val parsed = parseMcpToolName(fullName)
             ?: return failure("不是有效的 MCP 工具: $fullName")
         val (serverShort, toolName) = parsed
-        val connection = connections.values.firstOrNull {
-            it.serverId.replace("-", "").take(8) == serverShort
+        val connection = synchronized(connectionsLock) {
+            connections.values.firstOrNull {
+                it.serverId.replace("-", "").take(8) == serverShort
+            }
         } ?: return failure("MCP 服务未连接或已断开: $fullName")
 
-        activeToolSession = connection.session
-        activeToolRequestTag = requestTag
+        val lock = connectionLockFor(connection.serverId)
+        lock.lock()
+        activeToolCalls[connection.session] = requestTag.orEmpty()
+        if (activeToolCalls.size == 1) {
+            activeToolSession = connection.session
+            activeToolRequestTag = requestTag
+        }
         return try {
             val response = connection.session.request(
                 method = "tools/call",
@@ -259,24 +287,33 @@ internal class LocalMcpRuntime(
             LocalLogger.e(TAG, "MCP 工具调用失败: $fullName", error)
             failure(error.message ?: "MCP 工具调用失败")
         } finally {
+            activeToolCalls.remove(connection.session)
             if (activeToolSession === connection.session) {
-                activeToolSession = null
-                activeToolRequestTag = null
+                activeToolSession = activeToolCalls.keys.firstOrNull()
+                activeToolRequestTag = activeToolSession
+                    ?.let { activeToolCalls[it] }
+                    ?.takeIf { it.isNotBlank() }
             }
+            lock.unlock()
         }
     }
 
-    /** 中断当前 MCP 工具请求，但保留已建立的 MCP 会话供后续继续使用。 */
+    /** 中断 MCP 工具请求，但保留已建立的 MCP 会话供后续继续使用。 */
     fun cancelActiveToolCall(requestTag: String? = null) {
-        if (requestTag == null || activeToolRequestTag == requestTag) {
-            activeToolSession?.cancelPendingRequests()
+        val targets = activeToolCalls.entries
+            .filter { (_, tag) -> requestTag == null || tag == requestTag }
+            .map { it.key }        // 兼容旧字段：并发映射为空时仍尝试中断最近一次登记的会话。
+        val legacy = activeToolSession
+        if (targets.isEmpty() && legacy != null && (requestTag == null || activeToolRequestTag == requestTag)) {
+            legacy.cancelPendingRequests()
+            return
         }
+        targets.forEach { session -> runCatching { session.cancelPendingRequests() } }
     }
 
-    @Synchronized
     override fun close() {
         cancelActiveToolCall()
-        connections.keys.toList().forEach(::disconnect)
+        synchronized(connectionsLock) { connections.keys.toList() }.forEach(::disconnect)
     }
 
     private fun createSession(server: LocalMcpServerEntity): McpTransportSession {
