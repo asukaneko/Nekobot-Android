@@ -808,7 +808,8 @@ internal class LocalPipelineCallbacks(
                         models = modelQueueFor(ctx),
                         messages = messages,
                         extra = extra,
-                        requiredContextTokens = estimateLocalMessagesTokens(messages)
+                        requiredContextTokens = estimateLocalMessagesTokens(messages),
+                        requestTag = session.id
                     ).collect { event ->
                         if (generationController.isStopped) {
                             throw kotlinx.coroutines.CancellationException("生成已停止")

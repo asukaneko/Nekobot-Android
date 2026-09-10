@@ -4,6 +4,7 @@ import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.nekobot.app.data.local.db.LocalAiModelEntity
+import com.nekobot.app.data.local.oauth.LocalOAuthProviders
 import com.nekobot.app.data.local.oauth.OAuthRuntimeCredential
 import com.nekobot.app.data.model.ReasoningEffort
 import com.nekobot.app.data.remote.RealtimeEvent
@@ -137,6 +138,13 @@ internal fun shouldFailoverForAssistantContent(content: String): Boolean {
 
 private const val FAILOVER_REFUSAL_MAX_CHARS = 240
 
+/**
+ * OpenCode Zen / Go 网关要求客户端标识自身并携带稳定的会话 ID
+ * （x-opencode-session），否则返回 400 MissingSessionID 无法路由。
+ * 参考 https://opencode.ai/docs/go/#where-can-i-use-it
+ */
+private const val OPENCODE_USER_AGENT = "Nekobot-Android"
+
 private val FAILOVER_REFUSAL_PREFIXES = listOf(
     "你好我无法给到相关内容",
     "你好我无法给到相关的内容",
@@ -204,7 +212,8 @@ class LocalAiClient(
     fun chatStream(
         model: LocalAiModelEntity,
         messages: List<Map<String, Any>>,
-        extra: Map<String, Any?> = emptyMap()
+        extra: Map<String, Any?> = emptyMap(),
+        requestTag: String? = null
     ): Flow<RealtimeEvent> = flow {
         emit(RealtimeEvent.StreamStart(null))
 
@@ -223,8 +232,10 @@ class LocalAiClient(
                 apiKey = runtimeModel.apiKey
             )
             val headers = mergeRuntimeHeaders(
+                runtimeModel,
                 protocol.buildHeaders(runtimeModel.apiKey, stream = true),
-                credential
+                credential,
+                requestTag
             )
             response = executeChatHttpRequest(
                 model = runtimeModel,
@@ -361,8 +372,10 @@ class LocalAiClient(
             apiKey = runtimeModel.apiKey
         )
         val headers = mergeRuntimeHeaders(
+            runtimeModel,
             protocol.buildHeaders(runtimeModel.apiKey, stream = false),
-            credential
+            credential,
+            requestTag
         )
         return try {
             executeChatHttpRequest(
@@ -429,8 +442,10 @@ class LocalAiClient(
             apiKey = model.apiKey
         )
         val headers = mergeRuntimeHeaders(
+            model,
             protocol.buildHeaders(model.apiKey, stream = true),
-            credential
+            credential,
+            requestTag
         )
         return executeChatHttpRequest(
             model = model,
@@ -577,14 +592,51 @@ class LocalAiClient(
     }
 
     private fun mergeRuntimeHeaders(
+        model: LocalAiModelEntity,
         protocolHeaders: Map<String, String>,
-        credential: OAuthRuntimeCredential?
+        credential: OAuthRuntimeCredential?,
+        requestTag: String? = null
     ): Map<String, String> {
-        if (credential == null) return protocolHeaders
-        return protocolHeaders.toMutableMap().apply {
-            credential.removeHeaders.forEach(::remove)
-            putAll(credential.extraHeaders)
+        val merged = protocolHeaders.toMutableMap()
+        if (credential != null) {
+            credential.removeHeaders.forEach(merged::remove)
+            merged.putAll(credential.extraHeaders)
         }
+        applyOpenCodeRoutingHeaders(merged, model, requestTag)
+        return merged
+    }
+
+    /**
+     * OpenCode Zen / Go 网关要求每个对话使用稳定的 x-opencode-session，
+     * 并建议客户端使用自有 User-Agent（而非 okhttp 等通用库名）。
+     * 聊天请求使用会话 ID；辅助任务（标题、评分等）退回到账号/模型级别的稳定 ID。
+     */
+    private fun applyOpenCodeRoutingHeaders(
+        headers: MutableMap<String, String>,
+        model: LocalAiModelEntity,
+        requestTag: String?
+    ) {
+        if (!isOpenCodeEndpoint(model)) return
+        headers["User-Agent"] = OPENCODE_USER_AGENT
+        headers["x-opencode-session"] = requestTag
+            ?.takeIf(String::isNotBlank)
+            ?: stableOpenCodeSessionId(model)
+    }
+
+    private fun isOpenCodeEndpoint(model: LocalAiModelEntity): Boolean {
+        val provider = model.provider.orEmpty().lowercase()
+        if (
+            provider == LocalOAuthProviders.OPENCODE_ZEN ||
+            provider == LocalOAuthProviders.OPENCODE_GO
+        ) {
+            return true
+        }
+        return model.baseUrl.lowercase().contains("opencode.ai/zen")
+    }
+
+    private fun stableOpenCodeSessionId(model: LocalAiModelEntity): String {
+        val seed = model.oauthAccountId?.takeIf(String::isNotBlank) ?: model.id
+        return UUID.nameUUIDFromBytes("opencode-session:$seed".toByteArray()).toString()
     }
 
     private fun normalizeProtocolExtra(
@@ -928,7 +980,8 @@ class LocalAiClient(
         models: List<LocalAiModelEntity>,
         messages: List<Map<String, Any>>,
         extra: Map<String, Any?> = emptyMap(),
-        requiredContextTokens: Int? = null
+        requiredContextTokens: Int? = null,
+        requestTag: String? = null
     ): Flow<RealtimeEvent> = flow {
         if (models.isEmpty()) {
             emit(RealtimeEvent.Error("无可用模型"))
@@ -974,8 +1027,10 @@ class LocalAiClient(
                 apiKey = runtimeModel.apiKey
             )
             val headers = mergeRuntimeHeaders(
+                runtimeModel,
                 protocol.buildHeaders(runtimeModel.apiKey, stream = true),
-                credential
+                credential,
+                requestTag
             )
             var response: Response? = null
             try {
@@ -2082,6 +2137,7 @@ class LocalAiClient(
             "input" to inputs
         )
         val headers = mergeRuntimeHeaders(
+            runtimeModel,
             mapOf(
                 "Authorization" to "Bearer ${runtimeModel.apiKey}",
                 "api-key" to runtimeModel.apiKey,

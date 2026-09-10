@@ -4489,7 +4489,8 @@ class LocalRepository(
             models = queue,
             messages = messages,
             extra = extra,
-            requiredContextTokens = estimateLocalMessagesTokens(messages)
+            requiredContextTokens = estimateLocalMessagesTokens(messages),
+            requestTag = sessionId
         ).collect { event ->
             when (event) {
                 is RealtimeEvent.StreamChunk -> {
@@ -4710,7 +4711,8 @@ class LocalRepository(
             models = queue,
             messages = promptMessages,
             extra = extra,
-            requiredContextTokens = estimateLocalMessagesTokens(promptMessages)
+            requiredContextTokens = estimateLocalMessagesTokens(promptMessages),
+            requestTag = sessionId
         ).collect { event ->
             when (event) {
                 is RealtimeEvent.StreamChunk -> {
