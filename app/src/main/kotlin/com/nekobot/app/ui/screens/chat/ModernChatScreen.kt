@@ -2531,6 +2531,12 @@ private fun toolNameResId(id: String): Int = when (id) {
     "get_weather" -> R.string.tool_name_get_weather
     "search_web" -> R.string.tool_name_search_web
     "http_get" -> R.string.tool_name_http_get
+    "web_fetch" -> R.string.tool_name_web_fetch
+    "grep" -> R.string.tool_name_grep
+    "glob" -> R.string.tool_name_glob
+    "subagent_kill" -> R.string.tool_name_subagent_kill
+    "todo_read" -> R.string.tool_name_todo_read
+    "shell_job" -> R.string.tool_name_shell_job
     "get_date_time" -> R.string.tool_name_get_date_time
     "download_file" -> R.string.tool_name_download_file
     "browser_use" -> R.string.tool_name_browser_use

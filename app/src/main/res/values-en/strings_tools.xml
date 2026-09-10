@@ -3,10 +3,14 @@
     <string name="tool_name_get_weather">Weather</string>
     <string name="tool_name_search_web">Web search</string>
     <string name="tool_name_http_get">HTTP GET</string>
+    <string name="tool_name_web_fetch">Fetch web page text</string>
+    <string name="tool_name_grep">Search text in workspace</string>
+    <string name="tool_name_glob">List files by pattern</string>
     <string name="tool_name_get_date_time">Date &amp; time</string>
     <string name="tool_name_download_file">Download file</string>
     <string name="tool_name_browser_use">Use browser</string>
     <string name="tool_name_exec_command">Run Linux command</string>
+    <string name="tool_name_shell_job">Manage background commands</string>
     <string name="tool_name_file_read">Read file</string>
     <string name="tool_name_file_write">Write file</string>
     <string name="tool_name_file_edit">Edit file</string>
@@ -28,6 +32,7 @@
     <string name="tool_name_agent_memory_read">Read global memory</string>
     <string name="tool_name_agent_memory_update">Edit global memory</string>
     <string name="tool_name_todo_write">Task list</string>
+    <string name="tool_name_todo_read">Read current todo list</string>
     <string name="tool_name_ask_user_question">Ask user</string>
     <string name="tool_name_get_session_thinking_history">Thinking history</string>
     <string name="tool_name_send_message">Send message</string>
@@ -111,6 +116,7 @@
     <string name="tool_name_db_get_ai_config">Get AI config</string>
     <string name="tool_name_db_update_ai_config">Update AI config</string>
     <string name="tool_name_subagent">Subagent delegation</string>
+    <string name="tool_name_subagent_kill">Stop background subagent</string>
     <string name="tool_name_subagent_list">Subagent task list</string>
     <string name="tool_name_subagent_get">Query subagent result</string>
 </resources>

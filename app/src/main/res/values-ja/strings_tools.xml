@@ -3,10 +3,14 @@
     <string name="tool_name_get_weather">天気を調べる</string>
     <string name="tool_name_search_web">ウェブ検索</string>
     <string name="tool_name_http_get">HTTP GET リクエスト</string>
+    <string name="tool_name_web_fetch">Web ページ本文を取得</string>
+    <string name="tool_name_grep">ワークスペース内を検索</string>
+    <string name="tool_name_glob">パターンでファイル一覧</string>
     <string name="tool_name_get_date_time">日時を取得</string>
     <string name="tool_name_download_file">ファイルをダウンロード</string>
     <string name="tool_name_browser_use">ブラウザ操作</string>
     <string name="tool_name_exec_command">Linux コマンド実行</string>
+    <string name="tool_name_shell_job">バックグラウンドコマンドを管理</string>
     <string name="tool_name_file_read">ファイルを読む</string>
     <string name="tool_name_file_write">ファイルを書く</string>
     <string name="tool_name_file_edit">ファイルを編集</string>
@@ -28,6 +32,7 @@
     <string name="tool_name_agent_memory_read">グローバル記憶を読む</string>
     <string name="tool_name_agent_memory_update">グローバル記憶を編集</string>
     <string name="tool_name_todo_write">タスクリスト</string>
+    <string name="tool_name_todo_read">現在のタスク一覧を読み取る</string>
     <string name="tool_name_ask_user_question">ユーザーに質問</string>
     <string name="tool_name_get_session_thinking_history">思考履歴を取得</string>
     <string name="tool_name_send_message">メッセージを送信</string>
@@ -111,6 +116,7 @@
     <string name="tool_name_db_get_ai_config">AI 設定を取得</string>
     <string name="tool_name_db_update_ai_config">AI 設定を更新</string>
     <string name="tool_name_subagent">サブエージェント委任</string>
+    <string name="tool_name_subagent_kill">バックグラウンド子エージェントを停止</string>
     <string name="tool_name_subagent_list">サブエージェントタスク一覧</string>
     <string name="tool_name_subagent_get">サブエージェント結果取得</string>
 </resources>

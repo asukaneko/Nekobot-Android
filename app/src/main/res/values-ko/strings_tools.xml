@@ -3,10 +3,14 @@
     <string name="tool_name_get_weather">날씨 조회</string>
     <string name="tool_name_search_web">웹 검색</string>
     <string name="tool_name_http_get">HTTP GET 요청</string>
+    <string name="tool_name_web_fetch">웹 페이지 본문 가져오기</string>
+    <string name="tool_name_grep">작업 공간 텍스트 검색</string>
+    <string name="tool_name_glob">패턴으로 파일 목록</string>
     <string name="tool_name_get_date_time">날짜·시간 조회</string>
     <string name="tool_name_download_file">파일 다운로드</string>
     <string name="tool_name_browser_use">브라우저 사용</string>
     <string name="tool_name_exec_command">Linux 명령 실행</string>
+    <string name="tool_name_shell_job">백그라운드 명령 관리</string>
     <string name="tool_name_file_read">파일 읽기</string>
     <string name="tool_name_file_write">파일 쓰기</string>
     <string name="tool_name_file_edit">파일 편집</string>
@@ -28,6 +32,7 @@
     <string name="tool_name_agent_memory_read">전역 기억 읽기</string>
     <string name="tool_name_agent_memory_update">전역 기억 편집</string>
     <string name="tool_name_todo_write">작업 목록</string>
+    <string name="tool_name_todo_read">현재 작업 목록 읽기</string>
     <string name="tool_name_ask_user_question">사용자에게 질문</string>
     <string name="tool_name_get_session_thinking_history">사고 이력 조회</string>
     <string name="tool_name_send_message">메시지 전송</string>
@@ -111,6 +116,7 @@
     <string name="tool_name_db_get_ai_config">AI 설정 읽기</string>
     <string name="tool_name_db_update_ai_config">AI 설정 업데이트</string>
     <string name="tool_name_subagent">서브에이전트 위임</string>
+    <string name="tool_name_subagent_kill">백그라운드 하위 에이전트 중지</string>
     <string name="tool_name_subagent_list">서브에이전트 작업 목록</string>
     <string name="tool_name_subagent_get">서브에이전트 결과 조회</string>
 </resources>

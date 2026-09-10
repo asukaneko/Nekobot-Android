@@ -3,10 +3,14 @@
     <string name="tool_name_get_weather">查询天气</string>
     <string name="tool_name_search_web">网页搜索</string>
     <string name="tool_name_http_get">HTTP GET 请求</string>
+    <string name="tool_name_web_fetch">抓取网页正文</string>
+    <string name="tool_name_grep">在工作区中检索文本</string>
+    <string name="tool_name_glob">按通配符列出文件</string>
     <string name="tool_name_get_date_time">获取日期时间</string>
     <string name="tool_name_download_file">下载文件</string>
     <string name="tool_name_browser_use">浏览器使用</string>
     <string name="tool_name_exec_command">Linux 沙盒执行命令</string>
+    <string name="tool_name_shell_job">查询或终止后台命令</string>
     <string name="tool_name_file_read">读取沙盒文件</string>
     <string name="tool_name_file_write">写入沙盒文件</string>
     <string name="tool_name_file_edit">精确编辑沙盒文件</string>
@@ -28,6 +32,7 @@
     <string name="tool_name_agent_memory_read">读取全局记忆</string>
     <string name="tool_name_agent_memory_update">编辑全局记忆</string>
     <string name="tool_name_todo_write">任务列表</string>
+    <string name="tool_name_todo_read">读取当前任务列表</string>
     <string name="tool_name_ask_user_question">向用户提问</string>
     <string name="tool_name_get_session_thinking_history">获取思考历史</string>
     <string name="tool_name_send_message">发送消息</string>
@@ -111,6 +116,7 @@
     <string name="tool_name_db_get_ai_config">读取 AI 配置</string>
     <string name="tool_name_db_update_ai_config">更新 AI 配置</string>
     <string name="tool_name_subagent">子代理委派</string>
+    <string name="tool_name_subagent_kill">终止后台子代理</string>
     <string name="tool_name_subagent_list">子代理任务列表</string>
     <string name="tool_name_subagent_get">子代理结果查询</string>
 </resources>

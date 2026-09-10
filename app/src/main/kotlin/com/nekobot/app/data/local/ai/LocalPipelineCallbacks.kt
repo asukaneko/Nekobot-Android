@@ -204,6 +204,17 @@ internal class LocalPipelineCallbacks(
                 emitEvent(
                     RealtimeEvent.AgentTodosUpdated(session.id, todos)
                 )
+            },
+            todosProvider = {
+                // 每次都从数据库读最新值：工具循环内 todo_write 会即时落库，
+                // 用构造时的 session 实体快照会读到过期任务列表。
+                kotlinx.coroutines.runBlocking {
+                    runCatching {
+                        sessionDao.getById(session.id)?.agentTodos
+                            ?.let { com.nekobot.app.data.model.AgentTodo.fromJsonList(it) }
+                            .orEmpty()
+                    }.getOrDefault(emptyList())
+                }
             }
         )
     }
@@ -1494,7 +1505,8 @@ internal class LocalPipelineCallbacks(
                         "success" to true,
                         "background" to true,
                         "task_id" to task.id,
-                        "instruction" to "子代理已在后台运行。可用 subagent_list 查看状态、subagent_get 查询结果（任务 id=${task.id}）。"
+                        "instruction" to "子代理已在后台运行。可用 subagent_list 查看状态、subagent_get 查询结果（任务 id=${task.id}）；" +
+                            "任务结束时父会话会收到系统通知，无需反复轮询。"
                     )
                 }
 
@@ -1531,6 +1543,36 @@ internal class LocalPipelineCallbacks(
             "tool_calls" to t.toolCalls,
             if (t.status == SubagentTaskStatus.SUCCEEDED) "result" to t.result.take(20_000)
             else "error" to (t.error ?: "子代理执行失败")
+        )
+    }
+
+    /** subagent_kill：终止本会话中正在运行的后台子代理任务。 */
+    private fun killSubagentTask(args: Map<String, Any>): Map<String, Any> {
+        val id = args["task_id"]?.toString()?.trim().orEmpty()
+        if (id.isBlank()) return mapOf("success" to false, "error" to "task_id 不能为空")
+        val task = SubagentTaskStore.get(id)
+        if (task == null || task.sessionId != session.id) {
+            return mapOf("success" to false, "error" to "子代理任务不存在或不属于当前会话: $id")
+        }
+        if (!SubagentRunRegistry.cancel(id)) {
+            // 前台任务由父循环同步等待，无法从工具内部取消；已结束的任务也走到这里。
+            return mapOf(
+                "success" to false,
+                "task_id" to id,
+                "status" to task.status.name.lowercase(),
+                "error" to "该任务当前不在后台运行（可能已结束，或正在前台执行），未做任何操作。"
+            )
+        }
+        SubagentTaskStore.update(
+            id = id,
+            status = SubagentTaskStatus.KILLED,
+            error = "已被父会话通过 subagent_kill 终止"
+        )
+        return mapOf(
+            "success" to true,
+            "task_id" to id,
+            "status" to "killed",
+            "instruction" to "任务已终止。它的部分进展仍可用 subagent_get 查看；如需继续该工作，请重新委派并给出更明确的范围。"
         )
     }
 

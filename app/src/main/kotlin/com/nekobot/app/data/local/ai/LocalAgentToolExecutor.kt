@@ -29,9 +29,14 @@ internal val localExecutableToolIds = setOf(
     "plugin_use",
     "get_date_time",
     "todo_write",
+    "todo_read",
     "ask_user_question",
     "http_get",
+    "web_fetch",
+    "grep",
+    "glob",
     "exec_command",
+    "shell_job",
     "file_read",
     "file_write",
     "file_edit",
@@ -208,6 +213,13 @@ internal class LocalAgentToolExecutor(
      */
     private val onTodosUpdated: (List<com.nekobot.app.data.model.AgentTodo>) -> Unit = {},
     /**
+     * 读取当前会话任务列表（todo_read 工具）。
+     *
+     * 任务列表每轮都会注入系统提示词，但模型在长任务中途可能需要确认"还剩哪些没做"、
+     * 或校正自己记错的条目，此时直接读取比反复 todo_write 覆盖更安全。
+     */
+    private val todosProvider: () -> List<com.nekobot.app.data.model.AgentTodo> = { emptyList() },
+    /**
      * ask_user_question 等待管理器：AI 调用提问工具时在此挂起，
      * 用户在会话界面回答后通过 [LocalAskUserQuestionManager.resolve] 回填结果。
      * 为 null 时（如实时语音链路）工具返回不可用。
@@ -259,9 +271,14 @@ internal class LocalAgentToolExecutor(
                 "plugin_use" -> pluginTool.execute(args)
                 "get_date_time" -> getDateTime(args)
                 "todo_write" -> writeTodos(args)
+                "todo_read" -> readTodos()
                 "ask_user_question" -> askUserQuestion(args)
                 "http_get" -> httpGet(args)
+                "web_fetch" -> webFetch(args)
+                "grep" -> grepWorkspaceTool(args)
+                "glob" -> globWorkspaceTool(args)
                 "exec_command" -> execCommand(args)
+                "shell_job" -> shellJobTool(args)
                 "file_read" -> readWorkspaceFile(args)
                 "file_write" -> writeLinuxWorkspaceFile(args)
                 "file_edit" -> editLinuxWorkspaceFile(args)
@@ -465,6 +482,52 @@ internal class LocalAgentToolExecutor(
      * 参考 Claude Code / opencode 的 todowrite：AI 每次传入完整列表，
      * 无效项被丢弃，非法 status/priority 归一化为默认值。
      */
+    /**
+     * todo_read：读取当前会话的任务列表原样状态。
+     *
+     * 与 todo_write 的区别：不会改动任何条目，只回答"现在列表是什么样"，
+     * 适合在长任务中途确认进度，或校正模型自己记错的条目。
+     */
+    private fun readTodos(): Map<String, Any> {
+        val todos = runCatching { todosProvider() }.getOrDefault(emptyList())
+        if (todos.isEmpty()) {
+            return success(
+                "content" to "当前会话没有任何任务条目。需要多步骤工作流时先用 todo_write 建立任务列表。",
+                "count" to 0,
+                "items" to emptyList<Map<String, Any>>()
+            )
+        }
+        val items = todos.map { todo ->
+            mapOf(
+                "content" to todo.content,
+                "status" to todo.status,
+                "priority" to todo.priority
+            )
+        }
+        val mark = mapOf(
+            com.nekobot.app.data.model.AgentTodo.STATUS_PENDING to "[ ]",
+            com.nekobot.app.data.model.AgentTodo.STATUS_IN_PROGRESS to "[~]",
+            com.nekobot.app.data.model.AgentTodo.STATUS_COMPLETED to "[x]",
+            com.nekobot.app.data.model.AgentTodo.STATUS_CANCELLED to "[-]"
+        )
+        val activeCount = todos.count {
+            it.status != com.nekobot.app.data.model.AgentTodo.STATUS_COMPLETED &&
+                it.status != com.nekobot.app.data.model.AgentTodo.STATUS_CANCELLED
+        }
+        val content = buildString {
+            appendLine("当前任务列表（共 ${todos.size} 条，未完成 $activeCount 条）：")
+            todos.forEach { todo ->
+                appendLine("${mark[todo.status] ?: "[ ]"} ${todo.content}")
+            }
+            if (activeCount > 0) {
+                append("继续推进未完成的任务；每完成一项用 todo_write 更新对应条目的状态。")
+            } else {
+                append("所有条目均已完成或取消。除非用户提出新需求，不要重复这些工作。")
+            }
+        }
+        return success("content" to content, "count" to todos.size, "items" to items)
+    }
+
     private fun writeTodos(args: Map<String, Any>): Map<String, Any> {
         val rawTodos = args["todos"] as? List<*>
         if (rawTodos == null) return failure("todos 必须是任务数组")
@@ -709,6 +772,97 @@ internal class LocalAgentToolExecutor(
         }
     }
 
+    /**
+     * web_fetch：抓取网页并抽取可读正文。
+     *
+     * 与 http_get 的区别：http_get 返回原始响应体（适合 API/JSON），
+     * web_fetch 面向"阅读网页"，去掉脚本样式标签后返回纯文本，默认 20000 字符。
+     */
+    private fun webFetch(args: Map<String, Any>): Map<String, Any> {
+        val url = args.string("url")
+        if (url.isBlank()) return failure("URL 不能为空")
+        val maxChars = args.int("max_chars", LocalWebFetch.DEFAULT_MAX_CHARS)
+            .coerceIn(1_000, LocalWebFetch.MAX_CHARS_LIMIT)
+        val startIndex = args.int("start_index", 0).coerceAtLeast(0)
+        val requestBuilder = Request.Builder().url(url).get()
+        @Suppress("UNCHECKED_CAST")
+        (args["headers"] as? Map<String, Any>)?.forEach { (name, value) ->
+            requestBuilder.header(name, value.toString())
+        }
+        return withHttpResponse(requestBuilder.build()) { response ->
+            val raw = response.body?.string().orEmpty()
+            val contentType = response.header("Content-Type")
+            val isHtml = LocalWebFetch.looksLikeHtml(contentType, raw)
+            val text = if (isHtml) {
+                LocalWebFetch.extractReadableText(raw, maxChars)
+            } else {
+                raw.take(maxChars)
+            }
+            val sliced = if (startIndex > 0 && startIndex < text.length) text.substring(startIndex) else text
+            success(
+                "status" to response.code,
+                "url" to response.request.url.toString(),
+                "content_type" to (contentType ?: ""),
+                "extracted" to isHtml,
+                "content" to sliced,
+                "total_chars" to text.length
+            )
+        }
+    }
+
+    /** grep：在工作区内按正则检索，先定位再精确读取，避免整份读文件浪费上下文。 */
+    private fun grepWorkspaceTool(args: Map<String, Any>): Map<String, Any> {
+        val pattern = args.string("pattern")
+        if (pattern.isBlank()) return failure("pattern 不能为空")
+        val root = workspace ?: return failure("本地工作区不可用")
+        val pathPrefix = args.string("path").trim()
+        val fileGlob = args.string("glob").trim()
+        val limit = args.int("max_results", DEFAULT_SEARCH_LIMIT)
+            .coerceIn(1, MAX_SEARCH_LIMIT)
+        val caseSensitive = args["case_sensitive"] as? Boolean ?: false
+        val outcome = grepWorkspace(
+            root = root,
+            pattern = pattern,
+            pathPrefix = pathPrefix,
+            fileGlob = fileGlob,
+            limit = limit,
+            caseSensitive = caseSensitive
+        )
+        if (outcome.error != null) {
+            return failure("正则表达式无效: ${outcome.error}")
+        }
+        return success(
+            "content" to formatGrepOutcome(pattern, outcome, limit),
+            "match_count" to outcome.matches.size,
+            "scanned_files" to outcome.scannedFiles,
+            "truncated" to outcome.truncated,
+            "matches" to outcome.matches.map { match ->
+                mapOf(
+                    "path" to match.relativePath,
+                    "line" to match.lineNumber,
+                    "text" to match.line
+                )
+            }
+        )
+    }
+
+    /** glob：按通配模式列出工作区文件（`**` 跨目录）。 */
+    private fun globWorkspaceTool(args: Map<String, Any>): Map<String, Any> {
+        val pattern = args.string("pattern").trim()
+        if (pattern.isBlank()) return failure("pattern 不能为空（例如 **/*.kt）")
+        val root = workspace ?: return failure("本地工作区不可用")
+        val pathPrefix = args.string("path").trim()
+        val limit = args.int("max_results", DEFAULT_SEARCH_LIMIT)
+            .coerceIn(1, MAX_SEARCH_LIMIT)
+        val outcome = globWorkspace(root, pattern, pathPrefix, limit)
+        return success(
+            "content" to formatGlobOutcome(pattern, outcome, limit),
+            "file_count" to outcome.files.size,
+            "truncated" to outcome.truncated,
+            "files" to outcome.files.map { (path, size) -> mapOf("path" to path, "size" to size) }
+        )
+    }
+
     private suspend fun execCommand(args: Map<String, Any>): Map<String, Any> {
         val command = args.string("command")
         val timeoutSeconds = args.int("timeout", 30).coerceIn(1, 600)
@@ -716,32 +870,151 @@ internal class LocalAgentToolExecutor(
         policy.blockedReason?.let {
             return failure(it, "command" to command, "main_command" to policy.mainCommand)
         }
-        val activeWorkspace = workspace ?: return failure("本地工作区不可用")
-        activeWorkspace.mkdirs()
+        // 后台执行：授权仍在前台完成（不给后台留"偷偷拿到新权限"的路径），随后命令独立跑。
+        val background = args["background"] as? Boolean ?: false
+        val outcome = authorizeCommand(command, policy)
+        outcome.rejection?.let { return it }
+        if (generationController.isStopped) return stoppedFailure()
+        if (background) {
+            return startBackgroundCommand(command, timeoutSeconds, policy, outcome.label)
+        }
+        return runCommandOnce(command, policy.mainCommand, timeoutSeconds, outcome.label)
+    }
 
-        var authorization = "whitelist"
-        if (policy.requiresAuthorization) {
-            when (
-                authorizationManager.requestAuthorization(
-                    sessionId = sessionId,
-                    command = command,
-                    mainCommand = policy.mainCommand,
-                    onRequest = onConfirmationRequired
+    /** 命令授权结果：[label] 回填 authorization 字段；[rejection] 非空表示应直接返回该结果。 */
+    private class CommandAuthorizationOutcome(
+        val label: String,
+        val rejection: Map<String, Any>?
+    )
+
+    /** 策略判定之后的授权流程（白名单直接放行，其余走确认弹窗）。 */
+    private suspend fun authorizeCommand(
+        command: String,
+        policy: LocalCommandPolicy
+    ): CommandAuthorizationOutcome {
+        if (!policy.requiresAuthorization) return CommandAuthorizationOutcome("whitelist", null)
+        if (generationController.isStopped) return CommandAuthorizationOutcome("none", stoppedFailure())
+        return when (
+            authorizationManager.requestAuthorization(
+                sessionId = sessionId,
+                command = command,
+                mainCommand = policy.mainCommand,
+                onRequest = onConfirmationRequired
+            )
+        ) {
+            ExecAuthorization.Reject -> CommandAuthorizationOutcome(
+                "rejected",
+                if (generationController.isStopped) stoppedFailure()
+                else failure(
+                    "用户拒绝执行命令",
+                    "command" to command,
+                    "main_command" to policy.mainCommand
                 )
-            ) {
-                ExecAuthorization.Reject -> {
-                    if (generationController.isStopped) return stoppedFailure()
-                    return failure(
-                        "用户拒绝执行命令",
-                        "command" to command,
-                        "main_command" to policy.mainCommand
+            )
+            ExecAuthorization.Once -> CommandAuthorizationOutcome(
+                if (authorizationManager.isYoloEnabled(sessionId)) "yolo" else "once",
+                null
+            )
+            ExecAuthorization.Always -> CommandAuthorizationOutcome("always", null)
+        }
+    }
+
+    /** 启动后台命令并立即返回任务 id。 */
+    private fun startBackgroundCommand(
+        command: String,
+        timeoutSeconds: Int,
+        policy: LocalCommandPolicy,
+        authorizationLabel: String
+    ): Map<String, Any> {
+        if (LocalShellJobs.runningCount(sessionId) >= LocalShellJobs.MAX_JOBS_PER_SESSION) {
+            return failure(
+                "后台命令并发已达上限（${LocalShellJobs.MAX_JOBS_PER_SESSION}）。" +
+                    "请先用 shell_job(action=list) 查看并终止不再需要的任务。",
+                "command" to command
+            )
+        }
+        val job = LocalShellJobs.start(sessionId = sessionId, command = command) {
+            runCommandOnce(command, policy.mainCommand, timeoutSeconds, authorizationLabel)
+        }
+        return success(
+            "command" to command,
+            "job_id" to job.id,
+            "status" to "running",
+            "instruction" to "命令已在后台运行。用 shell_job(action=get, job_id=${job.id}) 查询输出，" +
+                "shell_job(action=kill, job_id=${job.id}) 终止；完成后父会话会收到系统通知，无需反复轮询。"
+        )
+    }
+
+    /** shell_job：查询/终止后台命令。 */
+    private fun shellJobTool(args: Map<String, Any>): Map<String, Any> {
+        val action = args.string("action").ifBlank { "list" }.lowercase()
+        val jobId = args.string("job_id").trim()
+        return when (action) {
+            "list" -> {
+                val jobs = LocalShellJobs.list(sessionId)
+                if (jobs.isEmpty()) {
+                    return success(
+                        "content" to "当前会话没有后台命令。长时间命令可用 exec_command 的 background=true 启动。",
+                        "count" to 0,
+                        "jobs" to emptyList<Map<String, Any>>()
                     )
                 }
-                ExecAuthorization.Once -> authorization = if (authorizationManager.isYoloEnabled(sessionId)) "yolo" else "once"
-                ExecAuthorization.Always -> authorization = "always"
+                val lines = jobs.joinToString("\n") { job ->
+                    "- ${job.id} [${job.status}] ${job.command.take(80)}" +
+                        (job.exitCode?.let { "（exit=$it）" } ?: "")
+                }
+                success(
+                    "content" to "当前会话有 ${jobs.size} 个后台命令：\n$lines",
+                    "count" to jobs.size,
+                    "jobs" to jobs.map { job ->
+                        mapOf(
+                            "job_id" to job.id,
+                            "command" to job.command,
+                            "status" to job.status,
+                            "exit_code" to (job.exitCode ?: -1)
+                        )
+                    }
+                )
             }
+            "get" -> {
+                if (jobId.isBlank()) return failure("get 需要 job_id")
+                val job = LocalShellJobs.get(sessionId, jobId)
+                    ?: return failure("未找到后台命令: $jobId")
+                success(
+                    "job_id" to job.id,
+                    "command" to job.command,
+                    "status" to job.status,
+                    "exit_code" to (job.exitCode ?: -1),
+                    "duration_ms" to ((job.finishedAt ?: System.currentTimeMillis()) - job.startedAt),
+                    "output" to job.output,
+                    "error" to (job.error ?: "")
+                )
+            }
+            "kill" -> {
+                if (jobId.isBlank()) return failure("kill 需要 job_id")
+                val job = LocalShellJobs.get(sessionId, jobId)
+                    ?: return failure("未找到后台命令: $jobId")
+                val killed = LocalShellJobs.kill(sessionId, jobId)
+                success(
+                    "job_id" to job.id,
+                    "status" to job.status,
+                    "killed" to killed,
+                    "note" to if (killed) "已终止该后台命令。" else "该命令当前不在运行（可能已结束）。"
+                )
+            }
+            else -> failure("不支持的 action: $action（支持 list / get / kill）")
         }
-        if (generationController.isStopped) return stoppedFailure()
+    }
+
+    /** 真正执行一次命令（策略与授权已在前置步骤完成）。 */
+    private suspend fun runCommandOnce(
+        command: String,
+        mainCommand: String,
+        timeoutSeconds: Int,
+        authorization: String
+    ): Map<String, Any> {
+        val activeWorkspace = workspace ?: return failure("本地工作区不可用")
+        activeWorkspace.mkdirs()
 
         val context = ServiceContainer.appContext
             ?: return failure("应用上下文不可用，无法启动 Linux 沙盒")
@@ -761,7 +1034,7 @@ internal class LocalAgentToolExecutor(
             return failure(
                 error.message ?: "Linux 沙盒命令执行失败",
                 "command" to command,
-                "main_command" to policy.mainCommand,
+                "main_command" to mainCommand,
                 "environment" to "alpine-linux",
                 "working_directory" to "/workspace",
             )
@@ -771,7 +1044,7 @@ internal class LocalAgentToolExecutor(
         if (result.stopped || generationController.isStopped) {
             return stoppedFailure(
                 "command" to command,
-                "main_command" to policy.mainCommand,
+                "main_command" to mainCommand,
                 "output" to result.output,
                 "environment" to "alpine-linux",
                 "working_directory" to "/workspace",
@@ -780,7 +1053,7 @@ internal class LocalAgentToolExecutor(
         return mapOf(
             "success" to (!result.timedOut && result.exitCode == 0),
             "command" to command,
-            "main_command" to policy.mainCommand,
+            "main_command" to mainCommand,
             "authorization" to authorization,
             "environment" to "Alpine Linux 3.21.3 (PRoot, arm64-v8a)",
             "working_directory" to "/workspace",

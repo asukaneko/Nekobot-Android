@@ -13,8 +13,14 @@ import com.google.gson.Gson
 internal const val TOOL_SUBAGENT = "subagent"
 internal const val TOOL_SUBAGENT_LIST = "subagent_list"
 internal const val TOOL_SUBAGENT_GET = "subagent_get"
+internal const val TOOL_SUBAGENT_KILL = "subagent_kill"
 
-internal val subagentToolIds = setOf(TOOL_SUBAGENT, TOOL_SUBAGENT_LIST, TOOL_SUBAGENT_GET)
+internal val subagentToolIds = setOf(
+    TOOL_SUBAGENT,
+    TOOL_SUBAGENT_LIST,
+    TOOL_SUBAGENT_GET,
+    TOOL_SUBAGENT_KILL
+)
 
 /** 子代理工具执行结果里的特殊键：标记需要向父会话派发后台任务。 */
 internal const val SUBAGENT_RESULT_KEYS = "_subagent_result"
@@ -75,6 +81,21 @@ internal fun buildSubagentToolDefinitions(): List<Map<String, Any>> {
                     "task_id" to mapOf(
                         "type" to "string",
                         "description" to "要查询的子代理任务 id（subagent_list 返回）。"
+                    )
+                ),
+                "required" to listOf("task_id")
+            )
+        ),
+        definition(
+            TOOL_SUBAGENT_KILL,
+            "终止一个正在运行的后台子代理任务。当任务已经跑偏、长时间无进展、或用户改变需求时使用，" +
+                "避免它继续消耗模型额度。终止后任务状态变为 killed，已产生的部分结果仍可用 subagent_get 查看。",
+            mapOf(
+                "type" to "object",
+                "properties" to mapOf(
+                    "task_id" to mapOf(
+                        "type" to "string",
+                        "description" to "要终止的子代理任务 id（subagent_list 返回）。"
                     )
                 ),
                 "required" to listOf("task_id")
