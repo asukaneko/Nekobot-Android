@@ -25,6 +25,7 @@
     <string name="accessibility_ime_target_not_found">No input field found to trigger the IME action</string>
     <string name="accessibility_ime_enter_requested">IME enter requested</string>
     <string name="accessibility_ime_enter_failed">IME enter failed</string>
+    <string name="accessibility_ime_enter_api_required">IME enter requires Android 11 or later</string>
     <string name="accessibility_paste_requested">Paste requested</string>
     <string name="accessibility_paste_failed">Paste failed (make sure the clipboard has content)</string>
     <string name="accessibility_screenshot_no_result">The system returned no screenshot result</string>

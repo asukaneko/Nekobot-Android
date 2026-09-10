@@ -120,6 +120,10 @@ class NekobotAccessibilityService : AccessibilityService() {
 
     /** 对指定节点或当前焦点/首个可编辑节点执行 IME 回车（触发搜索/确认）。 */
     internal fun imeEnter(target: AccessibilityNodeInfo?): AccessibilityActionResult {
+        // ACTION_IME_ENTER 是 API 30 新增的静态字段，低版本访问会抛 NoSuchFieldError。
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            return AccessibilityActionResult(false, getString(R.string.accessibility_ime_enter_api_required))
+        }
         val node = target
             ?: findFirst { it.isFocused }
             ?: findFirst { it.isEditable }

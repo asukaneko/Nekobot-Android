@@ -25,6 +25,7 @@
     <string name="accessibility_ime_target_not_found">IME アクションを実行できる入力欄が見つかりません</string>
     <string name="accessibility_ime_enter_requested">IME の Enter を要求しました</string>
     <string name="accessibility_ime_enter_failed">IME の Enter に失敗しました</string>
+    <string name="accessibility_ime_enter_api_required">IME の Enter には Android 11 以降が必要です</string>
     <string name="accessibility_paste_requested">貼り付けを要求しました</string>
     <string name="accessibility_paste_failed">貼り付けに失敗しました（クリップボードに内容があるか確認してください）</string>
     <string name="accessibility_screenshot_no_result">システムからスクリーンショット結果が返されませんでした</string>

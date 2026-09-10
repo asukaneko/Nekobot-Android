@@ -25,6 +25,7 @@
     <string name="accessibility_ime_target_not_found">未找到可触发输入法回车的输入框</string>
     <string name="accessibility_ime_enter_requested">已请求输入法回车</string>
     <string name="accessibility_ime_enter_failed">输入法回车失败</string>
+    <string name="accessibility_ime_enter_api_required">Android 11 及以上才支持输入法回车</string>
     <string name="accessibility_paste_requested">已请求粘贴文本</string>
     <string name="accessibility_paste_failed">粘贴失败（请确认剪贴板已有内容）</string>
     <string name="accessibility_screenshot_no_result">系统未返回截图结果</string>

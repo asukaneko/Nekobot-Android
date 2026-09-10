@@ -25,6 +25,7 @@
     <string name="accessibility_ime_target_not_found">IME 작업을 실행할 입력 상자를 찾을 수 없습니다</string>
     <string name="accessibility_ime_enter_requested">IME Enter를 요청했습니다</string>
     <string name="accessibility_ime_enter_failed">IME Enter 실패</string>
+    <string name="accessibility_ime_enter_api_required">IME Enter는 Android 11 이상에서 지원됩니다</string>
     <string name="accessibility_paste_requested">붙여넣기를 요청했습니다</string>
     <string name="accessibility_paste_failed">붙여넣기 실패(클립보드에 내용이 있는지 확인하세요)</string>
     <string name="accessibility_screenshot_no_result">시스템에서 스크린샷 결과를 반환하지 않았습니다</string>
