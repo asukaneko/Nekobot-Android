@@ -46,6 +46,7 @@ import com.nekobot.app.data.local.ai.RoutingDecisionLogger
 import com.nekobot.app.data.local.ai.TokenStatsManager
 import com.nekobot.app.data.local.ai.currentLocalContextTokens
 import com.nekobot.app.data.local.ai.addLocalAgentBasePrompt
+import com.nekobot.app.data.local.ai.addAgentEnvPrompt
 import com.nekobot.app.data.local.ai.addAgentTodosPrompt
 import com.nekobot.app.data.local.ai.addAgentGoalPrompt
 import com.nekobot.app.data.local.ai.addAgentSpecPrompt
@@ -5035,6 +5036,13 @@ class LocalRepository(
                 LocaleHelper.getEffectiveLocale(it, ServiceContainer.prefs.language).language
             } ?: Locale.getDefault().language
             ctx.promptStack.addLocalAgentBasePrompt(promptLanguage)
+            // 环境信息（时间/时区/设备/工作区布局）：Agent 模式没有角色模式的实时时间注入，
+            // 不注入的话模型无法判断日期与相对时间。
+            ctx.promptStack.addAgentEnvPrompt(
+                deviceSummary = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}，" +
+                    "Android ${android.os.Build.VERSION.RELEASE}（API ${android.os.Build.VERSION.SDK_INT}）",
+                language = promptLanguage
+            )
             ctx.promptStack.addAgentTodosPrompt(
                 com.nekobot.app.data.model.AgentTodo.fromJsonList(session.agentTodos)
             )
@@ -5620,6 +5628,12 @@ class LocalRepository(
             // 重新读取会话实体，确保注入的是最新持久化的目标与规格任务。
             val promptSession = sessionDao.getById(sessionId) ?: session
             ctx.promptStack.addLocalAgentBasePrompt(promptLanguage)
+            // 环境信息（时间/时区/设备/工作区布局）：Agent 模式没有角色模式的实时时间注入。
+            ctx.promptStack.addAgentEnvPrompt(
+                deviceSummary = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}，" +
+                    "Android ${android.os.Build.VERSION.RELEASE}（API ${android.os.Build.VERSION.SDK_INT}）",
+                language = promptLanguage
+            )
             ctx.promptStack.addAgentTodosPrompt(
                 com.nekobot.app.data.model.AgentTodo.fromJsonList(promptSession.agentTodos)
             )

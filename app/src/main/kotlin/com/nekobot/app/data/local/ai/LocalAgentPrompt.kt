@@ -96,6 +96,74 @@ internal fun buildLocalAgentBasePrompt(language: String = "zh"): String {
     }
 }
 
+/** 环境信息注入项 key（当前时间/时区/设备/工作区布局）。 */
+internal const val AGENT_ENV_PROMPT_KEY = "agent.env"
+
+/**
+ * 注入 Agent 运行环境信息（对齐 Claude Code / DSH 的 `<env>` 段）。
+ *
+ * Agent 模式此前完全没有时间注入：角色模式的现实时间/昼夜节律注入在 Agent 模式被跳过，
+ * 模型既不知道"今天几号、现在几点"，也无法可靠地按日期命名文件、计算相对时间或判断
+ * 用户提到的"明天"是哪天。这里始终注入时间、时区、设备与工作区布局。
+ */
+internal fun PromptStack.addAgentEnvPrompt(
+    now: java.time.ZonedDateTime = java.time.ZonedDateTime.now(),
+    deviceSummary: String? = null,
+    language: String = "zh"
+) {
+    val normalized = language.lowercase(Locale.ROOT).substringBefore('-').substringBefore('_')
+    val locale = when (normalized) {
+        "zh" -> Locale.SIMPLIFIED_CHINESE
+        "ja" -> Locale.JAPANESE
+        "ko" -> Locale.KOREAN
+        else -> Locale.US
+    }
+    val formatter = java.time.format.DateTimeFormatter
+        .ofPattern("yyyy-MM-dd HH:mm:ss EEEE", locale)
+    val timeText = now.format(formatter)
+    val offset = now.offset.id.replace("+0", "+").let { if (it == "Z") "UTC+00:00" else it }
+    val zoneId = now.zone.id
+    val device = deviceSummary?.trim().takeUnless { it.isNullOrBlank() }
+
+    val content = when (normalized) {
+        "zh" -> buildString {
+            appendLine("## 运行环境")
+            appendLine("- 当前时间：$timeText（时区 $zoneId，UTC 偏移 $offset）")
+            if (device != null) appendLine("- 设备：$device")
+            appendLine("- 工作区：/workspace 为本会话私有目录；/shared 为跨会话共享目录（工作区工具用 shared:// 前缀）")
+            appendLine("- 时间由设备本地时区提供；需要更精确的时间戳或换算时调用 get_date_time 工具，不要凭猜测处理日期。")
+        }
+        "ja" -> buildString {
+            appendLine("## 実行環境")
+            appendLine("- 現在時刻：$timeText（タイムゾーン $zoneId、UTC オフセット $offset）")
+            if (device != null) appendLine("- 端末：$device")
+            appendLine("- ワークスペース：/workspace はこのセッション専用、/shared はセッション間共有（ワークスペースツールでは shared:// 接頭辞）")
+            appendLine("- 時刻は端末のローカルタイムゾーンに基づきます。正確なタイムスタンプや換算が必要なときは get_date_time を呼び、日付を推測しないでください。")
+        }
+        "ko" -> buildString {
+            appendLine("## 실행 환경")
+            appendLine("- 현재 시각: $timeText (시간대 $zoneId, UTC 오프셋 $offset)")
+            if (device != null) appendLine("- 기기: $device")
+            appendLine("- 작업 공간: /workspace는 이 세션 전용, /shared는 세션 간 공유(작업 공간 도구에서는 shared:// 접두사)")
+            appendLine("- 시각은 기기의 로컬 시간대 기준입니다. 정확한 타임스탬프나 변환이 필요하면 get_date_time을 호출하고 날짜를 추측하지 마세요.")
+        }
+        else -> buildString {
+            appendLine("## Environment")
+            appendLine("- Current time: $timeText (timezone $zoneId, UTC offset $offset)")
+            if (device != null) appendLine("- Device: $device")
+            appendLine("- Workspaces: /workspace is private to this session; /shared is shared across sessions (use the shared:// prefix with workspace tools)")
+            appendLine("- Time comes from the device's local timezone. Call get_date_time for precise timestamps or conversions instead of guessing dates.")
+        }
+    }.trim()
+
+    add(
+        key = AGENT_ENV_PROMPT_KEY,
+        content = content,
+        priority = PromptStack.Priority.TOOL_INSTRUCTIONS,
+        scope = "session"
+    )
+}
+
 /** 中文默认值，供测试和兼容旧调用方使用。 */
 internal val LOCAL_AGENT_BASE_PROMPT = buildLocalAgentBasePrompt("zh")
 
