@@ -179,6 +179,12 @@ private const val AGENT_SUMMARY_INPUT_OVERHEAD_TOKENS = 1_024
 private const val AGENT_CONTEXT_MESSAGE_OVERHEAD_TOKENS = 8
 private const val DEFAULT_AGENT_CONTEXT_TOKENS = 100_000
 
+/**
+ * Agent 自动压缩的预算比例：达到模型窗口的 80% 即压缩，剩余 20% 留给模型输出。
+ * 原实现在 100% 才触发，压缩请求自身就可能超窗口，工具循环也没有任何余量。
+ */
+private const val AGENT_CONTEXT_OUTPUT_RESERVE_RATIO = 0.8
+
 /** 手动压缩的兜底阈值：消息数不足时，上下文占用超过该比例也允许压缩。 */
 internal const val MANUAL_COMPRESSION_CONTEXT_RATIO = 0.10f
 
@@ -6677,8 +6683,19 @@ class LocalRepository(
             // 普通 system 消息会由 Agent 的提示词构建器单独处理，不属于历史上下文；
             // 唯一需要随历史再次发送的是 Agent 压缩摘要。
             .filter { !it.role.equals("system", ignoreCase = true) || it.isAgentContextSummary() }
-            .sumOf { it.agentContextTokenCount() } >= maxContextTokens
+            .sumOf { it.agentContextTokenCount() } >= agentCompactionBudgetTokens(maxContextTokens)
     }
+
+    /**
+     * Agent 上下文压缩预算：预留 [AGENT_CONTEXT_OUTPUT_RESERVE_RATIO] 给模型输出。
+     *
+     * 原实现在占用达到 100% 模型窗口时才压缩，此时新建的压缩请求本身就可能超窗口，
+     * 而且工具循环已经无法再容纳任何工具结果。提前到 80% 让压缩真正有腾挪空间。
+     */
+    private fun agentCompactionBudgetTokens(maxContextTokens: Int): Int =
+        (maxContextTokens * AGENT_CONTEXT_OUTPUT_RESERVE_RATIO)
+            .toInt()
+            .coerceAtLeast(1)
 
     /**
      * Agent 会话不创建归档会话，也不删除历史。被压缩的非 system 消息仍留在界面中，
@@ -6702,7 +6719,8 @@ class LocalRepository(
         }
 
         val retainedMessages = if (automatic) {
-            retainAgentMessagesWithinLimit(activeNonSystemMessages, maxContextTokens)
+            // 保留预算同样按 80% 计算：压缩后要留出模型输出与后续工具结果的余量。
+            retainAgentMessagesWithinLimit(activeNonSystemMessages, agentCompactionBudgetTokens(maxContextTokens))
         } else {
             val baseKeep = keepRecent.coerceAtLeast(1)
             // 占用比例与 Agent 自动压缩、聊天页上下文圆环同一口径：

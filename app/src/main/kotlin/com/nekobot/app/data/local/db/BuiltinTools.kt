@@ -427,7 +427,7 @@ object BuiltinTools {
         BuiltinToolSpec(
             id = "file_read",
             name = "读取 Linux 工作区文件",
-            description = "读取 /workspace 内的 UTF-8 文本文件。支持相对路径或 /workspace 绝对路径，可按行分片读取，返回完整行数、字符数和截断状态。重要：为节省上下文 token，读取长文本时请优先一次性读取完整内容（设置足够大的 max_chars，如 200000 或 500000），避免多次分片读取导致工具结果在上下文中重复累积。",
+            description = "读取 /workspace 内的 UTF-8 文本文件。支持相对路径或 /workspace 绝对路径，可按行分片读取，返回完整行数、字符数和截断状态。默认只返回前 50000 字符（单次上限 200000）：需要长文件中的具体内容时，先用 grep 定位、或用 start_line/end_line 分段读取，不要反复整份读取。",
             parametersJson = params(
                 mapOf(
                     "path" to mapOf("type" to "string", "description" to "文件路径，如 /workspace/src/main.py"),

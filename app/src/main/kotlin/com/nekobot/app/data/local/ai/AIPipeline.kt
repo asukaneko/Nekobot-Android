@@ -70,6 +70,9 @@ class AIPipeline {
     ): PipelineResult {
         val startTime = System.nanoTime()
         ctx.metadata["_pipeline_start_time"] = startTime
+        // 工具循环的输入 token 预算：调用方传入的 maxContextChars 实际是模型配置的
+        // token 上限（见 LocalRepository.chatWithPipeline），供循环内上下文裁剪使用。
+        ctx.metadata["max_context_tokens"] = maxContextChars
         com.nekobot.app.data.local.LocalLogger.i(
             TAG,
             "Pipeline 开始 | 会话=${ctx.chatRequest.conversationId} | 用户消息长度=${ctx.chatRequest.content.length}"

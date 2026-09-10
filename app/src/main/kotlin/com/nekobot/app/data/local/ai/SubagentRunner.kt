@@ -89,7 +89,9 @@ internal object SubagentRunner {
         language: String,
         maxToolIterations: Int,
         shouldStop: () -> Boolean,
-        onProgress: ((header: String, isComplete: Boolean, steps: List<ThinkingStep>) -> Unit)? = null
+        onProgress: ((header: String, isComplete: Boolean, steps: List<ThinkingStep>) -> Unit)? = null,
+        /** 子代理自己的输入 token 预算（0 表示不做循环内上下文管理）。 */
+        contextBudgetTokens: Int = 0
     ): SubagentRunResult {
         if (shouldStop()) {
             return SubagentRunResult("", error = "生成已停止", status = SubagentTaskStatus.KILLED)
@@ -127,7 +129,8 @@ internal object SubagentRunner {
             maxConsecutiveErrors = 3,
             shouldStop = shouldStop,
             pendingUserMessages = { emptyList() },
-            hooks = hooks
+            hooks = hooks,
+            contextBudgetTokens = { contextBudgetTokens }
         )
         return try {
             val execution = runToolLoopSession(session)

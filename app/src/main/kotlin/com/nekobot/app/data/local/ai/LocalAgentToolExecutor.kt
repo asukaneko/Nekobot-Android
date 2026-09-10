@@ -167,6 +167,12 @@ internal data class RealtimeAgentToolRuntime(
     val persistGeneratedImages: suspend (assistantMessageId: String) -> Unit = {}
 )
 
+/** 单次文件读取的默认字符上限（约 1.2 万 token，兼顾常用文件大小与上下文预算）。 */
+internal const val DEFAULT_FILE_READ_CHARS = 50_000
+
+/** 单次文件读取的硬上限：再大就会把模型窗口基本占满，应改用行区间/搜索定位。 */
+internal const val MAX_FILE_READ_CHARS = 200_000
+
 /**
  * Android 本地 Agent 工具执行器。
  *
@@ -1072,8 +1078,10 @@ internal class LocalAgentToolExecutor(
             ?: return failure("路径为空或超出会话工作区")
         if (!target.isFile) return failure("文件不存在")
 
-        // 参数：max_chars 默认 100000（覆盖 10 万字长文本一次性读取），<=0 视为不限制
-        val maxChars = args.int("max_chars", 100000).coerceIn(0, 500_000)
+        // 参数：max_chars 默认 50000（约 1.2 万 token），上限 200000。
+        // 收敛上限的原因：单次读取 10 万字会瞬间吃掉小窗口模型的整轮预算，
+        // 也会让后续每次工具轮次都重复携带这段内容。长文件应配合 start_line/end_line 分段读取。
+        val maxChars = args.int("max_chars", DEFAULT_FILE_READ_CHARS).coerceIn(0, MAX_FILE_READ_CHARS)
         // 行号参数：1-based，含两端；未指定时覆盖整个文件
         val startLine = args.int("start_line", 1).coerceAtLeast(1)
         val endLine = args.int("end_line", 0) // 0 或负数 → 读到末尾
@@ -1124,10 +1132,12 @@ internal class LocalAgentToolExecutor(
             "start_line" to startLine,
             "end_line" to if (endLine <= 0) totalLines else endLine.coerceAtMost(totalLines)
         )
-        // 截断时附加明确提示，引导 AI 一次性读取完整内容，避免分片累积浪费上下文 token
+        // 截断时附加明确提示：长文件建议按行区间继续读取，而不是把整个文件塞进上下文。
         val allPairs = if (truncated) {
-            val recommended = minOf(totalChars, 500_000)
-            basePairs + ("hint" to "内容已截断（仅返回 ${content.length}/$totalChars 字符）。为避免多次分片读取导致上下文 token 重复累积浪费，强烈建议重新调用本工具并设置 max_chars=$recommended 一次性读取完整内容，而非多次分片读取。")
+            val recommended = minOf(totalChars, MAX_FILE_READ_CHARS)
+            basePairs + ("hint" to "内容已截断（仅返回 ${content.length}/$totalChars 字符）。" +
+                "建议优先用 grep/start_line 定位需要的部分；确需完整内容时再重新调用本工具并设置 max_chars=$recommended" +
+                "（单次上限 $MAX_FILE_READ_CHARS 字符），不要反复分片读取同一文件。")
         } else {
             basePairs
         }

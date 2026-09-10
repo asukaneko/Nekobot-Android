@@ -254,7 +254,12 @@ data class ToolLoopSession(
      * 每轮模型调用前取出的待注入用户消息（Agent 排队“立即发送”场景）。
      * 返回的内容会按顺序以 user 消息插入下一轮模型上下文。
      */
-    val pendingUserMessages: () -> List<String> = { emptyList() }
+    val pendingUserMessages: () -> List<String> = { emptyList() },
+    /**
+     * 每轮模型调用前检查的输入 token 预算；0 表示不做循环内上下文管理。
+     * 与"轮次之间"的自动压缩互补：长任务往往在一轮内就堆满上下文。
+     */
+    val contextBudgetTokens: () -> Int = { 0 }
 )
 
 /** 准备好的聊天上下文 */
@@ -704,7 +709,11 @@ suspend fun runToolCallLoop(
     maxConsecutiveErrors: Int = 3,
     hooks: ToolLoopHooks? = null,
     shouldStop: () -> Boolean = { false },
-    pendingUserMessages: () -> List<String> = { emptyList() }
+    pendingUserMessages: () -> List<String> = { emptyList() },
+    /** 本轮允许的输入 token 预算（0 表示不做循环内上下文管理）。 */
+    contextBudgetTokens: () -> Int = { 0 },
+    /** 输出预留比例：预算中留给模型回复的部分（默认 20%）。 */
+    contextOutputReserveRatio: Double = 0.2
 ): ToolLoopResult {
     val toolMessages = initialMessages.map { it.toMutableMap() }.toMutableList()
     var finalContent = ""
@@ -753,6 +762,21 @@ suspend fun runToolCallLoop(
         }
 
         hooks?.onIterationStart?.invoke(iteration, toolMessages.map { it.toMap() })
+
+        // 循环内上下文管理：一次长任务可能产生几十个工具结果，全部堆在上下文里既会超预算
+        // 也会稀释注意力。这里在每次模型调用前检查预算，超限时按"从最旧到最新"就地裁剪
+        // 工具结果正文（保留角色/结构），并在必要时做一次整体硬裁剪兜底。
+        val contextTrimNotice = manageInLoopContextBudget(
+            toolMessages = toolMessages,
+            budgetTokens = contextBudgetTokens(),
+            outputReserveRatio = contextOutputReserveRatio
+        )
+        if (contextTrimNotice != null) {
+            com.nekobot.app.data.local.LocalLogger.i(
+                "AgentService",
+                "循环内上下文裁剪 | iteration=$iteration | 消息=${toolMessages.size} | $contextTrimNotice"
+            )
+        }
 
         val response = try {
             modelCall(toolMessages.map { it.toMap() }, shouldStop())
@@ -977,7 +1001,8 @@ suspend fun runToolLoopSession(session: ToolLoopSession): ToolExecutionResult {
         maxConsecutiveErrors = session.maxConsecutiveErrors,
         hooks = session.hooks,
         shouldStop = session.shouldStop,
-        pendingUserMessages = session.pendingUserMessages
+        pendingUserMessages = session.pendingUserMessages,
+        contextBudgetTokens = session.contextBudgetTokens
     )
     return ToolExecutionResult(loopResult = loopResult, preparedMessages = preparedMessages)
 }
