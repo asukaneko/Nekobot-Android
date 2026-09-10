@@ -887,8 +887,51 @@ class LocalRepository(
         )
     }
 
-    // ==================== 会话 ====================
+    /**
+     * Agent 会话长期记忆写入器：回合结束后异步抽取值得跨会话保留的内容，
+     * 合并写入全局 Agent 记忆（角色会话走 CharacterRuntime 的记忆抽取，两者互不影响）。
+     */
+    private val agentMemoryWriter by lazy {
+        com.nekobot.app.data.local.ai.AgentMemoryWriter(
+            aiClient = aiClient,
+            readMemory = { runCatching { ServiceContainer.globalAgentMemory.read().content }.getOrDefault("") },
+            writeMemory = { merged ->
+                // 记忆总量有上限（GlobalAgentMemoryStore.MAX_CONTENT_CHARS），
+                // 超出时保留最新的末尾内容，避免写入直接抛错。
+                runCatching {
+                    ServiceContainer.globalAgentMemory.replace(
+                        merged.take(com.nekobot.app.data.local.ai.GlobalAgentMemoryStore.MAX_CONTENT_CHARS)
+                    )
+                }.onFailure { LocalLogger.w(TAG, "写入 Agent 长期记忆失败: ${it.message}") }
+            },
+            aiModelProvider = { aiModelDao.getActive() },
+            failoverExecutor = chatFailoverExecutor,
+            onTokenUsage = ::recordSecondaryTokenUsage
+        )
+    }
 
+    /**
+     * 触发一次 Agent 长期记忆抽取（后台执行，失败不影响主流程）。
+     */
+    private fun scheduleAgentMemoryExtraction(
+        sessionId: String,
+        userMessage: String,
+        assistantMessage: String
+    ) {
+        if (!ServiceContainer.prefs.agentAutoMemoryEnabled) return
+        if (!com.nekobot.app.data.local.ai.AgentMemoryExtractor.shouldExtract(userMessage, assistantMessage)) {
+            return
+        }
+        ServiceContainer.applicationScope.launch(Dispatchers.IO) {
+            runCatching {
+                agentMemoryWriter.extractAndAppend(sessionId, userMessage, assistantMessage)
+            }.onFailure {
+                LocalLogger.w(TAG, "Agent 长期记忆抽取失败（不影响主流程）: ${it.message}")
+            }
+        }
+    }
+
+    // ==================== 会话 ====================
     suspend fun listSessions(): List<Session> = withContext(Dispatchers.IO) {
         sessionDao.listAll().map { it.toSession() }
     }
@@ -5055,7 +5098,9 @@ class LocalRepository(
                     LocalLogger.w(TAG, "读取全局 Agent 记忆失败: ${it.message}")
                 }
                 .getOrDefault("")
-            ctx.promptStack.addGlobalAgentMemory(globalAgentMemory)
+            // 按当前用户消息检索相关小节，而不是每轮注入整份长期记忆。
+            // 该入口没有用户消息（后台/主动触发），退化为按原文顺序注入。
+            ctx.promptStack.addGlobalAgentMemory(globalAgentMemory, query = session.agentGoal.orEmpty())
             buildEnabledSkillsPrompt().takeIf { it.isNotBlank() }?.let { skillsPrompt ->
                 ctx.promptStack.add(
                     key = "skills.available",
@@ -5649,7 +5694,8 @@ class LocalRepository(
                     )
                 }
                 .getOrDefault("")
-            ctx.promptStack.addGlobalAgentMemory(globalAgentMemory)
+            // 按当前用户消息检索相关小节，而不是每轮注入整份长期记忆。
+            ctx.promptStack.addGlobalAgentMemory(globalAgentMemory, query = effectiveUserMessage)
             val skillsPrompt = buildEnabledSkillsPrompt()
             if (skillsPrompt.isNotBlank()) {
                 ctx.promptStack.add(
@@ -5872,6 +5918,21 @@ class LocalRepository(
                     com.nekobot.app.data.local.LocalLogger.w(TAG, "会话自动命名失败（不影响主流程）: ${e.message}", e)
                 }
             }
+            // Agent 会话的长期记忆：角色会话由 CharacterRuntime 抽取，Agent 会话此前完全没有，
+            // 这里在回合结束后异步补一次（开关见 设置 → Agent 设置 → 自动长期记忆）。
+            if (
+                session.sessionMode.equals("agent", ignoreCase = true) &&
+                !generationController.isStopped &&
+                ctx.finalContent.isNotBlank() &&
+                !ctx.metadata.containsKey("is_heartbeat")
+            ) {
+                scheduleAgentMemoryExtraction(
+                    sessionId = sessionId,
+                    userMessage = effectiveUserMessage,
+                    assistantMessage = ctx.finalContent
+                )
+            }
+
             // TTS 必须等标题总结尝试结束后再启动，避免两个模型请求并发争用导致标题丢失。
             emit(
                 RealtimeEvent.ReplyPostProcessed(
