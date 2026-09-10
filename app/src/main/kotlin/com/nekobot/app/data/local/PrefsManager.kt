@@ -693,9 +693,30 @@ class PrefsManager(context: Context) {
             .apply()
     }
 
+    /**
+     * 读取指定会话中被用户显式改动过的工具大类 id。
+     *
+     * 只用于动态大类（MCP）：未被改动过的动态大类默认启用，
+     * 避免“用户先自定义工具集、之后才配置 MCP”导致新工具被静默禁用。
+     */
+    fun getSessionTouchedToolCategories(sessionId: String): Set<String>? {
+        return decodeToolSet(prefs.getString("session_toolset_touched_$sessionId", null))
+    }
+
+    /** 保存指定会话被显式改动过的工具大类 id。 */
+    fun setSessionTouchedToolCategories(sessionId: String, touched: Set<String>) {
+        val key = "session_toolset_touched_$sessionId"
+        prefs.edit().apply {
+            if (touched.isEmpty()) remove(key) else putString(key, encodeToolSet(touched))
+        }.apply()
+    }
+
     /** 清除指定会话的工具集自定义记录（恢复全部启用）。 */
     fun clearSessionToolSet(sessionId: String) {
-        prefs.edit().remove("session_toolset_$sessionId").apply()
+        prefs.edit()
+            .remove("session_toolset_$sessionId")
+            .remove("session_toolset_touched_$sessionId")
+            .apply()
     }
 
     /** 获取对应会话类型的全局思考强度；Agent 与角色会话互不影响。 */

@@ -689,6 +689,82 @@ object BuiltinTools {
             )
         ),
         BuiltinToolSpec(
+            id = "shell_job",
+            name = "查询或终止后台命令",
+            description = "管理由 exec_command（background=true）启动的后台命令：action=list 列出当前会话后台任务，get 读取指定任务的输出与退出码，kill 终止仍在运行的任务。后台任务结束时会自动通知父会话，不需要反复轮询。",
+            parametersJson = params(
+                mapOf(
+                    "action" to mapOf("type" to "string", "description" to "list（默认）/ get / kill"),
+                    "job_id" to mapOf("type" to "string", "description" to "get 与 kill 需要：后台任务 id")
+                ),
+                listOf("action")
+            )
+        ),
+        BuiltinToolSpec(
+            id = "todo_read",
+            name = "读取当前任务列表",
+            description = "读取当前会话的任务列表与每条状态，不修改任何内容。长任务中途可用它确认进度，或校正自己记错的条目；新增/更新/完成条目仍用 todo_write。",
+            parametersJson = params(emptyMap())
+        ),
+        BuiltinToolSpec(
+            id = "grep",
+            name = "在工作区中检索文本",
+            description = "在会话工作区内按正则检索文本，返回 文件:行号: 内容 形式的命中列表。定位代码/配置/文本时优先用它，而不是整份读取文件——避免长文件占满上下文。可用 path 限定子目录、glob 限定文件名（如 *.kt）、max_results 控制条数。",
+            parametersJson = params(
+                mapOf(
+                    "pattern" to mapOf("type" to "string", "description" to "正则表达式（默认不区分大小写）"),
+                    "path" to mapOf("type" to "string", "description" to "可选：相对工作区的子目录或文件"),
+                    "glob" to mapOf("type" to "string", "description" to "可选：文件名通配，例如 *.kt 或 *.md"),
+                    "max_results" to mapOf("type" to "integer", "description" to "命中上限，默认 50，最大 500"),
+                    "case_sensitive" to mapOf("type" to "boolean", "description" to "是否区分大小写，默认 false")
+                ),
+                listOf("pattern")
+            )
+        ),
+        BuiltinToolSpec(
+            id = "glob",
+            name = "按通配符列出工作区文件",
+            description = "按 glob 模式列出工作区文件（** 跨目录、* 不跨目录、? 单字符），返回 相对路径 (字节数) 列表。需要先了解目录结构或确认文件是否存在时使用。",
+            parametersJson = params(
+                mapOf(
+                    "pattern" to mapOf("type" to "string", "description" to "glob 模式，例如 **/*.kt 或 src/**/*.md"),
+                    "path" to mapOf("type" to "string", "description" to "可选：相对工作区的子目录"),
+                    "max_results" to mapOf("type" to "integer", "description" to "文件数上限，默认 50，最大 500")
+                ),
+                listOf("pattern")
+            )
+        ),
+        BuiltinToolSpec(
+            id = "web_fetch",
+            name = "抓取网页正文",
+            description = "抓取网页并抽取可读正文（自动去掉脚本/样式/标签，返回纯文本，默认 20000 字符）。阅读文章、文档、公告时用它；需要原始响应体（JSON/API）时用 http_get。长正文可用 start_index 继续读取后续内容。",
+            parametersJson = params(
+                mapOf(
+                    "url" to mapOf("type" to "string", "description" to "要抓取的网页 URL"),
+                    "max_chars" to mapOf("type" to "integer", "description" to "返回正文长度上限，默认 20000，最大 100000"),
+                    "start_index" to mapOf("type" to "integer", "description" to "从正文第几个字符开始返回，用于分页"),
+                    "headers" to mapOf("type" to "object", "description" to "可选：附加请求头")
+                ),
+                listOf("url")
+            )
+        ),
+        BuiltinToolSpec(
+            id = "android_step",
+            name = "Android 一步动作 + 观察",
+            description = "执行一个 Android 界面动作后自动等待界面稳定、截图并给出视觉描述，把「动作 → 观察」合并为一步。action 支持 android_ui_click、android_ui_tap、android_ui_swipe、android_ui_set_text、android_ui_scroll、android_ui_ime_action、android_ui_paste、android_global_action；其余参数按对应动作原样透传（如 index、text、direction、x、y、duration_ms）。需要确认动作结果时优先用它，可减少多次工具轮次。",
+            parametersJson = params(
+                mapOf(
+                    "action" to mapOf("type" to "string", "description" to "要执行的界面动作工具名"),
+                    "index" to mapOf("type" to "integer", "description" to "android_ui_tree 返回的 interactive 编号（点击/输入类动作优先使用）"),
+                    "text" to mapOf("type" to "string", "description" to "输入文本或粘贴内容"),
+                    "direction" to mapOf("type" to "string", "description" to "滚动方向：up/down/left/right"),
+                    "x" to mapOf("type" to "number", "description" to "坐标手势的 X 比例或像素值"),
+                    "y" to mapOf("type" to "number", "description" to "坐标手势的 Y 比例或像素值")
+                ),
+                listOf("action")
+            )
+        ),
+        BuiltinToolSpec(
             id = "android_list_apps",
             name = "列出可启动的 Android 应用",
             description = "列出设备上可从桌面启动的应用，可按应用名称或包名筛选。需要打开应用但不知道准确包名时先调用。",

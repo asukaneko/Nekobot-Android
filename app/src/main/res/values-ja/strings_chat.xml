@@ -450,6 +450,7 @@
     <string name="toolset_cat_android">Android システム操作</string>
     <string name="toolset_cat_db">データ管理</string>
     <string name="toolset_cat_subagent">サブエージェント</string>
+    <string name="toolset_cat_mcp">MCP ツール</string>
     <string name="chat_jump_to_latest">最新へジャンプ</string>
     <string name="chat_jump_to_latest_subtitle">チャットの最下部に再配置</string>
     <string name="chat_my_messages_subtitle">送信済みメッセージを閲覧</string>

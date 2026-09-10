@@ -281,13 +281,26 @@ class LocalRepository(
     val oauthManager = LocalOAuthManager(db.oauthAccountDao(), aiModelDao)
     private val failoverHealthDao = db.failoverHealthDao()
     private val localExecAuthorizationManager =
-        com.nekobot.app.data.local.ai.LocalExecAuthorizationManager()
+        com.nekobot.app.data.local.ai.LocalExecAuthorizationManager(
+            loadPersistedRules = { sessionId ->
+                ServiceContainer.prefs.getSessionExecAllowRules(sessionId)
+            },
+            savePersistedRules = { sessionId, rules ->
+                ServiceContainer.prefs.setSessionExecAllowRules(sessionId, rules)
+            }
+        )
     /** 会话 Agent 工具集选择：大类 + 单工具可管理，按会话持久化。 */
     private val sessionToolRegistry =
         com.nekobot.app.data.local.ai.SessionToolRegistry(
             loadEnabled = { sessionId -> ServiceContainer.prefs.getSessionToolSet(sessionId) },
             saveEnabled = { sessionId, enabled -> ServiceContainer.prefs.setSessionToolSet(sessionId, enabled) },
-            clearEnabled = { sessionId -> ServiceContainer.prefs.clearSessionToolSet(sessionId) }
+            clearEnabled = { sessionId -> ServiceContainer.prefs.clearSessionToolSet(sessionId) },
+            loadTouchedCategories = { sessionId ->
+                ServiceContainer.prefs.getSessionTouchedToolCategories(sessionId)
+            },
+            saveTouchedCategories = { sessionId, touched ->
+                ServiceContainer.prefs.setSessionTouchedToolCategories(sessionId, touched)
+            }
         )
     /** ask_user_question 提问等待管理器：AI 提问后挂起，UI 回答后 resolve。 */
     private val askUserQuestionManager =
@@ -5156,6 +5169,7 @@ class LocalRepository(
         )
         val mcpTools = localMcpRuntime.getOpenAiToolDefinitions()
             .ifEmpty { cachedMcpAgentTools }
+        registerMcpToolsForToolset(mcpTools)
         val tools = filterDefinitionsForSession(
             sessionId = sessionId,
             definitions = (
@@ -9990,6 +10004,20 @@ ${AiOutputLanguage.directive()}
      * 自动连接可能包含最长 90 秒的阻塞式 HTTP 初始化，不能放在聊天首条进度事件之前同步等待；
      * 否则界面只剩三个点。未连接的服务在后台连接，成功后从下一轮开始加入工具列表。
      */
+    /**
+     * 把 MCP 工具注册进会话工具集目录。
+     *
+     * MCP 工具是运行期才枚举出来的，注册后用户才能在“Agent 工具集”面板里按大类或单个关闭；
+     * 未注册时它们仍受 MCP 大类管辖（见 SessionToolCatalog.categoryIdOf 的前缀兜底）。
+     */
+    private fun registerMcpToolsForToolset(definitions: List<Map<String, Any>>) {
+        val ids = definitions.mapNotNull { com.nekobot.app.data.local.ai.toolNameOf(it) }
+        com.nekobot.app.data.local.ai.SessionToolCatalog.registerDynamicTools(
+            com.nekobot.app.data.local.ai.SessionToolCatalog.MCP_CATEGORY_ID,
+            ids
+        )
+    }
+
     private suspend fun prepareMcpAgentTools(): List<Map<String, Any>> {
         if (mcpAutoConnectRunning.get()) return cachedMcpAgentTools
 
@@ -10001,6 +10029,7 @@ ${AiOutputLanguage.directive()}
             .toSet()
         val currentTools = localMcpRuntime.getOpenAiToolDefinitions(connectedIds)
         cachedMcpAgentTools = currentTools
+        registerMcpToolsForToolset(currentTools)
 
         val needsAutoConnect = servers.any {
             it.enabled && it.autoConnect && it.id !in connectedIds
@@ -10017,6 +10046,7 @@ ${AiOutputLanguage.directive()}
                             .toSet()
                         cachedMcpAgentTools =
                             localMcpRuntime.getOpenAiToolDefinitions(latestConnectedIds)
+                        registerMcpToolsForToolset(cachedMcpAgentTools)
                     }.onFailure { error ->
                         LocalLogger.w(TAG, "后台自动连接 MCP 失败，不阻塞 Agent 对话", error)
                     }

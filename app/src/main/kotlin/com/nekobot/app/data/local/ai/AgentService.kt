@@ -17,6 +17,13 @@ private val toolCallHistoryType =
 private val requiredToolArguments = mapOf(
     "browser_use" to setOf("action"),
     "plugin_use" to setOf("action"),
+    "android_step" to setOf("action"),
+    "grep" to setOf("pattern"),
+    "glob" to setOf("pattern"),
+    "web_fetch" to setOf("url"),
+    "shell_job" to setOf("action"),
+    "subagent_get" to setOf("task_id"),
+    "subagent_kill" to setOf("task_id"),
     "exec_command" to setOf("command"),
     "file_read" to setOf("path"),
     "file_write" to setOf("path", "content"),

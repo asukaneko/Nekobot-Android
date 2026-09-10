@@ -2342,7 +2342,8 @@ private fun AgentToolSetDialog(
         return if (resId != 0) {
             stringResource(resId)
         } else {
-            specByName[id]?.name?.takeIf { it.isNotBlank() } ?: id
+            specByName[id]?.name?.takeIf { it.isNotBlank() }
+                ?: com.nekobot.app.data.local.ai.toolDisplayFallbackName(id)
         }
     }
 
@@ -2521,6 +2522,7 @@ private fun categoryName(categoryId: String): String = when (categoryId) {
     "android" -> stringResource(R.string.toolset_cat_android)
     "db" -> stringResource(R.string.toolset_cat_db)
     "subagent" -> stringResource(R.string.toolset_cat_subagent)
+    "mcp" -> stringResource(R.string.toolset_cat_mcp)
     else -> categoryId
 }
 

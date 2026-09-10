@@ -450,6 +450,7 @@
     <string name="toolset_cat_android">Android system</string>
     <string name="toolset_cat_db">Data management</string>
     <string name="toolset_cat_subagent">Subagent</string>
+    <string name="toolset_cat_mcp">MCP tools</string>
     <string name="chat_jump_to_latest">Jump to latest</string>
     <string name="chat_jump_to_latest_subtitle">Reposition to chat bottom</string>
     <string name="chat_my_messages_subtitle">Browse my sent messages</string>

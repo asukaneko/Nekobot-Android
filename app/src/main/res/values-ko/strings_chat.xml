@@ -450,6 +450,7 @@
     <string name="toolset_cat_android">Android 시스템 작업</string>
     <string name="toolset_cat_db">데이터 관리</string>
     <string name="toolset_cat_subagent">서브에이전트</string>
+    <string name="toolset_cat_mcp">MCP 도구</string>
     <string name="chat_jump_to_latest">최신으로 이동</string>
     <string name="chat_jump_to_latest_subtitle">대화 맨 아래로 재배치</string>
     <string name="chat_my_messages_subtitle">내가 보낸 메시지 탐색</string>
