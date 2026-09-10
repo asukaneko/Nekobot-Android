@@ -113,7 +113,12 @@ internal class LocalPipelineCallbacks(
     /**
      * 子代理复用的 MCP 工具定义清单（与主会话一致）。为空时子代理只获得本地/Skill/数据库工具。
      */
-    private val mcpToolDefinitions: List<Map<String, Any>> = emptyList()
+    private val mcpToolDefinitions: List<Map<String, Any>> = emptyList(),
+    /**
+     * 会话工具集过滤器：子代理工具清单必须与父会话一样受“Agent 工具集”勾选约束，
+     * 否则用户在父会话里关掉的工具会经由子代理重新变得可用。为空时不额外过滤。
+     */
+    private val sessionToolFilter: ((List<Map<String, Any>>) -> List<Map<String, Any>>)? = null
 ) : PipelineCallbacks() {
 
     companion object {
@@ -128,10 +133,8 @@ internal class LocalPipelineCallbacks(
 
     // ---- Subagent 支持 ----
     // 子代理复用本会话的故障转移模型队列与本地工具执行器。
-    // depth 用实例字段追踪：一个 Agent 会话同一时刻只运行一个工具循环（activeGenerations 取代旧 Job），
-    // 因此前台嵌套子代理的 depth 读写是安全的；后台子代理在独立协程运行，同样串行。
-    private val subagentDepthLock = Any()
-    private var subagentDepth = 0
+    // 嵌套深度按任务树（SubagentTaskStore.parentTaskId/depth）计算，不再用实例计数器：
+    // 后台子代理在独立协程中运行，实例计数器对后台链不可见，深度上限会被绕过。
     private val localToolExecutor by lazy {
         LocalAgentToolExecutor(
             sessionId = session.id,
@@ -1001,14 +1004,19 @@ internal class LocalPipelineCallbacks(
     // ---- 排队消息注入 ----
 
     override fun drainPendingUserMessages(ctx: PipelineContext): List<String> {
-        val provider = pendingUserMessageProvider ?: return emptyList()
-        return runCatching { provider() }.getOrElse { error ->
-            com.nekobot.app.data.local.LocalLogger.w(
-                TAG,
-                "取出排队消息失败: ${error.message}"
-            )
-            emptyList()
-        }
+        val fromUser = pendingUserMessageProvider?.let { provider ->
+            runCatching { provider() }.getOrElse { error ->
+                com.nekobot.app.data.local.LocalLogger.w(
+                    TAG,
+                    "取出排队消息失败: ${error.message}"
+                )
+                emptyList()
+            }
+        }.orEmpty().filter(String::isNotBlank)
+        // 运行期通知（后台子代理完成等）与排队消息共用同一条注入通道，
+        // 保证模型在下一轮模型调用前就能看到，而不是靠轮询 subagent_get。
+        val notices = AgentNoticeBus.drain(session.id)
+        return if (notices.isEmpty()) fromUser else fromUser + notices
     }
 
     // ---- 工具确认 ----
@@ -1434,13 +1442,22 @@ internal class LocalPipelineCallbacks(
         }
     }
 
-    private suspend fun executeSubagentTool(toolName: String, args: Map<String, Any>): Map<String, Any> {
+    private suspend fun executeSubagentTool(
+        toolName: String,
+        args: Map<String, Any>,
+        toolContext: Map<String, Any> = emptyMap()
+    ): Map<String, Any> {
         val (maxDepth, maxToolIterations) = subagentPolicy()
-        val parentDepth = synchronized(subagentDepthLock) { subagentDepth }
+        val ownerTaskId = (toolContext[SUBAGENT_TASK_CONTEXT_KEY] as? String)
+            ?.takeIf { it.isNotBlank() }
+        // 深度按任务树计算：后台子代理运行在独立协程里，用实例级计数器会被绕过
+        // （后台链每次看到的都是同一层深度，从而无限嵌套）。
+        val parentDepth = ownerTaskId?.let { SubagentTaskStore.get(it)?.depth } ?: 1
 
         when (toolName) {
             TOOL_SUBAGENT_LIST -> return listSubagentTasks()
             TOOL_SUBAGENT_GET -> return getSubagentTask(args)
+            TOOL_SUBAGENT_KILL -> return killSubagentTask(args)
             TOOL_SUBAGENT -> {
                 // Subagent 功能关闭时直接拒绝，避免无谓的模型往返。
                 val guard = SubagentRunner.guardDepth(parentDepth + 1, maxDepth)
@@ -1453,6 +1470,14 @@ internal class LocalPipelineCallbacks(
                 val runInBackground = args["run_in_background"] as? Boolean
                     ?: com.nekobot.app.ServiceContainer.prefs.subagentDefaultBackground
 
+                if (runInBackground && !SubagentConcurrency.tryAcquire()) {
+                    return mapOf(
+                        "success" to false,
+                        "error" to "后台子代理并发已达上限（${SubagentConcurrency.MAX_BACKGROUND_RUNS}）" +
+                            "。请等待已有后台任务完成（可用 subagent_list 查看），或改为前台执行（run_in_background=false）。"
+                    )
+                }
+
                 // 登记任务（标题/在途追踪）。
                 val task = SubagentTaskStore.register(
                     sessionId = session.id,
@@ -1460,7 +1485,7 @@ internal class LocalPipelineCallbacks(
                     description = description.ifBlank { "子代理任务" },
                     prompt = prompt,
                     depth = parentDepth + 1,
-                    parentTaskId = currentSubagentTaskId
+                    parentTaskId = ownerTaskId
                 )
 
                 if (runInBackground) {
@@ -1478,9 +1503,6 @@ internal class LocalPipelineCallbacks(
             else -> return mapOf("success" to false, "error" to "未知 subagent 工具: $toolName")
         }
     }
-
-    /** 当前正在执行的子代理任务 id（用于建立父子链）。 */
-    private var currentSubagentTaskId: String? = null
 
     private fun listSubagentTasks(): Map<String, Any> {
         val tasks = SubagentTaskStore.listForSession(session.id)
@@ -1519,21 +1541,27 @@ internal class LocalPipelineCallbacks(
         prompt: String,
         maxToolIterations: Int
     ) {
-        kotlinx.coroutines.GlobalScope.launch(
+        val job = kotlinx.coroutines.GlobalScope.launch(
             kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob()
         ) {
             try {
                 // 背景执行不沿用父线程的生成控制器停止信号；使用独立的停止守卫。
                 val controller = LocalGenerationController()
                 val result = SubagentRunner.runForeground(
-                    delegate = buildSubagentDelegate(maxToolIterations, controller::isStopped),
+                    delegate = buildSubagentDelegate(
+                        maxToolIterations = maxToolIterations,
+                        subagentShouldStop = controller::isStopped,
+                        ownerTaskId = taskId,
+                        respectParentStop = false
+                    ),
                     taskId = taskId,
                     description = task.description,
                     prompt = prompt,
                     language = subagentLanguage(),
                     maxToolIterations = maxToolIterations,
                     shouldStop = controller::isStopped,
-                    onProgress = buildSubagentProgressEmitter(taskId, task.description)
+                    onProgress = buildSubagentProgressEmitter(taskId, task.description),
+                    contextBudgetTokens = activeModel.maxContextLength ?: 0
                 )
                 SubagentTaskStore.update(
                     id = taskId,
@@ -1547,8 +1575,38 @@ internal class LocalPipelineCallbacks(
                 SubagentTaskStore.update(id = taskId, status = SubagentTaskStatus.KILLED, error = "已取消")
             } catch (e: Exception) {
                 SubagentTaskStore.update(id = taskId, status = SubagentTaskStatus.FAILED, error = e.message)
+            } finally {
+                // 释放并发额度，并把完成情况通知给父会话（父会话可能仍在循环中或已空闲）。
+                SubagentConcurrency.release()
+                runCatching { notifyParentOfBackgroundSubagent(task) }
             }
         }
+        // 登记运行句柄，供 subagent_kill 精确终止该任务（协程结束时自动注销）。
+        SubagentRunRegistry.register(taskId, job)
+        job.invokeOnCompletion { SubagentRunRegistry.unregister(taskId) }
+    }
+
+    /**
+     * 后台子代理结束后给父会话写明一条系统通知。
+     *
+     * 通知只带摘要，完整结果仍在 [SubagentTaskStore]；模型可以在下一轮直接基于摘要回答，
+     * 不必再花一次工具轮次轮询，也不会因为"不知道任务已完成"而重复委派。
+     */
+    private fun notifyParentOfBackgroundSubagent(task: SubagentTask) {
+        val latest = SubagentTaskStore.get(task.id) ?: task
+        val status = latest.status.name.lowercase()
+        val body = if (latest.status == SubagentTaskStatus.SUCCEEDED) {
+            val summary = latest.result.trim().take(2_000)
+            if (summary.isBlank()) "任务已完成，但没有返回内容。" else "结果摘要：\n$summary"
+        } else {
+            "失败原因：${latest.error?.take(500)?.takeIf { it.isNotBlank() } ?: "未知错误"}"
+        }
+        AgentNoticeBus.publish(
+            session.id,
+            "[系统通知] 后台子代理任务已结束：${latest.description}" +
+                "（task_id=${latest.id}，状态=$status）\n$body\n" +
+                "如需完整结果可用 subagent_get(task_id=${latest.id}) 读取，不要重复委派同一任务。"
+        )
     }
 
     /** 前台运行：同步执行并返回结果，供父模型在本次工具调用内拿到结论。 */
@@ -1558,19 +1616,21 @@ internal class LocalPipelineCallbacks(
         prompt: String,
         maxToolIterations: Int
     ): Map<String, Any> {
-        synchronized(subagentDepthLock) { subagentDepth++ }
-        val previousTaskId = currentSubagentTaskId
-        currentSubagentTaskId = taskId
         return try {
             val result = SubagentRunner.runForeground(
-                delegate = buildSubagentDelegate(maxToolIterations, { generationController.isStopped }),
+                delegate = buildSubagentDelegate(
+                    maxToolIterations = maxToolIterations,
+                    subagentShouldStop = { generationController.isStopped },
+                    ownerTaskId = taskId
+                ),
                 taskId = taskId,
                 description = task.description,
                 prompt = prompt,
                 language = subagentLanguage(),
                 maxToolIterations = maxToolIterations,
                 shouldStop = { generationController.isStopped },
-                onProgress = buildSubagentProgressEmitter(taskId, task.description)
+                onProgress = buildSubagentProgressEmitter(taskId, task.description),
+                contextBudgetTokens = activeModel.maxContextLength ?: 0
             )
             SubagentTaskStore.update(
                 id = taskId,
@@ -1590,8 +1650,7 @@ internal class LocalPipelineCallbacks(
                 "instruction" to "子代理执行完成。请基于 result 向用户汇报结论。"
             )
         } finally {
-            currentSubagentTaskId = previousTaskId
-            synchronized(subagentDepthLock) { subagentDepth-- }
+            Unit
         }
     }
 
@@ -1643,17 +1702,22 @@ internal class LocalPipelineCallbacks(
      */
     private fun buildSubagentDelegate(
         maxToolIterations: Int,
-        subagentShouldStop: () -> Boolean
+        subagentShouldStop: () -> Boolean,
+        ownerTaskId: String? = null,
+        /** 后台子代理不跟随父会话的停止信号（与"后台任务独立运行"的语义一致）。 */
+        respectParentStop: Boolean = true
     ): SubagentDelegateScope {
-        // 子代理工具清单与父会话一致（当前会话已启用的本地工具 + MCP + Skill + 数据库工具）。
-        val toolDefinitions = mergeSubagentToolDefinitions(
+        // 子代理工具清单与父会话一致（当前会话已启用的本地工具 + MCP + Skill + 数据库工具），
+        // 并且必须经过会话工具集过滤：否则用户在父会话关掉的工具会经由子代理重新可用。
+        val rawToolDefinitions = mergeSubagentToolDefinitions(
             buildLocalAgentToolDefinitions() +
                 buildLocalSkillToolDefinitions() +
                 buildLocalDbToolDefinitions() +
                 mcpToolDefinitions
         )
+        val toolDefinitions = sessionToolFilter?.invoke(rawToolDefinitions) ?: rawToolDefinitions
         val modelCall: ModelCall = { messages, stopped ->
-            if (stopped || generationController.isStopped || subagentShouldStop()) {
+            if (stopped || subagentShouldStop() || (respectParentStop && generationController.isStopped)) {
                 throw kotlinx.coroutines.CancellationException("子代理已停止")
             }
             val extra = buildMap<String, Any?> {
@@ -1715,12 +1779,13 @@ internal class LocalPipelineCallbacks(
                 if (callArgs.isEmpty() && toolCall["arguments"] is String) {
                     callArgs = parseSubagentJsonArgs(toolCall["arguments"] as String)
                 }
-                // 子代理内部仍可再委派 subagent（受深度上限约束）。
-                if (name in subagentToolIds) {
-                    executeTool(name, callArgs, emptyMap())
-                } else {
-                    executeTool(name, callArgs, emptyMap())
-                }
+                // 把自己的任务 id 通过工具上下文传下去：
+                // 子代理内部若再委派 subagent，深度按任务树累加（不再依赖实例计数器）。
+                val context = ownerTaskId
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { mapOf(SUBAGENT_TASK_CONTEXT_KEY to it) }
+                    ?: emptyMap()
+                executeTool(name, callArgs, context)
             }
         return SubagentDelegateScope(buildModelCall = { modelCall }, toolExecutor = toolExecutor)
     }

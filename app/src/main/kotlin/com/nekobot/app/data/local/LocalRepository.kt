@@ -4994,7 +4994,8 @@ class LocalRepository(
             character = character,
             worldBookEntries = worldBookEntries,
             characterRuntime = character?.let { characterRuntime },
-            characterIdentity = identity
+            characterIdentity = identity,
+            sessionToolFilter = { definitions -> filterDefinitionsForSession(sessionId, definitions) }
         )
         val disabledKeys = session.disabledPromptKeys
             ?.split(",")
@@ -5573,7 +5574,8 @@ class LocalRepository(
             execConfirmationEmitter = { request -> _execConfirmationEvents.tryEmit(request) },
             askUserQuestionManager = askUserQuestionManager,
             askUserQuestionEmitter = { request -> _askUserQuestionEvents.tryEmit(request) },
-            mcpToolDefinitions = prepareMcpAgentTools()
+            mcpToolDefinitions = prepareMcpAgentTools(),
+            sessionToolFilter = { definitions -> filterDefinitionsForSession(sessionId, definitions) }
         )
 
         // 5. 构建上下文（含会话级配置：剧情模式、禁用注入项、自动状态间隔等）
@@ -6179,7 +6181,8 @@ class LocalRepository(
                 reasoningEffort = reasoningEffort,
                 execConfirmationEmitter = { request -> _execConfirmationEvents.tryEmit(request) },
                 askUserQuestionManager = askUserQuestionManager,
-                askUserQuestionEmitter = { request -> _askUserQuestionEvents.tryEmit(request) }
+                askUserQuestionEmitter = { request -> _askUserQuestionEvents.tryEmit(request) },
+                sessionToolFilter = { definitions -> filterDefinitionsForSession(session.id, definitions) }
             )
 
             val metadata = buildMap<String, Any> {

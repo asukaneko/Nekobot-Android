@@ -712,7 +712,13 @@ class AIPipeline {
             maxIterations = maxToolIterations,
             hooks = hooks,
             shouldStop = ctx::shouldStop,
-            pendingUserMessages = { callbacks.drainPendingUserMessages(ctx) }
+            pendingUserMessages = { callbacks.drainPendingUserMessages(ctx) },
+            // 模型配置的上下文窗口即本轮输入预算：工具循环内超限时先裁剪历史工具结果，
+            // 而不是等到下一轮才开始压缩（长任务常常一轮就撑满窗口）。
+            contextBudgetTokens = {
+                // 由 process() 写入的 max_context_tokens（= 模型配置的 token 上限）。
+                (ctx.metadata["max_context_tokens"] as? Int)?.takeIf { it > 0 } ?: 0
+            }
         )
 
         try {

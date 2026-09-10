@@ -2,7 +2,91 @@ package com.nekobot.app.data.local.ai
 
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import java.util.UUID
+
+/**
+ * 同一批次内允许并行执行的只读工具上限。
+ *
+ * 模型经常一次请求多个互不依赖的读取（多个文件、多个数据库列表）；串行执行会把
+ * 一次模型调用的耗时放大成数倍。上限避免一次打满执行器与网络。
+ */
+private const val MAX_PARALLEL_TOOL_CALLS = 4
+
+/**
+ * 可并行的“无副作用”工具白名单（严格只读）。
+ *
+ * 保守起见只列确定不产生副作用的读取类工具：任何写文件、改状态、发消息、执行命令、
+ * 操作界面或调用外部系统的工具都不在内（包括 MCP 工具，其副作用未知）。
+ */
+internal val parallelSafeToolIds = setOf(
+    "file_read",
+    "workspace_read_file",
+    "workspace_file_info",
+    "workspace_list_files",
+    "workspace_parse_file",
+    "grep",
+    "glob",
+    "http_get",
+    "web_fetch",
+    "search_web",
+    "get_weather",
+    "get_date_time",
+    "read_image",
+    "skill_list",
+    "skill_view",
+    "skill_read",
+    "skill_get_info",
+    "get_session_thinking_history",
+    "agent_memory_read",
+    "android_device_info",
+    "android_battery_status",
+    "android_clipboard_read",
+    "android_accessibility_status",
+    "android_list_apps"
+)
+
+/** 判断某个工具是否可以在同一批次内与其他只读工具并行执行。 */
+internal fun isParallelSafeTool(toolName: String): Boolean {
+    if (toolName.isBlank()) return false
+    if (toolName in parallelSafeToolIds) return true
+    // 数据库只读前缀（db_list_* / db_get_* / db_token_*）由命名约定保证只读。
+    return toolName.startsWith("db_list_") ||
+        toolName.startsWith("db_get_") ||
+        toolName.startsWith("db_token_")
+}
+
+/**
+ * 从 [from] 开始取出一个可并行执行的批次：
+ * 连续多个只读工具（最多 [MAX_PARALLEL_TOOL_CALLS] 个）构成一批，其余情况只返回单个调用。
+ */
+internal fun nextParallelToolBatch(
+    toolCalls: List<Map<String, Any>>,
+    from: Int
+): List<Map<String, Any>> {
+    if (from !in toolCalls.indices) return emptyList()
+    if (!isParallelSafeTool((toolCalls[from]["name"] as? String).orEmpty())) {
+        return listOf(toolCalls[from])
+    }
+    val batch = mutableListOf<Map<String, Any>>()
+    var index = from
+    while (index < toolCalls.size && batch.size < MAX_PARALLEL_TOOL_CALLS) {
+        val call = toolCalls[index]
+        if (!isParallelSafeTool((call["name"] as? String).orEmpty())) break
+        batch.add(call)
+        index++
+    }
+    return batch
+}
+
+/** 并行批次内单次工具执行的结果；[exitContent] 非空表示工具要求提前结束本轮（ToolLoopExit）。 */
+private data class ToolCallOutcome(
+    val toolCall: Map<String, Any>,
+    val result: Map<String, Any>,
+    val exitContent: String?
+)
 
 /**
  * Agent 服务：工具循环 + 上下文准备，对应原仓库 nbot/core/agent_service.py。
