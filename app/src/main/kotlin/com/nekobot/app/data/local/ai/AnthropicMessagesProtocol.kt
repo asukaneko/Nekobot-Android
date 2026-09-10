@@ -13,6 +13,17 @@ object AnthropicMessagesProtocol : LocalProtocol {
 
     override val name: String = "anthropic_messages"
 
+    /** prompt caching 断点标记（Anthropic 的 ephemeral 缓存）。 */
+    private val EPHEMERAL_CACHE_CONTROL = mapOf("type" to "ephemeral")
+
+    /**
+     * 打缓存断点的最小 system 提示词长度。
+     *
+     * Anthropic 的最小可缓存长度为 1024 token（约 3000+ 字符）；短于该长度的提示词
+     * 标记断点没有收益，还会让请求体更难读。
+     */
+    private const val MIN_CACHEABLE_SYSTEM_CHARS = 3_000
+
     override fun resolveUrl(
         baseUrl: String,
         model: String,
@@ -138,7 +149,7 @@ object AnthropicMessagesProtocol : LocalProtocol {
             "messages" to anthropicMessages,
             "max_tokens" to ((extra["max_tokens"] as? Number)?.toInt() ?: 4096)
         )
-        systemMessage?.let { payload["system"] = it }
+        systemMessage?.let { payload["system"] = systemBlocksOf(it) }
         if (stream) payload["stream"] = true
         val reasoningEffort = extra["reasoning_effort"] as? String
         val thinkingEnabled = reasoningEffort != null && reasoningEffort != "none"
@@ -157,7 +168,7 @@ object AnthropicMessagesProtocol : LocalProtocol {
         (extra["tools"] as? List<Map<String, Any>>)
             ?.takeIf { it.isNotEmpty() }
             ?.let { tools ->
-                payload["tools"] = tools.mapNotNull { tool ->
+                val converted = tools.mapNotNull { tool ->
                     @Suppress("UNCHECKED_CAST")
                     val function = tool["function"] as? Map<String, Any> ?: return@mapNotNull null
                     buildMap<String, Any> {
