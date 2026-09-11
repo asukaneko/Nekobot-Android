@@ -633,6 +633,7 @@
     <string name="chat_context_analysis_assistant_messages">Assistant messages</string>
     <string name="chat_context_analysis_summary">Compressed summary</string>
     <string name="chat_context_analysis_system_prompt">System prompt</string>
+    <string name="chat_context_analysis_tool_definitions">Tool definitions</string>
     <string name="chat_context_analysis_tool_content">Tool calls</string>
     <string name="chat_context_analysis_other_messages">Other messages</string>
 

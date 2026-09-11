@@ -300,11 +300,18 @@ internal fun estimateLocalTextTokens(text: String): Int {
     return tokens.coerceAtLeast(1)
 }
 
-/** 估算一次请求实际发送的消息上下文，供路由和故障转移容量检查共用。 */
+/**
+ * 估算一次请求实际发送的消息上下文，供路由和故障转移容量检查共用。
+ *
+ * 除 content 外还要计入 assistant 消息的 tool_calls：工具参数（例如 file_write
+ * 写入的正文）同样是请求体的一部分，漏算会让工具循环的容量判断偏乐观。
+ */
 internal fun estimateLocalMessagesTokens(messages: List<Map<String, Any>>): Int {
     if (messages.isEmpty()) return 0
     val total = messages.sumOf { message ->
-        MESSAGE_OVERHEAD_TOKENS + estimateMessageValueTokens(message["content"])
+        MESSAGE_OVERHEAD_TOKENS +
+            estimateMessageValueTokens(message["content"]) +
+            estimateMessageValueTokens(message["tool_calls"])
     } + CHAT_PRIMING_TOKENS
     return total.coerceAtLeast(1)
 }

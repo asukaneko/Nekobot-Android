@@ -639,6 +639,7 @@
     <string name="chat_context_analysis_assistant_messages">助手消息</string>
     <string name="chat_context_analysis_summary">压缩摘要</string>
     <string name="chat_context_analysis_system_prompt">系统提示词</string>
+    <string name="chat_context_analysis_tool_definitions">工具定义</string>
     <string name="chat_context_analysis_tool_content">工具调用</string>
     <string name="chat_context_analysis_other_messages">其他消息</string>
 

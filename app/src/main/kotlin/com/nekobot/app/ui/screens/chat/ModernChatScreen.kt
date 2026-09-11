@@ -128,6 +128,8 @@ import com.google.gson.JsonObject
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.AgentLiveContextUsage
+import com.nekobot.app.data.local.ai.ContextUsageBreakdown
+import com.nekobot.app.data.local.ai.ContextUsagePartTokens
 import com.nekobot.app.data.local.ai.AgentRunStage
 import com.nekobot.app.data.local.ChatInputLayoutMode
 import com.nekobot.app.data.local.LocalCommandAction
@@ -1004,19 +1006,19 @@ private fun ModernChatComposer(
     var maxTokens by remember { mutableStateOf<Int?>(null) }
     // 当前上下文 Token：本地模式取最近一次完整 prompt usage，避免把每轮累计计费用量重复相加
     var usedTokens by remember { mutableStateOf(0L) }
-    // Agent 运行中的实时上下文快照（stage / 工具名 / 已完成工具数 / 运行中工具调用估算）
+    // Agent 运行中的实时上下文快照（stage / 工具名 / 已完成工具数 / 上下文构成）
     var agentLiveContext by remember { mutableStateOf<AgentLiveContextUsage?>(null) }
-    // + 面板内的上下文构成分析（类型占比）；Agent 运行期间随轮询动态更新
-    var contextBreakdown by remember { mutableStateOf<ContextBreakdown?>(null) }
+    // + 面板内的上下文构成分析（类型占比）；Agent 会话始终与圆环同源
+    var contextBreakdown by remember { mutableStateOf<ContextUsageBreakdown?>(null) }
     // 轮询时始终读取最新消息/会话，避免 LaunchedEffect 闭包捕获过期列表
     val latestMessages by rememberUpdatedState(messages)
     val latestSession by rememberUpdatedState(session)
-    // Agent 运行中的上下文刷新间隔。思考/工具调用期间新消息不落库，
-    // 页面事件不足以触发重算，需要周期性从 agent_run 检查点读取实时估算。
+    // Agent 运行中的上下文刷新间隔。运行中每轮工具调用都会即时落库，
+    // 因此这里周期性读取的就是最新轨迹，而不是等落库才更新。
     val liveContextRefreshIntervalMs = 2000L
     // 消息条数、压缩边界或发送状态变化时刷新（远程模式发送后服务端会先写 token 记录）。
-    // Agent 会话生成期间额外按 [liveContextRefreshIntervalMs] 持续重算，使 + 面板的
-    // 上下文占比与分析随思考/工具调用步骤动态更新；普通生成保持单次刷新。
+    // Agent 会话始终使用 agentLiveContextUsage（含工具定义与工具轨迹），圆环与
+    // + 面板占比分母同源；运行期间按 [liveContextRefreshIntervalMs] 持续重算。
     LaunchedEffect(sessionId, messageCount, contextRevision, sending) {
         // 进度条分母：当前激活聊天模型的上下文窗口长度（max_context_length）
         // 本地模式和远程模式均通过 unified.getActiveContextLength() 统一获取
@@ -1024,21 +1026,29 @@ private fun ModernChatComposer(
             ServiceContainer.unified.getActiveContextLength()
         }
         while (true) {
-            val live = sending && isAgentSession
+            // 运行中持续刷新；空闲时只算一次（含中断后仍留在库里的工具轨迹）
+            val keepPolling = sending
             withContext(Dispatchers.IO) {
-                if (live) {
+                if (isAgentSession) {
                     val liveUsage = ServiceContainer.unified.agentLiveContextUsage(sessionId)
-                    usedTokens = liveUsage.totalTokens
+                    // 服务端模式没有本地工具信息，构成回退为按消息估算
+                    val liveBreakdown = liveUsage.breakdown.takeIf { !it.isEmpty }
+                    usedTokens = if (liveBreakdown != null) {
+                        liveUsage.totalTokens
+                    } else {
+                        ServiceContainer.unified.sessionContextTokenUsage(sessionId)
+                    }
                     agentLiveContext = liveUsage
-                    contextBreakdown = buildContextBreakdown(latestSession, latestMessages)
-                        .withLiveToolTokens(liveUsage.liveToolTokens, liveUsage.liveToolCount)
+                    contextBreakdown = liveBreakdown
+                        ?: fallbackContextUsageBreakdown(latestSession, latestMessages)
+                            .takeIf { !it.isEmpty }
                 } else {
                     usedTokens = ServiceContainer.unified.sessionContextTokenUsage(sessionId)
                     agentLiveContext = null
-                    contextBreakdown = buildContextBreakdown(latestSession, latestMessages)
+                    contextBreakdown = fallbackContextUsageBreakdown(latestSession, latestMessages)
                 }
             }
-            if (!live) break
+            if (!keepPolling) break
             delay(liveContextRefreshIntervalMs)
         }
     }
@@ -2092,7 +2102,7 @@ private fun ModernChatActionPanel(
     maxTokens: Int?,
     sending: Boolean,
     agentLiveContext: AgentLiveContextUsage?,
-    contextBreakdown: ContextBreakdown?,
+    contextBreakdown: ContextUsageBreakdown?,
     fileBusy: Boolean,
     plotMode: Boolean,
     plotRealTimeSync: Boolean,
@@ -2659,7 +2669,7 @@ private fun ModernContextCard(
     maxTokens: Int?,
     sending: Boolean,
     agentLiveContext: AgentLiveContextUsage?,
-    contextBreakdown: ContextBreakdown?,
+    contextBreakdown: ContextUsageBreakdown?,
     onCompress: () -> Unit,
     onOpenAnalysis: () -> Unit
 ) {
@@ -2780,7 +2790,7 @@ private fun agentStatusText(agentLiveContext: AgentLiveContextUsage?, sending: B
  * Agent 运行期间随轮询动态刷新，工具调用占比包含尚未落库的进行中历史。
  */
 @Composable
-private fun ModernContextAnalysisSection(breakdown: ContextBreakdown, liveRunning: Boolean) {
+private fun ModernContextAnalysisSection(breakdown: ContextUsageBreakdown, liveRunning: Boolean) {
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -2805,7 +2815,7 @@ private fun ModernContextAnalysisSection(breakdown: ContextBreakdown, liveRunnin
         Spacer(Modifier.height(9.dp))
         Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
             breakdown.parts.forEach { part ->
-                ModernContextPartRow(part, breakdown.estimatedTokens)
+                ModernContextPartRow(part, breakdown.totalTokens)
             }
         }
         if (liveRunning) {
@@ -2820,9 +2830,9 @@ private fun ModernContextAnalysisSection(breakdown: ContextBreakdown, liveRunnin
 }
 
 @Composable
-private fun ModernContextPartRow(part: ContextPart, totalTokens: Int) {
-    val color = part.type.displayColor(MaterialTheme.colorScheme)
-    val share = if (totalTokens > 0) part.estimatedTokens.toFloat() / totalTokens else 0f
+private fun ModernContextPartRow(part: ContextUsagePartTokens, totalTokens: Int) {
+    val color = part.part.displayColor(MaterialTheme.colorScheme)
+    val share = if (totalTokens > 0) part.tokens.toFloat() / totalTokens else 0f
     val percent = (share * 100).toInt()
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2834,7 +2844,7 @@ private fun ModernContextPartRow(part: ContextPart, totalTokens: Int) {
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                contextPartLabel(part.type),
+                contextPartLabel(part.part),
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Medium,
@@ -2843,7 +2853,7 @@ private fun ModernContextPartRow(part: ContextPart, totalTokens: Int) {
             Text(
                 stringResource(
                     R.string.chat_context_analysis_part_detail,
-                    part.estimatedTokens,
+                    part.tokens,
                     part.itemCount
                 ),
                 style = MaterialTheme.typography.labelSmall,

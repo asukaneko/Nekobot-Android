@@ -54,6 +54,13 @@ import com.nekobot.app.data.local.ai.addGlobalAgentMemory
 import com.nekobot.app.data.local.ai.buildLocalAgentToolDefinitions
 import com.nekobot.app.data.local.ai.buildLocalDbToolDefinitions
 import com.nekobot.app.data.local.ai.buildLocalSkillToolDefinitions
+import com.nekobot.app.data.local.ai.buildSubagentToolDefinitions
+import com.nekobot.app.data.local.ai.buildContextUsageBreakdown
+import com.nekobot.app.data.local.ai.completedAgentToolCallCount
+import com.nekobot.app.data.local.ai.ContextUsageBreakdown
+import com.nekobot.app.data.local.ai.ContextUsageMessageRow
+import com.nekobot.app.data.local.ai.estimateToolDefinitionsTokens
+import com.nekobot.app.data.local.ai.CONTEXT_USAGE_AGENT_OVERHEAD_TOKENS
 import com.nekobot.app.data.local.ai.decodeThinkingCardsForUi
 import com.nekobot.app.data.local.ai.boundAgentToolHistoryJson
 import com.nekobot.app.data.local.ai.decodeAgentToolMessageRow
@@ -8183,48 +8190,108 @@ ${AiOutputLanguage.directive()}
     }
 
     /**
-     * Agent 会话运行期间的实时上下文用量。
+     * 会话上下文的实时构成与用量（聊天页圆环、+ 面板占比、分析页共用同一份口径）。
      *
-     * Agent 处于思考/工具调用循环中时，本轮新增的助手与工具消息尚未落库，
-     * 但它们会在下一轮模型请求中随 tool_call_history 注入，属于真实上下文。
-     * 这里叠加 agent_run 检查点中已完成的历史估算，使 + 面板的上下文占比与
-     * 分析能随工具调用步骤动态增长；未运行时仅返回持久化窗口用量。
+     * 统计对齐"下一次请求实际发送的内容"：
+     * - 系统提示词与工具定义（Agent 每次请求都带 100+ 个工具定义，体量很大）；
+     * - 压缩窗口内仍会发送的历史消息，以及它们折叠保存的 tool_call_history；
+     * - 进行中一轮逐条落库的工具轨迹（[agentToolMessageDao]）：它比检查点更新，
+     *   也是中断续跑时真正注入的内容，存在时覆盖最后一条助手消息上的受限历史。
+     *
+     * 运行状态（stage / 工具名 / 已完成工具数）仍来自 agent_run，未运行时为非活跃。
      */
     suspend fun agentLiveContextUsage(sessionId: String): AgentLiveContextUsage = withContext(Dispatchers.IO) {
-        val baseTokens = sessionContextTokenUsage(sessionId)
+        val session = sessionDao.getById(sessionId)
+        val isAgentSession = session?.sessionMode.equals("agent", ignoreCase = true)
         val run = agentRunDao.getBySession(sessionId)
-        val checkpoint = run?.checkpointHistory
-        if (run == null || run.status != AgentRunStatus.RUNNING || checkpoint.isNullOrBlank()) {
-            return@withContext AgentLiveContextUsage(
-                baseTokens = baseTokens,
-                liveToolTokens = 0L,
-                liveToolCount = 0,
-                stage = run?.stage,
-                lastToolName = run?.lastToolName,
-                completedToolCalls = run?.completedToolCalls ?: 0,
-                hasActiveRun = false
+
+        val durableToolHistory = if (isAgentSession) loadDurableToolHistory(sessionId) else emptyList()
+        val toolDefinitions = if (isAgentSession) sessionAgentToolDefinitions(sessionId) else emptyList()
+        val breakdown = buildContextUsageBreakdown(
+            isAgentSession = isAgentSession,
+            systemPromptTokens = sessionSystemPromptTokens(session),
+            messages = contextUsageMessageRows(sessionId, isAgentSession),
+            toolDefinitionTokens = estimateToolDefinitionsTokens(toolDefinitions),
+            toolDefinitionCount = toolDefinitions.size,
+            toolTrajectoryTokens = if (durableToolHistory.isEmpty()) {
+                0
+            } else {
+                estimateLocalMessagesTokens(durableToolHistory)
+            },
+            toolTrajectoryCount = completedAgentToolCallCount(durableToolHistory)
+        )
+
+        AgentLiveContextUsage(
+            breakdown = breakdown,
+            stage = run?.stage,
+            lastToolName = run?.lastToolName,
+            completedToolCalls = run?.completedToolCalls ?: 0,
+            hasActiveRun = run != null && run.status == AgentRunStatus.RUNNING
+        )
+    }
+
+    /** 读取本轮逐条落库的工具轨迹；没有未完成轮次时返回空。 */
+    private suspend fun loadDurableToolHistory(sessionId: String): List<Map<String, Any>> {
+        val decoded = agentToolMessageDao.listBySession(sessionId)
+            .mapNotNull { row -> decodeAgentToolMessageRow(row.payload) }
+        // 中断可能停在一批工具执行中间，末尾未完成的块不会进入下一次请求。
+        return dropIncompleteAgentTail(decoded)
+    }
+
+    /** 组装占比分析用的消息行：窗口内消息 + 各自折叠的工具历史。 */
+    private suspend fun contextUsageMessageRows(
+        sessionId: String,
+        isAgentSession: Boolean
+    ): List<ContextUsageMessageRow> {
+        val messages = listAiContextMessages(sessionId)
+        val windowed = if (isAgentSession) {
+            messages.agentContextWindow()
+                .filter { !it.role.equals("system", ignoreCase = true) || it.isAgentContextSummary() }
+        } else {
+            messages.filterNot { it.role.equals("system", ignoreCase = true) }
+        }
+        return windowed.map { message ->
+            val history = message.toolCallHistory
+            ContextUsageMessageRow(
+                role = message.role,
+                content = message.content,
+                toolHistoryTokens = history?.let(::estimateLocalTextTokens) ?: 0,
+                toolHistoryCount = history?.let { rows -> completedAgentToolCallCount(decodeToolCallHistory(rows)) } ?: 0,
+                isSummary = message.isAgentContextSummary()
             )
         }
-        // checkpoint_history 现在只保存进度摘要（{"v":2,"count":N,"tokens":T}），
-        // 工具正文逐条落在 local_agent_tool_messages，不再把整轮 JSON 塞进单行。
-        val summary = com.nekobot.app.data.local.ai.decodeAgentCheckpointSummary(checkpoint)
-        val liveToolCount = summary?.toolCalls
-            ?: runCatching {
-                JsonParser.parseString(checkpoint)
-                    .takeIf { it.isJsonArray }
-                    ?.asJsonArray
-                    ?.size()
-                    ?: 0
-            }.getOrDefault(0)
-        AgentLiveContextUsage(
-            baseTokens = baseTokens,
-            liveToolTokens = summary?.tokens?.toLong() ?: estimateLocalTextTokens(checkpoint).toLong(),
-            liveToolCount = liveToolCount,
-            stage = run.stage,
-            lastToolName = run.lastToolName,
-            completedToolCalls = run.completedToolCalls,
-            hasActiveRun = true
-        )
+    }
+
+    /** 实际系统提示词估算；未组装过时回退到历史里的 system 消息（非 Agent 会话）。 */
+    private suspend fun sessionSystemPromptTokens(session: LocalSessionEntity?): Int {
+        session?.composedSystemPrompt?.takeIf { it.isNotBlank() }?.let {
+            return estimateLocalTextTokens(it)
+        }
+        session?.systemPrompt?.takeIf { it.isNotBlank() }?.let {
+            return estimateLocalTextTokens(it)
+        }
+        return listAiContextMessages(session?.id.orEmpty())
+            .filter { it.role.equals("system", ignoreCase = true) && !it.isAgentContextSummary() }
+            .sumOf { estimateLocalTextTokens(it.content) + CONTEXT_USAGE_AGENT_OVERHEAD_TOKENS }
+    }
+
+    /**
+     * 当前会话真正会发送的工具定义（与 chatWithPipeline 组装请求时同源）。
+     *
+     * MCP 工具取运行时缓存而不是重新 prepare，避免占比刷新触发连接与注册副作用。
+     */
+    private fun sessionAgentToolDefinitions(sessionId: String): List<Map<String, Any>> {
+        val base = buildLocalAgentToolDefinitions() +
+            buildLocalSkillToolDefinitions() +
+            buildLocalDbToolDefinitions() +
+            cachedMcpAgentTools
+        val withSubagent = if (ServiceContainer.prefs.subagentEnabled) {
+            base + buildSubagentToolDefinitions()
+        } else {
+            base
+        }
+        return runCatching { filterDefinitionsForSession(sessionId, withSubagent) }
+            .getOrDefault(withSubagent)
     }
 
     /** 本地 token 用量排行榜（按 model / session 聚合，从独立存储读取）。 */
@@ -10757,24 +10824,21 @@ data class ContextCompressionResult(
 )
 
 /**
- * Agent 会话上下文用量的实时快照。
+ * 会话上下文的实时快照。
  *
- * [baseTokens] 为已落库的上下文窗口估算（与聊天页上下文圆环同口径）；
- * [liveToolTokens] / [liveToolCount] 为当前一轮运行中尚未落库、但会随
- * tool_call_history 注入下一轮请求的工具调用历史（agent_run 检查点）估算。
- * 未运行或非 Agent 会话时 [hasActiveRun] 为 false，live 部分为 0。
+ * [breakdown] 是圆环、+ 面板占比与分析页共用的唯一口径；[totalTokens] 即各构成之和。
+ * [hasActiveRun] 表示 Agent 工具循环正在运行（仅影响状态文案），
+ * 已中断但仍有落库工具轨迹的轮次同样会被 [breakdown] 计入。
  */
 data class AgentLiveContextUsage(
-    val baseTokens: Long,
-    val liveToolTokens: Long,
-    val liveToolCount: Int,
+    val breakdown: ContextUsageBreakdown,
     val stage: String?,
     val lastToolName: String?,
     val completedToolCalls: Int,
     val hasActiveRun: Boolean
 ) {
-    /** 计入运行中工具调用后的总用量。 */
-    val totalTokens: Long get() = baseTokens + liveToolTokens
+    /** 计入系统提示词、工具定义与工具轨迹后的总用量。 */
+    val totalTokens: Long get() = breakdown.totalTokens.toLong()
 }
 
 /**

@@ -634,6 +634,7 @@
     <string name="chat_context_analysis_assistant_messages">アシスタントメッセージ</string>
     <string name="chat_context_analysis_summary">圧縮された要約</string>
     <string name="chat_context_analysis_system_prompt">システムプロンプト</string>
+    <string name="chat_context_analysis_tool_definitions">ツール定義</string>
     <string name="chat_context_analysis_tool_content">ツール呼び出し</string>
     <string name="chat_context_analysis_other_messages">その他のメッセージ</string>
 

@@ -45,6 +45,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.ai.ContextUsageBreakdown
+import com.nekobot.app.data.local.ai.ContextUsagePartTokens
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.repository.Resource
@@ -52,7 +54,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 private data class ContextAnalysisData(
-    val breakdown: ContextBreakdown,
+    val breakdown: ContextUsageBreakdown,
     val usedTokens: Long,
     val maxTokens: Int?
 )
@@ -93,20 +95,19 @@ fun ContextAnalysisScreen(
                     is Resource.Success -> messagesResult.data
                     else -> emptyList()
                 }
-                // Agent 运行中（工具循环未结束）时，尚未落库的工具调用历史也要计入，
-                // 与 + 面板的实时占比口径保持一致。
+                // Agent 会话使用本地完整口径：系统提示词 + 工具定义 + 压缩窗口内消息 +
+                // 逐条落库/折叠保存的工具轨迹，圆环与类型占比分母完全一致。
+                // 其余情况（服务端模式）退回按消息与提示词估算。
                 val isAgentSession = session?.sessionMode.equals("agent", ignoreCase = true)
                 val live = if (isAgentSession) {
                     ServiceContainer.unified.agentLiveContextUsage(sessionId)
                 } else {
                     null
                 }
+                val liveBreakdown = live?.breakdown?.takeIf { !it.isEmpty }
                 Result.success(
                     ContextAnalysisData(
-                        breakdown = buildContextBreakdown(session, messages)
-                            .let {
-                                if (live == null) it else it.withLiveToolTokens(live.liveToolTokens, live.liveToolCount)
-                            },
+                        breakdown = liveBreakdown ?: fallbackContextUsageBreakdown(session, messages),
                         usedTokens = live?.totalTokens
                             ?: ServiceContainer.unified.sessionContextTokenUsage(sessionId),
                         maxTokens = ServiceContainer.unified.getActiveContextLength()
@@ -213,8 +214,8 @@ fun ContextAnalysisScreen(
                             )
                         }
                     } else {
-                        items(data.breakdown.parts, key = { it.type.name }) { part ->
-                            ContextTypeRow(part, data.breakdown.estimatedTokens)
+                        items(data.breakdown.parts, key = { it.part.name }) { part ->
+                            ContextTypeRow(part, data.breakdown.totalTokens)
                         }
                     }
                 }
@@ -277,9 +278,9 @@ private fun ContextCapacityCard(usedTokens: Long, maxTokens: Int?) {
 }
 
 @Composable
-private fun ContextTypeRow(part: ContextPart, totalTokens: Int) {
-    val color = part.type.displayColor(MaterialTheme.colorScheme)
-    val share = if (totalTokens > 0) part.estimatedTokens.toFloat() / totalTokens else 0f
+private fun ContextTypeRow(part: ContextUsagePartTokens, totalTokens: Int) {
+    val color = part.part.displayColor(MaterialTheme.colorScheme)
+    val share = if (totalTokens > 0) part.tokens.toFloat() / totalTokens else 0f
     val percent = (share * 100).toInt()
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -292,14 +293,14 @@ private fun ContextTypeRow(part: ContextPart, totalTokens: Int) {
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    contextPartLabel(part.type),
+                    contextPartLabel(part.part),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
                     stringResource(
                         R.string.chat_context_analysis_part_detail,
-                        part.estimatedTokens,
+                        part.tokens,
                         part.itemCount
                     ),
                     style = MaterialTheme.typography.bodySmall,

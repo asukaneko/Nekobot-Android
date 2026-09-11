@@ -8,6 +8,7 @@ import com.google.gson.JsonParser
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalRepository
 import com.nekobot.app.data.local.AgentLiveContextUsage
+import com.nekobot.app.data.local.ai.ContextUsageBreakdown
 import com.nekobot.app.data.local.ai.LocalInteractiveSession
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
 import com.nekobot.app.data.local.ai.RealtimeAgentToolRuntime
@@ -996,17 +997,15 @@ class UnifiedRepository(
         if (isLocal) local.sessionContextTokenUsage(sessionId) else sessionTokenUsage(sessionId)
 
     /**
-     * Agent 会话的运行中上下文实时快照：持久化窗口 + 当前一轮尚未落库的工具调用历史。
-     * 本地模式叠加 agent_run 检查点估算；远程模式没有本地运行中的工具历史，仅返回窗口用量。
+     * 会话上下文实时快照。本地模式返回完整口径（系统提示词 + 工具定义 + 消息 +
+     * 工具轨迹）；远程模式没有本地工具信息，返回空构成，由界面按消息回退估算。
      */
     suspend fun agentLiveContextUsage(sessionId: String): AgentLiveContextUsage =
         if (isLocal) {
             local.agentLiveContextUsage(sessionId)
         } else {
             AgentLiveContextUsage(
-                baseTokens = sessionContextTokenUsage(sessionId),
-                liveToolTokens = 0L,
-                liveToolCount = 0,
+                breakdown = ContextUsageBreakdown(emptyList()),
                 stage = null,
                 lastToolName = null,
                 completedToolCalls = 0,
