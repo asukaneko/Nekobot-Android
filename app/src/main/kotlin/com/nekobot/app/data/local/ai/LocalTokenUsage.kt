@@ -269,35 +269,66 @@ private fun localTokenRecordDate(timestamp: String): String {
         ?: SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 }
 
-/** 轻量估算器仅用于服务商不返回 usage 的降级路径。 */
+/**
+ * 轻量估算器：服务商不返回 usage 时的降级路径，也用于上下文占比与容量判断。
+ *
+ * 估算规则对齐常见 BPE 分词器的量级（拿服务商 usage 记录校对过）：
+ * - CJK 汉字/假名/谚文：约 1 token/字符；
+ * - ASCII 字母数字词：约 4 字符/token，且每个词至少 1 token（短词很少被合并）；
+ * - ASCII 标点/符号：约 3 字符/token——JSON、代码里标点极密集，
+ *   原实现“每个标点都算 1 token”会把工具定义这类内容高估一倍以上；
+ * - 空白仅用于切词，不计 token。
+ */
 internal fun estimateLocalTextTokens(text: String): Int {
     if (text.isBlank()) return 0
-    var tokens = 0
-    var asciiRun = 0
+    var tokens = 0.0
+    var wordChars = 0
+    var symbolChars = 0
 
-    fun flushAsciiRun() {
-        if (asciiRun > 0) {
-            tokens += ceil(asciiRun / 4.0).toInt()
-            asciiRun = 0
+    fun flushWord() {
+        if (wordChars > 0) {
+            tokens += maxOf(1.0, wordChars / ASCII_WORD_CHARS_PER_TOKEN)
+            wordChars = 0
+        }
+    }
+
+    fun flushSymbols() {
+        if (symbolChars > 0) {
+            tokens += symbolChars / ASCII_SYMBOL_CHARS_PER_TOKEN
+            symbolChars = 0
         }
     }
 
     text.codePoints().forEach { codePoint ->
         when {
-            Character.isWhitespace(codePoint) -> flushAsciiRun()
-            codePoint < 128 && Character.isLetterOrDigit(codePoint) -> asciiRun++
+            Character.isWhitespace(codePoint) -> {
+                flushWord()
+                flushSymbols()
+            }
+            isCjkLike(codePoint) -> {
+                flushWord()
+                flushSymbols()
+                tokens += 1.0
+            }
+            codePoint < 128 && Character.isLetterOrDigit(codePoint) -> {
+                flushSymbols()
+                wordChars++
+            }
+            codePoint < 128 -> {
+                flushWord()
+                symbolChars++
+            }
             else -> {
-                flushAsciiRun()
-                tokens += when {
-                    isCjkLike(codePoint) -> 1
-                    Character.isLetterOrDigit(codePoint) -> 1
-                    else -> 1
-                }
+                // 全角标点、其他语种文字、emoji：按 1 token/字符
+                flushWord()
+                flushSymbols()
+                tokens += 1.0
             }
         }
     }
-    flushAsciiRun()
-    return tokens.coerceAtLeast(1)
+    flushWord()
+    flushSymbols()
+    return ceil(tokens).toInt().coerceAtLeast(1)
 }
 
 /**
@@ -349,3 +380,9 @@ private fun isCjkLike(codePoint: Int): Boolean =
 
 private const val MESSAGE_OVERHEAD_TOKENS = 4
 private const val CHAT_PRIMING_TOKENS = 2
+
+/** ASCII 字母数字词的平均字符数/token（英文、代码标识符量级）。 */
+private const val ASCII_WORD_CHARS_PER_TOKEN = 4.0
+
+/** ASCII 标点/符号的平均字符数/token（JSON、代码里标点比单词更密）。 */
+private const val ASCII_SYMBOL_CHARS_PER_TOKEN = 3.0

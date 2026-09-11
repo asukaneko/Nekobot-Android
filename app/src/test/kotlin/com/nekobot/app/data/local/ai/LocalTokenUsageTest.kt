@@ -56,6 +56,52 @@ class LocalTokenUsageTest {
         assertEquals(3, estimateLocalTextTokens("测试abcd"))
     }
 
+    /**
+     * 标点密集的 JSON/代码不能按“每个符号 1 token”估：那会把工具定义高估一倍，
+     * 导致上下文占比明显高于服务商 usage 记录（实测 30k vs 20k）。
+     */
+    @Test
+    fun `json and code are estimated at three to five chars per token`() {
+        val sample = """{"type":"function","function":{"name":"get_weather","parameters":""" +
+            """{"type":"object","properties":{"city":{"type":"string"}}}}}"""
+        val tokens = estimateLocalTextTokens(sample)
+
+        assertTrue(
+            "实测 $tokens tokens / ${sample.length} 字符，应落在 3~5 字符/token",
+            tokens * 3 <= sample.length && tokens * 5 >= sample.length
+        )
+        // 就地校对：cl100k 对该样例约 15 tokens
+        assertEquals(
+            16,
+            estimateLocalTextTokens("""{"type":"function","function":{"name":"get_weather"}}""")
+        )
+    }
+
+    @Test
+    fun `english words keep at least one token each`() {
+        assertEquals(4, estimateLocalTextTokens("I am a boy"))
+    }
+
+    @Test
+    fun `agent tool definitions stay within a realistic token range`() {
+        val json = com.google.gson.Gson().toJson(
+            buildLocalAgentToolDefinitions() + buildLocalDbToolDefinitions()
+        )
+        val tokens = estimateLocalTextTokens(json)
+
+        // 工具定义是请求里最大的一块固定开销。schema 里短键名与标点极多，
+        // 整块约 2~4 字符/token；旧实现按“每个标点 1 token”只有 1.7 字符/token，
+        // 会让上下文占比明显高于服务商 usage 记录，这条断言正是拦住它。
+        assertTrue(
+            "实测 $tokens tokens / ${json.length} 字符，不应低于 2 字符/token",
+            tokens * 2 <= json.length
+        )
+        assertTrue(
+            "实测 $tokens tokens / ${json.length} 字符，不应高估到 4 字符/token 以下",
+            tokens * 4 >= json.length
+        )
+    }
+
     @Test
     fun `missing usage record is recovered from persisted assistant message`() {
         val result = reconcileLocalTokenUsageRecords(
