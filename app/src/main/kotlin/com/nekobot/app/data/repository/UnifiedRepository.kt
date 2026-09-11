@@ -89,6 +89,7 @@ import com.nekobot.app.data.model.WorkflowRequest
 import com.nekobot.app.data.model.WorldBook
 import com.nekobot.app.data.model.WorldBookEntry
 import com.nekobot.app.data.model.WorldBookEntryRequest
+import com.nekobot.app.data.model.WorldBookMatchDiagnostic
 import com.nekobot.app.data.model.WorldBookRequest
 import com.nekobot.app.data.remote.RealtimeEvent
 import kotlinx.coroutines.flow.Flow
@@ -758,6 +759,26 @@ class UnifiedRepository(
 
     suspend fun deleteEntry(bookId: String, entryId: String): Resource<Unit> =
         if (isLocal) { local.deleteEntry(entryId); Resource.Success(Unit) } else remote.deleteEntry(bookId, entryId)
+
+    /**
+     * 世界书命中调试。
+     *
+     * - 本地模式：直接跑 WorldBookMatcher，返回全部条目（含未命中原因）
+     * - 服务器模式：调用 /api/world-books/test-match，服务端只返回命中项
+     */
+    suspend fun testWorldBookMatch(
+        message: String,
+        characterId: String?
+    ): Resource<List<WorldBookMatchDiagnostic>> =
+        if (isLocal) {
+            try {
+                Resource.Success(local.testWorldBookMatch(message, characterId))
+            } catch (e: Exception) {
+                Resource.Error(e.message ?: "命中测试失败")
+            }
+        } else {
+            remote.testWorldBookMatch(message, characterId)
+        }
 
     /**
      * AI 批量生成世界书条目：根据绑定角色与主题生成 5-10 个条目并立即持久化。

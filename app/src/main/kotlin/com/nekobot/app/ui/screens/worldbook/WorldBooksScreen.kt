@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.*
 import com.nekobot.app.ui.components.BorderlessOutlinedTextField as OutlinedTextField
@@ -127,6 +128,7 @@ class WorldBooksViewModel : com.nekobot.app.ui.BaseViewModel() {
 @Composable
 fun WorldBooksScreen(
     onOpenBook: (String) -> Unit,
+    onOpenMatchDebug: () -> Unit = {},
     viewModel: WorldBooksViewModel = viewModel()
 ) {
     val books by viewModel.books.collectAsStateWithLifecycle()
@@ -181,6 +183,14 @@ fun WorldBooksScreen(
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 actions = {
+                    // 命中调试：作用于当前角色可见的全部世界书，因此放在列表页而不是某本书里
+                    IconButton(onClick = onOpenMatchDebug) {
+                        Icon(
+                            Icons.Filled.Search,
+                            contentDescription = stringResource(R.string.worldbook_debug_title),
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                     IconButton(onClick = { viewModel.load() }) {
                         Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.worldbook_refresh), tint = MaterialTheme.colorScheme.onSurface)
                     }

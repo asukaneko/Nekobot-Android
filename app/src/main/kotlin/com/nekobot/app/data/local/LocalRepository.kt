@@ -7307,6 +7307,58 @@ class LocalRepository(
         worldBookDao.deleteEntryById(id)
     }
 
+    /**
+     * 世界书命中调试（本地模式）：按给定消息跑一次多源召回，不写库。
+     *
+     * 返回**全部**条目的评估结果（含未命中原因），回答「为什么这条没触发」。
+     * 与真实注入一致地按角色过滤世界书；测试消息之外的召回源（助手回复 / 场景状态）
+     * 在调试入口没有上下文，未命中原因里会明确说明。
+     */
+    suspend fun testWorldBookMatch(
+        message: String,
+        characterId: String?
+    ): List<com.nekobot.app.data.model.WorldBookMatchDiagnostic> = withContext(Dispatchers.IO) {
+        val trimmed = message.trim()
+        if (trimmed.isEmpty()) return@withContext emptyList()
+
+        val books = if (characterId.isNullOrBlank()) {
+            worldBookDao.listAll()
+        } else {
+            worldBookDao.listByCharacter(characterId)
+        }
+        if (books.isEmpty()) return@withContext emptyList()
+
+        val entriesByBook = books.associate { book -> book.id to worldBookDao.listEntries(book.id) }
+        val evaluations = com.nekobot.app.data.local.ai.WorldBookMatcher.diagnoseEntriesV2(
+            context = com.nekobot.app.data.local.ai.WorldBookRecallContext(
+                latestUserMessage = trimmed,
+                characterId = characterId.orEmpty()
+            ),
+            worldBooks = books,
+            entriesByBook = entriesByBook,
+            characterId = characterId.orEmpty()
+        )
+        evaluations.map { evaluation ->
+            val result = evaluation.result
+            val entry = evaluation.entry
+            val label = entry.comment?.takeIf { it.isNotBlank() }
+                ?: LocalPromptBuilder.parseStringList(entry.keys).takeIf { it.isNotEmpty() }
+                    ?.joinToString("/")
+                ?: "(未命名条目)"
+            com.nekobot.app.data.model.WorldBookMatchDiagnostic(
+                entryId = entry.id,
+                entryName = label,
+                worldBookName = evaluation.bookName,
+                worldBookId = evaluation.bookId,
+                matchedKeywords = result?.matchedKeywords,
+                triggerSources = result?.triggerSources,
+                score = result?.score,
+                contentPreview = entry.content?.take(200),
+                skipReason = evaluation.skipReason
+            )
+        }
+    }
+
     /** 加载某角色关联的所有世界书条目（含全局世界书）。 */
     suspend fun loadWorldBookEntries(characterId: String?): List<LocalWorldBookEntryEntity> =
         withContext(Dispatchers.IO) {

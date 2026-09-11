@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第 2 ラウンド：世界観ブックのヒット確認画面で追加した文言。 -->
+<resources>
+    <!-- 世界観ブック：ヒット確認パネル -->
+    <string name="worldbook_debug_title">ヒット確認</string>
+    <string name="worldbook_debug_hint">テスト用のメッセージを入力すると、どの項目が注入されるか、されない項目はなぜかを確認できます。</string>
+    <string name="worldbook_debug_message_label">テストメッセージ</string>
+    <string name="worldbook_debug_character_label">キャラクターで絞り込む</string>
+    <string name="worldbook_debug_character_none">キャラクター指定なし（すべての世界観ブック）</string>
+    <string name="worldbook_debug_run">テスト</string>
+    <string name="worldbook_debug_no_result">現在の範囲にテスト可能な項目がありません。</string>
+    <string name="worldbook_debug_matched_count">ヒット %1$d 件、未ヒット %2$d 件</string>
+    <string name="worldbook_debug_score">スコア %1$d</string>
+    <string name="worldbook_debug_skipped">未ヒット</string>
+    <string name="worldbook_debug_sources">召回元：</string>
+    <string name="worldbook_debug_keywords">ヒットしたキーワード：</string>
+    <string name="worldbook_debug_need_message">先にテストメッセージを入力してください</string>
+    <string name="worldbook_debug_failed">ヒット確認に失敗しました</string>
+
+    <!-- 世界観ブック：召回元の名称 -->
+    <string name="worldbook_source_always">常時</string>
+    <string name="worldbook_source_user">ユーザー発言</string>
+    <string name="worldbook_source_assistant">アシスタントの返信</string>
+    <string name="worldbook_source_history">履歴</string>
+    <string name="worldbook_source_scene">シーン状態</string>
+    <string name="worldbook_source_unknown">その他</string>
+</resources>

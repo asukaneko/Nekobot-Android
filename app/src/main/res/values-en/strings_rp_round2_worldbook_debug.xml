@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Round 2 of the roleplay improvements: world book match debug screen. -->
+<resources>
+    <!-- World book: match debug panel -->
+    <string name="worldbook_debug_title">Match debug</string>
+    <string name="worldbook_debug_hint">Enter a test message to see which entries would be injected, and why the others were not.</string>
+    <string name="worldbook_debug_message_label">Test message</string>
+    <string name="worldbook_debug_character_label">Filter by character</string>
+    <string name="worldbook_debug_character_none">No character (all world books)</string>
+    <string name="worldbook_debug_run">Test</string>
+    <string name="worldbook_debug_no_result">No testable world book entries in the current scope.</string>
+    <string name="worldbook_debug_matched_count">%1$d matched, %2$d skipped</string>
+    <string name="worldbook_debug_score">Score %1$d</string>
+    <string name="worldbook_debug_skipped">Skipped</string>
+    <string name="worldbook_debug_sources">Recall sources:</string>
+    <string name="worldbook_debug_keywords">Matched keywords:</string>
+    <string name="worldbook_debug_need_message">Enter a test message first</string>
+    <string name="worldbook_debug_failed">Match test failed</string>
+
+    <!-- World book: recall source names -->
+    <string name="worldbook_source_always">Always on</string>
+    <string name="worldbook_source_user">User message</string>
+    <string name="worldbook_source_assistant">Assistant reply</string>
+    <string name="worldbook_source_history">History</string>
+    <string name="worldbook_source_scene">Scene state</string>
+    <string name="worldbook_source_unknown">Other</string>
+</resources>

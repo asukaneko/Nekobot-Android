@@ -90,6 +90,7 @@ import com.nekobot.app.ui.screens.statehistory.StateHistoryScreen
 import com.nekobot.app.ui.screens.tokens.TokensScreen
 import com.nekobot.app.ui.screens.tokens.RoutingHistoryScreen
 import com.nekobot.app.ui.screens.worldbook.WorldBookDetailScreen
+import com.nekobot.app.ui.screens.worldbook.WorldBookMatchDebugScreen
 import com.nekobot.app.ui.screens.worldbook.WorldBooksScreen
 import com.nekobot.app.ui.screens.extensions.ExtensionsScreen
 import com.nekobot.app.ui.screens.extensions.HooksScreen
@@ -371,9 +372,14 @@ fun NekobotNavGraph() {
                                     }
                                 )
 
-                                Routes.WORLD_BOOKS -> WorldBooksScreen(onOpenBook = { id ->
-                                    navController.navigate(Routes.worldBookDetail(id))
-                                })
+                                Routes.WORLD_BOOKS -> WorldBooksScreen(
+                                    onOpenBook = { id ->
+                                        navController.navigate(Routes.worldBookDetail(id))
+                                    },
+                                    onOpenMatchDebug = {
+                                        navController.navigate(Routes.WORLD_BOOK_MATCH_DEBUG)
+                                    }
+                                )
 
                                 Routes.TOKENS -> TokensScreen(
                                     onNavigate = { route -> navController.navigate(route) }
@@ -478,9 +484,17 @@ fun NekobotNavGraph() {
                 )
             }
             composable(Routes.WORLD_BOOKS) {
-                WorldBooksScreen(onOpenBook = { id ->
-                    navController.navigate(Routes.worldBookDetail(id))
-                })
+                WorldBooksScreen(
+                    onOpenBook = { id ->
+                        navController.navigate(Routes.worldBookDetail(id))
+                    },
+                    onOpenMatchDebug = {
+                        navController.navigate(Routes.WORLD_BOOK_MATCH_DEBUG)
+                    }
+                )
+            }
+            composable(Routes.WORLD_BOOK_MATCH_DEBUG) {
+                WorldBookMatchDebugScreen(onBack = { navController.popBackStack() })
             }
             composable(
                 route = Routes.WORLD_BOOK_DETAIL,

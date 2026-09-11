@@ -40,6 +40,9 @@ object Routes {
     const val WORLD_BOOK_DETAIL = "worldbook/{bookId}"
     fun worldBookDetail(id: String) = "worldbook/$id"
 
+    /** 世界书命中调试（列表页顶部栏入口，作用于当前角色可见的全部世界书）。 */
+    const val WORLD_BOOK_MATCH_DEBUG = "worldbook_match_debug"
+
     const val AI_CONFIG_CENTER = "ai_config_center"
     const val AI_CONFIG = "ai_config"
     const val AI_MODELS = "ai_models"

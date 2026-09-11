@@ -450,6 +450,39 @@ class NekobotRepository(
     suspend fun aiGenerateWorldBookEntries(bookId: String, topic: String?): Resource<JsonElement> =
         safeCall { api.aiGenerateWorldBookEntries(bookId, mapOf("topic" to topic)) }
 
+    /**
+     * 世界书命中调试：POST /api/world-books/test-match。
+     * 服务端返回 `{"success": true, "matches": [...]}`，这里解出 matches 列表。
+     */
+    suspend fun testWorldBookMatch(
+        message: String,
+        characterId: String?
+    ): Resource<List<WorldBookMatchDiagnostic>> =
+        safeCall {
+            api.testWorldBookMatch(
+                com.google.gson.JsonObject().apply {
+                    addProperty("message", message)
+                    if (!characterId.isNullOrBlank()) addProperty("character_id", characterId)
+                }
+            )
+        }.let { res ->
+            when (res) {
+                is Resource.Success -> {
+                    val arr = res.data?.takeIf { it.isJsonObject }?.asJsonObject
+                        ?.get("matches")?.takeIf { it.isJsonArray }?.asJsonArray
+                    Resource.Success(
+                        arr?.mapNotNull { element ->
+                            runCatching {
+                                gson.fromJson(element, WorldBookMatchDiagnostic::class.java)
+                            }.getOrNull()
+                        } ?: emptyList()
+                    )
+                }
+                is Resource.Error -> res
+                is Resource.Loading -> res
+            }
+        }
+
     // ==================== AI 配置 ====================
     suspend fun getAiConfig(): Resource<JsonElement> = safeCall { api.getAiConfig() }
     suspend fun updateAiConfig(json: JsonElement): Resource<ApiResult> = safeCall { api.updateAiConfig(json) }

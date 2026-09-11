@@ -52,6 +52,20 @@ data class WorldBookMatchResult(
     val score: Int
 )
 
+/**
+ * 命中调试：单条条目的评估结果。
+ *
+ * [result] 非空表示命中；为空时 [skipReason] 说明这条为什么没触发——
+ * 这正是「命中调试面板」要回答的问题，也是只返回命中列表的接口做不到的。
+ */
+data class WorldBookEntryEvaluation(
+    val bookId: String,
+    val bookName: String,
+    val entry: LocalWorldBookEntryEntity,
+    val result: WorldBookMatchResult?,
+    val skipReason: String? = null
+)
+
 // ============================================================================
 // 权重与优先级
 // ============================================================================
@@ -101,9 +115,49 @@ object WorldBookMatcher {
         characterId: String = "",
         config: WorldBookRecallConfig = WorldBookRecallConfig()
     ): List<WorldBookMatchResult> {
+        val evaluations = evaluateEntriesV2(context, worldBooks, entriesByBook, characterId, config)
+        return evaluations.mapNotNull { it.result }.take(config.maxEntries)
+    }
+
+    /**
+     * 命中调试入口：返回**全部**条目的评估结果（含未命中原因），用于世界书命中调试面板。
+     *
+     * 命中项按 [matchEntriesV2] 的排序规则排在前面，未命中项按「世界书 → 条目」顺序附在后面；
+     * 与 [matchEntriesV2] 不同，这里不做 maxEntries 截断，否则「为什么没触发」会被隐藏。
+     */
+    fun diagnoseEntriesV2(
+        context: WorldBookRecallContext,
+        worldBooks: List<LocalWorldBookEntity>,
+        entriesByBook: Map<String, List<LocalWorldBookEntryEntity>>,
+        characterId: String = "",
+        config: WorldBookRecallConfig = WorldBookRecallConfig()
+    ): List<WorldBookEntryEvaluation> {
+        val evaluations = evaluateEntriesV2(context, worldBooks, entriesByBook, characterId, config)
+        val matched = evaluations.filter { it.result != null }
+            .sortedWith(
+                compareByDescending<WorldBookEntryEvaluation> { it.result?.score ?: 0 }
+                    .thenByDescending { it.entry.priority }
+                    .thenByDescending { ENTRY_TYPE_PRIORITY[it.entry.entryType.lowercase()] ?: 0 }
+                    .thenBy { (it.entry.content ?: "").length }
+            )
+        val skipped = evaluations.filter { it.result == null }
+        return matched + skipped
+    }
+
+    /**
+     * 逐条评估全部条目。返回值顺序与旧版 matchEntriesV2 的内部遍历顺序一致，
+     * 因此 [matchEntriesV2] 的排序与截断结果保持不变。
+     */
+    private fun evaluateEntriesV2(
+        context: WorldBookRecallContext,
+        worldBooks: List<LocalWorldBookEntity>,
+        entriesByBook: Map<String, List<LocalWorldBookEntryEntity>>,
+        characterId: String,
+        config: WorldBookRecallConfig
+    ): List<WorldBookEntryEvaluation> {
         if (worldBooks.isEmpty()) return emptyList()
 
-        val results = mutableListOf<WorldBookMatchResult>()
+        val results = mutableListOf<WorldBookEntryEvaluation>()
         val assistantText = if (context.assistantRecentText.isNotEmpty()) {
             context.assistantRecentText
         } else {
@@ -119,16 +173,29 @@ object WorldBookMatcher {
         var assistantTriggeredCount = 0
 
         for (book in worldBooks) {
-            if (!book.enabled) continue
+            val entries = entriesByBook[book.id] ?: continue
+            if (!book.enabled) {
+                entries.forEach { entry ->
+                    results.add(skipped(book, entry, "世界书已禁用"))
+                }
+                continue
+            }
             // 角色过滤
             val bookCharId = book.characterId
             if (!bookCharId.isNullOrBlank() && characterId.isNotEmpty()) {
-                if (!characterMatches(characterId, bookCharId)) continue
+                if (!characterMatches(characterId, bookCharId)) {
+                    entries.forEach { entry ->
+                        results.add(skipped(book, entry, "世界书未绑定当前角色"))
+                    }
+                    continue
+                }
             }
 
-            val entries = entriesByBook[book.id] ?: continue
             for (entry in entries) {
-                if (!entry.enabled) continue
+                if (!entry.enabled) {
+                    results.add(skipped(book, entry, "条目已禁用"))
+                    continue
+                }
 
                 val triggerSources = mutableListOf<String>()
                 val matchedKeywords = mutableListOf<String>()
@@ -146,7 +213,10 @@ object WorldBookMatcher {
                 val hasKeywords = !entry.keys.isNullOrBlank()
                 val hasStateTriggers = parseStateTriggers(entry.stateTriggersJson).isNotEmpty()
 
-                if (!entry.constant && !hasKeywords && !hasStateTriggers) continue
+                if (!entry.constant && !hasKeywords && !hasStateTriggers) {
+                    results.add(skipped(book, entry, "未配置关键词、常驻或状态触发"))
+                    continue
+                }
 
                 // 1. 用户消息源
                 if (hasKeywords && sourceEnabled("user")) {
@@ -195,7 +265,10 @@ object WorldBookMatcher {
                     }
                 }
 
-                if (triggerSources.isEmpty()) continue
+                if (triggerSources.isEmpty()) {
+                    results.add(skipped(book, entry, skipReasonFor(entry, context, config)))
+                    continue
+                }
 
                 score += entry.priority
                 score += (ENTRY_TYPE_PRIORITY[entry.entryType.lowercase()] ?: 0) / 10
@@ -203,24 +276,73 @@ object WorldBookMatcher {
                 // 关键词去重
                 val dedupedKeywords = matchedKeywords.distinct()
 
-                results.add(WorldBookMatchResult(
-                    entry = entry,
-                    triggerSources = triggerSources,
-                    matchedKeywords = dedupedKeywords,
-                    score = score
-                ))
+                results.add(
+                    WorldBookEntryEvaluation(
+                        bookId = book.id,
+                        bookName = book.name,
+                        entry = entry,
+                        result = WorldBookMatchResult(
+                            entry = entry,
+                            triggerSources = triggerSources,
+                            matchedKeywords = dedupedKeywords,
+                            score = score
+                        )
+                    )
+                )
             }
         }
 
-        // 排序：score 降序 → priority 降序 → entry_type 优先级降序 → content 长度升序
-        val sorted = results.sortedWith(
-            compareByDescending<WorldBookMatchResult> { it.score }
+        return results.sortedWith(
+            compareByDescending<WorldBookEntryEvaluation> { it.result?.score ?: 0 }
                 .thenByDescending { it.entry.priority }
                 .thenByDescending { ENTRY_TYPE_PRIORITY[it.entry.entryType.lowercase()] ?: 0 }
                 .thenBy { (it.entry.content ?: "").length }
         )
+    }
 
-        return sorted.take(config.maxEntries)
+    private fun skipped(
+        book: LocalWorldBookEntity,
+        entry: LocalWorldBookEntryEntity,
+        reason: String
+    ) = WorldBookEntryEvaluation(
+        bookId = book.id,
+        bookName = book.name,
+        entry = entry,
+        result = null,
+        skipReason = reason
+    )
+
+    /** 生成「因为没命中什么」的可读原因，供调试面板直接展示。 */
+    private fun skipReasonFor(
+        entry: LocalWorldBookEntryEntity,
+        context: WorldBookRecallContext,
+        config: WorldBookRecallConfig
+    ): String {
+        val reasons = mutableListOf<String>()
+        val keys = parseKeys(entry.keys.orEmpty())
+        val hasStateTriggers = parseStateTriggers(entry.stateTriggersJson).isNotEmpty()
+        val hasKeywords = !entry.keys.isNullOrBlank()
+
+        if (hasKeywords) {
+            val userHits = checkMatchKeywords(context.latestUserMessage, entry)
+            if (userHits.isEmpty()) {
+                reasons.add("测试消息未命中关键词 ${keys.joinToString("/")}")
+            } else if (entry.matchMode.equals("all", ignoreCase = true)) {
+                reasons.add("全匹配模式：仅命中 ${userHits.size}/${keys.distinct().size} 个关键词")
+            } else {
+                reasons.add("关键词命中但召回来源被限制")
+            }
+        }
+        if (hasStateTriggers && context.scene.isEmpty()) {
+            reasons.add("需要场景状态触发（本次测试未提供场景）")
+        }
+        if (!hasKeywords && !hasStateTriggers && !entry.constant) {
+            reasons.add("未配置关键词或状态触发")
+        }
+        if (!config.enableAssistantTrigger && hasKeywords) {
+            reasons.add("助手回复触发已关闭")
+        }
+        return reasons.joinToString("；").ifBlank { "本次未命中任何召回来源" }
     }
 
     // ------------------------------------------------------------------

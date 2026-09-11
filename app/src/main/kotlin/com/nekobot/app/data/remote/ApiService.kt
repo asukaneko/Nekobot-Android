@@ -206,6 +206,13 @@ interface ApiService {
         @Body body: Map<String, String?>
     ): Response<JsonElement>
 
+    /**
+     * 世界书命中调试：按给定消息跑一次多源召回，不写库。
+     * 请求体支持 `message` / `character_id`，可选 `recent_messages` 与 `scene`。
+     */
+    @POST("api/world-books/test-match")
+    suspend fun testWorldBookMatch(@Body body: JsonElement): Response<JsonElement>
+
     // ==================== AI 配置 ====================
     @GET("api/ai-config")
     suspend fun getAiConfig(): Response<JsonElement>

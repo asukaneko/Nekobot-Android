@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 角色扮演对话第 2 轮：世界书命中调试二级页新增文案。 -->
+<resources>
+    <!-- 世界书：命中调试面板 -->
+    <string name="worldbook_debug_title">命中调试</string>
+    <string name="worldbook_debug_hint">输入一段测试消息，查看哪些条目会被注入、以及没被注入的条目是因为什么。</string>
+    <string name="worldbook_debug_message_label">测试消息</string>
+    <string name="worldbook_debug_character_label">按角色过滤</string>
+    <string name="worldbook_debug_character_none">不指定角色（全部世界书）</string>
+    <string name="worldbook_debug_run">测试</string>
+    <string name="worldbook_debug_no_result">当前范围内没有可测试的世界书条目。</string>
+    <string name="worldbook_debug_matched_count">命中 %1$d 条，未命中 %2$d 条</string>
+    <string name="worldbook_debug_score">得分 %1$d</string>
+    <string name="worldbook_debug_skipped">未命中</string>
+    <string name="worldbook_debug_sources">召回来源：</string>
+    <string name="worldbook_debug_keywords">命中关键词：</string>
+    <string name="worldbook_debug_need_message">请先输入测试消息</string>
+    <string name="worldbook_debug_failed">命中测试失败</string>
+
+    <!-- 世界书：召回来源名称 -->
+    <string name="worldbook_source_always">常驻</string>
+    <string name="worldbook_source_user">用户消息</string>
+    <string name="worldbook_source_assistant">助手回复</string>
+    <string name="worldbook_source_history">历史上下文</string>
+    <string name="worldbook_source_scene">场景状态</string>
+    <string name="worldbook_source_unknown">其它</string>
+</resources>
