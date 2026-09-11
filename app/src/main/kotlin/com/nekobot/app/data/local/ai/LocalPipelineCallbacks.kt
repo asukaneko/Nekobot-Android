@@ -918,6 +918,16 @@ internal class LocalPipelineCallbacks(
     override fun sendResponse(ctx: PipelineContext, message: Map<String, Any>) {
         // 非流式（如 agent 工具循环结束）：构造完整消息推送 AiResponse，
         // 触发 UI 移除流式占位 + 追加新消息，避免"AI 回复不显示，需重进会话"问题。
+        // 用量与耗时必须一并带上：这条消息会直接进 UI 列表，缺字段时气泡下方的
+        //「N tok / tok/s」要等重新进入会话从 Room 载入后才出现（同样是"要重进会话"）。
+        // 出错时不带用量：saveAssistantMessage 对 error 分支不落 token（重进会话会变成空），
+        // 这里跟着一起留空，避免「刚回复有 N tok、刷新后消失」的不一致。
+        val usage = if (ctx.error == null) ctx.usage else emptyMap()
+        val inputTokens = (usage["prompt"] as? Number)?.toInt()
+        val outputTokens = (usage["completion"] as? Number)?.toInt()
+        val totalTokens = listOfNotNull(inputTokens, outputTokens)
+            .takeIf { it.size == 2 }
+            ?.sum()
         val msg = com.nekobot.app.data.model.Message(
             id = (message["id"] as? String),
             role = "assistant",
@@ -943,6 +953,10 @@ internal class LocalPipelineCallbacks(
                 null
             },
             timestamp = (message["timestamp"] as? String) ?: System.currentTimeMillis().toString(),
+            inputTokens = inputTokens,
+            outputTokens = outputTokens,
+            tokens = totalTokens,
+            durationMs = (ctx.metadata["duration_ms"] as? Number)?.toDouble(),
             model = (ctx.metadata["model_name"] as? String) ?: activeModel.model
         )
         emitEvent(RealtimeEvent.AiResponse(msg))
