@@ -40,14 +40,16 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalOAuthAccountEntity::class,
         LocalKnowledgeDocumentEntity::class,
         LocalKnowledgeChunkEntity::class,
-        RoutingDecisionLogEntity::class
+        RoutingDecisionLogEntity::class,
+        LocalMessageVariantEntity::class
     ],
-    version = 41,
+    version = 42,
     exportSchema = true
 )
 abstract class NekobotDatabase : RoomDatabase() {
     abstract fun sessionDao(): SessionDao
     abstract fun messageDao(): MessageDao
+    abstract fun messageVariantDao(): MessageVariantDao
     abstract fun messageImageDao(): MessageImageDao
     abstract fun agentRunDao(): AgentRunDao
     abstract fun agentToolMessageDao(): AgentToolMessageDao
@@ -834,6 +836,55 @@ abstract class NekobotDatabase : RoomDatabase() {
         }
 
         /**
+         * v41 → v42：角色扮演第 2 轮（P1 核心手感）。
+         *
+         * - `local_message_variants`：swipes 多候选回复。重新生成改为追加候选，不再删除旧回复；
+         *   消息本体始终保存当前选中候选的正文，`variant_index` / `variant_count` 供气泡切换器使用。
+         * - `local_world_book_entries.depth`：position = "at_depth" 时把条目插入到对话末尾往前
+         *   第 N 条消息之前（0 = 最后一条消息之后），默认 4 与酒馆一致。
+         */
+        val MIGRATION_41_42 = object : Migration(41, 42) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE local_messages ADD COLUMN variant_index INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL(
+                    "ALTER TABLE local_messages ADD COLUMN variant_count INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_message_variants (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        message_id TEXT NOT NULL,
+                        session_id TEXT NOT NULL,
+                        variant_index INTEGER NOT NULL,
+                        content TEXT NOT NULL,
+                        reasoning_content TEXT,
+                        model TEXT,
+                        input_tokens INTEGER,
+                        output_tokens INTEGER,
+                        duration_ms REAL,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY(message_id) REFERENCES local_messages(id)
+                            ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_local_message_variants_message_id " +
+                        "ON local_message_variants(message_id)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_local_message_variants_session_id " +
+                        "ON local_message_variants(session_id)"
+                )
+                db.execSQL(
+                    "ALTER TABLE local_world_book_entries ADD COLUMN depth INTEGER NOT NULL DEFAULT 4"
+                )
+            }
+        }
+
+        /**
          * 完整迁移链同时供生产数据库构建和迁移回归测试使用。
          * 新版本必须把迁移追加到这里；缺少迁移时直接失败，绝不静默清空用户数据。
          */
@@ -847,7 +898,8 @@ abstract class NekobotDatabase : RoomDatabase() {
             MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29,
             MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33,
             MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37,
-            MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41
+            MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41,
+            MIGRATION_41_42
         )
 
         fun get(context: Context): NekobotDatabase =

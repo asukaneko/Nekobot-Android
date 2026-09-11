@@ -162,6 +162,38 @@ interface MessageDao {
     @Query("UPDATE local_messages SET deleted = :deleted WHERE id = :id")
     suspend fun updateDeleted(id: String, deleted: Boolean)
 
+    /**
+     * swipes：把消息正文替换为指定候选，并记录候选总数。
+     *
+     * content / reasoning_content 始终保持为当前选中候选的正文，因此历史回放、
+     * 上下文组装与导出都无需感知候选表；候选明细保存在 local_message_variants。
+     *
+     * 同时清空 `audio_url`：TTS 是按正文合成的，换候选（或重抽）之后旧音频已经对不上文本，
+     * 留着会让用户「看着 A 版、听到 B 版」。
+     */
+    @Query(
+        "UPDATE local_messages SET content = :content, reasoning_content = :reasoningContent, " +
+            "model = :model, input_tokens = :inputTokens, output_tokens = :outputTokens, " +
+            "duration_ms = :durationMs, variant_index = :variantIndex, variant_count = :variantCount, " +
+            "audio_url = NULL, audio_updated_at = NULL " +
+            "WHERE id = :id"
+    )
+    suspend fun updateVariantSelection(
+        id: String,
+        content: String,
+        reasoningContent: String?,
+        model: String?,
+        inputTokens: Int?,
+        outputTokens: Int?,
+        durationMs: Double?,
+        variantIndex: Int,
+        variantCount: Int
+    )
+
+    /** 只更新候选下标（候选明细已在 local_message_variants 中落库）。 */
+    @Query("UPDATE local_messages SET variant_index = :variantIndex, variant_count = :variantCount WHERE id = :id")
+    suspend fun updateVariantIndex(id: String, variantIndex: Int, variantCount: Int)
+
     @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND created_at < :createdAt AND deleted = 0 ORDER BY created_at ASC")
     suspend fun listBefore(sessionId: String, createdAt: String): List<LocalMessageEntity>
 
@@ -215,6 +247,37 @@ interface MessageImageDao {
     suspend fun deleteByMessageId(messageId: String)
 
     @Query("DELETE FROM local_message_images WHERE session_id = :sessionId")
+    suspend fun deleteBySession(sessionId: String)
+}
+
+/**
+ * swipes 候选回复 DAO。
+ *
+ * 每条助手消息的候选按 variant_index 升序保存；消息本体始终等于当前选中候选，
+ * 因此只有切换候选与重新生成时会写这张表。
+ */
+@Dao
+interface MessageVariantDao {
+    @Query("SELECT * FROM local_message_variants WHERE message_id = :messageId ORDER BY variant_index ASC")
+    suspend fun listByMessage(messageId: String): List<LocalMessageVariantEntity>
+
+    @Query("SELECT * FROM local_message_variants WHERE message_id = :messageId AND variant_index = :index LIMIT 1")
+    suspend fun getByIndex(messageId: String, index: Int): LocalMessageVariantEntity?
+
+    @Query("SELECT COUNT(*) FROM local_message_variants WHERE message_id = :messageId")
+    suspend fun countByMessage(messageId: String): Int
+
+    /** 最大候选下标；无候选时返回 -1，便于直接 +1 作为新候选下标。 */
+    @Query("SELECT COALESCE(MAX(variant_index), -1) FROM local_message_variants WHERE message_id = :messageId")
+    suspend fun maxIndex(messageId: String): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(variant: LocalMessageVariantEntity)
+
+    @Query("DELETE FROM local_message_variants WHERE message_id = :messageId")
+    suspend fun deleteByMessage(messageId: String)
+
+    @Query("DELETE FROM local_message_variants WHERE session_id = :sessionId")
     suspend fun deleteBySession(sessionId: String)
 }
 

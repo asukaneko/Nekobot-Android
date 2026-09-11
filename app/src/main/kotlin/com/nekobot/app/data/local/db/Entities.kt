@@ -135,7 +135,49 @@ data class LocalMessageEntity(
      * - 提示词组装（LocalRepositories / LocalPipelineCallbacks / AIPromptBuilder）跳过该消息；
      * - 数据导出与备份仍可保留原始内容。
      */
-    @ColumnInfo(name = "deleted", defaultValue = "0") val deleted: Boolean = false
+    @ColumnInfo(name = "deleted", defaultValue = "0") val deleted: Boolean = false,
+    /**
+     * swipes 多候选回复：当前展示的候选下标（从 0 开始）。
+     *
+     * 只有 [variantCount] > 1 时才可切换；content / reasoning_content 始终保存当前候选的正文，
+     * 全部候选另存于 local_message_variants，重新生成不再销毁旧回复。
+     */
+    @ColumnInfo(name = "variant_index", defaultValue = "0") val variantIndex: Int = 0,
+    /** swipes 候选总数；0 或 1 表示该消息只有一份内容，界面不展示切换器。 */
+    @ColumnInfo(name = "variant_count", defaultValue = "0") val variantCount: Int = 0
+)
+
+/**
+ * 助手消息的一条候选回复（swipes）。
+ *
+ * 一瓶一候选：消息本身保存当前选中的正文，本表保存该消息的全部版本，
+ * 供气泡上的「< 1/3 >」切换器回放而不重新生成。父消息被删除时级联清理。
+ */
+@Entity(
+    tableName = "local_message_variants",
+    indices = [Index("message_id"), Index("session_id")],
+    foreignKeys = [
+        ForeignKey(
+            entity = LocalMessageEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["message_id"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class LocalMessageVariantEntity(
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "message_id") val messageId: String,
+    @ColumnInfo(name = "session_id") val sessionId: String,
+    /** 候选下标，从 0 开始，按生成顺序递增。 */
+    @ColumnInfo(name = "variant_index") val variantIndex: Int,
+    val content: String,
+    @ColumnInfo(name = "reasoning_content") val reasoningContent: String? = null,
+    val model: String? = null,
+    @ColumnInfo(name = "input_tokens") val inputTokens: Int? = null,
+    @ColumnInfo(name = "output_tokens") val outputTokens: Int? = null,
+    @ColumnInfo(name = "duration_ms") val durationMs: Double? = null,
+    @ColumnInfo(name = "created_at") val createdAt: String
 )
 
 /**
@@ -322,7 +364,12 @@ data class LocalWorldBookEntryEntity(
     /** any：任一条件命中；all：全部条件命中。 */
     @ColumnInfo(name = "match_mode") val matchMode: String = "any",
     /** lore/location/relationship/event/rule 等，用于同分时排序。 */
-    @ColumnInfo(name = "entry_type") val entryType: String = "lore"
+    @ColumnInfo(name = "entry_type") val entryType: String = "lore",
+    /**
+     * 按消息深度插入时，从对话末尾往前数的消息条数（0 = 最后一条消息之后）。
+     * 仅在 position = "at_depth" 时生效。
+     */
+    @ColumnInfo(name = "depth", defaultValue = "4") val depth: Int = 4
 )
 
 /**
