@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 2라운드: 세계관 책 삽입 위치 / 삽입 깊이 / 정렬에서 추가한 문구. -->
+<resources>
+    <!-- 세계관 책: 삽입 위치 -->
+    <string name="worldbook_position_before_char">캐릭터 정의 앞</string>
+    <string name="worldbook_position_after_char">캐릭터 정의 뒤</string>
+    <string name="worldbook_position_before_an">노트 앞(프롬프트 끝)</string>
+    <string name="worldbook_position_after_an">노트 뒤(프롬프트 끝)</string>
+    <string name="worldbook_position_at_depth">메시지 깊이로 삽입</string>
+
+    <!-- 세계관 책: 깊이 / 정렬 -->
+    <string name="worldbook_field_depth">삽입 깊이</string>
+    <string name="worldbook_depth_hint">대화 끝에서부터 셉니다. 0은 마지막 메시지 뒤, 4는 마지막 4개 메시지 앞에 들어갑니다.</string>
+    <string name="worldbook_field_insertion_order">주입 순서(같은 위치에서는 작을수록 먼저)</string>
+    <string name="worldbook_field_display_index">목록 순서</string>
+</resources>

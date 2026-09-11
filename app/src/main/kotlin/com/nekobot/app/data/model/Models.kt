@@ -617,7 +617,9 @@ data class WorldBookEntry(
     @SerializedName("trigger_sources") val triggerSources: List<String>? = null,
     @SerializedName("state_triggers") val stateTriggers: Map<String, List<String>>? = null,
     @SerializedName("match_mode") val matchMode: String? = null,
-    @SerializedName("entry_type") val entryType: String? = null
+    @SerializedName("entry_type") val entryType: String? = null,
+    /** position = "at_depth" 时，从对话末尾往前数的插入深度（0 = 最后一条消息之后）。 */
+    val depth: Int? = null
 ) {
     val keysText: String get() = keys?.joinToString(", ") ?: ""
 }
@@ -647,8 +649,40 @@ data class WorldBookEntryRequest(
     @SerializedName("trigger_sources") val triggerSources: List<String>? = null,
     @SerializedName("state_triggers") val stateTriggers: Map<String, List<String>>? = null,
     @SerializedName("match_mode") val matchMode: String? = null,
-    @SerializedName("entry_type") val entryType: String? = null
+    @SerializedName("entry_type") val entryType: String? = null,
+    /** position = "at_depth" 时的插入深度（从对话末尾往前数）。 */
+    val depth: Int? = null,
+    /**
+     * 条目在同一本书内的显示 / 注入排序。
+     *
+     * 此前后端与 AI 工具都能写这两个字段，只有条目编辑对话框不提交，
+     * 导致用户拖不动顺序（列表按 display_index, insertion_order 排序）。
+     */
+    @SerializedName("display_index") val displayIndex: Int? = null
 )
+
+/**
+ * 世界书命中调试结果。
+ *
+ * 字段与服务端 `/api/world-books/test-match` 的 `matches[]` 对齐；
+ * [skipReason] 仅本地模式返回，用于回答「为什么这条没触发」（服务端只返回命中项）。
+ */
+data class WorldBookMatchDiagnostic(
+    @SerializedName(value = "entry_id", alternate = ["id"])
+    val entryId: String? = null,
+    @SerializedName(value = "entry_name", alternate = ["comment", "name"])
+    val entryName: String? = null,
+    @SerializedName("world_book_name") val worldBookName: String? = null,
+    @SerializedName("world_book_id") val worldBookId: String? = null,
+    @SerializedName("matched_keywords") val matchedKeywords: List<String>? = null,
+    @SerializedName("trigger_sources") val triggerSources: List<String>? = null,
+    val score: Int? = null,
+    @SerializedName("content_preview") val contentPreview: String? = null,
+    /** 未命中原因；命中项为 null。 */
+    @SerializedName("skip_reason") val skipReason: String? = null
+) {
+    val matched: Boolean get() = skipReason == null
+}
 
 // ==================== AI 配置 / 模型 ====================
 /**

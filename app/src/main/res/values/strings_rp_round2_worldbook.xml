@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 角色扮演对话第 2 轮：世界书注入位置 / 插入深度 / 条目排序新增文案。 -->
+<resources>
+    <!-- 世界书：注入位置 -->
+    <string name="worldbook_position_before_char">角色定义之前</string>
+    <string name="worldbook_position_after_char">角色定义之后</string>
+    <string name="worldbook_position_before_an">笔记之前（提示词末尾）</string>
+    <string name="worldbook_position_after_an">笔记之后（提示词末尾）</string>
+    <string name="worldbook_position_at_depth">按消息深度插入</string>
+
+    <!-- 世界书：按深度插入 / 排序字段 -->
+    <string name="worldbook_field_depth">插入深度</string>
+    <string name="worldbook_depth_hint">从对话末尾往前数：0 表示放在最后一条消息之后，4 表示放在最后 4 条消息之前。</string>
+    <string name="worldbook_field_insertion_order">注入顺序（同位置内数字小的先写入）</string>
+    <string name="worldbook_field_display_index">列表顺序</string>
+</resources>

@@ -58,11 +58,51 @@ class CharacterRuntime(
         ): List<WorldBookMatch>
     }
 
+    /**
+     * 世界书条目注入位置，取值与酒馆 `position` 字段兼容。
+     *
+     * - before_char / after_char：拼进基础提示词，分别在角色卡定义之前 / 之后；
+     * - before_an / after_an：作为独立 system 段落在提示词末尾（Author's Note 锚点位置）；
+     * - at_depth：按 [WorldBookMatch.depth] 插入到对话末尾往前第 N 条消息之前。
+     */
+    object Position {
+        const val BEFORE_CHAR = "before_char"
+        const val AFTER_CHAR = "after_char"
+        const val BEFORE_AN = "before_an"
+        const val AFTER_AN = "after_an"
+        const val AT_DEPTH = "at_depth"
+
+        /** 归一化历史数据与酒馆卡里的驼峰 / 下划线写法；未知值按 UI 默认值 before_char 处理。 */
+        fun normalize(raw: String?): String =
+            when (raw?.trim()?.lowercase()?.replace("_", "")) {
+                "beforechar" -> BEFORE_CHAR
+                "afterchar" -> AFTER_CHAR
+                "beforean" -> BEFORE_AN
+                "afteran" -> AFTER_AN
+                "atdepth", "depth" -> AT_DEPTH
+                else -> BEFORE_CHAR
+            }
+    }
+
     /** 世界书匹配结果 */
     data class WorldBookMatch(
         val content: String,
         val comment: String = "",
-        val priority: Int = 0
+        val priority: Int = 0,
+        /** 注入位置，见 [Position]。 */
+        val position: String = Position.BEFORE_CHAR,
+        /** position = at_depth 时，从对话末尾往前数的插入深度（0 = 最后一条消息之后）。 */
+        val depth: Int = 4,
+        /** 同位置条目之间的排序键（insertion_order 升序）。 */
+        val insertionOrder: Int = 0
+    )
+
+    /** 需要按消息深度插入到 history 中的世界书段落。 */
+    data class WorldBookDepthInjection(
+        val content: String,
+        /** 从对话末尾往前数的插入深度（0 = 最后一条消息之后）。 */
+        val depth: Int,
+        val insertionOrder: Int
     )
 
     /**
@@ -131,11 +171,32 @@ class CharacterRuntime(
         )
         // 世界书注入。按 score 排序后的条目总量可能远超上下文预算：
         // 单条截断 + 总量封顶，避免几本设定集把对话历史挤出去。
-        if (worldBookEntries.isNotEmpty()) {
-            val worldBookText = buildWorldBookText(worldBookEntries)
-            if (worldBookText.isNotBlank()) {
-                promptStack.add("world_book", worldBookText, priority = PromptStack.Priority.WORLD_BOOK)
-            }
+        // P1-2：position 生效——before_char / after_char 进基础提示词，
+        // before_an / after_an 作为独立 system 段，at_depth 交给管线按消息深度插入。
+        val worldBookBlocks = selectWorldBookBlocks(worldBookEntries)
+        val beforeCharText = joinWorldBookBlocks(worldBookBlocks.filter {
+            it.match.position == Position.BEFORE_CHAR
+        })
+        val afterCharText = joinWorldBookBlocks(worldBookBlocks.filter {
+            it.match.position == Position.AFTER_CHAR
+        })
+        val beforeAnText = joinWorldBookBlocks(worldBookBlocks.filter {
+            it.match.position == Position.BEFORE_AN
+        })
+        val afterAnText = joinWorldBookBlocks(worldBookBlocks.filter {
+            it.match.position == Position.AFTER_AN
+        })
+        // 未设置 position 的历史条目默认落在 after_char，保持升级前的相对顺序不变。
+        val atDepthInjections = worldBookBlocks
+            .filter { it.match.position == Position.AT_DEPTH }
+            .sortedWith(compareBy({ it.match.depth }, { it.match.insertionOrder }))
+            .map { WorldBookDepthInjection(content = it.text, depth = it.match.depth, insertionOrder = it.match.insertionOrder) }
+
+        if (beforeAnText.isNotBlank()) {
+            promptStack.add("world_book.before_an", beforeAnText, priority = PromptStack.Priority.WORLD_BOOK)
+        }
+        if (afterAnText.isNotBlank()) {
+            promptStack.add("world_book.after_an", afterAnText, priority = PromptStack.Priority.WORLD_BOOK + 1)
         }
         // MemoryFS 结构化记忆注入（按类别分组：【用户人格】【角色人格】等）
         if (memoryFS != null) {
@@ -160,7 +221,9 @@ class CharacterRuntime(
             promptStack.disableKeys(disabledKeys)
         }
 
-        val promptText = promptStack.render(basePrompt = buildBasePrompt(profile))
+        val promptText = promptStack.render(
+            basePrompt = buildBasePrompt(profile, beforeCharText, afterCharText)
+        )
 
         return CharacterTurnContext(
             profile = profile,
@@ -171,6 +234,7 @@ class CharacterRuntime(
             plan = plan,
             promptText = promptText,
             worldBookEntries = worldBookEntries,
+            worldBookDepthInjections = atDepthInjections,
             promptStackItems = promptStack.getItems()
         )
     }
@@ -436,13 +500,28 @@ class CharacterRuntime(
         }
     }
 
-    /** 构建基础提示词（角色卡编译） */
-    private fun buildBasePrompt(profile: CharacterProfile): String {
+    /**
+     * 构建基础提示词（角色卡编译）。
+     *
+     * 世界书按 position 参与排序：`before_char` 段跟在角色卡 systemPrompt 之后、
+     * 角色定义之前；`after_char` 段追加在角色定义末尾。
+     * 这样用户自己写的 system prompt 始终位于最前面（最强约束），角色定义前后各有 lore。
+     */
+    private fun buildBasePrompt(
+        profile: CharacterProfile,
+        beforeCharText: String = "",
+        afterCharText: String = ""
+    ): String {
         val parts = mutableListOf<String>()
 
         // systemPrompt 优先
         if (profile.systemPrompt.isNotBlank()) {
             parts.add(profile.systemPrompt)
+        }
+
+        // 世界书 before_char：插在角色定义之前
+        if (beforeCharText.isNotBlank()) {
+            parts.add(beforeCharText)
         }
 
         // 角色描述。酒馆卡片的核心内容就在 description 里（导入卡时 basicInfo/personality
@@ -476,19 +555,28 @@ class CharacterRuntime(
             parts.add("【规则】\n${profile.rules.joinToString("\n")}")
         }
 
+        // 世界书 after_char：追加在角色定义之后
+        if (afterCharText.isNotBlank()) {
+            parts.add(afterCharText)
+        }
+
         return parts.joinToString("\n\n")
     }
 
+    /** 已通过字符预算筛选的一条世界书段落。 */
+    private data class WorldBookBlock(val match: WorldBookMatch, val text: String)
+
     /**
-     * 拼装世界书提示词文本，并施加单条 / 总量字符预算。
+     * 按匹配顺序（score 降序）施加单条 / 总量字符预算。
      *
-     * 保留原有「按 priority 升序」的相对顺序，只是超出预算的条目会被丢弃，
-     * 保证靠前的（匹配分数更高 / 优先级数值更小）条目优先进入上下文。
+     * 保持匹配器的相对顺序，超出预算的条目被丢弃，保证分数更高的条目优先进入上下文；
+     * 命中结果为空时不产出任何段落。
      */
-    private fun buildWorldBookText(entries: List<WorldBookMatch>): String {
-        val blocks = mutableListOf<String>()
+    private fun selectWorldBookBlocks(entries: List<WorldBookMatch>): List<WorldBookBlock> {
+        if (entries.isEmpty()) return emptyList()
+        val blocks = mutableListOf<WorldBookBlock>()
         var totalChars = 0
-        for (entry in entries.sortedBy { it.priority }) {
+        for (entry in entries) {
             val content = entry.content.trim()
             if (content.isEmpty()) continue
             val truncated = if (content.length > WORLD_BOOK_MAX_ENTRY_CHARS) {
@@ -498,9 +586,23 @@ class CharacterRuntime(
             }
             val block = if (entry.comment.isNotEmpty()) "[${entry.comment}]\n$truncated" else truncated
             if (totalChars + block.length > WORLD_BOOK_MAX_TOTAL_CHARS) continue
-            blocks.add(block)
+            blocks.add(WorldBookBlock(entry, block))
             totalChars += block.length
         }
-        return blocks.joinToString("\n\n")
+        return blocks
+    }
+
+    /**
+     * 同一注入位置内的段落拼接。
+     *
+     * 排序键为 insertion_order 升序，其次 priority 升序——insertion_order 默认 0，
+     * 因此未编辑过排序的条目仍保持「匹配分数 / 优先级」的既有相对顺序。
+     */
+    private fun joinWorldBookBlocks(blocks: List<WorldBookBlock>): String {
+        if (blocks.isEmpty()) return ""
+        val ordered = blocks.sortedWith(
+            compareBy({ it.match.insertionOrder }, { it.match.priority })
+        )
+        return ordered.joinToString("\n\n") { it.text }
     }
 }

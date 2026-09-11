@@ -12,5 +12,5 @@
     <string name="localai_stop_sequences_hint">한 줄에 하나씩. 생성이 이 문자열에 도달하면 멈춥니다. 비워 두면 전송하지 않습니다.</string>
     <string name="aimodel_editor_field_stop_sequences">중지 문자열(한 줄에 하나)</string>
 
-    <string name="worldbook_ineffective_fields_hint">「삽입 위치」와 「선택」은 아직 주입 판단에 사용되지 않습니다. 일치한 항목은 모두 시스템 프롬프트 끝에 추가되며, 두 필드는 SillyTavern 카드 호환을 위해 유지합니다.</string>
+    <string name="worldbook_ineffective_fields_hint">삽입 위치, 삽입 깊이, 주입 순서, 목록 순서는 이제 적용됩니다. 선택은 보조 키워드 열이 필요해 SillyTavern 카드 호환용으로만 남겨 두었습니다.</string>
 </resources>

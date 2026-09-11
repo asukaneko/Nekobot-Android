@@ -365,6 +365,13 @@ data class CharacterTurnContext(
     /** 编译后的提示词文本 */
     var promptText: String = "",
     val worldBookEntries: List<Any> = emptyList(),
+    /**
+     * position = at_depth 的世界书段落，由 AIPipeline 按 depth 插入到 history 中。
+     *
+     * 这些条目不能落进 system 顶部（否则「按消息深度插入」就失去意义），
+     * 因此与 [worldBookEntries] 分开传递给消息组装阶段。
+     */
+    val worldBookDepthInjections: List<CharacterRuntime.WorldBookDepthInjection> = emptyList(),
     /** before_turn 注册的全部提示词注入项（供会话详情页展示完整栈） */
     var promptStackItems: List<PromptStack.PromptInjection> = emptyList()
 )

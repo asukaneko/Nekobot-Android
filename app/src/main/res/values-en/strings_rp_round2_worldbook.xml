@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Round 2 of the roleplay improvements: world book injection position / depth / ordering. -->
+<resources>
+    <!-- World book: injection position -->
+    <string name="worldbook_position_before_char">Before character definition</string>
+    <string name="worldbook_position_after_char">After character definition</string>
+    <string name="worldbook_position_before_an">Before author\'s note (end of prompt)</string>
+    <string name="worldbook_position_after_an">After author\'s note (end of prompt)</string>
+    <string name="worldbook_position_at_depth">Insert at message depth</string>
+
+    <!-- World book: depth / ordering fields -->
+    <string name="worldbook_field_depth">Insertion depth</string>
+    <string name="worldbook_depth_hint">Counted back from the end of the conversation: 0 puts the entry after the last message, 4 puts it before the last 4 messages.</string>
+    <string name="worldbook_field_insertion_order">Injection order (lower goes first within the same position)</string>
+    <string name="worldbook_field_display_index">List order</string>
+</resources>

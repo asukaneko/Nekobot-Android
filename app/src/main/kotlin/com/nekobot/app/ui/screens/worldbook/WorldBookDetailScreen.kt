@@ -67,10 +67,19 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.util.UUID
 
-// 条目位置可选项
-private val POSITION_OPTIONS = listOf("before_char", "after_char", "before_an", "after_an")
+// 条目位置可选项（与 CharacterRuntime.Position 保持一致）
+private val POSITION_OPTIONS = listOf("before_char", "after_char", "before_an", "after_an", "at_depth")
 private val DEFAULT_TRIGGER_SOURCES =
     listOf("user", "assistant_recent", "history", "scene_state")
+
+private fun positionLabelRes(position: String): Int = when (position) {
+    "before_char" -> R.string.worldbook_position_before_char
+    "after_char" -> R.string.worldbook_position_after_char
+    "before_an" -> R.string.worldbook_position_before_an
+    "after_an" -> R.string.worldbook_position_after_an
+    "at_depth" -> R.string.worldbook_position_at_depth
+    else -> R.string.worldbook_position_before_char
+}
 
 private fun formatStateTriggers(values: Map<String, List<String>>?): String =
     values.orEmpty().entries.joinToString("\n") { (key, items) ->
@@ -125,8 +134,14 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
     val entryConstant = MutableStateFlow(false)
     val entrySelective = MutableStateFlow(true)
     val entryPosition = MutableStateFlow(POSITION_OPTIONS.first())
+    /** position = at_depth 时，从对话末尾往前数的插入深度。 */
+    val entryDepth = MutableStateFlow(4)
     val entryPriority = MutableStateFlow(10)
     val entryCaseSensitive = MutableStateFlow(false)
+    /** 同位置条目间的注入顺序（insertion_order）；此前编辑框从不提交该字段。 */
+    val entryInsertionOrder = MutableStateFlow(0)
+    /** 列表展示顺序（display_index）；与 AI 工具写入的字段保持一致。 */
+    val entryDisplayIndex = MutableStateFlow(0)
     val entryTriggerSources = MutableStateFlow(DEFAULT_TRIGGER_SOURCES.joinToString(", "))
     val entryStateTriggers = MutableStateFlow("")
     val entryMatchMode = MutableStateFlow("any")
@@ -142,7 +157,7 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
         )
         launchResult(
             block = { unified.listEntries(bookId) },
-            onSuccess = { _entries.value = it ?: emptyList() }
+            onSuccess = { _entries.value = sortEntries(it ?: emptyList()) }
         )
         // 加载角色列表用于绑定下拉框
         launchResult(
@@ -323,8 +338,11 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
         entryConstant.value = false
         entrySelective.value = true
         entryPosition.value = POSITION_OPTIONS.first()
+        entryDepth.value = 4
         entryPriority.value = 10
         entryCaseSensitive.value = false
+        entryInsertionOrder.value = 0
+        entryDisplayIndex.value = nextDisplayIndex()
         entryTriggerSources.value = DEFAULT_TRIGGER_SOURCES.joinToString(", ")
         entryStateTriggers.value = ""
         entryMatchMode.value = "any"
@@ -342,8 +360,11 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
         entryConstant.value = entry.constant ?: false
         entrySelective.value = entry.selective ?: true
         entryPosition.value = entry.position ?: POSITION_OPTIONS.first()
+        entryDepth.value = entry.depth ?: 4
         entryPriority.value = entry.priority ?: 10
         entryCaseSensitive.value = entry.caseSensitive ?: false
+        entryInsertionOrder.value = entry.insertionOrder ?: 0
+        entryDisplayIndex.value = entry.displayIndex ?: 0
         entryTriggerSources.value =
             (entry.triggerSources ?: DEFAULT_TRIGGER_SOURCES).joinToString(", ")
         entryStateTriggers.value = formatStateTriggers(entry.stateTriggers)
@@ -373,6 +394,10 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
             position = entryPosition.value,
             priority = entryPriority.value,
             caseSensitive = entryCaseSensitive.value,
+            // 排序字段此前从不提交，条目顺序因此无法在界面上调整。
+            insertionOrder = entryInsertionOrder.value,
+            displayIndex = entryDisplayIndex.value,
+            depth = entryDepth.value.coerceAtLeast(0),
             triggerSources = entryTriggerSources.value
                 .split(',')
                 .map(String::trim)
@@ -388,7 +413,7 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
             launchResult(
                 block = { unified.createEntry(currentBookId, req) },
                 onSuccess = {
-                    _entries.value = _entries.value + it
+                    _entries.value = sortEntries(_entries.value + it)
                     _showEntryDialog.value = false
                     showToast(string(R.string.worldbook_entry_created))
                 }
@@ -398,7 +423,9 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
             launchResult(
                 block = { unified.updateEntry(currentBookId, entryId, req) },
                 onSuccess = { updated ->
-                    _entries.value = _entries.value.map { if (it.id == entryId) updated else it }
+                    _entries.value = sortEntries(
+                        _entries.value.map { if (it.id == entryId) updated else it }
+                    )
                     _showEntryDialog.value = false
                     _editingEntry.value = null
                     showToast(string(R.string.worldbook_entry_updated))
@@ -406,6 +433,12 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
             )
         }
     }
+
+    /** 与 DAO 的排序保持一致（display_index → insertion_order），改完顺序立即生效。 */
+    private fun sortEntries(list: List<WorldBookEntry>): List<WorldBookEntry> =
+        list.sortedWith(
+            compareBy({ it.displayIndex ?: 0 }, { it.insertionOrder ?: 0 })
+        )
 
     /** 删除条目 */
     fun deleteEntry(id: String) {
@@ -417,6 +450,10 @@ class WorldBookViewModel(bookId: String) : com.nekobot.app.ui.BaseViewModel() {
             }
         )
     }
+
+    /** 新建条目的默认 display_index：排在现有条目之后。 */
+    private fun nextDisplayIndex(): Int =
+        (_entries.value.maxOfOrNull { it.displayIndex ?: 0 } ?: 0) + 1
 
     /**
      * AI 生成条目：按主题调用 AI 生成 5-10 个新条目，并追加到当前条目列表。
@@ -904,6 +941,9 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
     val constant by vm.entryConstant.collectAsStateWithLifecycle()
     val selective by vm.entrySelective.collectAsStateWithLifecycle()
     val position by vm.entryPosition.collectAsStateWithLifecycle()
+    val depth by vm.entryDepth.collectAsStateWithLifecycle()
+    val insertionOrder by vm.entryInsertionOrder.collectAsStateWithLifecycle()
+    val displayIndex by vm.entryDisplayIndex.collectAsStateWithLifecycle()
     val priority by vm.entryPriority.collectAsStateWithLifecycle()
     val caseSensitive by vm.entryCaseSensitive.collectAsStateWithLifecycle()
     val triggerSources by vm.entryTriggerSources.collectAsStateWithLifecycle()
@@ -1033,7 +1073,7 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
                 onExpandedChange = { positionExpanded = it }
             ) {
                 OutlinedTextField(
-                    value = position,
+                    value = stringResource(positionLabelRes(position)),
                     onValueChange = {},
                     readOnly = true,
                     singleLine = true,
@@ -1057,7 +1097,12 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
                 ) {
                     POSITION_OPTIONS.forEach { opt ->
                         DropdownMenuItem(
-                            text = { Text(opt, color = MaterialTheme.colorScheme.onSurface) },
+                            text = {
+                                Text(
+                                    stringResource(positionLabelRes(opt)),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            },
                             onClick = {
                                 vm.entryPosition.value = opt
                                 positionExpanded = false
@@ -1066,6 +1111,55 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
                     }
                 }
             }
+            // 按深度插入：仅 at_depth 位置需要
+            if (position == "at_depth") {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    stringResource(R.string.worldbook_field_depth),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(4.dp))
+                NekoTextField(
+                    value = depth.toString(),
+                    onValueChange = { v -> v.toIntOrNull()?.let { vm.entryDepth.value = it } },
+                    singleLine = true,
+                    keyboardType = KeyboardType.Number
+                )
+                Text(
+                    stringResource(R.string.worldbook_depth_hint),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            // 注入顺序（insertion_order）：同位置条目之间的先后
+            Text(
+                stringResource(R.string.worldbook_field_insertion_order),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(4.dp))
+            NekoTextField(
+                value = insertionOrder.toString(),
+                onValueChange = { v -> v.toIntOrNull()?.let { vm.entryInsertionOrder.value = it } },
+                singleLine = true,
+                keyboardType = KeyboardType.Number
+            )
+            Spacer(Modifier.height(10.dp))
+            // 列表顺序（display_index）
+            Text(
+                stringResource(R.string.worldbook_field_display_index),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(4.dp))
+            NekoTextField(
+                value = displayIndex.toString(),
+                onValueChange = { v -> v.toIntOrNull()?.let { vm.entryDisplayIndex.value = it } },
+                singleLine = true,
+                keyboardType = KeyboardType.Number
+            )
             Spacer(Modifier.height(10.dp))
             // 优先级（数字）
             Text(stringResource(R.string.worldbook_field_priority), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1083,7 +1177,7 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
             SwitchRow(stringResource(R.string.worldbook_selective), selective) { vm.entrySelective.value = it }
             SwitchRow(stringResource(R.string.worldbook_case_sensitive), caseSensitive) { vm.entryCaseSensitive.value = it }
             Spacer(Modifier.height(8.dp))
-            // 「插入位置」与「选择」目前不参与注入决策，明确告知用户，避免改完没有任何效果。
+            // 「插入位置 / 深度 / 顺序」均已生效；「选择」仍需次要关键词列，暂为兼容保留。
             Text(
                 text = stringResource(R.string.worldbook_ineffective_fields_hint),
                 style = MaterialTheme.typography.bodySmall,

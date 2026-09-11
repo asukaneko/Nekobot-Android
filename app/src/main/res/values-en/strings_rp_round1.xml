@@ -12,5 +12,5 @@
     <string name="localai_stop_sequences_hint">One per line; generation stops when one is produced. Leave empty to send none.</string>
     <string name="aimodel_editor_field_stop_sequences">Stop sequences (one per line)</string>
 
-    <string name="worldbook_ineffective_fields_hint">"Insertion position" and "Selective" do not affect injection yet: every matched entry is appended to the system prompt. They are kept for SillyTavern card compatibility.</string>
+    <string name="worldbook_ineffective_fields_hint">Insertion position, insertion depth, injection order and list order now take effect. Selective still needs a secondary-key column, so it is kept for SillyTavern card compatibility only.</string>
 </resources>

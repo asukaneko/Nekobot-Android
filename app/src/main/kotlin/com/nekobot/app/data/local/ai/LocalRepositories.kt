@@ -433,7 +433,11 @@ class LocalWorldBookStore(
             CharacterRuntime.WorldBookMatch(
                 content = r.entry.content ?: "",
                 comment = r.entry.comment ?: "",
-                priority = r.entry.priority
+                priority = r.entry.priority,
+                // position / depth / insertion_order 此前被丢弃，导致世界书位置设置形同虚设。
+                position = CharacterRuntime.Position.normalize(r.entry.position),
+                depth = r.entry.depth.coerceAtLeast(0),
+                insertionOrder = r.entry.insertionOrder
             )
         }
     }

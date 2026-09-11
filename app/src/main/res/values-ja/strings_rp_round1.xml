@@ -12,5 +12,5 @@
     <string name="localai_stop_sequences_hint">1 行に 1 つ。生成がこの文字列に達すると停止します。空欄なら送信しません。</string>
     <string name="aimodel_editor_field_stop_sequences">停止文字列（1 行に 1 つ）</string>
 
-    <string name="worldbook_ineffective_fields_hint">「挿入位置」と「選択」は現在注入判定に使われません。ヒットした項目はすべてシステムプロンプトの末尾に追加されます。この 2 項目は SillyTavern カード互換のために保持しています。</string>
+    <string name="worldbook_ineffective_fields_hint">「挿入位置」「挿入深度」「注入順」「一覧の順序」は有効になりました。「選択」は二次キーワード列が必要なため、SillyTavern カード互換のためだけに残しています。</string>
 </resources>

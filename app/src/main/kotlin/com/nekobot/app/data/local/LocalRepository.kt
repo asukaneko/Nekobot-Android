@@ -8940,7 +8940,8 @@ ${AiOutputLanguage.directive()}
             }.getOrNull()
         },
         matchMode = matchMode,
-        entryType = entryType
+        entryType = entryType,
+        depth = depth
     )
 
     private fun WorldBookEntry.toEntity(bookId: String): LocalWorldBookEntryEntity =
@@ -8961,7 +8962,8 @@ ${AiOutputLanguage.directive()}
             triggerSourcesJson = triggerSources?.let { gson.toJson(it) },
             stateTriggersJson = stateTriggers?.let { gson.toJson(it) },
             matchMode = matchMode?.lowercase()?.takeIf { it in setOf("any", "all") } ?: "any",
-            entryType = entryType?.trim()?.lowercase()?.ifBlank { "lore" } ?: "lore"
+            entryType = entryType?.trim()?.lowercase()?.ifBlank { "lore" } ?: "lore",
+            depth = (depth ?: 4).coerceAtLeast(0)
         )
 
     /** 用于 chat API 返回的统一结果。 */

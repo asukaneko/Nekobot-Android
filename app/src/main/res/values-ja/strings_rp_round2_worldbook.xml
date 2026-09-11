@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第 2 ラウンド：世界観ブックの挿入位置 / 挿入深度 / 並び順で追加した文言。 -->
+<resources>
+    <!-- 世界観ブック：挿入位置 -->
+    <string name="worldbook_position_before_char">キャラクター定義の前</string>
+    <string name="worldbook_position_after_char">キャラクター定義の後</string>
+    <string name="worldbook_position_before_an">ノートの前（プロンプト末尾）</string>
+    <string name="worldbook_position_after_an">ノートの後（プロンプト末尾）</string>
+    <string name="worldbook_position_at_depth">メッセージ深度で挿入</string>
+
+    <!-- 世界観ブック：深度・並び順 -->
+    <string name="worldbook_field_depth">挿入深度</string>
+    <string name="worldbook_depth_hint">会話の末尾から数えます。0 は最後のメッセージの後、4 は最後の 4 件のメッセージの前に入ります。</string>
+    <string name="worldbook_field_insertion_order">注入順（同じ位置では小さい方が先）</string>
+    <string name="worldbook_field_display_index">一覧の順序</string>
+</resources>

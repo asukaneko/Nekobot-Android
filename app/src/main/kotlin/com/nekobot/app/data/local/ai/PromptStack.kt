@@ -178,6 +178,8 @@ class PromptStack {
         "knowledge.rag",
         "agent.global_memory",
         "world_book",
+        "world_book.before_an",
+        "world_book.after_an",
         "memory_fs.context",
         "memory_fs_context"
     )

@@ -401,7 +401,14 @@ class AIPipeline {
 
         com.nekobot.app.data.local.LocalLogger.i(TAG, "上下文准备完成 | system prompt=${composedSystem.length}字符 | 提示词栈=${pipelineDebug.size}项 | 历史=${historyMessages.size}条")
 
-        messagesForAi = listOf(mapOf("role" to "system", "content" to composedSystem)) + historyMessages
+        // P1-2：世界书 at_depth 条目按「距对话末尾第 N 条」插入到 history 中，
+        // 而不是像其他位置那样挤在 system 顶部。
+        val depthInjectedHistory = injectWorldBookDepthEntries(
+            history = historyMessages,
+            injections = ctx.characterTurn?.worldBookDepthInjections.orEmpty()
+        )
+
+        messagesForAi = listOf(mapOf("role" to "system", "content" to composedSystem)) + depthInjectedHistory
 
         // 裁剪上下文
         val prepared = prepareChatContext(
@@ -416,6 +423,44 @@ class AIPipeline {
             prepared.messages
         }
         ctx.toolCallHistory = prepared.toolCallHistory
+    }
+
+    /**
+     * 把 position = at_depth 的世界书段落按深度插入到历史消息中。
+     *
+     * depth 从对话末尾往前数：0 表示最后一条消息之后，N 表示最后 N 条消息之前。
+     * 同一位置的多条条目合并成一条 system 消息，避免拆散太多消息对。
+     */
+    private fun injectWorldBookDepthEntries(
+        history: List<Map<String, Any>>,
+        injections: List<CharacterRuntime.WorldBookDepthInjection>
+    ): List<Map<String, Any>> {
+        if (injections.isEmpty() || history.isEmpty()) return history
+
+        // 绝对插入下标 → 该位置的段落（按 insertion_order 升序拼接）
+        val byIndex = mutableMapOf<Int, MutableList<String>>()
+        injections.sortedBy { it.insertionOrder }.forEach { injection ->
+            val index = (history.size - injection.depth).coerceIn(0, history.size)
+            byIndex.getOrPut(index) { mutableListOf() }.add(injection.content)
+        }
+
+        val result = ArrayList<Map<String, Any>>(history.size + byIndex.size)
+        for (index in 0..history.size) {
+            byIndex[index]?.let { blocks ->
+                result.add(
+                    mapOf(
+                        "role" to "system",
+                        "content" to blocks.joinToString("\n\n")
+                    )
+                )
+            }
+            if (index < history.size) result.add(history[index])
+        }
+        com.nekobot.app.data.local.LocalLogger.i(
+            TAG,
+            "世界书按深度注入 | 条目=${injections.size} 处 | 深度=${injections.map { it.depth }.distinct().sorted()}"
+        )
+        return result
     }
 
     // ------------------------------------------------------------------

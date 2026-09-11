@@ -725,7 +725,9 @@ class UnifiedRepository(
                 triggerSources = req.triggerSources,
                 stateTriggers = req.stateTriggers,
                 matchMode = req.matchMode,
-                entryType = req.entryType
+                entryType = req.entryType,
+                depth = req.depth,
+                displayIndex = req.displayIndex
             )
             Resource.Success(local.upsertEntry(bookId, entry))
         } else remote.createEntry(bookId, req)
@@ -747,7 +749,9 @@ class UnifiedRepository(
                 triggerSources = req.triggerSources,
                 stateTriggers = req.stateTriggers,
                 matchMode = req.matchMode,
-                entryType = req.entryType
+                entryType = req.entryType,
+                depth = req.depth,
+                displayIndex = req.displayIndex
             )
             Resource.Success(local.upsertEntry(bookId, entry))
         } else remote.updateEntry(bookId, entryId, req)

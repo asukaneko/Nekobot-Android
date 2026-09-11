@@ -19,5 +19,5 @@
     <string name="aimodel_editor_field_stop_sequences">停止字符串（每行一条）</string>
 
     <!-- 世界书：尚未生效的字段提示 -->
-    <string name="worldbook_ineffective_fields_hint">「插入位置」与「选择」目前不参与注入决策：命中条目统一追加到系统提示词中，保留这两个字段是为了兼容酒馆角色卡。</string>
+    <string name="worldbook_ineffective_fields_hint">「插入位置」「插入深度」「注入顺序」「列表顺序」均已生效；「选择」仍需次要关键词列，目前仅作酒馆卡兼容保留。</string>
 </resources>
