@@ -304,6 +304,20 @@ class UnifiedRepository(
         if (isLocal) { local.deleteMessage(id, messageId); Resource.Success(Unit) } else remote.deleteMessage(id, messageId)
 
     /**
+     * swipes：切换一条助手消息当前展示的候选回复。
+     *
+     * 候选表是本地实现（服务端消息由服务端管理，不参与候选记录），
+     * 因此服务器模式返回错误而不是静默失败——UI 只在本模式从未出现候选时调用它。
+     */
+    suspend fun selectMessageVariant(messageId: String, index: Int): Resource<Message> =
+        if (isLocal) {
+            val updated = local.selectMessageVariant(messageId, index)
+            if (updated == null) Resource.Error("候选不存在") else Resource.Success(updated)
+        } else {
+            Resource.Error("服务器模式暂不支持候选切换")
+        }
+
+    /**
      * 更新单条消息正文（编辑消息但**不**重新生成）。
      *
      * 远程模式复用 `PUT /api/sessions/{id}/messages/{messageId}`，且显式传

@@ -797,7 +797,7 @@ class AIPipeline {
         streamer: StreamModelCall,
         progress: ProgressReporter
     ) {
-        val messageId = UUID.randomUUID().toString()
+        val messageId = callbacks.resolveAssistantMessageId(ctx) ?: UUID.randomUUID().toString()
         val fullContent = StringBuilder()
         val fullReasoning = StringBuilder()
         val streamStart = System.nanoTime()
@@ -926,7 +926,7 @@ class AIPipeline {
                 "role" to "assistant",
                 "content" to errorContent,
                 "error" to true,
-                "id" to UUID.randomUUID().toString(),
+                "id" to (callbacks.resolveAssistantMessageId(ctx) ?: UUID.randomUUID().toString()),
                 "timestamp" to Instant.now().toString()
             )
             callbacks.saveAssistantMessage(ctx, assistantMessage)
@@ -944,7 +944,8 @@ class AIPipeline {
 
         // 非流式：构建 assistant_message
         val assistantMessage = mutableMapOf<String, Any>(
-            "id" to UUID.randomUUID().toString(),
+            // swipes：重抽时沿用原消息 id，UI 才能就地替换而不是追加一条重复气泡
+            "id" to (callbacks.resolveAssistantMessageId(ctx) ?: UUID.randomUUID().toString()),
             "role" to "assistant",
             "content" to ctx.finalContent,
             "timestamp" to Instant.now().toString(),

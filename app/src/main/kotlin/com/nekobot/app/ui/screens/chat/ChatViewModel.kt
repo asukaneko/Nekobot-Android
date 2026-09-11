@@ -482,6 +482,23 @@ class ChatViewModel : BaseViewModel() {
     private val streamingReasoning: StringBuilder get() = runtime.streamingReasoning
     /** 流式消息在列表中的临时 id */
     private val streamingId = STREAMING_ID
+    /**
+     * swipes：本轮流式占位要落在哪条消息的位置上。
+     *
+     * 重新生成时设为被重抽的消息 id，这样流式内容会「就地」出现在原气泡处，
+     * 而不是永远追加到列表末尾；普通发送保持为 null（追加到末尾）。
+     */
+    private var streamingAnchorMessageId: String? = null
+
+    /**
+     * swipes：本轮是不是「对已有助手消息重抽」。
+     *
+     * Agent 会话走工具循环，结束时只发 AiResponse / 进度卡片、**不发 StreamEnd**，
+     * 因此不会像流式路径那样自动 `loadMessages()`。缺了这次刷新会出现两个后果：
+     * 候选下标/总数停在旧值（气泡上不出现「◀ 1/2 ▶」，要退出重进才有），
+     * 以及本轮新建的进度卡片以新 id 追加到父用户消息上（旧卡片也在 → 两张卡片）。
+     */
+    private var variantRegenerateTargetId: String? = null
     /** 上次流式 chunk 更新 UI 的时间戳，用于节流（避免高频 chunk 触发 MarkdownText 全量重解析） */
     private var lastStreamUiUpdateMs: Long
         get() = runtime.lastStreamUiUpdateMs
@@ -734,7 +751,15 @@ class ChatViewModel : BaseViewModel() {
                     content = "",
                     timestamp = System.currentTimeMillis().toString()
                 )
-                _messages.value = _messages.value.filter { it.id != streamingId } + placeholder
+                // swipes：重新生成时占位就地替换被重抽的气泡，后续消息保持可见。
+                val anchorIndex = streamingAnchorMessageId
+                    ?.let { anchor -> _messages.value.indexOfFirst { it.id == anchor } }
+                    ?: -1
+                _messages.value = if (anchorIndex >= 0) {
+                    _messages.value.toMutableList().apply { set(anchorIndex, placeholder) }
+                } else {
+                    _messages.value.filter { it.id != streamingId } + placeholder
+                }
             }
             is RealtimeEvent.StreamChunk -> {
                 streamingContent.append(event.chunk)
@@ -766,6 +791,8 @@ class ChatViewModel : BaseViewModel() {
             }
             is RealtimeEvent.StreamEnd -> {
                 if (!isLocalMode) _sending.value = false
+                // swipes：占位锚点用完即清，避免影响下一次普通发送的追加行为。
+                streamingAnchorMessageId = null
                 // 本地流程在 StreamEnd 前已完成 Room 持久化，直接刷新数据库即可。
                 // 若再生成随机 ID 的正式消息，刷新时会因时间戳不同同时保留两条相同气泡。
                 val finalContent = streamingContent.toString()
@@ -783,6 +810,8 @@ class ChatViewModel : BaseViewModel() {
                 runtime.streamingReasoningPreview.value = ""
                 // 刷新列表获取服务端持久化的真实消息（含 id/token 等）
                 loadMessages()
+                // swipes：上面这次刷新已经把候选下标/总数与进度卡片带回最新状态
+                finishVariantRegenerate(alreadyReloaded = true)
                 // 远程模式在流结束后触发；本地模式必须等标题总结后处理完成事件，
                 // 避免 TTS 与会话命名同时占用模型请求。
                 if (!isLocalMode) {
@@ -821,6 +850,7 @@ class ChatViewModel : BaseViewModel() {
             }
             is RealtimeEvent.AiResponse -> {
                 if (!isLocalMode) _sending.value = false
+                streamingAnchorMessageId = null
                 _execConfirmation.value = null
                 _askUserQuestion.value = null
                 val msg = event.message?.let { incoming ->
@@ -844,6 +874,9 @@ class ChatViewModel : BaseViewModel() {
                     _messages.value = _messages.value.filter { it.id != streamingId }
                     loadMessages()
                 }
+                // swipes：Agent 工具循环结束只发 AiResponse（无 StreamEnd），
+                // 这里补一次 DB 刷新，候选下标与进度卡片才会立刻正确。
+                finishVariantRegenerate(alreadyReloaded = false)
                 // 非流式回复也需刷新剧情选项
                 if (_session.value?.plotMode == true) {
                     _plotChoices.value = emptyList()
@@ -2067,6 +2100,8 @@ class ChatViewModel : BaseViewModel() {
         )
         _messages.value = _messages.value + optimistic
         generationStopRequested = false
+        // 普通发送：流式占位追加到末尾，清掉上一轮 swipes 留下的锚点。
+        streamingAnchorMessageId = null
         _sending.value = true
         clearError()
 
@@ -2288,21 +2323,39 @@ class ChatViewModel : BaseViewModel() {
         }
     }
 
-    /** 重新生成最后一条 AI 回复：先隐藏旧 AI 消息，再请求重新生成。 */
+    /** 重新生成最后一条 AI 回复：旧回复保留为候选（swipes），不再销毁历史。 */
     fun regenerate() {
-        if (_sending.value || runtime.hasBlockingLocalChatJob() || currentSessionId.isBlank()) return
-        // 找到最后一条 assistant 消息的 id 传给服务器
         val lastAssistant = _messages.value.lastOrNull { !it.isUser }
         val messageId = lastAssistant?.id
         if (messageId.isNullOrBlank()) {
             showError(string(R.string.chat_no_ai_to_regenerate))
             return
         }
-        // 先从列表中移除旧的 AI 回复（含其后的所有消息）
-        val removeIndex = _messages.value.indexOfLast { it.id == messageId }
-        if (removeIndex >= 0) {
-            _messages.value = _messages.value.subList(0, removeIndex)
-        }
+        regenerateMessageById(messageId)
+    }
+
+    /**
+     * 重新生成指定的 AI 回复（swipes 的「再抽一版」）。
+     *
+     * 与旧实现的区别：任何消息都不再被删除。旧回复被备份为候选 0，
+     * 新回复追加为候选 1，气泡上出现「◀ 1/2 ▶」可随时回看。
+     */
+    fun regenerateMessage(message: Message) {
+        val messageId = message.id?.takeIf { it.isNotBlank() } ?: return
+        if (message.isUser) return
+        regenerateMessageById(messageId)
+    }
+
+    private fun regenerateMessageById(messageId: String) {
+        if (_sending.value || runtime.hasBlockingLocalChatJob() || currentSessionId.isBlank()) return
+        // 流式占位直接落在被重抽的气泡位置，而不是永远追加到列表末尾。
+        // 群聊一轮可能由多名角色发言，回复会作为新消息追加而不是候选，因此不设锚点。
+        val isGroupSession = _session.value?.sessionMode.equals("group", ignoreCase = true)
+        streamingAnchorMessageId = if (isGroupSession) null else messageId
+        variantRegenerateTargetId = if (isGroupSession) null else messageId
+        // 重抽会用新的执行轨迹替换这一轮：先摘掉父用户消息上的旧进度卡片，
+        // 否则新卡片（新 id）会追加到同一列表里，运行期间就会出现两张卡片。
+        clearParentProgressCards(messageId)
         generationStopRequested = false
         _sending.value = true
         // 如果剧情模式开启，清除旧选项并显示骨架（仅服务器模式）
@@ -2324,11 +2377,13 @@ class ChatViewModel : BaseViewModel() {
                     return@startLocalChatCollection
                 } catch (e: Exception) {
                     _sending.value = false
+                    streamingAnchorMessageId = null
                     showError(e.message ?: string(R.string.chat_regenerate_failed))
                     return@startLocalChatCollection
                 }
                 if (flow == null) {
                     _sending.value = false
+                    streamingAnchorMessageId = null
                     showError(string(R.string.chat_no_ai_model))
                     return@startLocalChatCollection
                 }
@@ -2338,6 +2393,7 @@ class ChatViewModel : BaseViewModel() {
                     // 正常取消不显示 StandaloneCoroutine 错误。
                 } catch (e: Exception) {
                     _sending.value = false
+                    streamingAnchorMessageId = null
                     _messages.value = _messages.value.filter { it.id != streamingId }
                     val errMsg = e.message ?: string(R.string.chat_regenerate_failed)
                     showError(errMsg)
@@ -2363,10 +2419,95 @@ class ChatViewModel : BaseViewModel() {
                 },
                 onError = {
                     _sending.value = false
+                    streamingAnchorMessageId = null
                     _plotChoicesLoading.value = false
                     showError(it)
                 }
             )
+        }
+    }
+
+    /**
+     * 摘掉被重抽消息之前那条用户消息上的进度卡片。
+     *
+     * 只有 Agent 会话会挂进度卡片；非 Agent 会话该字段本就为空，这里是空操作。
+     */
+    private fun clearParentProgressCards(assistantMessageId: String) {
+        val current = _messages.value
+        val targetIndex = current.indexOfFirst { it.id == assistantMessageId }
+        if (targetIndex <= 0) return
+        val parentIndex = (0 until targetIndex).lastOrNull { current[it].isUser } ?: return
+        val parent = current[parentIndex]
+        if (parent.thinkingCards.isNullOrEmpty()) return
+        _messages.value = current.toMutableList().apply {
+            set(parentIndex, parent.copy(thinkingCards = null))
+        }
+    }
+
+    /**
+     * swipes：重抽结束后的收尾。
+     *
+     * Agent 工具循环结束不会发 StreamEnd，所以这里补一次 `loadMessages()`，
+     * 让候选下标/总数与进度卡片回到数据库的真实状态。
+     */
+    private fun finishVariantRegenerate(alreadyReloaded: Boolean) {
+        if (variantRegenerateTargetId == null) return
+        variantRegenerateTargetId = null
+        if (!alreadyReloaded) loadMessages()
+    }
+
+    /**
+     * swipes：同一条 AI 回复的候选之间左右切换。
+     *
+     * @param delta -1 上一版，+1 下一版
+     */
+    fun switchMessageVariant(message: Message, delta: Int) {
+        if (_sending.value || runtime.hasBlockingLocalChatJob()) return
+        val messageId = message.id?.takeIf { it.isNotBlank() } ?: return
+        val total = message.variantCount ?: 0
+        if (total <= 1) return
+        val target = (message.variantIndex ?: 0) + delta
+        if (target < 0 || target >= total) return
+        // 旧音频是按下标那一版正文合成的，切换后已作废（正文落库时 audio_url 会被清空）。
+        val hadAudio = !message.audioUrl.isNullOrBlank()
+        val chatTarget = runtime
+        viewModelScope.launch {
+            when (val result = unified.selectMessageVariant(messageId, target)) {
+                is Resource.Success -> {
+                    val updated = result.data
+                    _messages.value = _messages.value.map { current ->
+                        if (current.id != messageId) {
+                            current
+                        } else {
+                            current.copy(
+                                content = updated.content,
+                                reasoningContent = updated.reasoningContent,
+                                model = updated.model,
+                                inputTokens = updated.inputTokens,
+                                outputTokens = updated.outputTokens,
+                                tokens = updated.tokens,
+                                durationMs = updated.durationMs,
+                                audioUrl = null,
+                                variantIndex = updated.variantIndex,
+                                variantCount = updated.variantCount
+                            )
+                        }
+                    }
+                    if (hadAudio) {
+                        // 明确告诉用户「语音已作废，可重新生成」，而不是留一个对不上的播放器
+                        updateTtsState(
+                            chatTarget,
+                            messageId,
+                            MessageTtsUiState(MessageTtsStatus.Stale)
+                        )
+                    }
+                }
+                is Resource.Error -> {
+                    loadMessages()
+                    showError(result.message ?: string(R.string.chat_variant_switch_failed))
+                }
+                is Resource.Loading -> Unit
+            }
         }
     }
 
@@ -2384,8 +2525,8 @@ class ChatViewModel : BaseViewModel() {
             showError(string(R.string.chat_no_ai_to_regenerate))
             return
         }
-        // 从内存列表移除旧开场白
-        _messages.value = _messages.value.filter { it.id != messageId }
+        // swipes：不再移除旧开场白，改为就地流式重抽；旧开场白保留为候选 0。
+        streamingAnchorMessageId = messageId
         generationStopRequested = false
         _sending.value = true
         if (isLocalMode) {
@@ -2399,11 +2540,13 @@ class ChatViewModel : BaseViewModel() {
                     return@startLocalChatCollection
                 } catch (e: Exception) {
                     _sending.value = false
+                    streamingAnchorMessageId = null
                     showError(e.message ?: string(R.string.chat_regenerate_failed))
                     return@startLocalChatCollection
                 }
                 if (flow == null) {
                     _sending.value = false
+                    streamingAnchorMessageId = null
                     showError(string(R.string.chat_no_ai_model))
                     return@startLocalChatCollection
                 }
@@ -2413,6 +2556,7 @@ class ChatViewModel : BaseViewModel() {
                     // 正常取消不显示错误
                 } catch (e: Exception) {
                     _sending.value = false
+                    streamingAnchorMessageId = null
                     _messages.value = _messages.value.filter { it.id != streamingId }
                     val errMsg = e.message ?: string(R.string.chat_regenerate_failed)
                     showError(errMsg)
@@ -2436,6 +2580,7 @@ class ChatViewModel : BaseViewModel() {
                 },
                 onError = {
                     _sending.value = false
+                    streamingAnchorMessageId = null
                     showError(it)
                 }
             )

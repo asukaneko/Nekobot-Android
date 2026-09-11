@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  角色扮演对话第 2 轮：swipes 多候选回复新增文案。
+  单独成文件便于审计与后续迁移；Android 会与同目录其它 strings*.xml 合并。
+-->
+<resources>
+    <!-- swipes：多条候选回复切换 -->
+    <string name="chat_variant_prev">上一个候选</string>
+    <string name="chat_variant_next">下一个候选</string>
+    <string name="chat_variant_counter">%1$d/%2$d</string>
+    <string name="chat_variant_switch_failed">切换候选失败</string>
+    <!-- 切换候选后语音已作废（TTS 按正文合成，正文变了旧音频就对不上） -->
+    <string name="audio_variant_stale">正文已切换到其他版本，语音已作废</string>
+</resources>

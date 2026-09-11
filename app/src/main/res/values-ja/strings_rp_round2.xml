@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ロールプレイ会話 第 2 ラウンド：swipes（複数候補）で追加した文言。 -->
+<resources>
+    <!-- swipes：複数候補の切り替え -->
+    <string name="chat_variant_prev">前の候補</string>
+    <string name="chat_variant_next">次の候補</string>
+    <string name="chat_variant_counter">%1$d/%2$d</string>
+    <string name="chat_variant_switch_failed">候補の切り替えに失敗しました</string>
+    <!-- 候補を切り替えると、別の本文で合成した音声は無効になります -->
+    <string name="audio_variant_stale">本文を別の候補に切り替えたため、音声は無効になりました</string>
+</resources>

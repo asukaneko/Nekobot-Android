@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 롤플레이 대화 2라운드: swipes(여러 후보)에서 추가한 문구. -->
+<resources>
+    <!-- swipes: 여러 후보 전환 -->
+    <string name="chat_variant_prev">이전 후보</string>
+    <string name="chat_variant_next">다음 후보</string>
+    <string name="chat_variant_counter">%1$d/%2$d</string>
+    <string name="chat_variant_switch_failed">후보 전환 실패</string>
+    <!-- 후보를 바꾸면 다른 본문으로 합성한 음성은 무효가 됩니다 -->
+    <string name="audio_variant_stale">본문을 다른 버전으로 바꿔 기존 음성이 무효가 되었습니다</string>
+</resources>

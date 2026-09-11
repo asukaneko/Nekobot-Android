@@ -12,7 +12,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.ConcurrentHashMap
 
-enum class MessageTtsStatus { Generating, Ready, Error }
+enum class MessageTtsStatus {
+    Generating,
+    Ready,
+    Error,
+
+    /**
+     * 正文已切换到另一版候选，当前语音属于旧版本。
+     *
+     * 不是错误：音频已被清空（`audio_url = NULL`），这里只提示可以按新正文重新生成。
+     */
+    Stale
+}
 
 data class MessageTtsUiState(
     val status: MessageTtsStatus,

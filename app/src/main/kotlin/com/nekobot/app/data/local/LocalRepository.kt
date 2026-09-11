@@ -94,6 +94,7 @@ import com.nekobot.app.data.local.db.LocalMessageEntity
 import com.nekobot.app.data.local.db.LocalMessageImageEntity
 import com.nekobot.app.data.local.ai.ImageGenerationReference
 import com.nekobot.app.data.local.db.LocalMessageFavoriteEntity
+import com.nekobot.app.data.local.db.LocalMessageVariantEntity
 import com.nekobot.app.data.local.db.LocalSessionEntity
 import com.nekobot.app.data.local.db.LocalSkillEntity
 import com.nekobot.app.data.local.db.LocalTaskEntity
@@ -289,6 +290,7 @@ class LocalRepository(
     private val plotStoryOwner = Any()
     private val sessionDao = db.sessionDao()
     private val messageDao = db.messageDao()
+    private val messageVariantDao = db.messageVariantDao()
     private val messageImageDao = db.messageImageDao()
     private val agentRunDao = db.agentRunDao()
     private val agentToolMessageDao = db.agentToolMessageDao()
@@ -4511,6 +4513,137 @@ class LocalRepository(
         sessionDao.touch(sessionId, "", 0, nowIso())
     }
 
+    // ==================== swipes：多候选回复 ====================
+
+    /**
+     * 确保这条助手消息已有「候选基线」。
+     *
+     * 首次重新生成前，把消息当前正文落成候选 0；否则旧回复会随着正文被覆盖而永久丢失
+     * （这正是改造前 `regenerate` 删除历史所带来的问题）。
+     *
+     * @return 已存在的候选数量
+     */
+    private suspend fun ensureVariantBaseline(entity: LocalMessageEntity): Int {
+        val existing = messageVariantDao.countByMessage(entity.id)
+        if (existing > 0) return existing
+        // 软删除的空消息与本地命令消息不参与候选
+        if (entity.content.isBlank()) return 0
+        messageVariantDao.upsert(
+            LocalMessageVariantEntity(
+                id = UUID.randomUUID().toString(),
+                messageId = entity.id,
+                sessionId = entity.sessionId,
+                variantIndex = 0,
+                content = entity.content,
+                reasoningContent = entity.reasoningContent,
+                model = entity.model,
+                inputTokens = entity.inputTokens,
+                outputTokens = entity.outputTokens,
+                durationMs = entity.durationMs,
+                createdAt = entity.createdAt
+            )
+        )
+        messageDao.updateVariantIndex(entity.id, 0, 1)
+        return 1
+    }
+
+    /**
+     * 追加一条候选并把它设为当前选中（swipes 的写入侧）。
+     *
+     * 消息本体（content / reasoning / token / 耗时）同步更新为这条候选，
+     * 因此后续上下文组装、导出与统计都不需要感知候选表。
+     *
+     * @return 新的候选总数；消息不存在时返回 0
+     */
+    suspend fun appendMessageVariant(
+        messageId: String,
+        content: String,
+        reasoningContent: String? = null,
+        model: String? = null,
+        inputTokens: Int? = null,
+        outputTokens: Int? = null,
+        durationMs: Double? = null
+    ): Int = withContext(Dispatchers.IO) {
+        val entity = messageDao.getById(messageId) ?: return@withContext 0
+        if (content.isBlank()) return@withContext 0
+        val baseline = ensureVariantBaseline(entity)
+        val nextIndex = messageVariantDao.maxIndex(messageId) + 1
+        val now = nowIso()
+        messageVariantDao.upsert(
+            LocalMessageVariantEntity(
+                id = UUID.randomUUID().toString(),
+                messageId = messageId,
+                sessionId = entity.sessionId,
+                variantIndex = nextIndex,
+                content = content,
+                reasoningContent = reasoningContent?.takeIf(String::isNotBlank),
+                model = model,
+                inputTokens = inputTokens,
+                outputTokens = outputTokens,
+                durationMs = durationMs,
+                createdAt = now
+            )
+        )
+        val count = maxOf(baseline, nextIndex) + 1
+        messageDao.updateVariantSelection(
+            id = messageId,
+            content = content,
+            reasoningContent = reasoningContent?.takeIf(String::isNotBlank),
+            model = model ?: entity.model,
+            inputTokens = inputTokens,
+            outputTokens = outputTokens,
+            durationMs = durationMs,
+            variantIndex = nextIndex,
+            variantCount = count
+        )
+        sessionDao.getById(entity.sessionId)?.let { session ->
+            sessionDao.touch(
+                session.id,
+                lastMessage = messageDao.listBySession(session.id).lastOrNull()?.content?.take(200) ?: "",
+                count = messageDao.countBySession(session.id),
+                updatedAt = now
+            )
+        }
+        count
+    }
+
+    /**
+     * 切换一条助手消息当前展示的候选（swipes 的读取侧）。
+     *
+     * @return 切换后选中候选的正文；候选不存在时返回 null
+     */
+    suspend fun selectMessageVariant(messageId: String, index: Int): Message? = withContext(Dispatchers.IO) {
+        val variant = messageVariantDao.getByIndex(messageId, index) ?: return@withContext null
+        val total = messageVariantDao.countByMessage(messageId)
+        messageDao.updateVariantSelection(
+            id = messageId,
+            content = variant.content,
+            reasoningContent = variant.reasoningContent,
+            model = variant.model,
+            inputTokens = variant.inputTokens,
+            outputTokens = variant.outputTokens,
+            durationMs = variant.durationMs,
+            variantIndex = variant.variantIndex,
+            variantCount = total
+        )
+        // 会话列表预览跟随当前选中候选，否则侧边栏可能显示另一版的开口。
+        messageDao.getById(messageId)?.let { entity ->
+            val preview = messageDao.listBySession(entity.sessionId).lastOrNull()?.content?.take(200) ?: ""
+            sessionDao.touch(
+                entity.sessionId,
+                preview,
+                messageDao.countBySession(entity.sessionId),
+                nowIso()
+            )
+        }
+        messageDao.getById(messageId)?.toMessage()
+    }
+
+    /** 某条消息的候选总数（0/1 表示无候选可切换）。 */
+    suspend fun messageVariantCount(messageId: String): Int = withContext(Dispatchers.IO) {
+        messageVariantDao.countByMessage(messageId)
+    }
+
     // ==================== 聊天 ====================
 
     /**
@@ -4707,7 +4840,6 @@ class LocalRepository(
             emit(RealtimeEvent.StreamEnd(sessionId))
             return@flow
         }
-        // 找到目标消息位置，删除它及之后所有消息
         val targetIdx = messages.indexOfFirst { it.id == targetId }
         if (targetIdx < 0) {
             emit(RealtimeEvent.Error("消息不存在"))
@@ -4716,25 +4848,28 @@ class LocalRepository(
         }
         // 找到目标之前最后一条 user 消息作为重新生成的输入
         val lastUserBefore = messages.subList(0, targetIdx).lastOrNull { it.role == "user" }
-        // 删除目标及之后所有消息
-        messages.subList(targetIdx, messages.size).forEach { messageDao.deleteById(it.id) }
-
         val userInput = lastUserBefore?.content ?: run {
             emit(RealtimeEvent.Error("找不到要重新生成的用户消息"))
             emit(RealtimeEvent.StreamEnd(sessionId))
             return@flow
         }
-        // 删除那条 user 消息（chat 会重新添加）
-        lastUserBefore?.let { messageDao.deleteById(it.id) }
 
-        // 复用 chat 流程
-        chat(sessionId, userInput, activeModel, reasoningEffort).collect { emit(it) }
+        // swipes：不再删除任何消息。旧回复由 appendMessageVariant 备份为候选 0，
+        // 历史只在管线内截到目标消息之前（variantTargetMessageId），落库后仍然完整。
+        chatWithPipeline(
+            sessionId = sessionId,
+            userMessage = userInput,
+            activeModel = activeModel,
+            persistUserMessage = false,
+            existingParentMessageId = lastUserBefore?.id,
+            reasoningEffort = reasoningEffort,
+            variantTargetMessageId = targetId
+        ).collect { emit(it) }
     }.flowOn(Dispatchers.IO)
 
     /**
-     * 重新生成开场白：删除首条 assistant 消息（旧开场白），
+     * 重新生成开场白：**不再删除旧开场白**，而是为同一条首条 assistant 消息追加新候选。
      * 用角色卡信息构造 prompt 调用 AI 生成新的开场白，流式返回。
-     * 不保存任何 user 消息，仅替换首条 assistant 消息。
      */
     fun regenerateGreeting(
         sessionId: String,
@@ -4749,11 +4884,13 @@ class LocalRepository(
             }
         val character = session.characterId?.let { characterDao.getById(it) }
 
-        // 找到并删除首条 assistant 消息（旧开场白）
+        // 找到首条 assistant 消息作为候选宿主；旧开场白保留为候选 0。
         val messages = messageDao.listBySession(sessionId)
         val firstAssistant = messages.firstOrNull { it.role == "assistant" }
-        if (firstAssistant != null) {
-            messageDao.deleteById(firstAssistant.id)
+        if (firstAssistant == null) {
+            emit(RealtimeEvent.Error("没有可重新生成的开场白"))
+            emit(RealtimeEvent.StreamEnd(sessionId))
+            return@flow
         }
 
         // 构造开场白生成 prompt：复用 LocalPromptBuilder 的 system 构造，
@@ -4840,45 +4977,17 @@ class LocalRepository(
                         )
                         val durationMs = (System.nanoTime() - streamStartNano) / 1_000_000.0
                         val ttftMs = firstChunkNano?.let { (it - streamStartNano) / 1_000_000.0 }
-                        // 保存新开场白（作为首条 assistant 消息）
+                        // swipes：新开场白作为同一条消息的新候选追加，旧开场白保留在候选 0。
                         val now = nowIso()
-                        val msgId = UUID.randomUUID().toString()
-                        val msg = LocalMessageEntity(
-                            id = msgId,
-                            sessionId = sessionId,
-                            role = "assistant",
+                        val msgId = firstAssistant.id
+                        appendMessageVariant(
+                            messageId = msgId,
                             content = content,
-                            reasoningContent = fullReasoning.toString()
-                                .takeIf(String::isNotBlank),
-                            sender = character?.name ?: "assistant",
-                            timestamp = System.currentTimeMillis().toString(),
-                            createdAt = now,
+                            reasoningContent = fullReasoning.toString(),
                             model = modelDisplayName ?: activeModel.name,
                             inputTokens = usage.inputTokens,
                             outputTokens = usage.outputTokens,
                             durationMs = durationMs
-                        )
-                        messageDao.upsert(msg)
-                        // 如果删除旧开场白后消息表为空，需要把新消息插入到最前面
-                        // Room 不保证插入顺序，但消息列表按 timestamp/createdAt 排序，
-                        // 所以给新开场白一个比所有现有消息更早的时间戳
-                        val remainingMessages = messageDao.listBySession(sessionId)
-                        if (remainingMessages.size > 1) {
-                            // 有其他消息，把开场白的时间戳设为最早
-                            val earliestTs = remainingMessages
-                                .filter { it.id != msgId }
-                                .minOfOrNull { it.timestamp?.toLongOrNull() ?: Long.MAX_VALUE }
-                                ?: System.currentTimeMillis()
-                            messageDao.upsert(msg.copy(
-                                timestamp = (earliestTs - 1).toString(),
-                                createdAt = now
-                            ))
-                        }
-                        sessionDao.touch(
-                            sessionId,
-                            lastMessage = content.take(200),
-                            count = messageDao.countBySession(sessionId),
-                            updatedAt = now
                         )
                         // 记录 token 用量
                         if ((usage.inputTokens ?: 0) > 0 || (usage.outputTokens ?: 0) > 0) {
@@ -5368,7 +5477,14 @@ class LocalRepository(
          * 工具消息按 run_id 逐条落库，复用同一个 runId 才能让中断前后的轨迹属于同一轮，
          * 新开 runId 会把它们当成上一轮的残留清理掉。
          */
-        agentRunIdOverride: String? = null
+        agentRunIdOverride: String? = null,
+        /**
+         * swipes：把本轮回复写成**这条已存在的助手消息**的新候选，而不是新建一条消息。
+         *
+         * 同时作为历史截断点——上下文只取该消息之前的内容（不删除任何落库数据），
+         * 因此「重新生成」不再销毁旧回复与后续历史。
+         */
+        variantTargetMessageId: String? = null
     ): Flow<RealtimeEvent> = flow {
         val generationController = LocalGenerationController()
         var agentForegroundStarted = false
@@ -5635,6 +5751,7 @@ class LocalRepository(
         val callbacks = com.nekobot.app.data.local.ai.LocalPipelineCallbacks(
             db, aiClient, activeModel, session, character, worldBookEntries, runtime, identity,
             parentMessageId = parentMessageId,
+            variantTargetMessageId = variantTargetMessageId,
             assistantSource = assistantSource,
             knowledgeSearcher = { query ->
                 kotlinx.coroutines.runBlocking {
@@ -8712,7 +8829,9 @@ ${AiOutputLanguage.directive()}
         // UI 历史只加载有界进度卡。完整工具历史仅供 AI 上下文路径读取，绝不能塞进聊天状态。
         thinkingCards = decodeThinkingCardsForUi(id, thinkingCards, gson),
         toolCallHistory = null,
-        sessionId = sessionId
+        sessionId = sessionId,
+        variantIndex = variantIndex,
+        variantCount = variantCount
     )
 
     /** 持久化指定用户消息关联的进度卡片列表（agent 模式）。 */

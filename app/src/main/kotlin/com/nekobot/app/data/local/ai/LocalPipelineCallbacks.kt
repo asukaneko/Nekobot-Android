@@ -12,6 +12,7 @@ import com.nekobot.app.data.local.shouldInjectWorldBooks
 import com.nekobot.app.data.local.db.LocalAiModelEntity
 import com.nekobot.app.data.local.db.LocalCharacterEntity
 import com.nekobot.app.data.local.db.LocalMessageEntity
+import com.nekobot.app.data.local.db.LocalMessageVariantEntity
 import com.nekobot.app.data.local.db.LocalSessionEntity
 import com.nekobot.app.data.local.db.LocalWorldBookEntryEntity
 import com.nekobot.app.data.local.db.NekobotDatabase
@@ -51,6 +52,11 @@ internal class LocalPipelineCallbacks(
     private val characterIdentity: CharacterIdentity? = null,
     /** 父用户消息 id；agent 模式进度卡片关联用，UI 在用户气泡下方渲染 */
     private val parentMessageId: String? = null,
+    /**
+     * swipes：本轮回复写到这条已存在的助手消息上（新候选），而不是新建消息。
+     * 同时作为历史截断点——上下文只取该消息之前的内容，不删除任何落库数据。
+     */
+    private val variantTargetMessageId: String? = null,
     /** 助手消息来源标记；后台主动聊天用 proactive_chat，普通聊天为空。 */
     private val assistantSource: String? = null,
     /** 本地知识库检索入口。 */
@@ -128,6 +134,7 @@ internal class LocalPipelineCallbacks(
     private val gson = Gson()
     private val sessionDao = db.sessionDao()
     private val messageDao = db.messageDao()
+    private val messageVariantDao = db.messageVariantDao()
     private val agentRunDao = db.agentRunDao()
     private val agentToolMessageDao = db.agentToolMessageDao()
     private val pendingGeneratedImages = mutableListOf<Pair<String, List<LocalImageResult>>>()
@@ -257,6 +264,76 @@ internal class LocalPipelineCallbacks(
 
     /** 流式消息 ID */
     private var streamMessageId: String = ""
+
+    /**
+     * swipes：把本轮回复写成 [messageId] 的新候选，并把消息本体切换为该候选。
+     *
+     * 与 LocalRepository.appendMessageVariant 同语义；这里直接用 db 的 DAO，
+     * 避免让回调层反向依赖 LocalRepository（那会形成构造期循环依赖）。
+     *
+     * @return 候选总数
+     */
+    private suspend fun appendAssistantVariant(
+        messageId: String,
+        content: String,
+        reasoningContent: String?,
+        model: String?,
+        inputTokens: Int?,
+        outputTokens: Int?,
+        durationMs: Double?
+    ): Int {
+        val entity = messageDao.getById(messageId) ?: return 0
+        if (content.isBlank()) return 0
+        val existing = messageVariantDao.countByMessage(messageId)
+        if (existing == 0 && entity.content.isNotBlank()) {
+            // 候选基线：把即将被覆盖的旧回复保存为候选 0
+            messageVariantDao.upsert(
+                LocalMessageVariantEntity(
+                    id = java.util.UUID.randomUUID().toString(),
+                    messageId = messageId,
+                    sessionId = entity.sessionId,
+                    variantIndex = 0,
+                    content = entity.content,
+                    reasoningContent = entity.reasoningContent,
+                    model = entity.model,
+                    inputTokens = entity.inputTokens,
+                    outputTokens = entity.outputTokens,
+                    durationMs = entity.durationMs,
+                    createdAt = entity.createdAt
+                )
+            )
+        }
+        val nextIndex = messageVariantDao.maxIndex(messageId) + 1
+        val now = com.nekobot.app.data.local.LocalRepository.nowIsoStatic()
+        messageVariantDao.upsert(
+            LocalMessageVariantEntity(
+                id = java.util.UUID.randomUUID().toString(),
+                messageId = messageId,
+                sessionId = entity.sessionId,
+                variantIndex = nextIndex,
+                content = content,
+                reasoningContent = reasoningContent?.takeIf(String::isNotBlank),
+                model = model,
+                inputTokens = inputTokens,
+                outputTokens = outputTokens,
+                durationMs = durationMs,
+                createdAt = now
+            )
+        )
+        val total = nextIndex + 1
+        messageDao.updateVariantSelection(
+            id = messageId,
+            content = content,
+            reasoningContent = reasoningContent?.takeIf(String::isNotBlank),
+            model = model ?: entity.model,
+            inputTokens = inputTokens,
+            outputTokens = outputTokens,
+            durationMs = durationMs,
+            variantIndex = nextIndex,
+            variantCount = total
+        )
+        return total
+    }
     private var activeAgentProgressReporter: LocalAgentProgressReporter? = null
 
     private fun createStreamEventCoalescer(ctx: PipelineContext): LocalStreamEventCoalescer =
@@ -292,6 +369,12 @@ internal class LocalPipelineCallbacks(
         val isAgentSession = session.sessionMode.equals("agent", ignoreCase = true)
         val history = kotlinx.coroutines.runBlocking {
             messageDao.listBySession(session.id)
+        }.let { messages ->
+            // swipes：重新生成只截到目标消息之前，被替换的旧回复与其后的历史都保留在库里。
+            variantTargetMessageId?.let { targetId ->
+                val targetIndex = messages.indexOfFirst { it.id == targetId }
+                if (targetIndex >= 0) messages.take(targetIndex) else messages
+            } ?: messages
         }.let { messages ->
             if (isAgentSession) messages.agentContextWindow() else messages
         }.filter { message ->
@@ -565,7 +648,8 @@ internal class LocalPipelineCallbacks(
             null
         }
 
-        val messageId = (message["id"] as? String) ?: java.util.UUID.randomUUID().toString()
+        val messageId = variantTargetMessageId
+            ?: ((message["id"] as? String) ?: java.util.UUID.randomUUID().toString())
         val reasoningContent = if (reasoningEffort == ReasoningEffort.NONE) {
             ""
         } else {
@@ -581,23 +665,41 @@ internal class LocalPipelineCallbacks(
 
         // 保存到 Room（同步执行，因为已在 IO 线程）
         kotlinx.coroutines.runBlocking {
-            messageDao.upsert(LocalMessageEntity(
-                id = messageId,
-                sessionId = session.id,
-                role = "assistant",
-                content = content,
-                sender = senderName,
-                timestamp = System.currentTimeMillis().toString(),
-                inputTokens = inputTokens,
-                outputTokens = outputTokens,
-                model = modelName,
-                createdAt = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
-                toolCallHistory = toolCallHistoryJson,
-                source = assistantSource,
-                reasoningContent = reasoningContent.takeIf(String::isNotBlank),
-                // 生成耗时（毫秒）：气泡下方 tok/s 与 token 用量记录共用同一来源。
-                durationMs = durationMs
-            ))
+            if (variantTargetMessageId != null) {
+                // swipes：本轮回复作为同一条助手消息的新候选落库，消息本体同步切换过去。
+                // 旧回复被备份为候选 0，永不丢失（改造前这里是删除整段历史后新建消息）。
+                val variantTotal = appendAssistantVariant(
+                    messageId = variantTargetMessageId,
+                    content = content,
+                    reasoningContent = reasoningContent,
+                    model = modelName,
+                    inputTokens = inputTokens,
+                    outputTokens = outputTokens,
+                    durationMs = durationMs
+                )
+                com.nekobot.app.data.local.LocalLogger.i(
+                    TAG,
+                    "swipes 新候选已落库 | messageId=$variantTargetMessageId | 共 $variantTotal 版"
+                )
+            } else {
+                messageDao.upsert(LocalMessageEntity(
+                    id = messageId,
+                    sessionId = session.id,
+                    role = "assistant",
+                    content = content,
+                    sender = senderName,
+                    timestamp = System.currentTimeMillis().toString(),
+                    inputTokens = inputTokens,
+                    outputTokens = outputTokens,
+                    model = modelName,
+                    createdAt = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
+                    toolCallHistory = toolCallHistoryJson,
+                    source = assistantSource,
+                    reasoningContent = reasoningContent.takeIf(String::isNotBlank),
+                    // 生成耗时（毫秒）：气泡下方 tok/s 与 token 用量记录共用同一来源。
+                    durationMs = durationMs
+                ))
+            }
 
             persistPendingGeneratedImages(messageId)
 
@@ -1033,6 +1135,8 @@ internal class LocalPipelineCallbacks(
     override fun onStreamEnd(ctx: PipelineContext, messageId: String) {
         emitEvent(RealtimeEvent.StreamEnd(session.id))
     }
+
+    override fun resolveAssistantMessageId(ctx: PipelineContext): String? = variantTargetMessageId
 
     // ---- 进度报告 ----
     // agent 模式启用进度卡片：上报 thinking/tool/iteration/done 等步骤到 UI

@@ -260,11 +260,23 @@ data class Message(
     @SerializedName("tool_call_history")
     val toolCallHistory: List<Map<String, Any>>? = null,
     @SerializedName(value = "session_id", alternate = ["conversation_id", "sessionId"])
-    val sessionId: String? = null
+    val sessionId: String? = null,
+    /**
+     * swipes：当前展示的候选下标（从 0 开始）。
+     * 与 [variantCount] 一起决定气泡上是否展示「◀ 1/3 ▶」切换器。
+     */
+    @SerializedName("variant_index") val variantIndex: Int? = null,
+    /** swipes：候选总数；小于 2 表示该消息只有一份内容，无需切换。 */
+    @SerializedName("variant_count") val variantCount: Int? = null
 ) {
     val isUser: Boolean
         get() = role.equals("user", ignoreCase = true) || role.equals("human", ignoreCase = true)
     val displayContent: String get() = content ?: ""
+    /** 是否有多份候选回复可供左右切换。 */
+    val hasVariants: Boolean get() = (variantCount ?: 0) > 1
+    /** 可读的候选位置文案（1-based），无候选时返回 null。 */
+    val variantLabel: String?
+        get() = if (hasVariants) "${(variantIndex ?: 0) + 1}/${variantCount}" else null
     /** 是否为进度卡片（thinking_card），不应在聊天列表中展示 */
     val isThinkingCard: Boolean
         get() = type.equals("thinking_card", ignoreCase = true) || role.equals("system", ignoreCase = true)

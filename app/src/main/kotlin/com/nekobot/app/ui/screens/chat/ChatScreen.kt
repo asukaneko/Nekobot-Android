@@ -18,6 +18,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.StartOffset
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
@@ -44,6 +45,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -62,6 +64,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
@@ -112,6 +116,7 @@ import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -135,21 +140,30 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.FocusRequester
@@ -163,6 +177,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -173,6 +188,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
+import kotlin.math.roundToInt
 import java.io.File
 import java.io.FileOutputStream
 import android.provider.OpenableColumns
@@ -1156,8 +1174,11 @@ fun ChatScreen(
                                             if (index == 0 && !target.isUser) {
                                                 viewModel.regenerateGreeting()
                                             } else {
-                                                viewModel.regenerate()
+                                                viewModel.regenerateMessage(target)
                                             }
+                                        },
+                                        onSwitchVariant = { delta ->
+                                            viewModel.switchMessageVariant(target, delta)
                                         },
                                         onRegenerateTts = { viewModel.regenerateMessageTts(target) },
                                         onFork = { target.id?.let { mid -> viewModel.forkFromMessage(mid) { onOpenChat(it) } } },
@@ -2813,6 +2834,8 @@ private fun MessageBubble(
     onCopy: () -> String = { "" },
     onEdit: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
+    /** swipes：切换这条回复的候选版本；-1 上一版，+1 下一版。 */
+    onSwitchVariant: ((Int) -> Unit)? = null,
     sessionId: String = "",
     selectionMode: Boolean = false,
     isSelected: Boolean = false,
@@ -2874,6 +2897,88 @@ private fun MessageBubble(
     val hasMultimedia = parsedSegments.any { segs -> segs.any { it.type != SegmentType.TEXT } }
     val hasAudioUrl = !message.audioUrl.isNullOrBlank()
     val maxBubbleWidth = if (hasMultimedia || hasAudioUrl || ttsState != null) 360.dp else 280.dp
+
+    // swipes：有多份候选时，左右滑动气泡即可快速切换（左滑下一版、右滑上一版）。
+    // 拖动与手指 1:1 连续跟手，松手后旧气泡完整滑出、新气泡从对侧完整滑入。
+    // 只消费水平方向的手势，纵向滚动仍交给消息列表。
+    val canSwipeVariants = !isUser && message.hasVariants && onSwitchVariant != null &&
+        !isStreamingPlaceholder
+    var variantDragOffset by remember(message.id) { mutableFloatStateOf(0f) }
+    var variantBubbleWidth by remember(message.id) { mutableFloatStateOf(0f) }
+    var variantSwitching by remember(message.id) { mutableStateOf(false) }
+    // 提交动画要读最新的下标/总数，闭包捕获的 message 在重抽后可能是旧值
+    val latestVariantIndex by rememberUpdatedState(message.variantIndex ?: 0)
+    val latestVariantCount by rememberUpdatedState(message.variantCount ?: 0)
+    val canGoNextVariant = latestVariantIndex < latestVariantCount - 1
+    val canGoPrevVariant = latestVariantIndex > 0
+
+    val variantDragState = rememberDraggableState { delta ->
+        val width = variantBubbleWidth
+        if (width <= 0f) return@rememberDraggableState
+        val next = variantDragOffset + delta
+        variantDragOffset = when {
+            next < 0f -> if (canGoNextVariant) next.coerceAtLeast(-width) else 0f
+            next > 0f -> if (canGoPrevVariant) next.coerceAtMost(width) else 0f
+            else -> 0f
+        }
+    }
+
+    val variantSwipeModifier = if (canSwipeVariants) {
+        Modifier
+            // offset 只影响绘制位置，不参与布局，滑动时相邻气泡不会跳动
+            .offset { IntOffset(variantDragOffset.roundToInt(), 0) }
+            .draggable(
+                state = variantDragState,
+                orientation = Orientation.Horizontal,
+                enabled = !variantSwitching,
+                onDragStopped = { velocity ->
+                    val width = variantBubbleWidth
+                    if (width <= 0f) {
+                        variantDragOffset = 0f
+                        return@draggable
+                    }
+                    // 拖过 30% 宽度，或者甩动速度够快，都算一次切换
+                    val threshold = width * 0.3f
+                    val flickVelocity = 900f
+                    val delta = when {
+                        (variantDragOffset <= -threshold || velocity <= -flickVelocity) &&
+                            canGoNextVariant -> 1
+                        (variantDragOffset >= threshold || velocity >= flickVelocity) &&
+                            canGoPrevVariant -> -1
+                        else -> 0
+                    }
+                    if (delta == 0) {
+                        animate(variantDragOffset, 0f, animationSpec = tween(180)) { value, _ ->
+                            variantDragOffset = value
+                        }
+                        return@draggable
+                    }
+                    variantSwitching = true
+                    val startIndex = latestVariantIndex
+                    // 1) 旧气泡完整滑出可视区
+                    animate(
+                        variantDragOffset,
+                        if (delta > 0) -width else width,
+                        animationSpec = tween(140)
+                    ) { value, _ -> variantDragOffset = value }
+                    // 2) 请求切换（落库 + 状态更新是异步的，等下标真的变了再滑入，
+                    //    否则会把旧正文从另一侧滑回来再跳成新正文）
+                    onSwitchVariant?.invoke(delta)
+                    withTimeoutOrNull(800L) {
+                        snapshotFlow { latestVariantIndex }.first { it != startIndex }
+                    }
+                    // 3) 新气泡从对侧完整滑入
+                    variantDragOffset = if (delta > 0) width else -width
+                    animate(variantDragOffset, 0f, animationSpec = tween(200)) { value, _ ->
+                        variantDragOffset = value
+                    }
+                    variantDragOffset = 0f
+                    variantSwitching = false
+                }
+            )
+    } else {
+        Modifier
+    }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -3006,152 +3111,175 @@ private fun MessageBubble(
             }
             // 多段气泡：每段一个气泡，段间小间距
             val commandStyle = commandCapsule?.takeIf { segments.size == 1 }
-            segments.forEachIndexed { idx, segment ->
-                val isFirst = idx == 0
-                val isLast = idx == segments.lastIndex
-                // 解析多媒体内容段
-                val contentSegments = parsedSegments[idx]
-                val segHasMultimedia = contentSegments.any { it.type != SegmentType.TEXT }
-                val segHasUserImage = isUser && contentSegments.any { it.isImageContent() }
-                // 气泡形状：主圆角 20dp，连续多段时中间段一侧收小形成连贯“气泡链”
-                val segShape = RoundedCornerShape(
-                    topStart = 20.dp,
-                    topEnd = 20.dp,
-                    bottomStart = if (isUser) 20.dp else if (isLast) 20.dp else 6.dp,
-                    bottomEnd = if (isUser) if (isLast) 6.dp else 20.dp else 20.dp
-                )
-                Box(
-                    modifier = Modifier
-                        .then(if (!isUser && fillAiWidth) Modifier.fillMaxWidth() else Modifier)
-                        // 用户气泡带轻微投影，浮于背景之上
-                        .then(if (isUser && !segHasUserImage) Modifier.shadow(2.dp, segShape, clip = false) else Modifier)
-                        .then(
-                            when {
-                                isUser && commandStyle != null && !segHasUserImage ->
-                                    Modifier.background(brush = commandCapsuleBrush!!, shape = segShape)
-                                isUser && !segHasUserImage ->
-                                    Modifier.background(brush = userBrush, shape = segShape)
-                                !isUser ->
-                                    Modifier.background(color = aiContainer, shape = segShape)
-                                else -> Modifier
-                            }
-                        )
-                        .then(
-                            when {
-                                isSelected -> Modifier.border(2.dp, MaterialTheme.colorScheme.primary, segShape)
-                                !isUser -> Modifier.border(1.dp, aiBorder, segShape)
-                                else -> Modifier
-                            }
-                        )
-                        .combinedClickable(
-                            onClick = { if (selectionMode) onToggleSelection() },
-                            onLongClick = onLongClick
-                        )
-                        .then(
-                            if (segHasUserImage) Modifier
-                            else Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
-                        )
-                ) {
-                    if (segHasUserImage) {
-                        // 图片保持独立展示；同一条消息里的文字仍使用用户气泡，避免图文同发时文字裸露。
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.End,
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            groupUserMessageContent(contentSegments).forEach { group ->
-                                if (group.firstOrNull()?.isImageContent() == true) {
-                                    RenderContentSegments(
-                                        segments = group,
-                                        textColor = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.fillMaxWidth(),
-                                        sessionId = sessionId,
-                                        chatMode = true,
-                                        processParens = !isUser
-                                    )
-                                } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .widthIn(max = maxBubbleWidth)
-                                            .shadow(2.dp, segShape, clip = false)
-                                            .background(brush = userBrush, shape = segShape)
-                                            .padding(horizontal = 14.dp, vertical = 9.dp)
-                                    ) {
+            // swipes 需要让整块气泡整体位移，抽成 lambda 才能复用同一套分段渲染
+            val renderSegments: @Composable () -> Unit = {
+                segments.forEachIndexed { idx, segment ->
+                    val isFirst = idx == 0
+                    val isLast = idx == segments.lastIndex
+                    // 解析多媒体内容段
+                    val contentSegments = parsedSegments[idx]
+                    val segHasMultimedia = contentSegments.any { it.type != SegmentType.TEXT }
+                    val segHasUserImage = isUser && contentSegments.any { it.isImageContent() }
+                    // 气泡形状：主圆角 20dp，连续多段时中间段一侧收小形成连贯“气泡链”
+                    val segShape = RoundedCornerShape(
+                        topStart = 20.dp,
+                        topEnd = 20.dp,
+                        bottomStart = if (isUser) 20.dp else if (isLast) 20.dp else 6.dp,
+                        bottomEnd = if (isUser) if (isLast) 6.dp else 20.dp else 20.dp
+                    )
+                    Box(
+                        modifier = Modifier
+                            .then(if (!isUser && fillAiWidth) Modifier.fillMaxWidth() else Modifier)
+                            // 用户气泡带轻微投影，浮于背景之上
+                            .then(if (isUser && !segHasUserImage) Modifier.shadow(2.dp, segShape, clip = false) else Modifier)
+                            .then(variantSwipeModifier)
+                            .then(
+                                when {
+                                    isUser && commandStyle != null && !segHasUserImage ->
+                                        Modifier.background(brush = commandCapsuleBrush!!, shape = segShape)
+                                    isUser && !segHasUserImage ->
+                                        Modifier.background(brush = userBrush, shape = segShape)
+                                    !isUser ->
+                                        Modifier.background(color = aiContainer, shape = segShape)
+                                    else -> Modifier
+                                }
+                            )
+                            .then(
+                                when {
+                                    isSelected -> Modifier.border(2.dp, MaterialTheme.colorScheme.primary, segShape)
+                                    !isUser -> Modifier.border(1.dp, aiBorder, segShape)
+                                    else -> Modifier
+                                }
+                            )
+                            .combinedClickable(
+                                onClick = { if (selectionMode) onToggleSelection() },
+                                onLongClick = onLongClick
+                            )
+                            .then(
+                                if (segHasUserImage) Modifier
+                                else Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
+                            )
+                    ) {
+                        if (segHasUserImage) {
+                            // 图片保持独立展示；同一条消息里的文字仍使用用户气泡，避免图文同发时文字裸露。
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.End,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                groupUserMessageContent(contentSegments).forEach { group ->
+                                    if (group.firstOrNull()?.isImageContent() == true) {
                                         RenderContentSegments(
                                             segments = group,
-                                            textColor = textColor,
-                                            modifier = Modifier.widthIn(max = maxBubbleWidth),
+                                            textColor = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.fillMaxWidth(),
                                             sessionId = sessionId,
                                             chatMode = true,
                                             processParens = !isUser
                                         )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .widthIn(max = maxBubbleWidth)
+                                                .shadow(2.dp, segShape, clip = false)
+                                                .background(brush = userBrush, shape = segShape)
+                                                .padding(horizontal = 14.dp, vertical = 9.dp)
+                                        ) {
+                                            RenderContentSegments(
+                                                segments = group,
+                                                textColor = textColor,
+                                                modifier = Modifier.widthIn(max = maxBubbleWidth),
+                                                sessionId = sessionId,
+                                                chatMode = true,
+                                                processParens = !isUser
+                                            )
+                                        }
                                     }
                                 }
                             }
-                        }
-                    } else if (segHasMultimedia) {
-                        // 多媒体内容：用渲染器渲染，宽度可超出普通文本宽度
-                        RenderContentSegments(
-                            segments = contentSegments,
-                            textColor = textColor,
-                            modifier = Modifier.widthIn(max = 360.dp),
-                            sessionId = sessionId,
-                            chatMode = true,
-                            processParens = !isUser
-                        )
-                    } else if (commandStyle != null && isUser) {
-                        // 命令消息（/goal、/spec）：彩色胶囊 + 其余参数文本
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            CommandCapsuleChip(kind = commandStyle.kind, translucent = true)
-                            val rest = segment.removePrefix(commandStyle.token).trim()
-                            if (rest.isNotEmpty()) {
-                                Spacer(Modifier.width(8.dp))
-                                if (useSafePlainText) {
-                                    SafePlainMessageText(
-                                        text = rest,
-                                        color = textColor,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                } else {
-                                    MarkdownText(
-                                        text = rest,
-                                        modifier = Modifier.weight(1f),
-                                        color = textColor,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        chatMode = true,
-                                        processParens = false
-                                    )
+                        } else if (segHasMultimedia) {
+                            // 多媒体内容：用渲染器渲染，宽度可超出普通文本宽度
+                            RenderContentSegments(
+                                segments = contentSegments,
+                                textColor = textColor,
+                                modifier = Modifier.widthIn(max = 360.dp),
+                                sessionId = sessionId,
+                                chatMode = true,
+                                processParens = !isUser
+                            )
+                        } else if (commandStyle != null && isUser) {
+                            // 命令消息（/goal、/spec）：彩色胶囊 + 其余参数文本
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CommandCapsuleChip(kind = commandStyle.kind, translucent = true)
+                                val rest = segment.removePrefix(commandStyle.token).trim()
+                                if (rest.isNotEmpty()) {
+                                    Spacer(Modifier.width(8.dp))
+                                    if (useSafePlainText) {
+                                        SafePlainMessageText(
+                                            text = rest,
+                                            color = textColor,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    } else {
+                                        MarkdownText(
+                                            text = rest,
+                                            modifier = Modifier.weight(1f),
+                                            color = textColor,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            chatMode = true,
+                                            processParens = false
+                                        )
+                                    }
                                 }
                             }
-                        }
-                    } else {
-                        // 文本内容：用 Markdown 渲染
-                        // 用户气泡：宽度跟随实际内容（短消息不撑满）；AI 气泡：填满最大宽度
-                        if (useSafePlainText) {
-                            SafePlainMessageText(
-                                text = segment,
-                                color = textColor,
-                                modifier = if (isUser) Modifier.widthIn(max = maxBubbleWidth) else Modifier.fillMaxWidth()
-                            )
                         } else {
-                            MarkdownText(
-                                text = segment,
-                                color = textColor,
-                                style = MaterialTheme.typography.bodyMedium,
-                                chatMode = true,
-                                processParens = !isUser,
-                                modifier = if (isUser) Modifier.widthIn(max = maxBubbleWidth) else Modifier.fillMaxWidth()
-                            )
+                            // 文本内容：用 Markdown 渲染
+                            // 用户气泡：宽度跟随实际内容（短消息不撑满）；AI 气泡：填满最大宽度
+                            if (useSafePlainText) {
+                                SafePlainMessageText(
+                                    text = segment,
+                                    color = textColor,
+                                    modifier = if (isUser) Modifier.widthIn(max = maxBubbleWidth) else Modifier.fillMaxWidth()
+                                )
+                            } else {
+                                MarkdownText(
+                                    text = segment,
+                                    color = textColor,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    chatMode = true,
+                                    processParens = !isUser,
+                                    modifier = if (isUser) Modifier.widthIn(max = maxBubbleWidth) else Modifier.fillMaxWidth()
+                                )
+                            }
                         }
                     }
+                    if (!isLast) {
+                        val fileAdjacent = contentSegments.any { it.type == SegmentType.FILE } ||
+                            parsedSegments.getOrNull(idx + 1).orEmpty().any { it.type == SegmentType.FILE }
+                        Spacer(Modifier.height(if (fileAdjacent) 4.dp else 10.dp))
+                    }
                 }
-                if (!isLast) {
-                    val fileAdjacent = contentSegments.any { it.type == SegmentType.FILE } ||
-                        parsedSegments.getOrNull(idx + 1).orEmpty().any { it.type == SegmentType.FILE }
-                    Spacer(Modifier.height(if (fileAdjacent) 4.dp else 10.dp))
+            }
+            // 外层不随气泡平移，才能把滑出可视区的部分裁掉（滑出/滑入才「完整」可见）；
+            // 阴影只出现在用户气泡上，而用户气泡不参与候选滑动，因此裁剪不影响阴影。
+            Box(
+                modifier = Modifier.then(
+                    if (canSwipeVariants) Modifier.clipToBounds() else Modifier
+                )
+            ) {
+                Box(
+                    modifier = variantSwipeModifier.onSizeChanged {
+                        variantBubbleWidth = it.width.toFloat()
+                    }
+                ) {
+                    Column(
+                        horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
+                    ) {
+                        renderSegments()
+                    }
                 }
             }
 
@@ -3252,18 +3380,30 @@ private fun MessageBubble(
                             }
                         }
                     } else {
-                        BubbleActions(
-                            isUser = isUser,
-                            showGenerationActions = !isLocalCommand,
-                            onRegenerate = onRegenerate,
-                            onFork = onFork,
-                            onCopy = {
-                                val text = onCopy()
-                                clipboard.setText(AnnotatedString(text))
-                            },
-                            onEdit = onEdit,
-                            onDelete = onDelete
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // swipes：多候选回复切换器「◀ 1/3 ▶」，就地回看旧版本不重新生成
+                            if (message.hasVariants && !isStreamingPlaceholder) {
+                                VariantSwitcher(
+                                    label = message.variantLabel.orEmpty(),
+                                    index = message.variantIndex ?: 0,
+                                    total = message.variantCount ?: 0,
+                                    onSwitch = onSwitchVariant
+                                )
+                                Spacer(Modifier.width(META_ITEM_GAP))
+                            }
+                            BubbleActions(
+                                isUser = isUser,
+                                showGenerationActions = !isLocalCommand,
+                                onRegenerate = onRegenerate,
+                                onFork = onFork,
+                                onCopy = {
+                                    val text = onCopy()
+                                    clipboard.setText(AnnotatedString(text))
+                                },
+                                onEdit = onEdit,
+                                onDelete = onDelete
+                            )
+                        }
                     }
                 }
             }
@@ -3433,6 +3573,68 @@ private fun MessageGeneratedImageCard(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * swipes 候选切换器：「◀ 1/3 ▶」。
+ *
+ * 只切换本地已保存的候选，不重新生成、不改动历史；端点（第 1 版 / 最后一版）
+ * 的箭头自动禁用，避免无效点击。
+ */
+@Composable
+private fun VariantSwitcher(
+    label: String,
+    index: Int,
+    total: Int,
+    onSwitch: ((Int) -> Unit)?
+) {
+    val enabled = onSwitch != null && total > 1
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(24.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .then(
+                    if (enabled && index > 0) Modifier.clickable { onSwitch?.invoke(-1) }
+                    else Modifier
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = stringResource(R.string.chat_variant_prev),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                    alpha = if (enabled && index > 0) 0.7f else 0.25f
+                ),
+                modifier = Modifier.size(16.dp)
+            )
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 2.dp)
+        )
+        Box(
+            modifier = Modifier
+                .size(24.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .then(
+                    if (enabled && index < total - 1) Modifier.clickable { onSwitch?.invoke(1) }
+                    else Modifier
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = stringResource(R.string.chat_variant_next),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                    alpha = if (enabled && index < total - 1) 0.7f else 0.25f
+                ),
+                modifier = Modifier.size(16.dp)
+            )
         }
     }
 }
@@ -6094,6 +6296,30 @@ private fun TtsGenerationBar(
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f)
                 )
+            } else if (state.status == MessageTtsStatus.Stale) {
+                // 候选切换后正文变了、音频已作废：中性提示 + 重新生成入口
+                Icon(
+                    Icons.Outlined.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.audio_variant_stale),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                IconButton(onClick = onRetry, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        Icons.Filled.Refresh,
+                        contentDescription = stringResource(R.string.audio_regenerate),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             } else {
                 Icon(
                     Icons.Filled.Error,

@@ -262,6 +262,14 @@ open class PipelineCallbacks {
     open fun onStreamChunk(ctx: PipelineContext, chunk: String, messageId: String) {}
     open fun onStreamEnd(ctx: PipelineContext, messageId: String) {}
 
+    /**
+     * 本轮助手消息应使用的 id；返回 null 表示由管线新建一条消息。
+     *
+     * swipes 重新生成时，回复要写回**原来那条**助手消息（作为新候选），
+     * 因此推给 UI 的消息 id 必须与持久化 id 一致，否则界面会多出一条重复气泡。
+     */
+    open fun resolveAssistantMessageId(ctx: PipelineContext): String? = null
+
     // ---- 进度报告 ----
 
     /** 返回 ProgressReporter 实例。默认返回空实现。 */
