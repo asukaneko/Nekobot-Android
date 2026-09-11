@@ -298,6 +298,33 @@ interface AgentRunDao {
     suspend fun deleteRun(sessionId: String, runId: String)
 }
 
+/**
+ * Agent 一轮任务内逐条追加的工具消息轨迹。
+ *
+ * 与 [AgentRunDao] 的检查点互补：检查点只保存“恢复到哪个安全边界”，
+ * 真正的工具消息正文按行落库，避免单个 TEXT 行膨胀到数 MB（Android SQLite
+ * 的 CursorWindow 单行上限约 2MB，超限时整张表都读不出来）。
+ */
+@Dao
+interface AgentToolMessageDao {
+    @Insert
+    suspend fun insert(message: LocalAgentToolMessageEntity): Long
+
+    /** 按写入顺序返回整轮工具消息，用于中断恢复。 */
+    @Query("SELECT * FROM local_agent_tool_messages WHERE session_id = :sessionId ORDER BY id ASC")
+    suspend fun listBySession(sessionId: String): List<LocalAgentToolMessageEntity>
+
+    @Query("SELECT COUNT(*) FROM local_agent_tool_messages WHERE session_id = :sessionId")
+    suspend fun countBySession(sessionId: String): Int
+
+    @Query("DELETE FROM local_agent_tool_messages WHERE session_id = :sessionId")
+    suspend fun deleteBySession(sessionId: String)
+
+    /** 丢弃末尾未完成的工具块（中断发生在一批工具执行中间时）。 */
+    @Query("DELETE FROM local_agent_tool_messages WHERE session_id = :sessionId AND id >= :fromId")
+    suspend fun deleteFromId(sessionId: String, fromId: Long)
+}
+
 @Dao
 interface CharacterDao {
     @Query("SELECT * FROM local_characters ORDER BY updated_at DESC")

@@ -195,6 +195,45 @@ data class LocalAgentRunEntity(
 )
 
 /**
+ * Agent 工具循环中逐条落库的 assistant/tool 消息（一轮任务的完整工具轨迹）。
+ *
+ * Agent 一次长任务可能产生上百次工具调用，这些消息过去只存在于内存里，直到本轮结束
+ * 才被折进单条 assistant 消息的 tool_call_history（或 local_agent_runs.checkpoint_history）。
+ * 结果是一旦进程被回收/用户中断，除最后一份快照外的工具结果就彻底丢失。
+ *
+ * 这里按“追加一行”的方式即时落库：
+ * - 每条消息独立成行（id 自增即写入顺序），单行体积受工具自身输出上限约束，
+ *   不会出现单行数 MB 的 TEXT（Android SQLite 的 CursorWindow 单行上限约 2MB，
+ *   超限读取会直接抛异常，导致整个会话读不出来）。
+ * - 只有“进行中/已中断”的一轮才保留这些行；本轮正常结束、被丢弃或会话被删除时清理。
+ * - 恢复时按 id 升序重建本轮工具历史，不再依赖单行大 JSON。
+ */
+@Entity(
+    tableName = "local_agent_tool_messages",
+    indices = [Index("session_id"), Index("run_id")],
+    foreignKeys = [
+        ForeignKey(
+            entity = LocalSessionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["session_id"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class LocalAgentToolMessageEntity(
+    /** 自增主键：自增顺序即追加顺序，恢复时按它排序即得到原始时间线。 */
+    @PrimaryKey(autoGenerate = true)
+    @ColumnInfo(name = "id") val id: Long = 0,
+    @ColumnInfo(name = "session_id") val sessionId: String,
+    @ColumnInfo(name = "run_id") val runId: String,
+    /** assistant / tool（与模型协议消息角色一致）。 */
+    val role: String,
+    /** 该条消息的 JSON 序列化结果，恢复时可直接反序列化为模型消息。 */
+    val payload: String,
+    @ColumnInfo(name = "created_at") val createdAt: String
+)
+
+/**
  * 本地角色卡。字段对齐后端 CharacterPreset 完整字段。
  *
  * tags / alternateGreetings / rules / state 以 JSON 字符串存储，由 Dao 层转换。

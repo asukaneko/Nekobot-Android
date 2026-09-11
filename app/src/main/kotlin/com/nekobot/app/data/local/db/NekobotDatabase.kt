@@ -18,6 +18,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalMessageEntity::class,
         LocalMessageImageEntity::class,
         LocalAgentRunEntity::class,
+        LocalAgentToolMessageEntity::class,
         LocalCharacterEntity::class,
         LocalWorldBookEntity::class,
         LocalWorldBookEntryEntity::class,
@@ -41,7 +42,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalKnowledgeChunkEntity::class,
         RoutingDecisionLogEntity::class
     ],
-    version = 39,
+    version = 40,
     exportSchema = true
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -49,6 +50,7 @@ abstract class NekobotDatabase : RoomDatabase() {
     abstract fun messageDao(): MessageDao
     abstract fun messageImageDao(): MessageImageDao
     abstract fun agentRunDao(): AgentRunDao
+    abstract fun agentToolMessageDao(): AgentToolMessageDao
     abstract fun characterDao(): CharacterDao
     abstract fun worldBookDao(): WorldBookDao
     abstract fun aiModelDao(): AiModelDao
@@ -786,6 +788,38 @@ abstract class NekobotDatabase : RoomDatabase() {
         }
 
         /**
+         * v39 → v40：Agent 工具消息逐条落库（一轮任务的完整工具轨迹）。
+         *
+         * 过去一轮任务的上百次工具调用只保存在内存和单个 JSON 检查点里，
+         * 中断/进程回收后会丢失。新表按追加行保存每条 assistant/tool 消息。
+         */
+        val MIGRATION_39_40 = object : Migration(39, 40) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS local_agent_tool_messages (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        session_id TEXT NOT NULL,
+                        run_id TEXT NOT NULL,
+                        role TEXT NOT NULL,
+                        payload TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY(session_id) REFERENCES local_sessions(id) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_local_agent_tool_messages_session_id " +
+                        "ON local_agent_tool_messages(session_id)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_local_agent_tool_messages_run_id " +
+                        "ON local_agent_tool_messages(run_id)"
+                )
+            }
+        }
+
+        /**
          * 完整迁移链同时供生产数据库构建和迁移回归测试使用。
          * 新版本必须把迁移追加到这里；缺少迁移时直接失败，绝不静默清空用户数据。
          */
@@ -799,7 +833,7 @@ abstract class NekobotDatabase : RoomDatabase() {
             MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29,
             MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33,
             MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37,
-            MIGRATION_37_38, MIGRATION_38_39
+            MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40
         )
 
         fun get(context: Context): NekobotDatabase =

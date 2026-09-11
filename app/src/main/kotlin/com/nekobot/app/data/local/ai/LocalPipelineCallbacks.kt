@@ -129,6 +129,7 @@ internal class LocalPipelineCallbacks(
     private val sessionDao = db.sessionDao()
     private val messageDao = db.messageDao()
     private val agentRunDao = db.agentRunDao()
+    private val agentToolMessageDao = db.agentToolMessageDao()
     private val pendingGeneratedImages = mutableListOf<Pair<String, List<LocalImageResult>>>()
 
     // ---- Subagent 支持 ----
@@ -308,16 +309,23 @@ internal class LocalPipelineCallbacks(
             history
         }
 
+        // 进行中/已中断的一轮：工具消息逐条落库在独立表里，恢复时按行重建完整轨迹。
+        // 这些行只在"本轮未正常结束"时存在（正常结束会清空），因此这里读到即代表需要续跑。
+        val durableToolHistory = loadDurableAgentToolHistory(isAgentSession)
+
         // 无角色会话沿用旧提示词组装；Agent 只保留会话提示词，不得继承公共世界书。
         if (character == null) {
-            return LocalPromptBuilder.build(
-                session = session,
-                character = null,
-                history = contextHistory,
-                userInput = ctx.chatRequest.content,
-                worldBookEntries = worldBookEntries.takeIf {
-                    shouldInjectWorldBooks(session.sessionMode)
-                }.orEmpty()
+            return attachDurableAgentToolHistory(
+                LocalPromptBuilder.build(
+                    session = session,
+                    character = null,
+                    history = contextHistory,
+                    userInput = ctx.chatRequest.content,
+                    worldBookEntries = worldBookEntries.takeIf {
+                        shouldInjectWorldBooks(session.sessionMode)
+                    }.orEmpty()
+                ),
+                durableToolHistory
             )
         }
 
@@ -347,7 +355,44 @@ internal class LocalPipelineCallbacks(
         // 当前用户消息
         messages.add(mapOf("role" to "user", "content" to ctx.chatRequest.content))
 
-        return messages
+        return attachDurableAgentToolHistory(messages, durableToolHistory)
+    }
+
+    /** 读取本轮逐条落库的工具轨迹；非 Agent 会话或没有未完成轮次时返回空。 */
+    private fun loadDurableAgentToolHistory(isAgentSession: Boolean): List<Map<String, Any>> {
+        if (!isAgentSession) return emptyList()
+        val decoded = kotlinx.coroutines.runBlocking {
+            agentToolMessageDao.listBySession(session.id)
+        }.mapNotNull { row -> decodeAgentToolMessageRow(row.payload) }
+        // 中断可能停在一批工具执行中间：末尾未完成的 tool_calls 块必须丢弃，
+        // 否则下一轮请求会出现"tool_calls 没有对应 tool 响应"的非法序列。
+        return dropIncompleteAgentTail(decoded)
+    }
+
+    /**
+     * 把逐条落库的工具轨迹挂到最近一条助手消息上。
+     *
+     * 落库轨迹比消息里折叠的 tool_call_history 更完整（后者有体积上限），且是中断恢复的唯一
+     * 完整来源；是否真正用于"继续"仍由 [restoreContinueMessages] 按用户输入判断，
+     * 其他输入则按时间顺序展开为普通历史。
+     */
+    private fun attachDurableAgentToolHistory(
+        messages: List<Map<String, Any>>,
+        durableToolHistory: List<Map<String, Any>>
+    ): List<Map<String, Any>> {
+        if (durableToolHistory.isEmpty()) return messages
+        val anchorIndex = messages.indexOfLast { (it["role"] as? String) == "assistant" }
+        if (anchorIndex < 0) return messages
+        return messages.mapIndexed { index, message ->
+            if (index != anchorIndex) {
+                message
+            } else {
+                message.toMutableMap().apply {
+                    put("tool_call_history", durableToolHistory)
+                    put("can_continue", true)
+                }
+            }
+        }
     }
 
     /**
@@ -491,7 +536,7 @@ internal class LocalPipelineCallbacks(
             return
         }
         @Suppress("UNCHECKED_CAST")
-        val toolCallHistoryJson = encodeToolCallHistory(
+        val toolCallHistoryJson = boundAgentToolHistoryJson(
             message["tool_call_history"] as? List<Map<String, Any>>
         )
 
@@ -562,8 +607,8 @@ internal class LocalPipelineCallbacks(
             sessionDao.touch(session.id, content.take(200), msgCount, now)
 
             agentRunId?.let { runId ->
-                val checkpoint = toolCallHistoryJson
-                    ?: encodeToolCallHistory(ctx.toolTrace)
+                // 检查点只写进度摘要；工具正文已在 persistAgentToolMessage 中逐条落库。
+                val checkpoint = encodeAgentCheckpointSummary(ctx.toolTrace)
                 val completedTools = completedAgentToolCallCount(ctx.toolTrace)
                 val persistedStage = agentRunDao.getBySession(session.id)
                     ?.takeIf { it.runId == runId }
@@ -595,7 +640,12 @@ internal class LocalPipelineCallbacks(
                             updatedAt = now
                         )
                     }
-                    else -> agentRunDao.deleteRun(session.id, runId)
+                    else -> {
+                        // 本轮正常结束：检查点与逐条落库的工具轨迹都不再需要，
+                        // 后续轮次改用这条助手消息上的 tool_call_history。
+                        agentRunDao.deleteRun(session.id, runId)
+                        agentToolMessageDao.deleteBySession(session.id)
+                    }
                 }
             }
         }
@@ -1003,16 +1053,43 @@ internal class LocalPipelineCallbacks(
         lastToolName: String?
     ) {
         val runId = agentRunId ?: return
-        val encoded = encodeToolCallHistory(toolCallHistory)
+        // 检查点只保存进度摘要：整轮工具正文已由 persistAgentToolMessage 逐条落库，
+        // 单行 JSON 保持在极小体积，避免历史很长时读不出 local_agent_runs。
+        val summary = encodeAgentCheckpointSummary(toolCallHistory)
+        val completedTools = completedAgentToolCallCount(toolCallHistory)
         kotlinx.coroutines.runBlocking {
             agentRunDao.updateCheckpoint(
                 sessionId = session.id,
                 runId = runId,
                 stage = stage,
-                checkpointHistory = encoded,
-                completedToolCalls = completedAgentToolCallCount(toolCallHistory),
+                checkpointHistory = summary,
+                completedToolCalls = completedTools,
                 lastToolName = lastToolName,
                 updatedAt = com.nekobot.app.data.local.LocalRepository.nowIsoStatic()
+            )
+        }
+    }
+
+    /**
+     * 逐条落库 Agent 工具消息。
+     *
+     * 每条消息独立成行，因此一轮任务里的上百次工具调用不会等到结束才写入；
+     * 用户中断或进程被回收后，恢复时可按行重建完整工具轨迹。
+     */
+    override fun persistAgentToolMessage(ctx: PipelineContext, message: Map<String, Any>) {
+        val runId = agentRunId ?: return
+        val role = (message["role"] as? String).orEmpty()
+        if (role != "assistant" && role != "tool") return
+        val payload = encodeAgentToolMessageRow(message)
+        kotlinx.coroutines.runBlocking {
+            agentToolMessageDao.insert(
+                com.nekobot.app.data.local.db.LocalAgentToolMessageEntity(
+                    sessionId = session.id,
+                    runId = runId,
+                    role = role,
+                    payload = payload,
+                    createdAt = com.nekobot.app.data.local.LocalRepository.nowIsoStatic()
+                )
             )
         }
     }

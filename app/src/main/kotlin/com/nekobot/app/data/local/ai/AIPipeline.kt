@@ -707,6 +707,11 @@ class AIPipeline {
                     stage = AgentRunStage.THINKING,
                     lastToolName = lastCompletedAgentToolName(safeHistory)
                 )
+            },
+            // 每条工具消息产生的当下就落库：一轮任务可能上百次调用，中断后只有
+            // 即时写入的内容能恢复（检查点只保存进度，不含工具正文）。
+            onToolMessageAppended = { message ->
+                callbacks.persistAgentToolMessage(ctx, message)
             }
         )
 

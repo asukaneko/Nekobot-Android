@@ -215,7 +215,14 @@ data class ToolLoopHooks(
     val onToolStart: ((Map<String, Any>, String, Int, List<Map<String, Any>>) -> Unit)? = null,
     val onToolResult: ((Map<String, Any>, Map<String, Any>, String, Int, List<Map<String, Any>>) -> Map<String, Any>?)? = null,
     /** 一整批 tool_calls 都写入对应 tool 结果后的安全检查点。 */
-    val onCheckpoint: ((Int, List<Map<String, Any>>) -> Unit)? = null
+    val onCheckpoint: ((Int, List<Map<String, Any>>) -> Unit)? = null,
+    /**
+     * 工具循环每向本轮消息列表追加一条 assistant/tool 消息时立即回调。
+     *
+     * 落库动作必须发生在消息产生的当下，而不是等整轮结束：
+     * 一轮任务可能有上百次工具调用，中断或进程回收时只有即时落库的内容能恢复。
+     */
+    val onToolMessageAppended: ((Map<String, Any>) -> Unit)? = null
 )
 
 /** 工具循环结果 */
@@ -579,6 +586,177 @@ fun extractToolCallHistory(messages: List<Map<String, Any>>): List<Map<String, A
     return messages.filter { it["role"] in listOf("assistant", "tool") }.map { it.toMap() }
 }
 
+// ============================================================================
+// 工具轨迹落库 / 检查点
+// ============================================================================
+
+/** 中断恢复锚点消息的 source 标记；聊天页据此识别「上次执行被中断」。 */
+internal const val AGENT_RECOVERY_SOURCE = "agent_recovery"
+
+/**
+ * 单条工具消息落库上限（字符）。
+ *
+ * 工具自身的输出上限通常在 20 万字符以内，但截图类工具会把 data URI 塞进结果正文。
+ * 这里再兜一层，保证任何单行都不会逼近 Android SQLite 的 CursorWindow 单行上限
+ * （约 2MB，超限时整表读取会抛异常）。
+ */
+internal const val MAX_AGENT_TOOL_MESSAGE_ROW_CHARS = 600_000
+
+/** 单条 assistant 消息携带的 tool_call_history 上限，避免 local_messages 出现超大行。 */
+internal const val MAX_AGENT_MESSAGE_TOOL_HISTORY_CHARS = 1_000_000
+
+private const val AGENT_CHECKPOINT_SUMMARY_VERSION = 2
+
+/** Agent 检查点摘要：只记录进度，不再把整轮工具正文塞进单行 JSON。 */
+internal data class AgentCheckpointSummary(val toolCalls: Int, val tokens: Int)
+
+/** 单条工具消息 json 化：超出上限时保留正文头部并标注原始长度。 */
+internal fun encodeAgentToolMessageRow(message: Map<String, Any>): String {
+    val json = agentGson.toJson(message)
+    if (json.length <= MAX_AGENT_TOOL_MESSAGE_ROW_CHARS) return json
+    val trimmed = message.toMutableMap()
+    val role = (message["role"] as? String).orEmpty()
+    if (role == "tool") {
+        trimmed["content"] = "[单条工具结果过大，仅保留落库记录占位；原始长度 ${json.length} 字符，" +
+            "需要细节时请重新调用该工具]"
+    } else {
+        trimmed["content"] = ((message["content"] as? String) ?: "")
+            .take(MAX_AGENT_TOOL_MESSAGE_ROW_CHARS / 2)
+        trimmed["tool_calls"] = "[工具调用参数过大，已省略；原始长度 ${json.length} 字符]"
+    }
+    return agentGson.toJson(trimmed)
+}
+
+/** 反序列化一条工具轨迹行；损坏或非 assistant/tool 角色时返回 null。 */
+internal fun decodeAgentToolMessageRow(payload: String?): Map<String, Any>? {
+    if (payload.isNullOrBlank()) return null
+    return runCatching {
+        val type = object : TypeToken<Map<String, Any>>() {}.type
+        agentGson.fromJson<Map<String, Any>>(payload, type)?.toMap()
+    }.getOrNull()?.takeIf { it["role"] in listOf("assistant", "tool") }
+}
+
+/** 检查点摘要 JSON：`{"v":2,"count":N,"tokens":T}`。 */
+internal fun encodeAgentCheckpointSummary(history: List<Map<String, Any>>?): String? {
+    val normalized = history.orEmpty().filter { it["role"] in listOf("assistant", "tool") }
+    if (normalized.isEmpty()) return null
+    return agentGson.toJson(
+        mapOf(
+            "v" to AGENT_CHECKPOINT_SUMMARY_VERSION,
+            "count" to completedAgentToolCallCount(normalized),
+            "tokens" to estimateLocalMessagesTokens(normalized)
+        )
+    )
+}
+
+/** 解析检查点摘要；旧版本（整轮 JSON）返回 null，由调用方回退到历史解码。 */
+internal fun decodeAgentCheckpointSummary(json: String?): AgentCheckpointSummary? {
+    if (json.isNullOrBlank()) return null
+    return runCatching {
+        val type = object : TypeToken<Map<String, Any>>() {}.type
+        val parsed = agentGson.fromJson<Map<String, Any>>(json, type) ?: return null
+        if ((parsed["v"] as? Number)?.toInt() != AGENT_CHECKPOINT_SUMMARY_VERSION) return null
+        AgentCheckpointSummary(
+            toolCalls = (parsed["count"] as? Number)?.toInt() ?: 0,
+            tokens = (parsed["tokens"] as? Number)?.toInt() ?: 0
+        )
+    }.getOrNull()
+}
+
+/**
+ * 限制写进消息行的 tool_call_history 体积：保留最近的几轮，丢弃更早的并在最前面标注。
+ *
+ * 整轮工具正文超过 [maxChars] 时不能再原样写库——单个 TEXT 行超过 CursorWindow
+ * 上限会让该会话的所有消息都读不出来。完整轨迹由 local_agent_tool_messages 承担。
+ */
+internal fun boundAgentToolHistoryJson(
+    history: List<Map<String, Any>>?,
+    maxChars: Int = MAX_AGENT_MESSAGE_TOOL_HISTORY_CHARS
+): String? {
+    val normalized = history.orEmpty()
+        .filter { it["role"] in listOf("assistant", "tool") }
+        .map { it.toMap() }
+    if (normalized.isEmpty()) return null
+    val encoded = agentGson.toJson(normalized)
+    if (encoded.length <= maxChars || maxChars <= 0) return encoded
+
+    // 从最新往回累积可整体保留的消息块（assistant tool_calls 与其 tool 结果同生共死）。
+    val blocks = groupMessageBlocks(normalized)
+    val kept = ArrayDeque<List<Map<String, Any>>>()
+    var used = 0
+    for (block in blocks.asReversed()) {
+        val size = agentGson.toJson(block).length
+        if (kept.isNotEmpty() && used + size > maxChars) break
+        kept.addFirst(block)
+        used += size
+    }
+    val dropped = blocks.size - kept.size
+    if (dropped > 0) {
+        val notice = mapOf<String, Any>(
+            "role" to "assistant",
+            "content" to "[更早的 $dropped 轮工具调用记录因消息体积上限未随本条消息保存；" +
+                "如需这些信息请重新调用对应工具获取]"
+        )
+        val bounded = agentGson.toJson(listOf(notice) + kept.flatten())
+        if (bounded.length <= maxChars) return bounded
+    }
+    // 单块本身就超限（例如一批并行工具返回了多个超大结果）：宁可只留说明，
+    // 也不能写入超限的 TEXT 行——那会让整个会话的消息都读不出来。
+    return agentGson.toJson(
+        listOf(
+            mapOf<String, Any>(
+                "role" to "assistant",
+                "content" to "[本轮工具调用记录整体超出单条消息体积上限，未随本条消息保存；" +
+                    "如需这些信息请重新调用对应工具获取]"
+            )
+        )
+    )
+}
+
+/**
+ * 丢弃末尾"未完成"的工具块。
+ *
+ * 中断可能停在一批工具执行中间：最后一条 assistant tool_calls 只有部分（甚至没有）
+ * tool 结果。OpenAI/Anthropic 会直接拒绝"tool_calls 缺少对应 tool 响应"的消息序列，
+ * 因此恢复重建时必须把这种尾块整体丢掉，回到最后一个协议安全的检查点。
+ */
+internal fun dropIncompleteAgentTail(history: List<Map<String, Any>>): List<Map<String, Any>> {
+    val working = history.map { it.toMap() }.toMutableList()
+    while (working.isNotEmpty()) {
+        val last = working.last()
+        val role = (last["role"] as? String).orEmpty()
+        if (role == "assistant") {
+            // 末尾是带 tool_calls 的 assistant：没有任何 tool 结果，整块丢弃。
+            if ((last["tool_calls"] as? List<*>)?.isNotEmpty() == true) {
+                working.removeAt(working.lastIndex)
+                continue
+            }
+            return working
+        }
+        if (role != "tool") return working
+
+        var index = working.lastIndex
+        val toolCallIds = mutableSetOf<String>()
+        while (index >= 0 && (working[index]["role"] as? String) == "tool") {
+            (working[index]["tool_call_id"] as? String)?.takeIf(String::isNotBlank)?.let(toolCallIds::add)
+            index--
+        }
+        val owner = working.getOrNull(index)
+        val expectedIds = (owner?.get("tool_calls") as? List<*>)
+            ?.mapNotNull { call -> ((call as? Map<*, *>)?.get("id") as? String)?.takeIf(String::isNotBlank) }
+            .orEmpty()
+        if (owner != null && (owner["role"] as? String) == "assistant" &&
+            expectedIds.isNotEmpty() && expectedIds.all { it in toolCallIds }
+        ) {
+            return working
+        }
+        // 未完成的尾块：连同它的 tool 结果一起丢弃，再继续检查新的末尾。
+        while (working.lastIndex > index) working.removeAt(working.lastIndex)
+        if (index >= 0) working.removeAt(working.lastIndex)
+    }
+    return working
+}
+
 /**
  * 只提取本轮新产生的工具调用历史。
  *
@@ -757,6 +935,24 @@ suspend fun runToolCallLoop(
         modelCallDurationMs = modelCallDurationMs.takeIf { modelCallCount > 0 }
     )
 
+    /**
+     * 追加本轮消息，并立即通知持久化钩子。
+     *
+     * [persist] 为 false 的消息（如排队注入的用户消息）已由上层单独落库，不重复写入工具轨迹。
+     */
+    fun appendMessage(message: MutableMap<String, Any>, persist: Boolean = true) {
+        toolMessages.add(message)
+        if (persist) {
+            runCatching { hooks?.onToolMessageAppended?.invoke(message) }
+                .onFailure { error ->
+                    com.nekobot.app.data.local.LocalLogger.w(
+                        "AgentService",
+                        "工具消息落库失败: ${error.message}"
+                    )
+                }
+        }
+    }
+
     for (iteration in 0 until maxIterations) {
         if (shouldStop()) {
             return result(stopped = true, iterations = iteration)
@@ -768,7 +964,8 @@ suspend fun runToolCallLoop(
             .filter(String::isNotBlank)
         if (injectedUserMessages.isNotEmpty()) {
             for (content in injectedUserMessages) {
-                toolMessages.add(mutableMapOf("role" to "user", "content" to content))
+                // 排队消息已在 chatWithPipeline 里持久化为会话用户消息，这里不再重复落库。
+                appendMessage(mutableMapOf("role" to "user", "content" to content), persist = false)
             }
         }
 
@@ -841,7 +1038,7 @@ suspend fun runToolCallLoop(
                     put("function", funcMap)
                 }
             }
-            toolMessages.add(buildMap<String, Any> {
+            appendMessage(buildMap<String, Any> {
                 put("role", "assistant")
                 put("content", response["content"] ?: "")
                 put("tool_calls", toolCallEntries)
@@ -855,7 +1052,6 @@ suspend fun runToolCallLoop(
                         ?.let { put("reasoning_signature", it) }
                 }
             }.toMutableMap())
-
             // 执行每个工具调用：连续的只读工具并行执行（结果顺序与副作用顺序保持不变）
             var loopAbortMessage: String? = null
             var callIndex = 0
@@ -955,7 +1151,7 @@ suspend fun runToolCallLoop(
                         )
                     }
 
-                    toolMessages.add(toolHistoryMessage.toMutableMap())
+                    appendMessage(toolHistoryMessage.toMutableMap())
                 }
 
                 callIndex += batch.size
@@ -988,7 +1184,7 @@ suspend fun runToolCallLoop(
         }
 
         // 未停止，继续循环
-        toolMessages.add(mutableMapOf("role" to "assistant", "content" to finalContent))
+        appendMessage(mutableMapOf("role" to "assistant", "content" to finalContent))
     }
 
     // 达到最大迭代次数仍未停止

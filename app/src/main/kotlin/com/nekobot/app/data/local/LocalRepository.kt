@@ -55,7 +55,10 @@ import com.nekobot.app.data.local.ai.buildLocalAgentToolDefinitions
 import com.nekobot.app.data.local.ai.buildLocalDbToolDefinitions
 import com.nekobot.app.data.local.ai.buildLocalSkillToolDefinitions
 import com.nekobot.app.data.local.ai.decodeThinkingCardsForUi
-import com.nekobot.app.data.local.ai.encodeToolCallHistory
+import com.nekobot.app.data.local.ai.boundAgentToolHistoryJson
+import com.nekobot.app.data.local.ai.decodeAgentToolMessageRow
+import com.nekobot.app.data.local.ai.decodeToolCallHistory
+import com.nekobot.app.data.local.ai.dropIncompleteAgentTail
 import com.nekobot.app.data.local.ai.estimateLocalTextTokens
 import com.nekobot.app.data.local.ai.estimateLocalMessagesTokens
 import com.nekobot.app.data.local.ai.localDbToolIds
@@ -281,6 +284,7 @@ class LocalRepository(
     private val messageDao = db.messageDao()
     private val messageImageDao = db.messageImageDao()
     private val agentRunDao = db.agentRunDao()
+    private val agentToolMessageDao = db.agentToolMessageDao()
     private val characterDao = db.characterDao()
     private val worldBookDao = db.worldBookDao()
     private val aiModelDao = db.aiModelDao()
@@ -4900,11 +4904,35 @@ class LocalRepository(
         val attachments = decodeAgentRunAttachments(run.attachmentsJson)
         val model = getRoutedModel(sessionId, run.prompt, attachments) ?: return@withContext null
 
-        if (!run.checkpointHistory.isNullOrBlank()) {
+        // 中断期间的工具消息是逐条落库的（local_agent_tool_messages），优先用它重建；
+        // 旧版本检查点（整轮 JSON）仍作兼容回退。
+        val durableRows = agentToolMessageDao.listBySession(sessionId)
+            .mapNotNull { row -> decodeAgentToolMessageRow(row.payload)?.let { row.id to it } }
+        val durableValidCount = dropIncompleteAgentTail(durableRows.map { it.second }).size
+        if (durableValidCount < durableRows.size) {
+            // 末尾未完成的工具块不能进入上下文（协议非法），直接从轨迹里删除。
+            agentToolMessageDao.deleteFromId(sessionId, durableRows[durableValidCount].first)
+        }
+        val durableHistory = durableRows.take(durableValidCount).map { it.second }
+        val legacyHistory = if (durableHistory.isEmpty()) {
+            decodeToolCallHistory(run.checkpointHistory)
+        } else {
+            emptyList()
+        }
+
+        if (durableHistory.isNotEmpty() || legacyHistory.isNotEmpty()) {
+            // 恢复需要一条"助手锚点"消息：'继续' 协议会把锚点与用户消息一起换成完整工具轨迹。
             val existingMarker = run.assistantMessageId?.let { markerId ->
                 messageDao.listBySession(sessionId).firstOrNull { it.id == markerId }
             }
-            if (existingMarker?.toolCallHistory.isNullOrBlank()) {
+            // 锚点消息同时保存一份"体积受限"的工具历史：续跑请求用的是逐条落库的完整轨迹，
+            // 但本轮结束后这些落库行会被清理，跨轮次上下文仍需从锚点消息恢复（旧行为）。
+            val markerToolHistory = boundAgentToolHistoryJson(
+                durableHistory.ifEmpty { legacyHistory }
+            )
+            val needsMarker = existingMarker == null ||
+                (existingMarker.toolCallHistory.isNullOrBlank() && markerToolHistory != null)
+            if (needsMarker) {
                 existingMarker?.let { messageDao.deleteById(it.id) }
                 val now = nowIso()
                 val marker = LocalMessageEntity(
@@ -4915,8 +4943,8 @@ class LocalRepository(
                     sender = "assistant",
                     timestamp = now,
                     createdAt = now,
-                    toolCallHistory = run.checkpointHistory,
-                    source = "agent_recovery"
+                    toolCallHistory = markerToolHistory,
+                    source = com.nekobot.app.data.local.ai.AGENT_RECOVERY_SOURCE
                 )
                 messageDao.upsert(marker)
                 agentRunDao.updateAssistantMessageId(
@@ -4937,7 +4965,9 @@ class LocalRepository(
                 userMessage = "继续",
                 activeModel = model,
                 reasoningEffort = reasoningEffort,
-                pendingUserMessages = pendingUserMessages
+                pendingUserMessages = pendingUserMessages,
+                // 续跑沿用同一个 runId：逐条落库的工具轨迹按 run_id 归属，不能被当成上一轮清理掉。
+                agentRunIdOverride = run.runId
             )
         }
 
@@ -4957,6 +4987,7 @@ class LocalRepository(
 
     suspend fun discardAgentRun(sessionId: String) = withContext(Dispatchers.IO) {
         agentRunDao.deleteBySession(sessionId)
+        agentToolMessageDao.deleteBySession(sessionId)
     }
 
     private fun decodeAgentRunAttachments(raw: String?): List<Map<String, Any>> {
@@ -5308,7 +5339,14 @@ class LocalRepository(
          * 排队消息“立即发送”提供者：工具循环每轮模型调用前取出待注入的用户消息。
          * 取出的消息在此处持久化为 Room 用户消息，再以 user 角色注入模型上下文。
          */
-        pendingUserMessages: (() -> List<String>)? = null
+        pendingUserMessages: (() -> List<String>)? = null,
+        /**
+         * 续跑（从中断检查点恢复）时沿用原 runId。
+         *
+         * 工具消息按 run_id 逐条落库，复用同一个 runId 才能让中断前后的轨迹属于同一轮，
+         * 新开 runId 会把它们当成上一轮的残留清理掉。
+         */
+        agentRunIdOverride: String? = null
     ): Flow<RealtimeEvent> = flow {
         val generationController = LocalGenerationController()
         var agentForegroundStarted = false
@@ -5491,8 +5529,14 @@ class LocalRepository(
             session.sessionMode.equals("agent", ignoreCase = true) &&
             !parentMessageId.isNullOrBlank()
         ) {
-            val runId = UUID.randomUUID().toString()
+            val runId = agentRunIdOverride ?: UUID.randomUUID().toString()
             val now = nowIso()
+            // 续跑场景保留中断期间落库的工具轨迹（runId 相同）；新一轮则清掉上一轮的残留。
+            val resuming = agentRunIdOverride != null
+            val resumedToolCalls = if (resuming) agentToolMessageDao.countBySession(sessionId) else 0
+            if (!resuming) {
+                agentToolMessageDao.deleteBySession(sessionId)
+            }
             agentRunDao.upsert(
                 LocalAgentRunEntity(
                     sessionId = sessionId,
@@ -5504,7 +5548,7 @@ class LocalRepository(
                     status = AgentRunStatus.RUNNING,
                     stage = AgentRunStage.PREPARING,
                     checkpointHistory = null,
-                    completedToolCalls = 0,
+                    completedToolCalls = resumedToolCalls,
                     lastToolName = null,
                     lastError = null,
                     assistantMessageId = null,
@@ -8161,17 +8205,20 @@ ${AiOutputLanguage.directive()}
                 hasActiveRun = false
             )
         }
-        // checkpoint_history 是 role=assistant/tool 消息的 JSON 数组；条数用于分析区计数。
-        val liveToolCount = runCatching {
-            JsonParser.parseString(checkpoint)
-                .takeIf { it.isJsonArray }
-                ?.asJsonArray
-                ?.size()
-                ?: 0
-        }.getOrDefault(0)
+        // checkpoint_history 现在只保存进度摘要（{"v":2,"count":N,"tokens":T}），
+        // 工具正文逐条落在 local_agent_tool_messages，不再把整轮 JSON 塞进单行。
+        val summary = com.nekobot.app.data.local.ai.decodeAgentCheckpointSummary(checkpoint)
+        val liveToolCount = summary?.toolCalls
+            ?: runCatching {
+                JsonParser.parseString(checkpoint)
+                    .takeIf { it.isJsonArray }
+                    ?.asJsonArray
+                    ?.size()
+                    ?: 0
+            }.getOrDefault(0)
         AgentLiveContextUsage(
             baseTokens = baseTokens,
-            liveToolTokens = estimateLocalTextTokens(checkpoint).toLong(),
+            liveToolTokens = summary?.tokens?.toLong() ?: estimateLocalTextTokens(checkpoint).toLong(),
             liveToolCount = liveToolCount,
             stage = run.stage,
             lastToolName = run.lastToolName,

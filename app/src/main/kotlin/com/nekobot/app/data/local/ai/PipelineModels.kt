@@ -217,6 +217,14 @@ open class PipelineCallbacks {
     open fun markAgentToolRunning(ctx: PipelineContext, toolName: String) {}
 
     /**
+     * 逐条持久化 Agent 工具循环产生的 assistant/tool 消息。
+     *
+     * 与 [saveAgentCheckpoint] 的区别：检查点只记录进度（不含正文），
+     * 本方法在消息产生的当下就把正文落库，进程被回收/用户中断时不会丢工具结果。
+     */
+    open fun persistAgentToolMessage(ctx: PipelineContext, message: Map<String, Any>) {}
+
+    /**
      * 取出（并清空）当前待注入的用户消息，在工具循环每轮模型调用前调用。
      *
      * 用于 Agent 会话“排队消息立即发送”：返回的消息文本会以 user 角色
