@@ -54,6 +54,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -3321,10 +3322,13 @@ private fun MessageBubble(
                 )
             }
 
-            // 元信息：时间（精简到分钟）/ token 数 / 生成速度 + 操作按钮，AI 气泡合并到同一行
+            // 元信息：时间（精简到分钟）/ token 数 / 生成速度 + 操作按钮，AI 气泡合并到同一行。
+            // 左侧信息栏内容变长（时间 + token + tok/s + 候选切换器）时可能超出气泡宽度，
+            // 这里给予剩余宽度并允许横向滑动，避免信息被裁掉或把右侧按钮挤出屏幕。
             val compactTs = compactTime(message.timestamp)
             val tokenSpeed = formatTokenSpeed(message.outputTokens, message.durationMs)
             val speedLevel = tokenSpeedLevel(message.outputTokens, message.durationMs)
+            val metaScrollState = rememberScrollState()
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -3332,7 +3336,12 @@ private fun MessageBubble(
                     .fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .horizontalScroll(metaScrollState)
+                ) {
                     if (compactTs != null) {
                         Text(compactTs, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
