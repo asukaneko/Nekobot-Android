@@ -343,7 +343,7 @@ class LocalWorldBookStore(
         state: CharacterState?,
         relationship: RelationshipState?,
         scopeId: String,
-        recentMessages: List<String>
+        recentMessages: List<Map<String, String>>
     ): List<CharacterRuntime.WorldBookMatch> {
         val books = worldBookDao.listByCharacter(characterId).filter { it.enabled }
         if (books.isEmpty()) return emptyList()
@@ -356,10 +356,16 @@ class LocalWorldBookStore(
         }
         if (entriesByBook.isEmpty()) return emptyList()
 
-        // 构建召回上下文
-        val recentMsgMaps = recentMessages.mapIndexed { idx, text ->
-            mapOf("role" to if (idx % 2 == 0) "user" else "assistant", "content" to text)
-        }
+        // 构建召回上下文。recentMessages 已携带真实 role（user / assistant / system），
+        // 不再按下标奇偶推断，避免群聊与含工具消息的会话里「助手最近回复」源被误判。
+        val recentMsgMaps = recentMessages
+            .filter { it["content"].orEmpty().isNotBlank() }
+            .map { message ->
+                mapOf(
+                    "role" to message["role"].orEmpty().lowercase(),
+                    "content" to message["content"].orEmpty()
+                )
+            }
         val now = ZonedDateTime.now()
         val plotNode = scopeId.takeIf(String::isNotBlank)
             ?.let { getGlobalPlotGraphManager().getLatestNode(it) }

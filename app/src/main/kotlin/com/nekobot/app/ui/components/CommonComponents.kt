@@ -235,6 +235,10 @@ fun NekoDialog(
     onConfirm: (() -> Unit)? = null,
     cancelText: String? = stringResource(R.string.common_cancel),
     onCancel: (() -> Unit)? = null,
+    /** 可选的低优先级动作，显示在「取消」右侧、「确认」左侧（如「仅保存」）。 */
+    extraActionText: String? = null,
+    extraActionEnabled: Boolean = true,
+    onExtraAction: (() -> Unit)? = null,
     confirmIcon: ImageVector? = null,
     confirmIconContentDescription: String? = null,
     contentScrollable: Boolean = false,
@@ -299,6 +303,19 @@ fun NekoDialog(
                     if (cancelText != null && onCancel != null) {
                         TextButton(onClick = onCancel) {
                             Text(cancelText, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    if (extraActionText != null && onExtraAction != null) {
+                        Button(
+                            onClick = onExtraAction,
+                            enabled = extraActionEnabled,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        ) {
+                            Text(extraActionText)
                         }
                         Spacer(Modifier.width(8.dp))
                     }

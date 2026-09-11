@@ -1162,7 +1162,7 @@ fun ChatScreen(
                                         onRegenerateTts = { viewModel.regenerateMessageTts(target) },
                                         onFork = { target.id?.let { mid -> viewModel.forkFromMessage(mid) { onOpenChat(it) } } },
                                         onCopy = { target.displayContent },
-                                        onEdit = if (target.isUser && !sending) {
+                                        onEdit = if (!sending) {
                                             { editingMessage = target }
                                         } else {
                                             null
@@ -1355,6 +1355,15 @@ fun ChatScreen(
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
             )
             MessageActionSheetItem(
+                text = stringResource(R.string.chat_message_edit),
+                icon = Icons.Filled.Edit,
+                enabled = targetId != null && !sending,
+                onClick = {
+                    messageActionTarget = null
+                    editingMessage = target
+                }
+            )
+            MessageActionSheetItem(
                 text = stringResource(R.string.chat_message_generate_image),
                 icon = Icons.Filled.AutoAwesome,
                 enabled = targetId != null && target.displayContent.isNotBlank(),
@@ -1406,24 +1415,40 @@ fun ChatScreen(
     }
 
     editingMessage?.let { message ->
+        val editingUserMessage = message.isUser
         var editedContent by remember(message.id, message.content) {
             mutableStateOf(message.displayContent)
         }
         var showEditValidationError by remember(message.id) { mutableStateOf(false) }
+        fun submitEdit(regenerateAfter: Boolean) {
+            if (editedContent.isBlank()) {
+                showEditValidationError = true
+                return
+            }
+            if (editingUserMessage) {
+                viewModel.editMessage(message, editedContent, regenerateAfter)
+            } else {
+                viewModel.editAssistantMessage(message, editedContent)
+            }
+            editingMessage = null
+        }
         NekoDialog(
             onDismiss = { editingMessage = null },
             title = stringResource(R.string.chat_edit_message_title),
-            confirmText = stringResource(R.string.chat_edit_message_resend),
-            onConfirm = {
-                if (editedContent.isBlank()) {
-                    showEditValidationError = true
-                } else {
-                    viewModel.editUserMessage(message, editedContent)
-                    editingMessage = null
-                }
-            },
+            confirmText = stringResource(R.string.chat_edit_message_save),
+            onConfirm = { submitEdit(false) },
             cancelText = stringResource(R.string.common_cancel),
-            onCancel = { editingMessage = null }
+            onCancel = { editingMessage = null },
+            extraActionText = if (editingUserMessage) {
+                stringResource(R.string.chat_edit_message_save_and_regenerate)
+            } else {
+                null
+            },
+            onExtraAction = if (editingUserMessage) {
+                { submitEdit(true) }
+            } else {
+                null
+            }
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
@@ -1445,7 +1470,11 @@ fun ChatScreen(
                     )
                 }
                 Text(
-                    text = stringResource(R.string.chat_edit_message_discard_notice),
+                    text = if (editingUserMessage) {
+                        stringResource(R.string.chat_edit_message_notice_user)
+                    } else {
+                        stringResource(R.string.chat_edit_message_notice_assistant)
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -3232,6 +3261,7 @@ private fun MessageBubble(
                                 val text = onCopy()
                                 clipboard.setText(AnnotatedString(text))
                             },
+                            onEdit = onEdit,
                             onDelete = onDelete
                         )
                     }
@@ -3415,6 +3445,7 @@ private fun BubbleActions(
     onRegenerate: () -> Unit,
     onFork: () -> Unit,
     onCopy: () -> Unit,
+    onEdit: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null
 ) {
     Row(
@@ -3431,6 +3462,14 @@ private fun BubbleActions(
         }
         // 复制
         IconActionButton(icon = Icons.Filled.ContentCopy, description = stringResource(R.string.common_copy), onClick = onCopy)
+        onEdit?.let { edit ->
+            Spacer(Modifier.width(4.dp))
+            IconActionButton(
+                icon = Icons.Filled.Edit,
+                description = stringResource(R.string.common_edit),
+                onClick = edit
+            )
+        }
         onDelete?.let { delete ->
             Spacer(Modifier.width(4.dp))
             IconActionButton(

@@ -147,6 +147,15 @@ class NekobotRepository(
             )
         }
     suspend fun deleteMessage(id: String, messageId: String): Resource<Unit> = safeCall { api.deleteMessage(id, messageId) }.map { }
+
+    /**
+     * 更新消息正文。显式传 `truncate_after = false`：
+     * 该字段语义为「是否截断该消息之后的历史」，编辑消息时不应销毁后续对话。
+     */
+    suspend fun updateMessageContent(id: String, messageId: String, content: String): Resource<Unit> =
+        safeCall {
+            api.updateMessage(id, messageId, UpdateMessageRequest(content = content, truncateAfter = false))
+        }.map { }
     suspend fun clearMessages(id: String): Resource<Unit> = safeCall { api.clearMessages(id) }.map { }
 
     /** 批量导入会话，透传 JSON 给后端 /api/sessions/import。 */

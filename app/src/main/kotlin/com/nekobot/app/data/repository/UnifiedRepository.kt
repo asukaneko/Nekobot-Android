@@ -303,6 +303,23 @@ class UnifiedRepository(
     suspend fun deleteMessage(id: String, messageId: String): Resource<Unit> =
         if (isLocal) { local.deleteMessage(id, messageId); Resource.Success(Unit) } else remote.deleteMessage(id, messageId)
 
+    /**
+     * 更新单条消息正文（编辑消息但**不**重新生成）。
+     *
+     * 远程模式复用 `PUT /api/sessions/{id}/messages/{messageId}`，且显式传
+     * `truncate_after = false`，避免服务端按默认语义截断后续消息。
+     */
+    suspend fun updateMessageContent(
+        id: String,
+        messageId: String,
+        content: String
+    ): Resource<Unit> = if (isLocal) {
+        local.updateMessageContent(id, messageId, content)
+        Resource.Success(Unit)
+    } else {
+        remote.updateMessageContent(id, messageId, content)
+    }
+
     suspend fun clearMessages(id: String): Resource<Unit> =
         if (isLocal) { local.clearMessages(id); Resource.Success(Unit) } else remote.clearMessages(id)
 

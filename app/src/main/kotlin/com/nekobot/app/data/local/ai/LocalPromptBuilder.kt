@@ -22,6 +22,12 @@ import com.nekobot.app.data.local.db.LocalWorldBookEntryEntity
  */
 object LocalPromptBuilder {
 
+    /** 单条世界书条目字符上限。 */
+    private const val MAX_WORLD_BOOK_ENTRY_CHARS = 2000
+
+    /** 本轮世界书注入总字符上限，避免设定集挤占对话历史。 */
+    private const val MAX_WORLD_BOOK_TOTAL_CHARS = 6000
+
     private val gson = Gson()
 
     /**
@@ -113,6 +119,7 @@ object LocalPromptBuilder {
 
         // 角色卡补充字段
         if (character != null) {
+            character.description?.takeIf { it.isNotBlank() }?.let { parts.add("【角色描述】\n$it") }
             character.basicInfo?.takeIf { it.isNotBlank() }?.let { parts.add("【基本信息】\n$it") }
             character.personality?.takeIf { it.isNotBlank() }?.let { parts.add("【性格】\n$it") }
             character.scenario?.takeIf { it.isNotBlank() }?.let { parts.add("【场景】\n$it") }
@@ -161,10 +168,17 @@ object LocalPromptBuilder {
         }.sortedBy { it.insertionOrder }
 
         if (matched.isEmpty()) return ""
-        val blocks = matched.mapNotNull { entry ->
-            entry.content?.takeIf { it.isNotBlank() }?.let { content ->
-                if (entry.comment.isNullOrBlank()) content else "[$entry.comment]\n$content"
-            }
+        val blocks = mutableListOf<String>()
+        var totalChars = 0
+        for (entry in matched) {
+            val content = entry.content?.takeIf { it.isNotBlank() } ?: continue
+            val truncated = if (content.length > MAX_WORLD_BOOK_ENTRY_CHARS) {
+                content.take(MAX_WORLD_BOOK_ENTRY_CHARS) + "…"
+            } else content
+            val block = if (entry.comment.isNullOrBlank()) truncated else "[${entry.comment}]\n$truncated"
+            if (totalChars + block.length > MAX_WORLD_BOOK_TOTAL_CHARS) continue
+            blocks.add(block)
+            totalChars += block.length
         }
         return if (blocks.isEmpty()) "" else "【世界书】\n" + blocks.joinToString("\n---\n")
     }

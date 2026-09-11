@@ -430,9 +430,15 @@ class AIPipeline {
         val identity = callbacks.getCharacterContext(ctx) ?: return
 
         try {
-            // 加载最近消息用于世界书多源召回
+            // 加载最近消息用于世界书多源召回。
+            // 保留真实 role：世界书召回要区分「用户消息 / 助手最近回复 / 历史上下文」三个来源，
+            // 靠下标奇偶推断角色在群聊与含工具消息的会话里会错位。
             val recentMessages = try {
-                callbacks.loadMessages(ctx).mapNotNull { (it["content"] as? String) }
+                callbacks.loadMessages(ctx).mapNotNull { message ->
+                    val content = message["content"] as? String ?: return@mapNotNull null
+                    val role = message["role"] as? String ?: return@mapNotNull null
+                    mapOf("role" to role, "content" to content)
+                }
             } catch (e: Exception) {
                 emptyList()
             }

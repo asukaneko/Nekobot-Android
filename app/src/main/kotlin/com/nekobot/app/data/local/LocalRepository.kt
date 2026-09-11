@@ -4472,12 +4472,15 @@ class LocalRepository(
         get("inherited")?.takeIf { it.isJsonPrimitive }?.asBoolean == true
     }.getOrDefault(false)
 
+    /**
+     * 软删除单条消息。
+     *
+     * 物理删除会让上下文出现「用户没说话 AI 就回答了」的断点，也会让世界书 / 记忆 /
+     * 剧情等依赖消息序列的模块丢失锚点；因此这里只置 `deleted` 标记，
+     * 读取侧（DAO 查询）统一过滤，不级联影响相邻消息。
+     */
     suspend fun deleteMessage(sessionId: String, messageId: String) = withContext(Dispatchers.IO) {
-        messageImageDao.listBySession(sessionId)
-            .filter { it.messageId == messageId }
-            .forEach { image -> image.filePath?.let(::deleteMessageImageFile) }
-        messageImageDao.deleteByMessageId(messageId)
-        messageDao.deleteById(messageId)
+        messageDao.updateDeleted(messageId, true)
         sessionDao.touch(
             sessionId,
             lastMessage = messageDao.listBySession(sessionId).lastOrNull()?.content?.take(200) ?: "",
@@ -4485,6 +4488,18 @@ class LocalRepository(
             updatedAt = nowIso()
         )
     }
+
+    /** 更新单条消息正文（编辑消息不重新生成）。 */
+    suspend fun updateMessageContent(sessionId: String, messageId: String, content: String) =
+        withContext(Dispatchers.IO) {
+            messageDao.updateContent(messageId, content)
+            sessionDao.touch(
+                sessionId,
+                lastMessage = messageDao.listBySession(sessionId).lastOrNull()?.content?.take(200) ?: "",
+                count = messageDao.countBySession(sessionId),
+                updatedAt = nowIso()
+            )
+        }
 
     suspend fun clearMessages(sessionId: String) = withContext(Dispatchers.IO) {
         agentRunDao.deleteBySession(sessionId)
@@ -10400,6 +10415,7 @@ ${AiOutputLanguage.directive()}
             addProperty("max_tokens", active?.maxTokens ?: 2048)
             addProperty("max_context_length", active?.maxContextLength ?: 100000)
             addProperty("top_p", active?.topP ?: 1.0)
+            addProperty("stop_sequences", active?.stopSequences ?: "")
             addProperty("frequency_penalty", 0.0)
             addProperty("presence_penalty", 0.0)
             addProperty("system_prompt", "")
@@ -10418,7 +10434,10 @@ ${AiOutputLanguage.directive()}
             maxTokens = obj?.get("max_tokens")?.takeIf { it.isJsonPrimitive }?.asInt ?: active.maxTokens,
             maxContextLength = obj?.get("max_context_length")?.takeIf { it.isJsonPrimitive }?.asInt
                 ?: active.maxContextLength,
-            topP = obj?.get("top_p")?.takeIf { it.isJsonPrimitive }?.asFloat ?: active.topP
+            topP = obj?.get("top_p")?.takeIf { it.isJsonPrimitive }?.asFloat ?: active.topP,
+            stopSequences = obj?.get("stop_sequences")?.takeIf { it.isJsonPrimitive }?.asString
+                ?.takeIf { it.isNotBlank() }
+                ?: active.stopSequences
         )
         aiModelDao.upsert(updated)
         JsonObject().apply {

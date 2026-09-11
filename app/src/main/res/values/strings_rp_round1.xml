@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  角色扮演对话第 1 轮优化新增文案。
+  单独成文件便于审计与后续迁移；Android 会与同目录其它 strings*.xml 合并。
+-->
+<resources>
+    <!-- 消息操作菜单：编辑入口 -->
+    <string name="chat_message_edit">编辑消息</string>
+
+    <!-- 编辑消息弹窗：默认动作改为「仅保存」，破坏性的「保存并重新生成」作为次要动作 -->
+    <string name="chat_edit_message_save">保存</string>
+    <string name="chat_edit_message_save_and_regenerate">保存并重新生成</string>
+    <string name="chat_edit_message_notice_user">「保存」只修改文本，不会重新生成回复；「保存并重新生成」会删除该消息之后的全部对话并重新请求回复。</string>
+    <string name="chat_edit_message_notice_assistant">只修改这条回复的文本，不会重新生成，也不影响后续对话。</string>
+
+    <!-- AI 模型：停止字符串 -->
+    <string name="localai_stop_sequences">停止字符串</string>
+    <string name="localai_stop_sequences_hint">每行一条，生成到该字符串即停止；留空表示不发送</string>
+    <string name="aimodel_editor_field_stop_sequences">停止字符串（每行一条）</string>
+
+    <!-- 世界书：尚未生效的字段提示 -->
+    <string name="worldbook_ineffective_fields_hint">「插入位置」与「选择」目前不参与注入决策：命中条目统一追加到系统提示词中，保留这两个字段是为了兼容酒馆角色卡。</string>
+</resources>

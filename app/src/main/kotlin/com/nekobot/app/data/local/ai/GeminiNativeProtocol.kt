@@ -78,6 +78,13 @@ object GeminiNativeProtocol : LocalProtocol {
         (extra["max_tokens"] as? Number)?.toInt()?.let { generationConfig["maxOutputTokens"] = it }
         (extra["temperature"] as? Number)?.toDouble()?.let { generationConfig["temperature"] = it }
         (extra["top_p"] as? Number)?.toDouble()?.let { generationConfig["topP"] = it }
+        // 停止字符串：Gemini 使用 generationConfig.stopSequences，上限 5 条。
+        @Suppress("UNCHECKED_CAST")
+        (extra["stop"] as? List<String>)
+            ?.filter { it.isNotEmpty() }
+            ?.take(5)
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { generationConfig["stopSequences"] = it }
 
         return linkedMapOf<String, Any>().apply {
             put("contents", contents)

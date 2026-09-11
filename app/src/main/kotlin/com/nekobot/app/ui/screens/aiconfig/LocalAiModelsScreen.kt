@@ -895,6 +895,7 @@ private fun LocalAiModelEditDialog(
     var temperature by remember(model) { mutableStateOf(model?.temperature?.toString() ?: "") }
     var maxTokens by remember(model) { mutableStateOf(model?.maxTokens?.toString() ?: "") }
     var topP by remember(model) { mutableStateOf(model?.topP?.toString() ?: "") }
+    var stopSequences by remember(model) { mutableStateOf(model?.stopSequences ?: "") }
     var appendPath by remember(model) { mutableStateOf(model?.appendBaseUrlPath ?: true) }
     var protocolMenuExpanded by remember { mutableStateOf(false) }
     var purposeMenuExpanded by remember { mutableStateOf(false) }
@@ -924,6 +925,7 @@ private fun LocalAiModelEditDialog(
                     temperature = temperature.toFloatOrNull(),
                     maxTokens = maxTokens.toIntOrNull(),
                     topP = topP.toFloatOrNull(),
+                    stopSequences = stopSequences.trim().ifBlank { null },
                     appendBaseUrlPath = appendPath,
                     createdAt = model?.createdAt ?: now,
                     oauthAccountId = model?.oauthAccountId
@@ -1082,6 +1084,15 @@ private fun LocalAiModelEditDialog(
                 onValueChange = { topP = it },
                 label = { Text("Top P") },
                 singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = stopSequences,
+                onValueChange = { stopSequences = it },
+                label = { Text(stringResource(R.string.localai_stop_sequences)) },
+                supportingText = { Text(stringResource(R.string.localai_stop_sequences_hint)) },
+                minLines = 2,
+                maxLines = 4,
                 modifier = Modifier.fillMaxWidth()
             )
             if (purpose != "chat") {

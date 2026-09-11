@@ -125,7 +125,17 @@ data class LocalMessageEntity(
      * 本地生成路径写入，供 UI 在气泡下方按「输出 token ÷ 耗时」计算 tok/s；
      * 服务端消息与导入的历史消息为 null，此时不展示速度。
      */
-    @ColumnInfo(name = "duration_ms") val durationMs: Double? = null
+    @ColumnInfo(name = "duration_ms") val durationMs: Double? = null,
+    /**
+     * 软删除标记：用户删除单条消息时只置位不清行。
+     *
+     * 直接物理删除会让上下文出现「用户没说话 AI 就回答了」的断点，也会让
+     * 世界书/记忆/剧情等依赖消息序列的模块丢失锚点。置位后：
+     * - UI 不再展示该消息；
+     * - 提示词组装（LocalRepositories / LocalPipelineCallbacks / AIPromptBuilder）跳过该消息；
+     * - 数据导出与备份仍可保留原始内容。
+     */
+    @ColumnInfo(name = "deleted", defaultValue = "0") val deleted: Boolean = false
 )
 
 /**
@@ -376,7 +386,14 @@ data class LocalAiModelEntity(
     @ColumnInfo(name = "input_price") val inputPrice: Double? = null,
     @ColumnInfo(name = "output_price") val outputPrice: Double? = null,
     /** OAuth 模型只保存账号引用；真实 access/refresh token 由 Keystore 加密账号仓库管理。 */
-    @ColumnInfo(name = "oauth_account_id") val oauthAccountId: String? = null
+    @ColumnInfo(name = "oauth_account_id") val oauthAccountId: String? = null,
+    /**
+     * 停止字符串（JSON 数组字符串，如 `["<|endoftext|>","\n用户:"]`）。
+     *
+     * 生成到这些字符串即截断，是角色扮演的基础控制手段：防止模型续写用户发言、
+     * 输出旁白或角色卡标记。空值表示不发送 stop 字段。
+     */
+    @ColumnInfo(name = "stop_sequences") val stopSequences: String? = null
 )
 
 /**

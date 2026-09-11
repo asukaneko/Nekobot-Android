@@ -1082,6 +1082,13 @@ private fun EntryEditDialog(vm: WorldBookViewModel, isEdit: Boolean) {
             SwitchRow(stringResource(R.string.worldbook_constant), constant) { vm.entryConstant.value = it }
             SwitchRow(stringResource(R.string.worldbook_selective), selective) { vm.entrySelective.value = it }
             SwitchRow(stringResource(R.string.worldbook_case_sensitive), caseSensitive) { vm.entryCaseSensitive.value = it }
+            Spacer(Modifier.height(8.dp))
+            // 「插入位置」与「选择」目前不参与注入决策，明确告知用户，避免改完没有任何效果。
+            Text(
+                text = stringResource(R.string.worldbook_ineffective_fields_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

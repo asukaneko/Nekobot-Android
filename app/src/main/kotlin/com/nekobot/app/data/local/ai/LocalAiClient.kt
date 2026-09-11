@@ -650,16 +650,47 @@ class LocalAiClient(
         return UUID.nameUUIDFromBytes("opencode-session:$seed".toByteArray()).toString()
     }
 
+    /**
+     * 解析模型配置里的停止字符串。
+     *
+     * 优先按 JSON 数组解析（`["<|endoftext|>","\n用户:"]`），失败时兼容用户直接输入
+     * 的换行 / 逗号 / 分号分隔文本。返回 null 表示不发送 stop 字段。
+     */
+    private fun parseStopSequences(raw: String?): List<String>? {
+        val text = raw?.trim().orEmpty()
+        if (text.isEmpty()) return null
+        val fromJson = runCatching {
+            JsonParser.parseString(text)
+                .takeIf { it.isJsonArray }
+                ?.asJsonArray
+                ?.mapNotNull { element -> element.takeIf { !it.isJsonNull }?.asString?.trim() }
+                ?.filter { it.isNotEmpty() }
+        }.getOrNull()
+        if (!fromJson.isNullOrEmpty()) return fromJson
+        return text.split('\n', ',', ';')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .takeIf { it.isNotEmpty() }
+    }
+
     private fun normalizeProtocolExtra(
         model: LocalAiModelEntity,
         extra: Map<String, Any?>
     ): Map<String, Any?> {
+        // 模型级停止字符串统一以 extra["stop"] 传入，由各协议翻译成自己的字段名：
+        // openai → stop / anthropic → stop_sequences / gemini → generationConfig.stopSequences。
+        // OpenAI Responses API 不支持停止字符串，其 payload 是白名单构建，不会带上该键。
+        val withStops = if (extra.containsKey("stop")) {
+            extra
+        } else {
+            parseStopSequences(model.stopSequences)?.let { extra + ("stop" to it) } ?: extra
+        }
         val isCodexSubscription = model.provider == "openai-codex" ||
             model.baseUrl.contains("chatgpt.com/backend-api/codex")
         val normalized = if (isCodexSubscription && model.protocol == OpenAIResponsesProtocol.name) {
-            extra - setOf("temperature", "max_tokens", "top_p")
+            withStops - setOf("temperature", "max_tokens", "top_p")
         } else {
-            extra
+            withStops
         }
         val effort = ReasoningEffort.fromValue(normalized["reasoning_effort"] as? String)
         val provider = model.provider.orEmpty().lowercase()

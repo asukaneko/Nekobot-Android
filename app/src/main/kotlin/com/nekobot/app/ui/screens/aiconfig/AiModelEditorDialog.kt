@@ -98,6 +98,8 @@ data class AiModelEditorState(
     val maxTokens: String = "2000",
     val maxContextLength: String = "1050000",
     val topP: String = "",
+    /** 停止字符串（换行分隔，也兼容 JSON 数组文本）。 */
+    val stopSequences: String = "",
     val inputPrice: String = "",
     val outputPrice: String = "",
     val supportsTools: Boolean = true,
@@ -501,6 +503,9 @@ fun AiModelEditorDialog(
                 state = state.copy(maxContextLength = it)
             }
             EditorTextField(stringResource(R.string.aimodel_editor_field_top_p), state.topP) { state = state.copy(topP = it) }
+            EditorTextField(stringResource(R.string.aimodel_editor_field_stop_sequences), state.stopSequences) {
+                state = state.copy(stopSequences = it)
+            }
 
             FormSection(stringResource(R.string.aimodel_editor_section_pricing))
             Row(
@@ -1200,6 +1205,7 @@ fun LocalAiModelEntity?.toEditorState(protocols: List<ProtocolOption>): AiModelE
         maxTokens = model.maxTokens?.toString().orEmpty(),
         maxContextLength = model.maxContextLength?.toString().orEmpty(),
         topP = model.topP?.toString().orEmpty(),
+        stopSequences = model.stopSequences.orEmpty(),
         inputPrice = model.inputPrice?.toString().orEmpty(),
         outputPrice = model.outputPrice?.toString().orEmpty(),
         supportsTools = model.supportsTools,
@@ -1296,6 +1302,7 @@ fun AiModelEditorState.toLocalEntity(existing: LocalAiModelEntity?): LocalAiMode
         maxTokens = maxTokens.toIntOrNull(),
         maxContextLength = maxContextLength.toIntOrNull(),
         topP = topP.toFloatOrNull(),
+        stopSequences = stopSequences.trim().ifBlank { null },
         appendBaseUrlPath = appendBaseUrlPath,
         supportsTools = supportsTools,
         supportsReasoning = supportsReasoning,

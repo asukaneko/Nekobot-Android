@@ -2826,17 +2826,55 @@ class ChatViewModel : BaseViewModel() {
     }
 
     /**
-     * 重新编辑用户消息：删除该消息及其之后的全部历史，再以编辑后的文本发起新一轮对话。
-     * 通过反向删除保持远程与本地会话的上下文一致，避免服务端按消息顺序校验时产生孤儿记录。
+     * 编辑消息。
+     *
+     * @param regenerateAfter `false`（默认语义）＝ 仅保存正文，后续历史原样保留，不触发重新生成；
+     *        `true` ＝ 保存后从该消息处重新生成：先删除该消息及其之后的全部历史，再以编辑后的
+     *        文本发起新一轮对话（通过反向删除保持远程与本地会话的上下文一致，避免服务端按
+     *        消息顺序校验时产生孤儿记录）。
+     *
+     * AI 消息只支持「仅保存」——重新生成一条中间位置的 AI 回复没有明确语义，
+     * 需要重抽应当使用气泡上的「重新生成」。
      */
-    fun editUserMessage(message: Message, editedContent: String) {
+    fun editMessage(message: Message, editedContent: String, regenerateAfter: Boolean = false) {
         val content = editedContent.trim()
         if (content.isBlank()) {
             showError(string(R.string.chat_edit_message_empty))
             return
         }
-        if (!message.isUser || _sending.value || _editingMessage.value || runtime.hasBlockingLocalChatJob()) return
+        if (_sending.value || _editingMessage.value || runtime.hasBlockingLocalChatJob()) return
         val sessionId = currentSessionId.takeIf(String::isNotBlank) ?: return
+        val messageId = message.id?.takeIf(String::isNotBlank) ?: return
+        if (!message.isUser) return
+
+        // 仅保存：更新正文，其余历史不动。
+        if (!regenerateAfter) {
+            viewModelScope.launch {
+                _editingMessage.value = true
+                try {
+                    when (val result = unified.updateMessageContent(sessionId, messageId, content)) {
+                        is Resource.Success -> {
+                            _messages.value = _messages.value.map { current ->
+                                if (current.id == messageId) current.copy(content = content) else current
+                            }
+                        }
+                        is Resource.Error -> {
+                            loadMessages()
+                            showError(result.message ?: string(R.string.chat_edit_message_failed))
+                        }
+                        is Resource.Loading -> Unit
+                    }
+                } catch (error: Exception) {
+                    loadMessages()
+                    showError(error.message ?: string(R.string.chat_edit_message_failed))
+                } finally {
+                    _editingMessage.value = false
+                }
+            }
+            return
+        }
+
+        // 保存并从此处重新生成：沿用「删除该消息及其之后全部历史 + 重发」的既有语义。
         val history = _messages.value.filterNot { it.id == streamingId }
         val messageIndex = history.indexOfFirst { it.id == message.id }
         if (messageIndex < 0) return
@@ -2849,8 +2887,8 @@ class ChatViewModel : BaseViewModel() {
             _editingMessage.value = true
             var shouldResend = false
             try {
-                for (messageId in deleteIds.asReversed()) {
-                    when (val result = unified.deleteMessage(sessionId, messageId)) {
+                for (id in deleteIds.asReversed()) {
+                    when (val result = unified.deleteMessage(sessionId, id)) {
                         is Resource.Success -> Unit
                         is Resource.Error -> throw IllegalStateException(
                             result.message ?: string(R.string.chat_edit_message_failed)
@@ -2869,6 +2907,47 @@ class ChatViewModel : BaseViewModel() {
                 _editingMessage.value = false
             }
             if (shouldResend) sendMessage(content)
+        }
+    }
+
+    /**
+     * 编辑 AI 消息：只改写正文并就地更新 UI，不重新生成、不影响后续历史。
+     *
+     * 与用户消息不同，AI 消息没有「从该处重新生成」的入口（中间位置重抽语义不明确），
+     * 但改写错别字、修正细节、修剪多余旁白是高频道操作。
+     */
+    fun editAssistantMessage(message: Message, editedContent: String) {
+        val content = editedContent.trim()
+        if (content.isBlank()) {
+            showError(string(R.string.chat_edit_message_empty))
+            return
+        }
+        if (message.isUser) return
+        if (_sending.value || _editingMessage.value || runtime.hasBlockingLocalChatJob()) return
+        val sessionId = currentSessionId.takeIf(String::isNotBlank) ?: return
+        val messageId = message.id?.takeIf(String::isNotBlank) ?: return
+
+        viewModelScope.launch {
+            _editingMessage.value = true
+            try {
+                when (val result = unified.updateMessageContent(sessionId, messageId, content)) {
+                    is Resource.Success -> {
+                        _messages.value = _messages.value.map { current ->
+                            if (current.id == messageId) current.copy(content = content) else current
+                        }
+                    }
+                    is Resource.Error -> {
+                        loadMessages()
+                        showError(result.message ?: string(R.string.chat_edit_message_failed))
+                    }
+                    is Resource.Loading -> Unit
+                }
+            } catch (error: Exception) {
+                loadMessages()
+                showError(error.message ?: string(R.string.chat_edit_message_failed))
+            } finally {
+                _editingMessage.value = false
+            }
         }
     }
 

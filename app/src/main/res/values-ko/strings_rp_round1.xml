@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 롤플레이 대화 1차 개선에서 추가된 문자열. -->
+<resources>
+    <string name="chat_message_edit">메시지 편집</string>
+
+    <string name="chat_edit_message_save">저장</string>
+    <string name="chat_edit_message_save_and_regenerate">저장 후 다시 생성</string>
+    <string name="chat_edit_message_notice_user">「저장」은 텍스트만 바꾸며 응답을 다시 생성하지 않습니다. 「저장 후 다시 생성」은 이 메시지 이후의 모든 대화를 삭제하고 다시 요청합니다.</string>
+    <string name="chat_edit_message_notice_assistant">이 응답의 텍스트만 바꿉니다. 다시 생성하지 않으며 이후 대화에도 영향을 주지 않습니다.</string>
+
+    <string name="localai_stop_sequences">중지 문자열</string>
+    <string name="localai_stop_sequences_hint">한 줄에 하나씩. 생성이 이 문자열에 도달하면 멈춥니다. 비워 두면 전송하지 않습니다.</string>
+    <string name="aimodel_editor_field_stop_sequences">중지 문자열(한 줄에 하나)</string>
+
+    <string name="worldbook_ineffective_fields_hint">「삽입 위치」와 「선택」은 아직 주입 판단에 사용되지 않습니다. 일치한 항목은 모두 시스템 프롬프트 끝에 추가되며, 두 필드는 SillyTavern 카드 호환을 위해 유지합니다.</string>
+</resources>

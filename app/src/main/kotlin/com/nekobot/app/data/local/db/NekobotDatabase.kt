@@ -42,7 +42,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalKnowledgeChunkEntity::class,
         RoutingDecisionLogEntity::class
     ],
-    version = 40,
+    version = 41,
     exportSchema = true
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -820,6 +820,20 @@ abstract class NekobotDatabase : RoomDatabase() {
         }
 
         /**
+         * v40 → v41：角色扮演对话基础能力补齐。
+         *
+         * - `local_messages.deleted`：单条删除改为软删除，避免物理删除造成上下文断点。
+         * - `local_ai_models.stop_sequences`：模型级停止字符串（JSON 数组），
+         *   生成到该串即截断，防止模型续写用户发言或泄漏提示词标记。
+         */
+        val MIGRATION_40_41 = object : Migration(40, 41) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_messages ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE local_ai_models ADD COLUMN stop_sequences TEXT")
+            }
+        }
+
+        /**
          * 完整迁移链同时供生产数据库构建和迁移回归测试使用。
          * 新版本必须把迁移追加到这里；缺少迁移时直接失败，绝不静默清空用户数据。
          */
@@ -833,7 +847,7 @@ abstract class NekobotDatabase : RoomDatabase() {
             MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29,
             MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33,
             MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37,
-            MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40
+            MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41
         )
 
         fun get(context: Context): NekobotDatabase =

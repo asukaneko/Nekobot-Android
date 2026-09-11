@@ -63,6 +63,13 @@ object OpenAIChatProtocol : LocalProtocol {
             payload[if (usesCompletionLimit) "max_completion_tokens" else "max_tokens"] = it
         }
         extra["top_p"]?.let { payload["top_p"] = it }
+        // 停止字符串：OpenAI 兼容端点接受字符串或字符串数组（最多 4 条）。
+        @Suppress("UNCHECKED_CAST")
+        (extra["stop"] as? List<String>)
+            ?.filter { it.isNotEmpty() }
+            ?.take(4)
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { payload["stop"] = it }
         if (extra["deepseek_thinking"] == true) {
             val effort = extra["reasoning_effort"]
             payload["thinking"] = mapOf(

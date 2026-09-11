@@ -37,6 +37,12 @@ class CharacterRuntime(
 
     companion object {
         private const val TAG = "CharacterRuntime"
+
+        /** 单条世界书条目进入提示词的字符上限，超出部分截断。 */
+        private const val WORLD_BOOK_MAX_ENTRY_CHARS = 2000
+
+        /** 本轮所有世界书条目进入提示词的总字符上限。 */
+        private const val WORLD_BOOK_MAX_TOTAL_CHARS = 6000
     }
 
     /** 世界书存储接口 */
@@ -48,7 +54,7 @@ class CharacterRuntime(
             state: CharacterState?,
             relationship: RelationshipState?,
             scopeId: String,
-            recentMessages: List<String>
+            recentMessages: List<Map<String, String>>
         ): List<WorldBookMatch>
     }
 
@@ -79,7 +85,7 @@ class CharacterRuntime(
     suspend fun beforeTurn(
         chatRequest: ChatRequest,
         identity: CharacterIdentity,
-        recentMessages: List<String> = emptyList()
+        recentMessages: List<Map<String, String>> = emptyList()
     ): CharacterTurnContext {
         // 1. 读取角色卡
         val profile = getProfile(identity)
@@ -123,15 +129,13 @@ class CharacterRuntime(
             memories = memories,
             plan = plan
         )
-        // 世界书注入
+        // 世界书注入。按 score 排序后的条目总量可能远超上下文预算：
+        // 单条截断 + 总量封顶，避免几本设定集把对话历史挤出去。
         if (worldBookEntries.isNotEmpty()) {
-            val worldBookText = worldBookEntries
-                .sortedBy { it.priority }
-                .joinToString("\n\n") { entry ->
-                    if (entry.comment.isNotEmpty()) "[${entry.comment}]\n${entry.content}"
-                    else entry.content
-                }
-            promptStack.add("world_book", worldBookText, priority = PromptStack.Priority.WORLD_BOOK)
+            val worldBookText = buildWorldBookText(worldBookEntries)
+            if (worldBookText.isNotBlank()) {
+                promptStack.add("world_book", worldBookText, priority = PromptStack.Priority.WORLD_BOOK)
+            }
         }
         // MemoryFS 结构化记忆注入（按类别分组：【用户人格】【角色人格】等）
         if (memoryFS != null) {
@@ -410,7 +414,7 @@ class CharacterRuntime(
         userMessage: String,
         state: CharacterState,
         relationship: RelationshipState,
-        recentMessages: List<String>
+        recentMessages: List<Map<String, String>>
     ): List<WorldBookMatch> {
         worldBookStore?.let {
             return it.match(
@@ -441,6 +445,12 @@ class CharacterRuntime(
             parts.add(profile.systemPrompt)
         }
 
+        // 角色描述。酒馆卡片的核心内容就在 description 里（导入卡时 basicInfo/personality
+        // 往往是空的），此前该字段只用于列表展示、从不进提示词。
+        if (profile.description.isNotBlank()) {
+            parts.add("【角色描述】\n${profile.description}")
+        }
+
         // 基本信息
         if (profile.basicInfo.isNotBlank()) {
             parts.add("【基本信息】\n${profile.basicInfo}")
@@ -467,5 +477,30 @@ class CharacterRuntime(
         }
 
         return parts.joinToString("\n\n")
+    }
+
+    /**
+     * 拼装世界书提示词文本，并施加单条 / 总量字符预算。
+     *
+     * 保留原有「按 priority 升序」的相对顺序，只是超出预算的条目会被丢弃，
+     * 保证靠前的（匹配分数更高 / 优先级数值更小）条目优先进入上下文。
+     */
+    private fun buildWorldBookText(entries: List<WorldBookMatch>): String {
+        val blocks = mutableListOf<String>()
+        var totalChars = 0
+        for (entry in entries.sortedBy { it.priority }) {
+            val content = entry.content.trim()
+            if (content.isEmpty()) continue
+            val truncated = if (content.length > WORLD_BOOK_MAX_ENTRY_CHARS) {
+                content.take(WORLD_BOOK_MAX_ENTRY_CHARS) + "…"
+            } else {
+                content
+            }
+            val block = if (entry.comment.isNotEmpty()) "[${entry.comment}]\n$truncated" else truncated
+            if (totalChars + block.length > WORLD_BOOK_MAX_TOTAL_CHARS) continue
+            blocks.add(block)
+            totalChars += block.length
+        }
+        return blocks.joinToString("\n\n")
     }
 }

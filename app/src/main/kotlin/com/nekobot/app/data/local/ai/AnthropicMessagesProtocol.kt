@@ -164,6 +164,13 @@ object AnthropicMessagesProtocol : LocalProtocol {
             (extra["temperature"] as? Number)?.let { payload["temperature"] = it.toDouble() }
             (extra["top_p"] as? Number)?.let { payload["top_p"] = it.toDouble() }
         }
+        // 停止字符串：Anthropic 字段名为 stop_sequences，上限 4 条。
+        @Suppress("UNCHECKED_CAST")
+        (extra["stop"] as? List<String>)
+            ?.filter { it.isNotEmpty() }
+            ?.take(4)
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { payload["stop_sequences"] = it }
         @Suppress("UNCHECKED_CAST")
         (extra["tools"] as? List<Map<String, Any>>)
             ?.takeIf { it.isNotEmpty() }

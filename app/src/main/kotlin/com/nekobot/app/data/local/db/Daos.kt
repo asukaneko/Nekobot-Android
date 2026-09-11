@@ -104,7 +104,7 @@ interface MessageDao {
     @Query("SELECT * FROM local_messages ORDER BY created_at ASC")
     suspend fun listAll(): List<LocalMessageEntity>
 
-    @Query("SELECT * FROM local_messages WHERE session_id = :sessionId ORDER BY created_at ASC")
+    @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND deleted = 0 ORDER BY created_at ASC")
     suspend fun listBySession(sessionId: String): List<LocalMessageEntity>
 
     @Query("SELECT * FROM local_messages WHERE id = :id LIMIT 1")
@@ -112,21 +112,21 @@ interface MessageDao {
 
     @Query(
         "SELECT * FROM local_messages " +
-            "WHERE content LIKE '%' || :query || '%' OR reasoning_content LIKE '%' || :query || '%' " +
+            "WHERE deleted = 0 AND (content LIKE '%' || :query || '%' OR reasoning_content LIKE '%' || :query || '%') " +
             "ORDER BY created_at DESC LIMIT :limit"
     )
     suspend fun searchContent(query: String, limit: Int): List<LocalMessageEntity>
 
-    @Query("SELECT * FROM local_messages WHERE session_id = :sessionId ORDER BY created_at ASC")
+    @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND deleted = 0 ORDER BY created_at ASC")
     fun observeBySession(sessionId: String): Flow<List<LocalMessageEntity>>
 
-    @Query("SELECT COUNT(*) FROM local_messages WHERE session_id = :sessionId")
+    @Query("SELECT COUNT(*) FROM local_messages WHERE session_id = :sessionId AND deleted = 0")
     suspend fun countBySession(sessionId: String): Int
 
-    @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND role = 'user' ORDER BY created_at DESC LIMIT 1")
+    @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND role = 'user' AND deleted = 0 ORDER BY created_at DESC LIMIT 1")
     suspend fun latestUserBySession(sessionId: String): LocalMessageEntity?
 
-    @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND source = :source ORDER BY created_at DESC LIMIT 1")
+    @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND source = :source AND deleted = 0 ORDER BY created_at DESC LIMIT 1")
     suspend fun latestBySource(sessionId: String, source: String): LocalMessageEntity?
 
     @Query("SELECT COUNT(*) FROM local_messages WHERE role = 'user'")
@@ -154,7 +154,15 @@ interface MessageDao {
     @Query("UPDATE local_messages SET audio_url = :audioUrl, audio_updated_at = :updatedAt WHERE id = :id")
     suspend fun updateAudioUrl(id: String, audioUrl: String?, updatedAt: String)
 
-    @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND created_at < :createdAt ORDER BY created_at ASC")
+    /** 更新单条消息正文（用户/AI 消息编辑；不触发重新生成）。 */
+    @Query("UPDATE local_messages SET content = :content WHERE id = :id")
+    suspend fun updateContent(id: String, content: String)
+
+    /** 软删除 / 恢复单条消息。 */
+    @Query("UPDATE local_messages SET deleted = :deleted WHERE id = :id")
+    suspend fun updateDeleted(id: String, deleted: Boolean)
+
+    @Query("SELECT * FROM local_messages WHERE session_id = :sessionId AND created_at < :createdAt AND deleted = 0 ORDER BY created_at ASC")
     suspend fun listBefore(sessionId: String, createdAt: String): List<LocalMessageEntity>
 
     // ===== Token 用量统计 =====

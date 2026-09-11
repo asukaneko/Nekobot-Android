@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings added by round 1 of the roleplay conversation improvements. -->
+<resources>
+    <string name="chat_message_edit">Edit message</string>
+
+    <string name="chat_edit_message_save">Save</string>
+    <string name="chat_edit_message_save_and_regenerate">Save &amp; regenerate</string>
+    <string name="chat_edit_message_notice_user">"Save" only rewrites the text and does not regenerate a reply. "Save &amp; regenerate" deletes every message after this one and requests a new reply.</string>
+    <string name="chat_edit_message_notice_assistant">Only the text of this reply changes. Nothing is regenerated and later messages are left untouched.</string>
+
+    <string name="localai_stop_sequences">Stop sequences</string>
+    <string name="localai_stop_sequences_hint">One per line; generation stops when one is produced. Leave empty to send none.</string>
+    <string name="aimodel_editor_field_stop_sequences">Stop sequences (one per line)</string>
+
+    <string name="worldbook_ineffective_fields_hint">"Insertion position" and "Selective" do not affect injection yet: every matched entry is appended to the system prompt. They are kept for SillyTavern card compatibility.</string>
+</resources>

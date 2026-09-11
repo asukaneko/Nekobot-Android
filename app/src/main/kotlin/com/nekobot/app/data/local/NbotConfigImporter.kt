@@ -338,6 +338,7 @@ object NbotConfigImporter {
                     maxTokens = obj.intOrNull("max_tokens"),
                     maxContextLength = obj.intOrNull("max_context_length"),
                     topP = obj.floatOrNull("top_p"),
+                    stopSequences = obj.str("stop_sequences")?.takeIf { it.isNotBlank() },
                     appendBaseUrlPath = obj.bool("append_base_url_path", true),
                     supportsTools = obj.bool("supports_tools", true),
                     supportsReasoning = obj.bool("supports_reasoning", true),

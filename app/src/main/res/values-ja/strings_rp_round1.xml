@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ロールプレイ会話の第 1 回改善で追加した文言。 -->
+<resources>
+    <string name="chat_message_edit">メッセージを編集</string>
+
+    <string name="chat_edit_message_save">保存</string>
+    <string name="chat_edit_message_save_and_regenerate">保存して再生成</string>
+    <string name="chat_edit_message_notice_user">「保存」はテキストのみを書き換え、応答は再生成しません。「保存して再生成」はこのメッセージ以降の会話をすべて削除して再リクエストします。</string>
+    <string name="chat_edit_message_notice_assistant">この応答のテキストのみを書き換えます。再生成は行わず、以降の会話にも影響しません。</string>
+
+    <string name="localai_stop_sequences">停止文字列</string>
+    <string name="localai_stop_sequences_hint">1 行に 1 つ。生成がこの文字列に達すると停止します。空欄なら送信しません。</string>
+    <string name="aimodel_editor_field_stop_sequences">停止文字列（1 行に 1 つ）</string>
+
+    <string name="worldbook_ineffective_fields_hint">「挿入位置」と「選択」は現在注入判定に使われません。ヒットした項目はすべてシステムプロンプトの末尾に追加されます。この 2 項目は SillyTavern カード互換のために保持しています。</string>
+</resources>
