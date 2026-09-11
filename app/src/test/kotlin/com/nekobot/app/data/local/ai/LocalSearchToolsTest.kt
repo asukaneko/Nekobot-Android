@@ -80,6 +80,78 @@ class LocalSearchToolsTest {
     }
 
     @Test
+    fun `grep 的 path 指向文件时只检索该文件`() {
+        val outcome = grepWorkspace(workspace(), pattern = "Hello", pathPrefix = "src/main/Main.kt")
+
+        assertEquals(1, outcome.matches.size)
+        assertEquals("src/main/Main.kt", outcome.matches.first().relativePath)
+    }
+
+    @Test
+    fun `检索根目录支持工作区相对路径与 workspace 路径`() {
+        val root = workspace()
+
+        assertEquals("", resolveSearchRoot("", root, null).pathPrefix)
+        assertEquals("", resolveSearchRoot(".", root, null).pathPrefix)
+        assertEquals("src/main", resolveSearchRoot("src/main", root, null).pathPrefix)
+        assertEquals("src/main", resolveSearchRoot("/workspace/src/main", root, null).pathPrefix)
+        assertEquals(
+            "src/main",
+            resolveSearchRoot(File(root, "src/main").canonicalPath, root, null).pathPrefix
+        )
+        assertFalse(resolveSearchRoot("src/main", root, null).shared)
+    }
+
+    @Test
+    fun `检索根目录支持共享工作区`() {
+        val root = workspace()
+        val shared = tempFolder.newFolder("shared")
+
+        val byScheme = resolveSearchRoot("shared://docs", root, shared)
+        assertEquals(null, byScheme.error)
+        assertTrue(byScheme.shared)
+        assertEquals(shared.canonicalFile, byScheme.base)
+        assertEquals("docs", byScheme.pathPrefix)
+
+        val byAbsolute = resolveSearchRoot(File(shared, "docs/guide.md").canonicalPath, root, shared)
+        assertEquals(null, byAbsolute.error)
+        assertTrue(byAbsolute.shared)
+        assertEquals("docs/guide.md", byAbsolute.pathPrefix)
+    }
+
+    @Test
+    fun `未挂载共享工作区时 shared 根目录给出错误`() {
+        val resolved = resolveSearchRoot("shared://", workspace(), null)
+
+        assertTrue("应提示共享工作区不可用", resolved.error != null)
+    }
+
+    @Test
+    fun `沙箱外的根目录被拒绝而不是退回工作区`() {
+        val resolved = resolveSearchRoot("/sdcard/Documents", workspace(), null)
+
+        assertTrue("越界根目录必须报错", resolved.error != null)
+    }
+
+    @Test
+    fun `根目录与 path 合并后的命中路径可直接用于文件工具`() {
+        val root = workspace()
+        val shared = tempFolder.newFolder("shared")
+        File(shared, "docs").mkdirs()
+        File(shared, "docs/note.md").writeText("Hello shared\n")
+
+        val searchRoot = resolveSearchRoot("shared://", root, shared)
+        val prefix = combineSearchPrefix(searchRoot.pathPrefix, "docs")
+        val outcome = grepWorkspace(searchRoot.base, pattern = "Hello", pathPrefix = prefix)
+
+        assertEquals(1, outcome.matches.size)
+        assertEquals(
+            "shared://docs/note.md",
+            searchResultPath(searchRoot, outcome.matches.first().relativePath)
+        )
+    }
+
+    @Test
     fun `grep 达到上限时标记截断`() {
         val outcome = grepWorkspace(workspace(), pattern = "e", limit = 1)
 

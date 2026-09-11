@@ -709,12 +709,17 @@ object BuiltinTools {
         ),
         BuiltinToolSpec(
             id = "grep",
-            name = "在工作区中检索文本",
-            description = "在会话工作区内按正则检索文本，返回 文件:行号: 内容 形式的命中列表。定位代码/配置/文本时优先用它，而不是整份读取文件——避免长文件占满上下文。可用 path 限定子目录、glob 限定文件名（如 *.kt）、max_results 控制条数。",
+            name = "在指定目录下检索文本",
+            description = "按正则检索文本，返回 文件:行号: 内容 形式的命中列表。定位代码/配置/文本时优先用它，而不是整份读取文件——避免长文件占满上下文。默认检索整个会话工作区；用 root 指定检索根目录（如 root=\"src/main\" 只搜该目录、root=\"shared://\" 搜共享工作区），再用 path 缩小到根目录下的子路径、glob 限定文件名（如 *.kt）、max_results 控制条数。",
             parametersJson = params(
                 mapOf(
                     "pattern" to mapOf("type" to "string", "description" to "正则表达式（默认不区分大小写）"),
-                    "path" to mapOf("type" to "string", "description" to "可选：相对工作区的子目录或文件"),
+                    "root" to mapOf(
+                        "type" to "string",
+                        "description" to "可选：检索根目录。留空=会话工作区；相对路径（如 src/main）=工作区内目录；" +
+                            "/workspace/子路径；shared:// 或 shared://docs=共享工作区（可带子路径）"
+                    ),
+                    "path" to mapOf("type" to "string", "description" to "可选：根目录下的子目录或文件，进一步缩小范围"),
                     "glob" to mapOf("type" to "string", "description" to "可选：文件名通配，例如 *.kt 或 *.md"),
                     "max_results" to mapOf("type" to "integer", "description" to "命中上限，默认 50，最大 500"),
                     "case_sensitive" to mapOf("type" to "boolean", "description" to "是否区分大小写，默认 false")

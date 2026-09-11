@@ -4,7 +4,7 @@
     <string name="tool_name_search_web">ウェブ検索</string>
     <string name="tool_name_http_get">HTTP GET リクエスト</string>
     <string name="tool_name_web_fetch">Web ページ本文を取得</string>
-    <string name="tool_name_grep">ワークスペース内を検索</string>
+    <string name="tool_name_grep">指定ディレクトリ内を検索</string>
     <string name="tool_name_glob">パターンでファイル一覧</string>
     <string name="tool_name_get_date_time">日時を取得</string>
     <string name="tool_name_download_file">ファイルをダウンロード</string>

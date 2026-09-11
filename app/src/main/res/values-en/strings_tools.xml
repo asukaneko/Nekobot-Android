@@ -4,7 +4,7 @@
     <string name="tool_name_search_web">Web search</string>
     <string name="tool_name_http_get">HTTP GET</string>
     <string name="tool_name_web_fetch">Fetch web page text</string>
-    <string name="tool_name_grep">Search text in workspace</string>
+    <string name="tool_name_grep">Search text in a directory</string>
     <string name="tool_name_glob">List files by pattern</string>
     <string name="tool_name_get_date_time">Date &amp; time</string>
     <string name="tool_name_download_file">Download file</string>

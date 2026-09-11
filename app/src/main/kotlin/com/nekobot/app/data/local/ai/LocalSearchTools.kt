@@ -38,11 +38,104 @@ internal data class GrepOutcome(
 )
 
 /**
+ * 检索根目录（grep 的 `root` 参数）解析结果。
+ *
+ * [base] 是沙箱根（会话工作区或共享工作区），命中路径一律相对它计算，
+ * 这样返回的路径能直接喂回 file_read / workspace_* 工具；
+ * [pathPrefix] 是相对 [base] 的根目录子路径；[shared] 为 true 时命中路径要加 `shared://` 前缀。
+ * 解析失败时 [error] 非空（此时 [base] 仍是会话工作区，调用方直接返回错误即可）。
+ */
+internal data class SearchRoot(
+    val base: File,
+    val pathPrefix: String = "",
+    val shared: Boolean = false,
+    val error: String? = null
+)
+
+/** 绝对路径判定：POSIX（`/x`）与 Windows 盘符（`C:/x`）都算，便于跨平台单测。 */
+internal fun looksLikeAbsolutePath(path: String): Boolean =
+    Regex("^([A-Za-z]:)?/").containsMatchIn(path)
+
+private fun normalizeSearchSubPath(raw: String): String =
+    raw.trim().trim('/').let { if (it == ".") "" else it }
+
+/**
+ * 解析检索根目录参数。
+ *
+ * 支持写法：
+ * - 留空 / `.`：整个会话工作区（与历史行为一致）；
+ * - `shared://` 或 `shared://docs`：共享工作区（跨会话），可带子路径；
+ * - `/workspace` 与 `/workspace/docs`：会话工作区（exec 沙箱里的等价路径）；
+ * - 会话工作区 / 共享工作区的绝对路径（如 `absolute_path` 返回的路径）；
+ * - 其它相对路径（如 `docs`）：会话工作区内的子目录，等价于 `path` 前缀。
+ *
+ * 沙箱之外的绝对路径（如 `/sdcard/...`）返回 error 而不是静默退回工作区：
+ * 检索范围被悄悄改大会让模型拿到一堆无关命中，且浪费上下文。
+ */
+internal fun resolveSearchRoot(
+    rawRoot: String,
+    workspaceRoot: File?,
+    sharedRoot: File?
+): SearchRoot {
+    val workspace = workspaceRoot?.canonicalFile
+        ?: return SearchRoot(File("."), error = "本地工作区不可用")
+    val shared = sharedRoot?.canonicalFile
+    val raw = rawRoot.trim().replace('\\', '/')
+    val workspacePath = workspace.path.replace('\\', '/')
+    val sharedPath = shared?.path?.replace('\\', '/')
+
+    // 1) shared:// 前缀 → 共享工作区
+    if (raw.startsWith("shared://", ignoreCase = true)) {
+        shared ?: return SearchRoot(workspace, error = "共享工作区不可用，无法按 shared:// 检索")
+        return SearchRoot(
+            base = shared,
+            pathPrefix = normalizeSearchSubPath(raw.substring("shared://".length)),
+            shared = true
+        )
+    }
+    // 2) /workspace 前缀 → 会话工作区
+    if (raw == "/workspace" || raw.startsWith("/workspace/")) {
+        return SearchRoot(workspace, normalizeSearchSubPath(raw.removePrefix("/workspace")))
+    }
+    // 3) 沙箱内的绝对路径（工作区 / 共享工作区本身或其子路径）
+    if (sharedPath != null && (raw == sharedPath || raw.startsWith("$sharedPath/"))) {
+        return SearchRoot(
+            base = shared!!,
+            pathPrefix = normalizeSearchSubPath(raw.removePrefix(sharedPath)),
+            shared = true
+        )
+    }
+    if (raw == workspacePath || raw.startsWith("$workspacePath/")) {
+        return SearchRoot(workspace, normalizeSearchSubPath(raw.removePrefix(workspacePath)))
+    }
+    // 4) 其余绝对路径 → 超出沙箱
+    if (looksLikeAbsolutePath(raw)) {
+        return SearchRoot(
+            workspace,
+            error = "根目录不在沙箱范围内：$rawRoot。" +
+                "只支持会话工作区（相对路径 / /workspace）、共享工作区（shared://）内的路径"
+        )
+    }
+    // 5) 相对路径 → 会话工作区内的子目录
+    return SearchRoot(workspace, normalizeSearchSubPath(raw))
+}
+
+/** 把根目录子路径与 `path` 参数合并成相对 [SearchRoot.base] 的一个前缀。 */
+internal fun combineSearchPrefix(rootPrefix: String, pathPrefix: String): String =
+    listOf(normalizeSearchSubPath(rootPrefix), normalizeSearchSubPath(pathPrefix))
+        .filter { it.isNotEmpty() }
+        .joinToString("/")
+
+/** 命中路径 → 可直接喂回文件工具的路径（共享工作区补 `shared://` 前缀）。 */
+internal fun searchResultPath(root: SearchRoot, relativePath: String): String =
+    if (root.shared) "shared://$relativePath" else relativePath
+
+/**
  * 在工作区内按正则检索文本。
  *
- * @param root 检索根目录
+ * @param root 检索根目录（沙箱根）
  * @param pattern 正则表达式（调用方负责校验合法性）
- * @param pathPrefix 相对根目录的子路径过滤（空表示整个工作区）
+ * @param pathPrefix 相对根目录的子路径过滤（空表示整个工作区，也可以是一个具体文件）
  * @param fileGlob 文件名通配（如 `*.kt`），为空表示所有文本文件
  * @param limit 命中上限
  * @param caseSensitive 是否区分大小写
@@ -119,26 +212,27 @@ private inline fun walkWorkspace(
     pathPrefix: String,
     onFile: (file: File, relativePath: String) -> Unit
 ) {
-    val startDir = if (pathPrefix.isBlank()) {
-        root
-    } else {
-        File(root, pathPrefix.trim('/')).let { candidate ->
-            if (candidate.isDirectory) candidate else root
-        }
-    }
     val rootPath = root.canonicalPath
-    startDir.walkTopDown()
-        .onEnter { dir ->
-            dir.name !in DEFAULT_SEARCH_EXCLUDED_DIRS && !dir.name.startsWith(".")
-        }
-        .filter { it.isFile }
-        .forEach { file ->
-            val relative = runCatching {
-                file.canonicalPath.removePrefix(rootPath).trimStart(File.separatorChar)
-                    .replace(File.separatorChar, '/')
-            }.getOrNull() ?: return@forEach
-            onFile(file, relative)
-        }
+    val candidate = if (pathPrefix.isBlank()) root else File(root, pathPrefix.trim('/'))
+    // 目标可能是单个文件（path / 根目录都允许写成文件）：此时只检索它，
+    // 不要退回整个工作区——静默扩大范围会让模型拿到一堆无关命中。
+    val files: Sequence<File> = if (candidate.isFile) {
+        sequenceOf(candidate)
+    } else {
+        val startDir = if (candidate.isDirectory) candidate else root
+        startDir.walkTopDown()
+            .onEnter { dir ->
+                dir.name !in DEFAULT_SEARCH_EXCLUDED_DIRS && !dir.name.startsWith(".")
+            }
+            .filter { it.isFile }
+    }
+    files.forEach { file ->
+        val relative = runCatching {
+            file.canonicalPath.removePrefix(rootPath).trimStart(File.separatorChar)
+                .replace(File.separatorChar, '/')
+        }.getOrNull() ?: return@forEach
+        onFile(file, relative)
+    }
 }
 
 /**

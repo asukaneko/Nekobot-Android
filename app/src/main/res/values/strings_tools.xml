@@ -4,7 +4,7 @@
     <string name="tool_name_search_web">网页搜索</string>
     <string name="tool_name_http_get">HTTP GET 请求</string>
     <string name="tool_name_web_fetch">抓取网页正文</string>
-    <string name="tool_name_grep">在工作区中检索文本</string>
+    <string name="tool_name_grep">在指定目录中检索文本</string>
     <string name="tool_name_glob">按通配符列出文件</string>
     <string name="tool_name_get_date_time">获取日期时间</string>
     <string name="tool_name_download_file">下载文件</string>

@@ -810,20 +810,26 @@ internal class LocalAgentToolExecutor(
         }
     }
 
-    /** grep：在工作区内按正则检索，先定位再精确读取，避免整份读文件浪费上下文。 */
+    /**
+     * grep：在指定根目录（默认会话工作区，也可用 shared:// 共享工作区）下按正则检索，
+     * 先定位再精确读取，避免整份读文件浪费上下文。
+     */
     private fun grepWorkspaceTool(args: Map<String, Any>): Map<String, Any> {
         val pattern = args.string("pattern")
         if (pattern.isBlank()) return failure("pattern 不能为空")
-        val root = workspace ?: return failure("本地工作区不可用")
-        val pathPrefix = args.string("path").trim()
+        val root = resolveSearchRoot(args.string("root"), workspace, sharedWorkspace)
+        root.error?.let { return failure(it) }
+        val prefix = combineSearchPrefix(root.pathPrefix, args.string("path"))
+        resolveSearchTarget(root, prefix)
+            ?: return failure("检索路径不存在或超出沙箱范围：${searchPathLabel(root, prefix)}")
         val fileGlob = args.string("glob").trim()
         val limit = args.int("max_results", DEFAULT_SEARCH_LIMIT)
             .coerceIn(1, MAX_SEARCH_LIMIT)
         val caseSensitive = args["case_sensitive"] as? Boolean ?: false
         val outcome = grepWorkspace(
-            root = root,
+            root = root.base,
             pattern = pattern,
-            pathPrefix = pathPrefix,
+            pathPrefix = prefix,
             fileGlob = fileGlob,
             limit = limit,
             caseSensitive = caseSensitive
@@ -831,12 +837,17 @@ internal class LocalAgentToolExecutor(
         if (outcome.error != null) {
             return failure("正则表达式无效: ${outcome.error}")
         }
+        // 命中路径统一按沙箱根计算（共享工作区加 shared://），模型可直接拿去 file_read
+        val prefixed = outcome.copy(
+            matches = outcome.matches.map { it.copy(relativePath = searchResultPath(root, it.relativePath)) }
+        )
         return success(
-            "content" to formatGrepOutcome(pattern, outcome, limit),
-            "match_count" to outcome.matches.size,
+            "content" to formatGrepOutcome(pattern, prefixed, limit),
+            "root" to searchPathLabel(root, prefix),
+            "match_count" to prefixed.matches.size,
             "scanned_files" to outcome.scannedFiles,
             "truncated" to outcome.truncated,
-            "matches" to outcome.matches.map { match ->
+            "matches" to prefixed.matches.map { match ->
                 mapOf(
                     "path" to match.relativePath,
                     "line" to match.lineNumber,
@@ -844,6 +855,25 @@ internal class LocalAgentToolExecutor(
                 )
             }
         )
+    }
+
+    /** 把「根目录 + path」解析成实际检索目标；不存在或越界（软链接指向沙箱外）时返回 null。 */
+    private fun resolveSearchTarget(root: SearchRoot, prefix: String): File? {
+        val target = if (prefix.isEmpty()) root.base else File(root.base, prefix).canonicalFile
+        if (!target.exists()) return null
+        val basePath = root.base.canonicalPath
+        val targetPath = target.canonicalPath
+        return target.takeIf {
+            targetPath == basePath || targetPath.startsWith(basePath + File.separator)
+        }
+    }
+
+    /** 检索范围的展示名（错误信息与工具结果都用它，便于模型确认自己搜的是哪里）。 */
+    private fun searchPathLabel(root: SearchRoot, prefix: String): String = when {
+        prefix.isNotEmpty() && root.shared -> "shared://$prefix"
+        prefix.isNotEmpty() -> prefix
+        root.shared -> "shared://"
+        else -> "会话工作区"
     }
 
     /** glob：按通配模式列出工作区文件（`**` 跨目录）。 */
