@@ -156,6 +156,17 @@ class NekobotRepository(
         safeCall {
             api.updateMessage(id, messageId, UpdateMessageRequest(content = content, truncateAfter = false))
         }.map { }
+
+    /**
+     * 更新消息正文并让服务端截断其后的历史（一次请求完成）。
+     *
+     * 替代此前「反向逐条 deleteMessage」的实现：逐条删除一旦中途失败，
+     * 会留下只删了一半的会话；服务端本来就支持 `truncate_after`。
+     */
+    suspend fun updateMessageContentAndTruncate(id: String, messageId: String, content: String): Resource<Unit> =
+        safeCall {
+            api.updateMessage(id, messageId, UpdateMessageRequest(content = content, truncateAfter = true))
+        }.map { }
     suspend fun clearMessages(id: String): Resource<Unit> = safeCall { api.clearMessages(id) }.map { }
 
     /** 批量导入会话，透传 JSON 给后端 /api/sessions/import。 */

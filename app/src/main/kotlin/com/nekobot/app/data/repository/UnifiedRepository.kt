@@ -335,6 +335,24 @@ class UnifiedRepository(
         remote.updateMessageContent(id, messageId, content)
     }
 
+    /**
+     * 更新消息正文并截断其后的全部历史。
+     *
+     * 服务器模式：一次 `PUT /api/sessions/{id}/messages/{messageId}`（`truncate_after = true`）即可，
+     * 取代此前「反向逐条 DELETE」——后者中途失败会留下半截会话。
+     * 本地模式：仍走本地级联删除（软删除），返回被删消息数量由调用方自行处理。
+     */
+    suspend fun updateMessageContentAndTruncate(
+        id: String,
+        messageId: String,
+        content: String
+    ): Resource<Unit> = if (isLocal) {
+        local.updateMessageContent(id, messageId, content)
+        Resource.Success(Unit)
+    } else {
+        remote.updateMessageContentAndTruncate(id, messageId, content)
+    }
+
     suspend fun clearMessages(id: String): Resource<Unit> =
         if (isLocal) { local.clearMessages(id); Resource.Success(Unit) } else remote.clearMessages(id)
 

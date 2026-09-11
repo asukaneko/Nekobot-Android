@@ -3019,21 +3019,23 @@ class ChatViewModel : BaseViewModel() {
             return
         }
 
-        // 保存并从此处重新生成：沿用「删除该消息及其之后全部历史 + 重发」的既有语义。
+        // 保存并从此处重新生成：沿用「截断该消息及其之后全部历史 + 重发」的既有语义。
         val history = _messages.value.filterNot { it.id == streamingId }
         val messageIndex = history.indexOfFirst { it.id == message.id }
         if (messageIndex < 0) return
         val deleteIds = history.drop(messageIndex).mapNotNull { it.id?.takeIf(String::isNotBlank) }
         if (deleteIds.isEmpty()) return
-        // 登记待删 id：反向删除期间若触发 loadMessages，孤儿保留逻辑不应复活这些消息。
+        // 登记待删 id：截断期间若触发 loadMessages，孤儿保留逻辑不应复活这些消息。
         runtime.deletedMessageIds.addAll(deleteIds)
 
         viewModelScope.launch {
             _editingMessage.value = true
             var shouldResend = false
             try {
-                for (id in deleteIds.asReversed()) {
-                    when (val result = unified.deleteMessage(sessionId, id)) {
+                if (!isLocalMode) {
+                    // 服务器模式：服务端本就支持 truncate_after，一次 PUT 完成编辑 + 截断。
+                    // 此前反向逐条 DELETE 在失败时会留下只删了一半的会话。
+                    when (val result = unified.updateMessageContentAndTruncate(sessionId, messageId, content)) {
                         is Resource.Success -> Unit
                         is Resource.Error -> throw IllegalStateException(
                             result.message ?: string(R.string.chat_edit_message_failed)
@@ -3041,6 +3043,18 @@ class ChatViewModel : BaseViewModel() {
                         is Resource.Loading -> throw IllegalStateException(
                             string(R.string.chat_edit_message_failed)
                         )
+                    }
+                } else {
+                    for (id in deleteIds.asReversed()) {
+                        when (val result = unified.deleteMessage(sessionId, id)) {
+                            is Resource.Success -> Unit
+                            is Resource.Error -> throw IllegalStateException(
+                                result.message ?: string(R.string.chat_edit_message_failed)
+                            )
+                            is Resource.Loading -> throw IllegalStateException(
+                                string(R.string.chat_edit_message_failed)
+                            )
+                        }
                     }
                 }
                 _messages.value = history.take(messageIndex)
