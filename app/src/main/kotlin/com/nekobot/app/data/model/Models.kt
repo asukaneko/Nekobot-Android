@@ -228,6 +228,12 @@ data class Message(
     val tokens: Int? = null,
     @SerializedName("input_tokens") val inputTokens: Int? = null,
     @SerializedName("output_tokens") val outputTokens: Int? = null,
+    /**
+     * 本条回复的生成耗时（毫秒）：生成这条回复所耗的模型调用时间之和，不含工具执行时间。
+     * 本地生成路径持久化该字段，服务端消息可能为空；
+     * UI 用它和 [outputTokens] 一起换算气泡下方的 tok/s。
+     */
+    @SerializedName("duration_ms") val durationMs: Double? = null,
     val model: String? = null,
     val filtered: Boolean? = null,
     /** 本地持久化消息来源；Agent 上下文摘要使用它保存压缩边界。 */
