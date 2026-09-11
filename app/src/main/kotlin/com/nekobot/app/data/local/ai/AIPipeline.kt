@@ -593,8 +593,11 @@ class AIPipeline {
             return
         }
         val modelCall = callbacks.buildModelCall(ctx, emptyList())
+        val callStartNanos = System.nanoTime()
         try {
             val response = modelCall(ctx.messages, ctx.shouldStop())
+            // 生成耗时：无工具的单次调用同样写入 metadata，供消息持久化与 tok/s 使用
+            ctx.metadata["duration_ms"] = (System.nanoTime() - callStartNanos) / 1_000_000.0
             if (ctx.shouldStop()) {
                 markStopped(ctx)
                 return
@@ -727,6 +730,9 @@ class AIPipeline {
         try {
             val executionResult = runToolLoopSession(session)
             val loopResult = executionResult.loopResult
+            // 工具循环内所有模型调用的累计耗时写入 metadata，供消息持久化与 token 用量记录共用
+            // （无工具路径由 runStreaming 写同一个 key）。两者都排除工具执行时间，语义一致。
+            loopResult.modelCallDurationMs?.let { ctx.metadata["duration_ms"] = it }
             ctx.finalReasoning = loopResult.finalReasoning
 
             @Suppress("UNCHECKED_CAST")

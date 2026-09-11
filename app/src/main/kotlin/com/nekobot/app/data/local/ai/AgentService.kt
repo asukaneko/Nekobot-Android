@@ -231,7 +231,14 @@ data class ToolLoopResult(
     val modelName: String = "",
     /** 实际模型标识（如 gpt-4o），用于排行榜按模型聚合 */
     val modelActualName: String = "",
-    val failoverEvents: List<Map<String, Any>> = emptyList()
+    val failoverEvents: List<Map<String, Any>> = emptyList(),
+    /**
+     * 本轮所有模型调用的总耗时（毫秒），不含工具执行时间。
+     *
+     * 与 [usage] 中累计的输出 token 配对：两者都覆盖循环内的每一次模型调用，
+     * 因此「输出 token ÷ 该耗时」即为本轮真实的模型生成速度（tok/s）。
+     */
+    val modelCallDurationMs: Double? = null
 )
 
 /** 工具执行结果（含循环结果和准备好的消息） */
@@ -725,6 +732,9 @@ suspend fun runToolCallLoop(
     var currentModelActualName = ""
     val allFailoverEvents = mutableListOf<Map<String, Any>>()
     val loopGuard = AgentToolLoopGuard()
+    // 本轮模型调用次数与累计耗时（毫秒）：与 usage 累计的输出 token 配对，用于 tok/s 统计
+    var modelCallCount = 0
+    var modelCallDurationMs = 0.0
 
     fun result(
         finalContentArg: String? = null,
@@ -743,7 +753,8 @@ suspend fun runToolCallLoop(
         modelId = currentModelId,
         modelName = currentModelName,
         modelActualName = currentModelActualName,
-        failoverEvents = allFailoverEvents.toList()
+        failoverEvents = allFailoverEvents.toList(),
+        modelCallDurationMs = modelCallDurationMs.takeIf { modelCallCount > 0 }
     )
 
     for (iteration in 0 until maxIterations) {
@@ -778,6 +789,7 @@ suspend fun runToolCallLoop(
             )
         }
 
+        val callStartNanos = System.nanoTime()
         val response = try {
             modelCall(toolMessages.map { it.toMap() }, shouldStop())
         } catch (e: ToolLoopExit) {
@@ -787,6 +799,10 @@ suspend fun runToolCallLoop(
                 return result(stopped = true, iterations = iteration + 1)
             }
             throw ToolLoopModelError(e, iteration)
+        } finally {
+            // 每次迭代都累计：循环结束后得到本轮全部模型调用的生成耗时，不含工具执行时间
+            modelCallDurationMs += (System.nanoTime() - callStartNanos) / 1_000_000.0
+            modelCallCount += 1
         }
         if (shouldStop()) {
             return result(stopped = true, iterations = iteration + 1)

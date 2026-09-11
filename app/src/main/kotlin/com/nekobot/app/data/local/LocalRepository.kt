@@ -2026,7 +2026,9 @@ class LocalRepository(
             createdAt = now,
             model = model,
             inputTokens = inputTokens,
-            outputTokens = outputTokens
+            outputTokens = outputTokens,
+            // 生成耗时（毫秒）：气泡下方 tok/s 与 token 用量记录共用同一来源。
+            durationMs = durationMs
         )
         messageDao.upsert(msg)
         val session = sessionDao.getById(sessionId)
@@ -4827,7 +4829,8 @@ class LocalRepository(
                             createdAt = now,
                             model = modelDisplayName ?: activeModel.name,
                             inputTokens = usage.inputTokens,
-                            outputTokens = usage.outputTokens
+                            outputTokens = usage.outputTokens,
+                            durationMs = durationMs
                         )
                         messageDao.upsert(msg)
                         // 如果删除旧开场白后消息表为空，需要把新消息插入到最前面
@@ -8563,6 +8566,7 @@ ${AiOutputLanguage.directive()}
         audioUrl = audioUrl,
         inputTokens = inputTokens,
         outputTokens = outputTokens,
+        durationMs = durationMs,
         // 合并 input+output 作为总 token 数，供 UI 统计使用
         tokens = listOfNotNull(inputTokens, outputTokens).takeIf { it.size == 2 }?.sum(),
         source = source,

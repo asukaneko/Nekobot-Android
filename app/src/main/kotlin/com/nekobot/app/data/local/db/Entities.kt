@@ -118,7 +118,14 @@ data class LocalMessageEntity(
     /** RAG 引用来源 JSON（KnowledgeSearchResult 列表序列化） */
     @ColumnInfo(name = "knowledge_citations") val knowledgeCitations: String? = null,
     /** 路由决策日志 ID，关联 routing_decision_logs 表 */
-    @ColumnInfo(name = "routing_decision_id") val routingDecisionId: String? = null
+    @ColumnInfo(name = "routing_decision_id") val routingDecisionId: String? = null,
+    /**
+     * 本条回复的生成耗时（毫秒）：生成这条回复所耗的模型调用时间之和，不含工具执行时间。
+     *
+     * 本地生成路径写入，供 UI 在气泡下方按「输出 token ÷ 耗时」计算 tok/s；
+     * 服务端消息与导入的历史消息为 null，此时不展示速度。
+     */
+    @ColumnInfo(name = "duration_ms") val durationMs: Double? = null
 )
 
 /**

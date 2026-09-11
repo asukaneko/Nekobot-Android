@@ -3152,8 +3152,9 @@ private fun MessageBubble(
                 )
             }
 
-            // 元信息：时间（精简到分钟）/ token 数 + 操作按钮，AI 气泡合并到同一行
+            // 元信息：时间（精简到分钟）/ token 数 / 生成速度 + 操作按钮，AI 气泡合并到同一行
             val compactTs = compactTime(message.timestamp)
+            val tokenSpeed = formatTokenSpeed(message.outputTokens, message.durationMs)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -3168,6 +3169,11 @@ private fun MessageBubble(
                     message.tokens?.let { tokens ->
                         if (compactTs != null) Spacer(Modifier.width(6.dp))
                         Text("${formatTokenCount(tokens)} tok", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    // 耗费 token 旁边补上生成速度（本地生成的消息才有耗时数据）
+                    tokenSpeed?.let { speed ->
+                        if (compactTs != null || message.tokens != null) Spacer(Modifier.width(6.dp))
+                        Text(speed, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 // 用户气泡：复制按钮放最右边；AI 气泡：三个操作按钮放最右边

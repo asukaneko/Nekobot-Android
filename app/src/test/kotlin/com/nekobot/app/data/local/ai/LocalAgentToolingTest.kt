@@ -750,6 +750,57 @@ class LocalAgentToolingTest {
     }
 
     @Test
+    fun toolLoopAccumulatesModelCallDurationAcrossIterations() = runBlocking {
+        var modelCalls = 0
+        val result = runToolCallLoop(
+            initialMessages = listOf(mapOf("role" to "user", "content" to "统计生成速度")),
+            modelCall = { _, _ ->
+                modelCalls += 1
+                Thread.sleep(40)
+                if (modelCalls == 1) {
+                    mapOf(
+                        "content" to "",
+                        "finish_reason" to "tool_calls",
+                        "usage" to mapOf("completion" to 10),
+                        "tool_calls" to listOf(
+                            mapOf(
+                                "id" to "call-1",
+                                "name" to "get_date_time",
+                                "arguments" to emptyMap<String, Any>()
+                            )
+                        )
+                    )
+                } else {
+                    mapOf(
+                        "content" to "完成",
+                        "finish_reason" to "stop",
+                        "usage" to mapOf("completion" to 20)
+                    )
+                }
+            },
+            toolExecutor = { _, _, _, _ -> mapOf("success" to true) }
+        )
+
+        assertEquals(2, modelCalls)
+        assertEquals("完成", result.finalContent)
+        assertEquals(30, result.usage["completion"] as? Int)
+        // 两次调用各约 40ms：耗时必须累计（而不是只记最后一次），否则 tok/s 会被高估
+        assertTrue((result.modelCallDurationMs ?: 0.0) >= 70.0)
+    }
+
+    @Test
+    fun toolLoopOmitsModelCallDurationWhenModelIsNeverCalled() = runBlocking {
+        val result = runToolCallLoop(
+            initialMessages = listOf(mapOf("role" to "user", "content" to "已停止")),
+            modelCall = { _, _ -> throw AssertionError("不应调用模型") },
+            toolExecutor = { _, _, _, _ -> emptyMap() },
+            shouldStop = { true }
+        )
+
+        assertEquals(null, result.modelCallDurationMs)
+    }
+
+    @Test
     fun workspaceExtractEpubCreatesOrderedTxtAndReturnsCanonicalPath() = runBlocking {
         val root = Files.createTempDirectory("nekobot-agent-epub").toFile()
         try {

@@ -529,6 +529,11 @@ internal class LocalPipelineCallbacks(
                 ?: ctx.finalReasoning
         }
 
+        // 从 Pipeline metadata 提取首字延迟与生成耗时，消息持久化、路由日志和 Token 统计共用。
+        // 流式路径由那次模型调用写入，Agent 工具循环由其内部累计的全部模型调用写入（都不含工具执行时间）。
+        val durationMs = (ctx.metadata["duration_ms"] as? Number)?.toDouble()
+        val ttftMs = (ctx.metadata["ttft_ms"] as? Number)?.toDouble()
+
         // 保存到 Room（同步执行，因为已在 IO 线程）
         kotlinx.coroutines.runBlocking {
             messageDao.upsert(LocalMessageEntity(
@@ -544,7 +549,9 @@ internal class LocalPipelineCallbacks(
                 createdAt = com.nekobot.app.data.local.LocalRepository.nowIsoStatic(),
                 toolCallHistory = toolCallHistoryJson,
                 source = assistantSource,
-                reasoningContent = reasoningContent.takeIf(String::isNotBlank)
+                reasoningContent = reasoningContent.takeIf(String::isNotBlank),
+                // 生成耗时（毫秒）：气泡下方 tok/s 与 token 用量记录共用同一来源。
+                durationMs = durationMs
             ))
 
             persistPendingGeneratedImages(messageId)
@@ -593,9 +600,6 @@ internal class LocalPipelineCallbacks(
             }
         }
 
-        // 从 Pipeline metadata 提取首字延迟与总耗时，路由日志和 Token 统计共用。
-        val durationMs = (ctx.metadata["duration_ms"] as? Number)?.toDouble()
-        val ttftMs = (ctx.metadata["ttft_ms"] as? Number)?.toDouble()
         val priceModel = modelQueue.firstOrNull { model ->
             model.model == actualModelName || model.name == modelName
         } ?: activeModel
