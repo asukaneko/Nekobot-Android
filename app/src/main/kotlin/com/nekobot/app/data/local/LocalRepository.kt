@@ -5903,18 +5903,10 @@ class LocalRepository(
                             null
                         }
                         val tools = if (allowTools && session.sessionMode.equals("agent", ignoreCase = true)) {
-                            // subagent 工具纳入工具集管理：全局开关开启时并入定义列表，
-                            // 再由会话工具集过滤（未自定义默认全启用；已自定义则按勾选决定）。
-                            val baseDefinitions = com.nekobot.app.data.local.ai.buildLocalAgentToolDefinitions() +
-                                com.nekobot.app.data.local.ai.buildLocalSkillToolDefinitions() +
-                                com.nekobot.app.data.local.ai.buildLocalDbToolDefinitions() +
-                                prepareMcpAgentTools()
-                            val withSubagent = if (ServiceContainer.prefs.subagentEnabled) {
-                                baseDefinitions + com.nekobot.app.data.local.ai.buildSubagentToolDefinitions()
-                            } else {
-                                baseDefinitions
-                            }
-                            filterDefinitionsForSession(sessionId = sessionId, definitions = withSubagent)
+                            buildSessionAgentToolDefinitions(
+                                sessionId = sessionId,
+                                mcpTools = prepareMcpAgentTools()
+                            )
                         } else {
                             emptyList()
                         }
@@ -8276,23 +8268,40 @@ ${AiOutputLanguage.directive()}
     }
 
     /**
-     * 当前会话真正会发送的工具定义（与 chatWithPipeline 组装请求时同源）。
+     * 组装某个 Agent 会话真正会发送的工具定义。
      *
-     * MCP 工具取运行时缓存而不是重新 prepare，避免占比刷新触发连接与注册副作用。
+     * **会话工具集自定义在这里统一生效**（[filterDefinitionsForSession] → SessionToolRegistry）：
+     * 用户没有自定义时默认全部启用，自定义后只保留勾选的工具。请求组装与上下文占比分析
+     * 都走这一个函数，因此分析统计的正是当前会话实际启用的那份清单，用户关掉的工具
+     * 不会再被计入占比。[mcpTools] 由调用方决定：发送请求时用 prepareMcpAgentTools()，
+     * 占比刷新时用缓存，避免刷新触发 MCP 连接副作用。
      */
-    private fun sessionAgentToolDefinitions(sessionId: String): List<Map<String, Any>> {
+    private fun buildSessionAgentToolDefinitions(
+        sessionId: String,
+        mcpTools: List<Map<String, Any>>
+    ): List<Map<String, Any>> {
+        // subagent 工具纳入工具集管理：全局开关开启时才并入定义列表。
         val base = buildLocalAgentToolDefinitions() +
             buildLocalSkillToolDefinitions() +
             buildLocalDbToolDefinitions() +
-            cachedMcpAgentTools
+            mcpTools
         val withSubagent = if (ServiceContainer.prefs.subagentEnabled) {
             base + buildSubagentToolDefinitions()
         } else {
             base
         }
-        return runCatching { filterDefinitionsForSession(sessionId, withSubagent) }
-            .getOrDefault(withSubagent)
+        return filterDefinitionsForSession(sessionId = sessionId, definitions = withSubagent)
     }
+
+    /**
+     * 当前会话真正会发送的工具定义（与 chatWithPipeline 组装请求时同源）。
+     *
+     * MCP 工具取运行时缓存而不是重新 prepare，避免占比刷新触发连接与注册副作用。
+     */
+    private fun sessionAgentToolDefinitions(sessionId: String): List<Map<String, Any>> =
+        runCatching {
+            buildSessionAgentToolDefinitions(sessionId = sessionId, mcpTools = cachedMcpAgentTools)
+        }.getOrDefault(emptyList())
 
     /** 本地 token 用量排行榜（按 model / session 聚合，从独立存储读取）。 */
     suspend fun tokenRankings(): TokenRankings = withContext(Dispatchers.IO) {

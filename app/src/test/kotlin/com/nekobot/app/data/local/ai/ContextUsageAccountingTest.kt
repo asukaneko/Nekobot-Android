@@ -167,4 +167,62 @@ class ContextUsageAccountingTest {
 
         assertTrue("工具参数是请求体的一部分，必须计入", with > without + 100)
     }
+
+    @Test
+    fun `会话工具集关闭整个大类后不再计入工具定义`() {
+        val all = buildLocalAgentToolDefinitions() + buildLocalDbToolDefinitions()
+        val dbToolIds = SessionToolCatalog.categoryById("db")!!.toolIds.toSet()
+        val disabled = all.filter { toolNameOf(it) in dbToolIds }
+        assertTrue("数据管理大类应当有工具", disabled.isNotEmpty())
+
+        // 未自定义：默认全部启用，清单不变
+        val customized = SessionToolRegistry(
+            loadEnabled = { null },
+            saveEnabled = { _, _ -> }
+        )
+        assertEquals(all.size, customized.filterDefinitions("session-a", all).size)
+
+        // 用户关掉「数据管理」：这些工具既不会发送，也不再计入占比
+        val dbOff = SessionToolRegistry(
+            loadEnabled = { SessionToolCatalog.ALL_TOOL_IDS - dbToolIds },
+            saveEnabled = { _, _ -> }
+        )
+        val filtered = dbOff.filterDefinitions("session-a", all)
+
+        assertEquals(all.size - disabled.size, filtered.size)
+        assertTrue(filtered.none { toolNameOf(it) in dbToolIds })
+        assertTrue(
+            "关掉工具后工具定义体积必须变小",
+            estimateToolDefinitionsTokens(filtered) < estimateToolDefinitionsTokens(all)
+        )
+    }
+
+    @Test
+    fun `会话工具集关闭单个工具后只少这一个`() {
+        val all = buildLocalDbToolDefinitions()
+        val target = toolNameOf(all.first())!!
+        val registry = SessionToolRegistry(
+            loadEnabled = { SessionToolCatalog.ALL_TOOL_IDS - target },
+            saveEnabled = { _, _ -> }
+        )
+
+        val filtered = registry.filterDefinitions("session-b", all)
+
+        assertEquals(all.size - 1, filtered.size)
+        assertTrue(filtered.none { toolNameOf(it) == target })
+    }
+
+    @Test
+    fun `会话工具集恢复全部启用后工具定义回到原始体积`() {
+        val all = buildLocalAgentToolDefinitions() + buildLocalDbToolDefinitions()
+        val registry = SessionToolRegistry(
+            loadEnabled = { null },
+            saveEnabled = { _, _ -> }
+        )
+
+        val tokens = estimateToolDefinitionsTokens(registry.filterDefinitions("session-c", all))
+
+        assertEquals(estimateToolDefinitionsTokens(all), tokens)
+        assertTrue(tokens > 0)
+    }
 }
