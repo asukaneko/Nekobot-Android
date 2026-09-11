@@ -65,4 +65,42 @@ class ChatValueFormatterTest {
         // 采样过短：换算结果没有参考价值
         assertEquals(null, formatTokenSpeed(3, 20.0))
     }
+
+    @Test
+    fun tokenSpeedLevel_marksFastAsFastAndSlowAsSlow() {
+        // ≥ 20 tok/s 算快（绿）
+        assertEquals(TokenSpeedLevel.FAST, tokenSpeedLevel(100, 5_000.0))
+        // 10 tok/s 属于中间区间，保持默认次要文字色
+        assertEquals(TokenSpeedLevel.NORMAL, tokenSpeedLevel(100, 10_000.0))
+        // < 8 tok/s 算慢（红）
+        assertEquals(TokenSpeedLevel.SLOW, tokenSpeedLevel(50, 10_000.0))
+    }
+
+    @Test
+    fun tokenSpeedLevel_hasNoLevelWhenSpeedIsNotShown() {
+        assertEquals(null, tokenSpeedLevel(120, null))
+        assertEquals(null, tokenSpeedLevel(null, 3_000.0))
+        assertEquals(null, tokenSpeedLevel(3, 20.0))
+    }
+
+    @Test
+    fun tokenSpeedLevel_gatesExactlyLikeTheSpeedText() {
+        // 文本与取色必须同时出现或同时缺失，否则会出现「有速度但没颜色」的错位
+        val samples = listOf(
+            100 to 2_000.0,
+            100 to null,
+            null to 3_000.0,
+            0 to 1_000.0,
+            3 to 20.0,
+            50 to 6_000.0
+        )
+
+        samples.forEach { (tokens, duration) ->
+            assertEquals(
+                "tokens=$tokens duration=$duration 的文本展示与分级条件必须一致",
+                formatTokenSpeed(tokens, duration) == null,
+                tokenSpeedLevel(tokens, duration) == null
+            )
+        }
+    }
 }

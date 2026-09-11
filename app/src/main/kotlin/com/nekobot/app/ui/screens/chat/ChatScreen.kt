@@ -223,6 +223,7 @@ import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.components.resolveAvatarUrl
 import com.nekobot.app.ui.theme.BubbleUser
 import com.nekobot.app.ui.theme.BubbleUserLight
+import com.nekobot.app.ui.theme.accentSuccess
 import com.nekobot.app.ui.theme.parseHexColor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -2753,6 +2754,17 @@ private fun SafePlainMessageText(
     }
 }
 
+/** 元信息行内各段（时间 / token 数 / tok/s）之间的横向间距 */
+private val META_ITEM_GAP = 10.dp
+
+/** 生成速度着色：快=绿（[accentSuccess]）、慢=红（主题 error），中等与其它元信息同一颜色。 */
+@Composable
+private fun tokenSpeedColor(level: TokenSpeedLevel?): Color = when (level) {
+    TokenSpeedLevel.FAST -> accentSuccess()
+    TokenSpeedLevel.SLOW -> MaterialTheme.colorScheme.error
+    else -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageBubble(
@@ -3155,10 +3167,11 @@ private fun MessageBubble(
             // 元信息：时间（精简到分钟）/ token 数 / 生成速度 + 操作按钮，AI 气泡合并到同一行
             val compactTs = compactTime(message.timestamp)
             val tokenSpeed = formatTokenSpeed(message.outputTokens, message.durationMs)
+            val speedLevel = tokenSpeedLevel(message.outputTokens, message.durationMs)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .padding(top = 2.dp)
+                    .padding(top = 4.dp)
                     .fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -3167,13 +3180,17 @@ private fun MessageBubble(
                         Text(compactTs, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     message.tokens?.let { tokens ->
-                        if (compactTs != null) Spacer(Modifier.width(6.dp))
+                        if (compactTs != null) Spacer(Modifier.width(META_ITEM_GAP))
                         Text("${formatTokenCount(tokens)} tok", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    // 耗费 token 旁边补上生成速度（本地生成的消息才有耗时数据）
+                    // 生成速度：本地生成的消息才有耗时数据；快=绿、慢=红，与 token 数之间留出间距避免挤在一起
                     tokenSpeed?.let { speed ->
-                        if (compactTs != null || message.tokens != null) Spacer(Modifier.width(6.dp))
-                        Text(speed, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (compactTs != null || message.tokens != null) Spacer(Modifier.width(META_ITEM_GAP))
+                        Text(
+                            speed,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = tokenSpeedColor(speedLevel)
+                        )
                     }
                 }
                 // 用户气泡：复制按钮放最右边；AI 气泡：三个操作按钮放最右边
