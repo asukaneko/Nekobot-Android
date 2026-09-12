@@ -811,10 +811,12 @@ fun RenderContentSegments(
                 SegmentType.FILE -> FileCardRenderer(fileName = segment.fileName, sessionId = sessionId)
             }
             if (idx != segments.lastIndex) {
-                val gap = if (segment.type == SegmentType.FILE || segments[idx + 1].type == SegmentType.FILE) {
-                    2.dp
-                } else {
-                    4.dp
+                // 文件卡片自带圆角与描边，相邻时留出明显的间隔，否则多文件会糊成一整块。
+                val nextType = segments[idx + 1].type
+                val gap = when {
+                    segment.type == SegmentType.FILE && nextType == SegmentType.FILE -> 10.dp
+                    segment.type == SegmentType.FILE || nextType == SegmentType.FILE -> 6.dp
+                    else -> 4.dp
                 }
                 Spacer(Modifier.height(gap))
             }

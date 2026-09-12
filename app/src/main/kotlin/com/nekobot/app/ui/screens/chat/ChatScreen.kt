@@ -3267,9 +3267,10 @@ private fun MessageBubble(
                         }
                     }
                     if (!isLast) {
+                        // 文件卡片之间留出比普通气泡链更大的间隔，避免多文件挤成一团
                         val fileAdjacent = contentSegments.any { it.type == SegmentType.FILE } ||
                             parsedSegments.getOrNull(idx + 1).orEmpty().any { it.type == SegmentType.FILE }
-                        Spacer(Modifier.height(if (fileAdjacent) 4.dp else 10.dp))
+                        Spacer(Modifier.height(if (fileAdjacent) 8.dp else 10.dp))
                     }
                 }
             }
