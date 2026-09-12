@@ -20,8 +20,8 @@ internal object LocalShellJobs {
     /** 单个会话允许同时运行的后台命令数。 */
     internal const val MAX_JOBS_PER_SESSION = 3
 
-    /** 单个任务保留的输出字符上限。 */
-    internal const val MAX_OUTPUT_CHARS = 20_000
+    /** 单个任务保留的输出字符上限：与其它工具统一走「设置 → Agent 设置」，见 [AgentToolLimits]。 */
+    internal val MAX_OUTPUT_CHARS: Int get() = AgentToolLimits.toolOutputChars()
 
     /** 保留的历史任务条数（每个会话），避免长期堆积。 */
     private const val MAX_JOBS_KEPT_PER_SESSION = 10

@@ -219,6 +219,7 @@ import com.nekobot.app.data.local.isAgentContextSummary
 import com.nekobot.app.data.local.isLocalCommandMessage
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
 import com.nekobot.app.data.local.ai.AgentRecoveryState
+import com.nekobot.app.data.local.ai.AgentToolLimits
 import com.nekobot.app.data.local.ai.toRecoveryState
 import com.nekobot.app.data.model.MessageFavoriteRequest
 import com.nekobot.app.data.model.Session
@@ -3917,7 +3918,7 @@ private fun ProgressStepRow(
             step.status.equals("active", ignoreCase = true))
     val liveThinkingPreview = if (isStreamingThinking) {
         step.thinkingContent
-            ?.takeLast(1_200)
+            ?.takeLast(AgentToolLimits.PROGRESS_REASONING_LIVE_CHARS)
             ?.stripEmoji()
             ?.takeIf(String::isNotBlank)
     } else null
@@ -4299,9 +4300,10 @@ private fun StepDetailDialog(
         ?: stringResource(R.string.chat_step_details)
     val detail = step.detail?.stripEmoji()?.takeIf { it.isNotBlank() }
     val rawThinkingContent = step.thinkingContent?.takeIf(String::isNotBlank)
-    val thinkingWasTruncated = rawThinkingContent?.length?.let { it > 20_000 } == true
+    val thinkingWasTruncated = rawThinkingContent?.length
+        ?.let { it > AgentToolLimits.PROGRESS_REASONING_CHARS } == true
     val thinkingContent = rawThinkingContent
-        ?.takeLast(20_000)
+        ?.takeLast(AgentToolLimits.PROGRESS_REASONING_CHARS)
         ?.stripEmoji()
         ?.takeIf(String::isNotBlank)
     val argumentsJson = step.arguments?.let { formatJsonForDisplay(it) }

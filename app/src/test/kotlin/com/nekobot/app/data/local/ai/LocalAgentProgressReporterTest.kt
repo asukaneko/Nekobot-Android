@@ -92,8 +92,11 @@ class LocalAgentProgressReporterTest {
         )
 
         val toolStep = updates.last().steps.single { it.type == "tool" }
-        assertTrue(toolStep.arguments?.get("preview").toString().length <= 1_500)
-        assertTrue(toolStep.fullResult.toString().length <= 3_000)
+        assertTrue(
+            toolStep.arguments?.get("preview").toString().length <=
+                AgentToolLimits.progressPreviewChars()
+        )
+        assertTrue(toolStep.fullResult.toString().length <= AgentToolLimits.progressPreviewChars())
         assertTrue(toolStep.resultTruncated == true)
     }
 

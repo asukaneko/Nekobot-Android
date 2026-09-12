@@ -272,11 +272,21 @@ internal class SubagentProgressCollector(
     fun onToolResult(toolCall: Map<String, Any>, result: Map<String, Any>) {
         val name = (toolCall["name"] as? String) ?: "tool"
         val preview = previewResult(result)
+        // 与主 Agent 共用同一套预览上限：子代理卡片不能因为绕开常量而显示全量结果。
+        val boundedResult = boundedAgentValuePreview(result, AgentToolLimits.progressPreviewChars())
         val index = _steps.indexOfLast { it.type == "tool" && it.name == name && it.status != "done" }
         if (index >= 0) {
-            _steps[index] = _steps[index].copy(status = "done", detail = preview, fullResult = result)
+            _steps[index] = _steps[index].copy(status = "done", detail = preview, fullResult = boundedResult)
         } else {
-            _steps.add(ThinkingStep(type = "tool_done", name = name, status = "done", detail = preview))
+            _steps.add(
+                ThinkingStep(
+                    type = "tool_done",
+                    name = name,
+                    status = "done",
+                    detail = preview,
+                    fullResult = boundedResult
+                )
+            )
         }
         pendingToolName = null
     }
@@ -300,23 +310,30 @@ internal class SubagentProgressCollector(
     private fun previewArgs(arguments: Any?): String? {
         if (arguments == null) return null
         return when (arguments) {
-            is String -> if (arguments.length > 100) arguments.take(100) + "…" else arguments
+            is String -> arguments.take(AgentToolLimits.PROGRESS_STEP_DETAIL_CHARS)
+                .let { if (it.length < arguments.length) "$it…" else it }
             is Map<*, *> -> (arguments["preview"] as? String)
-                ?: (arguments.entries.joinToString(",") { "${it.key}: ${previewScalar(it.value)}" }.take(120))
-            else -> arguments.toString().take(120)
+                ?: arguments.entries.joinToString(",") { "${it.key}: ${previewScalar(it.value)}" }
+                    .take(AgentToolLimits.PROGRESS_STEP_DETAIL_CHARS)
+            else -> arguments.toString().take(AgentToolLimits.PROGRESS_STEP_DETAIL_CHARS)
         }
     }
 
     private fun previewScalar(v: Any?): String = when (v) {
         null -> ""
-        is String -> if (v.length > 40) v.take(40) + "…" else v
+        is String -> if (v.length > AgentToolLimits.PROGRESS_SCALAR_PREVIEW_CHARS) {
+            v.take(AgentToolLimits.PROGRESS_SCALAR_PREVIEW_CHARS) + "…"
+        } else {
+            v
+        }
         else -> v.toString()
     }
 
     private fun previewResult(result: Map<String, Any>): String? {
         if ((result["success"] as? Boolean) == false) {
-            return (result["error"] as? String)?.take(120) ?: "执行失败"
+            return (result["error"] as? String)?.take(AgentToolLimits.PROGRESS_STEP_DETAIL_CHARS) ?: "执行失败"
         }
-        return (result["preview"] as? String) ?: if (result.isEmpty()) "" else result.toString().take(120)
+        return (result["preview"] as? String)
+            ?: if (result.isEmpty()) "" else result.toString().take(AgentToolLimits.PROGRESS_STEP_DETAIL_CHARS)
     }
 }

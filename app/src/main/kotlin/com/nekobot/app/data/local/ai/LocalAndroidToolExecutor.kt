@@ -194,7 +194,7 @@ internal class LocalAndroidToolExecutor(
         val rawText = runCatching {
             clip.getItemAt(0).coerceToText(context).toString()
         }.getOrDefault("")
-        val text = rawText.take(MAX_CLIPBOARD_CHARS)
+        val text = rawText.take(AgentToolLimits.toolOutputChars())
         return success(
             "has_clip" to true,
             "text" to text,
@@ -814,7 +814,6 @@ internal class LocalAndroidToolExecutor(
     }
 
     private companion object {
-        const val MAX_CLIPBOARD_CHARS = 20_000
         val ALLOWED_URL_SCHEMES = setOf("http", "https", "mailto", "tel", "geo")
     }
 }

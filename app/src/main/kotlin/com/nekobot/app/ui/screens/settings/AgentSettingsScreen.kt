@@ -17,10 +17,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -47,6 +49,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.ai.AgentToolLimits
 import com.nekobot.app.ui.components.BorderlessOutlinedTextField as OutlinedTextField
 import com.nekobot.app.ui.components.GlassCard
 
@@ -251,6 +254,55 @@ fun AgentSettingsScreen(onBack: () -> Unit) {
                                 autoSkill = it
                                 ServiceContainer.prefs.agentAutoSkillEnabled = it
                             }
+                        )
+                    }
+                )
+            }
+
+            // 截断字符数分组：所有工具的输出上限与进度卡预览上限各一个统一值。
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = stringResource(R.string.agent_settings_group_limits),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(bottom = 6.dp, start = 2.dp)
+                )
+                AgentSettingRow(
+                    icon = Icons.Filled.Straighten,
+                    tint = MaterialTheme.colorScheme.primary,
+                    title = stringResource(R.string.agent_settings_tool_output_chars),
+                    desc = stringResource(
+                        R.string.agent_settings_tool_output_chars_desc,
+                        AgentToolLimits.MIN_TOOL_OUTPUT_CHARS,
+                        AgentToolLimits.MAX_TOOL_OUTPUT_CHARS,
+                        AgentToolLimits.DEFAULT_TOOL_OUTPUT_CHARS
+                    ),
+                    trailing = {
+                        NumericInput(
+                            initial = ServiceContainer.prefs.agentToolOutputChars.toString(),
+                            min = AgentToolLimits.MIN_TOOL_OUTPUT_CHARS,
+                            max = AgentToolLimits.MAX_TOOL_OUTPUT_CHARS,
+                            onValid = { ServiceContainer.prefs.agentToolOutputChars = it }
+                        )
+                    }
+                )
+                AgentSettingRow(
+                    icon = Icons.AutoMirrored.Filled.Article,
+                    tint = MaterialTheme.colorScheme.secondary,
+                    title = stringResource(R.string.agent_settings_progress_preview_chars),
+                    desc = stringResource(
+                        R.string.agent_settings_progress_preview_chars_desc,
+                        AgentToolLimits.MIN_PROGRESS_PREVIEW_CHARS,
+                        AgentToolLimits.MAX_PROGRESS_PREVIEW_CHARS,
+                        AgentToolLimits.DEFAULT_PROGRESS_PREVIEW_CHARS
+                    ),
+                    trailing = {
+                        NumericInput(
+                            initial = ServiceContainer.prefs.agentProgressPreviewChars.toString(),
+                            min = AgentToolLimits.MIN_PROGRESS_PREVIEW_CHARS,
+                            max = AgentToolLimits.MAX_PROGRESS_PREVIEW_CHARS,
+                            onValid = { ServiceContainer.prefs.agentProgressPreviewChars = it }
                         )
                     }
                 )

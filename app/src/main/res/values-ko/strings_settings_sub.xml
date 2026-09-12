@@ -275,4 +275,9 @@
     <string name="agent_settings_subagent_max_tool_calls_desc">단일 서브에이전트 내에서 허용되는 도구 호출 반복 최대 수 (1–500, 기본 %1$d).</string>
     <string name="agent_settings_subagent_default_background">기본적으로 백그라운드 실행</string>
     <string name="agent_settings_subagent_default_background_desc">AI가 run_in_background를 명시하지 않을 때 서브에이전트를 기본적으로 백그라운드 실행(태스크 id 반환)할지 여부.</string>
+    <string name="agent_settings_group_limits">출력 및 미리보기 자르기</string>
+    <string name="agent_settings_tool_output_chars">도구 출력 문자 수 상한</string>
+    <string name="agent_settings_tool_output_chars_desc">내용을 읽는 모든 도구(file_read, web_fetch, http_get, exec_command, browser_use, plugin_use, 클립보드)가 공유하는 1회 반환 상한입니다(%1$d–%2$d, 기본 %3$d). 동시에 하드 상한이므로 모델이 지정하는 max_chars는 이보다 작을 수만 있습니다.</string>
+    <string name="agent_settings_progress_preview_chars">진행 카드 미리보기 문자 수</string>
+    <string name="agent_settings_progress_preview_chars_desc">진행 카드에 표시되는 도구 인수와 결과의 미리보기 상한입니다(%1$d–%2$d, 기본 %3$d). 메인 Agent와 서브에이전트가 같은 값을 사용합니다.</string>
 </resources>

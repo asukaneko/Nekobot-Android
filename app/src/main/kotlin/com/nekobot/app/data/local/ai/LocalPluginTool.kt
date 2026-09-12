@@ -91,7 +91,8 @@ internal class LocalPluginTool(
         val detail = pluginManager.readPluginDetail(pluginId)
             ?: return failure("无法读取插件文件：$pluginId")
         val source = detail.entrySource.orEmpty()
-        val maxChars = args.int("max_chars", 20000).coerceIn(1000, 120000)
+        val limit = AgentToolLimits.toolOutputChars()
+        val maxChars = AgentToolLimits.resolveRequestedMaxChars(args.int("max_chars", 0), limit)
         val truncated = source.length > maxChars
         return success(
             "plugin" to pluginSummary(plugin),

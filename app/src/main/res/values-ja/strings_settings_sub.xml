@@ -275,4 +275,9 @@
     <string name="agent_settings_subagent_max_tool_calls_desc">単一サブエージェント内で許可されるツール呼び出し反復の最大数（1～500、既定 %1$d）。</string>
     <string name="agent_settings_subagent_default_background">既定でバックグラウンド実行</string>
     <string name="agent_settings_subagent_default_background_desc">AI が run_in_background を明示しないとき、サブエージェントを既定でバックグラウンド実行（タスク id を返す）にするかどうか。</string>
+    <string name="agent_settings_group_limits">出力とプレビューの切り詰め</string>
+    <string name="agent_settings_tool_output_chars">ツール出力の文字数上限</string>
+    <string name="agent_settings_tool_output_chars_desc">内容を読み取るすべてのツール（file_read、web_fetch、http_get、exec_command、browser_use、plugin_use、クリップボード）が共用する 1 回の返却上限（%1$d～%2$d、既定 %3$d）。同時にハード上限でもあり、モデルが指定する max_chars はこれより小さくするしかありません。</string>
+    <string name="agent_settings_progress_preview_chars">進捗カードのプレビュー文字数</string>
+    <string name="agent_settings_progress_preview_chars_desc">進捗カードに表示するツール引数と結果のプレビュー上限（%1$d～%2$d、既定 %3$d）。メイン Agent とサブエージェントで同じ値を使います。</string>
 </resources>

@@ -141,10 +141,12 @@ internal fun renderSubagentResultContent(
             put("model", modelName)
             put("tool_calls", toolCalls)
             if (status == SubagentTaskStatus.SUCCEEDED) {
-                put("result", content.take(20_000))
+                put("result", content.take(AgentToolLimits.toolOutputChars()))
             } else {
                 put("error", error ?: "子代理执行失败")
-                if (content.isNotBlank()) put("partial_result", content.take(8_000))
+                if (content.isNotBlank()) {
+                    put("partial_result", content.take(AgentToolLimits.toolOutputChars()))
+                }
             }
         }
     )

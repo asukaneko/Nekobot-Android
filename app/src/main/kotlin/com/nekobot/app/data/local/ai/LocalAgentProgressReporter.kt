@@ -49,7 +49,7 @@ internal class LocalAgentProgressReporter(
         val fullReasoning = reasoningContent.toString()
         steps.indexOfLast { it.type == "thinking" }.takeIf { it >= 0 }?.let { index ->
             steps[index] = steps[index].copy(
-                detail = fullReasoning.takeLast(160),
+                detail = fullReasoning.takeLast(AgentToolLimits.PROGRESS_REASONING_DETAIL_CHARS),
                 thinkingContent = fullReasoning
             )
         }
@@ -133,7 +133,10 @@ internal class LocalAgentProgressReporter(
         if (thinking.isNotBlank() && ctx.metadata["agent_reasoning_streamed"] != true) {
             onThinkingContent(ctx, thinking)
         }
-        val argumentPreview = boundedAgentValuePreview(arguments, 100)
+        val argumentPreview = boundedAgentValuePreview(
+            arguments,
+            AgentToolLimits.PROGRESS_STEP_DETAIL_CHARS
+        )
         steps.add(
             ThinkingStep(
                 type = "tool",
@@ -144,7 +147,7 @@ internal class LocalAgentProgressReporter(
                 arguments = mapOf(
                     "preview" to boundedAgentValuePreview(
                         arguments,
-                        MAX_AGENT_PROGRESS_ARGUMENT_PREVIEW_CHARS
+                        AgentToolLimits.progressPreviewChars()
                     )
                 )
             )
@@ -162,7 +165,10 @@ internal class LocalAgentProgressReporter(
         val durationMs = toolStartNanosStack[toolName]?.removeLastOrNull()?.let { start ->
             ((nowNanos() - start) / 1_000_000L).coerceAtLeast(0L)
         }
-        val resultPreview = boundedAgentValuePreview(result, 120)
+        val resultPreview = boundedAgentValuePreview(
+            result,
+            AgentToolLimits.PROGRESS_STEP_DETAIL_CHARS
+        )
         val resultTruncated = isAgentToolOutputTruncated(result)
         val index = steps.indexOfLast {
             it.type == "tool" && it.name == toolName && it.status != "done"
@@ -173,7 +179,7 @@ internal class LocalAgentProgressReporter(
                 detail = resultPreview,
                 fullResult = boundedAgentValuePreview(
                     result,
-                    MAX_AGENT_PROGRESS_RESULT_PREVIEW_CHARS
+                    AgentToolLimits.progressPreviewChars()
                 ),
                 resultTruncated = resultTruncated,
                 durationMs = durationMs
@@ -187,7 +193,7 @@ internal class LocalAgentProgressReporter(
                     detail = resultPreview,
                     fullResult = boundedAgentValuePreview(
                         result,
-                        MAX_AGENT_PROGRESS_RESULT_PREVIEW_CHARS
+                        AgentToolLimits.progressPreviewChars()
                     ),
                     resultTruncated = resultTruncated,
                     durationMs = durationMs
@@ -207,7 +213,7 @@ internal class LocalAgentProgressReporter(
                 type = "tool",
                 name = progressText(R.string.agent_progress_wait_confirm_step, "等待命令授权"),
                 status = "active",
-                detail = command.take(120)
+                detail = command.take(AgentToolLimits.PROGRESS_STEP_DETAIL_CHARS)
             )
         )
         emit(progressText(R.string.agent_progress_wait_confirm, "等待命令授权..."))
@@ -219,7 +225,7 @@ internal class LocalAgentProgressReporter(
                 type = "send_message",
                 name = progressText(R.string.agent_progress_send_message_step, "发送进度消息"),
                 status = "done",
-                detail = content.take(120)
+                detail = content.take(AgentToolLimits.PROGRESS_STEP_DETAIL_CHARS)
             )
         )
         emit(progressText(R.string.agent_progress_message_sent, "已发送进度消息"))
@@ -231,7 +237,7 @@ internal class LocalAgentProgressReporter(
                 type = "file",
                 name = progressText(R.string.agent_progress_file_step, "准备文件: %1\$s", filename),
                 status = "done",
-                detail = filePath.take(120)
+                detail = filePath.take(AgentToolLimits.PROGRESS_STEP_DETAIL_CHARS)
             )
         )
         emit(progressText(R.string.agent_progress_file_done, "文件处理完成"))

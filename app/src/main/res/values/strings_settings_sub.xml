@@ -288,4 +288,9 @@
     <string name="agent_settings_subagent_max_tool_calls_desc">单个子代理内允许的最大工具调用迭代数（1–500，默认 %1$d）。</string>
     <string name="agent_settings_subagent_default_background">默认后台运行</string>
     <string name="agent_settings_subagent_default_background_desc">AI 未显式指定 run_in_background 时，子代理是否默认在后台运行并返回任务 id。</string>
+    <string name="agent_settings_group_limits">输出与预览截断</string>
+    <string name="agent_settings_tool_output_chars">工具输出截断字符数</string>
+    <string name="agent_settings_tool_output_chars_desc">所有读取内容类工具（file_read、web_fetch、http_get、exec_command、browser_use、plugin_use、剪贴板）共用的单次返回上限（%1$d–%2$d，默认 %3$d）。该值同时是硬上限：模型传的 max_chars 只能更小。</string>
+    <string name="agent_settings_progress_preview_chars">进度卡工具预览字符数</string>
+    <string name="agent_settings_progress_preview_chars_desc">进度卡里工具参数与结果的预览上限（%1$d–%2$d，默认 %3$d）。主 Agent 与子代理共用该值。</string>
 </resources>

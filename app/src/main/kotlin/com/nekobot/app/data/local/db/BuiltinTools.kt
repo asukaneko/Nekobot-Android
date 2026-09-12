@@ -140,7 +140,7 @@ object BuiltinTools {
                     },
                     "max_chars": {
                       "type": "integer",
-                      "description": "get_html 返回的最大源码字符数，默认 60000，最大 120000"
+                      "description": "get_html 返回的最大源码字符数；缺省时取「设置 → Agent 设置 → 工具输出截断字符数」的当前上限"
                     },
                     "max_results": {
                       "type": "integer",
@@ -246,7 +246,7 @@ object BuiltinTools {
                     },
                     "max_chars": {
                       "type": "integer",
-                      "description": "view 返回源码的最大字符数，默认 20000，最大 120000"
+                      "description": "view 返回源码的最大字符数；缺省时取「设置 → Agent 设置 → 工具输出截断字符数」的当前上限"
                     }
                   },
                   "required": ["action"]
@@ -428,13 +428,13 @@ object BuiltinTools {
         BuiltinToolSpec(
             id = "file_read",
             name = "读取 Linux 工作区文件",
-            description = "读取 /workspace 内的 UTF-8 文本文件。支持相对路径或 /workspace 绝对路径，可按行分片读取，返回完整行数、字符数和截断状态。默认只返回前 50000 字符（单次上限 200000）：需要长文件中的具体内容时，先用 grep 定位、或用 start_line/end_line 分段读取，不要反复整份读取。",
+            description = "读取 /workspace 内的 UTF-8 文本文件。支持相对路径或 /workspace 绝对路径，可按行分片读取，返回完整行数、字符数和截断状态。长度上限由用户设置在「设置 → Agent 设置 → 工具输出截断字符数」统一决定：需要长文件中的具体内容时，先用 grep 定位、或用 start_line/end_line 分段读取，不要反复整份读取。",
             parametersJson = params(
                 mapOf(
                     "path" to mapOf("type" to "string", "description" to "文件路径，如 /workspace/src/main.py"),
                     "start_line" to mapOf("type" to "integer", "description" to "起始行号，1-based，默认 1"),
                     "end_line" to mapOf("type" to "integer", "description" to "结束行号，1-based，默认读到末尾"),
-                    "max_chars" to mapOf("type" to "integer", "description" to "最大返回字符数，默认 100000，最大 500000。读取长文本时建议主动设置足够大的值（如 200000）一次性读完，避免分片读取浪费上下文 token；设为 0 表示不限制")
+                    "max_chars" to mapOf("type" to "integer", "description" to "最大返回字符数，只能小于等于当前工具输出上限；缺省或传 0 都按上限处理（上限即硬顶，无法通过本参数突破）")
                 ),
                 listOf("path")
             )
@@ -528,13 +528,13 @@ object BuiltinTools {
         BuiltinToolSpec(
             id = "workspace_read_file",
             name = "工作区-读取文件",
-            description = "读取工作区中指定文件的内容。支持按行范围读取（start_line/end_line，1-based 含两端）和限制返回字符数（max_chars，默认 100000，最大 500000）。path 使用 shared:// 前缀可读取共享工作区文件。重要：为节省上下文 token，读取长文本时请优先一次性读取完整内容（设置足够大的 max_chars，如 200000 或 500000，或设为 0 表示不限制），避免多次分片读取导致工具结果在上下文中重复累积。返回值含 truncated 字段标识是否因 max_chars 截断，total_chars/total_lines 为完整文件大小；若 truncated=true，hint 字段会给出一次性读取的建议 max_chars 值。",
+            description = "读取工作区中指定文件的内容。支持按行范围读取（start_line/end_line，1-based 含两端）和限制返回字符数（max_chars）。path 使用 shared:// 前缀可读取共享工作区文件。返回值含 truncated 字段标识是否因长度上限截断，total_chars/total_lines 为完整文件大小。长度上限由用户在「设置 → Agent 设置 → 工具输出截断字符数」统一配置：确需完整内容时应分段读取，而不是反复整份读取导致工具结果在上下文中重复累积。",
             parametersJson = params(
                 mapOf(
                     "path" to mapOf("type" to "string", "description" to "文件路径。使用 shared://filename 读取共享工作区文件，或直接使用相对路径读取当前会话工作区文件"),
                     "start_line" to mapOf("type" to "integer", "description" to "起始行号（1-based，含），默认 1"),
                     "end_line" to mapOf("type" to "integer", "description" to "结束行号（1-based，含），默认读到末尾"),
-                    "max_chars" to mapOf("type" to "integer", "description" to "最多返回的字符数，默认 100000，最大 500000；读取长文本时建议主动设置足够大的值一次性读完，设为 0 表示不限制；超出会被截断并置 truncated=true")
+                    "max_chars" to mapOf("type" to "integer", "description" to "最多返回的字符数，只能小于等于当前工具输出上限；缺省或传 0 都按上限处理；超出会被截断并置 truncated=true")
                 ),
                 listOf("path")
             )
@@ -743,11 +743,11 @@ object BuiltinTools {
         BuiltinToolSpec(
             id = "web_fetch",
             name = "抓取网页正文",
-            description = "抓取网页并抽取可读正文（自动去掉脚本/样式/标签，返回纯文本，默认 20000 字符）。阅读文章、文档、公告时用它；需要原始响应体（JSON/API）时用 http_get。长正文可用 start_index 继续读取后续内容。",
+            description = "抓取网页并抽取可读正文（自动去掉脚本/样式/标签，返回纯文本）。阅读文章、文档、公告时用它；需要原始响应体（JSON/API）时用 http_get。返回长度上限由用户在「设置 → Agent 设置 → 工具输出截断字符数」统一配置；长正文可用 start_index 继续读取后续内容。",
             parametersJson = params(
                 mapOf(
                     "url" to mapOf("type" to "string", "description" to "要抓取的网页 URL"),
-                    "max_chars" to mapOf("type" to "integer", "description" to "返回正文长度上限，默认 20000，最大 100000"),
+                    "max_chars" to mapOf("type" to "integer", "description" to "返回正文长度上限，只能小于等于当前工具输出上限；缺省或传 0 都按上限处理"),
                     "start_index" to mapOf("type" to "integer", "description" to "从正文第几个字符开始返回，用于分页"),
                     "headers" to mapOf("type" to "object", "description" to "可选：附加请求头")
                 ),

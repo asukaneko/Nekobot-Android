@@ -9,12 +9,6 @@ package com.nekobot.app.data.local.ai
  */
 internal object LocalWebFetch {
 
-    /** 默认返回的正文长度上限。 */
-    internal const val DEFAULT_MAX_CHARS = 20_000
-
-    /** 单次返回的正文硬上限。 */
-    internal const val MAX_CHARS_LIMIT = 100_000
-
     /** HTML 标签的移除顺序：先整块丢弃脚本/样式等不可见内容。 */
     private val droppedBlocks = listOf(
         Regex("(?is)<script\\b[^>]*>.*?</script>"),
@@ -56,9 +50,9 @@ internal object LocalWebFetch {
      * 抽取可读正文。
      *
      * @param raw 原始响应体
-     * @param maxChars 返回长度上限
+     * @param maxChars 返回长度上限；缺省时取统一的工具输出上限（设置 → Agent 设置）
      */
-    internal fun extractReadableText(raw: String, maxChars: Int = DEFAULT_MAX_CHARS): String {
+    internal fun extractReadableText(raw: String, maxChars: Int = AgentToolLimits.toolOutputChars()): String {
         if (raw.isBlank()) return ""
         var text = raw
         droppedBlocks.forEach { regex -> text = regex.replace(text, "\n") }
@@ -74,7 +68,10 @@ internal object LocalWebFetch {
             .joinToString("\n") { it.trim() }
             .replace(Regex("\n{3,}"), "\n\n")
             .trim()
-        val budget = maxChars.coerceIn(1_000, MAX_CHARS_LIMIT)
+        val budget = maxChars.coerceIn(
+            AgentToolLimits.MIN_TOOL_OUTPUT_CHARS,
+            AgentToolLimits.MAX_TOOL_OUTPUT_CHARS
+        )
         return if (text.length > budget) {
             text.take(budget) + "\n\n…（正文已截断，共 ${text.length} 字符；可用 start_index 参数继续读取后续内容）"
         } else {

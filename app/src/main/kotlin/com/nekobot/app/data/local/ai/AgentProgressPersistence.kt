@@ -9,11 +9,6 @@ import java.util.IdentityHashMap
 /** 聊天页恢复历史时允许解码的单条进度卡 JSON 上限。 */
 internal const val MAX_AGENT_PROGRESS_HISTORY_JSON_CHARS = 256 * 1024
 
-private const val MAX_PERSISTED_AGENT_STEPS = 64
-private const val MAX_PERSISTED_REASONING_CHARS = 16_000
-internal const val MAX_AGENT_PROGRESS_ARGUMENT_PREVIEW_CHARS = 1_500
-internal const val MAX_AGENT_PROGRESS_RESULT_PREVIEW_CHARS = 3_000
-
 /**
  * 恢复聊天历史时先按原始 JSON 大小挡住旧版本写入的巨型进度卡。
  * 超限卡只保留一个完成态占位，不影响用户和助手消息继续显示。
@@ -47,31 +42,31 @@ private fun oversizedThinkingCard(messageId: String): ThinkingCard = ThinkingCar
  * 因此进度卡落库前必须裁掉无上限的工具返回，避免重新进入会话时一次性解码数 MB 数据。
  */
 internal fun ThinkingCard.toPersistedProgressCard(): ThinkingCard {
-    val selectedSteps = if (steps.size <= MAX_PERSISTED_AGENT_STEPS) {
+    val selectedSteps = if (steps.size <= AgentToolLimits.PROGRESS_PERSISTED_STEPS) {
         steps
     } else {
         val thinking = steps.firstOrNull { it.type.equals("thinking", ignoreCase = true) }
         buildList {
             if (thinking != null) add(thinking)
-            addAll(steps.takeLast(MAX_PERSISTED_AGENT_STEPS - size))
+            addAll(steps.takeLast(AgentToolLimits.PROGRESS_PERSISTED_STEPS - size))
         }
     }
     return copy(
-        content = content.take(500),
+        content = content.take(AgentToolLimits.PROGRESS_PERSISTED_CONTENT_CHARS),
         steps = selectedSteps.map(ThinkingStep::toPersistedProgressStep)
     )
 }
 
 private fun ThinkingStep.toPersistedProgressStep(): ThinkingStep = copy(
-    name = name?.take(200),
-    detail = detail?.take(500),
+    name = name?.take(AgentToolLimits.PROGRESS_PERSISTED_NAME_CHARS),
+    detail = detail?.take(AgentToolLimits.PROGRESS_STEP_DETAIL_CHARS),
     arguments = arguments?.let { value ->
-        mapOf("preview" to boundedAgentValuePreview(value, MAX_AGENT_PROGRESS_ARGUMENT_PREVIEW_CHARS))
+        mapOf("preview" to boundedAgentValuePreview(value, AgentToolLimits.progressPreviewChars()))
     },
     fullResult = fullResult?.let { value ->
-        boundedAgentValuePreview(value, MAX_AGENT_PROGRESS_RESULT_PREVIEW_CHARS)
+        boundedAgentValuePreview(value, AgentToolLimits.progressPreviewChars())
     },
-    thinkingContent = thinkingContent?.takeLast(MAX_PERSISTED_REASONING_CHARS)
+    thinkingContent = thinkingContent?.takeLast(AgentToolLimits.PROGRESS_REASONING_CHARS)
 )
 
 /** 不创建完整 toString/JSON 副本地生成嵌套工具参数或结果预览。 */

@@ -97,22 +97,53 @@ internal val localSkillToolIds = setOf(
 /** 将本地真正可执行的内置工具转换为 OpenAI function-calling 定义。 */
 internal fun buildLocalAgentToolDefinitions(): List<Map<String, Any>> {
     val gson = Gson()
+    // 描述里的字符数不再写死：统一由「设置 → Agent 设置 → 工具输出截断字符数」决定，
+    // 这里把当前生效值注入定义，避免模型按已经过时的数字行动。
+    val outputLimit = AgentToolLimits.toolOutputChars()
     return BuiltinTools.all
         .filter { it.enabled && it.id in localExecutableToolIds }
         .map { spec ->
             @Suppress("UNCHECKED_CAST")
-            val parameters = runCatching {
+            val parsed = runCatching {
                 gson.fromJson(spec.parametersJson, Map::class.java) as Map<String, Any>
             }.getOrDefault(mapOf("type" to "object", "properties" to emptyMap<String, Any>()))
+            val capped = spec.id in maxCharsToolIds
+            val parameters = if (capped) patchMaxCharsDescription(parsed, outputLimit) else parsed
+            val description = if (capped) {
+                spec.description + "（当前工具输出上限：$outputLimit 字符，可在设置 → Agent 设置中调整）"
+            } else {
+                spec.description
+            }
             mapOf(
                 "type" to "function",
                 "function" to mapOf(
                     "name" to spec.id,
-                    "description" to spec.description,
+                    "description" to description,
                     "parameters" to parameters
                 )
             )
         }
+}
+
+/** 接受 `max_chars` 参数的工具：这些工具的长度上限统一由设置决定。 */
+private val maxCharsToolIds = setOf(
+    "file_read",
+    "workspace_read_file",
+    "workspace_parse_file",
+    "web_fetch",
+    "browser_use",
+    "plugin_use",
+)
+
+/** 把 `max_chars` 的描述改写为当前生效上限，保证模型看到的数字与实现一致。 */
+private fun patchMaxCharsDescription(parameters: Map<String, Any>, limit: Int): Map<String, Any> {
+    @Suppress("UNCHECKED_CAST")
+    val properties = parameters["properties"] as? Map<String, Any> ?: return parameters
+    @Suppress("UNCHECKED_CAST")
+    val maxChars = properties["max_chars"] as? Map<String, Any> ?: return parameters
+    val patched = maxChars + ("description" to
+        "返回的最大字符数；只能小于等于当前上限 $limit —— 缺省或传 0 都按 $limit 处理，传更大的值无效")
+    return parameters + ("properties" to (properties + ("max_chars" to patched)))
 }
 
 /** 与原仓库 skills_tools.py 对齐的只读 Skill 工具。 */
@@ -172,16 +203,13 @@ internal data class RealtimeAgentToolRuntime(
     val persistGeneratedImages: suspend (assistantMessageId: String) -> Unit = {}
 )
 
-/** 单次文件读取的默认字符上限（约 1.2 万 token，兼顾常用文件大小与上下文预算）。 */
-internal const val DEFAULT_FILE_READ_CHARS = 50_000
-
-/** 单次文件读取的硬上限：再大就会把模型窗口基本占满，应改用行区间/搜索定位。 */
-internal const val MAX_FILE_READ_CHARS = 200_000
-
 /**
  * Android 本地 Agent 工具执行器。
  *
  * 文件工具严格限制在当前会话工作区；命令在应用沙箱内执行，并经过高风险阻断与会话授权。
+ *
+ * 工具输出的字符上限统一由 [AgentToolLimits.toolOutputChars] 决定（设置 → Agent 设置），
+ * 各工具不再自带硬编码截断值。
  */
 internal class LocalAgentToolExecutor(
     private val sessionId: String,
@@ -712,7 +740,7 @@ internal class LocalAgentToolExecutor(
         // 提取文本内容
         val text = contentList.joinToString("\n\n") { item ->
             (item["text"] as? String).orEmpty()
-        }.take(12000)
+        }.take(AgentToolLimits.toolOutputChars())
 
         return success(
             "query" to query,
@@ -749,7 +777,7 @@ internal class LocalAgentToolExecutor(
     private fun searchWebViaSogou(query: String): Map<String, Any> {
         val encoded = URLEncoder.encode(query, StandardCharsets.UTF_8.name())
         val url = "https://www.sogou.com/web?query=$encoded"
-        val text = stripMarkup(fetchText(url)).take(12000)
+        val text = stripMarkup(fetchText(url)).take(AgentToolLimits.toolOutputChars())
         return success("query" to query, "source_url" to url, "source" to "sogou", "content" to text)
     }
 
@@ -762,7 +790,7 @@ internal class LocalAgentToolExecutor(
             requestBuilder.header(name, value.toString())
         }
         return withHttpResponse(requestBuilder.build()) { response ->
-            val content = response.body?.string().orEmpty().take(20000)
+            val content = response.body?.string().orEmpty().take(AgentToolLimits.toolOutputChars())
             mapOf(
                 "success" to response.isSuccessful,
                 "status" to response.code,
@@ -776,13 +804,14 @@ internal class LocalAgentToolExecutor(
      * web_fetch：抓取网页并抽取可读正文。
      *
      * 与 http_get 的区别：http_get 返回原始响应体（适合 API/JSON），
-     * web_fetch 面向"阅读网页"，去掉脚本样式标签后返回纯文本，默认 20000 字符。
+     * web_fetch 面向"阅读网页"，去掉脚本样式标签后返回纯文本。
+     * 两者的长度上限都取 [AgentToolLimits.toolOutputChars]，不再各写一份常量。
      */
     private fun webFetch(args: Map<String, Any>): Map<String, Any> {
         val url = args.string("url")
         if (url.isBlank()) return failure("URL 不能为空")
-        val maxChars = args.int("max_chars", LocalWebFetch.DEFAULT_MAX_CHARS)
-            .coerceIn(1_000, LocalWebFetch.MAX_CHARS_LIMIT)
+        val limit = AgentToolLimits.toolOutputChars()
+        val maxChars = AgentToolLimits.resolveRequestedMaxChars(args.int("max_chars", 0), limit)
         val startIndex = args.int("start_index", 0).coerceAtLeast(0)
         val requestBuilder = Request.Builder().url(url).get()
         @Suppress("UNCHECKED_CAST")
@@ -1381,10 +1410,11 @@ internal class LocalAgentToolExecutor(
             ?: return failure("路径为空或超出会话工作区")
         if (!target.isFile) return failure("文件不存在")
 
-        // 参数：max_chars 默认 50000（约 1.2 万 token），上限 200000。
-        // 收敛上限的原因：单次读取 10 万字会瞬间吃掉小窗口模型的整轮预算，
+        // 参数：max_chars 缺省（或 0）时取统一的工具输出上限（设置 → Agent 设置）。
+        // 收敛上限的原因：单次读取十几万字会瞬间吃掉小窗口模型的整轮预算，
         // 也会让后续每次工具轮次都重复携带这段内容。长文件应配合 start_line/end_line 分段读取。
-        val maxChars = args.int("max_chars", DEFAULT_FILE_READ_CHARS).coerceIn(0, MAX_FILE_READ_CHARS)
+        val limit = AgentToolLimits.toolOutputChars()
+        val maxChars = AgentToolLimits.resolveRequestedMaxChars(args.int("max_chars", 0), limit)
         // 行号参数：1-based，含两端；未指定时覆盖整个文件
         val startLine = args.int("start_line", 1).coerceAtLeast(1)
         val endLine = args.int("end_line", 0) // 0 或负数 → 读到末尾
@@ -1416,14 +1446,8 @@ internal class LocalAgentToolExecutor(
         val sliced: String = if (from >= to) "" else allLines.subList(from, to).joinToString("")
 
         // 应用字符上限截断
-        val truncated: Boolean
-        val content: String = if (maxChars > 0 && sliced.length > maxChars) {
-            truncated = true
-            sliced.take(maxChars)
-        } else {
-            truncated = false
-            sliced
-        }
+        val truncated: Boolean = sliced.length > maxChars
+        val content: String = if (truncated) sliced.take(maxChars) else sliced
 
         val basePairs: List<Pair<String, Any>> = listOf(
             "path" to relativeWorkspacePath(target),
@@ -1437,10 +1461,10 @@ internal class LocalAgentToolExecutor(
         )
         // 截断时附加明确提示：长文件建议按行区间继续读取，而不是把整个文件塞进上下文。
         val allPairs = if (truncated) {
-            val recommended = minOf(totalChars, MAX_FILE_READ_CHARS)
             basePairs + ("hint" to "内容已截断（仅返回 ${content.length}/$totalChars 字符）。" +
-                "建议优先用 grep/start_line 定位需要的部分；确需完整内容时再重新调用本工具并设置 max_chars=$recommended" +
-                "（单次上限 $MAX_FILE_READ_CHARS 字符），不要反复分片读取同一文件。")
+                "建议优先用 grep/start_line 定位需要的部分；确需完整内容时请提高" +
+                "「设置 → Agent 设置 → 工具输出截断字符数」（当前上限 $limit 字符）后重新调用，" +
+                "不要反复分片读取同一文件。")
         } else {
             basePairs
         }

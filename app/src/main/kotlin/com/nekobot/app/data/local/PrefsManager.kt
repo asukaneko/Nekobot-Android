@@ -6,6 +6,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.reflect.TypeToken
 import com.nekobot.app.data.local.security.SecurePreferenceStore
+import com.nekobot.app.data.local.ai.AgentToolLimits
 import com.nekobot.app.data.local.ai.decodeToolSet
 import com.nekobot.app.data.local.ai.encodeToolSet
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -238,6 +239,38 @@ class PrefsManager(context: Context) {
     var agentMaxToolCalls: Int
         get() = prefs.getInt(KEY_AGENT_MAX_TOOL_CALLS, 150)
         set(value) = prefs.edit().putInt(KEY_AGENT_MAX_TOOL_CALLS, value.coerceIn(1, 1000)).apply()
+
+    /**
+     * 所有「返回文本内容」的 Agent 工具的统一输出字符上限。默认 50000。
+     *
+     * 同时作为默认值与硬上限：工具调用参数里的 `max_chars` 只能在这个值以内生效，
+     * 缺省或传 0 都按本值处理。这样用户不必逐个工具去猜上限，
+     * 而模型也无法绕过设置把整个文件/网页塞进上下文。范围见 [AgentToolLimits]。
+     */
+    var agentToolOutputChars: Int
+        get() = prefs.getInt(KEY_AGENT_TOOL_OUTPUT_CHARS, AgentToolLimits.DEFAULT_TOOL_OUTPUT_CHARS)
+        set(value) = prefs.edit().putInt(
+            KEY_AGENT_TOOL_OUTPUT_CHARS,
+            value.coerceIn(AgentToolLimits.MIN_TOOL_OUTPUT_CHARS, AgentToolLimits.MAX_TOOL_OUTPUT_CHARS)
+        ).apply()
+
+    /**
+     * 进度卡里工具参数预览与工具结果预览的统一字符上限。默认 3000。
+     *
+     * 主 Agent 与子代理共用同一个值，避免出现"子代理卡片参数明显更短/结果完全没截断"的错位。
+     */
+    var agentProgressPreviewChars: Int
+        get() = prefs.getInt(
+            KEY_AGENT_PROGRESS_PREVIEW_CHARS,
+            AgentToolLimits.DEFAULT_PROGRESS_PREVIEW_CHARS
+        )
+        set(value) = prefs.edit().putInt(
+            KEY_AGENT_PROGRESS_PREVIEW_CHARS,
+            value.coerceIn(
+                AgentToolLimits.MIN_PROGRESS_PREVIEW_CHARS,
+                AgentToolLimits.MAX_PROGRESS_PREVIEW_CHARS
+            )
+        ).apply()
 
     // ============ Subagent 子代理配置 ============
 
@@ -883,6 +916,8 @@ class PrefsManager(context: Context) {
         private const val KEY_AGENT_REASONING_EFFORT = "reasoning_effort_agent"
         private const val KEY_CHARACTER_REASONING_EFFORT = "reasoning_effort_character"
         private const val KEY_AGENT_MAX_TOOL_CALLS = "agent_max_tool_calls"
+        private const val KEY_AGENT_TOOL_OUTPUT_CHARS = "agent_tool_output_chars"
+        private const val KEY_AGENT_PROGRESS_PREVIEW_CHARS = "agent_progress_preview_chars"
         private const val KEY_SUBAGENT_ENABLED = "subagent_enabled"
         private const val KEY_SUBAGENT_MAX_DEPTH = "subagent_max_depth"
         private const val KEY_SUBAGENT_MAX_TOOL_CALLS = "subagent_max_tool_calls"

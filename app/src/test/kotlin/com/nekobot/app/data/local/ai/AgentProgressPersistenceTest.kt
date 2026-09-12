@@ -30,9 +30,18 @@ class AgentProgressPersistenceTest {
 
         val persisted = card.toPersistedProgressCard()
 
-        assertEquals(16_000, persisted.steps.first().thinkingContent?.length)
-        assertTrue(persisted.steps[1].arguments?.get("preview").toString().length <= 1_500)
-        assertTrue(persisted.steps[1].fullResult.toString().length <= 3_000)
+        // 断言统一上限本身，而不是写死旧数字：改设置或调默认值时这里仍应成立。
+        assertEquals(
+            AgentToolLimits.PROGRESS_REASONING_CHARS,
+            persisted.steps.first().thinkingContent?.length
+        )
+        assertTrue(
+            persisted.steps[1].arguments?.get("preview").toString().length <=
+                AgentToolLimits.progressPreviewChars()
+        )
+        assertTrue(
+            persisted.steps[1].fullResult.toString().length <= AgentToolLimits.progressPreviewChars()
+        )
     }
 
     @Test

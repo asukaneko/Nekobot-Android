@@ -13,9 +13,6 @@ import java.io.File
 internal const val DEFAULT_SEARCH_LIMIT = 50
 internal const val MAX_SEARCH_LIMIT = 500
 
-/** grep 单行展示上限：超长行（压缩文件、单行 JSON）截断，避免一条命中吃掉整轮上下文。 */
-private const val MAX_GREP_LINE_CHARS = 400
-
 /** 默认跳过的目录：这些目录内容庞大且几乎与用户任务无关。 */
 internal val DEFAULT_SEARCH_EXCLUDED_DIRS = setOf(
     ".git", "node_modules", "build", ".gradle", "__pycache__", ".idea", "dist", "target", ".venv"
@@ -171,7 +168,7 @@ internal fun grepWorkspace(
                 GrepMatch(
                     relativePath = relative,
                     lineNumber = index + 1,
-                    line = line.trim().take(MAX_GREP_LINE_CHARS)
+                    line = line.trim().take(AgentToolLimits.GREP_LINE_PREVIEW_CHARS)
                 )
             )
             if (matches.size >= limit) truncated = true

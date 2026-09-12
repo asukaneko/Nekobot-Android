@@ -520,7 +520,7 @@ internal class LocalPipelineCallbacks(
      */
     private fun renderThinkingCardsForContext(
         thinkingCardsJson: String?,
-        maxChars: Int = 12_000
+        maxChars: Int = AgentToolLimits.PROGRESS_CONTEXT_BUDGET_CHARS
     ): String {
         if (thinkingCardsJson.isNullOrBlank()) return ""
         return try {
@@ -566,7 +566,10 @@ internal class LocalPipelineCallbacks(
                     @Suppress("UNCHECKED_CAST")
                     val arguments = step["arguments"] as? Map<String, Any>
                     if (!arguments.isNullOrEmpty()) {
-                        appendBounded("\n  参数: ${gson.toJson(arguments).take(1_000)}")
+                        appendBounded(
+                            "\n  参数: " + gson.toJson(arguments)
+                                .take(AgentToolLimits.PROGRESS_CONTEXT_ARGUMENT_CHARS)
+                        )
                     }
                     @Suppress("UNCHECKED_CAST")
                     val fullResult = step["full_result"] as? Map<String, Any>
@@ -579,14 +582,23 @@ internal class LocalPipelineCallbacks(
                             appendBounded("\n  读取内容:\n")
                             appendBounded(fileContent)
                             if (fullResult["truncated"] == true) {
-                                appendBounded("\n  [读取结果已截断，建议重新调用并设置更大的 max_chars 一次性读取完整内容，避免分片读取浪费上下文]")
+                                appendBounded(
+                                    "\n  [读取结果已截断；需要完整内容请让用户提高" +
+                                        "「设置 → Agent 设置 → 工具输出截断字符数」，" +
+                                        "或改用 start_line/end_line 分段读取，避免反复整份读取]"
+                                )
                             }
                         } else {
-                            appendBounded("\n  结果: ${gson.toJson(fullResult).take(2_000)}")
+                            appendBounded(
+                                "\n  结果: " + gson.toJson(fullResult)
+                                    .take(AgentToolLimits.PROGRESS_CONTEXT_RESULT_CHARS)
+                            )
                         }
                     }
                     if (detail.isNotBlank()) {
-                        appendBounded("\n  摘要: ${detail.take(240)}")
+                        appendBounded(
+                            "\n  摘要: " + detail.take(AgentToolLimits.PROGRESS_CONTEXT_SUMMARY_CHARS)
+                        )
                     }
                 }
             }
@@ -1740,8 +1752,9 @@ internal class LocalPipelineCallbacks(
             "status" to t.status.name.lowercase(),
             "model" to t.modelUsed,
             "tool_calls" to t.toolCalls,
-            if (t.status == SubagentTaskStatus.SUCCEEDED) "result" to t.result.take(20_000)
-            else "error" to (t.error ?: "子代理执行失败")
+            if (t.status == SubagentTaskStatus.SUCCEEDED) {
+                "result" to t.result.take(AgentToolLimits.toolOutputChars())
+            } else "error" to (t.error ?: "子代理执行失败")
         )
     }
 
@@ -1887,7 +1900,7 @@ internal class LocalPipelineCallbacks(
                 "status" to result.status.name.lowercase(),
                 "model" to result.modelName,
                 "tool_calls" to result.toolCalls,
-                "result" to result.content.take(20_000),
+                "result" to result.content.take(AgentToolLimits.toolOutputChars()),
                 "instruction" to "子代理执行完成。请基于 result 向用户汇报结论。"
             )
         } finally {

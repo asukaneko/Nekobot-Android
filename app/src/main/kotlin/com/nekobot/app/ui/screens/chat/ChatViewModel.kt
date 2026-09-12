@@ -177,6 +177,7 @@ import com.nekobot.app.data.local.db.LocalMessageImageEntity
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
 import com.nekobot.app.data.local.ai.LocalInteractiveSession
 import com.nekobot.app.data.local.ai.AgentRecoveryState
+import com.nekobot.app.data.local.ai.AgentToolLimits
 import com.nekobot.app.data.local.ai.toRecoveryState
 import com.nekobot.app.data.local.ai.RealtimeContextMessage
 import com.nekobot.app.data.local.ai.RealtimeFunctionCall
@@ -439,12 +440,13 @@ class ChatViewModel : BaseViewModel() {
         val steps = card.steps.toMutableList()
         val thinkingIndex = steps.indexOfLast { it.type.equals("thinking", ignoreCase = true) }
         val status = if (card.isComplete) "done" else "active"
+        val detail = reasoning.takeLast(AgentToolLimits.PROGRESS_REASONING_DETAIL_CHARS)
         val enrichedStep = if (thinkingIndex >= 0) {
             steps[thinkingIndex].copy(
                 name = steps[thinkingIndex].name?.takeIf(String::isNotBlank)
                     ?: string(R.string.chat_thinking),
                 status = steps[thinkingIndex].status?.takeIf(String::isNotBlank) ?: status,
-                detail = reasoning.takeLast(160),
+                detail = detail,
                 thinkingContent = reasoning
             )
         } else {
@@ -452,7 +454,7 @@ class ChatViewModel : BaseViewModel() {
                 type = "thinking",
                 name = string(R.string.chat_thinking),
                 status = status,
-                detail = reasoning.takeLast(160),
+                detail = detail,
                 thinkingContent = reasoning
             )
         }

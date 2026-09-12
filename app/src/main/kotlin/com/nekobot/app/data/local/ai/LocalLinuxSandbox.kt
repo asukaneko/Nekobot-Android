@@ -65,6 +65,7 @@ internal object LocalLinuxSandboxCoordinator {
         command: String,
         timeoutMs: Long,
         shouldStop: () -> Boolean,
+        maxOutputChars: Int = AgentToolLimits.toolOutputChars(),
     ): CommandResult {
         val candidateLock = Any()
         val lock = sessionLocks.putIfAbsent(sessionId, candidateLock) ?: candidateLock
@@ -79,7 +80,7 @@ internal object LocalLinuxSandboxCoordinator {
                 ?.takeIf { it.isAlive && it.workspace == workspace.canonicalFile }
                 ?: createShell(context, sessionId, workspace, runtime)
 
-            val shellResult = shell.execute(command, timeoutMs, shouldStop)
+            val shellResult = shell.execute(command, timeoutMs, shouldStop, maxOutputChars)
             if (shellResult.timedOut || shellResult.stopped || !shell.isAlive) {
                 shells.remove(sessionId, shell)
                 shell.stop()
@@ -512,12 +513,13 @@ internal class LocalPersistentLinuxShell(
         command: String,
         timeoutMs: Long,
         shouldStop: () -> Boolean,
+        maxOutputChars: Int = AgentToolLimits.toolOutputChars(),
     ): ShellResult {
         if (!isAlive) start()
         val activeWriter = writer
             ?: return ShellResult("Linux shell 未运行", -1, timedOut = false, stopped = false)
         val token = UUID.randomUUID().toString().replace("-", "")
-        val callback = PendingCommand(token)
+        val callback = PendingCommand(token, maxOutputChars)
         pending = callback
 
         try {
@@ -600,10 +602,10 @@ internal class LocalPersistentLinuxShell(
         val stopped: Boolean,
     )
 
-    private class PendingCommand(token: String) {
+    private class PendingCommand(token: String, maxOutputChars: Int) {
         val markerPrefix = "__NEKOBOT_DONE_${token}_EXIT_"
         val latch = CountDownLatch(1)
-        private val collector = LocalLinuxCommandOutputCollector(markerPrefix, MAX_OUTPUT_CHARS)
+        private val collector = LocalLinuxCommandOutputCollector(markerPrefix, maxOutputChars)
 
         @Volatile
         var exitCode: Int = -1
@@ -625,7 +627,6 @@ internal class LocalPersistentLinuxShell(
 
     companion object {
         private const val TAG = "LocalPersistentLinux"
-        private const val MAX_OUTPUT_CHARS = 20_000
     }
 }
 

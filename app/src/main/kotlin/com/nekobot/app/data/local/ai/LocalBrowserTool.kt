@@ -48,8 +48,6 @@ internal class LocalBrowserTool(
         private const val DEFAULT_VIEWPORT_WIDTH_CSS = 412
         private const val DEFAULT_VIEWPORT_HEIGHT_CSS = 800
         private const val MAX_FULL_PAGE_HEIGHT_PX = 4096
-        private const val DEFAULT_TEXT_LIMIT = 30_000
-        private const val DEFAULT_HTML_LIMIT = 60_000
         private const val DEFAULT_ELEMENT_LIMIT = 80
         private const val DEFAULT_LINK_LIMIT = 200
         private const val MAX_TABS = 5
@@ -143,8 +141,7 @@ internal class LocalBrowserTool(
                 "get_readable" -> getReadable()
                 "get_html", "get_source" -> getHtml(
                     selector = args.string("selector").ifBlank { null },
-                    maxChars = args.int("max_chars", DEFAULT_HTML_LIMIT)
-                        .coerceIn(1_000, 120_000)
+                    maxChars = AgentToolLimits.resolveRequestedMaxChars(args.int("max_chars", 0))
                 )
 
                 "get_links" -> getLinks(
@@ -610,12 +607,13 @@ internal class LocalBrowserTool(
             val relativePath = workspace.toPath().relativize(output.toPath()).toString()
                 .replace(File.separatorChar, '/')
             val mime = response.header("Content-Type").orEmpty()
+            val previewLimit = AgentToolLimits.toolOutputChars()
             val preview = if (
                 mime.startsWith("text/") ||
                 mime.contains("json") ||
                 mime.contains("xml")
             ) {
-                runCatching { output.readText(Charsets.UTF_8).take(30_000) }.getOrDefault("")
+                runCatching { output.readText(Charsets.UTF_8).take(previewLimit) }.getOrDefault("")
             } else ""
             return success(
                 "action" to "fetch",
@@ -626,7 +624,7 @@ internal class LocalBrowserTool(
                 "size" to total,
                 "path" to relativePath,
                 "absolute_path" to output.absolutePath,
-                "truncated" to (preview.length == 30_000)
+                "truncated" to (preview.length == previewLimit)
             )
         }
     }
@@ -701,13 +699,14 @@ internal class LocalBrowserTool(
             waitForDomToSettle(250)
         }
         val items = collected.values.take(500)
+        val textLimit = AgentToolLimits.toolOutputChars()
         return success(
             "action" to "scroll_and_collect",
             "content" to items.joinToString("\n\n") { item ->
                 listOf(item["text"], item["url"])
                     .mapNotNull { it?.toString()?.takeIf(String::isNotBlank) }
                     .joinToString("\n")
-            }.take(DEFAULT_TEXT_LIMIT),
+            }.take(textLimit),
             "items" to items,
             "count" to items.size,
             "scroll_count" to steps
@@ -901,6 +900,7 @@ internal class LocalBrowserTool(
     private fun getText(selector: String?): Map<String, Any> {
         val target = selector?.let { "document.querySelector(${gson.toJson(it)})" }
             ?: "document.body"
+        val textLimit = AgentToolLimits.toolOutputChars()
         val raw = evaluate(
             """
                 (() => {
@@ -909,9 +909,9 @@ internal class LocalBrowserTool(
                     if (!el) return JSON.stringify({error: "未找到元素"});
                     const full = (el.innerText || el.textContent || "").trim();
                     return JSON.stringify({
-                      text: full.slice(0, $DEFAULT_TEXT_LIMIT),
+                      text: full.slice(0, $textLimit),
                       total_chars: full.length,
-                      truncated: full.length > $DEFAULT_TEXT_LIMIT
+                      truncated: full.length > $textLimit
                     });
                   } catch (error) {
                     return JSON.stringify({error: String(error)});
@@ -923,6 +923,7 @@ internal class LocalBrowserTool(
     }
 
     private fun getReadable(): Map<String, Any> {
+        val textLimit = AgentToolLimits.toolOutputChars()
         val raw = evaluate(
             """
                 (() => {
@@ -937,9 +938,9 @@ internal class LocalBrowserTool(
                     return JSON.stringify({
                       title: document.title || "",
                       url: location.href,
-                      text: full.slice(0, $DEFAULT_TEXT_LIMIT),
+                      text: full.slice(0, $textLimit),
                       total_chars: full.length,
-                      truncated: full.length > $DEFAULT_TEXT_LIMIT
+                      truncated: full.length > $textLimit
                     });
                   } catch (error) {
                     return JSON.stringify({error: String(error)});
