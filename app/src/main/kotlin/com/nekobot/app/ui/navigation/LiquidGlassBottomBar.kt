@@ -2,6 +2,8 @@ package com.nekobot.app.ui.navigation
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -24,16 +26,22 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.FloatState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,7 +49,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
@@ -55,6 +65,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.nekobot.app.ui.components.GlassBackdrop
 import com.nekobot.app.ui.components.GlassPane
+import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private val BarHeight = 64.dp
@@ -76,6 +88,11 @@ val LiquidGlassBottomBarClearance: Dp = BarHeight + BarVerticalPadding * 2
  * 苹果风格「圆岛」底部导航：悬浮的液态玻璃胶囊 + 在标签间平滑滚动切换的选中指示器。
  * 指示器的左右两条边采用不同刚度的弹簧，滑动过程中会短暂拉伸再回弹，营造液态形变效果。
  *
+ * 指示器的位置由「左右边缘的连续位置」两个 State 描述，且只在这些 State 的绘制阶段
+ * （见 `SlidingIndicator` 的 graphicsLayer）读取：拖动时逐帧写入既不会触发重组，
+ * 也不会触发重新布局，因此滑块可以严格跟手；松手后从手指所在位置直接弹到最近的标签
+ * （不会先弹回旧标签再慢半拍地追过去）。
+ *
  * [backdrop] 不为 null 时使用真正的液态玻璃（采样并模糊下层页面内容 + 边缘折射 + 高光），
  * 由 `NekobotNavGraph` 在 API 31+ 且非低内存设备时注入；否则退回半透明渐变 + 高光描边的
  * 静态玻璃质感（兼容 API 26~30 与低内存设备）。
@@ -92,15 +109,15 @@ fun LiquidGlassBottomBar(
     val selectedIndex = items.indexOfFirst { it.route == selectedRoute }.coerceAtLeast(0)
     val density = LocalDensity.current
 
-    // 拖动状态：dragFraction 为连续的标签位置（如 2.4 表示在第 2、3 个标签之间），null 表示未拖动。
-    var dragFraction by remember { mutableStateOf<Float?>(null) }
+    // 手势是否正在拖动（拖动期间指示器位置完全交给手指，收敛动画让位）。
+    var dragging by remember { mutableStateOf(false) }
 
     // 按压 / 拖动时玻璃进入“液态”：变透明、轻微放大、折射增强（iOS 手感）。
     // 5 个标签共用同一个交互源，任一标签被按下都算“正在交互”。
     val barInteraction = remember { MutableInteractionSource() }
     val pressed by barInteraction.collectIsPressedAsState()
     val liquidProgress = animateFloatAsState(
-        targetValue = if (pressed || dragFraction != null) 1f else 0f,
+        targetValue = if (pressed || dragging) 1f else 0f,
         animationSpec = spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessMediumLow),
         label = "liquidProgress"
     )
@@ -121,35 +138,133 @@ fun LiquidGlassBottomBar(
                 val itemWidth: Dp = maxWidth / items.size
                 val itemWidthPx = with(density) { itemWidth.toPx() }
                 val lastIndex = items.lastIndex
+                // 指示器左右各内缩 IndicatorInset，换算成「标签宽度」的比例。
+                val insetFraction = if (itemWidthPx > 0f) {
+                    with(density) { IndicatorInset.toPx() } / itemWidthPx
+                } else {
+                    0f
+                }
 
-                // 拖动手势：拖动过程中仅更新指示器视觉位置（不触发导航/加载），
-                // 松手后才切换到最近的标签——避免服务器模式在拖动中反复触发加载导致卡顿。
-                val dragModifier = Modifier.pointerInput(items.size, itemWidthPx) {
-                    detectHorizontalDragGestures(
-                        onDragStart = { offset ->
-                            dragFraction = (offset.x / itemWidthPx - 0.5f)
-                                .coerceIn(0f, lastIndex.toFloat())
-                        },
-                        onDragEnd = {
-                            val nearest = (dragFraction ?: selectedIndex.toFloat())
-                                .roundToInt().coerceIn(0, lastIndex)
-                            dragFraction = null
-                            if (items[nearest].route != selectedRoute) {
-                                onItemSelected(items[nearest])
-                            }
-                        },
-                        onDragCancel = { dragFraction = null },
-                        onHorizontalDrag = { change, _ ->
-                            change.consume()
-                            dragFraction = (change.position.x / itemWidthPx - 0.5f)
-                                .coerceIn(0f, lastIndex.toFloat())
+                // 指示器左右边缘的连续位置（单位：标签宽度）。整数值 n 表示停在标签 n 的槽位，
+                // 0.5 的整数偏移表示正处于两个标签之间。
+                val leftEdge = remember { mutableFloatStateOf(selectedIndex + insetFraction) }
+                val rightEdge = remember { mutableFloatStateOf(selectedIndex + 1f - insetFraction) }
+
+                // 每次「手指接管 / 弹性收敛」自增：让仍在运行的旧收敛动画立即失效，
+                // 避免它与手指抢位置（连续快速拖动时不会抖动）。
+                val motionGen = remember { mutableIntStateOf(0) }
+                // 指示器要弹性收敛到的标签；seq 用于反复触发收敛（即使目标标签没变也要弹回槽位）。
+                val settleTarget = remember { mutableIntStateOf(selectedIndex) }
+                val settleSeq = remember { mutableIntStateOf(0) }
+
+                // 手势/动画回调里一律读取最新值，避免闭包捕获到过期的选中项或回调。
+                val currentIndex by rememberUpdatedState(selectedIndex)
+                val currentItems by rememberUpdatedState(items)
+                val currentOnSelect by rememberUpdatedState(onItemSelected)
+                val haptics = LocalHapticFeedback.current
+
+                // 收敛动画：左右两条边用不同刚度的弹簧，移动途中先拉伸再回弹（液态形变）。
+                // 动画只写 leftEdge / rightEdge，而它们只在绘制阶段被读取，因此逐帧动画不重组。
+                LaunchedEffect(settleSeq.intValue) {
+                    if (settleSeq.intValue == 0) return@LaunchedEffect
+                    val gen = motionGen.intValue
+                    val target = settleTarget.intValue
+                    launch {
+                        animate(
+                            typeConverter = Float.VectorConverter,
+                            initialValue = leftEdge.floatValue,
+                            targetValue = target + insetFraction,
+                            animationSpec = spring(
+                                dampingRatio = 0.72f,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        ) { value, _ ->
+                            if (motionGen.intValue == gen) leftEdge.floatValue = value
                         }
-                    )
+                    }
+                    launch {
+                        animate(
+                            typeConverter = Float.VectorConverter,
+                            initialValue = rightEdge.floatValue,
+                            targetValue = target + 1f - insetFraction,
+                            animationSpec = spring(
+                                dampingRatio = 0.85f,
+                                stiffness = Spring.StiffnessLow
+                            )
+                        ) { value, _ ->
+                            if (motionGen.intValue == gen) rightEdge.floatValue = value
+                        }
+                    }
+                }
+
+                // 选中项被外部改变（点击标签、左右滑动分页）时，指示器平滑跟随。
+                // 拖动过程中不跟：位置归手指，松手时由手势自己收敛。
+                LaunchedEffect(selectedIndex) {
+                    if (!dragging && settleTarget.intValue != selectedIndex) {
+                        settleTarget.intValue = selectedIndex
+                        settleSeq.intValue++
+                    }
+                }
+
+                // 拖动手势：越过 touch slop 后由手指绝对接管指示器（中心即手指，无插值延迟），
+                // 松手后收敛到最近的标签并切换页面。
+                // 手势跑在 Initial 阶段：普通点击完全不消费事件（照旧由标签自己的 selectable 处理），
+                // 一旦判定为拖动就吃掉后续事件，保证「拖完松手」不会再额外触发一次标签点击。
+                val dragModifier = Modifier.pointerInput(items.size, itemWidthPx) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(
+                            requireUnconsumed = false,
+                            pass = PointerEventPass.Initial
+                        )
+                        val downX = down.position.x
+                        val slop = viewConfiguration.touchSlop
+                        var active = false
+                        var fraction = currentIndex.toFloat()
+
+                        try {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) {
+                                    // 抬起：拖动中必须吃掉它，否则原标签会再触发一次点击
+                                    if (active) change.consume()
+                                    break
+                                }
+                                if (!active && abs(change.position.x - downX) > slop) {
+                                    active = true
+                                    dragging = true
+                                    motionGen.intValue++ // 正在收敛的动画立即让位给手指
+                                }
+                                if (active) {
+                                    change.consume()
+                                    fraction = (change.position.x / itemWidthPx - 0.5f)
+                                        .coerceIn(0f, lastIndex.toFloat())
+                                    leftEdge.floatValue = fraction + insetFraction
+                                    rightEdge.floatValue = fraction + 1f - insetFraction
+                                }
+                            }
+                        } finally {
+                            // 手势被系统/重组打断时也要收尾，避免玻璃卡在「液态」状态。
+                            if (active) {
+                                dragging = false
+                                motionGen.intValue++
+                                val target = fraction.roundToInt().coerceIn(0, lastIndex)
+                                // 先落位、再切换页面：即使分页器有延迟，滑块也立刻收在目标上，
+                                // 不会先弹回旧标签再慢半拍地追过去。
+                                settleTarget.intValue = target
+                                settleSeq.intValue++
+                                if (target != currentIndex) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    currentOnSelect(currentItems[target])
+                                }
+                            }
+                        }
+                    }
                 }
 
                 SlidingIndicator(
-                    selectedIndex = selectedIndex,
-                    dragFraction = dragFraction,
+                    leftEdge = leftEdge,
+                    rightEdge = rightEdge,
                     itemWidth = itemWidth,
                     dark = dark,
                     backdrop = backdrop,
@@ -244,36 +359,21 @@ private fun GlassPill(
  * 切换时前导边先动、后随边慢动，中途胶囊被“拉长”，到位后回弹收拢，形成液态形变。
  * 有 [backdrop] 时指示器本身就是一块透明玻璃光斑（轻模糊 + 强折射），
  * 按压/拖动时会变得更透明、更大并放大折射背景——即 iOS 的“液态”手感。
+ *
+ * 布局尺寸固定（一个标签宽减掉内缩），实际位置与拉伸全部由 graphicsLayer 的
+ * translationX / scaleX 表达，并在绘制阶段读取 [leftEdge] / [rightEdge]：
+ * 拖动逐帧更新只失效这一层，不重组、不重新布局，所以跟手且不掉帧。
  */
 @Composable
 private fun SlidingIndicator(
-    selectedIndex: Int,
-    dragFraction: Float?,
+    leftEdge: FloatState,
+    rightEdge: FloatState,
     itemWidth: Dp,
     dark: Boolean,
     backdrop: GlassBackdrop?,
     liquidProgress: () -> Float,
 ) {
-    // 拖动时用连续位置直接跟随手指，松手后回落到选中标签。
-    val position = dragFraction ?: selectedIndex.toFloat()
-    val targetLeft = itemWidth * position + IndicatorInset
-    val targetRight = targetLeft + itemWidth - IndicatorInset * 2
-    val isDragging = dragFraction != null
-
-    // 拖动时直接取原始位置逐帧跟手（零动画延迟，最高帧率）；
-    // 松手切换时才启用错峰弹簧形成液态拉伸。
-    val animatedLeft by animateDpAsState(
-        targetValue = targetLeft,
-        animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
-        label = "indicatorLeft"
-    )
-    val animatedRight by animateDpAsState(
-        targetValue = targetRight,
-        animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessLow),
-        label = "indicatorRight"
-    )
-    val leftEdge = if (isDragging) targetLeft else animatedLeft
-    val rightEdge = if (isDragging) targetRight else animatedRight
+    val slotWidth = (itemWidth - IndicatorInset * 2).coerceAtLeast(1.dp)
 
     val indicatorFill = if (dark) {
         Brush.horizontalGradient(
@@ -294,9 +394,19 @@ private fun SlidingIndicator(
 
     Box(
         modifier = Modifier
-            .offset(x = leftEdge)
-            .width((rightEdge - leftEdge).coerceAtLeast(0.dp))
+            .width(slotWidth)
             .fillMaxHeight()
+            .graphicsLayer {
+                // 连续位置在这里才被读取：拖动时每帧写 State 只会让这一层失效。
+                val itemWidthPx = itemWidth.toPx()
+                val leftPx = leftEdge.floatValue * itemWidthPx
+                val widthPx = ((rightEdge.floatValue - leftEdge.floatValue) * itemWidthPx)
+                    .coerceAtLeast(1f)
+                translationX = leftPx
+                transformOrigin = TransformOrigin(0f, 0.5f)
+                // 两条边错峰运动时宽度会短暂变化，这里用横向缩放表达液态拉伸。
+                scaleX = widthPx / slotWidth.toPx()
+            }
             .padding(vertical = IndicatorInset + 2.dp)
     ) {
         if (backdrop != null) {
