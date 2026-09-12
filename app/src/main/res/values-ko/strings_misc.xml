@@ -76,6 +76,7 @@
     <string name="tokens_source_plot">플롯</string>
     <string name="tokens_source_state">상태 평가</string>
     <string name="tokens_source_memory">메모리 추출</string>
+    <string name="tokens_source_skill">스킬 정리</string>
     <string name="tokens_source_web">웹 검색</string>
     <string name="tokens_source_vision">시각 인식</string>
     <string name="tokens_source_stt">음성 텍스트 변환</string>

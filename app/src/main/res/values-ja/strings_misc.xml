@@ -76,6 +76,7 @@
     <string name="tokens_source_plot">プロット</string>
     <string name="tokens_source_state">状態評価</string>
     <string name="tokens_source_memory">記憶抽出</string>
+    <string name="tokens_source_skill">スキル化</string>
     <string name="tokens_source_web">Web 検索</string>
     <string name="tokens_source_vision">画像認識</string>
     <string name="tokens_source_stt">音声認識</string>

@@ -527,6 +527,11 @@
     <string name="chat_hook_notif_close">通知を閉じる</string>
     <string name="chat_hook_notif_event_label">イベント</string>
 
+    <!-- ==================== Skill 自動要約の通知（コンテキスト圧縮のヒントと同じ形） ==================== -->
+    <string name="chat_auto_skill_running">スキルを自動要約中…</string>
+    <string name="chat_auto_skill_created">スキル「%1$s」を自動作成しました</string>
+    <string name="chat_auto_skill_updated">スキル「%1$s」を自動更新しました</string>
+
     <!-- ==================== マルチメディアコンテンツ (MultimediaContent) ==================== -->
     <string name="chat_media_image">画像</string>
     <string name="chat_media_pause">一時停止</string>

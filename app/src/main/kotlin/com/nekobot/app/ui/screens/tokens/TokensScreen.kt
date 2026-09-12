@@ -1551,6 +1551,7 @@ private fun sourceLabel(source: String): String = when (source.lowercase()) {
     "plot" -> ServiceContainer.getString(R.string.tokens_source_plot)
     "state" -> ServiceContainer.getString(R.string.tokens_source_state)
     "memory" -> ServiceContainer.getString(R.string.tokens_source_memory)
+    "skill" -> ServiceContainer.getString(R.string.tokens_source_skill)
     "web" -> ServiceContainer.getString(R.string.tokens_source_web)
     "vision" -> ServiceContainer.getString(R.string.tokens_source_vision)
     "stt" -> ServiceContainer.getString(R.string.tokens_source_stt)

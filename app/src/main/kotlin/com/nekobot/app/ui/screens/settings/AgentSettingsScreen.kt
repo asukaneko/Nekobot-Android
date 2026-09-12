@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Timeline
@@ -230,6 +231,25 @@ fun AgentSettingsScreen(onBack: () -> Unit) {
                             onCheckedChange = {
                                 autoMemory = it
                                 ServiceContainer.prefs.agentAutoMemoryEnabled = it
+                            }
+                        )
+                    }
+                )
+                // 自动总结 Skill：与自动长期记忆同组，沉淀"怎么做事"的流程型知识。
+                var autoSkill by remember {
+                    mutableStateOf(ServiceContainer.prefs.agentAutoSkillEnabled)
+                }
+                AgentSettingRow(
+                    icon = Icons.Filled.AutoAwesome,
+                    tint = MaterialTheme.colorScheme.tertiary,
+                    title = stringResource(R.string.agent_settings_auto_skill),
+                    desc = stringResource(R.string.agent_settings_auto_skill_desc),
+                    trailing = {
+                        Switch(
+                            checked = autoSkill,
+                            onCheckedChange = {
+                                autoSkill = it
+                                ServiceContainer.prefs.agentAutoSkillEnabled = it
                             }
                         )
                     }

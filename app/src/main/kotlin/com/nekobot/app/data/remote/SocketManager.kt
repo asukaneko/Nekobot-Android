@@ -296,6 +296,14 @@ sealed class RealtimeEvent {
     data class AskUserQuestionRequired(
         val request: com.nekobot.app.data.local.ai.AskUserQuestionRequest
     ) : RealtimeEvent()
+    /**
+     * 自动技能沉淀状态（仅本地 Agent 管线发出）。
+     * UI 在消息列表末尾渲染与"上下文压缩"同形态的内联提示：
+     * RUNNING 显示"正在总结技能"，DONE 显示刚落库的技能名并持久保留。
+     */
+    data class AutoSkillDistillStatus(
+        val notice: com.nekobot.app.data.local.ai.AgentSkillNotice
+    ) : RealtimeEvent()
 }
 
 /** 返回事件所属会话；远程聊天使用它做严格隔离，避免全局 SharedFlow 串到其他页面。 */
@@ -321,6 +329,7 @@ fun RealtimeEvent.targetSessionId(): String? = when (this) {
     is RealtimeEvent.AgentGoalUpdated -> sessionId
     is RealtimeEvent.AgentSpecUpdated -> sessionId
     is RealtimeEvent.AskUserQuestionRequired -> request.sessionId
+    is RealtimeEvent.AutoSkillDistillStatus -> notice.sessionId
     is RealtimeEvent.Usage -> null
 }
 

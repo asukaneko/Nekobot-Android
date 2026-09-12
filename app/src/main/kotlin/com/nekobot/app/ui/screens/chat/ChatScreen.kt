@@ -293,6 +293,7 @@ fun ChatScreen(
     val hookNotifications by viewModel.hookNotifications.collectAsStateWithLifecycle()
     val agentRecovery by viewModel.agentRecovery.collectAsStateWithLifecycle()
     val agentContextCompressionInProgress by viewModel.agentContextCompressionInProgress.collectAsStateWithLifecycle()
+    val autoSkillNotice by viewModel.autoSkillNotice.collectAsStateWithLifecycle()
     val agentTodos by viewModel.agentTodos.collectAsStateWithLifecycle()
     // Agent 会话目标/规格任务（/goal、/spec 命令设置，输入框上方横幅展示）
     val agentGoal by viewModel.agentGoal.collectAsStateWithLifecycle()
@@ -1227,6 +1228,13 @@ fun ChatScreen(
                             ) {
                                 Spacer(Modifier.height(4.dp))
                                 AgentContextCompressionDivider(inProgress = true)
+                            }
+                            // 自动技能沉淀提示：与上下文压缩提示同一形态，渲染在列表末尾。
+                            autoSkillNotice?.let { notice ->
+                                if (index == renderMessages.lastIndex) {
+                                    Spacer(Modifier.height(4.dp))
+                                    AutoSkillDistillDivider(state = notice)
+                                }
                             }
                             if (
                                 msg.isUser &&
@@ -4897,6 +4905,60 @@ private fun AgentContextCompressionDivider(inProgress: Boolean) {
                 if (inProgress) R.string.chat_agent_context_compressing
                 else R.string.chat_agent_context_compressed
             ),
+            style = MaterialTheme.typography.labelSmall,
+            color = color
+        )
+        Spacer(Modifier.width(10.dp))
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = color.copy(alpha = 0.38f)
+        )
+    }
+}
+
+/**
+ * 自动技能沉淀提示条：与 [AgentContextCompressionDivider] 同形态（居中胶囊分隔条）。
+ *
+ * - 审查进行中：转圈 + "正在总结技能"；
+ * - 已完成：图标 + "已自动沉淀/更新技能「X」"，持久保留直到本会话下一次沉淀结果覆盖。
+ */
+@Composable
+private fun AutoSkillDistillDivider(state: AutoSkillUiState) {
+    val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = color.copy(alpha = 0.38f)
+        )
+        Spacer(Modifier.width(10.dp))
+        if (state.running) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(14.dp),
+                strokeWidth = 1.5.dp,
+                color = color
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Filled.AutoAwesome,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                tint = color
+            )
+        }
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = if (state.running) {
+                stringResource(R.string.chat_auto_skill_running)
+            } else if (state.created) {
+                stringResource(R.string.chat_auto_skill_created, state.skillName)
+            } else {
+                stringResource(R.string.chat_auto_skill_updated, state.skillName)
+            },
             style = MaterialTheme.typography.labelSmall,
             color = color
         )

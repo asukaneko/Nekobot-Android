@@ -280,6 +280,60 @@ class PrefsManager(context: Context) {
         get() = prefs.getBoolean(KEY_AGENT_AUTO_MEMORY, true)
         set(value) = prefs.edit().putBoolean(KEY_AGENT_AUTO_MEMORY, value).apply()
 
+    /**
+     * 是否在 Agent 会话中自动把可复用的做法沉淀成 Skill。默认开启。
+     *
+     * 触发采用计数式（参考 Hermes 的 creation_nudge_interval）：单轮工具调用达到复杂度阈值，
+     * 或累计工具调用达到间隔时后台审查一次；用户明确要求沉淀时立即审查。关闭后完全停用。
+     */
+    var agentAutoSkillEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AGENT_AUTO_SKILL, true)
+        set(value) = prefs.edit().putBoolean(KEY_AGENT_AUTO_SKILL, value).apply()
+
+    /**
+     * 读取某会话自上次技能沉淀审查以来累计的工具调用数。
+     *
+     * 与 Hermes 的 `_iters_since_skill` 同义：跨轮累积，触发审查后清零。
+     */
+    fun getAgentSkillReviewProgress(sessionId: String): Int =
+        prefs.getInt("agent_skill_review_progress_$sessionId", 0).coerceAtLeast(0)
+
+    /** 保存技能沉淀审查进度（触发后写 0 表示已重置）。 */
+    fun setAgentSkillReviewProgress(sessionId: String, toolCalls: Int) {
+        prefs.edit()
+            .putInt("agent_skill_review_progress_$sessionId", toolCalls.coerceAtLeast(0))
+            .apply()
+    }
+
+    /**
+     * 读取某会话最近一次自动沉淀结果（技能名 + 是否新建）；没有则返回 null。
+     *
+     * 聊天界面的沉淀提示按此持久化显示：不自动消失，退出页面或重启后重新进入会话仍然可见。
+     * 名称用 `\u0000` 分隔（技能名不允许包含控制字符，因此不会与名称本身冲突）。
+     */
+    fun getAgentSkillNotice(sessionId: String): Pair<String, Boolean>? {
+        val raw = prefs.getString("agent_skill_notice_$sessionId", null) ?: return null
+        val separator = raw.indexOf('\u0000')
+        if (separator <= 0) return null
+        return raw.substring(0, separator) to raw.substring(separator + 1).toBoolean()
+    }
+
+    /** 保存自动沉淀结果，供聊天界面持久显示。 */
+    fun setAgentSkillNotice(sessionId: String, skillName: String, created: Boolean) {
+        if (skillName.isBlank()) return
+        prefs.edit()
+            .putString("agent_skill_notice_$sessionId", "$skillName\u0000$created")
+            .apply()
+    }
+
+    /** 清除某会话的自动沉淀提示（删除会话时调用，避免残留无用键）。 */
+    fun clearAgentSkillNotice(sessionId: String) {
+        prefs.edit()
+            .remove("agent_skill_notice_$sessionId")
+            .remove("agent_skill_review_progress_$sessionId")
+            .apply()
+    }
+
     // ============ 会话级命令授权记忆 ============
 
     /**
@@ -835,6 +889,7 @@ class PrefsManager(context: Context) {
         private const val KEY_SUBAGENT_DEFAULT_BACKGROUND = "subagent_default_background"
         private const val KEY_AGENT_NETWORK_ACCESS = "agent_network_access_enabled"
         private const val KEY_AGENT_AUTO_MEMORY = "agent_auto_memory_enabled"
+        private const val KEY_AGENT_AUTO_SKILL = "agent_auto_skill_enabled"
         private const val KEY_SMART_ROUTING_DAILY_BUDGET = "smart_routing_daily_budget"
         private const val KEY_SMART_ROUTING_BUDGET_ALERT = "smart_routing_budget_alert"
         private const val KEY_RAG_SEMANTIC_WEIGHT = "rag_semantic_weight"

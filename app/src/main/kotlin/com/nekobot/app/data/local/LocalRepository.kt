@@ -760,13 +760,13 @@ class LocalRepository(
     @Volatile
     private var currentSessionId: String = ""
 
-    /** 二级 LLM 调用（state/memory）token 记账回调 */
+    /** 二级 LLM 调用（state/memory/skill）token 记账回调 */
     private fun recordSecondaryTokenUsage(source: String, model: String, actualModel: String, input: Int, output: Int) {
         if (input == 0 && output == 0) return
-        // source 映射到 purpose：state → utility，memory → memory
+        // source 映射到 purpose：state → utility，memory/skill → memory（都属后台沉淀类调用）
         val purpose = when (source) {
             "state" -> com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_UTILITY
-            "memory" -> com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_MEMORY
+            "memory", "skill" -> com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_MEMORY
             else -> com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_CHAT
         }
         appendTokenUsageRecord(
@@ -878,6 +878,17 @@ class LocalRepository(
     val askUserQuestionEvents: kotlinx.coroutines.flow.SharedFlow<com.nekobot.app.data.local.ai.AskUserQuestionRequest> =
         _askUserQuestionEvents
 
+    /**
+     * 自动技能沉淀通知流：Agent 回合结束后的后台审查新建/更新了 Skill 时发出，
+     * 由 ChatViewModel 收集并在会话界面提示用户（技能目录本身可在「扩展功能 → Skills」查看）。
+     */
+    private val _autoSkillEvents =
+        kotlinx.coroutines.flow.MutableSharedFlow<com.nekobot.app.data.local.ai.AgentSkillNotice>(
+            extraBufferCapacity = 8
+        )
+    val autoSkillEvents: kotlinx.coroutines.flow.SharedFlow<com.nekobot.app.data.local.ai.AgentSkillNotice> =
+        _autoSkillEvents
+
     /** 本地模式会话自动命名器（跨会话保持 autoNamed/lastRenameCount 状态） */
     private val sessionNameGenerator by lazy {
         com.nekobot.app.data.local.ai.SessionNameGenerator(
@@ -940,6 +951,92 @@ class LocalRepository(
                 agentMemoryWriter.extractAndAppend(sessionId, userMessage, assistantMessage)
             }.onFailure {
                 LocalLogger.w(TAG, "Agent 长期记忆抽取失败（不影响主流程）: ${it.message}")
+            }
+        }
+    }
+
+    /**
+     * Agent 会话「自动总结 Skill」写入器：回合结束后异步做一次技能沉淀审查，
+     * 把可复用的流程写进本地 Skills（优先更新已有同类 Skill，其次新建）。
+     *
+     * 触发策略参考 Hermes 的后台 Skill Review：按工具调用计数（累计阈值 + 单轮复杂度）
+     * 触发，用户明确要求时立即触发；本审查自身不产生工具调用，因此不会有递归沉淀。
+     */
+    private val agentSkillWriter by lazy {
+        com.nekobot.app.data.local.ai.AgentSkillWriter(
+            aiClient = aiClient,
+            listSkills = { loadAgentSkillBriefs() },
+            applyDraft = { draft -> applyAgentSkillDraft(draft) },
+            aiModelProvider = { aiModelDao.getActive() },
+            failoverExecutor = chatFailoverExecutor,
+            onTokenUsage = ::recordSecondaryTokenUsage
+        )
+    }
+
+    /**
+     * 触发一次技能沉淀审查（后台执行，失败不影响主流程）。
+     *
+     * @param toolTrace 本轮的 Agent 工具调用轨迹（用于让审查模型看到"怎么做的"）
+     */
+    private fun scheduleAgentSkillReview(
+        sessionId: String,
+        userMessage: String,
+        assistantMessage: String,
+        toolTrace: List<Map<String, Any>>
+    ) {
+        if (!ServiceContainer.prefs.agentAutoSkillEnabled) return
+        val extractor = com.nekobot.app.data.local.ai.AgentSkillExtractor
+        val turnToolCalls = completedAgentToolCallCount(toolTrace)
+        val explicit = extractor.isExplicitLearnRequest(userMessage)
+        val accumulated = ServiceContainer.prefs.getAgentSkillReviewProgress(sessionId) + turnToolCalls
+        if (!extractor.shouldReview(explicit, turnToolCalls, accumulated, userMessage, assistantMessage)) {
+            // 未达阈值：保留累计进度，跨轮累积到下一次审查。
+            ServiceContainer.prefs.setAgentSkillReviewProgress(sessionId, accumulated)
+            return
+        }
+        // 达到阈值（或用户明确要求）：重置计数，避免短时间内连续审查。
+        ServiceContainer.prefs.setAgentSkillReviewProgress(sessionId, 0)
+        // 先通知界面"正在总结技能"（与上下文压缩提示同一形态），再后台跑审查。
+        _autoSkillEvents.tryEmit(
+            com.nekobot.app.data.local.ai.AgentSkillNotice(
+                sessionId = sessionId,
+                skillName = "",
+                created = false,
+                phase = com.nekobot.app.data.local.ai.AgentSkillPhase.RUNNING
+            )
+        )
+        ServiceContainer.applicationScope.launch(Dispatchers.IO) {
+            runCatching {
+                val notice = agentSkillWriter.review(
+                    sessionId = sessionId,
+                    userMessage = userMessage,
+                    assistantMessage = assistantMessage,
+                    toolTrace = toolTrace,
+                    explicit = explicit
+                )
+                // 沉淀结果写进设置：聊天界面的提示需要持久显示（不自动消失、重启后仍在）。
+                notice?.let {
+                    ServiceContainer.prefs.setAgentSkillNotice(sessionId, it.skillName, it.created)
+                }
+                // 审查结束必须回一个 DONE：没有沉淀任何技能时也要让界面收起"正在总结"提示。
+                _autoSkillEvents.tryEmit(
+                    notice ?: com.nekobot.app.data.local.ai.AgentSkillNotice(
+                        sessionId = sessionId,
+                        skillName = "",
+                        created = false,
+                        phase = com.nekobot.app.data.local.ai.AgentSkillPhase.DONE
+                    )
+                )
+            }.onFailure {
+                LocalLogger.w(TAG, "Agent 技能沉淀失败（不影响主流程）: ${it.message}")
+                _autoSkillEvents.tryEmit(
+                    com.nekobot.app.data.local.ai.AgentSkillNotice(
+                        sessionId = sessionId,
+                        skillName = "",
+                        created = false,
+                        phase = com.nekobot.app.data.local.ai.AgentSkillPhase.DONE
+                    )
+                )
             }
         }
     }
@@ -1525,6 +1622,8 @@ class LocalRepository(
         }
         messageImageDao.deleteBySession(id)
         sessionDao.deleteById(id)
+        // 会话级设置（自动技能沉淀提示 / 审查计数）随会话一起清理，避免残留无用键。
+        ServiceContainer.prefs.clearAgentSkillNotice(id)
     }
 
     /**
@@ -6111,6 +6210,24 @@ class LocalRepository(
                 )
             }
 
+            // Agent 技能的自动沉淀：与长期记忆同一时机，但只沉淀"怎么做事"的可复用流程，
+            // 按工具调用计数（或用户明确要求）触发后台审查（开关见 设置 → Agent 设置 → 自动总结 Skill）。
+            if (
+                session.sessionMode.equals("agent", ignoreCase = true) &&
+                !generationController.isStopped &&
+                ctx.error == null &&
+                !ctx.stoppedPrematurely &&
+                ctx.finalContent.isNotBlank() &&
+                !ctx.metadata.containsKey("is_heartbeat")
+            ) {
+                scheduleAgentSkillReview(
+                    sessionId = sessionId,
+                    userMessage = effectiveUserMessage,
+                    assistantMessage = ctx.finalContent,
+                    toolTrace = ctx.toolTrace
+                )
+            }
+
             // TTS 必须等标题总结尝试结束后再启动，避免两个模型请求并发争用导致标题丢失。
             emit(
                 RealtimeEvent.ReplyPostProcessed(
@@ -10054,6 +10171,67 @@ ${AiOutputLanguage.directive()}
                 ?: throw IllegalStateException("本地 Skill 存储不可用")
             db.skillDao().upsert(entity)
             entity.toSkill()
+        }
+    }
+
+    /**
+     * 读取已有 Skill 摘要，供「自动总结 Skill」的审查提示词判断"是更新还是新建"。
+     */
+    private suspend fun loadAgentSkillBriefs(): List<com.nekobot.app.data.local.ai.AgentSkillBrief> =
+        withContext(Dispatchers.IO) {
+            db.skillDao().listAll().map { entity ->
+                com.nekobot.app.data.local.ai.AgentSkillBrief(
+                    name = entity.name,
+                    description = entity.description.orEmpty(),
+                    enabled = entity.enabled
+                )
+            }
+        }
+
+    /**
+     * 落盘一次技能沉淀结果：同名 Skill 走更新（保留启用状态与原有别名/参考文件），
+     * 否则新建并默认启用，随后该 Skill 会出现在「扩展功能 → Skills」并注入后续回合。
+     *
+     * @return true 表示新建，false 表示更新既有 Skill。
+     */
+    private suspend fun applyAgentSkillDraft(
+        draft: com.nekobot.app.data.local.ai.AgentSkillDraft
+    ): Boolean = withContext(Dispatchers.IO) {
+        val storage = localSkillStorage ?: throw IllegalStateException("本地 Skill 存储不可用")
+        validateSkillNameValue(draft.name)
+        val existing = db.skillDao().listAll()
+            .firstOrNull { it.name.equals(draft.name, ignoreCase = true) }
+        if (existing == null) {
+            val entity = LocalSkillEntity(
+                id = UUID.randomUUID().toString(),
+                name = draft.name,
+                description = draft.description,
+                aliasesJson = gson.toJson(draft.aliases),
+                enabled = true,
+                parametersJson = null,
+                createdAt = nowIso()
+            )
+            storage.save(entity.name, skillMd = draft.skillMd, referenceMd = draft.referenceMd)
+            db.skillDao().upsert(entity)
+            true
+        } else {
+            val existingAliases = runCatching {
+                JsonParser.parseString(existing.aliasesJson).asJsonArray.map { it.asString }
+            }.getOrDefault(emptyList())
+            storage.save(
+                name = existing.name,
+                skillMd = draft.skillMd,
+                // 模型没给参考资料时保留原有 reference.md，避免更新技能时丢资料。
+                referenceMd = draft.referenceMd ?: storage.referenceMd(existing.name),
+                sourceUrl = storage.sourceUrl(existing.name)
+            )
+            db.skillDao().upsert(
+                existing.copy(
+                    description = draft.description ?: existing.description,
+                    aliasesJson = gson.toJson((existingAliases + draft.aliases).distinct())
+                )
+            )
+            false
         }
     }
 

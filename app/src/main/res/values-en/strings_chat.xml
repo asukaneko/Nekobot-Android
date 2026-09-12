@@ -510,6 +510,11 @@
     <string name="chat_hook_notif_close">Dismiss notification</string>
     <string name="chat_hook_notif_event_label">Event</string>
 
+    <!-- ==================== Automatic skill distillation notice (same shape as the compression hint) ==================== -->
+    <string name="chat_auto_skill_running">Distilling a skill…</string>
+    <string name="chat_auto_skill_created">Skill "%1$s" distilled</string>
+    <string name="chat_auto_skill_updated">Skill "%1$s" updated</string>
+
     <!-- ==================== Workspace (WorkspaceScreen) ==================== -->
     <string name="workspace_title">Workspace</string>
     <string name="workspace_upload_file">Upload file</string>

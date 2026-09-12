@@ -77,6 +77,7 @@
     <string name="tokens_source_plot">Plot</string>
     <string name="tokens_source_state">State evaluation</string>
     <string name="tokens_source_memory">Memory extraction</string>
+    <string name="tokens_source_skill">Skill distillation</string>
     <string name="tokens_source_web">Web search</string>
     <string name="tokens_source_vision">Visual recognition</string>
     <string name="tokens_source_stt">Speech-to-text</string>

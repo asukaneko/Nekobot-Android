@@ -44,6 +44,19 @@ data class ContextCompressionEvent(
 )
 
 /**
+ * 自动技能沉淀的内联提示状态。
+ *
+ * 形态对齐上下文压缩提示：[running] 为 true 时显示"正在总结技能"；
+ * 完成后显示"已自动沉淀/更新技能「X」"并**持久保留**（写进设置，
+ * 退出页面或重启应用后重新进入会话仍然可见），直到本会话下一次沉淀结果覆盖它。
+ */
+data class AutoSkillUiState(
+    val skillName: String = "",
+    val created: Boolean = false,
+    val running: Boolean = true
+)
+
+/**
  * Agent 会话在 AI 生成期间排队的待发送消息。
  *
  * - 生成结束后自动发送队顶消息（[ChatSessionState.queuedMessages]）
@@ -71,7 +84,18 @@ data class QueuedChatMessage(
  * 字段不加锁：所有写入都在 [ServiceContainer.applicationScope] 的单线程协程上下文中进行，
  * StateFlow 自身线程安全。
  */
-class ChatSessionState(val sessionId: String) {
+class ChatSessionState(
+    val sessionId: String,
+    /**
+     * 读取本会话最近一次自动沉淀结果（技能名 + 是否新建）。
+     *
+     * 默认从 [ServiceContainer.prefs] 读；注入点存在是为了让状态机可以在单元测试里
+     * 不依赖 Android/SharedPreferences 完整验证"持久显示/恢复"路径。
+     */
+    private val loadSkillNotice: (String) -> Pair<String, Boolean>? = { id ->
+        runCatching { ServiceContainer.prefs.getAgentSkillNotice(id) }.getOrNull()
+    }
+) {
 
     // ============ 跨 VM 共享的 UI 状态 ============
     val messages = MutableStateFlow<List<Message>>(emptyList())
@@ -91,6 +115,48 @@ class ChatSessionState(val sessionId: String) {
     val agentGoal = MutableStateFlow<String?>(null)
     /** Agent 规格任务（/spec 命令更新；输入框上方横幅展示）。 */
     val agentSpec = MutableStateFlow<com.nekobot.app.data.model.AgentSessionSpec?>(null)
+    /** 自动技能沉淀提示（后台审查进行中 / 刚刚沉淀完成）。 */
+    val autoSkillNotice = MutableStateFlow<AutoSkillUiState?>(null)
+
+    /**
+     * 应用一次自动技能沉淀通知。
+     *
+     * - RUNNING：显示"正在总结技能"；
+     * - DONE 且带技能名：显示结果，并**持久保留**（不自动消失）；
+     * - DONE 但没有沉淀任何技能：收起进行中的提示，回退显示上一次已持久化的沉淀结果。
+     *
+     * 逻辑放在运行时状态上（而不是 ViewModel），因为事件监听 Job 跨页面存活，
+     * 不能捕获已经退出的 ViewModel。
+     */
+    fun applyAutoSkillNotice(notice: com.nekobot.app.data.local.ai.AgentSkillNotice) {
+        if (notice.phase == com.nekobot.app.data.local.ai.AgentSkillPhase.RUNNING) {
+            autoSkillNotice.value = AutoSkillUiState(running = true)
+            return
+        }
+        if (notice.skillName.isBlank()) {
+            autoSkillNotice.value = loadPersistedSkillNotice(sessionId)
+            return
+        }
+        autoSkillNotice.value = AutoSkillUiState(
+            skillName = notice.skillName,
+            created = notice.created,
+            running = false
+        )
+    }
+
+    /** 从上次沉淀结果恢复内联提示（进入会话时也用它恢复持久显示）。 */
+    fun restoreAutoSkillNotice() {
+        if (autoSkillNotice.value?.running == true) return
+        autoSkillNotice.value = loadPersistedSkillNotice(sessionId)
+    }
+
+    /** 读取持久化的沉淀结果并转成界面状态；没有记录时返回 null（不显示提示）。 */
+    private fun loadPersistedSkillNotice(id: String): AutoSkillUiState? =
+        loadSkillNotice(id)
+            ?.takeIf { (name, _) -> name.isNotBlank() }
+            ?.let { (name, created) ->
+                AutoSkillUiState(skillName = name, created = created, running = false)
+            }
 
     // ============ Agent 会话消息排队 ============
     /**

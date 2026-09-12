@@ -279,6 +279,8 @@
     <string name="agent_settings_network_access_desc">关闭后 Agent 的联网工具（http_get / search_web / browser_use / download_file）与 MCP 工具会被直接拒绝，只保留本地工具。本地 Linux 沙盒无法真正隔离网络，此开关在策略层兜底。</string>
     <string name="agent_settings_auto_memory">自动长期记忆</string>
     <string name="agent_settings_auto_memory_desc">Agent 回合结束后自动把值得跨会话记住的偏好、约定与环境事实写入全局 Agent 记忆（按小节去重，失败不影响对话）。关闭后只能由 AI 主动调用记忆工具写入。</string>
+    <string name="agent_settings_auto_skill">自动总结 Skill</string>
+    <string name="agent_settings_auto_skill_desc">Agent 回合结束后，把本轮可复用的做法自动沉淀成 Skill（优先更新已有同类技能，按工具调用次数触发，失败不影响对话）。生成的技能见「拓展功能 → Skills」，关闭后不再自动沉淀。</string>
     <string name="agent_settings_subagent_enable_desc">允许 AI 调用 subagent 工具，将独立任务委派给新的子代理执行（子代理使用同一故障转移模型队列）。</string>
     <string name="agent_settings_subagent_max_depth">最大嵌套深度</string>
     <string name="agent_settings_subagent_max_depth_desc">子代理可继续委派子代理的最大层级（0 表示禁止，默认 %1$d）。防止无限递归。</string>
