@@ -51,7 +51,7 @@
     <string name="system_ops_status_connected">已开启并连接</string>
     <string name="system_ops_status_waiting">已开启，等待服务连接</string>
     <string name="system_ops_status_disabled">未开启</string>
-    <string name="global_memory_intro">这里的内容跨 Agent 会话和本地数据库 Profile 保存。每轮 Agent 请求都会自动注入；AI 可读取，修改时仍需你的授权。</string>
+    <string name="global_memory_intro">这里的内容跨 Agent 会话和本地数据库 Profile 保存。</string>
     <string name="global_memory_label">长期偏好、背景与持续事项</string>
     <string name="global_memory_placeholder">例如：我的常用语言、项目约定、长期目标……</string>
     <string name="global_memory_last_saved">最近保存：%1$s</string>

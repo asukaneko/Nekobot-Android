@@ -175,7 +175,7 @@
     <string name="system_ops_status_connected">사용 및 연결됨</string>
     <string name="system_ops_status_waiting">사용 중, 서비스 연결 대기</string>
     <string name="system_ops_status_disabled">사용 안 함</string>
-    <string name="global_memory_intro">이 내용은 Agent 세션과 로컬 데이터베이스 프로필 간에 저장됩니다. 모든 Agent 요청에 자동으로 삽입되며 AI가 읽을 수 있지만 변경에는 계속 사용자의 권한이 필요합니다.</string>
+    <string name="global_memory_intro">이 내용은 Agent 세션과 로컬 데이터베이스 프로필 간에 저장됩니다.</string>
     <string name="global_memory_label">장기 환경 설정, 배경 및 지속 사항</string>
     <string name="global_memory_placeholder">예: 선호 언어, 프로젝트 규칙, 장기 목표…</string>
     <string name="global_memory_last_saved">최근 저장: %1$s</string>

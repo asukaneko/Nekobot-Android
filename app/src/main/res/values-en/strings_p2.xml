@@ -140,7 +140,7 @@
     <string name="system_ops_status_connected">Enabled and connected</string>
     <string name="system_ops_status_waiting">Enabled, waiting for service</string>
     <string name="system_ops_status_disabled">Not enabled</string>
-    <string name="global_memory_intro">This content is saved across Agent sessions and local database profiles. It is automatically injected into every Agent request. AI can read it, but changes still require your authorization.</string>
+    <string name="global_memory_intro">This content is saved across Agent sessions and local database profiles.</string>
     <string name="global_memory_label">Long-term preferences, background, and ongoing items</string>
     <string name="global_memory_placeholder">For example: preferred language, project conventions, or long-term goals…</string>
     <string name="global_memory_last_saved">Last saved: %1$s</string>

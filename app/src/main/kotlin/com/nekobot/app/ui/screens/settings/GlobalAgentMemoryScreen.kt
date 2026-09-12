@@ -37,6 +37,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 data class GlobalAgentMemoryUiState(
     val draft: String = "",
@@ -123,6 +129,25 @@ class GlobalAgentMemoryViewModel : ViewModel() {
     }
 }
 
+/**
+ * 存储层记录的是 UTC 时间戳（Instant#toString），直接展示会让用户看到差若干小时的时间。
+ * 这里按手机系统时区转换后再显示；无法解析的值原样返回。
+ */
+internal fun formatGlobalMemorySavedAt(raw: String?, zoneId: ZoneId = ZoneId.systemDefault()): String? {
+    val value = raw?.trim().orEmpty()
+    if (value.isEmpty()) return null
+    val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.getDefault())
+    val instant = runCatching { Instant.parse(value) }.getOrNull()
+        ?: runCatching { OffsetDateTime.parse(value).toInstant() }.getOrNull()
+    if (instant != null) return instant.atZone(zoneId).format(formatter)
+    // 兼容不带时区的旧数据：按手机当前时区解释，无法凭空推断原始时区。
+    return runCatching {
+        LocalDateTime.parse(value.replace(' ', 'T'), DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+            .atZone(zoneId)
+            .format(formatter)
+    }.getOrNull() ?: value
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GlobalAgentMemoryScreen(
@@ -169,9 +194,9 @@ fun GlobalAgentMemoryScreen(
                     Text("${uiState.draft.length} / ${GlobalAgentMemoryStore.MAX_CONTENT_CHARS}")
                 }
             )
-            uiState.updatedAt?.let {
+            formatGlobalMemorySavedAt(uiState.updatedAt)?.let { savedAt ->
                 Text(
-                    stringResource(R.string.global_memory_last_saved, it),
+                    stringResource(R.string.global_memory_last_saved, savedAt),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

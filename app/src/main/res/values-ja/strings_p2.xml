@@ -175,7 +175,7 @@
     <string name="system_ops_status_connected">有効・接続済み</string>
     <string name="system_ops_status_waiting">有効、サービス接続待ち</string>
     <string name="system_ops_status_disabled">無効</string>
-    <string name="global_memory_intro">この内容は Agent セッションとローカルデータベースプロファイルをまたいで保存されます。各 Agent リクエストに自動挿入され、AI は読み取れますが、変更には引き続き許可が必要です。</string>
+    <string name="global_memory_intro">この内容は Agent セッションとローカルデータベースプロファイルをまたいで保存されます。</string>
     <string name="global_memory_label">長期的な設定、背景、継続事項</string>
     <string name="global_memory_placeholder">例：使用言語、プロジェクトの規約、長期目標…</string>
     <string name="global_memory_last_saved">最終保存：%1$s</string>
