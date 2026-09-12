@@ -24,6 +24,7 @@ import androidx.compose.foundation.border as actualBorder
 import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -1107,10 +1108,6 @@ private fun ModernChatComposer(
                 .imePadding()
         ) {
             if (plotChoicesLoading || plotChoices.isNotEmpty()) {
-                // 剧情选项开启时，把草稿统计胶囊挪到选项栏按钮那一排
-                val draftStats = if (input.isNotBlank()) {
-                    stringResource(R.string.chat_draft_stats, charCount, tokenEstimate)
-                } else null
                 ModernPlotChoices(
                     loading = plotChoicesLoading,
                     choices = plotChoices,
@@ -1120,7 +1117,6 @@ private fun ModernChatComposer(
                     inputVisible = inputVisible,
                     panelExpanded = panelExpanded,
                     sending = sending,
-                    draftStats = draftStats,
                     onSelect = { choice ->
                         pendingPlotChoiceId = choice.id
                         updateInput(choice.title)
@@ -1216,12 +1212,24 @@ private fun ModernChatComposer(
                             1f to MaterialTheme.colorScheme.primary.copy(alpha = 0.13f)
                         )
                     )
+                    // 输入框描边：与底栏液态玻璃一致——深色模式下白边必须非常克制
+                    // （淡化 + 收细），否则整块输入框像被镶了一圈银边。
+                    val composerDark = isSystemInDarkTheme()
+                    val composerBorderWidth = if (composerDark) 0.6.dp else 1.dp
                     val composerGlassBorder = Brush.verticalGradient(
-                        listOf(
-                            Color.White.copy(alpha = 0.50f),
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-                        )
+                        if (composerDark) {
+                            listOf(
+                                Color.White.copy(alpha = 0.14f),
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                                Color.White.copy(alpha = 0.03f)
+                            )
+                        } else {
+                            listOf(
+                                Color.White.copy(alpha = 0.50f),
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                            )
+                        }
                     )
 
                     if (pendingImageAttachments.isNotEmpty()) {
@@ -1247,28 +1255,6 @@ private fun ModernChatComposer(
                         )
                     }
 
-                    // 草稿统计：胶囊样式，右对齐悬浮于输入框上方
-                    // 剧情选项开启时挪到选项栏按钮排，这里不再显示
-                    if (
-                        input.isNotBlank() && commandCandidates.isEmpty() &&
-                        plotChoices.isEmpty() && !plotChoicesLoading
-                    ) {
-                        Surface(
-                            modifier = Modifier
-                                .align(Alignment.End)
-                                .padding(end = 20.dp, top = 4.dp),
-                            shape = RoundedCornerShape(50),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-                        ) {
-                            Text(
-                                text = stringResource(R.string.chat_draft_stats, charCount, tokenEstimate),
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1282,7 +1268,7 @@ private fun ModernChatComposer(
                             )
                             .clip(composerShape)
                             .background(composerGlassFill, composerShape)
-                            .actualBorder(1.dp, composerGlassBorder, composerShape)
+                            .actualBorder(composerBorderWidth, composerGlassBorder, composerShape)
                     ) {
                         Row(
                             modifier = Modifier.padding(6.dp),
@@ -1682,7 +1668,6 @@ private fun ModernPlotChoices(
     inputVisible: Boolean,
     panelExpanded: Boolean,
     sending: Boolean,
-    draftStats: String? = null,
     onSelect: (PlotChoice) -> Unit,
     onToggleInput: () -> Unit,
     onTogglePanel: () -> Unit,
@@ -1713,21 +1698,6 @@ private fun ModernPlotChoices(
                 fontWeight = FontWeight.SemiBold
             )
             Spacer(Modifier.weight(1f))
-            // 草稿统计胶囊：剧情选项开启时挪到这里，与按钮组在同一排
-            if (draftStats != null) {
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-                ) {
-                    Text(
-                        text = draftStats,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Spacer(Modifier.width(4.dp))
-            }
             if (layoutMode == ChatInputLayoutMode.MERGED) {
                 IconButton(onClick = onTogglePanel, modifier = Modifier.size(34.dp)) {
                     Icon(

@@ -5831,11 +5831,6 @@ private fun ChatInputBar(
     var inputExpanded by rememberSaveable { mutableStateOf(false) }
     // 命令胶囊：/goal、/spec 前缀显示为彩色胶囊（备用输入栏与 ModernChatComposer 保持一致）
     val commandCapsule = remember(input) { matchCommandCapsule(input) }
-    // 字符数与 token 估算：中文字符约 1 token/字，英文约 0.25 token/字符
-    val charCount = input.length
-    val chineseCount = input.count { it.code in 0x4E00..0x9FFF }
-    val otherCount = charCount - chineseCount
-    val tokenEstimate = (chineseCount + otherCount / 4).coerceAtLeast(if (charCount > 0) 1 else 0)
     val hasPlotSurface = plotChoicesLoading || plotChoices.isNotEmpty()
     val inputVisible = shouldShowChatInput(
         layoutMode = layoutMode,
@@ -6003,18 +5998,6 @@ private fun ChatInputBar(
 
         AnimatedVisibility(visible = inputVisible) {
             Column {
-                if (input.isNotBlank()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        Text(
-                            stringResource(R.string.chat_draft_stats, charCount, tokenEstimate),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
