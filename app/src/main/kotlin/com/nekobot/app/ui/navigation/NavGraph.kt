@@ -42,6 +42,9 @@ import androidx.navigation.navArgument
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.AppMode
 import com.nekobot.app.data.repository.Resource
+import com.nekobot.app.ui.components.glassBackdropSource
+import com.nekobot.app.ui.components.rememberGlassBackdrop
+import com.nekobot.app.ui.components.rememberLiquidGlassAvailable
 import com.nekobot.app.ui.screens.aiconfig.AiConfigCenterScreen
 import com.nekobot.app.ui.screens.aiconfig.AiConfigScreen
 import com.nekobot.app.ui.screens.aiconfig.AiModelsScreen
@@ -184,6 +187,12 @@ fun NekobotNavGraph() {
             selectedMainRoute == Routes.SESSIONS
         )
 
+    // 液态玻璃底栏：API 31+ 且非低内存设备时，把下层页面录进离屏层，供底栏真实采样
+    // （模糊 + 边缘折射），取代原来的伪毛玻璃渐变；否则退回静态半透明样式。
+    val liquidGlassAvailable = rememberLiquidGlassAvailable()
+    val glassBackdrop = rememberGlassBackdrop()
+    val useLiquidGlass = liquidGlassAvailable && showBottomBar
+
     // 观察全局登录态：登出时自动跳登录页，登录时跳会话页
     val isLoggedIn by ServiceContainer.loginStateFlow.collectAsStateWithLifecycle()
     LaunchedEffect(isLoggedIn, isQuickSetupCompleted) {
@@ -255,7 +264,15 @@ fun NekobotNavGraph() {
                 isLoggedIn -> Routes.SESSIONS
                 else -> Routes.LOGIN
             },
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .then(if (useLiquidGlass) Modifier.glassBackdropSource(glassBackdrop) else Modifier)
+                // 玻璃采样源里补上应用底色：页面若自身透明，玻璃仍能采到真实底色而不是空像素。
+                .then(
+                    if (useLiquidGlass) {
+                        Modifier.background(androidx.compose.material3.MaterialTheme.colorScheme.background)
+                    } else Modifier
+                ),
             // 主 Tab 之间（点击底栏触发）：纯阻尼淡入淡出，不再左右位移；
             // 左右滑动切换保留在 Pager 手势上。进入详情页：从右侧滑入形成层级纵深感。
             // 所有淡入淡出统一走阻尼曲线：离场页面快速褪去，
@@ -742,20 +759,23 @@ fun NekobotNavGraph() {
             // 底栏下方的渐变遮罩：从透明渐变到背景色，让接近底栏的列表内容
             // 自然"淡入"背景，模拟毛玻璃的朦胧感（Telegram / iOS 常用技巧）。
             // 不消耗手势事件，点击与滚动穿透到下方内容。
-            val bgColor = androidx.compose.material3.MaterialTheme.colorScheme.background
-            Spacer(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(120.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            0f to Color.Transparent,
-                            0.5f to bgColor.copy(alpha = 0.45f),
-                            1f to bgColor.copy(alpha = 0.85f)
+            // 真液态玻璃直接采样并模糊下层内容，此时不再需要这层伪毛玻璃。
+            if (!useLiquidGlass) {
+                val bgColor = androidx.compose.material3.MaterialTheme.colorScheme.background
+                Spacer(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(120.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                0f to Color.Transparent,
+                                0.5f to bgColor.copy(alpha = 0.45f),
+                                1f to bgColor.copy(alpha = 0.85f)
+                            )
                         )
-                    )
-            )
+                )
+            }
             LiquidGlassBottomBar(
                 items = bottomItems(),
                 selectedRoute = if (currentRoute == Routes.SESSIONS) {
@@ -763,6 +783,8 @@ fun NekobotNavGraph() {
                 } else {
                     currentRoute
                 },
+                modifier = Modifier.align(Alignment.BottomCenter),
+                backdrop = if (useLiquidGlass) glassBackdrop else null,
                 onItemSelected = { item ->
                     val targetPage = bottomRoutes.indexOf(item.route)
                     if (targetPage == -1) return@LiquidGlassBottomBar
@@ -796,7 +818,6 @@ fun NekobotNavGraph() {
                         }
                     }
                 },
-                modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
         AchievementUnlockHost()
