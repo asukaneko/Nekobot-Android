@@ -11,6 +11,8 @@
 -dontwarn okhttp3.**
 -dontwarn okio.**
 -dontwarn retrofit2.**
+# 沙箱终端的 PTY 桥接层：JNI 按“包名_类名_方法名”查找符号，类名与方法名都不能被混淆。
+-keep class com.nekobot.app.data.local.ai.terminal.PtyBridge { *; }
 # PDFBox 的 JPEG 2000 解码器是可选依赖；未打包时 JPX 图片会按库自身的回退路径处理。
 -dontwarn com.gemalto.jp2.JP2Decoder
 -keepattributes Signature

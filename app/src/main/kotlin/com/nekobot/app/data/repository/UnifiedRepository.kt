@@ -9,9 +9,9 @@ import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalRepository
 import com.nekobot.app.data.local.AgentLiveContextUsage
 import com.nekobot.app.data.local.ai.ContextUsageBreakdown
-import com.nekobot.app.data.local.ai.LocalInteractiveSession
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
 import com.nekobot.app.data.local.ai.LocalSandboxStatus
+import com.nekobot.app.data.local.ai.terminal.LocalTerminalSession
 import com.nekobot.app.data.local.ai.RealtimeAgentToolRuntime
 import com.nekobot.app.data.local.ai.RealtimeModelConfig
 import com.nekobot.app.data.local.ai.toRealtimeModelConfig
@@ -240,13 +240,14 @@ class UnifiedRepository(
             localNotSupported("Linux 沙盒")
         }
 
-    /** 启动交互式沙盒会话（python3 等持续程序），仅本地模式可用。 */
-    internal suspend fun startSandboxInteractiveSession(
-        sessionId: String,
-        command: String,
-        onExit: (Int) -> Unit,
-    ): LocalInteractiveSession? =
-        if (isLocal) local.startSandboxInteractiveSession(sessionId, command, onExit) else null
+    /** 取得当前 Agent 会话的交互式沙箱终端（真 PTY），仅本地模式可用。 */
+    internal suspend fun sandboxTerminal(sessionId: String): LocalTerminalSession? =
+        if (isLocal) local.sandboxTerminal(sessionId) else null
+
+    /** 结束会话的交互终端（删除会话或用户重启终端时调用），仅本地模式可用。 */
+    fun stopSandboxTerminal(sessionId: String) {
+        if (isLocal) local.stopSandboxTerminal(sessionId)
+    }
 
     /**
      * 导入会话：本地模式写入 Room；远程模式透传给后端 /api/sessions/import。

@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.os.Build
 import android.util.Log
 import com.nekobot.app.data.local.LocalWorkspaceStorage
+import com.nekobot.app.data.local.ai.terminal.LocalTerminalSession
 import java.io.BufferedWriter
 import java.io.File
 import java.io.InputStream
@@ -19,9 +20,6 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
 
 /** 命令行界面使用的稳定结果模型。 */
 data class LocalSandboxCommandResult(
@@ -73,7 +71,9 @@ internal object LocalLinuxSandboxCoordinator {
 
     private val shells = ConcurrentHashMap<String, LocalPersistentLinuxShell>()
     private val sessionLocks = ConcurrentHashMap<String, Any>()
-    private val interactiveSessions = ConcurrentHashMap<String, LocalInteractiveSession>()
+
+    /** 用户手动打开的交互终端（PTY），生命周期独立于 Agent 的命令 shell。 */
+    private val terminals = ConcurrentHashMap<String, LocalTerminalSession>()
 
     data class CommandResult(
         val output: String,
@@ -142,106 +142,39 @@ internal object LocalLinuxSandboxCoordinator {
         return shell
     }
 
-    /**
-     * 启动交互式会话（python3 等持续程序）：独立进程 + 专属 stdin/stdout。
-     *
-     * 输出通过返回句柄的 [LocalInteractiveSession.output] 流式获取；进程退出后调用
-     * [onExit]（读线程回调，调用方需自行切回主线程）。同一会话已有存活会话时返回 null。
-     */
-    fun startInteractiveSession(
-        context: Context,
-        sessionId: String,
-        workspace: File,
-        command: String,
-        onExit: (Int) -> Unit,
-    ): LocalInteractiveSession? {
-        val existing = interactiveSessions[sessionId]
-        if (existing?.isAlive == true) return null
-        interactiveSessions.remove(sessionId)?.stop()
-
-        val runtime = LocalLinuxRootfsManager.getInstance(context).ensureReady()
-        val tokens = command.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
-        if (tokens.isEmpty()) return null
-        // 与持久 shell 一致：确保 /shared 挂载点存在后按同规则绑定
-        val sharedWorkspace = LocalWorkspaceStorage.resolveShared(context.filesDir)
-        if (sharedWorkspace != null) {
-            File(runtime.rootfs, "shared").mkdirs()
-        }
-        val args = buildLocalProotPrefix(
-            proot = runtime.proot,
-            rootfs = runtime.rootfs,
-            workspace = workspace.canonicalFile,
-            sharedWorkspace = sharedWorkspace,
-        ) + tokens
-
-        val builder = ProcessBuilder(args)
-            .directory(context.filesDir)
-            .redirectErrorStream(true)
-        builder.environment().apply {
-            this["PROOT_TMP_DIR"] = runtime.prootTempDir.absolutePath
-            this["LD_LIBRARY_PATH"] = runtime.nativeLibraryDir.absolutePath
-            runtime.loader64?.let { this["PROOT_LOADER"] = it.absolutePath }
-            runtime.loader32?.let { this["PROOT_LOADER_32"] = it.absolutePath }
-            this["HOME"] = "/root"
-            this["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-            this["LANG"] = "C.UTF-8"
-            this["LC_ALL"] = "C.UTF-8"
-            this["TERM"] = "dumb"
-            this["TZ"] = localPosixTimezone()
-            this["NEKOBOT_SESSION_ID"] = sessionId
-        }
-
-        val process = runCatching { builder.start() }.getOrNull() ?: return null
-        val writer = BufferedWriter(OutputStreamWriter(process.outputStream, StandardCharsets.UTF_8))
-        val flow = MutableSharedFlow<String>(
-            extraBufferCapacity = 512,
-            onBufferOverflow = BufferOverflow.DROP_OLDEST,
-        )
-        val session = LocalInteractiveSession(command, flow, process, writer, onExit)
-        interactiveSessions[sessionId] = session
-
-        Thread({
-            try {
-                process.inputStream.bufferedReader(StandardCharsets.UTF_8).use { reader ->
-                    val buffer = CharArray(4096)
-                    while (true) {
-                        val count = reader.read(buffer)
-                        if (count < 0) break
-                        if (count > 0) flow.tryEmit(String(buffer, 0, count))
-                    }
-                }
-            } catch (error: Exception) {
-                Log.d(TAG, "Interactive session output ended: ${error.message}")
-            } finally {
-                val code = runCatching { process.waitFor() }.getOrDefault(-1)
-                interactiveSessions.remove(sessionId, session)
-                runCatching { onExit(code) }
-            }
-        }, "NekobotInteractive-$sessionId").apply {
-            isDaemon = true
-            start()
-        }
-        return session
-    }
-
-    /** 终止交互式会话进程（此后可重新启动）。 */
-    fun stopInteractiveSession(sessionId: String) {
-        interactiveSessions.remove(sessionId)?.stop()
-    }
-
     /** 删除会话或停止生成时终止进程；rootfs 和工作区文件仍保留在磁盘。 */
     fun stopSession(sessionId: String) {
         shells.remove(sessionId)?.stop()
-        interactiveSessions.remove(sessionId)?.stop()
         sessionLocks.remove(sessionId)
     }
 
     fun closeAll() {
         shells.values.forEach(LocalPersistentLinuxShell::stop)
         shells.clear()
-        interactiveSessions.values.forEach(LocalInteractiveSession::stop)
-        interactiveSessions.clear()
+        terminals.values.forEach(LocalTerminalSession::dispose)
+        terminals.clear()
         sessionLocks.clear()
+    }
+
+    // ==================== 用户交互终端（PTY）====================
+
+    /**
+     * 取得（必要时创建）某个 Agent 会话的交互终端。
+     *
+     * 与 Agent 的命令 shell 分开持有：Agent 那条链路依赖 stdout 结束标记解析结果，
+     * 用户在终端里的实时按键会破坏该协议；两者共用同一 rootfs 与挂载点。
+     */
+    fun terminal(context: Context, sessionId: String, workspace: File): LocalTerminalSession =
+        terminals[sessionId]
+            ?: LocalTerminalSession(
+                context = context.applicationContext,
+                sessionId = sessionId,
+                workspace = workspace.canonicalFile,
+            ).also { terminals[sessionId] = it }
+
+    /** 结束并丢弃某个会话的交互终端（删除会话或用户主动重启终端时调用）。 */
+    fun stopTerminal(sessionId: String) {
+        terminals.remove(sessionId)?.dispose()
     }
 
     // ==================== 沙箱管理（设置界面入口）====================
@@ -274,42 +207,6 @@ internal data class LocalLinuxRuntime(
     val loader32: File?,
     val prootTempDir: File,
 )
-
-/**
- * 交互式沙盒会话句柄：独立进程 + 专属 stdin/stdout。
- *
- * 输出通过 [output] 流式获取；[sendLine] 把一行输入写入进程 stdin；
- * 进程退出或 [stop] 后不再接受输入。
- */
-internal class LocalInteractiveSession(
-    val command: String,
-    outputFlow: MutableSharedFlow<String>,
-    private val process: Process,
-    private val writer: BufferedWriter,
-    private val onExit: (Int) -> Unit,
-) {
-    val output: SharedFlow<String> = outputFlow
-
-    val isAlive: Boolean
-        get() = process.isAlive
-
-    /** 写入一行输入并刷新；进程已退出时静默忽略。 */
-    fun sendLine(line: String) {
-        if (!process.isAlive) return
-        runCatching {
-            writer.write(line)
-            writer.write("\n")
-            writer.flush()
-        }
-    }
-
-    /** 终止进程：先关闭 stdin（部分程序收到 EOF 自行退出），再强制结束。 */
-    fun stop() {
-        runCatching { writer.close() }
-        if (process.isAlive) process.destroy()
-        if (process.isAlive) process.destroyForcibly()
-    }
-}
 
 /**
  * 安装随 APK 附带的 Alpine minirootfs，并定位从 jniLibs 解压出的 PRoot。
@@ -897,7 +794,7 @@ internal fun buildLocalProotCommand(
     sharedWorkspace: File? = null,
 ): List<String> = buildLocalProotPrefix(proot, rootfs, workspace, sharedWorkspace) + listOf("/bin/sh")
 
-private fun localPosixTimezone(): String {
+internal fun localPosixTimezone(): String {
     val offsetMs = TimeZone.getDefault().getOffset(System.currentTimeMillis())
     if (offsetMs == 0) return "UTC0"
     val absoluteMinutes = kotlin.math.abs(offsetMs / 60_000)

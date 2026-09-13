@@ -150,6 +150,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
 import androidx.compose.runtime.collectAsState
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -175,7 +176,7 @@ import com.nekobot.app.data.local.isAgentContextSummary
 import com.nekobot.app.data.local.isLocalCommandMessage
 import com.nekobot.app.data.local.db.LocalMessageImageEntity
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
-import com.nekobot.app.data.local.ai.LocalInteractiveSession
+import com.nekobot.app.data.local.ai.terminal.LocalTerminalSession
 import com.nekobot.app.data.local.ai.AgentRecoveryState
 import com.nekobot.app.data.local.ai.AgentToolLimits
 import com.nekobot.app.data.local.ai.toRecoveryState
@@ -206,9 +207,12 @@ import com.nekobot.app.ui.components.resolveAvatarUrl
 import com.nekobot.app.ui.theme.BubbleUser
 import com.nekobot.app.ui.theme.BubbleUserLight
 import com.nekobot.app.ui.theme.parseHexColor
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -2700,38 +2704,77 @@ class ChatViewModel : BaseViewModel() {
         currentSessionId.takeIf(String::isNotBlank)?.let(unified::stopSandboxCommand)
     }
 
-    private var interactiveSession: LocalInteractiveSession? = null
+    // ===== 沙箱终端（真 PTY）=====
 
-    /** 启动交互式沙盒会话（python3 等），输出/退出经主线程回调；已有存活会话时返回 false。 */
-    fun startSandboxInteractiveSession(
-        command: String,
-        onOutput: (String) -> Unit,
-        onExit: (Int) -> Unit,
-    ): Boolean {
+    /** 终端的原始 PTY 输出，界面层收集后喂给终端仿真器。 */
+    private val _sandboxTerminalOutput = MutableSharedFlow<ByteArray>(
+        extraBufferCapacity = 256,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
+    )
+    internal val sandboxTerminalOutput: SharedFlow<ByteArray> = _sandboxTerminalOutput.asSharedFlow()
+
+    /** shell 生命周期状态，界面据此显示"启动中/已退出"等提示。 */
+    private val _sandboxTerminalState = MutableStateFlow(LocalTerminalSession.State.IDLE)
+    internal val sandboxTerminalState: StateFlow<LocalTerminalSession.State> =
+        _sandboxTerminalState.asStateFlow()
+
+    private var sandboxTerminal: LocalTerminalSession? = null
+    private var sandboxTerminalOutputJob: Job? = null
+    private var sandboxTerminalStateJob: Job? = null
+
+    /**
+     * 打开（或复用）当前 Agent 会话的交互终端。
+     *
+     * 同一个会话在整个 App 进程内复用同一个 shell：关掉终端界面再打开时，
+     * cwd、环境变量、正在运行的前台程序都还在。
+     */
+    internal fun openSandboxTerminal(cols: Int, rows: Int) {
         val sessionId = currentSessionId
-        if (sessionId.isBlank() || !isLocalMode) return false
-        if (interactiveSession?.isAlive == true) return false
-        viewModelScope.launch {
-            val session = unified.startSandboxInteractiveSession(sessionId, command) { code ->
-                // 读线程回调：切回主线程再通知 UI
-                interactiveSession = null
-                viewModelScope.launch { onExit(code) }
-            } ?: return@launch
-            interactiveSession = session
-            session.output.collect { chunk -> onOutput(chunk) }
+        if (sessionId.isBlank() || !isLocalMode) {
+            _sandboxTerminalState.value = LocalTerminalSession.State.UNAVAILABLE
+            return
         }
-        return true
+        viewModelScope.launch {
+            val session = sandboxTerminal?.takeIf { it.sessionId == sessionId }
+                ?: unified.sandboxTerminal(sessionId)
+            if (session == null) {
+                _sandboxTerminalState.value = LocalTerminalSession.State.UNAVAILABLE
+                return@launch
+            }
+            if (sandboxTerminal !== session) {
+                sandboxTerminal = session
+                sandboxTerminalOutputJob?.cancel()
+                sandboxTerminalOutputJob = viewModelScope.launch {
+                    session.output.collect { chunk -> _sandboxTerminalOutput.emit(chunk) }
+                }
+                sandboxTerminalStateJob?.cancel()
+                sandboxTerminalStateJob = viewModelScope.launch {
+                    session.state.collect { state -> _sandboxTerminalState.value = state }
+                }
+            }
+            if (session.isRunning) {
+                session.setWindowSize(cols, rows)
+            } else {
+                session.start(cols, rows)
+            }
+        }
     }
 
-    /** 发送一行输入给当前交互式会话。 */
-    fun sendSandboxInteractiveInput(line: String) {
-        interactiveSession?.takeIf { it.isAlive }?.sendLine(line)
+    /** 转发一段原始字节（按键、控制码、粘贴文本）。 */
+    internal fun sendSandboxTerminalBytes(bytes: ByteArray) {
+        sandboxTerminal?.takeIf { it.sessionId == currentSessionId }?.sendBytes(bytes)
     }
 
-    /** 终止当前交互式会话（进程结束会触发 onExit 回调）。 */
-    fun stopSandboxInteractiveSession() {
-        interactiveSession?.stop()
-        interactiveSession = null
+    /** 终端可见尺寸变化：同步给 PTY，内核会通知 shell 重排。 */
+    internal fun resizeSandboxTerminal(cols: Int, rows: Int) {
+        sandboxTerminal?.takeIf { it.sessionId == currentSessionId }?.setWindowSize(cols, rows)
+    }
+
+    /** 重启终端：结束当前 shell 后按当前尺寸重新拉起（已安装的软件不受影响）。 */
+    internal fun restartSandboxTerminal() {
+        val session = sandboxTerminal?.takeIf { it.sessionId == currentSessionId } ?: return
+        session.stop()
+        session.start()
     }
 
     /** 群聊气泡需要按每条消息的 sender 匹配成员角色卡头像。 */

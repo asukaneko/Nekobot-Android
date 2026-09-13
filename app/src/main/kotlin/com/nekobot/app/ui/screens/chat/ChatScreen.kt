@@ -140,6 +140,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -217,7 +218,7 @@ import com.nekobot.app.data.local.VISION_FAILURE_MARKER
 import com.nekobot.app.data.local.agentContextSummaryBoundaryId
 import com.nekobot.app.data.local.isAgentContextSummary
 import com.nekobot.app.data.local.isLocalCommandMessage
-import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
+import com.nekobot.app.data.local.ai.terminal.TerminalEmulator
 import com.nekobot.app.data.local.ai.AgentRecoveryState
 import com.nekobot.app.data.local.ai.AgentToolLimits
 import com.nekobot.app.data.local.ai.toRecoveryState
@@ -359,13 +360,6 @@ fun ChatScreen(
     var showSandboxTerminal by rememberSaveable(sessionId) { mutableStateOf(false) }
     // 沙盒文件浏览器：覆盖在终端之上，复用同一会话沙盒 shell 的命令通道
     var showSandboxFiles by rememberSaveable(sessionId) { mutableStateOf(false) }
-    var sandboxTerminalEntries by remember(sessionId) {
-        mutableStateOf<List<SandboxTerminalEntry>>(emptyList())
-    }
-    var sandboxTerminalRunning by remember(sessionId) { mutableStateOf(false) }
-    // 交互式会话（python3 等持续程序）运行状态：运行中输入直通程序 stdin
-    var interactiveRunning by remember(sessionId) { mutableStateOf(false) }
-    var interactiveEntryId by remember(sessionId) { mutableStateOf<Long?>(null) }
     // 展开状态必须高于 LazyColumn item：工具步骤更新或卡片离屏回收后仍保留用户选择。
     val progressCardExpansionOverrides = remember(sessionId) {
         mutableStateMapOf<String, Boolean>()
@@ -1933,131 +1927,31 @@ fun ChatScreen(
         }
     }
 
-    // ===== 沙箱交互式会话（python3 等持续程序） =====
-    val interactiveFailedText = stringResource(R.string.chat_sandbox_terminal_interactive_failed)
+    // ===== 沙箱终端（真 PTY）=====
 
-    fun isInteractiveSandboxCommand(command: String): Boolean {
-        val program = command.trim().substringBefore(' ').substringAfterLast('/').lowercase()
-        return program in interactiveSandboxPrograms
-    }
-
-    /** 把一段文本追加到当前交互式会话对应的终端条目输出上。 */
-    fun appendInteractiveOutput(text: String) {
-        val targetId = interactiveEntryId ?: return
-        sandboxTerminalEntries = sandboxTerminalEntries.map { entry ->
-            if (entry.id == targetId) entry.copy(output = entry.output + text) else entry
-        }
-    }
-
-    /** 启动交互式会话：新增运行中条目，输出流式写入，退出时补退出码。 */
-    fun startInteractiveSession(rawCommand: String) {
-        if (interactiveRunning) return
-        val command = normalizeInteractiveCommand(rawCommand)
-        val entryId = System.nanoTime()
-        interactiveEntryId = entryId
-        sandboxTerminalEntries = sandboxTerminalEntries + SandboxTerminalEntry(
-            id = entryId,
-            command = command,
-            isRunning = true,
-        )
-        interactiveRunning = true
-        val started = viewModel.startSandboxInteractiveSession(
-            command = command,
-            onOutput = { chunk -> appendInteractiveOutput(chunk) },
-            onExit = { code ->
-                interactiveRunning = false
-                interactiveEntryId = null
-                sandboxTerminalEntries = sandboxTerminalEntries.map { entry ->
-                    if (entry.id == entryId) {
-                        entry.copy(isRunning = false, exitCode = code)
-                    } else {
-                        entry
-                    }
-                }
-            },
-        )
-        if (!started) {
-            interactiveRunning = false
-            interactiveEntryId = null
-            sandboxTerminalEntries = sandboxTerminalEntries.map { entry ->
-                if (entry.id == entryId) {
-                    entry.copy(isRunning = false, error = interactiveFailedText)
-                } else {
-                    entry
-                }
-            }
-        }
+    val sandboxTerminalState by viewModel.sandboxTerminalState.collectAsState()
+    // 终端仿真器按会话持有：关掉终端界面再打开时输出与回滚历史仍在
+    val sandboxTerminalEmulator = remember(sessionId) { TerminalEmulator() }
+    LaunchedEffect(sandboxTerminalEmulator) {
+        viewModel.sandboxTerminalOutput.collect { bytes -> sandboxTerminalEmulator.feed(bytes) }
     }
 
     if (showSandboxTerminal) {
+        // 每次打开都重新附着一次：复用进程内已有的 shell，并同步当前终端尺寸
+        LaunchedEffect(sessionId) {
+            viewModel.openSandboxTerminal(
+                TerminalEmulator.DEFAULT_COLS,
+                TerminalEmulator.DEFAULT_ROWS,
+            )
+        }
         SandboxTerminalOverlay(
-            entries = sandboxTerminalEntries,
-            running = sandboxTerminalRunning,
-            interactiveRunning = interactiveRunning,
-            onRunCommand = { rawCommand ->
-                val command = rawCommand.trim()
-                when {
-                    command.isEmpty() -> Unit
-                    command == "clear" && !interactiveRunning -> sandboxTerminalEntries = emptyList()
-                    command == "exit" && !interactiveRunning -> showSandboxTerminal = false
-                    interactiveRunning -> {
-                        // 交互式会话中：输入直通程序 stdin，并本地回显一行
-                        appendInteractiveOutput("$command\n")
-                        viewModel.sendSandboxInteractiveInput(command)
-                    }
-                    isInteractiveSandboxCommand(command) -> startInteractiveSession(command)
-                    !sandboxTerminalRunning -> {
-                        val entryId = System.nanoTime()
-                        sandboxTerminalEntries = sandboxTerminalEntries + SandboxTerminalEntry(
-                            id = entryId,
-                            command = command,
-                            isRunning = true,
-                        )
-                        sandboxTerminalRunning = true
-                        viewModel.executeSandboxCommand(command) { result ->
-                            var accepted = false
-                            sandboxTerminalEntries = sandboxTerminalEntries.map { entry ->
-                                if (entry.id == entryId && entry.isRunning) {
-                                    accepted = true
-                                    entry.withResult(result)
-                                } else {
-                                    entry
-                                }
-                            }
-                            if (accepted) sandboxTerminalRunning = false
-                        }
-                    }
-                }
-            },
-            onStop = {
-                if (interactiveRunning) {
-                    // 交互式会话：终止进程（退出码经 onExit 回写条目）
-                    viewModel.stopSandboxInteractiveSession()
-                } else {
-                    viewModel.stopSandboxCommand()
-                    sandboxTerminalEntries = sandboxTerminalEntries.map { entry ->
-                        if (entry.isRunning) {
-                            entry.copy(
-                                output = "^C",
-                                exitCode = 130,
-                                isRunning = false,
-                            )
-                        } else {
-                            entry
-                        }
-                    }
-                    sandboxTerminalRunning = false
-                }
-            },
-            onClear = {
-                if (!sandboxTerminalRunning && !interactiveRunning) sandboxTerminalEntries = emptyList()
-            },
+            emulator = sandboxTerminalEmulator,
+            state = sandboxTerminalState,
             onOpenFiles = { showSandboxFiles = true },
-            onDismiss = {
-                showSandboxTerminal = false
-                // 关闭终端时终止仍在运行的交互式会话，避免进程残留
-                if (interactiveRunning) viewModel.stopSandboxInteractiveSession()
-            },
+            onRestart = { viewModel.restartSandboxTerminal() },
+            onSendBytes = { bytes -> viewModel.sendSandboxTerminalBytes(bytes) },
+            onResize = { cols, rows -> viewModel.resizeSandboxTerminal(cols, rows) },
+            onDismiss = { showSandboxTerminal = false },
             bottomClearance = embeddedBottomBarClearance,
         )
     }
@@ -2067,397 +1961,6 @@ fun ChatScreen(
             onDismiss = { showSandboxFiles = false },
             bottomClearance = embeddedBottomBarClearance,
         )
-    }
-    // 离开聊天页或切换会话时终止交互式会话
-    DisposableEffect(sessionId) {
-        onDispose { viewModel.stopSandboxInteractiveSession() }
-    }
-}
-
-private data class SandboxTerminalEntry(
-    val id: Long,
-    val command: String,
-    val output: String = "",
-    val error: String? = null,
-    val exitCode: Int? = null,
-    val durationMs: Long = 0L,
-    val timedOut: Boolean = false,
-    val isRunning: Boolean = false,
-) {
-    fun withResult(result: LocalSandboxCommandResult): SandboxTerminalEntry = copy(
-        output = result.output,
-        error = result.error,
-        exitCode = result.exitCode,
-        durationMs = result.durationMs,
-        timedOut = result.timedOut,
-        isRunning = false,
-    )
-}
-
-/** 需要持续交互的沙盒程序（解释器/REPL 类），命中后走交互式会话通道。 */
-private val interactiveSandboxPrograms = setOf(
-    "python", "python3", "node", "irb", "sqlite3", "bc",
-    "sh", "bash", "zsh", "fish",
-)
-
-/**
- * python/node 在管道 stdin 下默认按“脚本”读取（不打印提示符、不回显表达式结果），
- * 无 -i/-c/其他参数时补上 -i 强制以 REPL 方式运行。
- */
-private fun normalizeInteractiveCommand(command: String): String {
-    val tokens = command.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
-    if (tokens.isEmpty()) return command
-    val program = tokens.first().substringAfterLast('/').lowercase()
-    val hasModeFlag = tokens.drop(1).any { it == "-i" || it == "-c" || it.startsWith("-") }
-    return when {
-        program in setOf("python", "python3", "node") && !hasModeFlag -> "$command -i"
-        else -> command
-    }
-}
-
-/**
- * 当前 Agent 会话的全屏沙箱终端。
- *
- * 终端只负责展示和输入，命令状态由 ChatScreen 提升持有，因此关闭再打开时
- * 本次页面生命周期内的输出仍在；底层 shell 则由会话级 coordinator 长期持有。
- *
- * 实现说明：使用与主界面同窗口的全屏覆盖层而非独立 Dialog 窗口。
- * Dialog 窗口对 navigationBars/IME insets 的派发不可靠——正常态导航栏 inset
- * 丢失导致输入框底边贴出屏幕，键盘弹出时系统位移又与 ime inset 叠加产生
- * 双重空隙。覆盖层与主聊天输入栏共用同一套 insets 行为，表现一致。
- */
-@Composable
-private fun SandboxTerminalOverlay(
-    entries: List<SandboxTerminalEntry>,
-    running: Boolean,
-    interactiveRunning: Boolean,
-    onRunCommand: (String) -> Unit,
-    onStop: () -> Unit,
-    onClear: () -> Unit,
-    onOpenFiles: () -> Unit,
-    onDismiss: () -> Unit,
-    bottomClearance: Dp = 0.dp,
-) {
-    val background = Color(0xFF0B0F14)
-    val panel = Color(0xFF111820)
-    val foreground = Color(0xFFD8DEE9)
-    val muted = Color(0xFF7F8B99)
-    val prompt = Color(0xFF73D99F)
-    val errorColor = Color(0xFFFF7B72)
-    var input by rememberSaveable { mutableStateOf("") }
-    val listState = rememberLazyListState()
-    val focusRequester = remember { FocusRequester() }
-    val keyboard = LocalSoftwareKeyboardController.current
-
-    fun submit() {
-        val command = input.trim()
-        if (command.isBlank()) return
-        // 普通命令运行中不允许再提交；交互式会话中运行标记为 false，可直接提交
-        if (running && !interactiveRunning) return
-        input = ""
-        onRunCommand(command)
-    }
-
-    // 覆盖层不是独立窗口，返回键需自行接管以关闭终端
-    BackHandler(onBack = onDismiss)
-
-    LaunchedEffect(Unit) {
-        delay(120)
-        focusRequester.requestFocus()
-        keyboard?.show()
-    }
-    // 输出流式增长时也自动滚到底部
-    LaunchedEffect(
-        entries.size,
-        entries.lastOrNull()?.isRunning,
-        entries.lastOrNull()?.output?.length,
-    ) {
-        if (entries.isNotEmpty()) listState.animateScrollToItem(entries.lastIndex)
-    }
-
-    // 全屏覆盖层：与主界面同一窗口，导航栏/键盘 insets 派发可靠；
-    // 拦截空白区域点击，避免透传到下层聊天界面
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(background)
-            .clickable(
-                interactionSource = remember {
-                    androidx.compose.foundation.interaction.MutableInteractionSource()
-                },
-                indication = null,
-            ) {}
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                // 平板双栏嵌入时整体抬升，避开底部悬浮导航栏
-                .padding(bottom = bottomClearance)
-        ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(60.dp)
-                        .padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Keyboard,
-                        contentDescription = null,
-                        tint = prompt,
-                        modifier = Modifier
-                            .padding(start = 8.dp)
-                            .size(24.dp),
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.chat_sandbox_terminal_title),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = foreground,
-                        )
-                        Text(
-                            text = stringResource(R.string.chat_sandbox_terminal_subtitle),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = muted,
-                        )
-                    }
-                    IconButton(onClick = onOpenFiles) {
-                        Icon(
-                            Icons.Filled.Folder,
-                            contentDescription = stringResource(R.string.chat_sandbox_files_open),
-                            tint = foreground,
-                        )
-                    }
-                    IconButton(
-                        onClick = onClear,
-                        enabled = entries.isNotEmpty() && !running,
-                    ) {
-                        Icon(
-                            Icons.Filled.CleaningServices,
-                            contentDescription = stringResource(R.string.chat_sandbox_terminal_clear),
-                            tint = if (entries.isNotEmpty() && !running) foreground else muted,
-                        )
-                    }
-                    IconButton(onClick = onDismiss) {
-                        Icon(
-                            Icons.Filled.Close,
-                            contentDescription = stringResource(R.string.common_close),
-                            tint = foreground,
-                        )
-                    }
-                }
-                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
-
-                if (entries.isEmpty()) {
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .padding(24.dp),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            text = "$ _",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontFamily = FontFamily.Monospace,
-                            color = prompt,
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            text = stringResource(R.string.chat_sandbox_terminal_empty),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = muted,
-                        )
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        state = listState,
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(18.dp),
-                    ) {
-                        items(entries, key = SandboxTerminalEntry::id) { entry ->
-                            Column(modifier = Modifier.fillMaxWidth()) {
-                                SelectionContainer {
-                                    Text(
-                                        text = "$ ${entry.command}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = prompt,
-                                    )
-                                }
-                                Spacer(Modifier.height(6.dp))
-                                when {
-                                    entry.isRunning -> {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(14.dp),
-                                                strokeWidth = 1.5.dp,
-                                                color = prompt,
-                                            )
-                                            Spacer(Modifier.width(8.dp))
-                                            Text(
-                                                text = stringResource(R.string.chat_sandbox_terminal_running),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                fontFamily = FontFamily.Monospace,
-                                                color = muted,
-                                            )
-                                        }
-                                        // 交互式会话：运行中实时展示流式输出
-                                        if (entry.output.isNotBlank()) {
-                                            Spacer(Modifier.height(6.dp))
-                                            SelectionContainer {
-                                                Text(
-                                                    text = entry.output,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    fontFamily = FontFamily.Monospace,
-                                                    color = foreground,
-                                                )
-                                            }
-                                        }
-                                    }
-                                    entry.error != null -> {
-                                        SelectionContainer {
-                                            Text(
-                                                text = entry.error,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                fontFamily = FontFamily.Monospace,
-                                                color = errorColor,
-                                            )
-                                        }
-                                    }
-                                    else -> {
-                                        SelectionContainer {
-                                            Text(
-                                                text = entry.output.ifBlank {
-                                                    stringResource(R.string.chat_sandbox_terminal_no_output)
-                                                },
-                                                style = MaterialTheme.typography.bodySmall,
-                                                fontFamily = FontFamily.Monospace,
-                                                color = foreground,
-                                            )
-                                        }
-                                        Spacer(Modifier.height(5.dp))
-                                        Text(
-                                            text = if (entry.timedOut) {
-                                                stringResource(R.string.chat_sandbox_terminal_timeout)
-                                            } else {
-                                                stringResource(
-                                                    R.string.chat_sandbox_terminal_exit_status,
-                                                    entry.exitCode ?: -1,
-                                                    entry.durationMs,
-                                                )
-                                            },
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontFamily = FontFamily.Monospace,
-                                            color = if ((entry.exitCode ?: -1) == 0) muted else errorColor,
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // 交互式会话运行中的提示横幅
-                if (interactiveRunning) {
-                    Text(
-                        text = stringResource(R.string.chat_sandbox_terminal_interactive),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = muted,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(panel)
-                            .padding(horizontal = 16.dp, vertical = 6.dp),
-                    )
-                }
-
-                androidx.compose.material3.Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = panel,
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            // 与主聊天输入栏一致：导航栏 padding 叠加键盘 padding
-                            // （imePadding 会扣除已消费部分），键盘弹出时输入框
-                            // 紧贴键盘上方，无双重空隙
-                            .navigationBarsPadding()
-                            .imePadding()
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        OutlinedTextField(
-                            value = input,
-                            onValueChange = { input = it },
-                            modifier = Modifier
-                                .weight(1f)
-                                .focusRequester(focusRequester),
-                            enabled = !running,
-                            singleLine = true,
-                            textStyle = MaterialTheme.typography.bodyMedium.copy(
-                                fontFamily = FontFamily.Monospace,
-                                color = foreground,
-                            ),
-                            leadingIcon = {
-                                Text(
-                                    text = "$",
-                                    fontFamily = FontFamily.Monospace,
-                                    color = prompt,
-                                )
-                            },
-                            placeholder = {
-                                Text(
-                                    text = stringResource(R.string.chat_sandbox_terminal_hint),
-                                    fontFamily = FontFamily.Monospace,
-                                    color = muted,
-                                )
-                            },
-                            keyboardOptions = KeyboardOptions(
-                                imeAction = androidx.compose.ui.text.input.ImeAction.Send
-                            ),
-                            keyboardActions = KeyboardActions(onSend = { submit() }),
-                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = prompt,
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.14f),
-                                disabledBorderColor = Color.White.copy(alpha = 0.08f),
-                                cursorColor = prompt,
-                                focusedContainerColor = background,
-                                unfocusedContainerColor = background,
-                                disabledContainerColor = background,
-                            ),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        val anyRunning = running || interactiveRunning
-                        IconButton(
-                            onClick = if (anyRunning) onStop else ::submit,
-                        ) {
-                            Icon(
-                                imageVector = if (anyRunning) {
-                                    Icons.Filled.Stop
-                                } else {
-                                    Icons.AutoMirrored.Filled.Send
-                                },
-                                contentDescription = stringResource(
-                                    if (anyRunning) {
-                                        R.string.chat_sandbox_terminal_stop
-                                    } else {
-                                        R.string.chat_sandbox_terminal_run
-                                    }
-                                ),
-                                tint = if (anyRunning) errorColor else prompt,
-                            )
-                        }
-                    }
-                }
-            }
     }
 }
 

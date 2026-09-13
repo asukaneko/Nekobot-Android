@@ -29,13 +29,13 @@ import com.nekobot.app.data.local.ai.LocalChatFailoverExecutor
 import com.nekobot.app.data.local.ai.LocalContextTokenMessage
 import com.nekobot.app.data.local.ai.LocalDbToolExecutor
 import com.nekobot.app.data.local.ai.LocalGenerationController
-import com.nekobot.app.data.local.ai.LocalInteractiveSession
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
 import com.nekobot.app.data.local.ai.LocalSandboxStatus
 import com.nekobot.app.data.local.ai.LocalLinuxSandboxCoordinator
 import com.nekobot.app.data.local.ai.LocalMcpRuntime
 import com.nekobot.app.data.local.ai.LocalPersistedTokenMessage
 import com.nekobot.app.data.local.ai.LocalPromptBuilder
+import com.nekobot.app.data.local.ai.terminal.LocalTerminalSession
 import com.nekobot.app.data.local.ai.LocalProfileRepository
 import com.nekobot.app.data.local.ai.LocalRelationshipRepository
 import com.nekobot.app.data.local.ai.RealtimeAgentToolRuntime
@@ -1175,38 +1175,31 @@ class LocalRepository(
     }
 
     /**
-     * 启动交互式沙盒会话（python3 等持续程序）：独立进程 + 流式输出。
+     * 取得当前 Agent 会话的交互式沙箱终端（PRoot + 真 PTY）。
      *
      * 校验与 [executeSandboxCommand] 一致：仅本地 Agent 会话可用。
-     * 输出通过返回句柄的 output 流获取；进程退出后经 onExit 回调退出码（读线程）。
+     * 同一个会话复用同一个终端实例，关闭界面再打开不会丢掉 shell 状态。
      */
-    internal suspend fun startSandboxInteractiveSession(
-        sessionId: String,
-        command: String,
-        onExit: (Int) -> Unit,
-    ): LocalInteractiveSession? = withContext(Dispatchers.IO) {
-        val normalized = command.trim()
-        if (normalized.isEmpty()) return@withContext null
-        val session = sessionDao.getById(sessionId) ?: return@withContext null
-        if (!session.sessionMode.equals("agent", ignoreCase = true)) return@withContext null
-        val context = appContext ?: return@withContext null
-        val workspace = LocalWorkspaceStorage.resolve(context.filesDir, sessionId)
-            ?: return@withContext null
-        runCatching {
-            LocalLinuxSandboxCoordinator.startInteractiveSession(
-                context = context,
-                sessionId = sessionId,
-                workspace = workspace,
-                command = normalized,
-                onExit = onExit,
-            )
-        }.getOrNull()
+    internal suspend fun sandboxTerminal(sessionId: String): LocalTerminalSession? =
+        withContext(Dispatchers.IO) {
+            val session = sessionDao.getById(sessionId) ?: return@withContext null
+            if (!session.sessionMode.equals("agent", ignoreCase = true)) return@withContext null
+            val context = appContext ?: return@withContext null
+            val workspace = LocalWorkspaceStorage.resolve(context.filesDir, sessionId)
+                ?: return@withContext null
+            runCatching {
+                LocalLinuxSandboxCoordinator.terminal(context, sessionId, workspace)
+            }.getOrNull()
+        }
+
+    /** 结束并丢弃会话的交互终端（删除会话或用户重启终端时调用）。 */
+    fun stopSandboxTerminal(sessionId: String) {
+        LocalLinuxSandboxCoordinator.stopTerminal(sessionId)
     }
 
-    /** 中断命令行界面或 Agent 当前正在运行的沙箱命令/交互式会话。 */
+    /** 中断 Agent 当前正在运行的沙箱命令。 */
     fun stopSandboxCommand(sessionId: String) {
         LocalLinuxSandboxCoordinator.stopSession(sessionId)
-        LocalLinuxSandboxCoordinator.stopInteractiveSession(sessionId)
     }
 
     /** 读取 Linux 沙箱状态（设置 → Agent 设置 → 沙箱管理）。 */
@@ -1666,6 +1659,7 @@ class LocalRepository(
         }
         localBrowserTools.remove(id)?.close()
         LocalLinuxSandboxCoordinator.stopSession(id)
+        LocalLinuxSandboxCoordinator.stopTerminal(id)
         automationScheduler?.cancelProactive(id)
         messageImageDao.listBySession(id).forEach { image ->
             image.filePath?.let(::deleteMessageImageFile)
