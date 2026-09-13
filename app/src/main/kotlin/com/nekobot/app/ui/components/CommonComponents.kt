@@ -225,6 +225,7 @@ fun LoadingOverlay(visible: Boolean, message: String = stringResource(R.string.c
 
 /** 自定义弹窗：用于错误提示、确认操作等。
  *  内容过长时自动限制弹窗高度（屏幕 85%）；需要滚动的内容由调用方显式开启。 */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun NekoDialog(
     onDismiss: () -> Unit,
@@ -296,15 +297,16 @@ fun NekoDialog(
                     }
                 }
                 Spacer(Modifier.height(20.dp))
-                Row(
+                // FlowRow：按钮横向放不下时自动换行，避免窄屏/大字体下「确认」按钮被前面的按钮挤扁
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     if (cancelText != null && onCancel != null) {
                         TextButton(onClick = onCancel) {
                             Text(cancelText, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Spacer(Modifier.width(8.dp))
                     }
                     if (extraActionText != null && onExtraAction != null) {
                         Button(
@@ -317,7 +319,6 @@ fun NekoDialog(
                         ) {
                             Text(extraActionText)
                         }
-                        Spacer(Modifier.width(8.dp))
                     }
                     if (confirmIcon != null) {
                         FilledIconButton(
