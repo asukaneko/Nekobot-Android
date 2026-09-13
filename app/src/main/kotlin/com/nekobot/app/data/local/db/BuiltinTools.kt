@@ -181,7 +181,7 @@ object BuiltinTools {
                     },
                     "user_agent": {
                       "type": "string",
-                      "description": "set_user_agent 使用 mobile、desktop 或自定义 User-Agent"
+                      "description": "set_user_agent 使用 mobile、desktop、default（恢复用户在设置里配置的默认身份）或自定义 User-Agent"
                     },
                     "reload": {
                       "type": "boolean",

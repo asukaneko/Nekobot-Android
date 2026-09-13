@@ -74,7 +74,9 @@ import com.nekobot.app.ui.screens.settings.DiagnosticCenterScreen
 import com.nekobot.app.ui.screens.settings.FeatureSwitchesScreen
 import com.nekobot.app.ui.screens.settings.AbTestSettingsScreen
 import com.nekobot.app.ui.screens.settings.AgentSettingsScreen
+import com.nekobot.app.ui.screens.settings.BrowserSettingsScreen
 import com.nekobot.app.ui.screens.settings.RagSettingsScreen
+import com.nekobot.app.ui.screens.settings.SandboxManagementScreen
 import com.nekobot.app.ui.screens.settings.SettingsScreen
 import com.nekobot.app.ui.screens.settings.StyleSettingsScreen
 import com.nekobot.app.ui.screens.settings.SystemSettingsScreen
@@ -621,7 +623,16 @@ fun NekobotNavGraph() {
                 FeatureSwitchesScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.AGENT_SETTINGS) {
-                AgentSettingsScreen(onBack = { navController.popBackStack() })
+                AgentSettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigate = { route -> navController.navigate(route) }
+                )
+            }
+            composable(Routes.BROWSER_SETTINGS) {
+                BrowserSettingsScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.SANDBOX_MANAGEMENT) {
+                SandboxManagementScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.DATA_MAINTENANCE) {
                 DataMaintenanceScreen(onBack = { navController.popBackStack() })

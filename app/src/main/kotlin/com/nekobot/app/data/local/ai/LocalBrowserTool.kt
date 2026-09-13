@@ -45,19 +45,10 @@ internal class LocalBrowserTool(
         private const val JAVASCRIPT_TIMEOUT_MS = 15_000L
         private const val MAIN_THREAD_TIMEOUT_MS = 15_000L
         private const val IMAGE_LOAD_TIMEOUT_MS = 4_000L
-        private const val DEFAULT_VIEWPORT_WIDTH_CSS = 412
-        private const val DEFAULT_VIEWPORT_HEIGHT_CSS = 800
         private const val MAX_FULL_PAGE_HEIGHT_PX = 4096
         private const val DEFAULT_ELEMENT_LIMIT = 80
         private const val DEFAULT_LINK_LIMIT = 200
-        private const val MAX_TABS = 5
         private const val MAX_FETCH_BYTES = 100L * 1024L * 1024L
-        private const val MOBILE_USER_AGENT =
-            "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/134.0.0.0 Mobile Safari/537.36"
-        private const val DESKTOP_USER_AGENT =
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
     }
 
     private data class BrowserTab(
@@ -86,6 +77,10 @@ internal class LocalBrowserTool(
     private val tabs = LinkedHashMap<Int, BrowserTab>()
     private var selectedTabId = 0
     private var nextTabId = 1
+
+    /** 最近一次已应用到所有标签页的配置；用于用户改设置后无需重开会话即生效。 */
+    @Volatile
+    private var appliedConfig: LocalBrowserConfig? = null
 
     @Volatile
     private var webView: WebView? = null
@@ -116,6 +111,7 @@ internal class LocalBrowserTool(
 
         try {
             ensureWebView()
+            applyConfigToOpenTabs()
             args.optionalInt("tab_id")?.let { requestedTab ->
                 if (action !in setOf("new_tab", "list_tabs", "close_tab")) {
                     selectTab(requestedTab)?.let { return it }
@@ -261,21 +257,22 @@ internal class LocalBrowserTool(
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun createBrowserTab(tabId: Int): BrowserTab {
+        val config = LocalBrowserConfig.current()
         lateinit var tab: BrowserTab
         val view = WebView(appContext).apply browserView@ {
                 settings.apply {
-                    javaScriptEnabled = true
+                    javaScriptEnabled = config.javascriptEnabled
                     domStorageEnabled = true
                     databaseEnabled = true
-                    loadsImagesAutomatically = true
-                    blockNetworkImage = false
+                    loadsImagesAutomatically = config.imagesEnabled
+                    blockNetworkImage = !config.imagesEnabled
                     mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                     cacheMode = WebSettings.LOAD_DEFAULT
                     allowFileAccess = false
                     allowContentAccess = false
                     javaScriptCanOpenWindowsAutomatically = false
                     setSupportMultipleWindows(false)
-                    userAgentString = MOBILE_USER_AGENT
+                    userAgentString = config.userAgent
                     useWideViewPort = true
                     loadWithOverviewMode = true
                 }
@@ -301,9 +298,10 @@ internal class LocalBrowserTool(
                         }
                     }
                 }
-                applyDefaultViewport(this)
+                applyViewport(this, config.viewportWidthCss, config.viewportHeightCss)
             }
         tab = BrowserTab(id = tabId, view = view)
+        appliedConfig = config
         return tab
     }
 
@@ -414,8 +412,9 @@ internal class LocalBrowserTool(
     }
 
     private fun newTab(rawUrl: String): Map<String, Any> {
-        if (synchronized(tabs) { tabs.size } >= MAX_TABS) {
-            return failure("最多同时打开 $MAX_TABS 个标签页")
+        val maxTabs = LocalBrowserConfig.current().maxTabs
+        if (synchronized(tabs) { tabs.size } >= maxTabs) {
+            return failure("最多同时打开 $maxTabs 个标签页")
         }
         val tab = runOnMain {
             createBrowserTab(nextTabId++).also { created ->
@@ -553,7 +552,8 @@ internal class LocalBrowserTool(
             .url(normalized)
             .header(
                 "User-Agent",
-                runOnMain { requireWebView().settings.userAgentString ?: MOBILE_USER_AGENT }
+                runOnMain { requireWebView().settings.userAgentString }
+                    ?: LocalBrowserConfig.current().userAgent
             )
         val cookieHeader = runOnMain {
             CookieManager.getInstance().getCookie(normalized).orEmpty()
@@ -630,11 +630,20 @@ internal class LocalBrowserTool(
     }
 
     private fun setViewport(args: Map<String, Any>): Map<String, Any> {
+        val config = LocalBrowserConfig.current()
         val reset = args.boolean("reset")
-        val widthCss = if (reset) DEFAULT_VIEWPORT_WIDTH_CSS
-        else args.int("viewport_width", DEFAULT_VIEWPORT_WIDTH_CSS).coerceIn(280, 2_560)
-        val heightCss = if (reset) DEFAULT_VIEWPORT_HEIGHT_CSS
-        else args.int("viewport_height", DEFAULT_VIEWPORT_HEIGHT_CSS).coerceIn(320, 4_096)
+        val widthCss = if (reset) config.viewportWidthCss
+        else args.int("viewport_width", config.viewportWidthCss)
+            .coerceIn(
+                LocalBrowserConfig.MIN_VIEWPORT_WIDTH_CSS,
+                LocalBrowserConfig.MAX_VIEWPORT_WIDTH_CSS
+            )
+        val heightCss = if (reset) config.viewportHeightCss
+        else args.int("viewport_height", config.viewportHeightCss)
+            .coerceIn(
+                LocalBrowserConfig.MIN_VIEWPORT_HEIGHT_CSS,
+                LocalBrowserConfig.MAX_VIEWPORT_HEIGHT_CSS
+            )
         runOnMain { applyViewport(requireWebView(), widthCss, heightCss) }
         return success(
             "action" to "set_viewport",
@@ -645,11 +654,13 @@ internal class LocalBrowserTool(
     }
 
     private fun setUserAgent(args: Map<String, Any>): Map<String, Any> {
+        val config = LocalBrowserConfig.current()
         val requested = args.string("user_agent").trim()
         val userAgent = when (requested.lowercase()) {
-            "", "mobile" -> MOBILE_USER_AGENT
-            "desktop" -> DESKTOP_USER_AGENT
-            else -> requested.take(1_000)
+            "", "mobile" -> LocalBrowserConfig.MOBILE_USER_AGENT
+            "desktop" -> LocalBrowserConfig.DESKTOP_USER_AGENT
+            "default" -> config.userAgent
+            else -> requested.take(LocalBrowserConfig.MAX_CUSTOM_USER_AGENT_CHARS)
         }
         runOnMain {
             requireWebView().settings.userAgentString = userAgent
@@ -1220,7 +1231,8 @@ internal class LocalBrowserTool(
         if (fullPage) {
             val scrollHeightCss = evaluate(
                 "Math.max(document.body?.scrollHeight || 0, document.documentElement?.scrollHeight || 0)"
-            ).toDoubleOrNull()?.roundToInt() ?: DEFAULT_VIEWPORT_HEIGHT_CSS
+            ).toDoubleOrNull()?.roundToInt()
+                ?: LocalBrowserConfig.current().viewportHeightCss
             val density = appContext.resources.displayMetrics.density
             val requestedHeight = (scrollHeightCss * density).roundToInt()
                 .coerceAtLeast(originalHeight)
@@ -1525,8 +1537,31 @@ internal class LocalBrowserTool(
         return latest
     }
 
-    private fun applyDefaultViewport(view: WebView) {
-        applyViewport(view, DEFAULT_VIEWPORT_WIDTH_CSS, DEFAULT_VIEWPORT_HEIGHT_CSS)
+    /**
+     * 把最新的浏览器设置应用到已打开的标签页。
+     *
+     * 用户在「浏览器设置」里改完 UA / JS / 图片加载后，正在运行的 Agent 会话无需重开：
+     * 下一次 browser_use 调用就会带上新配置。模型在会话内用 set_user_agent 做的临时覆盖
+     * 会在下一次配置变更时被重置，这是刻意的——用户设置优先。
+     */
+    private fun applyConfigToOpenTabs() {
+        val config = LocalBrowserConfig.current()
+        if (config == appliedConfig) return
+        val views = synchronized(tabs) { tabs.values.map { it.view } }
+        views.forEach { view ->
+            runCatching {
+                runOnMain {
+                    view.settings.apply {
+                        javaScriptEnabled = config.javascriptEnabled
+                        loadsImagesAutomatically = config.imagesEnabled
+                        blockNetworkImage = !config.imagesEnabled
+                        userAgentString = config.userAgent
+                    }
+                    applyViewport(view, config.viewportWidthCss, config.viewportHeightCss)
+                }
+            }
+        }
+        appliedConfig = config
     }
 
     private fun applyViewport(view: WebView, widthCss: Int, heightCss: Int) {

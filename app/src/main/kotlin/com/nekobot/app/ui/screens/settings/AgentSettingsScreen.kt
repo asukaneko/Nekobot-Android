@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Article
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmarks
@@ -30,9 +31,11 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Straighten
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
@@ -71,6 +74,7 @@ import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.toolSetModeDescription
 import com.nekobot.app.ui.components.toolSetModeLabel
 import com.nekobot.app.ui.components.toolSetModeNameResId
+import com.nekobot.app.ui.navigation.Routes
 
 /** Agent 设置下所有数值的可选范围与默认值，保持与 PrefsManager 一致。 */
 private const val MAX_TOOL_CALLS_MIN = 1
@@ -91,7 +95,10 @@ private const val SUBAGENT_MAX_TOOL_CALLS_DEFAULT = 60
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AgentSettingsScreen(onBack: () -> Unit) {
+fun AgentSettingsScreen(
+    onBack: () -> Unit,
+    onNavigate: (String) -> Unit = {}
+) {
     // 工具集模式相关弹窗与刷新计数（任何改动后立即刷新摘要文案）
     var showDefaultModeDialog by remember { mutableStateOf(false) }
     var showDefaultToolSetDialog by remember { mutableStateOf(false) }
@@ -316,6 +323,33 @@ fun AgentSettingsScreen(onBack: () -> Unit) {
                 )
             }
 
+            // 浏览器与沙盒分组：browser_use 工具配置入口 + Linux 沙盒管理入口。
+            if (ServiceContainer.prefs.isLocalMode) {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = stringResource(R.string.agent_settings_group_browser_sandbox),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(bottom = 6.dp, start = 2.dp)
+                    )
+                    AgentNavigateRow(
+                        icon = Icons.Filled.Language,
+                        tint = MaterialTheme.colorScheme.primary,
+                        title = stringResource(R.string.agent_settings_browser),
+                        desc = stringResource(R.string.agent_settings_browser_desc),
+                        onClick = { onNavigate(Routes.BROWSER_SETTINGS) }
+                    )
+                    AgentNavigateRow(
+                        icon = Icons.Filled.Terminal,
+                        tint = MaterialTheme.colorScheme.secondary,
+                        title = stringResource(R.string.agent_settings_sandbox),
+                        desc = stringResource(R.string.agent_settings_sandbox_desc),
+                        onClick = { onNavigate(Routes.SANDBOX_MANAGEMENT) }
+                    )
+                }
+            }
+
             // 工具集模式分组：内置模式一键套用 + 默认工具集明细 + 自定义模式管理。
             if (ServiceContainer.prefs.isLocalMode) {
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
@@ -492,10 +526,11 @@ private fun AgentSettingRow(
     tint: Color,
     title: String,
     desc: String,
+    modifier: Modifier = Modifier,
     trailing: @Composable () -> Unit
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -517,6 +552,31 @@ private fun AgentSettingRow(
         Spacer(Modifier.width(12.dp))
         trailing()
     }
+}
+
+/** 可点击进入子界面的设置行：与 [AgentSettingRow] 同布局，右侧固定为右箭头。 */
+@Composable
+private fun AgentNavigateRow(
+    icon: ImageVector,
+    tint: Color,
+    title: String,
+    desc: String,
+    onClick: () -> Unit
+) {
+    AgentSettingRow(
+        icon = icon,
+        tint = tint,
+        title = title,
+        desc = desc,
+        modifier = Modifier.clickable(onClick = onClick),
+        trailing = {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    )
 }
 
 /** 工具集模式分组摘要：当前默认模式 + 默认工具集统计 + 自定义模式数量。 */

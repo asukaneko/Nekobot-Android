@@ -7,7 +7,9 @@ import com.google.gson.JsonObject
 import com.google.gson.reflect.TypeToken
 import com.nekobot.app.data.local.security.SecurePreferenceStore
 import com.nekobot.app.data.local.ai.AgentToolLimits
+import com.nekobot.app.data.local.ai.BrowserUserAgentMode
 import com.nekobot.app.data.local.ai.CustomToolSetModeRecord
+import com.nekobot.app.data.local.ai.LocalBrowserConfig
 import com.nekobot.app.data.local.ai.ToolSetModeCatalog
 import com.nekobot.app.data.local.ai.decodeToolSet
 import com.nekobot.app.data.local.ai.encodeToolSet
@@ -368,6 +370,103 @@ class PrefsManager(context: Context) {
             .remove("agent_skill_review_progress_$sessionId")
             .apply()
     }
+
+    // ============ browser_use 浏览器工具配置 ============
+
+    /**
+     * browser_use 工具的默认 User-Agent 预设：mobile / desktop / custom。
+     *
+     * 模型仍可在会话内用 `set_user_agent` 临时覆盖，这里只决定新标签页的默认身份。
+     */
+    var browserUserAgentMode: String
+        get() = prefs.getString(
+            KEY_BROWSER_USER_AGENT_MODE,
+            BrowserUserAgentMode.MOBILE.name
+        )?.takeIf { value -> BrowserUserAgentMode.entries.any { it.name == value } }
+            ?: BrowserUserAgentMode.MOBILE.name
+        set(value) {
+            val normalized = value.takeIf { candidate ->
+                BrowserUserAgentMode.entries.any { it.name == candidate }
+            } ?: BrowserUserAgentMode.MOBILE.name
+            prefs.edit().putString(KEY_BROWSER_USER_AGENT_MODE, normalized).apply()
+        }
+
+    /** 自定义 User-Agent（仅 [browserUserAgentMode] 为 custom 时生效）。 */
+    var browserCustomUserAgent: String
+        get() = prefs.getString(KEY_BROWSER_CUSTOM_USER_AGENT, "").orEmpty()
+        set(value) = prefs.edit()
+            .putString(
+                KEY_BROWSER_CUSTOM_USER_AGENT,
+                value.take(LocalBrowserConfig.MAX_CUSTOM_USER_AGENT_CHARS)
+            )
+            .apply()
+
+    /** 浏览器默认视口宽度（CSS 像素）。 */
+    var browserViewportWidth: Int
+        get() = prefs.getInt(
+            KEY_BROWSER_VIEWPORT_WIDTH,
+            LocalBrowserConfig.DEFAULT_VIEWPORT_WIDTH_CSS
+        )
+        set(value) = prefs.edit().putInt(
+            KEY_BROWSER_VIEWPORT_WIDTH,
+            value.coerceIn(
+                LocalBrowserConfig.MIN_VIEWPORT_WIDTH_CSS,
+                LocalBrowserConfig.MAX_VIEWPORT_WIDTH_CSS
+            )
+        ).apply()
+
+    /** 浏览器默认视口高度（CSS 像素）。 */
+    var browserViewportHeight: Int
+        get() = prefs.getInt(
+            KEY_BROWSER_VIEWPORT_HEIGHT,
+            LocalBrowserConfig.DEFAULT_VIEWPORT_HEIGHT_CSS
+        )
+        set(value) = prefs.edit().putInt(
+            KEY_BROWSER_VIEWPORT_HEIGHT,
+            value.coerceIn(
+                LocalBrowserConfig.MIN_VIEWPORT_HEIGHT_CSS,
+                LocalBrowserConfig.MAX_VIEWPORT_HEIGHT_CSS
+            )
+        ).apply()
+
+    /** 是否允许页面脚本执行（关闭后大量站点不可用，仅供排障）。 */
+    var browserJavascriptEnabled: Boolean
+        get() = prefs.getBoolean(KEY_BROWSER_JAVASCRIPT_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_BROWSER_JAVASCRIPT_ENABLED, value).apply()
+
+    /** 是否自动加载页面图片（关闭后截图与预览只有文字排版）。 */
+    var browserImagesEnabled: Boolean
+        get() = prefs.getBoolean(KEY_BROWSER_IMAGES_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_BROWSER_IMAGES_ENABLED, value).apply()
+
+    /** 浏览器单会话最多同时打开的标签页数量。 */
+    var browserMaxTabs: Int
+        get() = prefs.getInt(KEY_BROWSER_MAX_TABS, LocalBrowserConfig.DEFAULT_MAX_TABS)
+        set(value) = prefs.edit().putInt(
+            KEY_BROWSER_MAX_TABS,
+            value.coerceIn(LocalBrowserConfig.MIN_MAX_TABS, LocalBrowserConfig.MAX_MAX_TABS)
+        ).apply()
+
+    // ============ Linux 沙盒镜像源 ============
+
+    /**
+     * 沙盒 apk 镜像源基地址（例如 `https://mirrors.tuna.tsinghua.edu.cn/alpine`）。
+     *
+     * 留空表示保持沙箱内既有 /etc/apk/repositories 不变（即官方源或用户手工配置）。
+     */
+    var sandboxApkMirror: String
+        get() = prefs.getString(KEY_SANDBOX_APK_MIRROR, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_SANDBOX_APK_MIRROR, value.trim()).apply()
+
+    /** 沙盒 pip 索引地址（写入 rootfs 的 /etc/pip.conf）；留空表示移除该配置。 */
+    var sandboxPipMirror: String
+        get() = prefs.getString(KEY_SANDBOX_PIP_MIRROR, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_SANDBOX_PIP_MIRROR, value.trim()).apply()
+
+    /** 沙盒 npm registry 地址（写入 rootfs 的 /root/.npmrc）；留空表示移除该配置。 */
+    var sandboxNpmMirror: String
+        get() = prefs.getString(KEY_SANDBOX_NPM_MIRROR, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_SANDBOX_NPM_MIRROR, value.trim()).apply()
 
     // ============ 会话级命令授权记忆 ============
 
@@ -984,6 +1083,16 @@ class PrefsManager(context: Context) {
         private const val KEY_AGENT_NETWORK_ACCESS = "agent_network_access_enabled"
         private const val KEY_AGENT_AUTO_MEMORY = "agent_auto_memory_enabled"
         private const val KEY_AGENT_AUTO_SKILL = "agent_auto_skill_enabled"
+        private const val KEY_BROWSER_USER_AGENT_MODE = "browser_user_agent_mode"
+        private const val KEY_BROWSER_CUSTOM_USER_AGENT = "browser_custom_user_agent"
+        private const val KEY_BROWSER_VIEWPORT_WIDTH = "browser_viewport_width"
+        private const val KEY_BROWSER_VIEWPORT_HEIGHT = "browser_viewport_height"
+        private const val KEY_BROWSER_JAVASCRIPT_ENABLED = "browser_javascript_enabled"
+        private const val KEY_BROWSER_IMAGES_ENABLED = "browser_images_enabled"
+        private const val KEY_BROWSER_MAX_TABS = "browser_max_tabs"
+        private const val KEY_SANDBOX_APK_MIRROR = "sandbox_apk_mirror"
+        private const val KEY_SANDBOX_PIP_MIRROR = "sandbox_pip_mirror"
+        private const val KEY_SANDBOX_NPM_MIRROR = "sandbox_npm_mirror"
         private const val KEY_SMART_ROUTING_DAILY_BUDGET = "smart_routing_daily_budget"
         private const val KEY_SMART_ROUTING_BUDGET_ALERT = "smart_routing_budget_alert"
         private const val KEY_RAG_SEMANTIC_WEIGHT = "rag_semantic_weight"

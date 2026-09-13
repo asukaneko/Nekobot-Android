@@ -11,6 +11,7 @@ import com.nekobot.app.data.local.AgentLiveContextUsage
 import com.nekobot.app.data.local.ai.ContextUsageBreakdown
 import com.nekobot.app.data.local.ai.LocalInteractiveSession
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
+import com.nekobot.app.data.local.ai.LocalSandboxStatus
 import com.nekobot.app.data.local.ai.RealtimeAgentToolRuntime
 import com.nekobot.app.data.local.ai.RealtimeModelConfig
 import com.nekobot.app.data.local.ai.toRealtimeModelConfig
@@ -214,6 +215,30 @@ class UnifiedRepository(
     fun stopSandboxCommand(sessionId: String) {
         if (isLocal) local.stopSandboxCommand(sessionId)
     }
+
+    /** 读取 Linux 沙箱状态（rootfs 安装情况、占用空间、镜像文件实际内容）。 */
+    suspend fun sandboxStatus(): Resource<LocalSandboxStatus> =
+        if (isLocal) {
+            local.sandboxStatus()?.let { Resource.Success(it) } ?: Resource.Error("沙箱状态不可用")
+        } else {
+            localNotSupported("Linux 沙盒")
+        }
+
+    /** 把设置里的 apk / pip / npm 镜像源写入沙箱 rootfs。 */
+    suspend fun applySandboxMirrors(): Resource<LocalSandboxStatus> =
+        if (isLocal) {
+            local.applySandboxMirrors()?.let { Resource.Success(it) } ?: Resource.Error("写入镜像源失败")
+        } else {
+            localNotSupported("Linux 沙盒")
+        }
+
+    /** 重置沙箱 rootfs（删除已安装软件与 /root 数据，恢复随 APK 附带的初始镜像）。 */
+    suspend fun resetSandboxRootfs(): Resource<LocalSandboxStatus> =
+        if (isLocal) {
+            local.resetSandboxRootfs()?.let { Resource.Success(it) } ?: Resource.Error("重置沙箱失败")
+        } else {
+            localNotSupported("Linux 沙盒")
+        }
 
     /** 启动交互式沙盒会话（python3 等持续程序），仅本地模式可用。 */
     internal suspend fun startSandboxInteractiveSession(

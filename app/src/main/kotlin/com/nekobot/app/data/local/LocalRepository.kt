@@ -31,6 +31,7 @@ import com.nekobot.app.data.local.ai.LocalDbToolExecutor
 import com.nekobot.app.data.local.ai.LocalGenerationController
 import com.nekobot.app.data.local.ai.LocalInteractiveSession
 import com.nekobot.app.data.local.ai.LocalSandboxCommandResult
+import com.nekobot.app.data.local.ai.LocalSandboxStatus
 import com.nekobot.app.data.local.ai.LocalLinuxSandboxCoordinator
 import com.nekobot.app.data.local.ai.LocalMcpRuntime
 import com.nekobot.app.data.local.ai.LocalPersistedTokenMessage
@@ -1206,6 +1207,28 @@ class LocalRepository(
     fun stopSandboxCommand(sessionId: String) {
         LocalLinuxSandboxCoordinator.stopSession(sessionId)
         LocalLinuxSandboxCoordinator.stopInteractiveSession(sessionId)
+    }
+
+    /** 读取 Linux 沙箱状态（设置 → Agent 设置 → 沙箱管理）。 */
+    suspend fun sandboxStatus(): LocalSandboxStatus? = withContext(Dispatchers.IO) {
+        val context = appContext ?: return@withContext null
+        runCatching { LocalLinuxSandboxCoordinator.status(context) }.getOrNull()
+    }
+
+    /** 把设置里的 apk / pip / npm 镜像源写入沙箱 rootfs。 */
+    suspend fun applySandboxMirrors(): LocalSandboxStatus? = withContext(Dispatchers.IO) {
+        val context = appContext ?: return@withContext null
+        runCatching { LocalLinuxSandboxCoordinator.applyMirrors(context) }.getOrNull()
+    }
+
+    /**
+     * 重置沙箱 rootfs：删除整个 Alpine 系统并重新解包随 APK 附带的镜像。
+     *
+     * 沙箱内通过 apk/pip/npm 安装的软件与 /root 数据会一并丢失，仅还原镜像源与 DNS。
+     */
+    suspend fun resetSandboxRootfs(): LocalSandboxStatus? = withContext(Dispatchers.IO) {
+        val context = appContext ?: return@withContext null
+        runCatching { LocalLinuxSandboxCoordinator.resetRootfs(context) }.getOrNull()
     }
 
     suspend fun createSession(req: CreateSessionRequest): Session = withContext(Dispatchers.IO) {

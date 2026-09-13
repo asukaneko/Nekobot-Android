@@ -37,6 +37,31 @@ data class LocalSandboxCommandResult(
 }
 
 /**
+ * 沙箱管理界面读取的状态快照。
+ *
+ * 既包含 rootfs 安装情况与磁盘占用，也包含三个镜像配置文件在沙箱内的真实内容，
+ * 便于用户确认「设置里填的」是否真的生效。
+ */
+data class LocalSandboxStatus(
+    /** rootfs 是否已解包可运行。 */
+    val installed: Boolean,
+    /** 当前设备 ABI 是否受支持（目前仅 arm64-v8a）。 */
+    val abiSupported: Boolean,
+    val rootfsPath: String,
+    val rootfsSizeBytes: Long,
+    /** rootfs 内 etc/alpine-release 的内容，未安装时为空。 */
+    val alpineRelease: String,
+    /** rootfs 内 etc/apk/repositories 的当前内容。 */
+    val apkRepositories: String,
+    /** rootfs 内 etc/pip.conf 的当前内容（未配置时为空）。 */
+    val pipConf: String,
+    /** rootfs 内 root/.npmrc 的当前内容（未配置时为空）。 */
+    val npmrc: String,
+    /** 用户设置里保存的镜像源。 */
+    val mirrors: LocalSandboxMirrors,
+)
+
+/**
  * Agent 模式使用的 Alpine Linux 沙盒。
  *
  * rootfs 在应用内全局共享，软件安装和 /root 数据可以跨 Agent 会话保留；
@@ -218,6 +243,27 @@ internal object LocalLinuxSandboxCoordinator {
         interactiveSessions.clear()
         sessionLocks.clear()
     }
+
+    // ==================== 沙箱管理（设置界面入口）====================
+
+    /** 读取沙箱状态（rootfs 安装情况、占用空间与镜像文件实际内容）。 */
+    fun status(context: Context): LocalSandboxStatus =
+        LocalLinuxRootfsManager.getInstance(context).status()
+
+    /** 把设置里的镜像源写入 rootfs；rootfs 未安装时会先完成安装。 */
+    fun applyMirrors(context: Context): LocalSandboxStatus =
+        LocalLinuxRootfsManager.getInstance(context).applyMirrorsNow()
+
+    /**
+     * 重置沙箱：终止全部会话 shell 后删除 rootfs 并重新解包随 APK 附带的镜像。
+     *
+     * 用户通过 apk/pip/npm 安装的软件与 /root 内的数据都会丢失，调用方必须先做二次确认。
+     */
+    fun resetRootfs(context: Context): LocalSandboxStatus {
+        // 先停掉所有持有 rootfs 文件的进程，避免删除时被占用或留下半死 shell。
+        closeAll()
+        return LocalLinuxRootfsManager.getInstance(context).resetRootfs()
+    }
 }
 
 internal data class LocalLinuxRuntime(
@@ -279,9 +325,86 @@ internal class LocalLinuxRootfsManager private constructor(
     private val stagingDir = File(sandboxDir, "$ROOTFS_DIR.installing")
     private val markerFile get() = File(rootfsDir, INSTALL_MARKER)
 
-    fun ensureReady(): LocalLinuxRuntime = synchronized(installLock) {
-        requireSupportedAbi()
+    /** 最近一次写入 rootfs 的镜像源指纹；null 表示本进程内尚未应用过。 */
+    @Volatile
+    private var appliedMirrorSignature: String? = null
 
+    fun ensureReady(): LocalLinuxRuntime = synchronized(installLock) {
+        val proot = resolveProot()
+
+        if (!isInstalled()) {
+            installRootfs()
+        } else {
+            migrateInstallMarkerWithoutReset()
+        }
+        refreshDns(rootfsDir)
+        applyMirrorsLocked()
+
+        buildRuntime(proot)
+    }
+
+    /** 读取沙箱状态；不触发 rootfs 安装，避免只是打开设置页就解包 8MB 镜像。 */
+    fun status(): LocalSandboxStatus = synchronized(installLock) {
+        val installed = isInstalled()
+        LocalSandboxStatus(
+            installed = installed,
+            abiSupported = Build.SUPPORTED_ABIS.any { it == SUPPORTED_ABI },
+            rootfsPath = rootfsDir.absolutePath,
+            rootfsSizeBytes = if (installed) directorySize(rootfsDir) else 0L,
+            alpineRelease = if (installed) {
+                runCatching { File(rootfsDir, LocalSandboxMirrorFiles.ALPINE_RELEASE).readText().trim() }
+                    .getOrDefault("")
+            } else "",
+            apkRepositories = if (installed) {
+                runCatching { File(rootfsDir, LocalSandboxMirrorFiles.APK_REPOSITORIES).readText().trim() }
+                    .getOrDefault("")
+            } else "",
+            pipConf = if (installed) {
+                runCatching { File(rootfsDir, LocalSandboxMirrorFiles.PIP_CONF).readText().trim() }
+                    .getOrDefault("")
+            } else "",
+            npmrc = if (installed) {
+                runCatching { File(rootfsDir, LocalSandboxMirrorFiles.NPMRC).readText().trim() }
+                    .getOrDefault("")
+            } else "",
+            mirrors = LocalSandboxMirrors.current(),
+        )
+    }
+
+    /** 手动应用镜像源（设置界面「保存并应用」）：rootfs 缺失时先安装。 */
+    fun applyMirrorsNow(): LocalSandboxStatus = synchronized(installLock) {
+        if (!isInstalled()) {
+            resolveProot()
+            installRootfs()
+            refreshDns(rootfsDir)
+        }
+        // 强制重写：用户刚点过按钮，即使指纹一致也让它真的落盘一次。
+        appliedMirrorSignature = null
+        applyMirrorsLocked()
+        status()
+    }
+
+    /**
+     * 重置 rootfs：删除整个 Alpine 系统并重新解包随 APK 附带的镜像。
+     *
+     * 之后会重新写入 DNS 与镜像源配置；镜像源来自用户设置，因此重置不会把镜像源改回官方。
+     */
+    fun resetRootfs(): LocalSandboxStatus = synchronized(installLock) {
+        val proot = resolveProot()
+        Log.i(TAG, "Resetting Linux sandbox rootfs at ${rootfsDir.absolutePath}")
+        deleteTreeWithoutFollowingLinks(rootfsDir)
+        deleteTreeWithoutFollowingLinks(stagingDir)
+        installRootfs()
+        refreshDns(rootfsDir)
+        appliedMirrorSignature = null
+        applyMirrorsLocked()
+        buildRuntime(proot)
+        status()
+    }
+
+    /** 校验 PRoot 运行时是否可用，并返回其文件句柄。 */
+    private fun resolveProot(): File {
+        requireSupportedAbi()
         val nativeLibraryDir = File(
             context.applicationInfo.nativeLibraryDir
                 ?: throw IllegalStateException("无法定位 Android 原生库目录")
@@ -290,16 +413,14 @@ internal class LocalLinuxRootfsManager private constructor(
         if (!proot.isFile || !proot.canExecute()) {
             throw IllegalStateException("PRoot 运行时不可用：${proot.absolutePath}")
         }
+        return proot
+    }
 
-        if (!isInstalled()) {
-            installRootfs()
-        } else {
-            migrateInstallMarkerWithoutReset()
-        }
-        refreshDns(rootfsDir)
-
+    private fun buildRuntime(proot: File): LocalLinuxRuntime {
+        val nativeLibraryDir = proot.parentFile
+            ?: throw IllegalStateException("无法定位 Android 原生库目录")
         val tempDir = File(context.cacheDir, "nekobot-proot-tmp").apply { mkdirs() }
-        LocalLinuxRuntime(
+        return LocalLinuxRuntime(
             rootfs = rootfsDir,
             proot = proot,
             nativeLibraryDir = nativeLibraryDir,
@@ -307,6 +428,45 @@ internal class LocalLinuxRootfsManager private constructor(
             loader32 = File(nativeLibraryDir, PROOT_LOADER_32).takeIf(File::isFile),
             prootTempDir = tempDir,
         )
+    }
+
+    /**
+     * 把镜像源写进 rootfs，配置未变化时直接返回。
+     *
+     * 内存里记住上次生效的指纹，避免每次执行命令都触碰三个文件。
+     */
+    private fun applyMirrorsLocked() {
+        if (!isInstalled()) return
+        val mirrors = LocalSandboxMirrors.current()
+        if (mirrors.signature == appliedMirrorSignature) return
+        runCatching {
+            LocalSandboxMirrorFiles.apply(sandboxDir, rootfsDir, mirrors)
+        }.onSuccess {
+            appliedMirrorSignature = mirrors.signature
+            if (it.isNotEmpty()) {
+                Log.i(TAG, "Applied sandbox mirrors: ${it.joinToString()}")
+            }
+        }.onFailure {
+            Log.w(TAG, "应用沙箱镜像源失败：${it.message}")
+        }
+    }
+
+    private fun directorySize(directory: File): Long {
+        var total = 0L
+        val stack = ArrayDeque<File>()
+        stack.addLast(directory)
+        while (stack.isNotEmpty()) {
+            val current = stack.removeLast()
+            val children = runCatching { current.listFiles() }.getOrNull() ?: continue
+            children.forEach { child ->
+                when {
+                    Files.isSymbolicLink(child.toPath()) -> Unit
+                    child.isDirectory -> stack.addLast(child)
+                    child.isFile -> total += child.length()
+                }
+            }
+        }
+        return total
     }
 
     private fun requireSupportedAbi() {
@@ -339,6 +499,9 @@ internal class LocalLinuxRootfsManager private constructor(
     private fun installRootfs() {
         Log.i(TAG, "Installing bundled Alpine rootfs")
         sandboxDir.mkdirs()
+        // 新解包的 rootfs 会丢掉镜像配置，清掉标记让 ensureReady 重新写入。
+        LocalSandboxMirrorFiles.resetMarker(sandboxDir)
+        appliedMirrorSignature = null
         deleteTreeWithoutFollowingLinks(stagingDir)
         stagingDir.mkdirs()
 

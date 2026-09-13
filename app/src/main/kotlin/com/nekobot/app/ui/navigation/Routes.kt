@@ -71,6 +71,10 @@ object Routes {
     const val DATA_MAINTENANCE = "data_maintenance"
     /** Agent 设置 */
     const val AGENT_SETTINGS = "agent_settings"
+    /** browser_use 浏览器工具配置（User-Agent / 视口 / 脚本与图片加载） */
+    const val BROWSER_SETTINGS = "browser_settings"
+    /** Linux 沙盒管理（apk / pip / npm 镜像源与 rootfs 重置） */
+    const val SANDBOX_MANAGEMENT = "sandbox_management"
     /** 路由决策历史 */
     const val ROUTING_HISTORY = "routing_history"
     /** A/B 测试配置 */
