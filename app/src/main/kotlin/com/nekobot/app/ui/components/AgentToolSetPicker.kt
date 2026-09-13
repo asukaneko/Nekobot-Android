@@ -3,7 +3,9 @@ package com.nekobot.app.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -38,17 +41,23 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.nekobot.app.R
+import com.nekobot.app.data.local.ai.ToolSetMode
+import com.nekobot.app.data.local.ai.ToolSetModeCatalog
 import com.nekobot.app.data.local.ai.toolDisplayFallbackName
 import com.nekobot.app.data.local.db.BuiltinTools
 
 /**
  * Agent 工具集选择弹窗（通用实现）。
  *
- * 顶层为大类（整体开关），点击大类可展开到其中的单个工具做细化选择。
- * 组件本身不负责持久化：读写全部由调用方通过回调完成，因此
- * 「当前会话工具集」与「新会话默认工具集」共用同一套界面与交互。
+ * 顶层为「模式」一键套用（[modes]），中间为大类整体开关，点击大类可展开到其中的
+ * 单个工具做细化选择。组件本身不负责持久化：读写全部由调用方通过回调完成，因此
+ * 「当前会话工具集」「新会话默认工具集」「自定义模式编辑」共用同一套界面与交互。
  *
  * @param enabled 当前启用的工具 id 集合（由调用方持有状态，回调里更新后本弹窗自动重组）
+ * @param activeModeId 当前生效的模式 id；null 表示不对应任何模式（自定义）
+ * @param onSelectMode 点选模式（null 表示不显示模式行）
+ * @param showFollowDefaultChip 是否显示「跟随默认」芯片（会话级才有“跟随默认”的概念）
+ * @param onFollowDefault 点选「跟随默认」
  */
 @Composable
 internal fun AgentToolSetPickerDialog(
@@ -60,7 +69,13 @@ internal fun AgentToolSetPickerDialog(
     onToggleCategory: (categoryId: String, enabled: Boolean) -> Unit,
     onToggleTool: (toolId: String, enabled: Boolean) -> Unit,
     onReset: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    modes: List<ToolSetMode> = emptyList(),
+    activeModeId: String? = null,
+    showFollowDefaultChip: Boolean = false,
+    followDefault: Boolean = false,
+    onSelectMode: ((modeId: String) -> Unit)? = null,
+    onFollowDefault: (() -> Unit)? = null
 ) {
     var expandedCategory by remember { mutableStateOf<String?>(null) }
     // 工具 id → 内置中文名，用于本地化资源缺失时的兜底展示
@@ -98,6 +113,41 @@ internal fun AgentToolSetPickerDialog(
         },
         text = {
             Column {
+                // 模式行：一键套用整套工具集，之后仍可用下方开关继续细化
+                if (onSelectMode != null && (modes.isNotEmpty() || showFollowDefaultChip)) {
+                    Text(
+                        text = stringResource(R.string.toolset_modes_label),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 2.dp, bottom = 6.dp)
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (showFollowDefaultChip) {
+                            ToolSetModeChip(
+                                label = stringResource(R.string.toolset_mode_follow_default),
+                                selected = followDefault,
+                                onClick = { onFollowDefault?.invoke() }
+                            )
+                        }
+                        modes.forEach { mode ->
+                            ToolSetModeChip(
+                                // 「跟随默认」时同时点亮默认所对应的模式，用户能看出跟随到了哪套工具
+                                label = toolSetModeLabel(mode),
+                                selected = activeModeId == mode.id,
+                                onClick = { onSelectMode(mode.id) }
+                            )
+                        }
+                    }
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                    )
+                }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -363,4 +413,75 @@ internal fun toolNameResId(id: String): Int = when (id) {
     "subagent_list" -> R.string.tool_name_subagent_list
     "subagent_get" -> R.string.tool_name_subagent_get
     else -> 0
+}
+
+/** 内置工具集模式名称资源；自定义模式返回 0（名称由用户填写）。 */
+internal fun toolSetModeNameResId(modeId: String): Int = when (modeId) {
+    ToolSetModeCatalog.MINIMAL_MODE_ID -> R.string.toolset_mode_minimal
+    ToolSetModeCatalog.STANDARD_MODE_ID -> R.string.toolset_mode_standard
+    ToolSetModeCatalog.ANDROID_MODE_ID -> R.string.toolset_mode_android
+    ToolSetModeCatalog.CHARACTER_MODE_ID -> R.string.toolset_mode_character
+    ToolSetModeCatalog.ALL_MODE_ID -> R.string.toolset_mode_all
+    else -> 0
+}
+
+/** 内置工具集模式的一句话说明资源；自定义模式返回 0。 */
+internal fun toolSetModeDescResId(modeId: String): Int = when (modeId) {
+    ToolSetModeCatalog.MINIMAL_MODE_ID -> R.string.toolset_mode_minimal_desc
+    ToolSetModeCatalog.STANDARD_MODE_ID -> R.string.toolset_mode_standard_desc
+    ToolSetModeCatalog.ANDROID_MODE_ID -> R.string.toolset_mode_android_desc
+    ToolSetModeCatalog.CHARACTER_MODE_ID -> R.string.toolset_mode_character_desc
+    ToolSetModeCatalog.ALL_MODE_ID -> R.string.toolset_mode_all_desc
+    else -> 0
+}
+
+/** 模式展示名：内置模式走字符串资源，自定义模式用用户填写的名称。 */
+@Composable
+internal fun toolSetModeLabel(mode: ToolSetMode): String {
+    if (!mode.builtin) return mode.name
+    val resId = toolSetModeNameResId(mode.id)
+    return if (resId != 0) stringResource(resId) else mode.id
+}
+
+/** 模式展示说明：内置模式有文案，自定义模式回退为工具数。 */
+@Composable
+internal fun toolSetModeDescription(mode: ToolSetMode): String {
+    val resId = if (mode.builtin) toolSetModeDescResId(mode.id) else 0
+    return if (resId != 0) {
+        stringResource(resId)
+    } else {
+        stringResource(R.string.toolset_mode_tools_count, mode.toolIds.size)
+    }
+}
+
+/** 模式芯片：选中态用主色描边 + 淡底，未选中用中性底色。 */
+@Composable
+private fun ToolSetModeChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val container = if (selected) {
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+    }
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(container)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (selected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+        )
+    }
 }

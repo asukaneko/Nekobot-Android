@@ -439,6 +439,7 @@
     <string name="toolset_summary_all">本会话使用全部工具</string>
     <string name="toolset_summary_customized">已自定义（%1$d/%2$d 大类启用）</string>
     <string name="toolset_summary_default">跟随新会话默认（%1$d/%2$d 大类启用）</string>
+    <string name="toolset_summary_mode">模式：%1$s（%2$d/%3$d 大类启用）</string>
     <string name="toolset_dialog_title">Agent 工具集</string>
     <string name="toolset_dialog_subtitle">选择本会话 Agent 可用的工具，点击大类可细化单个工具</string>
     <string name="toolset_reset_all">全部启用</string>
@@ -459,6 +460,19 @@
     <string name="toolset_cat_db">数据管理</string>
     <string name="toolset_cat_subagent">子代理</string>
     <string name="toolset_cat_mcp">MCP 工具</string>
+    <string name="toolset_modes_label">快速套用模式</string>
+    <string name="toolset_mode_follow_default">跟随默认</string>
+    <string name="toolset_mode_tools_count">%1$d 个工具</string>
+    <string name="toolset_mode_minimal">极简</string>
+    <string name="toolset_mode_minimal_desc">只保留时间、待办、提问与记忆，不联网、不碰文件与设备</string>
+    <string name="toolset_mode_standard">标准</string>
+    <string name="toolset_mode_standard_desc">日常使用：查询、联网、文件、工作区、图片、技能；不含安卓自动化、数据库与命令执行</string>
+    <string name="toolset_mode_android">安卓</string>
+    <string name="toolset_mode_android_desc">手机自动化：屏幕操作、应用、通知、媒体、截图，外加联网查询与任务</string>
+    <string name="toolset_mode_character">角色卡</string>
+    <string name="toolset_mode_character_desc">角色卡/世界书管理：在标准基础上增加数据管理工具（角色卡、世界书、记忆、状态等）</string>
+    <string name="toolset_mode_all">全能</string>
+    <string name="toolset_mode_all_desc">全部工具，含安卓自动化、数据库管理与命令执行</string>
     <string name="chat_jump_to_latest">回到最新消息</string>
     <string name="chat_jump_to_latest_subtitle">重新定位到会话底部</string>
     <string name="chat_my_messages_subtitle">浏览我发送过的内容</string>

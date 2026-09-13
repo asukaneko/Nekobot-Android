@@ -1,6 +1,7 @@
 package com.nekobot.app.ui.screens.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,9 +9,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -20,11 +24,19 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.Timeline
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,9 +64,13 @@ import androidx.compose.ui.unit.dp
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.ai.AgentToolLimits
+import com.nekobot.app.data.local.ai.SessionToolCatalog
 import com.nekobot.app.ui.components.AgentToolSetPickerDialog
 import com.nekobot.app.ui.components.BorderlessOutlinedTextField as OutlinedTextField
 import com.nekobot.app.ui.components.GlassCard
+import com.nekobot.app.ui.components.toolSetModeDescription
+import com.nekobot.app.ui.components.toolSetModeLabel
+import com.nekobot.app.ui.components.toolSetModeNameResId
 
 /** Agent 设置下所有数值的可选范围与默认值，保持与 PrefsManager 一致。 */
 private const val MAX_TOOL_CALLS_MIN = 1
@@ -76,14 +92,40 @@ private const val SUBAGENT_MAX_TOOL_CALLS_DEFAULT = 60
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AgentSettingsScreen(onBack: () -> Unit) {
-    // 新会话默认工具集弹窗与刷新计数（改动后立即刷新摘要文案）
+    // 工具集模式相关弹窗与刷新计数（任何改动后立即刷新摘要文案）
+    var showDefaultModeDialog by remember { mutableStateOf(false) }
     var showDefaultToolSetDialog by remember { mutableStateOf(false) }
+    var showManageModesDialog by remember { mutableStateOf(false) }
+    var editingCustomModeId by remember { mutableStateOf<String?>(null) }
     var toolSetRevision by remember { mutableStateOf(0) }
-    val defaultToolSetStat = remember(toolSetRevision) { loadDefaultToolSetStat() }
+    val toolSetStat = remember(toolSetRevision) { loadToolSetStat() }
 
+    if (showDefaultModeDialog) {
+        DefaultModeDialog(
+            onDismiss = { showDefaultModeDialog = false },
+            onChanged = { toolSetRevision++ }
+        )
+    }
     if (showDefaultToolSetDialog) {
         DefaultToolSetDialog(
             onDismiss = { showDefaultToolSetDialog = false },
+            onChanged = { toolSetRevision++ }
+        )
+    }
+    if (showManageModesDialog) {
+        ManageCustomModesDialog(
+            onDismiss = { showManageModesDialog = false },
+            onChanged = { toolSetRevision++ },
+            onEditMode = { modeId ->
+                showManageModesDialog = false
+                editingCustomModeId = modeId
+            }
+        )
+    }
+    editingCustomModeId?.let { modeId ->
+        CustomModeToolSetDialog(
+            modeId = modeId,
+            onDismiss = { editingCustomModeId = null },
             onChanged = { toolSetRevision++ }
         )
     }
@@ -274,11 +316,11 @@ fun AgentSettingsScreen(onBack: () -> Unit) {
                 )
             }
 
-            // 新会话默认工具集分组：仅本地模式有工具集概念（服务器模式工具由后端决定）。
+            // 工具集模式分组：内置模式一键套用 + 默认工具集明细 + 自定义模式管理。
             if (ServiceContainer.prefs.isLocalMode) {
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        text = stringResource(R.string.agent_settings_group_default_toolset),
+                        text = stringResource(R.string.agent_settings_group_toolset_mode),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.SemiBold,
@@ -286,13 +328,24 @@ fun AgentSettingsScreen(onBack: () -> Unit) {
                     )
                     AgentSettingRow(
                         icon = Icons.Filled.Extension,
-                        tint = MaterialTheme.colorScheme.tertiary,
+                        tint = MaterialTheme.colorScheme.primary,
+                        title = stringResource(R.string.agent_settings_default_mode),
+                        desc = defaultModeLabel(toolSetStat),
+                        trailing = {
+                            TextButton(onClick = { showDefaultModeDialog = true }) {
+                                Text(stringResource(R.string.agent_settings_default_mode_pick))
+                            }
+                        }
+                    )
+                    AgentSettingRow(
+                        icon = Icons.Filled.Tune,
+                        tint = MaterialTheme.colorScheme.secondary,
                         title = stringResource(R.string.agent_settings_default_toolset),
-                        desc = if (defaultToolSetStat.customized) {
+                        desc = if (toolSetStat.customized) {
                             stringResource(
                                 R.string.agent_settings_default_toolset_customized,
-                                defaultToolSetStat.enabledCategories,
-                                defaultToolSetStat.totalCategories
+                                toolSetStat.enabledCategories,
+                                toolSetStat.totalCategories
                             )
                         } else {
                             stringResource(R.string.agent_settings_default_toolset_all)
@@ -303,7 +356,21 @@ fun AgentSettingsScreen(onBack: () -> Unit) {
                             }
                         }
                     )
-                    // 作用范围说明：新会话与未单独自定义的会话都跟随该默认值
+                    AgentSettingRow(
+                        icon = Icons.Filled.Bookmarks,
+                        tint = MaterialTheme.colorScheme.tertiary,
+                        title = stringResource(R.string.agent_settings_custom_modes),
+                        desc = stringResource(
+                            R.string.agent_settings_custom_modes_count,
+                            toolSetStat.customModeCount
+                        ),
+                        trailing = {
+                            TextButton(onClick = { showManageModesDialog = true }) {
+                                Text(stringResource(R.string.agent_settings_custom_modes_manage))
+                            }
+                        }
+                    )
+                    // 作用范围说明：新会话与未单独自定义的会话都跟随默认
                     Text(
                         text = stringResource(R.string.agent_settings_default_toolset_desc),
                         style = MaterialTheme.typography.bodySmall,
@@ -452,36 +519,158 @@ private fun AgentSettingRow(
     }
 }
 
-/** 「新会话默认工具集」摘要统计：是否已自定义 + 已启用大类数/大类总数。 */
-private data class DefaultToolSetStat(
+/** 工具集模式分组摘要：当前默认模式 + 默认工具集统计 + 自定义模式数量。 */
+private data class ToolSetStat(
+    /** 当前默认工具集匹配到的模式 id；null 表示自定义（不对应任何模式）。 */
+    val modeId: String?,
+    /** 匹配到自定义模式时的名称（内置模式为 null，由字符串资源提供）。 */
+    val customModeName: String?,
     val customized: Boolean,
     val enabledCategories: Int,
-    val totalCategories: Int
+    val totalCategories: Int,
+    val customModeCount: Int
 )
 
-/** 读取当前「新会话默认工具集」并统计大类启用情况（未设置默认时视为全部启用）。 */
-private fun loadDefaultToolSetStat(): DefaultToolSetStat {
+/** 读取当前默认工具集状态并统计（未设置默认时视为全部启用）。 */
+private fun loadToolSetStat(): ToolSetStat {
     val ids = ServiceContainer.unified.defaultSessionToolIds()
     val categories = ServiceContainer.unified.toolCategories()
-    if (ids == null) {
-        return DefaultToolSetStat(
-            customized = false,
-            enabledCategories = categories.size,
-            totalCategories = categories.size
-        )
-    }
-    return DefaultToolSetStat(
-        customized = true,
-        enabledCategories = categories.count { (_, toolIds) -> toolIds.all { it in ids } },
-        totalCategories = categories.size
+    val modes = ServiceContainer.unified.toolSetModes()
+    val modeId = ServiceContainer.unified.defaultToolSetModeId()
+    val matched = modes.firstOrNull { it.id == modeId }
+    return ToolSetStat(
+        modeId = modeId,
+        customModeName = matched?.takeIf { !it.builtin }?.name,
+        customized = ids != null,
+        enabledCategories = if (ids == null) {
+            categories.size
+        } else {
+            categories.count { (_, toolIds) -> toolIds.all { it in ids } }
+        },
+        totalCategories = categories.size,
+        customModeCount = modes.count { !it.builtin }
     )
 }
 
 /**
- * 「新会话默认工具集」编辑弹窗。
+ * 当前默认模式的展示名：匹配到内置模式走字符串资源，
+ * 匹配到自定义模式用用户填写的名称，都没匹配上显示「自定义」。
+ */
+@Composable
+private fun defaultModeLabel(stat: ToolSetStat): String {
+    val modeId = stat.modeId
+    if (modeId == null) return stringResource(R.string.agent_settings_default_mode_custom)
+    stat.customModeName?.let { return it }
+    val resId = toolSetModeNameResId(modeId)
+    return if (resId != 0) stringResource(resId) else modeId
+}
+
+/** 自定义模式管理弹窗里正在进行的操作。 */
+private sealed interface CustomModeAction {
+    /** 以当前默认工具集为模板新建模式。 */
+    object Create : CustomModeAction
+
+    /** 重命名指定模式。 */
+    data class Rename(val id: String) : CustomModeAction
+
+    /** 删除指定模式。 */
+    data class Delete(val id: String, val name: String) : CustomModeAction
+}
+
+/**
+ * 「新会话默认模式」选择弹窗：列出全部内置与自定义模式，点选即套用为默认工具集。
+ */
+@Composable
+private fun DefaultModeDialog(
+    onDismiss: () -> Unit,
+    onChanged: () -> Unit
+) {
+    val modes = remember { ServiceContainer.unified.toolSetModes() }
+    val activeModeId = remember { ServiceContainer.unified.defaultToolSetModeId() }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(
+                    text = stringResource(R.string.agent_settings_default_mode_dialog_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = stringResource(R.string.agent_settings_default_mode_dialog_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        text = {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 460.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                itemsIndexed(modes) { _, mode ->
+                    val selected = mode.id == activeModeId
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (selected) {
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f)
+                                }
+                            )
+                            .clickable {
+                                ServiceContainer.unified.applyDefaultToolSetMode(mode.id)
+                                onChanged()
+                                onDismiss()
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (selected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
+                            contentDescription = null,
+                            tint = if (selected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                toolSetModeLabel(mode),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                toolSetModeDescription(mode),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_done)) }
+        }
+    )
+}
+
+/**
+ * 「新会话默认工具集」明细编辑弹窗。
  *
- * 与聊天面板的会话工具集弹窗共用 [AgentToolSetPickerDialog] 界面，
- * 区别只在于读写的是全局默认配置（新会话与未单独自定义的会话沿用它）。
+ * 顶部可一键换成某个模式，下方仍可按大类、按单个工具细化；
+ * 细则调整后当前默认就不再对应任何模式（显示为「自定义」）。
  */
 @Composable
 private fun DefaultToolSetDialog(
@@ -489,9 +678,17 @@ private fun DefaultToolSetDialog(
     onChanged: () -> Unit
 ) {
     val categories = remember { ServiceContainer.unified.toolCategories() }
-    val allToolIds = remember(categories) { categories.flatMap { it.second }.toSet() }
+    val modes = remember { ServiceContainer.unified.toolSetModes() }
     var enabled by remember {
-        mutableStateOf(ServiceContainer.unified.defaultSessionToolIds() ?: allToolIds)
+        mutableStateOf(ServiceContainer.unified.effectiveDefaultSessionToolIds())
+    }
+    var activeModeId by remember { mutableStateOf(ServiceContainer.unified.defaultToolSetModeId()) }
+
+    // 任何改动后从仓库重读：动态大类（MCP）的默认放行由注册表决定，手写增删易失真。
+    fun reload() {
+        enabled = ServiceContainer.unified.effectiveDefaultSessionToolIds()
+        activeModeId = ServiceContainer.unified.defaultToolSetModeId()
+        onChanged()
     }
 
     AgentToolSetPickerDialog(
@@ -502,19 +699,289 @@ private fun DefaultToolSetDialog(
         enabled = enabled,
         onToggleCategory = { categoryId, on ->
             ServiceContainer.unified.setDefaultSessionCategoryEnabled(categoryId, on)
-            val toolIds = categories.firstOrNull { it.first == categoryId }?.second.orEmpty()
-            enabled = if (on) enabled + toolIds else enabled - toolIds.toSet()
-            onChanged()
+            reload()
         },
         onToggleTool = { toolId, on ->
             ServiceContainer.unified.setDefaultSessionToolEnabled(toolId, on)
-            enabled = if (on) enabled + toolId else enabled - toolId
-            onChanged()
+            reload()
         },
         onReset = {
             ServiceContainer.unified.resetDefaultSessionToolSet()
-            enabled = allToolIds
-            onChanged()
+            reload()
+        },
+        onDismiss = onDismiss,
+        modes = modes,
+        activeModeId = activeModeId,
+        onSelectMode = { modeId ->
+            ServiceContainer.unified.applyDefaultToolSetMode(modeId)
+            reload()
+        }
+    )
+}
+
+/**
+ * 自定义模式管理弹窗：新建（以当前默认工具集为模板）/ 重命名 / 删除 / 进入明细编辑。
+ * 三个操作都在同一个弹窗内切换内容，避免多层弹窗叠加。
+ */
+@Composable
+private fun ManageCustomModesDialog(
+    onDismiss: () -> Unit,
+    onChanged: () -> Unit,
+    onEditMode: (String) -> Unit
+) {
+    var modes by remember { mutableStateOf(ServiceContainer.unified.customToolSetModes()) }
+    var pendingAction by remember { mutableStateOf<CustomModeAction?>(null) }
+    var nameInput by remember { mutableStateOf("") }
+
+    fun reload() {
+        modes = ServiceContainer.unified.customToolSetModes()
+        onChanged()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(
+                    text = stringResource(R.string.agent_settings_custom_mode_manage_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = stringResource(R.string.agent_settings_custom_mode_manage_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        text = {
+            when (val action = pendingAction) {
+                null -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 440.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        if (modes.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.agent_settings_custom_mode_empty),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 6.dp, horizontal = 2.dp)
+                            )
+                        }
+                        modes.forEach { mode ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        mode.name,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        stringResource(
+                                            R.string.toolset_mode_tools_count,
+                                            mode.toolIds.size
+                                        ),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                IconButton(onClick = { onEditMode(mode.id) }) {
+                                    Icon(
+                                        Icons.Filled.Tune,
+                                        contentDescription = stringResource(R.string.agent_settings_custom_mode_edit),
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                IconButton(onClick = {
+                                    nameInput = mode.name
+                                    pendingAction = CustomModeAction.Rename(mode.id)
+                                }) {
+                                    Icon(
+                                        Icons.Filled.DriveFileRenameOutline,
+                                        contentDescription = stringResource(R.string.agent_settings_custom_mode_rename),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                IconButton(onClick = {
+                                    pendingAction = CustomModeAction.Delete(mode.id, mode.name)
+                                }) {
+                                    Icon(
+                                        Icons.Filled.DeleteOutline,
+                                        contentDescription = stringResource(R.string.agent_settings_custom_mode_delete),
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                CustomModeAction.Create, is CustomModeAction.Rename -> {
+                    Column {
+                        Text(
+                            text = stringResource(R.string.agent_settings_custom_mode_name_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        OutlinedTextField(
+                            value = nameInput,
+                            onValueChange = { nameInput = it.take(30) },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        if (action == CustomModeAction.Create) {
+                            Text(
+                                text = stringResource(R.string.agent_settings_custom_mode_create_from_default),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 6.dp, start = 2.dp)
+                            )
+                        }
+                    }
+                }
+
+                is CustomModeAction.Delete -> {
+                    Text(
+                        text = stringResource(
+                            R.string.agent_settings_custom_mode_delete_confirm,
+                            action.name
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            when (pendingAction) {
+                null -> TextButton(onClick = {
+                    nameInput = ""
+                    pendingAction = CustomModeAction.Create
+                }) {
+                    Text(stringResource(R.string.agent_settings_custom_mode_new))
+                }
+
+                CustomModeAction.Create -> TextButton(
+                    enabled = nameInput.isNotBlank(),
+                    onClick = {
+                        // 以当前默认工具集为模板创建，随后直接进入明细编辑微调。
+                        val newId = ServiceContainer.unified.saveCustomToolSetMode(
+                            id = null,
+                            name = nameInput,
+                            toolIds = ServiceContainer.unified.effectiveDefaultSessionToolIds(),
+                            includeDynamic = ServiceContainer.unified.defaultToolSetDynamicOn()
+                        )
+                        pendingAction = null
+                        reload()
+                        if (newId != null) onEditMode(newId)
+                    }
+                ) {
+                    Text(stringResource(R.string.agent_settings_custom_mode_create))
+                }
+
+                is CustomModeAction.Rename -> TextButton(
+                    enabled = nameInput.isNotBlank(),
+                    onClick = {
+                        val action = pendingAction as? CustomModeAction.Rename
+                        if (action != null) {
+                            ServiceContainer.unified.renameCustomToolSetMode(action.id, nameInput)
+                        }
+                        pendingAction = null
+                        reload()
+                    }
+                ) {
+                    Text(stringResource(R.string.common_save))
+                }
+
+                is CustomModeAction.Delete -> TextButton(
+                    onClick = {
+                        val action = pendingAction as? CustomModeAction.Delete
+                        if (action != null) {
+                            ServiceContainer.unified.deleteCustomToolSetMode(action.id)
+                        }
+                        pendingAction = null
+                        reload()
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text(stringResource(R.string.agent_settings_custom_mode_delete))
+                }
+            }
+        },
+        dismissButton = {
+            if (pendingAction == null) {
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_done)) }
+            } else {
+                TextButton(onClick = { pendingAction = null }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        }
+    )
+}
+
+/**
+ * 自定义模式明细编辑弹窗：改动即时保存到该模式。
+ * 动态大类（MCP）用 [ToolSetMode.includeDynamic] 单独表达，
+ * 因此即使当前还没连上任何 MCP 服务器，也能记住“这个模式要用 MCP 工具”。
+ */
+@Composable
+private fun CustomModeToolSetDialog(
+    modeId: String,
+    onDismiss: () -> Unit,
+    onChanged: () -> Unit
+) {
+    val categories = remember { ServiceContainer.unified.toolCategories() }
+    val mode = remember(modeId) {
+        ServiceContainer.unified.customToolSetModes().firstOrNull { it.id == modeId }
+    }
+    if (mode == null) return
+
+    var name by remember(modeId) { mutableStateOf(mode.name) }
+    var enabled by remember(modeId) { mutableStateOf(mode.toolIds) }
+    var includeDynamic by remember(modeId) { mutableStateOf(mode.includeDynamic) }
+
+    fun persist() {
+        ServiceContainer.unified.saveCustomToolSetMode(modeId, name, enabled, includeDynamic)
+        onChanged()
+    }
+
+    AgentToolSetPickerDialog(
+        title = stringResource(R.string.agent_settings_custom_mode_edit_title, name),
+        subtitle = stringResource(R.string.agent_settings_custom_mode_edit_subtitle),
+        resetLabel = stringResource(R.string.toolset_reset_all),
+        categories = categories,
+        enabled = enabled,
+        onToggleCategory = { categoryId, on ->
+            val toolIds = categories.firstOrNull { it.first == categoryId }?.second.orEmpty()
+            enabled = if (on) enabled + toolIds else enabled - toolIds.toSet()
+            if (categoryId == SessionToolCatalog.MCP_CATEGORY_ID) includeDynamic = on
+            persist()
+        },
+        onToggleTool = { toolId, on ->
+            enabled = if (on) enabled + toolId else enabled - toolId
+            persist()
+        },
+        onReset = {
+            enabled = SessionToolCatalog.staticToolIds
+            includeDynamic = true
+            persist()
         },
         onDismiss = onDismiss
     )

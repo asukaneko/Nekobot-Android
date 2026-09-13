@@ -9,6 +9,9 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import com.nekobot.app.data.local.ai.AiOutputLanguage
+import com.nekobot.app.data.local.ai.CustomToolSetModeRecord
+import com.nekobot.app.data.local.ai.ToolSetMode
+import com.nekobot.app.data.local.ai.ToolSetModeCatalog
 import com.nekobot.app.data.local.ai.FailoverAllFailedException
 import com.nekobot.app.data.local.ai.AgentRunStage
 import com.nekobot.app.data.local.ai.AgentRunStatus
@@ -6802,6 +6805,123 @@ class LocalRepository(
     /** 清除「新会话默认工具集」自定义（新会话恢复为全部工具启用）。 */
     fun resetDefaultSessionToolSet() {
         defaultToolSetRegistry.resetToAll(DEFAULT_TOOL_SET_ID)
+    }
+
+    /** 默认工具集实际生效的启用集合（含动态大类默认放行的 MCP 工具）。 */
+    fun effectiveDefaultSessionToolIds(): Set<String> =
+        defaultToolSetRegistry.effectiveEnabledToolIds(DEFAULT_TOOL_SET_ID)
+
+    /** 默认工具集的动态大类（MCP）是否处于默认放行状态。 */
+    fun defaultToolSetDynamicOn(): Boolean =
+        defaultToolSetRegistry.dynamicCategoriesDefaultOn(DEFAULT_TOOL_SET_ID)
+
+    // ==================== 工具集模式 ====================
+
+    /**
+     * 全部工具集模式：自定义模式在前、内置模式在后。
+     *
+     * 自定义优先是为了“内容相同的模式优先显示用户自己起的名字”，
+     * 例如用户把一套全量工具存成“我的全能”时，不应被内置「全能」盖住。
+     */
+    fun toolSetModes(): List<ToolSetMode> =
+        customToolSetModes() + ToolSetModeCatalog.builtinModes()
+
+    /** 用户自定义的工具集模式。 */
+    fun customToolSetModes(): List<ToolSetMode> =
+        ServiceContainer.prefs.getCustomToolSetModes().map(ToolSetModeCatalog::customMode)
+
+    /**
+     * 新建或更新一个自定义模式。
+     *
+     * 只保存静态工具 id：动态大类（MCP）由 [includeDynamic] 表达，
+     * 否则模式会把“当时恰好连上的那几个 MCP 工具”固化进去。
+     *
+     * @param id 为空表示新建
+     * @return 保存后的模式 id；名称非法（空白）时返回 null 且不写入
+     */
+    fun saveCustomToolSetMode(
+        id: String?,
+        name: String,
+        toolIds: Set<String>,
+        includeDynamic: Boolean
+    ): String? {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return null
+        val records = ServiceContainer.prefs.getCustomToolSetModes().toMutableList()
+        val targetId = id?.takeIf { it.isNotBlank() } ?: ToolSetModeCatalog.newCustomModeId()
+        val staticIds = toolIds - com.nekobot.app.data.local.ai.SessionToolCatalog.dynamicToolIds()
+        val record = CustomToolSetModeRecord(
+            id = targetId,
+            name = trimmed,
+            toolIds = staticIds.sorted(),
+            includeDynamic = includeDynamic
+        )
+        val index = records.indexOfFirst { it.id == targetId }
+        if (index >= 0) records[index] = record else records.add(record)
+        ServiceContainer.prefs.setCustomToolSetModes(records)
+        return targetId
+    }
+
+    /** 重命名自定义模式；名称为空白时忽略。 */
+    fun renameCustomToolSetMode(id: String, name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        val records = ServiceContainer.prefs.getCustomToolSetModes().toMutableList()
+        val index = records.indexOfFirst { it.id == id }
+        if (index < 0) return
+        records[index] = records[index].copy(name = trimmed)
+        ServiceContainer.prefs.setCustomToolSetModes(records)
+    }
+
+    /** 删除自定义模式（已套用该模式的会话/默认工具集内容不受影响）。 */
+    fun deleteCustomToolSetMode(id: String) {
+        val records = ServiceContainer.prefs.getCustomToolSetModes()
+        val remaining = records.filterNot { it.id == id }
+        if (remaining.size != records.size) {
+            ServiceContainer.prefs.setCustomToolSetModes(remaining)
+        }
+    }
+
+    /** 当前默认工具集匹配到的模式 id；null 表示自定义（不对应任何模式）。 */
+    fun defaultToolSetModeId(): String? = ToolSetModeCatalog.matchModeId(
+        modes = toolSetModes(),
+        enabledStatic = defaultSessionToolIds() ?: com.nekobot.app.data.local.ai.SessionToolCatalog.staticToolIds,
+        dynamicOn = defaultToolSetDynamicOn()
+    )
+
+    /** 把某个模式套用为「新会话默认工具集」。 */
+    fun applyDefaultToolSetMode(modeId: String) {
+        val mode = toolSetModes().firstOrNull { it.id == modeId } ?: return
+        // 全能模式直接清空记录：保持“以后新增的工具也默认启用”的语义。
+        if (mode.id == ToolSetModeCatalog.ALL_MODE_ID) {
+            ServiceContainer.prefs.clearDefaultSessionToolSet()
+            return
+        }
+        defaultToolSetRegistry.applyToolSet(DEFAULT_TOOL_SET_ID, mode.toolIds, mode.includeDynamic)
+    }
+
+    /** 某会话实际生效的启用集合（含动态大类默认放行的 MCP 工具）。 */
+    fun effectiveSessionToolIds(sessionId: String): Set<String> =
+        sessionToolRegistry.effectiveEnabledToolIds(sessionId)
+
+    /**
+     * 某会话工具集匹配到的模式 id。
+     * 会话未单独自定义时返回 null（表示跟随默认工具集，不对应具体模式）。
+     */
+    fun sessionToolSetModeId(sessionId: String): String? {
+        if (!sessionToolRegistry.isCustomized(sessionId)) return null
+        return ToolSetModeCatalog.matchModeId(
+            modes = toolSetModes(),
+            enabledStatic = sessionToolRegistry.enabledToolIds(sessionId)
+                ?: com.nekobot.app.data.local.ai.SessionToolCatalog.staticToolIds,
+            dynamicOn = sessionToolRegistry.dynamicCategoriesDefaultOn(sessionId)
+        )
+    }
+
+    /** 把某个模式一键套用到指定会话。 */
+    fun applySessionToolSetMode(sessionId: String, modeId: String) {
+        val mode = toolSetModes().firstOrNull { it.id == modeId } ?: return
+        sessionToolRegistry.applyToolSet(sessionId, mode.toolIds, mode.includeDynamic)
     }
 
     /** 按会话工具集过滤工具定义列表；未自定义时原样返回。 */

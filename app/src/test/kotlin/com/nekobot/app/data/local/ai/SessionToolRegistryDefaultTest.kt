@@ -109,4 +109,29 @@ class SessionToolRegistryDefaultTest {
         val untouched = registry(default = setOf("get_weather"), defaultTouched = null)
         assertTrue(filtered(untouched, mcpToolId).contains(mcpToolId))
     }
+
+    @Test
+    fun `一键套用模式会按模式意图重置动态大类`() {
+        val mcpToolId = "mcp__unit_apply__ping"
+        SessionToolCatalog.registerDynamicTools(SessionToolCatalog.MCP_CATEGORY_ID, listOf(mcpToolId))
+        val reg = registry(default = null)
+
+        // 极简/安卓/角色卡这类不含 MCP 的模式：之后新接入的 MCP 工具也不能被静默放行
+        reg.applyToolSet("s1", setOf("get_weather"), includeDynamic = false)
+        assertTrue(reg.isCustomized("s1"))
+        assertEquals(setOf("get_weather"), reg.enabledToolIds("s1"))
+        assertEquals(setOf("get_weather"), reg.effectiveEnabledToolIds("s1"))
+        assertFalse(reg.dynamicCategoriesDefaultOn("s1"))
+        assertFalse(reg.isToolEnabled("s1", mcpToolId))
+        assertTrue(filtered(reg, mcpToolId).isEmpty())
+
+        // 标准/全能这类包含 MCP 的模式：恢复“动态大类默认放行”
+        reg.applyToolSet("s1", setOf("get_weather"), includeDynamic = true)
+        assertTrue(reg.dynamicCategoriesDefaultOn("s1"))
+        assertTrue(reg.isToolEnabled("s1", mcpToolId))
+        assertTrue(filtered(reg, mcpToolId).contains(mcpToolId))
+
+        // 一键套用会覆盖此前的单独勾选，不会把旧工具残留下来
+        assertFalse(reg.isToolEnabled("s1", "db_list_characters"))
+    }
 }

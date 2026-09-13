@@ -7,6 +7,8 @@ import com.google.gson.JsonObject
 import com.google.gson.reflect.TypeToken
 import com.nekobot.app.data.local.security.SecurePreferenceStore
 import com.nekobot.app.data.local.ai.AgentToolLimits
+import com.nekobot.app.data.local.ai.CustomToolSetModeRecord
+import com.nekobot.app.data.local.ai.ToolSetModeCatalog
 import com.nekobot.app.data.local.ai.decodeToolSet
 import com.nekobot.app.data.local.ai.encodeToolSet
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -888,6 +890,20 @@ class PrefsManager(context: Context) {
             .apply()
     }
 
+    // ==================== 自定义工具集模式 ====================
+
+    /** 读取用户自定义的工具集模式列表（JSON 数组，损坏时返回空列表）。 */
+    fun getCustomToolSetModes(): List<CustomToolSetModeRecord> =
+        ToolSetModeCatalog.decodeCustomModes(prefs.getString(KEY_CUSTOM_TOOLSET_MODES, null))
+
+    /** 保存用户自定义的工具集模式列表；空列表时直接删除该键。 */
+    fun setCustomToolSetModes(records: List<CustomToolSetModeRecord>) {
+        prefs.edit().apply {
+            if (records.isEmpty()) remove(KEY_CUSTOM_TOOLSET_MODES)
+            else putString(KEY_CUSTOM_TOOLSET_MODES, ToolSetModeCatalog.encodeCustomModes(records))
+        }.apply()
+    }
+
     /** 获取对应会话类型的全局思考强度；Agent 与角色会话互不影响。 */
     fun getReasoningEffort(isAgentSession: Boolean): com.nekobot.app.data.model.ReasoningEffort =
         com.nekobot.app.data.model.ReasoningEffort.fromValue(
@@ -957,6 +973,8 @@ class PrefsManager(context: Context) {
         /** 新会话默认工具集（全局）：未单独自定义过工具集的会话沿用它。 */
         private const val KEY_DEFAULT_SESSION_TOOLSET = "default_session_toolset"
         private const val KEY_DEFAULT_SESSION_TOOLSET_TOUCHED = "default_session_toolset_touched"
+        /** 用户自定义的工具集模式（JSON 数组）。 */
+        private const val KEY_CUSTOM_TOOLSET_MODES = "custom_toolset_modes"
         private const val KEY_AGENT_TOOL_OUTPUT_CHARS = "agent_tool_output_chars"
         private const val KEY_AGENT_PROGRESS_PREVIEW_CHARS = "agent_progress_preview_chars"
         private const val KEY_SUBAGENT_ENABLED = "subagent_enabled"

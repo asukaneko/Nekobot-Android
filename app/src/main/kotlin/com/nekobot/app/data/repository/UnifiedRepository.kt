@@ -524,6 +524,66 @@ class UnifiedRepository(
         if (isLocal) local.resetDefaultSessionToolSet()
     }
 
+    /** 默认工具集实际生效的启用集合（含动态大类默认放行的 MCP 工具）。 */
+    fun effectiveDefaultSessionToolIds(): Set<String> =
+        if (isLocal) local.effectiveDefaultSessionToolIds() else emptySet()
+
+    /** 默认工具集的动态大类（MCP）是否处于默认放行状态。 */
+    fun defaultToolSetDynamicOn(): Boolean =
+        isLocal && local.defaultToolSetDynamicOn()
+
+    /** 全部工具集模式（自定义在前，内置在后）。 */
+    fun toolSetModes(): List<com.nekobot.app.data.local.ai.ToolSetMode> =
+        if (isLocal) local.toolSetModes() else emptyList()
+
+    /** 用户自定义的工具集模式。 */
+    fun customToolSetModes(): List<com.nekobot.app.data.local.ai.ToolSetMode> =
+        if (isLocal) local.customToolSetModes() else emptyList()
+
+    /** 新建或更新自定义模式；返回模式 id（名称为空时返回 null）。 */
+    fun saveCustomToolSetMode(
+        id: String?,
+        name: String,
+        toolIds: Set<String>,
+        includeDynamic: Boolean
+    ): String? = if (isLocal) {
+        local.saveCustomToolSetMode(id, name, toolIds, includeDynamic)
+    } else {
+        null
+    }
+
+    /** 重命名自定义模式。 */
+    fun renameCustomToolSetMode(id: String, name: String) {
+        if (isLocal) local.renameCustomToolSetMode(id, name)
+    }
+
+    /** 删除自定义模式。 */
+    fun deleteCustomToolSetMode(id: String) {
+        if (isLocal) local.deleteCustomToolSetMode(id)
+    }
+
+    /** 当前默认工具集匹配到的模式 id；null 表示自定义。 */
+    fun defaultToolSetModeId(): String? =
+        if (isLocal) local.defaultToolSetModeId() else null
+
+    /** 把某个模式套用为「新会话默认工具集」。 */
+    fun applyDefaultToolSetMode(modeId: String) {
+        if (isLocal) local.applyDefaultToolSetMode(modeId)
+    }
+
+    /** 某会话实际生效的启用集合（含动态大类默认放行的 MCP 工具）。 */
+    fun effectiveSessionToolIds(sessionId: String): Set<String> =
+        if (isLocal) local.effectiveSessionToolIds(sessionId) else emptySet()
+
+    /** 某会话工具集匹配到的模式 id；会话未自定义时返回 null（跟随默认）。 */
+    fun sessionToolSetModeId(sessionId: String): String? =
+        if (isLocal) local.sessionToolSetModeId(sessionId) else null
+
+    /** 把某个模式一键套用到指定会话。 */
+    fun applySessionToolSetMode(sessionId: String, modeId: String) {
+        if (isLocal) local.applySessionToolSetMode(sessionId, modeId)
+    }
+
     fun respondToLocalExecConfirmation(
         requestId: String,
         sessionId: String,

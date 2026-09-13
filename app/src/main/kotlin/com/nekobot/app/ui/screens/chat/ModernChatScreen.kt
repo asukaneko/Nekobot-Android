@@ -147,6 +147,7 @@ import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.components.AgentToolSetPickerDialog
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.NekoDialog
+import com.nekobot.app.ui.components.toolSetModeLabel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -2276,7 +2277,7 @@ private fun ModernChatActionPanel(
  * 读取某会话工具集的自定义状态并生成 + 面板入口副标题。
  * 未自定义且未设置默认工具集时显示“全部启用”；
  * 未自定义但跟随「新会话默认工具集」时显示“跟随默认”；
- * 已单独自定义时显示已启用/总大类数。
+ * 已单独自定义且正好等于某个模式时显示模式名，否则显示已启用/总大类数。
  */
 @Composable
 private fun rememberToolSetSummary(sessionId: String, revision: Int): String {
@@ -2286,12 +2287,26 @@ private fun rememberToolSetSummary(sessionId: String, revision: Int): String {
     val customized = remember(sessionId, revision) {
         ServiceContainer.unified.isSessionToolSetCustomized(sessionId)
     }
+    // 已套用某个模式时直接显示模式名，用户一眼能看出当前会话在用哪套工具
+    val matchedMode = remember(sessionId, revision) {
+        ServiceContainer.unified.sessionToolSetModeId(sessionId)?.let { modeId ->
+            ServiceContainer.unified.toolSetModes().firstOrNull { it.id == modeId }
+        }
+    }
     val categories = remember { ServiceContainer.unified.toolCategories() }
     if (enabledIds == null) {
         return stringResource(R.string.toolset_summary_all)
     }
     val enabledCount = categories.count { (_, toolIds) ->
         toolIds.all { it in enabledIds }
+    }
+    if (matchedMode != null) {
+        return stringResource(
+            R.string.toolset_summary_mode,
+            toolSetModeLabel(matchedMode),
+            enabledCount,
+            categories.size
+        )
     }
     val customizedLabel = if (customized) {
         R.string.toolset_summary_customized
@@ -2302,8 +2317,20 @@ private fun rememberToolSetSummary(sessionId: String, revision: Int): String {
 }
 
 /**
+ * 会话当前对应的模式 id：已单独自定义时用自己的匹配结果（null=自定义），
+ * 未自定义（跟随默认）时用默认工具集匹配到的模式，便于弹窗里点亮对应芯片。
+ */
+private fun resolveSessionModeId(sessionId: String): String? =
+    if (ServiceContainer.unified.isSessionToolSetCustomized(sessionId)) {
+        ServiceContainer.unified.sessionToolSetModeId(sessionId)
+    } else {
+        ServiceContainer.unified.defaultToolSetModeId()
+    }
+
+/**
  * 会话 Agent 工具集选择弹窗：读写当前会话的工具集选择。
- * 界面复用 [AgentToolSetPickerDialog]，与会话无关的交互逻辑集中在那里。
+ * 顶部可一键套用模式（极简/标准/安卓/角色卡/全能或自定义模式），
+ * 下方仍保留按大类、按单个工具的细化开关。界面复用 [AgentToolSetPickerDialog]。
  */
 @Composable
 private fun AgentToolSetDialog(
@@ -2312,13 +2339,26 @@ private fun AgentToolSetDialog(
     onChanged: () -> Unit
 ) {
     val categories = remember { ServiceContainer.unified.toolCategories() }
-    val allToolIds = remember(categories) { categories.flatMap { it.second }.toSet() }
+    val modes = remember { ServiceContainer.unified.toolSetModes() }
     // 设置了「新会话默认工具集」时，恢复动作的语义是“恢复为默认”而非“全部启用”。
     val hasDefault = remember { ServiceContainer.unified.defaultSessionToolIds() != null }
     var enabled by remember(sessionId) {
-        mutableStateOf(
-            ServiceContainer.unified.enabledSessionToolIds(sessionId) ?: allToolIds
-        )
+        mutableStateOf(ServiceContainer.unified.effectiveSessionToolIds(sessionId))
+    }
+    var activeModeId by remember(sessionId) {
+        mutableStateOf(resolveSessionModeId(sessionId))
+    }
+    var followDefault by remember(sessionId) {
+        mutableStateOf(!ServiceContainer.unified.isSessionToolSetCustomized(sessionId))
+    }
+
+    // 任何改动后统一从仓库重读“实际生效集合”：运行期动态工具（MCP）由注册表
+    // 的默认放行规则决定，手写增删很容易和真实注入结果不一致。
+    fun reload() {
+        enabled = ServiceContainer.unified.effectiveSessionToolIds(sessionId)
+        activeModeId = resolveSessionModeId(sessionId)
+        followDefault = !ServiceContainer.unified.isSessionToolSetCustomized(sessionId)
+        onChanged()
     }
 
     AgentToolSetPickerDialog(
@@ -2331,21 +2371,29 @@ private fun AgentToolSetDialog(
         enabled = enabled,
         onToggleCategory = { categoryId, on ->
             ServiceContainer.unified.setSessionCategoryEnabled(sessionId, categoryId, on)
-            val toolIds = categories.firstOrNull { it.first == categoryId }?.second.orEmpty()
-            enabled = if (on) enabled + toolIds else enabled - toolIds.toSet()
-            onChanged()
+            reload()
         },
         onToggleTool = { toolId, on ->
             ServiceContainer.unified.setSessionToolEnabled(sessionId, toolId, on)
-            enabled = if (on) enabled + toolId else enabled - toolId
-            onChanged()
+            reload()
         },
         onReset = {
             ServiceContainer.unified.resetSessionToolSet(sessionId)
-            enabled = ServiceContainer.unified.enabledSessionToolIds(sessionId) ?: allToolIds
-            onChanged()
+            reload()
         },
-        onDismiss = onDismiss
+        onDismiss = onDismiss,
+        modes = modes,
+        activeModeId = activeModeId,
+        showFollowDefaultChip = true,
+        followDefault = followDefault,
+        onSelectMode = { modeId ->
+            ServiceContainer.unified.applySessionToolSetMode(sessionId, modeId)
+            reload()
+        },
+        onFollowDefault = {
+            ServiceContainer.unified.resetSessionToolSet(sessionId)
+            reload()
+        }
     )
 }
 

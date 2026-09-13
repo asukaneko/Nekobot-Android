@@ -433,6 +433,7 @@
     <string name="toolset_summary_all">この会話では全ツールを使用</string>
     <string name="toolset_summary_customized">カスタム（%1$d/%2$d カテゴリ有効）</string>
     <string name="toolset_summary_default">新規会話の既定に追従（%1$d/%2$d カテゴリ有効）</string>
+    <string name="toolset_summary_mode">モード：%1$s（%2$d/%3$d カテゴリ有効）</string>
     <string name="toolset_dialog_title">Agent ツールセット</string>
     <string name="toolset_dialog_subtitle">この会話の Agent が使えるツールを選択します。カテゴリをタップすると個別ツールを細かく設定できます</string>
     <string name="toolset_reset_all">すべて有効化</string>
@@ -453,6 +454,19 @@
     <string name="toolset_cat_db">データ管理</string>
     <string name="toolset_cat_subagent">サブエージェント</string>
     <string name="toolset_cat_mcp">MCP ツール</string>
+    <string name="toolset_modes_label">モードを適用</string>
+    <string name="toolset_mode_follow_default">既定に従う</string>
+    <string name="toolset_mode_tools_count">%1$d 個のツール</string>
+    <string name="toolset_mode_minimal">ミニマル</string>
+    <string name="toolset_mode_minimal_desc">時刻・ToDo・質問・記憶のみ。ネットワークやファイル、端末操作は行いません</string>
+    <string name="toolset_mode_standard">標準</string>
+    <string name="toolset_mode_standard_desc">日常用途：検索、Web、ファイル、ワークスペース、画像、スキル。Android 自動化・データベース・コマンド実行は含みません</string>
+    <string name="toolset_mode_android">Android</string>
+    <string name="toolset_mode_android_desc">スマホ自動化：画面操作、アプリ、通知、メディア、スクリーンショット＋Web 検索とタスク</string>
+    <string name="toolset_mode_character">キャラカード</string>
+    <string name="toolset_mode_character_desc">キャラカード／世界観ブックの編集：標準にデータ管理（キャラ、世界観ブック、記憶、状態など）を追加</string>
+    <string name="toolset_mode_all">オール</string>
+    <string name="toolset_mode_all_desc">すべてのツール（Android 自動化・データベース管理・コマンド実行を含む）</string>
     <string name="chat_jump_to_latest">最新へジャンプ</string>
     <string name="chat_jump_to_latest_subtitle">チャットの最下部に再配置</string>
     <string name="chat_my_messages_subtitle">送信済みメッセージを閲覧</string>

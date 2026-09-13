@@ -433,6 +433,7 @@
     <string name="toolset_summary_all">All tools enabled in this session</string>
     <string name="toolset_summary_customized">Customized (%1$d/%2$d categories on)</string>
     <string name="toolset_summary_default">Using new-session default (%1$d/%2$d categories on)</string>
+    <string name="toolset_summary_mode">Mode: %1$s (%2$d/%3$d categories on)</string>
     <string name="toolset_dialog_title">Agent toolset</string>
     <string name="toolset_dialog_subtitle">Choose which tools this session\'s agent may use. Tap a category to fine-tune individual tools.</string>
     <string name="toolset_reset_all">Enable all</string>
@@ -453,6 +454,19 @@
     <string name="toolset_cat_db">Data management</string>
     <string name="toolset_cat_subagent">Subagent</string>
     <string name="toolset_cat_mcp">MCP tools</string>
+    <string name="toolset_modes_label">Quick modes</string>
+    <string name="toolset_mode_follow_default">Follow default</string>
+    <string name="toolset_mode_tools_count">%1$d tools</string>
+    <string name="toolset_mode_minimal">Minimal</string>
+    <string name="toolset_mode_minimal_desc">Only time, todos, questions and memory — no network, files or device actions</string>
+    <string name="toolset_mode_standard">Standard</string>
+    <string name="toolset_mode_standard_desc">Everyday use: queries, web, files, workspace, images, skills; no Android automation, database or command execution</string>
+    <string name="toolset_mode_android">Android</string>
+    <string name="toolset_mode_android_desc">Phone automation: screen actions, apps, notifications, media, screenshots, plus web queries and tasks</string>
+    <string name="toolset_mode_character">Character card</string>
+    <string name="toolset_mode_character_desc">Character card &amp; world book editing: Standard plus data management (characters, world books, memory, state)</string>
+    <string name="toolset_mode_all">Everything</string>
+    <string name="toolset_mode_all_desc">All tools, including Android automation, database management and command execution</string>
     <string name="chat_jump_to_latest">Jump to latest</string>
     <string name="chat_jump_to_latest_subtitle">Reposition to chat bottom</string>
     <string name="chat_my_messages_subtitle">Browse my sent messages</string>

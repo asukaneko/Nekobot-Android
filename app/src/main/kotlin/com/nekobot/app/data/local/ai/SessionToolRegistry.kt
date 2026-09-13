@@ -201,6 +201,9 @@ object SessionToolCatalog {
     /** 动态大类 id 集合（含 MCP 大类本身，即使尚未枚举出任何工具）。 */
     fun dynamicCategoryIds(): Set<String> = dynamicCategories.keys + MCP_CATEGORY_ID
 
+    /** 运行期动态工具（MCP）当前已知的全部工具 id。 */
+    fun dynamicToolIds(): Set<String> = dynamicCategories.values.flatten().toSet()
+
     private fun dynamicCategoryList(): List<Category> =
         dynamicCategories.entries
             .sortedBy { it.key }
@@ -352,6 +355,25 @@ class SessionToolRegistry(
     fun resetToAll(sessionId: String) {
         clearEnabled(sessionId)
         saveTouchedCategories(sessionId, emptySet())
+    }
+
+    /** 动态大类（MCP）是否仍处于“默认放行”状态。 */
+    fun dynamicCategoriesDefaultOn(sessionId: String): Boolean =
+        isDynamicCategoryDefaultOn(sessionId, SessionToolCatalog.MCP_CATEGORY_ID)
+
+    /**
+     * 整体套用一套工具集（例如一键选用某个模式）。
+     *
+     * [includeDynamic] 为 false 时把动态大类标记为“已显式改动”，
+     * 这样后续新接入的 MCP 工具不会被静默放行——否则“用户选了不含 MCP 的模式”
+     * 会在下次连接 MCP 服务器时被打破。
+     */
+    fun applyToolSet(sessionId: String, toolIds: Set<String>, includeDynamic: Boolean) {
+        persist(sessionId, toolIds)
+        saveTouchedCategories(
+            sessionId,
+            if (includeDynamic) emptySet() else SessionToolCatalog.dynamicCategoryIds()
+        )
     }
 
     /**
