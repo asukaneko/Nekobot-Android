@@ -293,4 +293,12 @@
     <string name="agent_settings_tool_output_chars_desc">所有读取内容类工具（file_read、web_fetch、http_get、exec_command、browser_use、plugin_use、剪贴板）共用的单次返回上限（%1$d–%2$d，默认 %3$d）。该值同时是硬上限：模型传的 max_chars 只能更小。</string>
     <string name="agent_settings_progress_preview_chars">进度卡工具预览字符数</string>
     <string name="agent_settings_progress_preview_chars_desc">进度卡里工具参数与结果的预览上限（%1$d–%2$d，默认 %3$d）。主 Agent 与子代理共用该值。</string>
+    <string name="agent_settings_group_default_toolset">新会话默认工具集</string>
+    <string name="agent_settings_default_toolset">默认启用工具集</string>
+    <string name="agent_settings_default_toolset_all">全部启用</string>
+    <string name="agent_settings_default_toolset_customized">已自定义（%1$d/%2$d 个大类启用）</string>
+    <string name="agent_settings_default_toolset_config">配置</string>
+    <string name="agent_settings_default_toolset_desc">新会话以及未单独自定义过工具集的会话默认使用这里的勾选结果；在聊天面板单独调整过的会话不受影响。仅在本地模式生效。</string>
+    <string name="agent_settings_default_toolset_dialog_title">新会话默认工具集</string>
+    <string name="agent_settings_default_toolset_dialog_subtitle">选择新会话默认启用的工具，点击大类可细化单个工具</string>
 </resources>

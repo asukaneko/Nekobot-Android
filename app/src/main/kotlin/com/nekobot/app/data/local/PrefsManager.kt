@@ -850,6 +850,44 @@ class PrefsManager(context: Context) {
             .apply()
     }
 
+    // ==================== 新会话默认工具集（全局） ====================
+
+    /**
+     * 读取「新会话默认工具集」。
+     * 返回 null 表示未设置默认（新会话与未自定义的会话使用全部工具）。
+     */
+    fun getDefaultSessionToolSet(): Set<String>? {
+        return decodeToolSet(prefs.getString(KEY_DEFAULT_SESSION_TOOLSET, null))
+    }
+
+    /** 保存「新会话默认工具集」。 */
+    fun setDefaultSessionToolSet(enabled: Set<String>) {
+        prefs.edit()
+            .putString(KEY_DEFAULT_SESSION_TOOLSET, encodeToolSet(enabled))
+            .apply()
+    }
+
+    /** 读取「新会话默认工具集」中被用户显式改动过的大类 id（语义同会话级）。 */
+    fun getDefaultSessionTouchedToolCategories(): Set<String>? {
+        return decodeToolSet(prefs.getString(KEY_DEFAULT_SESSION_TOOLSET_TOUCHED, null))
+    }
+
+    /** 保存「新会话默认工具集」中被显式改动过的大类 id。 */
+    fun setDefaultSessionTouchedToolCategories(touched: Set<String>) {
+        prefs.edit().apply {
+            if (touched.isEmpty()) remove(KEY_DEFAULT_SESSION_TOOLSET_TOUCHED)
+            else putString(KEY_DEFAULT_SESSION_TOOLSET_TOUCHED, encodeToolSet(touched))
+        }.apply()
+    }
+
+    /** 清除「新会话默认工具集」（恢复为新会话默认全部启用）。 */
+    fun clearDefaultSessionToolSet() {
+        prefs.edit()
+            .remove(KEY_DEFAULT_SESSION_TOOLSET)
+            .remove(KEY_DEFAULT_SESSION_TOOLSET_TOUCHED)
+            .apply()
+    }
+
     /** 获取对应会话类型的全局思考强度；Agent 与角色会话互不影响。 */
     fun getReasoningEffort(isAgentSession: Boolean): com.nekobot.app.data.model.ReasoningEffort =
         com.nekobot.app.data.model.ReasoningEffort.fromValue(
@@ -916,6 +954,9 @@ class PrefsManager(context: Context) {
         private const val KEY_AGENT_REASONING_EFFORT = "reasoning_effort_agent"
         private const val KEY_CHARACTER_REASONING_EFFORT = "reasoning_effort_character"
         private const val KEY_AGENT_MAX_TOOL_CALLS = "agent_max_tool_calls"
+        /** 新会话默认工具集（全局）：未单独自定义过工具集的会话沿用它。 */
+        private const val KEY_DEFAULT_SESSION_TOOLSET = "default_session_toolset"
+        private const val KEY_DEFAULT_SESSION_TOOLSET_TOUCHED = "default_session_toolset_touched"
         private const val KEY_AGENT_TOOL_OUTPUT_CHARS = "agent_tool_output_chars"
         private const val KEY_AGENT_PROGRESS_PREVIEW_CHARS = "agent_progress_preview_chars"
         private const val KEY_SUBAGENT_ENABLED = "subagent_enabled"

@@ -200,6 +200,9 @@ private const val AGENT_CONTEXT_OUTPUT_RESERVE_RATIO = 0.8
 /** 手动压缩的兜底阈值：消息数不足时，上下文占用超过该比例也允许压缩。 */
 internal const val MANUAL_COMPRESSION_CONTEXT_RATIO = 0.10f
 
+/** 「新会话默认工具集」编辑时的占位会话 id：全局默认配置与会话无关。 */
+private const val DEFAULT_TOOL_SET_ID = "__default__"
+
 /** 兼容旧版 Agent 会话中未写入 source 的历史摘要。 */
 internal fun LocalMessageEntity.isAgentContextSummary(): Boolean =
     role.equals("system", ignoreCase = true) && (
@@ -320,6 +323,27 @@ class LocalRepository(
             },
             saveTouchedCategories = { sessionId, touched ->
                 ServiceContainer.prefs.setSessionTouchedToolCategories(sessionId, touched)
+            },
+            // 会话未单独自定义时回退到「新会话默认工具集」（Agent 设置里配置）。
+            loadDefaultEnabled = { ServiceContainer.prefs.getDefaultSessionToolSet() },
+            loadDefaultTouchedCategories = {
+                ServiceContainer.prefs.getDefaultSessionTouchedToolCategories()
+            }
+        )
+    /**
+     * 「新会话默认工具集」编辑用注册表：复用会话级的大类/单工具语义，
+     * 只是把读写指向全局默认配置（会话 id 无意义，用 [DEFAULT_TOOL_SET_ID] 占位）。
+     */
+    private val defaultToolSetRegistry =
+        com.nekobot.app.data.local.ai.SessionToolRegistry(
+            loadEnabled = { ServiceContainer.prefs.getDefaultSessionToolSet() },
+            saveEnabled = { _, enabled -> ServiceContainer.prefs.setDefaultSessionToolSet(enabled) },
+            clearEnabled = { ServiceContainer.prefs.clearDefaultSessionToolSet() },
+            loadTouchedCategories = {
+                ServiceContainer.prefs.getDefaultSessionTouchedToolCategories()
+            },
+            saveTouchedCategories = { _, touched ->
+                ServiceContainer.prefs.setDefaultSessionTouchedToolCategories(touched)
             }
         )
     /** ask_user_question 提问等待管理器：AI 提问后挂起，UI 回答后 resolve。 */
@@ -6728,9 +6752,13 @@ class LocalRepository(
         com.nekobot.app.data.local.ai.SessionToolCatalog.categories
             .map { it.id to it.toolIds }
 
-    /** 某会话当前启用的工具 id 集合（null 表示未自定义，全部启用）。 */
+    /** 某会话当前启用的工具 id 集合（null 表示未自定义且未设置默认，全部启用）。 */
     fun enabledSessionToolIds(sessionId: String): Set<String>? =
         sessionToolRegistry.enabledToolIds(sessionId)
+
+    /** 某会话是否单独自定义过工具集（未自定义时会跟随「新会话默认工具集」）。 */
+    fun isSessionToolSetCustomized(sessionId: String): Boolean =
+        sessionToolRegistry.isCustomized(sessionId)
 
     /** 某会话某大类是否整体启用。 */
     fun isSessionCategoryEnabled(sessionId: String, categoryId: String): Boolean =
@@ -6750,9 +6778,30 @@ class LocalRepository(
         sessionToolRegistry.setToolEnabled(sessionId, toolId, enabled)
     }
 
-    /** 恢复某会话工具集为全部启用。 */
+    /** 恢复某会话工具集：有默认工具集时恢复为默认，否则恢复为全部启用。 */
     fun resetSessionToolSet(sessionId: String) {
         sessionToolRegistry.resetToAll(sessionId)
+    }
+
+    // ==================== 新会话默认工具集（全局） ====================
+
+    /** 「新会话默认工具集」当前启用集合；null 表示未设置默认（全部启用）。 */
+    fun defaultSessionToolIds(): Set<String>? =
+        defaultToolSetRegistry.enabledToolIds(DEFAULT_TOOL_SET_ID)
+
+    /** 切换「新会话默认工具集」中某大类的整体启用状态。 */
+    fun setDefaultSessionCategoryEnabled(categoryId: String, enabled: Boolean) {
+        defaultToolSetRegistry.setCategoryEnabled(DEFAULT_TOOL_SET_ID, categoryId, enabled)
+    }
+
+    /** 切换「新会话默认工具集」中某单个工具的启用状态。 */
+    fun setDefaultSessionToolEnabled(toolId: String, enabled: Boolean) {
+        defaultToolSetRegistry.setToolEnabled(DEFAULT_TOOL_SET_ID, toolId, enabled)
+    }
+
+    /** 清除「新会话默认工具集」自定义（新会话恢复为全部工具启用）。 */
+    fun resetDefaultSessionToolSet() {
+        defaultToolSetRegistry.resetToAll(DEFAULT_TOOL_SET_ID)
     }
 
     /** 按会话工具集过滤工具定义列表；未自定义时原样返回。 */

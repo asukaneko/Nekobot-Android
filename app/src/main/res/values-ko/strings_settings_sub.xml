@@ -280,4 +280,12 @@
     <string name="agent_settings_tool_output_chars_desc">내용을 읽는 모든 도구(file_read, web_fetch, http_get, exec_command, browser_use, plugin_use, 클립보드)가 공유하는 1회 반환 상한입니다(%1$d–%2$d, 기본 %3$d). 동시에 하드 상한이므로 모델이 지정하는 max_chars는 이보다 작을 수만 있습니다.</string>
     <string name="agent_settings_progress_preview_chars">진행 카드 미리보기 문자 수</string>
     <string name="agent_settings_progress_preview_chars_desc">진행 카드에 표시되는 도구 인수와 결과의 미리보기 상한입니다(%1$d–%2$d, 기본 %3$d). 메인 Agent와 서브에이전트가 같은 값을 사용합니다.</string>
+    <string name="agent_settings_group_default_toolset">새 대화 기본 도구 세트</string>
+    <string name="agent_settings_default_toolset">기본 활성 도구 세트</string>
+    <string name="agent_settings_default_toolset_all">모두 활성화</string>
+    <string name="agent_settings_default_toolset_customized">사용자 지정(%1$d/%2$d 카테고리 활성)</string>
+    <string name="agent_settings_default_toolset_config">설정</string>
+    <string name="agent_settings_default_toolset_desc">새 대화와 도구 세트를 따로 사용자 지정하지 않은 대화는 여기서 선택한 값을 따릅니다. 채팅 화면에서 개별 조정한 대화는 영향을 받지 않습니다. 로컬 모드에서만 적용됩니다.</string>
+    <string name="agent_settings_default_toolset_dialog_title">새 대화 기본 도구 세트</string>
+    <string name="agent_settings_default_toolset_dialog_subtitle">새 대화에서 기본으로 활성화할 도구를 선택합니다. 카테고리를 눌러 개별 도구를 세부 설정할 수 있습니다</string>
 </resources>

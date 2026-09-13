@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.Timeline
@@ -31,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -50,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.ai.AgentToolLimits
+import com.nekobot.app.ui.components.AgentToolSetPickerDialog
 import com.nekobot.app.ui.components.BorderlessOutlinedTextField as OutlinedTextField
 import com.nekobot.app.ui.components.GlassCard
 
@@ -73,6 +76,18 @@ private const val SUBAGENT_MAX_TOOL_CALLS_DEFAULT = 60
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AgentSettingsScreen(onBack: () -> Unit) {
+    // 新会话默认工具集弹窗与刷新计数（改动后立即刷新摘要文案）
+    var showDefaultToolSetDialog by remember { mutableStateOf(false) }
+    var toolSetRevision by remember { mutableStateOf(0) }
+    val defaultToolSetStat = remember(toolSetRevision) { loadDefaultToolSetStat() }
+
+    if (showDefaultToolSetDialog) {
+        DefaultToolSetDialog(
+            onDismiss = { showDefaultToolSetDialog = false },
+            onChanged = { toolSetRevision++ }
+        )
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -259,6 +274,45 @@ fun AgentSettingsScreen(onBack: () -> Unit) {
                 )
             }
 
+            // 新会话默认工具集分组：仅本地模式有工具集概念（服务器模式工具由后端决定）。
+            if (ServiceContainer.prefs.isLocalMode) {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = stringResource(R.string.agent_settings_group_default_toolset),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(bottom = 6.dp, start = 2.dp)
+                    )
+                    AgentSettingRow(
+                        icon = Icons.Filled.Extension,
+                        tint = MaterialTheme.colorScheme.tertiary,
+                        title = stringResource(R.string.agent_settings_default_toolset),
+                        desc = if (defaultToolSetStat.customized) {
+                            stringResource(
+                                R.string.agent_settings_default_toolset_customized,
+                                defaultToolSetStat.enabledCategories,
+                                defaultToolSetStat.totalCategories
+                            )
+                        } else {
+                            stringResource(R.string.agent_settings_default_toolset_all)
+                        },
+                        trailing = {
+                            TextButton(onClick = { showDefaultToolSetDialog = true }) {
+                                Text(stringResource(R.string.agent_settings_default_toolset_config))
+                            }
+                        }
+                    )
+                    // 作用范围说明：新会话与未单独自定义的会话都跟随该默认值
+                    Text(
+                        text = stringResource(R.string.agent_settings_default_toolset_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 2.dp, top = 2.dp, bottom = 4.dp)
+                    )
+                }
+            }
+
             // 截断字符数分组：所有工具的输出上限与进度卡预览上限各一个统一值。
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Text(
@@ -396,4 +450,72 @@ private fun AgentSettingRow(
         Spacer(Modifier.width(12.dp))
         trailing()
     }
+}
+
+/** 「新会话默认工具集」摘要统计：是否已自定义 + 已启用大类数/大类总数。 */
+private data class DefaultToolSetStat(
+    val customized: Boolean,
+    val enabledCategories: Int,
+    val totalCategories: Int
+)
+
+/** 读取当前「新会话默认工具集」并统计大类启用情况（未设置默认时视为全部启用）。 */
+private fun loadDefaultToolSetStat(): DefaultToolSetStat {
+    val ids = ServiceContainer.unified.defaultSessionToolIds()
+    val categories = ServiceContainer.unified.toolCategories()
+    if (ids == null) {
+        return DefaultToolSetStat(
+            customized = false,
+            enabledCategories = categories.size,
+            totalCategories = categories.size
+        )
+    }
+    return DefaultToolSetStat(
+        customized = true,
+        enabledCategories = categories.count { (_, toolIds) -> toolIds.all { it in ids } },
+        totalCategories = categories.size
+    )
+}
+
+/**
+ * 「新会话默认工具集」编辑弹窗。
+ *
+ * 与聊天面板的会话工具集弹窗共用 [AgentToolSetPickerDialog] 界面，
+ * 区别只在于读写的是全局默认配置（新会话与未单独自定义的会话沿用它）。
+ */
+@Composable
+private fun DefaultToolSetDialog(
+    onDismiss: () -> Unit,
+    onChanged: () -> Unit
+) {
+    val categories = remember { ServiceContainer.unified.toolCategories() }
+    val allToolIds = remember(categories) { categories.flatMap { it.second }.toSet() }
+    var enabled by remember {
+        mutableStateOf(ServiceContainer.unified.defaultSessionToolIds() ?: allToolIds)
+    }
+
+    AgentToolSetPickerDialog(
+        title = stringResource(R.string.agent_settings_default_toolset_dialog_title),
+        subtitle = stringResource(R.string.agent_settings_default_toolset_dialog_subtitle),
+        resetLabel = stringResource(R.string.toolset_reset_all),
+        categories = categories,
+        enabled = enabled,
+        onToggleCategory = { categoryId, on ->
+            ServiceContainer.unified.setDefaultSessionCategoryEnabled(categoryId, on)
+            val toolIds = categories.firstOrNull { it.first == categoryId }?.second.orEmpty()
+            enabled = if (on) enabled + toolIds else enabled - toolIds.toSet()
+            onChanged()
+        },
+        onToggleTool = { toolId, on ->
+            ServiceContainer.unified.setDefaultSessionToolEnabled(toolId, on)
+            enabled = if (on) enabled + toolId else enabled - toolId
+            onChanged()
+        },
+        onReset = {
+            ServiceContainer.unified.resetDefaultSessionToolSet()
+            enabled = allToolIds
+            onChanged()
+        },
+        onDismiss = onDismiss
+    )
 }

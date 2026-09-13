@@ -432,9 +432,11 @@
     <string name="toolset_entry_title">Agent ツール</string>
     <string name="toolset_summary_all">この会話では全ツールを使用</string>
     <string name="toolset_summary_customized">カスタム（%1$d/%2$d カテゴリ有効）</string>
+    <string name="toolset_summary_default">新規会話の既定に追従（%1$d/%2$d カテゴリ有効）</string>
     <string name="toolset_dialog_title">Agent ツールセット</string>
     <string name="toolset_dialog_subtitle">この会話の Agent が使えるツールを選択します。カテゴリをタップすると個別ツールを細かく設定できます</string>
     <string name="toolset_reset_all">すべて有効化</string>
+    <string name="toolset_reset_default">既定のツールセットに戻す</string>
     <string name="toolset_cat_all_on">すべて有効</string>
     <string name="toolset_cat_partial">一部有効</string>
     <string name="toolset_cat_off">無効</string>

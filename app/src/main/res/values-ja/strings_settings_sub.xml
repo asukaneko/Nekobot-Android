@@ -280,4 +280,12 @@
     <string name="agent_settings_tool_output_chars_desc">内容を読み取るすべてのツール（file_read、web_fetch、http_get、exec_command、browser_use、plugin_use、クリップボード）が共用する 1 回の返却上限（%1$d～%2$d、既定 %3$d）。同時にハード上限でもあり、モデルが指定する max_chars はこれより小さくするしかありません。</string>
     <string name="agent_settings_progress_preview_chars">進捗カードのプレビュー文字数</string>
     <string name="agent_settings_progress_preview_chars_desc">進捗カードに表示するツール引数と結果のプレビュー上限（%1$d～%2$d、既定 %3$d）。メイン Agent とサブエージェントで同じ値を使います。</string>
+    <string name="agent_settings_group_default_toolset">新規会話の既定ツールセット</string>
+    <string name="agent_settings_default_toolset">既定で有効なツールセット</string>
+    <string name="agent_settings_default_toolset_all">すべて有効</string>
+    <string name="agent_settings_default_toolset_customized">カスタム（%1$d/%2$d カテゴリ有効）</string>
+    <string name="agent_settings_default_toolset_config">設定</string>
+    <string name="agent_settings_default_toolset_desc">新規会話と、ツールセットを個別にカスタムしていない会話はここの選択に従います。チャット画面で個別に調整した会話は影響を受けません。ローカルモードでのみ有効です。</string>
+    <string name="agent_settings_default_toolset_dialog_title">新規会話の既定ツールセット</string>
+    <string name="agent_settings_default_toolset_dialog_subtitle">新規会話で既定で有効にするツールを選択します。カテゴリをタップすると個別ツールを細かく設定できます</string>
 </resources>

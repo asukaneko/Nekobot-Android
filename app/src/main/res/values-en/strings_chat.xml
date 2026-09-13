@@ -432,9 +432,11 @@
     <string name="toolset_entry_title">Agent tools</string>
     <string name="toolset_summary_all">All tools enabled in this session</string>
     <string name="toolset_summary_customized">Customized (%1$d/%2$d categories on)</string>
+    <string name="toolset_summary_default">Using new-session default (%1$d/%2$d categories on)</string>
     <string name="toolset_dialog_title">Agent toolset</string>
     <string name="toolset_dialog_subtitle">Choose which tools this session\'s agent may use. Tap a category to fine-tune individual tools.</string>
     <string name="toolset_reset_all">Enable all</string>
+    <string name="toolset_reset_default">Restore default toolset</string>
     <string name="toolset_cat_all_on">All enabled</string>
     <string name="toolset_cat_partial">Partially enabled</string>
     <string name="toolset_cat_off">Disabled</string>

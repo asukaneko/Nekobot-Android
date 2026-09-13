@@ -249,29 +249,44 @@ object SessionToolCatalog {
  * 按会话持久化的工具集选择。
  *
  * [load] 在进程启动时注入持久化来源（无 Android 依赖，便于单元测试）；
- * 会话没有保存记录时视为“全部启用”。
+ * 会话没有保存记录时，回退到「新会话默认工具集」[loadDefaultEnabled]；
+ * 两者都没有时视为“全部启用”。
  *
  * 动态工具（MCP）语义：[loadTouchedCategories] 记录用户显式改动过的大类。
  * 未被改动过的动态大类默认启用——否则“用户在 MCP 之前自定义过工具集”会导致
- * 后续新增的 MCP 工具被静默禁用。
+ * 后续新增的 MCP 工具被静默禁用。会话级与默认级改动过的大类取并集判断。
  */
 class SessionToolRegistry(
     private val loadEnabled: (sessionId: String) -> Set<String>?,
     private val saveEnabled: (sessionId: String, enabled: Set<String>) -> Unit,
     private val clearEnabled: (sessionId: String) -> Unit = { },
     private val loadTouchedCategories: (sessionId: String) -> Set<String>? = { null },
-    private val saveTouchedCategories: (sessionId: String, touched: Set<String>) -> Unit = { _, _ -> }
+    private val saveTouchedCategories: (sessionId: String, touched: Set<String>) -> Unit = { _, _ -> },
+    /** 「新会话默认工具集」读取；null 表示未设置默认（等同全部启用）。 */
+    private val loadDefaultEnabled: () -> Set<String>? = { null },
+    /** 「新会话默认工具集」中被显式改动过的大类 id。 */
+    private val loadDefaultTouchedCategories: () -> Set<String>? = { null }
 ) {
 
-    /** 读取某会话当前启用的工具 id；null 表示“未自定义，默认全部启用”。 */
-    fun enabledToolIds(sessionId: String): Set<String>? = loadEnabled(sessionId)
+    /**
+     * 读取某会话当前启用的工具 id；会话未自定义时回退到「新会话默认工具集」，
+     * 两者都没有记录时返回 null 表示“默认全部启用”。
+     */
+    fun enabledToolIds(sessionId: String): Set<String>? =
+        loadEnabled(sessionId) ?: loadDefaultEnabled()
 
-    /** 是否已为用户自定制（保存过记录）。 */
+    /** 是否已为某会话单独自定制（保存过会话级记录）。 */
     fun isCustomized(sessionId: String): Boolean = loadEnabled(sessionId) != null
 
-    /** 用户显式改动过的大类 id（只有动态大类依赖它，用于“默认启用”判断）。 */
+    /** 全局是否设置了「新会话默认工具集」。 */
+    fun hasDefault(): Boolean = loadDefaultEnabled() != null
+
+    /**
+     * 用户显式改动过的大类 id（会话级 + 默认级并集）。
+     * 只有动态大类依赖它，用于“默认启用”判断。
+     */
     fun touchedCategoryIds(sessionId: String): Set<String> =
-        loadTouchedCategories(sessionId).orEmpty()
+        loadTouchedCategories(sessionId).orEmpty() + loadDefaultTouchedCategories().orEmpty()
 
     /** 动态大类是否仍处于“默认启用”状态。 */
     private fun isDynamicCategoryDefaultOn(sessionId: String, categoryId: String): Boolean =
@@ -279,11 +294,13 @@ class SessionToolRegistry(
             categoryId !in touchedCategoryIds(sessionId)
 
     /**
-     * 实际生效的启用工具集合：未自定义时返回全部归类工具；
-     * 已自定义时返回保存的集合，并补上仍处于默认启用状态的动态大类工具。
+     * 实际生效的启用工具集合：会话未自定义时用「新会话默认工具集」，
+     * 仍未设置默认时返回全部归类工具；已自定义时返回保存的集合，
+     * 并补上仍处于默认启用状态的动态大类工具。
      */
     fun effectiveEnabledToolIds(sessionId: String): Set<String> {
-        val saved = loadEnabled(sessionId) ?: return SessionToolCatalog.ALL_TOOL_IDS
+        val saved = loadEnabled(sessionId) ?: loadDefaultEnabled()
+            ?: return SessionToolCatalog.ALL_TOOL_IDS
         val defaultOnDynamic = SessionToolCatalog.categories
             .filter { isDynamicCategoryDefaultOn(sessionId, it.id) }
             .flatMap { it.toolIds }
@@ -328,7 +345,10 @@ class SessionToolRegistry(
         SessionToolCatalog.categoryIdOf(toolId)?.let { markCategoryTouched(sessionId, it) }
     }
 
-    /** 恢复会话工具集为全部启用（等价于删除自定义记录）。 */
+    /**
+     * 清除某会话的自定义记录：有「新会话默认工具集」时恢复为默认，
+     * 否则等价于全部启用。
+     */
     fun resetToAll(sessionId: String) {
         clearEnabled(sessionId)
         saveTouchedCategories(sessionId, emptySet())

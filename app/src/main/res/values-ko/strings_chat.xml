@@ -432,9 +432,11 @@
     <string name="toolset_entry_title">Agent 도구</string>
     <string name="toolset_summary_all">이 대화에서 모든 도구 사용</string>
     <string name="toolset_summary_customized">사용자 지정(%1$d/%2$d 카테고리 활성)</string>
+    <string name="toolset_summary_default">새 대화 기본값 따름(%1$d/%2$d 카테고리 활성)</string>
     <string name="toolset_dialog_title">Agent 도구 세트</string>
     <string name="toolset_dialog_subtitle">이 대화의 Agent가 사용할 도구를 선택합니다. 카테고리를 눌러 개별 도구를 세부 설정할 수 있습니다</string>
     <string name="toolset_reset_all">모두 활성화</string>
+    <string name="toolset_reset_default">기본 도구 세트로 복원</string>
     <string name="toolset_cat_all_on">모두 활성</string>
     <string name="toolset_cat_partial">일부 활성</string>
     <string name="toolset_cat_off">비활성</string>

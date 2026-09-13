@@ -287,4 +287,12 @@
     <string name="agent_settings_tool_output_chars_desc">One shared return limit for every content-reading tool (file_read, web_fetch, http_get, exec_command, browser_use, plugin_use, clipboard): %1$d–%2$d, default %3$d. It is also a hard cap — a model-supplied max_chars can only be smaller.</string>
     <string name="agent_settings_progress_preview_chars">Progress card preview limit</string>
     <string name="agent_settings_progress_preview_chars_desc">Shared preview limit for tool arguments and results on progress cards (%1$d–%2$d, default %3$d). The main agent and subagents use the same value.</string>
+    <string name="agent_settings_group_default_toolset">New session default tools</string>
+    <string name="agent_settings_default_toolset">Default enabled toolset</string>
+    <string name="agent_settings_default_toolset_all">All enabled</string>
+    <string name="agent_settings_default_toolset_customized">Customized (%1$d/%2$d categories on)</string>
+    <string name="agent_settings_default_toolset_config">Configure</string>
+    <string name="agent_settings_default_toolset_desc">New sessions and sessions without their own toolset customization follow these selections; sessions adjusted individually in the chat panel are unaffected. Local mode only.</string>
+    <string name="agent_settings_default_toolset_dialog_title">New session default toolset</string>
+    <string name="agent_settings_default_toolset_dialog_subtitle">Choose the tools enabled by default in new sessions. Tap a category to fine-tune individual tools.</string>
 </resources>

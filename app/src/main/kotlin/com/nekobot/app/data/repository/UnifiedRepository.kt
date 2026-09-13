@@ -474,9 +474,13 @@ class UnifiedRepository(
     fun toolCategories(): List<Pair<String, List<String>>> =
         if (isLocal) local.toolCategories() else emptyList()
 
-    /** 某会话当前启用的工具 id 集合（null 表示未自定义，全部启用）。 */
+    /** 某会话当前启用的工具 id 集合（null 表示未自定义且未设置默认，全部启用）。 */
     fun enabledSessionToolIds(sessionId: String): Set<String>? =
         if (isLocal) local.enabledSessionToolIds(sessionId) else null
+
+    /** 某会话是否单独自定义过工具集（未自定义时跟随「新会话默认工具集」）。 */
+    fun isSessionToolSetCustomized(sessionId: String): Boolean =
+        isLocal && local.isSessionToolSetCustomized(sessionId)
 
     /** 某会话某大类是否整体启用。 */
     fun isSessionCategoryEnabled(sessionId: String, categoryId: String): Boolean =
@@ -496,9 +500,28 @@ class UnifiedRepository(
         if (isLocal) local.setSessionToolEnabled(sessionId, toolId, enabled)
     }
 
-    /** 恢复某会话工具集为全部启用。 */
+    /** 恢复某会话工具集：有默认工具集时恢复为默认，否则恢复为全部启用。 */
     fun resetSessionToolSet(sessionId: String) {
         if (isLocal) local.resetSessionToolSet(sessionId)
+    }
+
+    /** 「新会话默认工具集」当前启用集合；null 表示未设置默认（全部启用）。 */
+    fun defaultSessionToolIds(): Set<String>? =
+        if (isLocal) local.defaultSessionToolIds() else null
+
+    /** 切换「新会话默认工具集」中某大类的整体启用状态。 */
+    fun setDefaultSessionCategoryEnabled(categoryId: String, enabled: Boolean) {
+        if (isLocal) local.setDefaultSessionCategoryEnabled(categoryId, enabled)
+    }
+
+    /** 切换「新会话默认工具集」中某单个工具的启用状态。 */
+    fun setDefaultSessionToolEnabled(toolId: String, enabled: Boolean) {
+        if (isLocal) local.setDefaultSessionToolEnabled(toolId, enabled)
+    }
+
+    /** 清除「新会话默认工具集」自定义（新会话恢复为全部工具启用）。 */
+    fun resetDefaultSessionToolSet() {
+        if (isLocal) local.resetDefaultSessionToolSet()
     }
 
     fun respondToLocalExecConfirmation(

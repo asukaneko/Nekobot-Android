@@ -438,9 +438,11 @@
     <string name="toolset_entry_title">Agent 工具</string>
     <string name="toolset_summary_all">本会话使用全部工具</string>
     <string name="toolset_summary_customized">已自定义（%1$d/%2$d 大类启用）</string>
+    <string name="toolset_summary_default">跟随新会话默认（%1$d/%2$d 大类启用）</string>
     <string name="toolset_dialog_title">Agent 工具集</string>
     <string name="toolset_dialog_subtitle">选择本会话 Agent 可用的工具，点击大类可细化单个工具</string>
     <string name="toolset_reset_all">全部启用</string>
+    <string name="toolset_reset_default">恢复为默认工具集</string>
     <string name="toolset_cat_all_on">全部启用</string>
     <string name="toolset_cat_partial">部分启用</string>
     <string name="toolset_cat_off">已停用</string>
