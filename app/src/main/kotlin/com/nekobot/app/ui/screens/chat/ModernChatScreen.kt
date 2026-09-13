@@ -182,7 +182,8 @@ fun ModernChatScreen(
     onJumpToLatest: (() -> Unit)? = null,
     /**
      * 底部悬浮导航栏避让间距：平板双栏嵌入会话页时，底栏胶囊悬浮在输入框之上，
-     * 传入 [LiquidGlassBottomBarClearance] 让输入区整体抬升；独立聊天页为 0。
+     * 传入 `rememberLiquidGlassBottomBarClearance()` 让输入区整体抬升（底栏在平板下更高）；
+     * 独立聊天页为 0。
      */
     embeddedBottomBarClearance: Dp = 0.dp
 ) {

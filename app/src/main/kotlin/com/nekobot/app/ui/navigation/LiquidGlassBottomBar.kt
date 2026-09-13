@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.selection.selectable
@@ -63,26 +64,110 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.nekobot.app.ui.adaptive.WindowWidthClass
+import com.nekobot.app.ui.adaptive.rememberWindowWidthClass
 import com.nekobot.app.ui.components.GlassBackdrop
 import com.nekobot.app.ui.components.GlassPane
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-private val BarHeight = 64.dp
-private val BarHorizontalPadding = 16.dp
-private val BarVerticalPadding = 10.dp
-private val IndicatorInset = 6.dp
-private val IndicatorCorner = 22.dp
+/**
+ * 底栏在三种窗口宽度下的几何规格。
+ *
+ * 手机（Compact）保持原有的紧凑胶囊；平板（Medium / Expanded）放大高度、图标与字号，
+ * 并把文字从「图标下方」改为「与图标并排」，同时给胶囊一个最大宽度后居中，
+ * 避免在宽屏上被拉成又长又扁、图标小得可怜的手机版底栏。
+ */
+internal data class BottomBarLayout(
+    /** 胶囊内部高度（不含上下留白） */
+    val barHeight: Dp,
+    /** 胶囊到屏幕左右边缘的留白 */
+    val horizontalPadding: Dp,
+    /** 胶囊到屏幕上下边的留白 */
+    val verticalPadding: Dp,
+    /** 胶囊最大宽度；null 表示铺满可用宽度（手机不分栏时的原有行为） */
+    val pillMaxWidth: Dp?,
+    val iconSize: Dp,
+    /** true：图标与文字并排（平板）；false：图标在上、文字在下（手机） */
+    val labelBesideIcon: Boolean,
+    /** 并排时图标与文字之间的间距 */
+    val iconTextGap: Dp,
+    /** 选中指示器相对槽位的内缩 */
+    val indicatorInset: Dp,
+    val indicatorCorner: Dp,
+) {
+    /**
+     * 悬浮底栏（含上下边距）在系统导航栏之上占据的总高度。
+     * 平板双栏等场景下，嵌入内容底部需要预留该高度，避免被底栏胶囊遮挡。
+     */
+    val clearance: Dp get() = barHeight + verticalPadding * 2
 
-/** 外层胶囊的圆角；等于 [BarHeight] 一半，即完整胶囊。 */
-private val PillCorner = BarHeight / 2
+    /** 外层胶囊的圆角；等于 [barHeight] 一半，即完整胶囊。 */
+    val pillCorner: Dp get() = barHeight / 2
+}
+
+/** 手机：原有紧凑形态（64dp 胶囊、24dp 图标、文字在图标下方）。 */
+private val CompactBottomBarLayout = BottomBarLayout(
+    barHeight = 64.dp,
+    horizontalPadding = 16.dp,
+    verticalPadding = 10.dp,
+    pillMaxWidth = null,
+    iconSize = 24.dp,
+    labelBesideIcon = false,
+    iconTextGap = 3.dp,
+    indicatorInset = 6.dp,
+    indicatorCorner = 22.dp,
+)
+
+/** 中等宽度（600~839dp，折叠屏展开 / 小平板）：放大胶囊并限制宽度居中。 */
+private val MediumBottomBarLayout = BottomBarLayout(
+    barHeight = 72.dp,
+    horizontalPadding = 24.dp,
+    verticalPadding = 12.dp,
+    pillMaxWidth = 600.dp,
+    iconSize = 26.dp,
+    labelBesideIcon = true,
+    iconTextGap = 8.dp,
+    indicatorInset = 8.dp,
+    indicatorCorner = 24.dp,
+)
+
+/** 大屏（≥840dp，平板横竖屏）：进一步放大，图标与文字并排的宽胶囊居中。 */
+private val ExpandedBottomBarLayout = BottomBarLayout(
+    barHeight = 80.dp,
+    horizontalPadding = 32.dp,
+    verticalPadding = 14.dp,
+    pillMaxWidth = 760.dp,
+    iconSize = 30.dp,
+    labelBesideIcon = true,
+    iconTextGap = 10.dp,
+    indicatorInset = 8.dp,
+    indicatorCorner = 26.dp,
+)
+
+/** 纯函数：按窗口宽度断点取底栏规格（供单元测试与 Composable 共用）。 */
+internal fun bottomBarLayoutFor(widthClass: WindowWidthClass): BottomBarLayout = when (widthClass) {
+    WindowWidthClass.Compact -> CompactBottomBarLayout
+    WindowWidthClass.Medium -> MediumBottomBarLayout
+    WindowWidthClass.Expanded -> ExpandedBottomBarLayout
+}
+
+/** 当前窗口宽度对应的底栏规格。 */
+@Composable
+internal fun bottomBarLayout(): BottomBarLayout = bottomBarLayoutFor(rememberWindowWidthClass())
 
 /**
- * 悬浮底栏（含上下边距）在系统导航栏之上占据的总高度：64 + 10 * 2 = 84dp。
- * 平板双栏等场景下，嵌入内容底部需要预留该高度，避免被底栏胶囊遮挡。
+ * 当前窗口宽度下悬浮底栏（含上下边距）占据的总高度。
+ *
+ * 平板下底栏更高，嵌入双栏的聊天输入区必须按这个值避让，否则会被胶囊遮住；
+ * 请优先使用本方法而不是固定常量 [LiquidGlassBottomBarClearance]。
  */
-val LiquidGlassBottomBarClearance: Dp = BarHeight + BarVerticalPadding * 2
+@Composable
+fun rememberLiquidGlassBottomBarClearance(): Dp = bottomBarLayout().clearance
+
+/** 紧凑（手机）布局下的避让高度基线：64 + 10 * 2 = 84dp，供非 Composable 场景兜底。 */
+val LiquidGlassBottomBarClearance: Dp = CompactBottomBarLayout.clearance
 
 /**
  * 苹果风格「圆岛」底部导航：悬浮的液态玻璃胶囊 + 在标签间平滑滚动切换的选中指示器。
@@ -96,6 +181,10 @@ val LiquidGlassBottomBarClearance: Dp = BarHeight + BarVerticalPadding * 2
  * [backdrop] 不为 null 时使用真正的液态玻璃（采样并模糊下层页面内容 + 边缘折射 + 高光），
  * 由 `NekobotNavGraph` 在 API 31+ 且非低内存设备时注入；否则退回半透明渐变 + 高光描边的
  * 静态玻璃质感（兼容 API 26~30 与低内存设备）。
+ *
+ * 大屏适配：胶囊高度、图标尺寸与标签字号按 [BottomBarLayout] 随窗口宽度放大（手机 64dp /
+ * 平板 72~80dp），标签从「图标下方」改为「图标右侧并排」，并给胶囊设置最大宽度后居中，
+ * 避免平板下底栏仍是手机那套紧凑布局、被拉伸成又长又扁的一条。
  */
 @Composable
 fun LiquidGlassBottomBar(
@@ -108,6 +197,9 @@ fun LiquidGlassBottomBar(
     val dark = isSystemInDarkTheme()
     val selectedIndex = items.indexOfFirst { it.route == selectedRoute }.coerceAtLeast(0)
     val density = LocalDensity.current
+    // 手机 / 平板使用不同的几何规格：平板放大胶囊、图标与字号，并居中限宽。
+    val layout = bottomBarLayout()
+    val maxPillWidth = layout.pillMaxWidth
 
     // 手势是否正在拖动（拖动期间指示器位置完全交给手指，收敛动画让位）。
     var dragging by remember { mutableStateOf(false) }
@@ -127,20 +219,32 @@ fun LiquidGlassBottomBar(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = BarHorizontalPadding, vertical = BarVerticalPadding)
+            .padding(horizontal = layout.horizontalPadding, vertical = layout.verticalPadding),
+        // 平板下胶囊被限宽，居中悬浮，两侧留白不再被拉伸的标签槽位吃掉。
+        contentAlignment = Alignment.Center
     ) {
-        GlassPill(dark = dark, backdrop = backdrop, liquidProgress = liquid) {
+        GlassPill(
+            dark = dark,
+            backdrop = backdrop,
+            corner = layout.pillCorner,
+            liquidProgress = liquid,
+            modifier = if (maxPillWidth != null) {
+                Modifier.widthIn(max = maxPillWidth).fillMaxWidth()
+            } else {
+                Modifier.fillMaxWidth()
+            }
+        ) {
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(BarHeight)
+                    .height(layout.barHeight)
             ) {
                 val itemWidth: Dp = maxWidth / items.size
                 val itemWidthPx = with(density) { itemWidth.toPx() }
                 val lastIndex = items.lastIndex
-                // 指示器左右各内缩 IndicatorInset，换算成「标签宽度」的比例。
+                // 指示器左右各内缩 indicatorInset，换算成「标签宽度」的比例。
                 val insetFraction = if (itemWidthPx > 0f) {
-                    with(density) { IndicatorInset.toPx() } / itemWidthPx
+                    with(density) { layout.indicatorInset.toPx() } / itemWidthPx
                 } else {
                     0f
                 }
@@ -268,7 +372,9 @@ fun LiquidGlassBottomBar(
                     itemWidth = itemWidth,
                     dark = dark,
                     backdrop = backdrop,
-                    liquidProgress = liquid
+                    liquidProgress = liquid,
+                    inset = layout.indicatorInset,
+                    corner = layout.indicatorCorner
                 )
                 BarRow(
                     items = items,
@@ -276,6 +382,7 @@ fun LiquidGlassBottomBar(
                     onItemSelected = onItemSelected,
                     dark = dark,
                     interactionSource = barInteraction,
+                    layout = layout,
                     modifier = dragModifier
                 )
             }
@@ -292,10 +399,12 @@ fun LiquidGlassBottomBar(
 private fun GlassPill(
     dark: Boolean,
     backdrop: GlassBackdrop?,
+    corner: Dp,
     liquidProgress: () -> Float,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    val shape = RoundedCornerShape(PillCorner)
+    val shape = RoundedCornerShape(corner)
     // 回退样式：用高浓度半透明渐变压低背景细节，形成磨砂玻璃的乳化质感。
     val fill = if (dark) {
         Brush.verticalGradient(
@@ -312,8 +421,7 @@ private fun GlassPill(
         Brush.verticalGradient(listOf(Color.White, Color(0x29000000)))
     }
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = modifier
             .shadow(
                 elevation = if (dark) 14.dp else 12.dp,
                 shape = shape,
@@ -326,11 +434,11 @@ private fun GlassPill(
         if (backdrop != null) {
             GlassPane(
                 backdrop = backdrop,
-                cornerRadius = PillCorner,
+                cornerRadius = corner,
                 modifier = Modifier.matchParentSize(),
                 blur = 16.dp,
                 saturation = 1.25f,
-                // 折射深度（12dp）小于胶囊到屏幕边缘的留白（16dp），
+                // 折射深度（12dp）小于胶囊到屏幕边缘的留白（手机 16dp，平板更大），
                 // 保证边缘取样不会越过屏幕边界而取到空像素。
                 refraction = 12.dp,
                 // 色散会在边缘产生彩色描边，这里关闭，保持干净的透明玻璃。
@@ -372,8 +480,10 @@ private fun SlidingIndicator(
     dark: Boolean,
     backdrop: GlassBackdrop?,
     liquidProgress: () -> Float,
+    inset: Dp,
+    corner: Dp,
 ) {
-    val slotWidth = (itemWidth - IndicatorInset * 2).coerceAtLeast(1.dp)
+    val slotWidth = (itemWidth - inset * 2).coerceAtLeast(1.dp)
 
     val indicatorFill = if (dark) {
         Brush.horizontalGradient(
@@ -407,12 +517,12 @@ private fun SlidingIndicator(
                 // 两条边错峰运动时宽度会短暂变化，这里用横向缩放表达液态拉伸。
                 scaleX = widthPx / slotWidth.toPx()
             }
-            .padding(vertical = IndicatorInset + 2.dp)
+            .padding(vertical = inset + 2.dp)
     ) {
         if (backdrop != null) {
             GlassPane(
                 backdrop = backdrop,
-                cornerRadius = IndicatorCorner,
+                cornerRadius = corner,
                 modifier = Modifier.matchParentSize(),
                 // 轻模糊 + 强折射：选中项像一块正在放大背景的透明玻璃。
                 blur = 4.dp,
@@ -442,17 +552,17 @@ private fun SlidingIndicator(
                     .matchParentSize()
                     .shadow(
                         10.dp,
-                        RoundedCornerShape(IndicatorCorner),
+                        RoundedCornerShape(corner),
                         clip = false,
                         spotColor = glow,
                         ambientColor = glow
                     )
-                    .clip(RoundedCornerShape(IndicatorCorner))
+                    .clip(RoundedCornerShape(corner))
                     .background(indicatorFill)
                     .border(
                         1.dp,
                         MaterialTheme.colorScheme.primary.copy(alpha = if (dark) 0.5f else 0.35f),
-                        RoundedCornerShape(IndicatorCorner)
+                        RoundedCornerShape(corner)
                     )
             )
         }
@@ -466,6 +576,7 @@ private fun BarRow(
     onItemSelected: (BottomItem) -> Unit,
     dark: Boolean,
     interactionSource: MutableInteractionSource,
+    layout: BottomBarLayout,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -478,6 +589,7 @@ private fun BarRow(
                 item = item,
                 selected = index == selectedIndex,
                 dark = dark,
+                layout = layout,
                 interactionSource = interactionSource,
                 onClick = { onItemSelected(item) },
                 modifier = Modifier.weight(1f)
@@ -491,6 +603,7 @@ private fun BarItem(
     item: BottomItem,
     selected: Boolean,
     dark: Boolean,
+    layout: BottomBarLayout,
     interactionSource: MutableInteractionSource,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -523,42 +636,69 @@ private fun BarItem(
         label = "iconLift"
     )
 
-    Column(
-        modifier = modifier
-            .fillMaxHeight()
-            .selectable(
-                selected = selected,
-                interactionSource = interactionSource,
-                indication = null,
-                role = Role.Tab,
-                onClick = onTabClick
-            )
-            // 显式设置 contentDescription，TalkBack 朗读一次即可（覆盖子节点的 text）
-            .semantics { contentDescription = item.label },
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
+    // 图标与文字分别抽出：手机上下堆叠，平板并排，两者的动效与样式完全一致。
+    val iconSlot: @Composable (Modifier) -> Unit = { m ->
         Icon(
             imageVector = item.icon,
             contentDescription = null,
             tint = contentColor,
-            modifier = Modifier
+            modifier = m
                 .offset(y = liftUp)
                 .graphicsLayer {
                     scaleX = iconScale
                     scaleY = iconScale
                 }
-                .size(24.dp)
+                .size(layout.iconSize)
         )
-        Spacer(Modifier.height(3.dp))
+    }
+    val labelSlot: @Composable () -> Unit = {
         Text(
             text = item.label,
             color = contentColor,
-            style = MaterialTheme.typography.labelSmall,
+            style = if (layout.labelBesideIcon) {
+                MaterialTheme.typography.labelLarge
+            } else {
+                MaterialTheme.typography.labelSmall
+            },
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1,
             softWrap = false,
             overflow = TextOverflow.Ellipsis
         )
+    }
+
+    val itemModifier = modifier
+        .fillMaxHeight()
+        .selectable(
+            selected = selected,
+            interactionSource = interactionSource,
+            indication = null,
+            role = Role.Tab,
+            onClick = onTabClick
+        )
+        // 显式设置 contentDescription，TalkBack 朗读一次即可（覆盖子节点的 text）
+        .semantics { contentDescription = item.label }
+
+    if (layout.labelBesideIcon) {
+        // 平板：图标与文字并排，胶囊更矮胖、标签更易读。
+        Row(
+            modifier = itemModifier.padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            iconSlot(Modifier)
+            Spacer(Modifier.width(layout.iconTextGap))
+            labelSlot()
+        }
+    } else {
+        Column(
+            modifier = itemModifier,
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            iconSlot(Modifier)
+            Spacer(Modifier.height(layout.iconTextGap))
+            labelSlot()
+        }
     }
 }

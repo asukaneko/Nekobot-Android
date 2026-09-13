@@ -115,7 +115,7 @@ import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.EmptyState
 import com.nekobot.app.ui.navigation.Routes
-import com.nekobot.app.ui.navigation.LiquidGlassBottomBarClearance
+import com.nekobot.app.ui.navigation.rememberLiquidGlassBottomBarClearance
 import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.NekoDialog
@@ -232,6 +232,8 @@ private fun TwoPaneSessionsWrapper(
     // 这里用动画后的占比判断：底栏隐藏与输入区避让间距归零同时发生，不会出现跳动。
     val chatMaximized = useTwoPane && fraction <= 0.0001f
     LaunchedEffect(chatMaximized) { onChatMaximizedChange(chatMaximized) }
+    // 底栏高度随窗口宽度变化（平板更高），避让间距必须取当前值。
+    val bottomBarClearance = rememberLiquidGlassBottomBarClearance()
 
     if (!useTwoPane) {
         content()
@@ -294,7 +296,7 @@ private fun TwoPaneSessionsWrapper(
                             embeddedBottomBarClearance = if (chatMaximized) {
                                 0.dp
                             } else {
-                                LiquidGlassBottomBarClearance
+                                bottomBarClearance
                             }
                         )
                     } else {

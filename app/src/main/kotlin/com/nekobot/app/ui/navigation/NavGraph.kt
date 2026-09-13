@@ -192,6 +192,8 @@ fun NekobotNavGraph() {
     val liquidGlassAvailable = rememberLiquidGlassAvailable()
     val glassBackdrop = rememberGlassBackdrop()
     val useLiquidGlass = liquidGlassAvailable && showBottomBar
+    // 底栏占据的总高度随窗口宽度变化（平板更高），渐变遮罩按它推算。
+    val bottomBarClearance = rememberLiquidGlassBottomBarClearance()
 
     // 观察全局登录态：登出时自动跳登录页，登录时跳会话页
     val isLoggedIn by ServiceContainer.loginStateFlow.collectAsStateWithLifecycle()
@@ -766,7 +768,8 @@ fun NekobotNavGraph() {
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .height(120.dp)
+                        // 底栏越高（平板），渐变遮罩越高，保证内容在胶囊附近自然淡出。
+                        .height(bottomBarClearance + 36.dp)
                         .background(
                             Brush.verticalGradient(
                                 0f to Color.Transparent,
