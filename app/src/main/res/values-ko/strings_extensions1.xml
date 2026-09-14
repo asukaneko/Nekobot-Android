@@ -23,6 +23,8 @@
     <string name="rag_score_threshold_desc">이 점수보다 낮은 지식 조각은 제외해요(0.0–1.0)</string>
     <string name="rag_citation_title">인용 표시</string>
     <string name="rag_citation_desc">AI 답변에 출처 표시를 보여 주며 누르면 출처 상세 정보를 볼 수 있어요</string>
+    <string name="rag_auto_search_title">지식 자동 검색</string>
+    <string name="rag_auto_search_desc">대화할 때 지식을 자동으로 검색해 문맥에 넣어요. 끄면 수동 검색만 동작해요</string>
     <string name="extensions_skills">Skills</string>
     <string name="extensions_skills_desc">스킬 폴더, SKILL.md 및 저장소 설치</string>
     <string name="extensions_tools">Tools</string>

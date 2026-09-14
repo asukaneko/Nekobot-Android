@@ -525,6 +525,16 @@ class PrefsManager(context: Context) {
         get() = prefs.getBoolean(KEY_RAG_CITATION_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_RAG_CITATION_ENABLED, value).apply()
 
+    /**
+     * 对话时是否自动检索知识库（默认开启）。
+     *
+     * 关闭后 AIPipeline 不再对每轮用户输入做 RAG 检索，避免无关对话被知识库内容污染；
+     * 知识库页面右上角搜索与手动检索入口不受影响。
+     */
+    var ragAutoSearchEnabled: Boolean
+        get() = prefs.getBoolean(KEY_RAG_AUTO_SEARCH_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_RAG_AUTO_SEARCH_ENABLED, value).apply()
+
     /** 读取完整 RAG 配置 */
     fun getRagConfig() = com.nekobot.app.data.local.knowledge.RagConfig(
         semanticWeight = ragSemanticWeight,
@@ -532,7 +542,8 @@ class PrefsManager(context: Context) {
         mmrLambda = ragMmrLambda,
         rerankEnabled = ragRerankEnabled,
         scoreThreshold = ragScoreThreshold,
-        citationEnabled = ragCitationEnabled
+        citationEnabled = ragCitationEnabled,
+        autoSearchEnabled = ragAutoSearchEnabled
     )
 
     // ==================== A/B 测试配置 ====================
@@ -1101,6 +1112,7 @@ class PrefsManager(context: Context) {
         private const val KEY_RAG_RERANK_ENABLED = "rag_rerank_enabled"
         private const val KEY_RAG_SCORE_THRESHOLD = "rag_score_threshold"
         private const val KEY_RAG_CITATION_ENABLED = "rag_citation_enabled"
+        private const val KEY_RAG_AUTO_SEARCH_ENABLED = "rag_auto_search_enabled"
         private const val KEY_AB_TEST_ENABLED = "ab_test_enabled"
         private const val KEY_AB_TEST_SPLIT_RATIO = "ab_test_split_ratio"
         private const val KEY_AB_TEST_CONTROL_MODEL = "ab_test_control_model"

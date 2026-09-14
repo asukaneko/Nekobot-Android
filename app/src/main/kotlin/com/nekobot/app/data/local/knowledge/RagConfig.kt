@@ -19,5 +19,7 @@ data class RagConfig(
     /** searchPrompt 最大字符数 */
     val maxPromptChars: Int = 12_000,
     /** 是否在回答中生成引用标注 */
-    val citationEnabled: Boolean = true
+    val citationEnabled: Boolean = true,
+    /** 是否在对话开始时自动检索知识库（关闭后需手动检索或由 AI 调用工具） */
+    val autoSearchEnabled: Boolean = true
 )

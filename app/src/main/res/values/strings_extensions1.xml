@@ -23,6 +23,8 @@
     <string name="rag_score_threshold_desc">低于此分数的知识片段将被过滤（0.0–1.0）</string>
     <string name="rag_citation_title">引用标注</string>
     <string name="rag_citation_desc">在 AI 回答中显示引用来源角标，点击可查看来源详情</string>
+    <string name="rag_auto_search_title">知识库自动检索</string>
+    <string name="rag_auto_search_desc">对话时自动检索知识库并注入上下文，关闭后仅手动检索</string>
     <string name="extensions_skills">Skills 配置</string>
     <string name="extensions_skills_desc">技能目录、SKILL.md 与仓库安装</string>
     <string name="extensions_tools">Tools 配置</string>

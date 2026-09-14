@@ -674,6 +674,7 @@ class PortableDataArchiveManager(private val context: Context) {
             addProperty("rag_rerank_enabled", prefs.ragRerankEnabled)
             addProperty("rag_score_threshold", prefs.ragScoreThreshold)
             addProperty("rag_citation_enabled", prefs.ragCitationEnabled)
+            addProperty("rag_auto_search_enabled", prefs.ragAutoSearchEnabled)
             addProperty("ab_test_enabled", prefs.abTestEnabled)
             addProperty("ab_test_split_ratio", prefs.abTestSplitRatio)
             addProperty("ab_test_control_model_id", prefs.abTestControlModelId)
@@ -709,6 +710,7 @@ class PortableDataArchiveManager(private val context: Context) {
         root.bool("rag_rerank_enabled")?.let { prefs.ragRerankEnabled = it }
         root.float("rag_score_threshold")?.let { prefs.ragScoreThreshold = it }
         root.bool("rag_citation_enabled")?.let { prefs.ragCitationEnabled = it }
+        root.bool("rag_auto_search_enabled")?.let { prefs.ragAutoSearchEnabled = it }
         root.bool("ab_test_enabled")?.let { prefs.abTestEnabled = it }
         root.float("ab_test_split_ratio")?.let { prefs.abTestSplitRatio = it }
         if (root.has("ab_test_control_model_id")) prefs.abTestControlModelId = root.string("ab_test_control_model_id")

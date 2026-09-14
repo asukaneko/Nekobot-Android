@@ -362,8 +362,12 @@ internal class LocalPipelineCallbacks(
         return ""
     }
 
-    override fun searchKnowledge(ctx: PipelineContext, query: String): String =
-        knowledgeSearcher?.invoke(query).orEmpty()
+    override fun searchKnowledge(ctx: PipelineContext, query: String): String {
+        // 关闭「知识库自动检索」后本轮完全跳过 RAG，避免无关对话被知识库内容污染；
+        // 手动检索（知识库页面）与随后的 searchPrompt 调用不受此开关影响。
+        if (!com.nekobot.app.ServiceContainer.prefs.ragAutoSearchEnabled) return ""
+        return knowledgeSearcher?.invoke(query).orEmpty()
+    }
 
     override fun loadMessages(ctx: PipelineContext): List<Map<String, Any>> {
         val isAgentSession = session.sessionMode.equals("agent", ignoreCase = true)

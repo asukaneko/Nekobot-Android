@@ -23,6 +23,8 @@
     <string name="rag_score_threshold_desc">Knowledge chunks scoring below this value are filtered out (0.0–1.0)</string>
     <string name="rag_citation_title">Citation markers</string>
     <string name="rag_citation_desc">Show source markers in AI responses; tap one to view source details</string>
+    <string name="rag_auto_search_title">Auto knowledge retrieval</string>
+    <string name="rag_auto_search_desc">Retrieve knowledge automatically and inject it into context; when off, only manual search runs</string>
     <string name="extensions_skills">Skills</string>
     <string name="extensions_skills_desc">Skill folders, SKILL.md, and repository installs</string>
     <string name="extensions_tools">Tools</string>

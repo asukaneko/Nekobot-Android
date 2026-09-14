@@ -45,6 +45,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import com.nekobot.app.ui.components.BorderlessOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -62,6 +63,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nekobot.app.R
+import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.model.KnowledgeDocument
 import com.nekobot.app.data.model.KnowledgeDocumentRequest
 import com.nekobot.app.data.model.KnowledgeSearchRequest
@@ -280,12 +282,45 @@ fun KnowledgeScreen(onBack: () -> Unit, onNavigate: (String) -> Unit = {}) {
                             }
                         }
                     }
+                    // 对话自动检索开关：关闭后 Agent 不再每轮检索知识库
+                    item {
+                        var autoSearch by remember {
+                            mutableStateOf(ServiceContainer.prefs.ragAutoSearchEnabled)
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.rag_auto_search_title),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = stringResource(R.string.rag_auto_search_desc),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = autoSearch,
+                                onCheckedChange = {
+                                    autoSearch = it
+                                    ServiceContainer.prefs.ragAutoSearchEnabled = it
+                                }
+                            )
+                        }
+                    }
                     // 搜索结果
                     if (searchResults.isNotEmpty()) {
                         item {
                             SectionHeader(title = stringResource(R.string.knowledge_search_results), subtitle = stringResource(R.string.knowledge_search_count, searchResults.size))
                         }
-                        items(searchResults, key = { it.id ?: it.title ?: it.hashCode().toString() }) { result ->
+                        // key 必须与下方文档列表区分命名空间：命中检索的文档会同时出现在
+                        // 两个区块中，且同一文档的多个切片命中时 id 也相同，直接用文档 id
+                        // 会导致 LazyColumn 抛 "Key was already used" 而闪退。
+                        items(searchResults, key = { searchResultKey(it) }) { result ->
                             SearchResultCard(result = result)
                         }
                         item {
@@ -293,7 +328,7 @@ fun KnowledgeScreen(onBack: () -> Unit, onNavigate: (String) -> Unit = {}) {
                         }
                     }
                     // 文档列表
-                    items(list, key = { it.id ?: it.hashCode().toString() }) { doc ->
+                    items(list, key = { knowledgeDocumentKey(it) }) { doc ->
                         KnowledgeCard(
                             doc = doc,
                             onClick = if (useTwoPane) {
@@ -435,6 +470,23 @@ fun KnowledgeScreen(onBack: () -> Unit, onNavigate: (String) -> Unit = {}) {
         )
     }
 }
+
+/**
+ * 搜索结果条目的 LazyColumn key。
+ *
+ * 检索结果只带文档 id，命中检索的文档会与下方文档列表同时渲染；同一文档的多个切片
+ * 命中时 id 也相同。key 必须带上 chunk 信息并加命名空间前缀，否则 LazyColumn 会抛
+ * `IllegalArgumentException: Key "..." was already used`。
+ */
+internal fun searchResultKey(result: KnowledgeSearchResult): String {
+    val docId = result.id ?: result.title ?: "unknown"
+    val chunkIndex = result.chunkIndex ?: -1
+    val charOffset = result.charOffset ?: -1
+    return "result_${docId}_${chunkIndex}_${charOffset}_${result.content.hashCode()}"
+}
+
+/** 文档列表条目的 LazyColumn key，与 [searchResultKey] 分属不同命名空间。 */
+internal fun knowledgeDocumentKey(doc: KnowledgeDocument): String = "doc_${doc.id ?: doc.hashCode()}"
 
 /**
  * 知识库文档卡片

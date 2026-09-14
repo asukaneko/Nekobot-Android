@@ -51,4 +51,10 @@ class RagSettingsViewModel : BaseViewModel() {
         ServiceContainer.prefs.ragCitationEnabled = value
         _config.value = _config.value.copy(citationEnabled = value)
     }
+
+    /** 更新对话时是否自动检索知识库 */
+    fun updateAutoSearchEnabled(value: Boolean) {
+        ServiceContainer.prefs.ragAutoSearchEnabled = value
+        _config.value = _config.value.copy(autoSearchEnabled = value)
+    }
 }
