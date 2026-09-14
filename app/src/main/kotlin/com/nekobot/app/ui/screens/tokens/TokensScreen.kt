@@ -3,7 +3,12 @@ package com.nekobot.app.ui.screens.tokens
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.clickable
@@ -23,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -311,6 +317,8 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}) {
     var visibleRecordCount by rememberSaveable(records.size, dateRange) {
         mutableIntStateOf(RECORD_BATCH_SIZE)
     }
+    // 三个区块各自持有独立的滚动状态，切换时不会整列跳回顶部
+    val sectionListStates = remember { mutableMapOf<Int, LazyListState>() }
 
     val rankingData = remember(rankings, rankingTab) {
         when (rankingTab) {
@@ -441,152 +449,183 @@ fun TokensScreen(onNavigate: (String) -> Unit = {}) {
             // 平板适配：宽屏下内容约束到最大宽度并水平居中，避免卡片整行拉伸
             contentAlignment = Alignment.TopCenter
         ) {
-            LazyColumn(
-                modifier = Modifier.widthIn(max = 720.dp).fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 110.dp),
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 720.dp)
+                    .fillMaxSize()
+                    .padding(start = 16.dp, top = 12.dp, end = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 error?.let {
-                    item(key = "error", contentType = "status") {
-                        ErrorBanner(message = it, onRetry = {
-                            vm.clearError()
-                            vm.load(refreshRankings = true)
-                        })
-                    }
+                    ErrorBanner(message = it, onRetry = {
+                        vm.clearError()
+                        vm.load(refreshRankings = true)
+                    })
                 }
 
-                item(key = "section_tabs", contentType = "controls") {
-                    TokenSegmentedBar(
-                        tabs = listOf(
-                            stringResource(R.string.tokens_tab_overview),
-                            stringResource(R.string.tokens_tab_rankings),
-                            stringResource(R.string.tokens_tab_records)
-                        ),
-                        selectedIndex = selectedSection,
-                        onSelect = { selectedSection = it }
-                    )
-                }
+                // 切换栏固定在列表上方，不参与内容过渡：否则新旧两份切换栏会同时半透明叠加，
+                // 选中高亮出现重影，看起来就是闪烁。
+                TokenSegmentedBar(
+                    tabs = listOf(
+                        stringResource(R.string.tokens_tab_overview),
+                        stringResource(R.string.tokens_tab_rankings),
+                        stringResource(R.string.tokens_tab_records)
+                    ),
+                    selectedIndex = selectedSection,
+                    onSelect = { selectedSection = it }
+                )
 
-                val selectedSectionIsCurrent = if (selectedSection == SECTION_RANKINGS) {
-                    rankingIsCurrent
-                } else {
-                    contentIsCurrent
-                }
-                if (!selectedSectionIsCurrent) {
-                    if (loading) {
-                        item(key = "scope_loading", contentType = "status") {
-                            TokenScopeLoading()
-                        }
-                    }
-                } else when (selectedSection) {
-                    SECTION_OVERVIEW -> stats?.let { currentStats ->
-                        item(key = "usage_hero", contentType = "summary") {
-                            TokenUsageHero(
-                                stats = currentStats,
-                                dateRange = dateRange,
-                                startDate = startDate,
-                                endDate = endDate
+                // 只有区块内容做交叉淡化：进/出使用同样的时长与缓动，两者不透明度之和恒为 1，
+                // 过渡途中不会露出背景（旧实现进入延迟 20ms、时长 260/160ms 不对称，会先变暗再变亮）。
+                AnimatedContent(
+                    targetState = selectedSection,
+                    transitionSpec = {
+                        fadeIn(
+                            animationSpec = tween(
+                                durationMillis = TOKEN_SECTION_FADE_MS,
+                                easing = TokenSectionFadeEasing
                             )
-                        }
-                        item(key = "key_metrics", contentType = "summary") {
-                            TokenKeyMetrics(stats = currentStats, records = records)
-                        }
-                    }
-
-                    SECTION_RANKINGS -> item(key = "rankings", contentType = "rankings") {
-                        GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            SectionHeader(
-                                title = stringResource(R.string.tokens_rankings_title),
-                                subtitle = stringResource(R.string.tokens_rankings_scope_all)
+                        ) togetherWith fadeOut(
+                            animationSpec = tween(
+                                durationMillis = TOKEN_SECTION_FADE_MS,
+                                easing = TokenSectionFadeEasing
                             )
-                            Spacer(Modifier.height(12.dp))
-                            TokenSegmentedBar(
-                                tabs = listOf(
-                                    stringResource(R.string.tokens_ranking_sessions),
-                                    stringResource(R.string.tokens_ranking_models),
-                                    stringResource(R.string.tokens_ranking_purposes)
-                                ),
-                                selectedIndex = rankingTab,
-                                onSelect = { rankingTab = it }
-                            )
-                            Spacer(Modifier.height(14.dp))
-                            if (parsedRanking.isEmpty()) {
-                                Text(
-                                    stringResource(R.string.common_empty_data),
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            } else {
-                                val maxTokens = parsedRanking.maxOf { it.second }.coerceAtLeast(1L)
-                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    parsedRanking.forEachIndexed { idx, (name, tokens) ->
-                                        RankingBarRow(
-                                            rank = idx + 1,
-                                            name = if (rankingTab == 2) purposeLabel(name) else name,
-                                            tokens = tokens,
-                                            maxTokens = maxTokens
-                                        )
-                                    }
+                        )
+                    },
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    label = "tokenSectionContent"
+                ) { section ->
+                    LazyColumn(
+                        // 每个区块各自记住滚动位置，来回切换不会跳回顶部
+                        state = sectionListStates.getOrPut(section) { LazyListState() },
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 110.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        val selectedSectionIsCurrent = if (section == SECTION_RANKINGS) {
+                            rankingIsCurrent
+                        } else {
+                            contentIsCurrent
+                        }
+                        if (!selectedSectionIsCurrent) {
+                            if (loading) {
+                                item(key = "scope_loading", contentType = "status") {
+                                    TokenScopeLoading()
                                 }
                             }
-                        }
-                    }
-
-                    SECTION_RECORDS -> {
-                        if (records.isEmpty()) {
-                            item(key = "records_empty", contentType = "status") {
-                                GlassCard(modifier = Modifier.fillMaxWidth()) {
-                                    Text(
-                                        stringResource(R.string.common_empty_data),
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        } else when (section) {
+                            SECTION_OVERVIEW -> stats?.let { currentStats ->
+                                item(key = "usage_hero", contentType = "summary") {
+                                    TokenUsageHero(
+                                        stats = currentStats,
+                                        dateRange = dateRange,
+                                        startDate = startDate,
+                                        endDate = endDate
                                     )
                                 }
-                            }
-                        } else {
-                            item(key = "records_header", contentType = "section_header") {
-                                SectionHeader(
-                                    title = stringResource(R.string.tokens_records_title),
-                                    subtitle = stringResource(R.string.tokens_records_count, records.size),
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                )
-                            }
-                            groupedRecords.forEach { (date, dateRecords) ->
-                                item(key = "date_$date", contentType = "date_header") {
-                                    TokenRecordDateHeader(date)
+                                item(key = "key_metrics", contentType = "summary") {
+                                    TokenKeyMetrics(stats = currentStats, records = records)
                                 }
-                                dateRecords.forEach { record ->
-                                    item(key = record.id, contentType = "token_record") {
-                                        TokenRecordCard(
-                                            record = record,
-                                            expanded = expandedRecordId == record.id,
-                                            onToggle = {
-                                                expandedRecordId = if (expandedRecordId == record.id) null else record.id
-                                            },
-                                            resolveSessionName = vm::resolveSessionName
+                            }
+
+                            SECTION_RANKINGS -> item(key = "rankings", contentType = "rankings") {
+                                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                                    SectionHeader(
+                                        title = stringResource(R.string.tokens_rankings_title),
+                                        subtitle = stringResource(R.string.tokens_rankings_scope_all)
+                                    )
+                                    Spacer(Modifier.height(12.dp))
+                                    TokenSegmentedBar(
+                                        tabs = listOf(
+                                            stringResource(R.string.tokens_ranking_sessions),
+                                            stringResource(R.string.tokens_ranking_models),
+                                            stringResource(R.string.tokens_ranking_purposes)
+                                        ),
+                                        selectedIndex = rankingTab,
+                                        onSelect = { rankingTab = it }
+                                    )
+                                    Spacer(Modifier.height(14.dp))
+                                    if (parsedRanking.isEmpty()) {
+                                        Text(
+                                            stringResource(R.string.common_empty_data),
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
+                                    } else {
+                                        val maxTokens = parsedRanking.maxOf { it.second }.coerceAtLeast(1L)
+                                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                            parsedRanking.forEachIndexed { idx, (name, tokens) ->
+                                                RankingBarRow(
+                                                    rank = idx + 1,
+                                                    name = if (rankingTab == 2) purposeLabel(name) else name,
+                                                    tokens = tokens,
+                                                    maxTokens = maxTokens
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
-                            if (visibleRecordCount < records.size) {
-                                item(key = "records_load_more", contentType = "controls") {
-                                    OutlinedButton(
-                                        onClick = { visibleRecordCount += RECORD_BATCH_SIZE },
-                                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                                    ) {
-                                        Text(
-                                            stringResource(
-                                                R.string.tokens_load_more,
-                                                records.size - visibleRecordCount
+
+                            SECTION_RECORDS -> {
+                                if (records.isEmpty()) {
+                                    item(key = "records_empty", contentType = "status") {
+                                        GlassCard(modifier = Modifier.fillMaxWidth()) {
+                                            Text(
+                                                stringResource(R.string.common_empty_data),
+                                                modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
+                                        }
+                                    }
+                                } else {
+                                    item(key = "records_header", contentType = "section_header") {
+                                        SectionHeader(
+                                            title = stringResource(R.string.tokens_records_title),
+                                            subtitle = stringResource(R.string.tokens_records_count, records.size),
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                                         )
+                                    }
+                                    groupedRecords.forEach { (date, dateRecords) ->
+                                        item(key = "date_$date", contentType = "date_header") {
+                                            TokenRecordDateHeader(date)
+                                        }
+                                        dateRecords.forEach { record ->
+                                            item(key = record.id, contentType = "token_record") {
+                                                TokenRecordCard(
+                                                    record = record,
+                                                    expanded = expandedRecordId == record.id,
+                                                    onToggle = {
+                                                        expandedRecordId = if (expandedRecordId == record.id) null else record.id
+                                                    },
+                                                    resolveSessionName = vm::resolveSessionName
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (visibleRecordCount < records.size) {
+                                        item(key = "records_load_more", contentType = "controls") {
+                                            OutlinedButton(
+                                                onClick = { visibleRecordCount += RECORD_BATCH_SIZE },
+                                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                                            ) {
+                                                Text(
+                                                    stringResource(
+                                                        R.string.tokens_load_more,
+                                                        records.size - visibleRecordCount
+                                                    )
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
+                        item(key = "bottom_space", contentType = "spacer") {
+                            Spacer(Modifier.height(8.dp))
+                        }
                     }
                 }
-                item(key = "bottom_space", contentType = "spacer") { Spacer(Modifier.height(8.dp)) }
             }
 
             // 仅首次（尚无数据）加载时盖全屏遮罩；已有数据的刷新不再黑屏，避免切回本页时生硬闪烁。
@@ -647,6 +686,15 @@ private const val SECTION_OVERVIEW = 0
 private const val SECTION_RANKINGS = 1
 private const val SECTION_RECORDS = 2
 private const val RECORD_BATCH_SIZE = 20
+
+// 区块切换的淡入淡出时长：进/出必须一致，交叉淡化时总不透明度才恒为 1（不会露出背景闪一下）
+private const val TOKEN_SECTION_FADE_MS = 220
+private val TokenSectionFadeEasing = androidx.compose.animation.core.CubicBezierEasing(
+    0.22f,
+    1f,
+    0.36f,
+    1f
+)
 
 private fun tokenUsageQueryKey(
     mode: String,
