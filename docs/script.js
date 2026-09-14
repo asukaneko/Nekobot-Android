@@ -337,9 +337,9 @@
 
   /* ---------- 11. 从 GitHub Releases 拉取更新日志 ---------- */
   const FALLBACK_RELEASES = [
+    { tag_name: 'v0.7.3', published_at: '2026-09-14', body: '- 沙箱终端改为真 PTY 交互终端，支持全屏程序、Tab 补全与终端按键条\n- 会话工具集新增「模式」：极简/标准/角色卡/安卓/全能一键套用\n- Agent 设置新增「新会话默认工具集」，可配置新会话默认启用的工具\n- Agent 设置新增浏览器设置与沙箱管理子界面，可改镜像源与浏览器参数\n- 知识库新增「自动检索」开关，关闭后不再对每轮输入做 RAG 检索\n- 修复知识库检索后列表 key 冲突导致的闪退\n- Agent 自动总结 Skill 输出标准 SKILL.md 并提高沉淀门槛\n- 长期记忆改为固定三分类，禁止记录易失信息\n- 剧情图谱不再自动选中节点，关系快照改为双列自适应卡片\n- 底部导航栏适配大屏与平板，新增 FlowRow 底部按钮与弹窗标题行数限制' },
     { tag_name: 'v0.7.2', published_at: '2026-09-12', body: '- 新增液态玻璃（iOS Liquid Glass）视觉效果，底栏真实背景采样与边缘折射\n- 角色扮演支持多候选回复（swipes），重抽不再销毁旧回复\n- 世界书注入位置 position 真正生效，新增按消息深度插入与条目顺序可写\n- 世界书新增「命中调试」二级页，逐条回答「为什么这条没触发」\n- Agent 自动总结 Skill：后台沉淀 SKILL.md，内联提示总结进度\n- Agent 工具调用逐条实时落库，中断后可完整恢复上下文\n- AI 回复支持就地编辑，新增模型级停止字符串\n- 修复本地 token 估算器高估与上下文占比口径不一致的问题\n- 修复编辑消息逐条 DELETE 截断历史，改用服务端 truncate_after 一次完成\n- 优化液态玻璃底栏拖动性能与手势交互、气泡文件卡片间距' },
     { tag_name: 'v0.7.1', published_at: '2026-09-11', body: '- 新增 grep/glob/web_fetch/todo_read/shell_job/subagent_kill 等 Agent 工具\n- 子代理治理增强：任务树深度、并发闸门、完成通知、工具集过滤\n- 命令授权指纹化，破坏性操作确认弹窗与网络访问总开关\n- 长期记忆改为检索化注入，新增自动长期记忆\n- Agent 每轮注入运行环境信息与轮内上下文管理\n- Anthropic prompt caching 断点，只读工具并行执行\n- AI 气泡展示生成速度 tok/s 并按快慢着色\n- 平板双栏会话页支持拖动分隔条与单侧全屏\n- 修复 SSE 多行 data 解析与 Anthropic thinking 签名回传等问题' },
-    { tag_name: 'v0.7.0', published_at: '2026-09-08', body: '- 新增 Agent 子代理（Subagent）功能，支持委派独立任务给子代理\n- 新增会话级 Agent 工具集选择功能，工具按大类归类按会话自定义\n- 新增 Agent 设置界面，支持配置最大工具调用次数\n- 消息气泡 token 数以 k/M 紧凑格式显示\n- /goal、/spec 命令以彩色胶囊显示并同步用户气泡\n- 支持注入会话工作区根目录 AGENTS.md 作为 Agent 行为指导\n- 支持创建全新的空白本地数据库\n- 会话列表展示会话标签\n- 支持视觉模型直接读取工具截图\n- 增强 Android 操作能力：编号定位、坐标手势、操作指南\n- Agent 运行期间动态更新 + 菜单上下文占比与分析\n- 修复排队消息立即发送产生第二个进度卡片等问题' },
   ];
   function renderReleases(releases) {
     const container = $('#changelogList');
