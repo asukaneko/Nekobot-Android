@@ -11,28 +11,48 @@ import java.util.concurrent.ConcurrentHashMap
  * Agent 会话的「自动总结 Skill」（技能沉淀）。
  *
  * 设计参考 Hermes Agent 的后台 Skill Review 机制：
- * - 计数式触发：按工具调用累积量（`creation_nudge_interval`）与单轮复杂度（5-tool-call 规则）
- *   决定是否值得审查，而不是每轮都跑一次模型；
+ * - 计数式触发：按工具调用累积量（`creation_nudge_interval`）与单轮复杂度决定是否值得审查，
+ *   而不是每轮都跑一次模型；阈值刻意定得偏高，只在真正复杂的多步任务后才审查；
  * - 后台审查：回合结束后 fork 一次轻量模型调用，把"这轮是怎么做成的"提炼成可复用的
  *   SKILL.md，全程不打断对话，失败不影响主流程；
  * - 优先级：先更新本轮用过 / 已有的同类 Skill，实在没有再新建，避免近义技能不断堆积；
+ * - 高门槛：审查提示词默认 action=skip，产出的 SKILL.md 必须符合标准格式
+ *   （YAML frontmatter + 一级标题 + 至少两个标准小节 + 至少三条可执行步骤），
+ *   结构不达标一律丢弃，宁可不少沉淀也不产出低价值技能；
  * - 只沉淀"怎么做事"的流程型知识，长期事实与偏好仍归 [AgentMemoryExtractor] 的长期记忆。
  *
  * 与长期记忆一样，开关见「设置 → Agent 设置 → 自动总结 Skill」。
  */
 internal object AgentSkillExtractor {
 
-    /** 单轮工具调用数达到该值即视为"复杂任务"，值得沉淀（对齐 Hermes 的 5-tool-call 规则）。 */
-    internal const val COMPLEX_TURN_TOOL_CALLS = 5
+    private const val TAG = "AgentSkillExtractor"
 
-    /** 累计工具调用数达到该值补一次审查（对齐 Hermes skills.creation_nudge_interval 默认 10）。 */
-    internal const val NUDGE_TOOL_CALL_INTERVAL = 10
+    /** 单轮工具调用数达到该值才视为"复杂任务"，值得沉淀（阈值偏高，避免琐碎任务也沉淀）。 */
+    internal const val COMPLEX_TURN_TOOL_CALLS = 12
+
+    /** 累计工具调用数达到该值补一次审查（跨轮累积，阈值偏高以免频繁审查）。 */
+    internal const val NUDGE_TOOL_CALL_INTERVAL = 30
 
     /** 触发审查的最小回合字数（用户消息 + 回复），太短的回合通常没有可复用价值。 */
-    internal const val MIN_TURN_CHARS = 200
+    internal const val MIN_TURN_CHARS = 600
+
+    /** 用户明确要求沉淀时的最小回合字数（可以放宽，但仍要排除寒暄）。 */
+    internal const val MIN_EXPLICIT_TURN_CHARS = 300
+
+    /** 本轮至少要有这么多次工具调用；纯问答、闲聊一律不沉淀。 */
+    internal const val MIN_TURN_TOOL_CALLS = 2
 
     /** 单个 SKILL.md 的字符上限，避免一次沉淀吃掉整个技能目录预算。 */
     internal const val MAX_SKILL_MD_CHARS = 8_000
+
+    /** SKILL.md 正文（不含 frontmatter 与一级标题）的最小字符数。 */
+    internal const val MIN_SKILL_BODY_CHARS = 240
+
+    /** SKILL.md 至少要有几个二级小节（`## xxx`）。 */
+    internal const val MIN_SKILL_SECTIONS = 2
+
+    /** SKILL.md 至少要有几条步骤/要点（列表项）。 */
+    internal const val MIN_SKILL_ITEMS = 3
 
     /** Skill 名称长度上限（存储目录名同样受此约束）。 */
     internal const val MAX_SKILL_NAME_CHARS = 40
@@ -78,6 +98,9 @@ internal object AgentSkillExtractor {
     /**
      * 是否值得跑一次技能沉淀审查。
      *
+     * 门槛刻意定得偏高：只有「足够长的复杂回合 + 至少两次工具调用」才进入审查，
+     * 累计阈值同样调高，避免每做完一件小事就沉淀一个技能。
+     *
      * @param explicit 用户是否明确要求沉淀
      * @param turnToolCalls 本轮工具调用次数
      * @param accumulatedToolCalls 含本轮的累计工具调用次数（尚未重置的计数）
@@ -91,9 +114,10 @@ internal object AgentSkillExtractor {
     ): Boolean {
         if (assistantMessage.isBlank()) return false
         val turnChars = userMessage.length + assistantMessage.length
-        if (explicit) return turnChars >= MIN_TURN_CHARS
-        // 没有工具调用的一轮通常只是闲聊或纯问答，没有可沉淀的流程。
-        if (turnToolCalls <= 0) return false
+        // 用户明确要求时不受计数阈值限制，但依然要排除"记成 skill"这类寒暄式短回合。
+        if (explicit) return turnChars >= MIN_EXPLICIT_TURN_CHARS
+        // 没有工具调用或只有一次工具调用的一轮，通常只是闲聊、查询或单命令操作。
+        if (turnToolCalls < MIN_TURN_TOOL_CALLS) return false
         if (turnChars < MIN_TURN_CHARS) return false
         return turnToolCalls >= COMPLEX_TURN_TOOL_CALLS ||
             accumulatedToolCalls >= NUDGE_TOOL_CALL_INTERVAL
@@ -107,9 +131,21 @@ internal object AgentSkillExtractor {
         existingSkills: List<AgentSkillBrief>,
         explicit: Boolean
     ): String = buildString {
-        appendLine("用户在 Agent 会话里刚完成一轮任务。请判断这次的做法是否值得沉淀成可复用的 Skill，并给出结果。")
+        appendLine("用户在 Agent 会话里刚完成一轮任务。请先判断这次的做法是否**真的值得**沉淀成可复用的 Skill，再给出结果。")
         appendLine()
-        appendLine("【决策优先级（从高到低）】")
+        appendLine("【判断标准：默认 skip，宁缺勿滥】")
+        appendLine("只有当下面几条**全部满足**时才沉淀：")
+        appendLine("1. 这是一套可复用的流程：换一个会话、换一个项目还会再遇到同样的做法；")
+        appendLine("2. 流程本身不显然：包含多个步骤，或涉及具体的参数、顺序、依赖、坑与边界处理；")
+        appendLine("3. 能写出至少 3 条别人可以照着执行的步骤（不是一句结论）。")
+        appendLine("出现下列任一情况，一律 action=skip：")
+        appendLine("- 闲聊、答疑、解释概念、一次性的排查或调试；")
+        appendLine("- 单条命令或显而易见的两三步操作就能完成的事（常规读写、搜索、查看文件等）；")
+        appendLine("- 内容只是本轮的具体数据：报错原文、文件内容、业务细节、临时状态；")
+        appendLine("- 步骤不足 3 条，或者换个场景就不成立、无法复用的做法；")
+        appendLine("- 你自己也不确定这个流程是否可复用。")
+        appendLine()
+        appendLine("【决策优先级（仅在上面的标准已满足时）】")
         appendLine("1. 本轮读取过的 Skill：优先补丁式更新它（action=update，name 用它的原名）。")
         appendLine("2. 已有技能列表中范围匹配的：更新它，不要新建近义技能。")
         appendLine("3. 确实没有可复用的：才新建（action=create），名称必须落在可复用的类别层面")
@@ -120,17 +156,31 @@ internal object AgentSkillExtractor {
         appendLine("1. 只沉淀「怎么做事」的流程（步骤、命令、参数、踩过的坑、边界处理）。")
         appendLine("   长期事实、偏好、约定属于长期记忆，不要写进 Skill。")
         appendLine("2. 步骤必须具体到能照着执行；只写本轮真实发生过的做法，不要编造没有出现过的步骤。")
-        appendLine("3. 正文结构固定为：")
-        appendLine("   `# <技能名称>` + `## 功能描述` + `## 适用场景` + `## 操作步骤` + `## 注意事项`。")
-        appendLine("4. 更新已有 Skill 时必须给出**完整**的新正文，保留其中仍然有效的内容，不要只给差异片段。")
-        appendLine("5. 若还需要补充参考资料，可额外给出 reference_md（没有就省略该字段）。")
-        appendLine("6. 正文使用${AiOutputLanguage.languageName()}书写，名称用简短的英文小写或名词短语。")
-        appendLine("7. 只输出一个 JSON 对象，不要代码块、不要任何解释文字。")
+        appendLine("3. description 必填：一句话说明这个技能做什么、什么时候该用它。")
+        appendLine("4. skill_md 必须符合下面的标准格式，第一行就是 `---`，不要用代码块包裹：")
+        appendLine("   ---")
+        appendLine("   name: <与 name 字段一致的小写英文名>")
+        appendLine("   description: \"<一句话说明>\"")
+        appendLine("   aliases: [<别名，可整行省略>]")
+        appendLine("   ---")
+        appendLine()
+        appendLine("   # <技能名>")
+        appendLine()
+        appendLine("   ## 功能描述")
+        appendLine("   ## 适用场景")
+        appendLine("   ## 操作步骤（编号列表，至少 3 条）")
+        appendLine("   ## 注意事项（列表）")
+        appendLine("   正文只能有一个一级标题、至少两个二级小节；总长度不少于 240 字符。")
+        appendLine("5. 更新已有 Skill 时必须给出**完整**的新正文（含 frontmatter），保留其中仍然有效的内容，不要只给差异片段。")
+        appendLine("6. 若还需要补充参考资料，可额外给出 reference_md（没有就省略该字段）。")
+        appendLine("7. 正文与 description 使用${AiOutputLanguage.languageName()}书写，name 用简短的英文小写或名词短语。")
+        appendLine("8. 只输出一个 JSON 对象，不要代码块、不要任何解释文字。")
         appendLine()
         appendLine(AiOutputLanguage.directive())
         appendLine()
         if (explicit) {
-            appendLine("【特别说明】用户已明确要求把这次的做法沉淀成 Skill，请务必给出 create 或 update（除非内容完全不可复用）。")
+            appendLine("【特别说明】用户已明确要求把这次的做法沉淀成 Skill，请优先给出 create 或 update；")
+            appendLine("但如果这一轮确实没有可复用的流程，仍然输出 action=skip 并说明理由。")
             appendLine()
         }
         appendLine("【已有技能列表】")
@@ -229,25 +279,47 @@ internal object AgentSkillExtractor {
      * 返回 null 表示"不沉淀"（action=skip、JSON 非法或字段不可用）。
      */
     internal fun parseReview(raw: String): AgentSkillDraft? {
-        val json = extractJsonObject(raw) ?: return null
-        val obj = runCatching { JsonParser.parseString(json).asJsonObject }.getOrNull() ?: return null
+        val json = extractJsonObject(raw) ?: run {
+            LocalLogger.i(TAG, "技能沉淀跳过：模型输出不是 JSON 对象")
+            return null
+        }
+        val obj = runCatching { JsonParser.parseString(json).asJsonObject }.getOrNull() ?: run {
+            LocalLogger.i(TAG, "技能沉淀跳过：JSON 解析失败")
+            return null
+        }
         val action = obj.get("action")?.asString?.trim()?.lowercase().orEmpty()
-        if (action != "create" && action != "update") return null
+        if (action != "create" && action != "update") {
+            LocalLogger.i(TAG, "技能沉淀跳过：action=${action.ifBlank { "空" }}")
+            return null
+        }
         val name = sanitizeSkillName(obj.get("name")?.asString.orEmpty())
-        if (name.isEmpty()) return null
-        val skillMdRaw = obj.get("skill_md")?.asString.orEmpty()
-        if (skillMdRaw.isBlank()) return null
+        if (name.isEmpty()) {
+            LocalLogger.i(TAG, "技能沉淀跳过：技能名不可用")
+            return null
+        }
         val description = obj.get("description")?.asString
             ?.replace(Regex("\\s+"), " ")
             ?.trim()
             ?.take(MAX_DESCRIPTION_CHARS)
             ?.takeIf { it.isNotBlank() }
+        if (description == null) {
+            LocalLogger.i(TAG, "技能沉淀跳过：缺少 description（标准 SKILL.md 必填）")
+            return null
+        }
         val aliases = runCatching {
             (obj.getAsJsonArray("aliases") ?: return@runCatching emptyList<String>())
                 .mapNotNull { element ->
                     element.asString?.trim()?.takeIf { it.isNotBlank() && it.length <= MAX_SKILL_NAME_CHARS }
                 }
         }.getOrDefault(emptyList())
+        val skillMdRaw = obj.get("skill_md")?.asString.orEmpty()
+        if (skillMdRaw.isBlank()) {
+            LocalLogger.i(TAG, "技能沉淀跳过：缺少 SKILL.md 正文")
+            return null
+        }
+        val skillMd = sanitizeSkillMd(skillMdRaw, name, description, aliases)
+        // 结构不达标（过短 / 缺小节 / 缺步骤）时 sanitize 返回空串，视为不沉淀。
+        if (skillMd.isBlank()) return null
         val referenceMd = obj.get("reference_md")?.asString
             ?.takeIf { it.isNotBlank() }
             ?.take(MAX_SKILL_MD_CHARS)
@@ -255,7 +327,7 @@ internal object AgentSkillExtractor {
             name = name,
             description = description,
             aliases = aliases.distinct().take(8),
-            skillMd = sanitizeSkillMd(skillMdRaw, name),
+            skillMd = skillMd,
             referenceMd = referenceMd,
             createNew = action == "create"
         )
@@ -291,16 +363,107 @@ internal object AgentSkillExtractor {
         return runCatching { validateSkillNameValue(cleaned) }.getOrDefault("")
     }
 
-    /** 清洗 SKILL.md 正文：只在整体被代码块包裹时脱壳，必要时补一级标题，并限制长度。 */
-    internal fun sanitizeSkillMd(raw: String, name: String): String {
+    /**
+     * 清洗并标准化 SKILL.md 正文，使其符合标准技能格式：
+     *
+     * ```
+     * ---
+     * name: <技能名>
+     * description: "<一句话说明>"
+     * aliases: [<别名>]
+     * ---
+     *
+     * # <技能名>
+     * ## 功能描述 / ## 适用场景 / ## 操作步骤 / ## 注意事项 ...
+     * ```
+     *
+     * 模型自带的 frontmatter 一律丢弃，用校验过的 name / description / aliases 重建，
+     * 保证目录名、数据库元数据与文件头三者一致（下载安装的 Skill 也按同样的 frontmatter 解析）。
+     *
+     * @return 标准化后的完整 SKILL.md；正文不达标（过短 / 缺小节 / 缺可执行步骤）时返回空串。
+     */
+    internal fun sanitizeSkillMd(
+        raw: String,
+        name: String,
+        description: String? = null,
+        aliases: List<String> = emptyList()
+    ): String {
         var text = raw.trim()
         val fenced = Regex("(?s)^```[a-zA-Z]*\\s*\\n(.*?)\\n?```$").find(text)
         if (fenced != null) text = fenced.groupValues[1].trim()
         if (text.isEmpty()) return ""
-        if (!text.lineSequence().any { it.trimStart().startsWith("# ") }) {
-            text = "# $name\n\n$text"
+
+        val body = compactBlankLines(ensureHeading(stripFrontMatter(text), name))
+        if (body.isEmpty()) return ""
+        val issue = validateSkillBody(body)
+        if (issue != null) {
+            LocalLogger.i(TAG, "技能沉淀跳过：SKILL.md 不符合标准格式（$issue）")
+            return ""
         }
-        return text.take(MAX_SKILL_MD_CHARS).trim()
+        val frontMatter = buildFrontMatter(name, description, aliases)
+        val budget = MAX_SKILL_MD_CHARS - frontMatter.length - 2
+        if (budget <= 0) return ""
+        val trimmedBody = if (body.length <= budget) body else body.take(budget).trimEnd()
+        return "$frontMatter\n\n$trimmedBody"
+    }
+
+    /** 生成标准 YAML frontmatter（只包含 name / description / 可选 aliases 三个字段）。 */
+    internal fun buildFrontMatter(
+        name: String,
+        description: String?,
+        aliases: List<String> = emptyList()
+    ): String {
+        val lines = mutableListOf("---", "name: $name")
+        val cleanDescription = description
+            ?.replace(Regex("\\s+"), " ")
+            ?.replace("\"", "'")
+            ?.trim()
+            ?.take(MAX_DESCRIPTION_CHARS)
+            ?.takeIf { it.isNotBlank() }
+        if (cleanDescription != null) lines += "description: \"$cleanDescription\""
+        val cleanAliases = aliases
+            .map { it.replace(Regex("\\s+"), " ").replace("\"", "'").trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .take(8)
+        if (cleanAliases.isNotEmpty()) lines += "aliases: [${cleanAliases.joinToString(", ")}]"
+        lines += "---"
+        return lines.joinToString("\n")
+    }
+
+    /** 去掉模型自带的 frontmatter（它的字段不可信，标准化时统一重建）。 */
+    private fun stripFrontMatter(text: String): String {
+        if (!text.startsWith("---")) return text
+        val end = text.indexOf("\n---", startIndex = 3)
+        if (end <= 0) return text
+        val bodyStart = text.indexOf('\n', end + 1)
+        return if (bodyStart > 0) text.substring(bodyStart + 1).trim() else ""
+    }
+
+    /** 缺少一级标题时补一个（标准格式要求正文以 `# <技能名>` 开头）。 */
+    private fun ensureHeading(body: String, name: String): String {
+        if (body.isEmpty()) return body
+        val hasHeading = body.lineSequence().any { it.trimStart().startsWith("# ") }
+        return if (hasHeading) body else "# $name\n\n$body"
+    }
+
+    private fun compactBlankLines(text: String): String = text
+        .replace("\r\n", "\n")
+        .lineSequence()
+        .joinToString("\n") { it.trimEnd() }
+        .replace(Regex("\n{3,}"), "\n\n")
+        .trim()
+
+    /**
+     * 结构校验：达不到标准技能的基本要求就返回原因（不让低价值内容落盘）。
+     */
+    internal fun validateSkillBody(body: String): String? {
+        if (body.length < MIN_SKILL_BODY_CHARS) return "正文过短（< $MIN_SKILL_BODY_CHARS 字符）"
+        val sections = Regex("(?m)^##\\s+\\S").findAll(body).count()
+        if (sections < MIN_SKILL_SECTIONS) return "缺少标准小节（< $MIN_SKILL_SECTIONS 个二级标题）"
+        val items = Regex("(?m)^\\s*(?:[-*+•]|\\d+[.)、])\\s+\\S").findAll(body).count()
+        if (items < MIN_SKILL_ITEMS) return "缺少可执行步骤（< $MIN_SKILL_ITEMS 条列表项）"
+        return null
     }
 
     private val SKILL_TOOL_IDS = setOf("skill_read", "skill_view")

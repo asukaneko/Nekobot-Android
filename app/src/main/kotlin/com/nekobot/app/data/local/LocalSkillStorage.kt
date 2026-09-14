@@ -581,17 +581,26 @@ internal class LocalSkillStorage(private val root: File) {
     }
 
     private fun defaultSkillMd(name: String): String = """
+        ---
+        name: $name
+        description: "说明这个技能做什么、什么时候该用它"
+        ---
+
         # $name
 
         ## 功能描述
 
         请描述这个技能解决的问题、适用场景和限制。
 
-        ## 使用说明
+        ## 操作步骤
 
         1. 说明何时应使用此技能。
         2. 说明需要读取的资源或执行步骤。
         3. 说明预期输出。
+
+        ## 注意事项
+
+        - 说明容易出错的参数、顺序或边界情况。
 
         ## 参考资料
 

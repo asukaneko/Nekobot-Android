@@ -271,17 +271,26 @@ class LocalWebFetchExtractionTest {
 }
 
 /**
- * Agent 长期记忆抽取：只在值得时触发，按小节去重合并。
+ * Agent 长期记忆抽取：只在值得时触发，按固定分类整理，过滤一次性任务细节。
  */
 class AgentMemoryExtractorTest {
+
+    private val preferenceHeading = AgentMemoryExtractor.Category.PREFERENCE.heading()
+    private val environmentHeading = AgentMemoryExtractor.Category.ENVIRONMENT.heading()
 
     @Test
     fun `过短的回合不触发抽取`() {
         assertFalse(AgentMemoryExtractor.shouldExtract("你好", "你好！"))
+        assertFalse(
+            AgentMemoryExtractor.shouldExtract(
+                "以后所有回复都用中文".repeat(10),
+                "好的，我会一直用中文回复。"
+            )
+        )
         assertTrue(
             AgentMemoryExtractor.shouldExtract(
-                "以后所有回复都用中文".repeat(20),
-                "好的，我会一直用中文回复。"
+                "以后所有回复都用中文，并且先给结论。".repeat(40),
+                "好的，我会一直用中文回复并先给结论。"
             )
         )
     }
@@ -291,33 +300,62 @@ class AgentMemoryExtractorTest {
         assertEquals("", AgentMemoryExtractor.sanitizeExtraction("NONE"))
         assertEquals("", AgentMemoryExtractor.sanitizeExtraction("   "))
         assertEquals("", AgentMemoryExtractor.sanitizeExtraction("这是一段没有小节的说明"))
+        assertEquals("", AgentMemoryExtractor.sanitizeExtraction("# 项目细节\n- 改了 MainActivity"))
     }
 
     @Test
     fun `代码块围栏被清理`() {
-        val cleaned = AgentMemoryExtractor.sanitizeExtraction("```markdown\n# 偏好\n中文回复\n```")
+        val cleaned = AgentMemoryExtractor.sanitizeExtraction(
+            "```markdown\n## 用户偏好\n- 回复使用简体中文\n```"
+        )
 
-        assertTrue(cleaned.startsWith("# 偏好"))
+        assertTrue(cleaned.startsWith("## "))
+        assertTrue(cleaned.contains("回复使用简体中文"))
         assertFalse(cleaned.contains("```"))
     }
 
     @Test
-    fun `合并时同标题小节被更新而非重复追加`() {
-        val existing = "# 偏好\n喜欢简洁回复\n\n# 项目\nNekobot"
-        val addition = "# 偏好\n喜欢简洁的中文回复"
+    fun `非标准分类的小节被丢弃`() {
+        val cleaned = AgentMemoryExtractor.sanitizeExtraction(
+            "## 本次改动\n- 修了按钮颜色\n\n## 用户偏好\n- 喜欢简洁回答"
+        )
+
+        assertTrue(cleaned.contains("喜欢简洁回答"))
+        assertFalse("非标准分类不应写入", cleaned.contains("修了按钮颜色"))
+    }
+
+    @Test
+    fun `一次性任务细节被过滤`() {
+        val cleaned = AgentMemoryExtractor.sanitizeExtraction(
+            "## 环境与工具\n- 本轮临时把 JAVA_HOME 指向了 JDK 21\n- Android 项目使用 gradlew.bat 构建"
+        )
+
+        assertTrue(cleaned.contains("gradlew.bat"))
+        assertFalse("临时状态不应写入", cleaned.contains("本轮"))
+    }
+
+    @Test
+    fun `合并时同分类小节被更新而非重复追加`() {
+        val existing = "# 用户偏好\n- 喜欢简洁回复\n\n# 项目\nNekobot"
+        val addition = "## 用户偏好\n- 喜欢简洁的中文回复"
 
         val merged = AgentMemoryExtractor.mergeMemory(existing, addition)
 
-        assertEquals(1, Regex("(?m)^# 偏好$").findAll(merged).count())
+        assertTrue(merged.contains("## $preferenceHeading"))
+        assertEquals(1, Regex("(?m)^##\\s").findAll(merged).count())
         assertTrue(merged.contains("喜欢简洁的中文回复"))
+        assertFalse("旧内容应被同分类新内容替换", merged.contains("喜欢简洁回复"))
         assertTrue("未涉及的既有小节必须保留", merged.contains("# 项目"))
     }
 
     @Test
-    fun `合并新标题时追加在末尾`() {
-        val merged = AgentMemoryExtractor.mergeMemory("# 偏好\n中文", "# 环境\n工作区使用 /workspace")
+    fun `合并新分类时追加在末尾`() {
+        val merged = AgentMemoryExtractor.mergeMemory(
+            "## 用户偏好\n- 中文",
+            "## 环境与工具\n- 工作区使用 /workspace"
+        )
 
-        assertTrue(merged.indexOf("# 偏好") < merged.indexOf("# 环境"))
+        assertTrue(merged.indexOf(preferenceHeading) < merged.indexOf(environmentHeading))
     }
 
     @Test
@@ -327,5 +365,7 @@ class AgentMemoryExtractorTest {
         assertTrue(prompt.contains("用户说了 A"))
         assertTrue(prompt.contains("Agent 回答了 B"))
         assertTrue(prompt.contains("NONE"))
+        assertTrue(prompt.contains(preferenceHeading))
+        assertTrue(prompt.contains("绝对不要记录"))
     }
 }
