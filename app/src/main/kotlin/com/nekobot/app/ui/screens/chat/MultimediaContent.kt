@@ -73,6 +73,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -82,6 +83,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import coil.compose.AsyncImage
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
@@ -975,6 +981,39 @@ fun UrlPreviewDialog(url: String, onDismiss: () -> Unit) {
         }
     }
 }
+
+/**
+ * 预览弹窗内的系统栏显隐：全屏时隐藏状态栏/导航栏，退出或弹窗关闭时恢复。
+ * 需在 `Dialog { }` 内容里调用，才能作用于弹窗自己的 window。
+ */
+@Composable
+private fun ImmersiveSystemBars(hidden: Boolean) {
+    val view = LocalView.current
+    DisposableEffect(hidden) {
+        // 优先控制弹窗自己的 window；拿不到时退回宿主 Activity（API 30 以下用 decorView 更可靠）
+        val controller = (view.parent as? DialogWindowProvider)?.window
+            ?.let { WindowCompat.getInsetsController(it, view) }
+            ?: view.context.findActivity()
+                ?.let { WindowCompat.getInsetsController(it.window, it.window.decorView) }
+        if (hidden) {
+            controller?.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller?.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller?.show(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
+    }
+}
+
+/** 从可能的 ContextWrapper 链中找到宿主 Activity，供系统栏控制使用。 */
+private fun android.content.Context.findActivity(): android.app.Activity? {
+    var context: android.content.Context? = this
+    while (context is android.content.ContextWrapper) {
+        if (context is android.app.Activity) return context
+        context = context.baseContext
+    }
+    return null
 }
 
 /** 获取文件扩展名（小写，不含点） */
@@ -1668,6 +1707,8 @@ internal fun calculatePdfRenderSize(
 /**
  * 文件预览 Dialog：根据本地 [file] 的扩展名选择渲染方式。
  * 支持图片/文本/HTML/PDF；其他类型显示不支持提示。
+ *
+ * 顶栏提供全屏按钮：全屏时隐藏系统栏与顶栏，内容铺满整屏（返回键先退出全屏）。
  */
 @Composable
 fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
@@ -1679,11 +1720,24 @@ fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
     val unsupportedPreview = stringResource(R.string.chat_media_unsupported_preview)
     val markdownTruncatedFmt = stringResource(R.string.chat_media_markdown_truncated)
     val fileDownloadedTo = stringResource(R.string.chat_media_file_downloaded_to, file.name)
+    val fullscreenDesc = stringResource(R.string.chat_media_fullscreen)
+    val exitFullscreenDesc = stringResource(R.string.chat_media_exit_fullscreen)
     var webView by remember { mutableStateOf<WebView?>(null) }
+    var fullscreen by remember { mutableStateOf(false) }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        // 必须放在 Dialog 内部，才能拿到弹窗自己的 window 来隐藏系统栏
+        ImmersiveSystemBars(hidden = fullscreen)
+
         BackHandler {
-            webView?.takeIf(WebView::canGoBack)?.goBack() ?: onDismiss()
+            when {
+                fullscreen -> fullscreen = false
+                webView?.canGoBack() == true -> webView?.goBack()
+                else -> onDismiss()
+            }
         }
 
         Box(
@@ -1691,33 +1745,50 @@ fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.96f))
         ) {
-            // 顶部标题 + 关闭按钮
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.6f))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = fileName,
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Filled.Close, contentDescription = closeDesc, tint = Color.White)
+            // 顶部标题 + 全屏/关闭按钮（全屏时隐藏，只保留悬浮退出按钮）
+            if (!fullscreen) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = fileName,
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = { fullscreen = true }) {
+                        Icon(Icons.Filled.Fullscreen, contentDescription = fullscreenDesc, tint = Color.White)
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Filled.Close, contentDescription = closeDesc, tint = Color.White)
+                    }
+                }
+            } else {
+                // 全屏：右上角悬浮退出按钮（返回键也可退出全屏）
+                IconButton(
+                    onClick = { fullscreen = false },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.45f))
+                ) {
+                    Icon(Icons.Filled.FullscreenExit, contentDescription = exitFullscreenDesc, tint = Color.White)
                 }
             }
-            // 内容区
+            // 内容区：全屏时不留给顶栏
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = 48.dp)
+                    .padding(top = if (fullscreen) 0.dp else 48.dp)
             ) {
                 when (previewType) {
                     FilePreviewType.IMAGE -> {
