@@ -6223,7 +6223,9 @@ class LocalRepository(
                             session = latestSession,
                             messages = latestMessages,
                             characterName = charName,
-                            characterDescription = charDesc
+                            characterDescription = charDesc,
+                            characterTags = character?.tags.orEmpty(),
+                            characterScenario = character?.scenario.orEmpty()
                         )
                         if (newName != null) {
                             // 持久化新名称到 DB
@@ -6735,7 +6737,9 @@ class LocalRepository(
                         session = latestSession,
                         messages = latestMessages,
                         characterName = participants.joinToString("、") { it.name },
-                        characterDescription = participants.joinToString("；") { it.description }.take(500)
+                        characterDescription = participants.joinToString("；") { it.description }.take(500),
+                        // 题材判定用完整的角色卡标签（群聊取全部成员的并集）
+                        characterTags = charactersById.values.joinToString(",") { it.tags.orEmpty() }
                     )
                     if (newName != null) {
                         sessionDao.updateName(session.id, newName, nowIso())
