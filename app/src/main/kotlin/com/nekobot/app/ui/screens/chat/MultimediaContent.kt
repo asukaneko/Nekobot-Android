@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -75,6 +76,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -87,6 +90,7 @@ import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.MARKDOWN_FILE_EXTS
 import com.nekobot.app.ui.components.MarkdownText
 import com.nekobot.app.ui.components.isMarkdownFileName
+import com.nekobot.app.ui.theme.accentLink
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -102,7 +106,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /** 多媒体内容段类型 */
-enum class SegmentType { TEXT, IMAGE, VIDEO, AUDIO, TXT, HTML, FILE }
+enum class SegmentType { TEXT, IMAGE, VIDEO, AUDIO, LINK, HTML, FILE }
 
 /** 内容段：文本或多媒体 URL。HTML 内容（整段为 HTML 时）存于 [text]。 */
 data class ContentSegment(
@@ -135,7 +139,12 @@ private val HTML_TAG_REGEX = Regex("""<(div|span|table|p|br|h[1-6]|ul|ol|li|a|im
 /** 文件引用正则：匹配 [File: filename] 或 [文件: filename] */
 private val FILE_REF_REGEX = Regex("""\[(?:File|文件):\s*([^\]]+)\]""")
 
-/** 根据 URL 扩展名判断多媒体类型 */
+/**
+ * 根据 URL 扩展名判断内容段类型。
+ *
+ * 只有图片/视频/音频直接内联展示；其余网址（网页、txt、md 等）一律作为可点击链接，
+ * 由用户点击后才在预览弹窗里加载，避免聊天气泡里自动抓取并展示网页内容。
+ */
 private fun classifyUrl(url: String): SegmentType {
     // 去掉 query string 和 fragment，提取扩展名
     val noQuery = url.substringBefore('?').substringBefore('#')
@@ -144,9 +153,7 @@ private fun classifyUrl(url: String): SegmentType {
         in IMAGE_EXTS -> SegmentType.IMAGE
         in VIDEO_EXTS -> SegmentType.VIDEO
         in AUDIO_EXTS -> SegmentType.AUDIO
-        in TXT_EXTS -> SegmentType.TXT
-        in HTML_EXTS -> SegmentType.HTML
-        else -> SegmentType.TEXT
+        else -> SegmentType.LINK
     }
 }
 
@@ -209,12 +216,8 @@ fun parseContentSegments(content: String): List<ContentSegment> {
             }
         }
         val url = m.value
-        val type = classifyUrl(url)
-        when (type) {
-            SegmentType.TEXT -> result.add(ContentSegment(type = SegmentType.TEXT, text = url))
-            SegmentType.HTML -> result.add(ContentSegment(type = SegmentType.HTML, url = url))
-            else -> result.add(ContentSegment(type = type, url = url))
-        }
+        // 图片/视频/音频内联展示，其余网址作为可点击链接
+        result.add(ContentSegment(type = classifyUrl(url), url = url))
         lastIndex = m.range.last + 1
     }
     // 末尾文本
@@ -626,10 +629,17 @@ fun TxtRenderer(
     }
 }
 
-/** HTML 渲染器：URL 用带认证的 OkHttp 下载后用 loadDataWithBaseURL 显示；HTML 内容直接显示。
- *  支持点击全屏按钮进入全屏预览模式。 */
+/**
+ * HTML 渲染器：URL 用带认证的 OkHttp 下载后用 loadDataWithBaseURL 显示；HTML 内容直接显示。
+ * 内联时限制高度并支持点击全屏；[fillHeight] = true 时铺满容器（弹窗预览用，不再显示全屏按钮）。
+ */
 @Composable
-fun HtmlRenderer(html: String, url: String, modifier: Modifier = Modifier) {
+fun HtmlRenderer(
+    html: String,
+    url: String,
+    modifier: Modifier = Modifier,
+    fillHeight: Boolean = false
+) {
     var downloadedHtml by remember(url) { mutableStateOf<String?>(null) }
     var downloadError by remember(url) { mutableStateOf<String?>(null) }
     var fullscreen by remember { mutableStateOf(false) }
@@ -660,11 +670,14 @@ fun HtmlRenderer(html: String, url: String, modifier: Modifier = Modifier) {
     val resolvedContent = html.ifBlank { downloadedHtml ?: "" }
     val hasContent = resolvedContent.isNotBlank()
 
-    // 内联预览：限制高度 + 右上角全屏按钮覆盖层
+    // 内联预览：限制高度 + 右上角全屏按钮覆盖层；弹窗预览则铺满容器
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 100.dp, max = 300.dp)
+            .then(
+                if (fillHeight) Modifier.fillMaxSize()
+                else Modifier.heightIn(min = 100.dp, max = 300.dp)
+            )
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
     ) {
@@ -689,7 +702,7 @@ fun HtmlRenderer(html: String, url: String, modifier: Modifier = Modifier) {
             modifier = Modifier.fillMaxSize()
         )
         // 右上角全屏按钮
-        if (hasContent) {
+        if (hasContent && !fillHeight) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -802,6 +815,9 @@ private fun FullscreenHtmlDialog(content: String, onDismiss: () -> Unit) {
 /**
  * 渲染内容段列表：文本段用 MarkdownText（支持 Markdown），多媒体段用对应渲染器。
  *
+ * 网址段（[SegmentType.LINK]）只渲染成可点击链接，用户点击后才在预览弹窗里加载，
+ * 不在气泡内自动抓取网页。
+ *
  * [chatMode]/[processParens] 与普通文本气泡保持一致：
  * chatMode 开启内心独白折叠块等聊天特化处理；processParens 控制括号旁白斜体（用户消息不处理）。
  */
@@ -812,8 +828,10 @@ fun RenderContentSegments(
     modifier: Modifier = Modifier,
     sessionId: String = "",
     chatMode: Boolean = false,
-    processParens: Boolean = true
+    processParens: Boolean = true,
+    linkColor: Color = accentLink()
 ) {
+    var previewUrl by remember { mutableStateOf<String?>(null) }
     Column(modifier = modifier) {
         segments.forEachIndexed { idx, segment ->
             when (segment.type) {
@@ -827,7 +845,11 @@ fun RenderContentSegments(
                 SegmentType.IMAGE -> ImageRenderer(url = segment.url)
                 SegmentType.VIDEO -> VideoRenderer(url = segment.url)
                 SegmentType.AUDIO -> AudioRenderer(url = segment.url)
-                SegmentType.TXT -> TxtRenderer(url = segment.url)
+                SegmentType.LINK -> UrlLinkChip(
+                    url = segment.url,
+                    linkColor = linkColor,
+                    onClick = { previewUrl = segment.url }
+                )
                 SegmentType.HTML -> HtmlRenderer(html = segment.text, url = segment.url)
                 SegmentType.FILE -> FileCardRenderer(fileName = segment.fileName, sessionId = sessionId)
             }
@@ -843,6 +865,116 @@ fun RenderContentSegments(
             }
         }
     }
+    previewUrl?.let { url ->
+        UrlPreviewDialog(url = url, onDismiss = { previewUrl = null })
+    }
+}
+
+/**
+ * 网址链接：气泡内只显示可点击链接，点击后由 [UrlPreviewDialog] 预览。
+ *
+ * 链接用「带底色胶囊 + 下划线 + 链接图标」呈现，[linkColor] 由调用方按气泡底色选定，
+ * 避免与气泡同色导致看不见。
+ */
+@Composable
+private fun UrlLinkChip(
+    url: String,
+    linkColor: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(linkColor.copy(alpha = 0.18f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Link,
+            contentDescription = null,
+            tint = linkColor,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = url,
+            color = linkColor,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            textDecoration = TextDecoration.Underline,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+/**
+ * 网址预览弹窗（点击链接后才加载）：
+ * - Markdown / 纯文本网址：按文本渲染（Markdown 用 [MarkdownText]）
+ * - 其余网页：用 [HtmlRenderer] 下载后交给 WebView 显示
+ */
+@Composable
+fun UrlPreviewDialog(url: String, onDismiss: () -> Unit) {
+    val closeDesc = stringResource(R.string.common_close)
+    val cleanUrl = remember(url) { url.substringBefore('?').substringBefore('#') }
+    val markdown = remember(cleanUrl) { isMarkdownFileName(cleanUrl) }
+    val plainText = remember(cleanUrl) { fileExt(cleanUrl) == "txt" }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.96f))
+        ) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = url,
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Filled.Close, contentDescription = closeDesc, tint = Color.White)
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 48.dp)
+            ) {
+                if (markdown || plainText) {
+                    TxtRenderer(
+                        url = url,
+                        markdown = markdown,
+                        maxHeight = Dp.Unspecified,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp)
+                    )
+                } else {
+                    HtmlRenderer(
+                        html = "",
+                        url = url,
+                        fillHeight = true,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+        }
+    }
+}
 }
 
 /** 获取文件扩展名（小写，不含点） */

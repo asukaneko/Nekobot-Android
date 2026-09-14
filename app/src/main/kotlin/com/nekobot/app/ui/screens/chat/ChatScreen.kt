@@ -245,7 +245,9 @@ import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.components.resolveAvatarUrl
 import com.nekobot.app.ui.theme.BubbleUser
 import com.nekobot.app.ui.theme.BubbleUserLight
+import com.nekobot.app.ui.theme.accentLink
 import com.nekobot.app.ui.theme.accentSuccess
+import com.nekobot.app.ui.theme.linkColorOnBubble
 import com.nekobot.app.ui.theme.parseHexColor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -2377,6 +2379,8 @@ private fun MessageBubble(
     val aiBorder = aiBubbleBorderColor()
     // 文字颜色：用户气泡始终白色；AI 气泡跟随主题（尊重字体颜色覆盖）
     val textColor = if (isUser) Color.White else MaterialTheme.colorScheme.onSurface
+    // 链接色：用户气泡用气泡基色加深后的深色（主题主色与气泡同色，直接当链接色会看不见）
+    val linkColor = if (isUser) linkColorOnBubble(userBubble) else accentLink()
     val arrangement = if (isUser) Arrangement.End else Arrangement.Start
     val clipboard = LocalClipboardManager.current
 
@@ -2407,7 +2411,7 @@ private fun MessageBubble(
     val hasUserImage = isUser && parsedSegments.any { content ->
         content.any { it.isImageContent() }
     }
-    // 是否包含多媒体内容（图片/视频/音频/txt/html）或音频 URL，决定气泡最大宽度
+    // 是否包含非文本段（图片/视频/音频/链接/HTML/文件卡片），决定气泡最大宽度
     val hasMultimedia = parsedSegments.any { segs -> segs.any { it.type != SegmentType.TEXT } }
     val hasAudioUrl = !message.audioUrl.isNullOrBlank()
     val maxBubbleWidth = if (hasMultimedia || hasAudioUrl || ttsState != null) 360.dp else 280.dp
@@ -2689,7 +2693,8 @@ private fun MessageBubble(
                                             modifier = Modifier.fillMaxWidth(),
                                             sessionId = sessionId,
                                             chatMode = true,
-                                            processParens = !isUser
+                                            processParens = !isUser,
+                                            linkColor = accentLink()
                                         )
                                     } else {
                                         Box(
@@ -2705,7 +2710,8 @@ private fun MessageBubble(
                                                 modifier = Modifier.widthIn(max = maxBubbleWidth),
                                                 sessionId = sessionId,
                                                 chatMode = true,
-                                                processParens = !isUser
+                                                processParens = !isUser,
+                                                linkColor = linkColor
                                             )
                                         }
                                     }
@@ -2719,7 +2725,8 @@ private fun MessageBubble(
                                 modifier = Modifier.widthIn(max = 360.dp),
                                 sessionId = sessionId,
                                 chatMode = true,
-                                processParens = !isUser
+                                processParens = !isUser,
+                                linkColor = linkColor
                             )
                         } else if (commandStyle != null && isUser) {
                             // 命令消息（/goal、/spec）：彩色胶囊 + 其余参数文本

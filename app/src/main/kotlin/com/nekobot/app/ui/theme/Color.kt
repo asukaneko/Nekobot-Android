@@ -126,3 +126,35 @@ fun accentWarning(): Color =
 @Composable
 fun accentSuccess(): Color =
     if (isSystemInDarkTheme()) SuccessGreen else SuccessGreenLight
+
+// ==================== 链接色 ====================
+// 聊天气泡内的链接必须与气泡底色、正文色都能区分：
+// 主题主色（粉色）与用户气泡底色完全相同，直接用它做链接色会“看不见”。
+
+/** 浅色主题的链接蓝：比 SecondaryLight 更深，保证白底气泡上的对比度。 */
+val LinkBlueLight = Color(0xFF1B6D8F)
+
+/** AI 气泡内的链接色：深色主题用亮蓝，浅色主题用深蓝。 */
+@Composable
+fun accentLink(): Color =
+    if (isSystemInDarkTheme()) Secondary else LinkBlueLight
+
+/**
+ * 用户气泡内的链接色。
+ *
+ * 气泡偏亮（如默认粉色）时取同色相的深色版本 —— 与气泡底色、白色正文同时区分；
+ * 气泡本身很深时改用白色，靠胶囊底色与下划线区分。
+ */
+fun linkColorOnBubble(bubble: Color): Color {
+    val argb = bubble.toArgb()
+    val hsv = FloatArray(3)
+    android.graphics.Color.RGBToHSV(
+        (argb shr 16) and 0xFF,
+        (argb shr 8) and 0xFF,
+        argb and 0xFF,
+        hsv
+    )
+    if (hsv[2] <= 0.6f) return Color.White
+    hsv[2] = 0.38f
+    return Color(android.graphics.Color.HSVToColor(hsv))
+}

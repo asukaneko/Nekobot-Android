@@ -31,6 +31,27 @@ class WorkspaceAndPdfPreviewTest {
         assertTrue(!isPlainTextWorkspaceFile("docs/README.md", "text/plain"))
         assertTrue(!isPlainTextWorkspaceFile("docs/README.md", "text/markdown"))
     }
+
+    @Test
+    fun nonMediaUrlsBecomeClickableLinks() {
+        val segments = parseContentSegments("看这份笔记 https://example.com/note.md")
+        // 网址不再直接抓取展示，而是渲染为可点击链接（点击后才预览）
+        assertTrue(segments.any { it.type == SegmentType.LINK && it.url == "https://example.com/note.md" })
+
+        val page = parseContentSegments("参考 https://example.com/docs/index.html")
+        assertTrue(page.any { it.type == SegmentType.LINK })
+
+        val plain = parseContentSegments("主页 https://example.com/")
+        assertTrue(plain.any { it.type == SegmentType.LINK })
+    }
+
+    @Test
+    fun mediaUrlsStayInline() {
+        val segments = parseContentSegments("看图 https://example.com/a.png")
+        assertTrue(segments.any { it.type == SegmentType.IMAGE })
+        assertTrue(!segments.any { it.type == SegmentType.LINK })
+    }
+
     @Test
     fun readTextPreviewTruncatesLongMarkdown() {
         val file = File.createTempFile("neko-md-preview", ".md")
