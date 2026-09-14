@@ -507,6 +507,7 @@ class WorkspaceViewModel : BaseViewModel() {
         val ext = name.substringAfterLast('.', "").lowercase()
         return when (ext) {
             "txt" -> "text/plain"
+            "md", "markdown" -> "text/markdown"
             "json" -> "application/json"
             "xml" -> "application/xml"
             "html", "htm" -> "text/html"
@@ -785,6 +786,10 @@ fun WorkspaceScreen(
                                                 previewLoading = false
                                                 if (saved != null) {
                                                     when {
+                                                        // Markdown 文件内置渲染预览，不交给外部应用。
+                                                        isMarkdownWorkspaceFile(f.name, f.mimeType) -> {
+                                                            previewFile = saved
+                                                        }
                                                         isPlainTextWorkspaceFile(f.name, f.mimeType) -> {
                                                             openLocalWorkspaceFile(
                                                                 context = context,

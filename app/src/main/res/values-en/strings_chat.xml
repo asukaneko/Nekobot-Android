@@ -578,6 +578,7 @@
     <string name="chat_media_image_preview">Image preview</string>
     <string name="chat_media_read_failed">Read failed</string>
     <string name="chat_media_unsupported_preview">This file type is not supported for preview</string>
+    <string name="chat_media_markdown_truncated">Content too long; rendering the first %1$d characters</string>
     <string name="chat_media_file_downloaded_to">File downloaded to: %1$s</string>
     <string name="chat_sandbox_terminal">Terminal</string>
     <string name="chat_sandbox_terminal_title">Sandbox terminal</string>

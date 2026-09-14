@@ -106,6 +106,15 @@ fun MarkdownText(
 
 // ==================== 预处理 ====================
 
+/** Markdown 文件扩展名：工作区文件、文件卡片、技能文件等预览统一用它判断渲染方式。 */
+val MARKDOWN_FILE_EXTS = setOf("md", "markdown", "mdx")
+
+/** 文件名或 MIME 类型是否为 Markdown 文件。 */
+fun isMarkdownFileName(fileName: String, mimeType: String = ""): Boolean =
+    fileName.substringAfterLast('.', "").lowercase() in MARKDOWN_FILE_EXTS ||
+        mimeType.equals("text/markdown", ignoreCase = true) ||
+        mimeType.equals("text/x-markdown", ignoreCase = true)
+
 /**
  * 保留旧入口以兼容调用方。Markdown 现在直接解析原文，不再插入控制字符或私有区字符，
  * 从根源上避免 `PAREN`、方框或自定义字体图标泄漏到最终回复。

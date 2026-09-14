@@ -68,7 +68,9 @@ import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.GlassDropdownMenu
 import com.nekobot.app.ui.components.LoadingOverlay
+import com.nekobot.app.ui.components.MarkdownText
 import com.nekobot.app.ui.components.NekoDialog
+import com.nekobot.app.ui.components.isMarkdownFileName
 import com.nekobot.app.ui.theme.ErrorRed
 import com.nekobot.app.ui.theme.SuccessGreen
 import com.nekobot.app.ui.theme.WarningAmber
@@ -787,13 +789,25 @@ fun SkillStorageScreen(skillName: String, onBack: () -> Unit) {
                 )
                 Spacer(Modifier.height(8.dp))
                 when {
-                    previewContent != null -> Text(
-                        text = previewContent!!,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontFamily = FontFamily.Monospace
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    previewContent != null -> {
+                        // Markdown 文件（SKILL.md / REFERENCE.md 等）按渲染结果展示，其他文本保持等宽源码。
+                        val markdown = isMarkdownFileName(file.name)
+                        if (markdown) {
+                            MarkdownText(
+                                text = previewContent!!,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        } else {
+                            Text(
+                                text = previewContent!!,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = FontFamily.Monospace
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
                     previewError != null -> Text(
                         text = previewError!!,
                         style = MaterialTheme.typography.bodySmall,

@@ -75,6 +75,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -83,7 +84,9 @@ import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
 import com.nekobot.app.data.local.LocalWorkspaceStorage
 import com.nekobot.app.ui.components.GlassCard
+import com.nekobot.app.ui.components.MARKDOWN_FILE_EXTS
 import com.nekobot.app.ui.components.MarkdownText
+import com.nekobot.app.ui.components.isMarkdownFileName
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -546,9 +549,19 @@ fun AudioRenderer(
     }
 }
 
-/** txt 文件渲染器：通过 OkHttp 下载文本内容并以等宽字体可滚动展示。 */
+/**
+ * 文本文件渲染器：通过 OkHttp 下载文本内容后展示。
+ *
+ * [markdown] = true 时按 Markdown 渲染（.md/.markdown 文件），否则以等宽字体原样展示。
+ * [maxHeight] 为 [Dp.Unspecified] 时不限制高度，用于弹窗内的整屏预览。
+ */
 @Composable
-fun TxtRenderer(url: String, modifier: Modifier = Modifier) {
+fun TxtRenderer(
+    url: String,
+    modifier: Modifier = Modifier,
+    markdown: Boolean = false,
+    maxHeight: Dp = 200.dp
+) {
     var content by remember(url) { mutableStateOf<String?>(null) }
     var error by remember(url) { mutableStateOf<String?>(null) }
     val downloadFailed = stringResource(R.string.chat_media_download_failed)
@@ -574,19 +587,27 @@ fun TxtRenderer(url: String, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(max = 200.dp)
+            .heightIn(max = maxHeight)
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .verticalScroll(rememberScrollState())
             .padding(10.dp)
     ) {
         when {
-            content != null -> Text(
-                text = content!!,
-                color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace
-            )
+            content != null -> if (markdown) {
+                MarkdownText(
+                    text = content!!,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            } else {
+                Text(
+                    text = content!!,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
             error != null -> Text(
                 text = loadFailedFmt.format(error),
                 color = MaterialTheme.colorScheme.error,
@@ -870,9 +891,14 @@ internal fun isPdfWorkspaceFile(fileName: String, mimeType: String = ""): Boolea
     mimeType.equals("application/pdf", ignoreCase = true) ||
         fileExt(fileName) == "pdf"
 
+/** Markdown 文件：预览时按 Markdown 渲染，而不是原样显示源码。 */
+internal fun isMarkdownWorkspaceFile(fileName: String, mimeType: String = ""): Boolean =
+    isMarkdownFileName(fileName, mimeType)
+
 internal fun isPlainTextWorkspaceFile(fileName: String, mimeType: String = ""): Boolean =
-    mimeType.equals("text/plain", ignoreCase = true) ||
-        fileExt(fileName) == "txt"
+    !isMarkdownWorkspaceFile(fileName, mimeType) &&
+        (mimeType.equals("text/plain", ignoreCase = true) ||
+            fileExt(fileName) == "txt")
 
 /** 用户图片附件需要脱离文字气泡单独渲染。 */
 internal fun ContentSegment.isImageContent(): Boolean =
@@ -928,16 +954,42 @@ internal fun resolveLocalWorkspaceFile(
     return target.takeIf { isInside && it.isFile }
 }
 
-/** 判断文件类型是否可直接预览 */
-private enum class FilePreviewType { IMAGE, TEXT, HTML, PDF, UNSUPPORTED }
+/** 可直接预览的文件类型；MARKDOWN 用 MarkdownText 渲染，TEXT 原样等宽显示。 */
+private enum class FilePreviewType { IMAGE, MARKDOWN, TEXT, HTML, PDF, UNSUPPORTED }
 private fun classifyFilePreview(fileName: String): FilePreviewType {
     val ext = fileExt(fileName)
     return when (ext) {
         in IMAGE_EXTS -> FilePreviewType.IMAGE
-        in TXT_EXTS, "md", "json", "csv", "log", "yaml", "yml", "xml", "py", "js", "ts", "kt", "java", "c", "cpp", "go", "rs", "sh" -> FilePreviewType.TEXT
+        in MARKDOWN_FILE_EXTS -> FilePreviewType.MARKDOWN
+        in TXT_EXTS, "json", "csv", "log", "yaml", "yml", "xml", "py", "js", "ts", "kt", "java", "c", "cpp", "go", "rs", "sh" -> FilePreviewType.TEXT
         in HTML_EXTS -> FilePreviewType.HTML
         in PDF_EXTS -> FilePreviewType.PDF
         else -> FilePreviewType.UNSUPPORTED
+    }
+}
+
+/** Markdown 预览的最大字符数：超大文件只渲染前一段，避免解析与排版卡顿。 */
+internal const val MAX_MARKDOWN_PREVIEW_CHARS = 200_000
+
+/**
+ * 按上限读取文本内容，返回 (内容, 是否截断)。
+ * 用固定缓冲区读取，避免把超大文件整份载入内存。
+ */
+internal fun readTextPreview(
+    file: File,
+    maxChars: Int = MAX_MARKDOWN_PREVIEW_CHARS
+): Pair<String, Boolean> {
+    if (maxChars <= 0) return "" to (file.length() > 0L)
+    return file.bufferedReader().use { reader ->
+        val buffer = CharArray(maxChars + 1)
+        var read = 0
+        while (read < buffer.size) {
+            val count = reader.read(buffer, read, buffer.size - read)
+            if (count <= 0) break
+            read += count
+        }
+        val truncated = read > maxChars
+        String(buffer, 0, minOf(read, maxChars)) to truncated
     }
 }
 
@@ -966,7 +1018,10 @@ fun FileCardRenderer(fileName: String, sessionId: String, modifier: Modifier = M
                 fileName = fileName,
                 modifier = modifier,
                 onClick = {
-                    if (
+                    if (isMarkdownWorkspaceFile(fileName)) {
+                        // Markdown 文件走内置预览（渲染后展示），不交给外部应用。
+                        showLocalPreview = true
+                    } else if (
                         previewType == FilePreviewType.UNSUPPORTED ||
                         isPdfWorkspaceFile(fileName) ||
                         isPlainTextWorkspaceFile(fileName)
@@ -996,6 +1051,15 @@ fun FileCardRenderer(fileName: String, sessionId: String, modifier: Modifier = M
         FilePreviewType.IMAGE -> {
             if (fileUrl != null) {
                 ImageRendererModel(model = fileUrl, modifier = modifier)
+            } else {
+                UnsupportedFileCard(fileName, fileUrl, modifier)
+            }
+        }
+        FilePreviewType.MARKDOWN -> {
+            if (fileUrl != null) {
+                TxtRenderer(url = fileUrl, modifier = modifier, markdown = true)
+                Spacer(Modifier.height(4.dp))
+                DownloadButton(fileName, fileUrl)
             } else {
                 UnsupportedFileCard(fileName, fileUrl, modifier)
             }
@@ -1481,6 +1545,7 @@ fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
     val readFailed = stringResource(R.string.chat_media_read_failed)
     val loadFailedFmt = stringResource(R.string.chat_media_load_failed)
     val unsupportedPreview = stringResource(R.string.chat_media_unsupported_preview)
+    val markdownTruncatedFmt = stringResource(R.string.chat_media_markdown_truncated)
     val fileDownloadedTo = stringResource(R.string.chat_media_file_downloaded_to, file.name)
     var webView by remember { mutableStateOf<WebView?>(null) }
 
@@ -1530,6 +1595,56 @@ fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
                             contentScale = ContentScale.Fit,
                             modifier = Modifier.fillMaxSize()
                         )
+                    }
+                    FilePreviewType.MARKDOWN -> {
+                        var content by remember(file) { mutableStateOf<String?>(null) }
+                        var truncated by remember(file) { mutableStateOf(false) }
+                        var loadErr by remember(file) { mutableStateOf<String?>(null) }
+                        LaunchedEffect(file) {
+                            try {
+                                val preview = withContext(Dispatchers.IO) { readTextPreview(file) }
+                                content = preview.first
+                                truncated = preview.second
+                            } catch (e: Exception) {
+                                loadErr = e.message ?: readFailed
+                            }
+                        }
+                        when {
+                            content != null -> Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(12.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surface)
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(14.dp)
+                            ) {
+                                Column {
+                                    MarkdownText(
+                                        text = content!!,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    if (truncated) {
+                                        Spacer(Modifier.height(10.dp))
+                                        Text(
+                                            text = markdownTruncatedFmt.format(MAX_MARKDOWN_PREVIEW_CHARS),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                }
+                            }
+                            loadErr != null -> Text(
+                                loadFailedFmt.format(loadErr),
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.align(Alignment.Center)
+                            )
+                            else -> CircularProgressIndicator(
+                                color = Color.White,
+                                modifier = Modifier.align(Alignment.Center)
+                            )
+                        }
                     }
                     FilePreviewType.TEXT -> {
                         var content by remember(file) { mutableStateOf<String?>(null) }
