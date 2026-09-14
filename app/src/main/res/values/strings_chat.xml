@@ -558,6 +558,7 @@
     <string name="workspace_uploaded">已上传: %1$s</string>
     <string name="workspace_upload_failed">上传失败</string>
     <string name="workspace_download">下载</string>
+    <string name="workspace_file_actions">文件操作</string>
 
     <!-- ==================== 多媒体内容 (MultimediaContent) ==================== -->
     <string name="chat_media_image">图片</string>

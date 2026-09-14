@@ -76,6 +76,8 @@
     <string name="shared_folder_created">フォルダーを作成しました</string>
     <string name="shared_file_moved_to_shared">%1$s を共有ワークスペースへ移動しました</string>
     <string name="shared_file_moved_to_private">%1$s をセッションワークスペースへ戻しました</string>
+    <string name="shared_move_to_shared_confirm">%1$s を共有ワークスペースへ移動しますか？</string>
+    <string name="shared_move_to_private_confirm">%1$s を現在のセッションのワークスペースへ戻しますか？</string>
     <string name="shared_upload_success">共有ワークスペースへアップロードしました</string>
     <string name="shared_delete_success">共有ファイルを削除しました</string>
     <string name="shared_only_server_mode">共有ワークスペースはサーバーモードでのみ使用できます</string>

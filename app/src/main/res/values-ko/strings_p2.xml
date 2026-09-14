@@ -76,6 +76,8 @@
     <string name="shared_folder_created">폴더를 만들었습니다</string>
     <string name="shared_file_moved_to_shared">%1$s을(를) 공유 작업 공간으로 이동했습니다</string>
     <string name="shared_file_moved_to_private">%1$s을(를) 세션 작업 공간으로 다시 이동했습니다</string>
+    <string name="shared_move_to_shared_confirm">%1$s을(를) 공유 작업 공간으로 이동할까요?</string>
+    <string name="shared_move_to_private_confirm">%1$s을(를) 현재 세션 작업 공간으로 되돌릴까요?</string>
     <string name="shared_upload_success">공유 작업 공간에 업로드했습니다</string>
     <string name="shared_delete_success">공유 파일을 삭제했습니다</string>
     <string name="shared_only_server_mode">공유 작업 공간은 서버 모드에서만 사용할 수 있습니다</string>

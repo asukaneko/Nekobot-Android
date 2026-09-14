@@ -518,6 +518,7 @@
     <string name="workspace_uploaded">アップロード済み: %1$s</string>
     <string name="workspace_upload_failed">アップロードに失敗しました</string>
     <string name="workspace_download">ダウンロード</string>
+    <string name="workspace_file_actions">ファイル操作</string>
 
     <string name="chat_exec_confirm_title">コマンド実行の承認</string>
     <string name="chat_exec_confirm_description">AI が次のコマンドの実行を要求しています。安全リストにないため、信頼できる操作の場合のみ許可してください。</string>

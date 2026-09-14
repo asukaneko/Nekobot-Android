@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderShared
 import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -43,6 +44,7 @@ import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.EmptyState
 import com.nekobot.app.ui.components.GlassCard
+import com.nekobot.app.ui.components.GlassDropdownMenu
 import com.nekobot.app.ui.components.NekoDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -835,21 +837,23 @@ fun WorkspaceScreen(
         )
     }
 
-    // 移动文件确认
+    // 移动文件确认：文案是「是否移动」的询问，移动结果由 toast 提示
     if (movingFile != null) {
         val isShared = tabIndex == 1
+        val moveTargetFile = movingFile!!
         NekoDialog(
             onDismiss = { movingFile = null },
             title = stringResource(if (isShared) R.string.shared_move_to_private else R.string.shared_move_to_shared),
             message = stringResource(
-                if (isShared) R.string.shared_file_moved_to_private else R.string.shared_file_moved_to_shared,
-                movingFile!!.name
+                if (isShared) R.string.shared_move_to_private_confirm
+                else R.string.shared_move_to_shared_confirm,
+                moveTargetFile.name
             ),
             confirmText = stringResource(if (isShared) R.string.shared_move_to_private else R.string.shared_move_to_shared),
             onConfirm = {
-                val f = movingFile!!
                 movingFile = null
-                if (isShared) viewModel.moveSharedToPrivate(f.path) else viewModel.moveToShared(f.path)
+                if (isShared) viewModel.moveSharedToPrivate(moveTargetFile.path)
+                else viewModel.moveToShared(moveTargetFile.path)
             }
         )
     }
@@ -882,6 +886,7 @@ private fun WorkspaceFileItem(
     onDownload: () -> Unit,
     onPreview: () -> Unit
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
     GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 14) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -924,25 +929,60 @@ private fun WorkspaceFileItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            // 移动文件按钮：共享模式→移回会话，会话模式→移到共享
-            IconButton(onClick = onMove) {
-                if (isSharedMode) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.shared_move_to_private), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                } else {
-                    Icon(Icons.Filled.FolderShared, contentDescription = stringResource(R.string.shared_move_to_shared), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            if (!file.isDirectory) {
-                IconButton(onClick = onDownload, enabled = !downloading) {
+            // 右侧操作收入「⋯」菜单，避免一排图标挤占文件名空间
+            Box {
+                IconButton(onClick = { menuExpanded = true }, enabled = !downloading) {
                     if (downloading) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
-                        Icon(Icons.Filled.Download, contentDescription = stringResource(R.string.workspace_download), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(
+                            Icons.Filled.MoreVert,
+                            contentDescription = stringResource(R.string.workspace_file_actions),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
-            }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.common_delete), tint = MaterialTheme.colorScheme.error)
+                GlassDropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(if (isSharedMode) R.string.shared_move_to_private else R.string.shared_move_to_shared)) },
+                        leadingIcon = {
+                            Icon(
+                                if (isSharedMode) Icons.AutoMirrored.Filled.ArrowBack else Icons.Filled.FolderShared,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onMove()
+                        }
+                    )
+                    if (!file.isDirectory) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.workspace_download)) },
+                            leadingIcon = {
+                                Icon(Icons.Filled.Download, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onDownload()
+                            }
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) },
+                        leadingIcon = {
+                            Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onDelete()
+                        }
+                    )
+                }
             }
         }
     }

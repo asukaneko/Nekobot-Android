@@ -48,6 +48,8 @@
     <string name="shared_folder_created">Folder created</string>
     <string name="shared_file_moved_to_shared">Moved %1$s to the shared workspace</string>
     <string name="shared_file_moved_to_private">Moved %1$s back to the session workspace</string>
+    <string name="shared_move_to_shared_confirm">Move %1$s to the shared workspace?</string>
+    <string name="shared_move_to_private_confirm">Move %1$s back to this session\'s workspace?</string>
     <string name="shared_upload_success">Uploaded to the shared workspace</string>
     <string name="shared_delete_success">Shared file deleted</string>
     <string name="shared_only_server_mode">The shared workspace is available only in Server Mode</string>
