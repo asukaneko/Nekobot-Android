@@ -246,7 +246,9 @@ fun StoryGraphScreen(
     val toast by vm.toast.collectAsStateWithLifecycle()
 
     var graphView by remember { mutableStateOf(StoryGraphView.Graph) }
+    // 进入界面时不自动选中任何节点，由用户点击后弹出详情
     var selectedNode by remember { mutableStateOf<PlotNodeData?>(null) }
+    var initialSelectionDone by remember { mutableStateOf(false) }
     var showMermaid by remember { mutableStateOf(false) }
     var mermaidText by remember { mutableStateOf("") }
     var branchPreview by remember { mutableStateOf<List<BranchPreviewMessage>>(emptyList()) }
@@ -260,17 +262,16 @@ fun StoryGraphScreen(
     }
 
     LaunchedEffect(sessionId) { vm.loadGraph(sessionId) }
+    // 数据刷新后，若当前选中的节点已不存在则关闭详情弹窗；不主动选中最新节点
     LaunchedEffect(graphData) {
+        if (!initialSelectionDone) {
+            initialSelectionDone = true
+            return@LaunchedEffect
+        }
         if (graphData.nodes.isNotEmpty() && selectedNode?.id !in graphData.nodes.map { it.id }) {
-            val initialNode = topology.currentNode ?: graphData.nodes.last()
-            selectedNode = initialNode
-            previewLoading = true
-            vm.getBranchPreview(sessionId, initialNode.id.orEmpty()) {
-                if (selectedNode?.id == initialNode.id) {
-                    branchPreview = it
-                    previewLoading = false
-                }
-            }
+            selectedNode = null
+            branchPreview = emptyList()
+            previewLoading = false
         }
     }
     LaunchedEffect(toast) {
@@ -1061,9 +1062,16 @@ private fun NodeDetailDialog(
     onCreateBranch: (String) -> Unit
 ) {
     val levelColor = nodeLevelColor(displayedLevel)
+    // 标题只保留一行，避免用户消息过长把弹窗顶部撑开
+    val dialogTitle = (node.title ?: stringResource(R.string.story_node_detail_title))
+        .lineSequence()
+        .firstOrNull()
+        .orEmpty()
+        .ifBlank { stringResource(R.string.story_node_detail_title) }
     NekoDialog(
         onDismiss = onDismiss,
-        title = node.title ?: stringResource(R.string.story_node_detail_title),
+        title = dialogTitle,
+        maxTitleLines = 1,
         confirmText = stringResource(R.string.common_close),
         onConfirm = onDismiss,
         cancelText = null,
@@ -1304,13 +1312,53 @@ private fun RelationshipSnapshot(snapshot: JsonElement?) {
     if (entries.isEmpty()) return
     Spacer(Modifier.height(10.dp))
     Text(stringResource(R.string.story_relationship), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    Spacer(Modifier.height(4.dp))
-    Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        entries.forEach { (key, value) ->
-            Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)) {
-                Text("$key  $value", modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall)
+    Spacer(Modifier.height(6.dp))
+    // 两列卡片展示关系快照，行数按条目数自适应
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        entries.chunked(2).forEach { rowEntries ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                rowEntries.forEach { (key, value) ->
+                    RelationshipCard(key = key, value = value, modifier = Modifier.weight(1f))
+                }
+                // 奇数条目时用占位补齐，保证卡片宽度一致
+                if (rowEntries.size == 1) Spacer(Modifier.weight(1f))
             }
         }
+    }
+}
+
+/** 关系卡片：单列宽度的键值小卡片。 */
+@Composable
+private fun RelationshipCard(
+    key: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f))
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = key,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.Medium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

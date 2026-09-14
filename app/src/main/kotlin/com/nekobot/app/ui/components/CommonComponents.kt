@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -244,6 +245,8 @@ fun NekoDialog(
     confirmIconContentDescription: String? = null,
     contentScrollable: Boolean = false,
     borderWidth: Int = 0,
+    /** 标题最大行数，超出省略；null 表示不限制。 */
+    maxTitleLines: Int? = null,
     content: @Composable (ColumnScope.() -> Unit)? = null
 ) {
     Dialog(
@@ -271,6 +274,8 @@ fun NekoDialog(
                         text = title,
                         style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = maxTitleLines ?: Int.MAX_VALUE,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
                     IconButton(onClick = onDismiss) {
