@@ -41,6 +41,8 @@ data class LocalSessionEntity(
     /** 本会话用户人设/背景提示词（注入到 PromptStack 的 user.persona 项） */
     @ColumnInfo(name = "user_persona") val userPersona: String? = null,
     @ColumnInfo(name = "auto_state_interval") val autoStateInterval: Int = 2,
+    /** 自动会话命名间隔（累计多少条新消息重新命名一次）；0 表示关闭自动命名。 */
+    @ColumnInfo(name = "auto_name_interval", defaultValue = "10") val autoNameInterval: Int = 10,
     /** 禁用的提示词注入项 key 列表，逗号分隔 */
     @ColumnInfo(name = "disabled_prompt_keys") val disabledPromptKeys: String? = null,
     /** 自定义提示词列表，JSON 数组字符串，每项含 order/title/content */

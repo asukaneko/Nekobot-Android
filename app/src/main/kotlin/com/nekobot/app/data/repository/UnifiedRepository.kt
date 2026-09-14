@@ -182,6 +182,7 @@ class UnifiedRepository(
                 userPersona = req.userPersona,
                 characterIds = req.characterIds,
                 autoStateInterval = req.autoStateInterval,
+                autoNameInterval = req.autoNameInterval,
                 disabledPromptKeys = req.disabledPromptKeys,
                 isPublic = req.isPublic,
                 proactiveChat = req.proactiveChat?.toString(),

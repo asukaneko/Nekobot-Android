@@ -78,6 +78,9 @@ data class Session(
     @SerializedName("first_message") val firstMessage: String? = null,
     val scenario: String? = null,
     @SerializedName("auto_state_interval") val autoStateInterval: Int? = null,
+    /** 自动会话命名间隔（累计多少条新消息重新命名一次）；0 表示关闭，仅本地模式生效。 */
+    @SerializedName(value = "auto_name_interval", alternate = ["autoNameInterval"])
+    val autoNameInterval: Int? = null,
     @SerializedName("plot_mode") val plotMode: Boolean? = null,
     @SerializedName("plot_real_time_sync") val plotRealTimeSync: Boolean? = null,
     /** 剧情选项风格（回复风格）：预设 key 或自定义文本 */
@@ -142,6 +145,8 @@ data class UpdateSessionRequest(
     @SerializedName("system_prompt") val systemPrompt: String? = null,
     @SerializedName("character_ids") val characterIds: List<String>? = null,
     @SerializedName("auto_state_interval") val autoStateInterval: Int? = null,
+    /** 自动会话命名间隔；0 表示关闭自动命名（仅本地模式生效）。 */
+    @SerializedName("auto_name_interval") val autoNameInterval: Int? = null,
     @SerializedName("plot_mode") val plotMode: Boolean? = null,
     @SerializedName("plot_real_time_sync") val plotRealTimeSync: Boolean? = null,
     @SerializedName("plot_choice_style") val plotChoiceStyle: String? = null,

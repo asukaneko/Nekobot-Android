@@ -175,30 +175,40 @@ internal fun buildSessionNamingPrompt(
 }
 
 /**
- * 旧版本没有持久化命名状态时，按“首次 2 条、之后每 10 条”恢复最近一次触发点。
+ * 旧版本没有持久化命名状态时，按“首次 [MIN_MESSAGES_FOR_FIRST_NAMING] 条、
+ * 之后每 [interval] 条”恢复最近一次触发点。
  */
 internal fun recoverSessionNamingState(
     isDefaultName: Boolean,
-    totalCount: Int
+    totalCount: Int,
+    interval: Int = RE_NAME_INTERVAL
 ): SessionNamingState {
     if (isDefaultName) return SessionNamingState()
+    // interval 为 0（关闭）时不该走到这里，但也不能除零。
+    val step = interval.coerceAtLeast(1)
     val lastRenameCount = when {
         totalCount <= MIN_MESSAGES_FOR_FIRST_NAMING -> MIN_MESSAGES_FOR_FIRST_NAMING
         else -> MIN_MESSAGES_FOR_FIRST_NAMING +
-            ((totalCount - MIN_MESSAGES_FOR_FIRST_NAMING - 1) / RE_NAME_INTERVAL) * RE_NAME_INTERVAL
+            ((totalCount - MIN_MESSAGES_FOR_FIRST_NAMING - 1) / step) * step
     }
     return SessionNamingState(autoNamed = true, lastRenameCount = lastRenameCount)
 }
 
+/**
+ * 是否该触发（重新）命名。
+ *
+ * @param interval 会话级命名间隔（累计新增多少条消息重新命名）；0 表示关闭自动命名。
+ */
 internal fun shouldAutoRenameSession(
     isDefaultName: Boolean,
     totalCount: Int,
-    state: SessionNamingState
-): Boolean = totalCount >= MIN_MESSAGES_FOR_FIRST_NAMING &&
-    (
-        isDefaultName ||
-            (state.autoNamed && totalCount - state.lastRenameCount >= RE_NAME_INTERVAL)
-        )
+    state: SessionNamingState,
+    interval: Int = RE_NAME_INTERVAL
+): Boolean {
+    if (interval <= 0) return false
+    if (totalCount < MIN_MESSAGES_FOR_FIRST_NAMING) return false
+    return isDefaultName || (state.autoNamed && totalCount - state.lastRenameCount >= interval)
+}
 
 internal fun isDefaultAutoNamingSessionName(name: String): Boolean =
     name.isBlank() ||
@@ -210,8 +220,10 @@ internal fun isDefaultAutoNamingSessionName(name: String): Boolean =
  * 与 nbot/web/server.py:_generate_session_name。
  *
  * 触发规则：
+ * - 会话级命名间隔为 0 → 完全关闭自动命名
  * - 默认名称（"新会话"/"新对话"等）+ 至少 2 条 user/assistant 消息 → 首次命名
- * - 已自动命名 + 累积 10 条新消息 → 重新命名（追踪最新话题）
+ * - 已自动命名 + 累积达到会话级间隔（[LocalSessionEntity.autoNameInterval]，默认 10 条）
+ *   → 重新命名（追踪最新话题）
  *
  * 每个会话维护 _naming_in_progress 防并发；命名结果通过 onRenamed 回调通知 UI。
  *
@@ -272,6 +284,10 @@ internal class SessionNameGenerator(
     ): String? {
         val sessionId = session.id
 
+        // 会话级命名间隔：0 = 关闭自动命名。
+        val interval = session.autoNameInterval
+        if (interval <= 0) return null
+
         // 仅处理 user/assistant 消息
         val userAssistantMsgs = messages.filter { it.role == "user" || it.role == "assistant" }
         val totalCount = userAssistantMsgs.size
@@ -282,9 +298,9 @@ internal class SessionNameGenerator(
 
         val state = states[sessionId]
             ?: runCatching { stateLoader?.invoke(sessionId) }.getOrNull()
-            ?: recoverSessionNamingState(isDefaultName, totalCount)
+            ?: recoverSessionNamingState(isDefaultName, totalCount, interval)
         states.putIfAbsent(sessionId, state)
-        val shouldRename = shouldAutoRenameSession(isDefaultName, totalCount, state)
+        val shouldRename = shouldAutoRenameSession(isDefaultName, totalCount, state, interval)
 
         if (!shouldRename) return null
 

@@ -142,6 +142,12 @@
     <string name="sessions_detail_realtime_sync_off">실시간 동기화: 꺼짐</string>
     <string name="sessions_detail_reply_style">응답 스타일</string>
     <string name="sessions_detail_auto_state_interval">자동 상태 평가 간격</string>
+    <string name="sessions_detail_auto_name_interval">자동 세션 이름 지정 간격</string>
+    <string name="sessions_detail_name_interval_every_5">5개마다</string>
+    <string name="sessions_detail_name_interval_every_10">10개마다</string>
+    <string name="sessions_detail_name_interval_every_20">20개마다</string>
+    <string name="sessions_detail_name_interval_every_30">30개마다</string>
+    <string name="sessions_detail_name_interval_every_50">50개마다</string>
     <string name="sessions_detail_tts_proactive">TTS / 먼저 말하기</string>
     <string name="sessions_detail_tts_on">TTS: 켜짐</string>
     <string name="sessions_detail_tts_off">TTS: 꺼짐</string>

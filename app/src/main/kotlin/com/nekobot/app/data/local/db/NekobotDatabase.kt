@@ -43,7 +43,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RoutingDecisionLogEntity::class,
         LocalMessageVariantEntity::class
     ],
-    version = 42,
+    version = 43,
     exportSchema = true
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -885,6 +885,18 @@ abstract class NekobotDatabase : RoomDatabase() {
         }
 
         /**
+         * v42 → v43：local_sessions 新增 auto_name_interval 列（会话级自动命名间隔，
+         * 0 表示关闭自动命名，默认 10 与旧版硬编码常量一致）。
+         */
+        val MIGRATION_42_43 = object : Migration(42, 43) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE local_sessions ADD COLUMN auto_name_interval INTEGER NOT NULL DEFAULT 10"
+                )
+            }
+        }
+
+        /**
          * 完整迁移链同时供生产数据库构建和迁移回归测试使用。
          * 新版本必须把迁移追加到这里；缺少迁移时直接失败，绝不静默清空用户数据。
          */
@@ -899,7 +911,7 @@ abstract class NekobotDatabase : RoomDatabase() {
             MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33,
             MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37,
             MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41,
-            MIGRATION_41_42
+            MIGRATION_41_42, MIGRATION_42_43
         )
 
         fun get(context: Context): NekobotDatabase =

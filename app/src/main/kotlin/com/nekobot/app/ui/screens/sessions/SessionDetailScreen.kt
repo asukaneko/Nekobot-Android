@@ -127,6 +127,8 @@ class SessionDetailViewModel : BaseViewModel() {
     val favorite = MutableStateFlow(false)
     val systemPrompt = MutableStateFlow("")
     val autoStateInterval = MutableStateFlow<Int?>(null)
+    /** 自动会话命名间隔（累计多少条新消息重新命名一次）；0 = 关闭。 */
+    val autoNameInterval = MutableStateFlow(10)
     val plotMode = MutableStateFlow(false)
     val plotRealTimeSync = MutableStateFlow(false)
     val plotChoiceStyle = MutableStateFlow("")
@@ -297,6 +299,7 @@ class SessionDetailViewModel : BaseViewModel() {
                 favorite.value = s.favorite == true
                 systemPrompt.value = s.systemPrompt.orEmpty()
                 autoStateInterval.value = s.autoStateInterval
+                autoNameInterval.value = s.autoNameInterval ?: 10
                 plotMode.value = s.plotMode == true
                 plotRealTimeSync.value = s.plotRealTimeSync == true
                 plotChoiceStyle.value = s.plotChoiceStyle ?: ""
@@ -475,6 +478,7 @@ class SessionDetailViewModel : BaseViewModel() {
                         favorite = favorite.value,
                         systemPrompt = systemPrompt.value.ifBlank { null },
                         autoStateInterval = autoStateInterval.value,
+                        autoNameInterval = autoNameInterval.value,
                         plotMode = plotMode.value,
                         plotRealTimeSync = plotRealTimeSync.value,
                         plotChoiceStyle = plotChoiceStyle.value.ifBlank { null },
@@ -740,6 +744,7 @@ fun SessionDetailScreen(
     val favorite by vm.favorite.collectAsStateWithLifecycle()
     val systemPrompt by vm.systemPrompt.collectAsStateWithLifecycle()
     val autoStateInterval by vm.autoStateInterval.collectAsStateWithLifecycle()
+    val autoNameInterval by vm.autoNameInterval.collectAsStateWithLifecycle()
     val plotMode by vm.plotMode.collectAsStateWithLifecycle()
     val plotRealTimeSync by vm.plotRealTimeSync.collectAsStateWithLifecycle()
     val plotChoiceStyle by vm.plotChoiceStyle.collectAsStateWithLifecycle()
@@ -858,6 +863,7 @@ fun SessionDetailScreen(
     val realtimeSyncOffLabel = stringResource(R.string.sessions_detail_realtime_sync_off)
     val replyStyleLabel = stringResource(R.string.sessions_detail_reply_style)
     val autoStateIntervalLabel = stringResource(R.string.sessions_detail_auto_state_interval)
+    val autoNameIntervalLabel = stringResource(R.string.sessions_detail_auto_name_interval)
     val ttsProactiveTitle = stringResource(R.string.sessions_detail_tts_proactive)
     val ttsOnLabel = stringResource(R.string.sessions_detail_tts_on)
     val ttsOffLabel = stringResource(R.string.sessions_detail_tts_off)
@@ -1349,13 +1355,44 @@ fun SessionDetailScreen(
                                 }
                             }
                             Spacer(Modifier.height(12.dp))
-                            // 自动状态间隔下拉
-                            Text(autoStateIntervalLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                            Spacer(Modifier.height(4.dp))
-                            AutoStateIntervalSelector(
-                                value = autoStateInterval,
-                                onChange = { vm.autoStateInterval.value = it }
+                            // 自动状态间隔 / 自动命名间隔：均改为弹窗选择
+                            var showAutoStateDialog by remember { mutableStateOf(false) }
+                            IntervalSettingRow(
+                                label = autoStateIntervalLabel,
+                                valueLabel = stringResource(autoStateIntervalLabelRes(autoStateInterval)),
+                                onClick = { showAutoStateDialog = true }
                             )
+                            if (showAutoStateDialog) {
+                                IntervalPickerDialog(
+                                    titleRes = R.string.sessions_detail_auto_state_interval,
+                                    options = AUTO_STATE_INTERVAL_OPTIONS,
+                                    current = autoStateInterval,
+                                    onConfirm = {
+                                        vm.autoStateInterval.value = it
+                                        showAutoStateDialog = false
+                                    },
+                                    onDismiss = { showAutoStateDialog = false }
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            var showAutoNameDialog by remember { mutableStateOf(false) }
+                            IntervalSettingRow(
+                                label = autoNameIntervalLabel,
+                                valueLabel = stringResource(autoNameIntervalLabelRes(autoNameInterval)),
+                                onClick = { showAutoNameDialog = true }
+                            )
+                            if (showAutoNameDialog) {
+                                IntervalPickerDialog(
+                                    titleRes = R.string.sessions_detail_auto_name_interval,
+                                    options = AUTO_NAME_INTERVAL_OPTIONS,
+                                    current = autoNameInterval,
+                                    onConfirm = {
+                                        vm.autoNameInterval.value = it ?: 10
+                                        showAutoNameDialog = false
+                                    },
+                                    onDismiss = { showAutoNameDialog = false }
+                                )
+                            }
                         }
 
                         // === 6.5 TTS / 主动聊天 ===
@@ -2174,35 +2211,113 @@ private fun UserPersonaEditorDialog(
     )
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/** 间隔选项：value 为 null 表示"跟随全局"（仅自动状态评估使用）。 */
+private data class IntervalOption(val value: Int?, val labelRes: Int)
+
+/** 自动状态评估间隔选项（null = 跟随全局设置） */
+private val AUTO_STATE_INTERVAL_OPTIONS = listOf(
+    IntervalOption(null, R.string.sessions_detail_interval_global),
+    IntervalOption(0, R.string.sessions_detail_interval_off),
+    IntervalOption(1, R.string.sessions_detail_interval_every_1),
+    IntervalOption(2, R.string.sessions_detail_interval_every_2),
+    IntervalOption(3, R.string.sessions_detail_interval_every_3),
+    IntervalOption(5, R.string.sessions_detail_interval_every_5),
+    IntervalOption(8, R.string.sessions_detail_interval_every_8),
+    IntervalOption(10, R.string.sessions_detail_interval_every_10)
+)
+
+/** 自动会话命名间隔选项（0 = 关闭自动命名，默认每 10 条） */
+private val AUTO_NAME_INTERVAL_OPTIONS = listOf(
+    IntervalOption(0, R.string.sessions_detail_interval_off),
+    IntervalOption(5, R.string.sessions_detail_name_interval_every_5),
+    IntervalOption(10, R.string.sessions_detail_name_interval_every_10),
+    IntervalOption(20, R.string.sessions_detail_name_interval_every_20),
+    IntervalOption(30, R.string.sessions_detail_name_interval_every_30),
+    IntervalOption(50, R.string.sessions_detail_name_interval_every_50)
+)
+
+/** 取当前自动状态评估间隔对应的显示文案资源。 */
+private fun autoStateIntervalLabelRes(value: Int?): Int =
+    AUTO_STATE_INTERVAL_OPTIONS.firstOrNull { it.value == value }?.labelRes
+        ?: R.string.sessions_detail_interval_global
+
+/** 取当前自动会话命名间隔对应的显示文案资源。 */
+private fun autoNameIntervalLabelRes(value: Int): Int =
+    AUTO_NAME_INTERVAL_OPTIONS.firstOrNull { it.value == value }?.labelRes
+        ?: R.string.sessions_detail_name_interval_every_10
+
+/** 间隔设置行：左侧标题 + 右侧当前值按钮，点击打开选择弹窗。 */
 @Composable
-private fun AutoStateIntervalSelector(
-    value: Int?,
-    onChange: (Int?) -> Unit
+private fun IntervalSettingRow(
+    label: String,
+    valueLabel: String,
+    onClick: () -> Unit
 ) {
-    val options = listOf(
-        null to R.string.sessions_detail_interval_global,
-        0 to R.string.sessions_detail_interval_off,
-        1 to R.string.sessions_detail_interval_every_1,
-        2 to R.string.sessions_detail_interval_every_2,
-        3 to R.string.sessions_detail_interval_every_3,
-        5 to R.string.sessions_detail_interval_every_5,
-        8 to R.string.sessions_detail_interval_every_8,
-        10 to R.string.sessions_detail_interval_every_10
-    )
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        options.forEach { (interval, labelRes) ->
-            FilterChip(
-                selected = value == interval,
-                onClick = { onChange(interval) },
-                label = { Text(stringResource(labelRes), style = MaterialTheme.typography.labelSmall) },
-                colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                    selectedLabelColor = MaterialTheme.colorScheme.primary
-                )
-            )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
+        )
+        OutlinedButton(onClick = onClick) {
+            Text(text = valueLabel, style = MaterialTheme.typography.labelMedium)
         }
     }
+}
+
+/** 间隔选择弹窗：单选项列表，确认后回传选中值。 */
+@Composable
+private fun IntervalPickerDialog(
+    titleRes: Int,
+    options: List<IntervalOption>,
+    current: Int?,
+    onConfirm: (Int?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selected by remember { mutableStateOf(current) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(titleRes), fontWeight = FontWeight.SemiBold) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                options.forEach { option ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { selected = option.value }
+                            .padding(vertical = 6.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        androidx.compose.material3.RadioButton(
+                            selected = selected == option.value,
+                            onClick = { selected = option.value }
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = stringResource(option.labelRes),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = { onConfirm(selected) }) {
+                Text(stringResource(R.string.common_confirm))
+            }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.common_cancel))
+            }
+        }
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)

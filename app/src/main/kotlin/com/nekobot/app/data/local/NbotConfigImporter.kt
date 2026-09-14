@@ -521,6 +521,7 @@ object NbotConfigImporter {
                     plotRealTimeSync = obj.bool("plot_realtime_sync") ?: obj.bool("plot_real_time_sync"),
                     plotChoiceStyle = obj.str("plot_choice_style"),
                     autoStateInterval = obj.int("auto_state_interval", 2),
+                    autoNameInterval = obj.int("auto_name_interval", 10),
                     disabledPromptKeys = obj.get("disabled_prompt_keys")?.let { if (it.isJsonArray) it.toString().trim('[', ']').replace("\"", "") else null },
                     customPrompts = obj.jsonStr("custom_prompts"),
                     promptStackDebug = obj.jsonStr("prompt_stack_debug"),

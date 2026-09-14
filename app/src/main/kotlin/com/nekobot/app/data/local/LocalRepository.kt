@@ -1431,6 +1431,7 @@ class LocalRepository(
             plotOutline = sessionObj.str("plot_outline", "plotOutline"),
             userPersona = sessionObj.str("user_persona", "userPersona"),
             autoStateInterval = sessionObj.intVal("auto_state_interval", "autoStateInterval") ?: 2,
+            autoNameInterval = sessionObj.intVal("auto_name_interval", "autoNameInterval") ?: 10,
             disabledPromptKeys = disabledKeysArr?.mapNotNull { el ->
                 el.takeIf { !it.isJsonNull }?.asString
             }?.joinToString(","),
@@ -1590,6 +1591,7 @@ class LocalRepository(
         userPersona: String? = null,
         characterIds: List<String>? = null,
         autoStateInterval: Int? = null,
+        autoNameInterval: Int? = null,
         disabledPromptKeys: List<String>? = null,
         isPublic: Boolean? = null,
         proactiveChat: String? = null,
@@ -1616,6 +1618,7 @@ class LocalRepository(
             characterIds = characterIds?.filter { it.isNotBlank() }?.distinct()
                 ?.let { gson.toJson(it) } ?: entity.characterIds,
             autoStateInterval = autoStateInterval ?: entity.autoStateInterval,
+            autoNameInterval = autoNameInterval ?: entity.autoNameInterval,
             disabledPromptKeys = disabledPromptKeys?.let { it.joinToString(",") } ?: entity.disabledPromptKeys,
             isPublic = isPublic ?: entity.isPublic,
             proactiveChat = proactiveChat ?: entity.proactiveChat,
@@ -9146,6 +9149,7 @@ ${AiOutputLanguage.directive()}
         plotOutline = plotOutline,
         userPersona = userPersona,
         autoStateInterval = autoStateInterval,
+        autoNameInterval = autoNameInterval,
         disabledPromptKeys = disabledPromptKeys?.split(",")?.filter { it.isNotEmpty() },
         customPrompts = customPrompts?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
         promptStackDebug = promptStackDebug?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },

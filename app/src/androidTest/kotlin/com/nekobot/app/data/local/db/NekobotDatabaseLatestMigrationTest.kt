@@ -145,6 +145,38 @@ class NekobotDatabaseLatestMigrationTest {
         migrated.close()
     }
 
+    @Test
+    fun migration42To43_addsSessionAutoNameInterval() {
+        open(version = 42, onCreate = { db ->
+            db.execSQL(
+                "CREATE TABLE local_sessions " +
+                    "(id TEXT NOT NULL PRIMARY KEY, name TEXT, auto_state_interval INTEGER NOT NULL DEFAULT 2)"
+            )
+            db.execSQL(
+                "INSERT INTO local_sessions(id, name, auto_state_interval) VALUES ('session-1', '新会话', 2)"
+            )
+        }).close()
+
+        val migrated = open(
+            version = 43,
+            onUpgrade = { db, oldVersion, newVersion ->
+                assertEquals(42, oldVersion)
+                assertEquals(43, newVersion)
+                NekobotDatabase.MIGRATION_42_43.migrate(db)
+            }
+        )
+        val db = migrated.writableDatabase
+
+        assertTrue(columnNames(db, "local_sessions").contains("auto_name_interval"))
+        db.query("SELECT name, auto_name_interval FROM local_sessions WHERE id = 'session-1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("新会话", cursor.getString(0))
+            // 旧数据升级后沿用原先硬编码的 10 条间隔
+            assertEquals(10, cursor.getInt(1))
+        }
+        migrated.close()
+    }
+
     private fun open(
         version: Int,
         onCreate: (SupportSQLiteDatabase) -> Unit = {},

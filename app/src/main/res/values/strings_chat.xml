@@ -148,6 +148,12 @@
     <string name="sessions_detail_realtime_sync_off">现实时间同步：关</string>
     <string name="sessions_detail_reply_style">回复风格</string>
     <string name="sessions_detail_auto_state_interval">自动状态评估间隔</string>
+    <string name="sessions_detail_auto_name_interval">自动会话命名间隔</string>
+    <string name="sessions_detail_name_interval_every_5">每 5 条</string>
+    <string name="sessions_detail_name_interval_every_10">每 10 条</string>
+    <string name="sessions_detail_name_interval_every_20">每 20 条</string>
+    <string name="sessions_detail_name_interval_every_30">每 30 条</string>
+    <string name="sessions_detail_name_interval_every_50">每 50 条</string>
     <string name="sessions_detail_tts_proactive">TTS / 主动聊天</string>
     <string name="sessions_detail_tts_on">TTS：开</string>
     <string name="sessions_detail_tts_off">TTS：关</string>

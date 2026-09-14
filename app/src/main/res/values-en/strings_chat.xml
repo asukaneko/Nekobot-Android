@@ -142,6 +142,12 @@
     <string name="sessions_detail_realtime_sync_off">Real-time sync: Off</string>
     <string name="sessions_detail_reply_style">Reply style</string>
     <string name="sessions_detail_auto_state_interval">Auto state evaluation interval</string>
+    <string name="sessions_detail_auto_name_interval">Auto session naming interval</string>
+    <string name="sessions_detail_name_interval_every_5">Every 5 messages</string>
+    <string name="sessions_detail_name_interval_every_10">Every 10 messages</string>
+    <string name="sessions_detail_name_interval_every_20">Every 20 messages</string>
+    <string name="sessions_detail_name_interval_every_30">Every 30 messages</string>
+    <string name="sessions_detail_name_interval_every_50">Every 50 messages</string>
     <string name="sessions_detail_tts_proactive">TTS / Proactive chat</string>
     <string name="sessions_detail_tts_on">TTS: On</string>
     <string name="sessions_detail_tts_off">TTS: Off</string>

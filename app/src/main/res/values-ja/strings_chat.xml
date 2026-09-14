@@ -142,6 +142,12 @@
     <string name="sessions_detail_realtime_sync_off">リアルタイム同期: オフ</string>
     <string name="sessions_detail_reply_style">応答スタイル</string>
     <string name="sessions_detail_auto_state_interval">自動状態評価の間隔</string>
+    <string name="sessions_detail_auto_name_interval">自動会話命名の間隔</string>
+    <string name="sessions_detail_name_interval_every_5">5 件ごと</string>
+    <string name="sessions_detail_name_interval_every_10">10 件ごと</string>
+    <string name="sessions_detail_name_interval_every_20">20 件ごと</string>
+    <string name="sessions_detail_name_interval_every_30">30 件ごと</string>
+    <string name="sessions_detail_name_interval_every_50">50 件ごと</string>
     <string name="sessions_detail_tts_proactive">TTS / 能動的チャット</string>
     <string name="sessions_detail_tts_on">TTS: オン</string>
     <string name="sessions_detail_tts_off">TTS: オフ</string>
