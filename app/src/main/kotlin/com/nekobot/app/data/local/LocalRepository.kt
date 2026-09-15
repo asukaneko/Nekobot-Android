@@ -1650,6 +1650,10 @@ class LocalRepository(
         if (proactiveChat != null) {
             scheduleProactiveSession(updated)
         }
+        // 剧情模式 / 同步现实时间 / 归档状态变化时，同步「角色自我生活」后台静默心跳
+        if (plotMode != null || plotRealTimeSync != null || archived != null) {
+            scheduleLifeSimSession(updated)
+        }
         android.util.Log.d("LocalRepo", "updateSession: updated.isPublic=${updated.isPublic}, updated.ttsConfig=${updated.ttsConfig}, updated.shareConfig=${updated.shareConfig}")
     }
 
@@ -1664,6 +1668,7 @@ class LocalRepository(
         LocalLinuxSandboxCoordinator.stopSession(id)
         LocalLinuxSandboxCoordinator.stopTerminal(id)
         automationScheduler?.cancelProactive(id)
+        automationScheduler?.cancelLifeSim(id)
         messageImageDao.listBySession(id).forEach { image ->
             image.filePath?.let(::deleteMessageImageFile)
         }
@@ -1681,6 +1686,7 @@ class LocalRepository(
         db.taskDao().listAll().forEach { scheduleTask(it, preserveExisting = true) }
         db.workflowDao().listAll().forEach { scheduleWorkflow(it, preserveExisting = true) }
         sessionDao.listAll().forEach { scheduleProactiveSession(it, replaceExisting = false) }
+        sessionDao.listAll().forEach { scheduleLifeSimSession(it, replaceExisting = false) }
     }
 
     /**
@@ -1826,8 +1832,181 @@ class LocalRepository(
                             scheduleProactiveSession(it, appendAfterCurrent = true)
                         }
                     }
+                LocalAutomationScheduler.TYPE_LIFE_SIM ->
+                    sessionDao.getById(targetId)?.let {
+                        if (lifeSimEligible(it)) {
+                            scheduleLifeSimSession(it, appendAfterCurrent = true)
+                        } else {
+                            automationScheduler?.cancelLifeSim(it.id)
+                        }
+                    }
             }
         }
+
+    // ==================== 同步现实时间：角色自我生活（life_sim）====================
+
+    /**
+     * 会话是否应该运行「角色自我生活」静默心跳：
+     * 剧情模式 + 同步现实时间开启、非 Agent 会话、已绑定角色且未归档。
+     */
+    private fun lifeSimEligible(session: LocalSessionEntity): Boolean =
+        session.plotMode &&
+            session.plotRealTimeSync &&
+            !session.archived &&
+            !session.sessionMode.equals("agent", ignoreCase = true) &&
+            !session.characterId.isNullOrBlank()
+
+    /**
+     * 「同步现实时间」后台静默心跳调度。
+     *
+     * 对齐原仓库 `_toggle_life_sim_heartbeat` + `SessionHeartbeatManager`：
+     * 开启同步现实时间的会话注册一条静默定时任务，按 [LifeSimulator.INTERVAL_MINUTES]
+     * 在后台生成角色独处时的生活片段（不向会话发送任何消息，也就不打扰用户）。
+     *
+     * 基线与主动聊天不同：只看上次生成时间，用户是否在场不影响节奏
+     * （用户活跃时聊天链路的懒触发会命中同一个时间戳，两边不会重复生成）。
+     */
+    private suspend fun scheduleLifeSimSession(
+        session: LocalSessionEntity,
+        replaceExisting: Boolean = true,
+        appendAfterCurrent: Boolean = false,
+        now: Instant = Instant.now()
+    ) {
+        if (!lifeSimEligible(session)) {
+            automationScheduler?.cancelLifeSim(session.id)
+            return
+        }
+        val characterId = session.characterId ?: return
+        val lastRun = try {
+            com.nekobot.app.data.local.ai.LocalCharacterStateRepository(db.characterStateDao())
+                .get(characterId, session.id)?.scene?.get("life_sim_last_run") as? String
+        } catch (e: Exception) {
+            null
+        }
+        val baseline = parseStoredInstant(lastRun)
+        val dueAt = baseline?.plusSeconds(com.nekobot.app.data.local.ai.LifeSimulator.INTERVAL_MINUTES * 60L)
+            ?: now
+        automationScheduler?.scheduleLifeSim(
+            sessionId = session.id,
+            dueAt = dueAt,
+            replaceExisting = replaceExisting,
+            appendAfterCurrent = appendAfterCurrent,
+            now = now
+        )
+    }
+
+    /**
+     * 后台静默心跳执行入口：生成一次角色生活片段。
+     * 静默（notify=false）——原仓库 life_sim 心跳同样不向会话发消息。
+     */
+    suspend fun executeLifeSim(sessionId: String): AutomationExecutionResult =
+        withContext(Dispatchers.IO) {
+            val session = sessionDao.getById(sessionId)
+                ?: return@withContext AutomationExecutionResult("角色生活", notify = false)
+            if (!lifeSimEligible(session)) {
+                return@withContext AutomationExecutionResult(session.name, notify = false)
+            }
+            val character = session.characterId?.let { characterDao.getById(it) }
+                ?: return@withContext AutomationExecutionResult(session.name, notify = false)
+            val model = aiModelDao.getActiveByPurpose("chat") ?: aiModelDao.getActive()
+            if (model == null) {
+                com.nekobot.app.data.local.LocalLogger.w(TAG, "life_sim 后台心跳跳过：未配置可用模型")
+                return@withContext AutomationExecutionResult(session.name, notify = false)
+            }
+            val activity = runLifeSimIfDue(session, character, model)
+            AutomationExecutionResult(
+                title = session.characterName?.takeIf(String::isNotBlank) ?: session.name,
+                content = activity,
+                sessionId = sessionId,
+                notify = false
+            )
+        }
+
+    /**
+     * 生成一次角色生活片段（life_sim）并写入 MemoryFS，更新
+     * `life_sim_last_run` / `current_activity`。
+     *
+     * 两条触发路径共用：
+     * 1. 聊天前懒触发——用户发消息时若已超过间隔则补生成；
+     * 2. 后台静默心跳——WorkManager 定时触发（见 [scheduleLifeSimSession]）。
+     *
+     * @return 生成的活动标签；未到间隔、无角色或生成失败时为空字符串
+     */
+    private suspend fun runLifeSimIfDue(
+        session: LocalSessionEntity,
+        character: LocalCharacterEntity,
+        activeModel: LocalAiModelEntity
+    ): String {
+        val sessionId = session.id
+        if (character.id.isBlank() || sessionId.isBlank()) return ""
+
+        val stateRepo = com.nekobot.app.data.local.ai.LocalCharacterStateRepository(db.characterStateDao())
+        val state = stateRepo.get(character.id, sessionId)
+        val lastRun = state?.scene?.get("life_sim_last_run") as? String
+        if (!com.nekobot.app.data.local.ai.LifeSimulator.shouldTrigger(lastRun)) return ""
+
+        // 构建角色卡文本
+        val profileText = buildString {
+            append("【角色名】${character.name}")
+            character.description?.takeIf { it.isNotBlank() }?.let { append("\n【描述】$it") }
+            character.personality?.takeIf { it.isNotBlank() }?.let { append("\n【性格】$it") }
+            character.scenario?.takeIf { it.isNotBlank() }?.let { append("\n【场景】$it") }
+            character.systemPrompt?.takeIf { it.isNotBlank() }?.let { append("\n【系统提示词】$it") }
+        }
+
+        // 收集最近用户消息（仅用于了解用户身份）
+        val recentMessages = listAiContextMessages(sessionId)
+            .filter { it.role == "user" }
+            .takeLast(5)
+            .map { it.content }
+
+        // 昼夜状态
+        val circadianState = com.nekobot.app.data.local.ai.TimeContext.buildCircadianState()
+
+        // 生成并持久化
+        val activity = com.nekobot.app.data.local.ai.LifeSimulator.generateAndPersist(
+            aiClient = aiClient,
+            activeModel = activeModel,
+            failoverExecutor = chatFailoverExecutor,
+            memoryDao = db.memoryDao(),
+            characterId = character.id,
+            conversationId = sessionId,
+            targetId = "local-user",
+            profileText = profileText,
+            circadianState = circadianState,
+            recentMessages = recentMessages
+        ) { input, output, model, actualModel ->
+            appendTokenUsageRecord(
+                sessionId = sessionId,
+                model = model,
+                actualModel = actualModel,
+                inputTokens = input,
+                outputTokens = output,
+                timestamp = nowIsoTimestamp(),
+                source = "web",
+                purpose = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_HEARTBEAT
+            )
+        }
+
+        // 更新 CharacterState.scene（life_sim_last_run + current_activity）
+        val currentState = state ?: com.nekobot.app.data.local.ai.CharacterState(
+            characterId = character.id,
+            scopeId = sessionId
+        )
+        val newScene = currentState.scene.toMutableMap().apply {
+            put("life_sim_last_run", java.time.LocalDateTime.now()
+                .format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME))
+            if (activity.isNotBlank()) {
+                put("current_activity", activity)
+                put("activity_source", "heartbeat_ai")
+            }
+        }
+        currentState.scene = newScene
+        stateRepo.save(currentState)
+
+        com.nekobot.app.data.local.LocalLogger.i(TAG, "life_sim 完成 | source=heartbeat | activity=$activity")
+        return activity
+    }
 
     private fun parseStoredInstant(raw: String?): Instant? {
         val value = raw?.trim().orEmpty()
@@ -6091,75 +6270,10 @@ class LocalRepository(
         // plot_mode + plot_realtime_sync 开启且非 agent 模式时，
         // 检查距离上次 life_sim 生成的时间，超过阈值则补生成一次写入 MemoryFS。
         // CharacterRuntime.beforeTurn 会从 MemoryFS 读取 life_sim 注入到 prompt。
-        if (session.plotMode && session.plotRealTimeSync &&
-            !session.sessionMode.equals("agent", ignoreCase = true) && character != null) {
+        // 后台定时触发（WorkManager 静默心跳）走同一个 [runLifeSimIfDue]。
+        if (lifeSimEligible(session) && character != null) {
             try {
-                val stateRepo = com.nekobot.app.data.local.ai.LocalCharacterStateRepository(db.characterStateDao())
-                val state = stateRepo.get(character.id, sessionId)
-                val lastRun = (state?.scene?.get("life_sim_last_run") as? String)
-
-                if (com.nekobot.app.data.local.ai.LifeSimulator.shouldTrigger(lastRun)) {
-                    // 构建角色卡文本
-                    val profileText = buildString {
-                        append("【角色名】${character.name}")
-                        character.description?.takeIf { it.isNotBlank() }?.let { append("\n【描述】$it") }
-                        character.personality?.takeIf { it.isNotBlank() }?.let { append("\n【性格】$it") }
-                        character.scenario?.takeIf { it.isNotBlank() }?.let { append("\n【场景】$it") }
-                        character.systemPrompt?.takeIf { it.isNotBlank() }?.let { append("\n【系统提示词】$it") }
-                    }
-
-                    // 收集最近用户消息（仅用于了解用户身份）
-                    val recentMessages = listAiContextMessages(sessionId)
-                        .filter { it.role == "user" }
-                        .takeLast(5)
-                        .map { it.content }
-
-                    // 昼夜状态
-                    val circadianState = com.nekobot.app.data.local.ai.TimeContext.buildCircadianState()
-
-                    // 生成并持久化
-                    val activity = com.nekobot.app.data.local.ai.LifeSimulator.generateAndPersist(
-                        aiClient = aiClient,
-                        activeModel = activeModel,
-                        failoverExecutor = chatFailoverExecutor,
-                        memoryDao = db.memoryDao(),
-                        characterId = character.id,
-                        conversationId = sessionId,
-                        targetId = "local-user",
-                        profileText = profileText,
-                        circadianState = circadianState,
-                        recentMessages = recentMessages
-                    ) { input, output, model, actualModel ->
-                        appendTokenUsageRecord(
-                            sessionId = sessionId,
-                            model = model,
-                            actualModel = actualModel,
-                            inputTokens = input,
-                            outputTokens = output,
-                            timestamp = nowIsoTimestamp(),
-                            source = "web",
-                            purpose = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_HEARTBEAT
-                        )
-                    }
-
-                    // 更新 CharacterState.scene（life_sim_last_run + current_activity）
-                    val currentState = state ?: com.nekobot.app.data.local.ai.CharacterState(
-                        characterId = character.id,
-                        scopeId = sessionId
-                    )
-                    val newScene = currentState.scene.toMutableMap().apply {
-                        put("life_sim_last_run", java.time.LocalDateTime.now()
-                            .format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME))
-                        if (activity.isNotBlank()) {
-                            put("current_activity", activity)
-                            put("activity_source", "heartbeat_ai")
-                        }
-                    }
-                    currentState.scene = newScene
-                    stateRepo.save(currentState)
-
-                    com.nekobot.app.data.local.LocalLogger.i(TAG, "life_sim 懒触发完成 | activity=$activity")
-                }
+                runLifeSimIfDue(session, character, activeModel)
             } catch (e: Exception) {
                 com.nekobot.app.data.local.LocalLogger.w(TAG, "life_sim 懒触发异常: ${e.message}", e)
             }

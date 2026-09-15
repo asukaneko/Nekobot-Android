@@ -30,6 +30,8 @@ class LocalAutomationWorker(
                     ServiceContainer.localRepository.executeScheduledWorkflow(targetId)
                 LocalAutomationScheduler.TYPE_PROACTIVE ->
                     ServiceContainer.localRepository.executeProactiveChat(targetId)
+                LocalAutomationScheduler.TYPE_LIFE_SIM ->
+                    ServiceContainer.localRepository.executeLifeSim(targetId)
                 else -> return Result.failure()
             }
             if (outcome.notify && outcome.content.isNotBlank()) {

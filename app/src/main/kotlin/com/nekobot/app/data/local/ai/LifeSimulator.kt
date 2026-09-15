@@ -204,7 +204,10 @@ object LifeSimulator {
                 memoryPath = lifeSimPath,
                 version = version,
                 createdAt = now.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
-                updatedAt = now.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                updatedAt = now.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
+                // life_sim 按会话隔离，MemoryFS.buildPromptContext 依赖 conversation_id 过滤，
+                // 缺这列会导致生成的生活片段永远注入不进 prompt。
+                conversationId = conversationId
             )
             memoryDao.upsert(entity)
 

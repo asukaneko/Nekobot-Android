@@ -80,12 +80,42 @@ class LocalAutomationScheduler(
         )
     }
 
+    /**
+     * 同步现实时间的静默心跳（角色自我生活 life_sim）。
+     * 与主动聊天隔离：执行时不向会话发送任何消息，只生成并写入角色生活片段。
+     */
+    fun scheduleLifeSim(
+        sessionId: String,
+        dueAt: Instant?,
+        replaceExisting: Boolean = true,
+        appendAfterCurrent: Boolean = false,
+        now: Instant = Instant.now()
+    ) {
+        val uniqueName = uniqueName(TYPE_LIFE_SIM, sessionId)
+        if (dueAt == null) {
+            workManager.cancelUniqueWork(uniqueName)
+            return
+        }
+        enqueue(
+            uniqueName,
+            TYPE_LIFE_SIM,
+            sessionId,
+            dueAt,
+            now,
+            replaceExisting,
+            appendAfterCurrent
+        )
+    }
+
     fun cancelTask(id: String) = workManager.cancelUniqueWork(uniqueName(TYPE_TASK, id))
 
     fun cancelWorkflow(id: String) = workManager.cancelUniqueWork(uniqueName(TYPE_WORKFLOW, id))
 
     fun cancelProactive(sessionId: String) =
         workManager.cancelUniqueWork(uniqueName(TYPE_PROACTIVE, sessionId))
+
+    fun cancelLifeSim(sessionId: String) =
+        workManager.cancelUniqueWork(uniqueName(TYPE_LIFE_SIM, sessionId))
 
     fun cancelProfile() = workManager.cancelAllWorkByTag(profileTag)
 
@@ -137,5 +167,6 @@ class LocalAutomationScheduler(
         const val TYPE_TASK = "task"
         const val TYPE_WORKFLOW = "workflow"
         const val TYPE_PROACTIVE = "proactive"
+        const val TYPE_LIFE_SIM = "life_sim"
     }
 }
