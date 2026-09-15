@@ -14,6 +14,7 @@ import com.nekobot.app.ui.components.withoutBorder as border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -661,7 +662,7 @@ fun SessionsScreen(
             SessionStatFilters(
                 overview = overview,
                 selected = filter,
-                onSelect = viewModel::setFilter
+                onToggle = viewModel::toggleFilter
             )
 
             Box(modifier = Modifier.fillMaxSize()) {
@@ -933,12 +934,13 @@ private fun SessionCountBadge(count: Int) {
 /**
  * 概览统计与快速筛选合并成一排可点击的统计卡：每张卡展示数量并作为筛选入口，
  * 选中态用主题色高亮。原先「统计卡 + 筛选 pill」两段内容重复，合并后更紧凑清爽。
+ * 已选中的卡片再次点按会恢复到默认「最近会话」筛选。
  */
 @Composable
 private fun SessionStatFilters(
     overview: SessionOverview,
     selected: SessionFilter,
-    onSelect: (SessionFilter) -> Unit
+    onToggle: (SessionFilter) -> Unit
 ) {
     val characterSessionsLabel = stringResource(R.string.sessions_filter_character_sessions)
     val agentSessionsLabel = stringResource(R.string.sessions_filter_agent_sessions)
@@ -955,28 +957,28 @@ private fun SessionStatFilters(
             value = overview.characterSessions,
             icon = Icons.AutoMirrored.Outlined.Chat,
             selected = selected == SessionFilter.CHARACTER_SESSIONS,
-            onClick = { onSelect(SessionFilter.CHARACTER_SESSIONS) }
+            onClick = { onToggle(SessionFilter.CHARACTER_SESSIONS) }
         )
         StatFilterCard(
             label = agentSessionsLabel,
             value = overview.agentSessions,
             icon = Icons.Filled.DashboardCustomize,
             selected = selected == SessionFilter.AGENT_SESSIONS,
-            onClick = { onSelect(SessionFilter.AGENT_SESSIONS) }
+            onClick = { onToggle(SessionFilter.AGENT_SESSIONS) }
         )
         StatFilterCard(
             label = favoriteLabel,
             value = overview.favorite,
             icon = Icons.Filled.Favorite,
             selected = selected == SessionFilter.FAVORITE,
-            onClick = { onSelect(SessionFilter.FAVORITE) }
+            onClick = { onToggle(SessionFilter.FAVORITE) }
         )
         StatFilterCard(
             label = archiveLabel,
             value = overview.archived,
             icon = Icons.Filled.Archive,
             selected = selected == SessionFilter.ARCHIVED,
-            onClick = { onSelect(SessionFilter.ARCHIVED) }
+            onClick = { onToggle(SessionFilter.ARCHIVED) }
         )
     }
 }
@@ -1006,7 +1008,12 @@ private fun RowScope.StatFilterCard(
     ) {
         Column(
             modifier = Modifier
-                .clickable(onClick = onClick)
+                // 筛选卡不使用点按波纹，仅靠选中态颜色反馈
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick
+                )
                 .padding(vertical = 9.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -1312,7 +1319,12 @@ private fun SelectableChip(
             .height(40.dp)
             .clip(RoundedCornerShape(20.dp))
             .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant)
-            .clickable { onClick() }
+            // 筛选 Chip 同样不使用点按波纹
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -2177,6 +2189,19 @@ class SessionsViewModel : BaseViewModel() {
 
     fun setFilter(f: SessionFilter) {
         _filter.value = f
+    }
+
+    /**
+     * 顶部四个筛选按钮的切换：再次点按已选中的筛选恢复到默认「最近会话」（ALL）。
+     * 同时清空仅对 BY_CHARACTER 有意义的角色筛选，避免残留状态。
+     */
+    fun toggleFilter(f: SessionFilter) {
+        if (_filter.value == f) {
+            _filter.value = SessionFilter.ALL
+            _characterFilterId.value = null
+        } else {
+            _filter.value = f
+        }
     }
 
     fun setChannelFilter(value: String?) {
