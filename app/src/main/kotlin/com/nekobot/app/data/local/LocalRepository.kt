@@ -376,6 +376,11 @@ class LocalRepository(
     private val runningTaskIds = ConcurrentHashMap.newKeySet<String>()
     private val runningWorkflowIds = ConcurrentHashMap.newKeySet<String>()
     /**
+     * 判定“已存执行时间点是否过期”的宽限期（分钟）。
+     * 过期不超过该值的触发点仍按原时间补跑，超过则重新计算下一次时间。
+     */
+    private val OVERDUE_GRACE_MINUTES = 10L
+    /**
      * 轻小说搜索的会话级状态：`/findbook`、`/fa` 写入；`/select`、`/info` 读取。
      *
      * 与原仓库 `temp_selections[user_id]` + `api_book[user_id]` 等价，但按 sessionId 隔离。
@@ -1797,6 +1802,24 @@ class LocalRepository(
                 content = content,
                 sessionId = sessionId
             )
+        }
+
+    /**
+     * Worker 重试耗尽后的收尾：把错误写回任务/工作流状态，供任务中心界面展示。
+     *
+     * 与 [onAutomationWorkerFinished] 分开：后者只负责续排下一次，本方法只负责记录失败原因。
+     * “跳过”（未到点、已禁用）不是失败，不会走到这里。
+     */
+    suspend fun onAutomationFailed(type: String, targetId: String, message: String?) =
+        withContext(Dispatchers.IO) {
+            val error = message?.takeIf(String::isNotBlank) ?: "后台执行失败"
+            when (type) {
+                LocalAutomationScheduler.TYPE_TASK ->
+                    db.taskDao().updateExecutionState(targetId, "failed", error, nowIso())
+                LocalAutomationScheduler.TYPE_WORKFLOW ->
+                    db.workflowDao().updateExecutionState(targetId, "failed", error, nowIso())
+                else -> Unit
+            }
         }
 
     suspend fun onAutomationWorkerFinished(type: String, targetId: String) =
@@ -9991,17 +10014,19 @@ ${AiOutputLanguage.directive()}
 
             val startedAt = nowIso()
             db.taskDao().updateExecutionState(id, "running", null, startedAt)
-            val isOneShot = task.trigger.equals("run_at", true) || task.trigger.equals("date", true)
-            if (isOneShot) {
-                db.taskDao().setEnabled(id, false)
-                db.taskDao().updateNextRun(id, null)
-            }
             val content = executeAutomationPrompt(
                 sessionId = targetSession.id,
                 prompt = prompt,
                 assistantSource = "task_center",
                 allowTools = targetSession.sessionMode.equals("agent", ignoreCase = true)
             )
+            // 一次性任务在成功后才关闭；失败时保持启用，让重试/下次启动仍能补跑，
+            // 避免此前“先禁用再执行”导致失败即永久丢任务。
+            val isOneShot = task.trigger.equals("run_at", true) || task.trigger.equals("date", true)
+            if (isOneShot) {
+                db.taskDao().setEnabled(id, false)
+                db.taskDao().updateNextRun(id, null)
+            }
             db.taskDao().updateExecutionState(id, "success", null, nowIso())
             AutomationExecutionResult(
                 title = "任务完成 · ${task.name}",
@@ -10021,11 +10046,22 @@ ${AiOutputLanguage.directive()}
         preserveExisting: Boolean = false,
         appendAfterCurrent: Boolean = false
     ): LocalTaskEntity {
-        val preserved = task.nextRun
-            ?.takeIf { preserveExisting }
-            ?.let(::parseStoredInstant)
         val calculated = if (task.enabled) {
-            preserved ?: LocalScheduleCalculator.nextRun(task.trigger, task.configJson)
+            val preserved = task.nextRun
+                ?.takeIf { preserveExisting }
+                ?.let(::parseStoredInstant)
+                // 进程被杀/设备关机期间错过的执行点：不能让过期时间一直沿用，
+                // 否则任务会永远停在过去的时间点上再也不触发。逾期的排到下一个有效时间。
+                ?.takeIf { !isOverdue(it) }
+            val next = preserved ?: LocalScheduleCalculator.nextRun(task.trigger, task.configJson)
+            val overdueExisted = task.nextRun != null && preserved == null
+            if (overdueExisted) {
+                com.nekobot.app.data.local.LocalLogger.i(
+                    TAG,
+                    "任务「${task.name}」上次执行点已过期，顺延到 $next"
+                )
+            }
+            next
         } else {
             null
         }
@@ -10039,6 +10075,15 @@ ${AiOutputLanguage.directive()}
         db.taskDao().updateNextRun(task.id, nextText)
         return task.copy(nextRun = nextText)
     }
+
+    /**
+     * 判断某个已存的执行时间是否已经过期到不该再沿用。
+     *
+     * 留 [OVERDUE_GRACE_MINUTES] 的宽限期：刚过去一两分钟的触发点仍然照原时间补跑
+     * （WorkManager 会立即执行），只有明显陈旧的时间点才重新计算。
+     */
+    private fun isOverdue(dueAt: Instant): Boolean =
+        dueAt.isBefore(Instant.now().minusSeconds(OVERDUE_GRACE_MINUTES * 60L))
 
     private fun validateTaskRequest(req: TaskRequest) {
         require(req.name.isNotBlank()) { "任务名称不能为空" }
@@ -10243,10 +10288,18 @@ ${AiOutputLanguage.directive()}
         preserveExisting: Boolean = false,
         appendAfterCurrent: Boolean = false
     ): LocalWorkflowEntity {
-        val preserved = workflow.nextRun
-            ?.takeIf { preserveExisting }
-            ?.let(::parseStoredInstant)
         val calculated = if (workflow.enabled && workflow.trigger.equals("cron", true)) {
+            val preserved = workflow.nextRun
+                ?.takeIf { preserveExisting }
+                ?.let(::parseStoredInstant)
+                // 同 scheduleTask：过期时间点必须重新计算，否则后台定时工作流会永久停摆。
+                ?.takeIf { !isOverdue(it) }
+            if (workflow.nextRun != null && preserved == null) {
+                com.nekobot.app.data.local.LocalLogger.i(
+                    TAG,
+                    "工作流「${workflow.name}」上次执行点已过期，顺延到下一个 cron 时间"
+                )
+            }
             preserved ?: LocalScheduleCalculator.nextRun(workflow.trigger, workflow.configJson)
         } else {
             null

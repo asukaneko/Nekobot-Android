@@ -141,9 +141,11 @@ class LocalAutomationScheduler(
         val request = OneTimeWorkRequestBuilder<LocalAutomationWorker>()
             .setInputData(data)
             .setInitialDelay(delayMillis, TimeUnit.MILLISECONDS)
+            // 不强制联网：本地模式可完全离线运行（本地模型/已缓存内容），
+            // 远程模型在真正请求时失败会由 Worker 的退避重试兜底，不该因为“无网络”就不执行。
             .setConstraints(
                 Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .setRequiredNetworkType(NetworkType.NOT_REQUIRED)
                     .build()
             )
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)

@@ -153,6 +153,14 @@ class AgentForegroundService : Service() {
 
         private val activeSessions = Collections.synchronizedSet(mutableSetOf<String>())
 
+        /**
+         * 后台自动化（定时任务/工作流/主动聊天）专用槽位。
+         *
+         * 与聊天会话的引用计数分开维护：这些任务由 WorkManager 在应用可能完全处于后台时启动，
+         * 必须独立保活，不能因为没有任何聊天会话而停掉前台服务。
+         */
+        private const val AUTOMATION_SLOT = "automation"
+
         fun acquire(context: Context, sessionId: String) {
             if (sessionId.isBlank()) return
             activeSessions.add(sessionId)
@@ -171,6 +179,30 @@ class AgentForegroundService : Service() {
                     Intent(context, AgentForegroundService::class.java)
                         .setAction(ACTION_RELEASE)
                         .putExtra(EXTRA_SESSION_ID, sessionId)
+                )
+            }
+        }
+
+        /** 后台自动化任务开始：占用自动化槽位保活（不打扰通知文案的会话计数）。 */
+        fun acquireAutomation(context: Context) {
+            activeSessions.add(AUTOMATION_SLOT)
+            runCatching {
+                context.applicationContext.startForegroundService(
+                    Intent(context, AgentForegroundService::class.java)
+                        .setAction(ACTION_ACQUIRE)
+                        .putExtra(EXTRA_SESSION_ID, AUTOMATION_SLOT)
+                )
+            }
+        }
+
+        /** 后台自动化任务结束：释放槽位；无其它会话时前台服务自动停止。 */
+        fun releaseAutomation(context: Context) {
+            activeSessions.remove(AUTOMATION_SLOT)
+            runCatching {
+                context.applicationContext.startService(
+                    Intent(context, AgentForegroundService::class.java)
+                        .setAction(ACTION_RELEASE)
+                        .putExtra(EXTRA_SESSION_ID, AUTOMATION_SLOT)
                 )
             }
         }
