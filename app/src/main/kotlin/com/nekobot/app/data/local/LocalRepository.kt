@@ -10723,13 +10723,26 @@ ${AiOutputLanguage.directive()}
     // ==================== 扩展功能：Tools ====================
 
     /**
-     * 确保内置工具已写入数据库（幂等）。
-     * 在 LocalRepository 初始化或首次 listTools 时调用。
+     * 同步内置工具到数据库（幂等）：补齐缺失的内置工具，并清理已经没有定义的历史残留行。
+     *
+     * 清理的必要性：`BuiltinTools` 中曾经存在 `save_to_memory` / `read_memory` /
+     * `workspace_skill_copy` 这类“有 schema、无执行实现”的死条目，它们会被写进数据库并在
+     * Tools 页面显示，但模型看不到、用户也关不掉。旧版 Tools 页面还允许用户自建工具，
+     * 同样会留下永远不会被执行的行。这些行现在统一在这里删除，保证界面展示的都是真实生效的工具。
+     *
+     * 界面只读之后已无任何入口创建自定义工具，因此 `builtin = false` 的行同样是不可执行的
+     * 历史残留，一并清理；`BuiltinTools.all` 定义的工具会在下一步重新写入。
      */
     suspend fun ensureBuiltinTools() = withContext(Dispatchers.IO) {
-        val existing = db.toolDao().listAll().map { it.id }.toSet()
-        val toInsert = com.nekobot.app.data.local.db.BuiltinTools.all.filter { it.id !in existing }
-        for (spec in toInsert) {
+        val known = com.nekobot.app.data.local.db.BuiltinTools.all.associateBy { it.id }
+        val existing = db.toolDao().listAll()
+
+        // 1) 清理死条目：已废弃的内置定义，以及界面只读后不再可达的用户自建工具
+        existing.filter { it.id !in known.keys }.forEach { db.toolDao().deleteById(it.id) }
+
+        // 2) 补齐缺失的内置工具
+        val existingIds = existing.map { it.id }.toSet()
+        for (spec in known.values.filter { it.id !in existingIds }) {
             db.toolDao().upsert(
                 com.nekobot.app.data.local.db.LocalToolEntity(
                     id = spec.id,

@@ -48,28 +48,16 @@
 
     <!-- ==================== Tools ==================== -->
     <string name="tools_title">Tools</string>
-    <string name="tools_new">새 도구</string>
-    <string name="tools_edit">도구 편집</string>
     <string name="tools_empty_title">도구 없음</string>
-    <string name="tools_empty_hint">오른쪽 위 +를 눌러 추가해 보세요</string>
-    <string name="tools_confirm_delete">삭제 확인</string>
-    <string name="tools_delete_message">도구 \"%1$s\"을(를) 삭제할까요?</string>
+    <string name="tools_empty_hint">연동된 도구는 여기에 자동으로 표시됩니다</string>
     <string name="tools_detail_title">도구 상세</string>
-    <string name="tools_name">이름: %1$s</string>
-    <string name="tools_description">설명: %1$s</string>
+    <string name="tools_id">ID: %1$s</string>
     <string name="tools_status">상태: %1$s</string>
-    <string name="tools_builtin">내장: %1$s</string>
-    <string name="tools_created_at">생성: %1$s</string>
     <string name="tools_status_enabled">활성화됨</string>
     <string name="tools_status_disabled">비활성화됨</string>
     <string name="tools_builtin_badge">내장</string>
-    <string name="tools_action">동작</string>
-    <string name="tools_view">보기</string>
-    <string name="tools_toggle">토글</string>
-    <string name="tools_name_required">이름을 입력해 주세요</string>
-    <string name="tools_name_label">이름(필수)</string>
-    <string name="tools_description_label">설명</string>
-    <string name="tools_enabled_label">활성화됨</string>
+    <string name="tools_category_other">기타</string>
+    <string name="tools_no_description">설명이 없습니다</string>
     <string name="tools_exa_key_label">Exa API Key(선택 사항)</string>
     <string name="tools_exa_key_hint">비워 두면 익명 검색을 사용합니다</string>
 

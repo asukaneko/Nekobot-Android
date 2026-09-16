@@ -67,28 +67,16 @@
 
     <!-- ==================== Tools ==================== -->
     <string name="tools_title">Tools</string>
-    <string name="tools_new">New Tool</string>
-    <string name="tools_edit">Edit Tool</string>
     <string name="tools_empty_title">No Tools</string>
-    <string name="tools_empty_hint">Tap + at the top right to add</string>
-    <string name="tools_confirm_delete">Confirm Delete</string>
-    <string name="tools_delete_message">Delete tool \"%1$s\"?</string>
+    <string name="tools_empty_hint">Tools appear here automatically once integrated</string>
     <string name="tools_detail_title">Tool Details</string>
-    <string name="tools_name">Name: %1$s</string>
-    <string name="tools_description">Description: %1$s</string>
+    <string name="tools_id">ID: %1$s</string>
     <string name="tools_status">Status: %1$s</string>
-    <string name="tools_builtin">Built-in: %1$s</string>
-    <string name="tools_created_at">Created: %1$s</string>
     <string name="tools_status_enabled">Enabled</string>
     <string name="tools_status_disabled">Disabled</string>
     <string name="tools_builtin_badge">Built-in</string>
-    <string name="tools_action">Actions</string>
-    <string name="tools_view">View</string>
-    <string name="tools_toggle">Toggle</string>
-    <string name="tools_name_required">Please enter a name</string>
-    <string name="tools_name_label">Name (required)</string>
-    <string name="tools_description_label">Description</string>
-    <string name="tools_enabled_label">Enabled</string>
+    <string name="tools_category_other">Other</string>
+    <string name="tools_no_description">No description</string>
     <string name="tools_exa_key_label">Exa API Key (optional)</string>
     <string name="tools_exa_key_hint">Leave blank to use anonymous search</string>
 

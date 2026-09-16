@@ -48,28 +48,16 @@
 
     <!-- ==================== Tools ==================== -->
     <string name="tools_title">Tools</string>
-    <string name="tools_new">新規 Tool</string>
-    <string name="tools_edit">Tool を編集</string>
     <string name="tools_empty_title">Tool がありません</string>
-    <string name="tools_empty_hint">右上の + をタップして追加</string>
-    <string name="tools_confirm_delete">削除の確認</string>
-    <string name="tools_delete_message">Tool \"%1$s\" を削除しますか？</string>
+    <string name="tools_empty_hint">連携した Tool はここに自動で表示されます</string>
     <string name="tools_detail_title">Tool 詳細</string>
-    <string name="tools_name">名称: %1$s</string>
-    <string name="tools_description">説明: %1$s</string>
+    <string name="tools_id">ID: %1$s</string>
     <string name="tools_status">ステータス: %1$s</string>
-    <string name="tools_builtin">組み込み: %1$s</string>
-    <string name="tools_created_at">作成: %1$s</string>
     <string name="tools_status_enabled">有効</string>
     <string name="tools_status_disabled">無効</string>
     <string name="tools_builtin_badge">組み込み</string>
-    <string name="tools_action">アクション</string>
-    <string name="tools_view">表示</string>
-    <string name="tools_toggle">切替</string>
-    <string name="tools_name_required">名称を入力してください</string>
-    <string name="tools_name_label">名称 (必須)</string>
-    <string name="tools_description_label">説明</string>
-    <string name="tools_enabled_label">有効</string>
+    <string name="tools_category_other">その他</string>
+    <string name="tools_no_description">説明はありません</string>
     <string name="tools_exa_key_label">Exa API Key (任意)</string>
     <string name="tools_exa_key_hint">空欄の場合は匿名検索を使用します</string>
 

@@ -318,12 +318,9 @@ internal fun toolNameResId(id: String): Int = when (id) {
     "workspace_parse_file" -> R.string.tool_name_workspace_parse_file
     "workspace_extract_epub" -> R.string.tool_name_workspace_extract_epub
     "workspace_file_info" -> R.string.tool_name_workspace_file_info
-    "workspace_skill_copy" -> R.string.tool_name_workspace_skill_copy
     "understand_image" -> R.string.tool_name_understand_image
     "generate_image" -> R.string.tool_name_generate_image
     "read_image" -> R.string.tool_name_read_image
-    "save_to_memory" -> R.string.tool_name_save_to_memory
-    "read_memory" -> R.string.tool_name_read_memory
     "agent_memory_read" -> R.string.tool_name_agent_memory_read
     "agent_memory_update" -> R.string.tool_name_agent_memory_update
     "todo_write" -> R.string.tool_name_todo_write
@@ -412,6 +409,77 @@ internal fun toolNameResId(id: String): Int = when (id) {
     "subagent" -> R.string.tool_name_subagent
     "subagent_list" -> R.string.tool_name_subagent_list
     "subagent_get" -> R.string.tool_name_subagent_get
+    else -> 0
+}
+
+/**
+ * 工具 id → 本地化描述字符串资源 id；未收录时返回 0（由调用方回退数据库中的内置描述）。
+ *
+ * 与 [toolNameResId] 一样，这里只做 id → 资源映射，不写文案本身；
+ * 新增工具补一条 `tool_desc_<id>` 即可，四个语言目录同步添加。
+ */
+internal fun toolDescResId(id: String): Int = when (id) {
+    "get_weather" -> R.string.tool_desc_get_weather
+    "search_web" -> R.string.tool_desc_search_web
+    "http_get" -> R.string.tool_desc_http_get
+    "web_fetch" -> R.string.tool_desc_web_fetch
+    "grep" -> R.string.tool_desc_grep
+    "glob" -> R.string.tool_desc_glob
+    "get_date_time" -> R.string.tool_desc_get_date_time
+    "download_file" -> R.string.tool_desc_download_file
+    "browser_use" -> R.string.tool_desc_browser_use
+    "exec_command" -> R.string.tool_desc_exec_command
+    "shell_job" -> R.string.tool_desc_shell_job
+    "file_read" -> R.string.tool_desc_file_read
+    "file_write" -> R.string.tool_desc_file_write
+    "file_edit" -> R.string.tool_desc_file_edit
+    "workspace_create_file" -> R.string.tool_desc_workspace_create_file
+    "workspace_read_file" -> R.string.tool_desc_workspace_read_file
+    "workspace_edit_file" -> R.string.tool_desc_workspace_edit_file
+    "workspace_delete_file" -> R.string.tool_desc_workspace_delete_file
+    "workspace_list_files" -> R.string.tool_desc_workspace_list_files
+    "workspace_send_file" -> R.string.tool_desc_workspace_send_file
+    "workspace_parse_file" -> R.string.tool_desc_workspace_parse_file
+    "workspace_extract_epub" -> R.string.tool_desc_workspace_extract_epub
+    "workspace_file_info" -> R.string.tool_desc_workspace_file_info
+    "understand_image" -> R.string.tool_desc_understand_image
+    "generate_image" -> R.string.tool_desc_generate_image
+    "read_image" -> R.string.tool_desc_read_image
+    "agent_memory_read" -> R.string.tool_desc_agent_memory_read
+    "agent_memory_update" -> R.string.tool_desc_agent_memory_update
+    "todo_write" -> R.string.tool_desc_todo_write
+    "todo_read" -> R.string.tool_desc_todo_read
+    "ask_user_question" -> R.string.tool_desc_ask_user_question
+    "plugin_use" -> R.string.tool_desc_plugin_use
+    "android_help" -> R.string.tool_desc_android_help
+    "android_device_info" -> R.string.tool_desc_android_device_info
+    "android_battery_status" -> R.string.tool_desc_android_battery_status
+    "android_clipboard_read" -> R.string.tool_desc_android_clipboard_read
+    "android_clipboard_write" -> R.string.tool_desc_android_clipboard_write
+    "android_open_url" -> R.string.tool_desc_android_open_url
+    "android_list_apps" -> R.string.tool_desc_android_list_apps
+    "android_open_app" -> R.string.tool_desc_android_open_app
+    "android_open_settings" -> R.string.tool_desc_android_open_settings
+    "android_create_calendar_event" -> R.string.tool_desc_android_create_calendar_event
+    "android_set_alarm" -> R.string.tool_desc_android_set_alarm
+    "android_volume" -> R.string.tool_desc_android_volume
+    "android_accessibility_status" -> R.string.tool_desc_android_accessibility_status
+    "android_ui_tree" -> R.string.tool_desc_android_ui_tree
+    "android_ui_click" -> R.string.tool_desc_android_ui_click
+    "android_ui_set_text" -> R.string.tool_desc_android_ui_set_text
+    "android_ui_scroll" -> R.string.tool_desc_android_ui_scroll
+    "android_ui_tap" -> R.string.tool_desc_android_ui_tap
+    "android_ui_swipe" -> R.string.tool_desc_android_ui_swipe
+    "android_ui_ime_action" -> R.string.tool_desc_android_ui_ime_action
+    "android_ui_paste" -> R.string.tool_desc_android_ui_paste
+    "android_wait_for_idle" -> R.string.tool_desc_android_wait_for_idle
+    "android_global_action" -> R.string.tool_desc_android_global_action
+    "android_screenshot" -> R.string.tool_desc_android_screenshot
+    "android_step" -> R.string.tool_desc_android_step
+    "android_notifications" -> R.string.tool_desc_android_notifications
+    "android_notification_action" -> R.string.tool_desc_android_notification_action
+    "android_media_control" -> R.string.tool_desc_android_media_control
+    "subagent" -> R.string.tool_desc_subagent
     else -> 0
 }
 

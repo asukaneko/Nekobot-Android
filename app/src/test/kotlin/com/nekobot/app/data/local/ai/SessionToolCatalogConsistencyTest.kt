@@ -13,6 +13,9 @@ import org.junit.Test
  * 1. `android_step` 有实现、有开关，但没有 schema —— 模型永远看不到它；
  * 2. `save_to_memory` / `read_memory` / `workspace_skill_copy` 有 schema、有开关，
  *    但没有执行分派 —— 用户关掉它没有任何效果。
+ *
+ * 第 2 类的三个死条目已从 `BuiltinTools` 中删除，并由
+ * `LocalRepository.ensureBuiltinTools()` 负责清理数据库中已写入的历史残留行。
  */
 class SessionToolCatalogConsistencyTest {
 
@@ -42,6 +45,19 @@ class SessionToolCatalogConsistencyTest {
     fun `会话工具集目录覆盖全部会话工具`() {
         val unmanaged = executableIds() - SessionToolCatalog.staticToolIds
         assertTrue("以下工具不在目录中，用户无法关闭它们: $unmanaged", unmanaged.isEmpty())
+    }
+
+    /**
+     * 反向漂移守卫：`BuiltinTools` 里的定义必须真的可执行。
+     *
+     * 只有定义、没有执行实现的条目会被 `ensureBuiltinTools()` 写进数据库并显示在 Tools 页面，
+     * 但模型看不到、用户也关不掉（`save_to_memory` / `read_memory` / `workspace_skill_copy`
+     * 就是这类死条目）。要么补上执行分派并登记进目录，要么从 `BuiltinTools` 中删除。
+     */
+    @Test
+    fun `内置工具定义都有对应的可执行实现`() {
+        val dead = BuiltinTools.all.map { it.id }.toSet() - executableIds()
+        assertTrue("以下 BuiltinTools 定义没有执行实现，属于死条目，应从 BuiltinTools 删除: $dead", dead.isEmpty())
     }
 
     @Test

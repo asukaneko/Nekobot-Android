@@ -391,27 +391,6 @@ object BuiltinTools {
             )
         ),
         BuiltinToolSpec(
-            id = "save_to_memory",
-            name = "保存到记忆",
-            description = "将指定内容保存到角色长期记忆中。",
-            parametersJson = params(
-                mapOf(
-                    "key" to mapOf("type" to "string", "description" to "记忆键"),
-                    "content" to mapOf("type" to "string", "description" to "记忆内容")
-                ),
-                listOf("key", "content")
-            )
-        ),
-        BuiltinToolSpec(
-            id = "read_memory",
-            name = "读取记忆",
-            description = "从角色长期记忆中读取指定键的内容。",
-            parametersJson = params(
-                mapOf("key" to mapOf("type" to "string", "description" to "记忆键")),
-                listOf("key")
-            )
-        ),
-        BuiltinToolSpec(
             id = "exec_command",
             name = "在 Linux 沙盒执行命令",
             description = "在共享的 Alpine Linux 沙盒中执行命令。当前会话工作区挂载为 /workspace；cwd、环境变量、已安装软件和后台进程会在同一会话后续调用中保留。不同会话使用不同 /workspace，但共享 rootfs。高风险命令仍需用户确认。构建、下载、批处理等长命令请设置 background=true 让它在后台跑，再用 shell_job 查询输出，避免占住工具循环。",
@@ -607,15 +586,6 @@ object BuiltinTools {
             parametersJson = params(
                 mapOf("path" to mapOf("type" to "string", "description" to "文件路径。使用 shared://filename 查询共享工作区文件，或直接使用相对路径查询当前会话工作区文件")),
                 listOf("path")
-            )
-        ),
-        BuiltinToolSpec(
-            id = "workspace_skill_copy",
-            name = "工作区-技能复制",
-            description = "复制一个已有技能的定义到工作区进行编辑。",
-            parametersJson = params(
-                mapOf("skill_id" to mapOf("type" to "string", "description" to "要复制的技能 ID")),
-                listOf("skill_id")
             )
         )
     )
