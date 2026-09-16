@@ -264,14 +264,21 @@ private fun DashboardBanner(data: SessionStatsDashboardData) {
                 fontWeight = FontWeight.Bold
             )
             Spacer(Modifier.height(18.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // 数据较长时（如超大 Token 数、长语言文案）允许横向滚动，
+            // 保证两枚 chip 始终按内容宽度单行展示，不会把「连续活跃」挤压换行
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 DashboardBannerChip(
                     icon = Icons.Filled.AutoGraph,
-                    text = stringResource(R.string.stats_banner_tokens, formatCompactNumber(data.totalTokens))
+                    text = stringResource(R.string.stats_banner_tokens, formatCompactNumber(data.totalTokens)),
+                    modifier = Modifier.weight(1f, fill = false)
                 )
                 DashboardBannerChip(
                     icon = Icons.Filled.LocalFireDepartment,
-                    text = stringResource(R.string.stats_banner_streak, data.streakDays)
+                    text = stringResource(R.string.stats_banner_streak, data.streakDays),
+                    modifier = Modifier.weight(1f, fill = false)
                 )
             }
             Spacer(Modifier.height(14.dp))
@@ -317,15 +324,23 @@ private fun DashboardBanner(data: SessionStatsDashboardData) {
 }
 
 @Composable
-private fun DashboardBannerChip(icon: ImageVector, text: String) {
-    Surface(shape = RoundedCornerShape(50), color = Color.White.copy(alpha = 0.16f)) {
+private fun DashboardBannerChip(icon: ImageVector, text: String, modifier: Modifier = Modifier) {
+    Surface(modifier = modifier, shape = RoundedCornerShape(50), color = Color.White.copy(alpha = 0.16f)) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
             Spacer(Modifier.width(5.dp))
-            Text(text, style = MaterialTheme.typography.labelMedium, color = Color.White, fontWeight = FontWeight.SemiBold)
+            Text(
+                text,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -1091,6 +1106,7 @@ private fun dashboardWidgetDescriptors(): Map<String, Pair<String, ImageVector>>
 )
 
 internal fun formatCompactNumber(value: Long): String = when {
+    value >= 1_000_000_000_000L -> String.format(Locale.US, "%.1fT", value / 1_000_000_000_000.0)
     value >= 1_000_000_000L -> String.format(Locale.US, "%.1fB", value / 1_000_000_000.0)
     value >= 1_000_000L -> String.format(Locale.US, "%.1fM", value / 1_000_000.0)
     value >= 1_000L -> String.format(Locale.US, "%.1fK", value / 1_000.0)
