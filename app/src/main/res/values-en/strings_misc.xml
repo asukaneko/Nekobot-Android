@@ -83,6 +83,7 @@
     <string name="tokens_source_stt">Speech-to-text</string>
     <string name="tokens_source_rule">Rule review</string>
     <string name="tokens_source_heartbeat">Heartbeat</string>
+    <string name="tokens_source_life_sim">Life simulation</string>
 
     <!-- ==================== Lorebook screen ==================== -->
     <string name="worldbook_title">Lorebook</string>

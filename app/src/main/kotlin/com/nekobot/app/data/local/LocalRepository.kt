@@ -1884,8 +1884,11 @@ class LocalRepository(
      * 「同步现实时间」后台静默心跳调度。
      *
      * 对齐原仓库 `_toggle_life_sim_heartbeat` + `SessionHeartbeatManager`：
-     * 开启同步现实时间的会话注册一条静默定时任务，按 [LifeSimulator.INTERVAL_MINUTES]
+     * 开启同步现实时间的会话注册一条静默定时任务，按 [LifeSimulator.effectiveIntervalMinutes]
      * 在后台生成角色独处时的生活片段（不向会话发送任何消息，也就不打扰用户）。
+     *
+     * 间隔随会话闲置时长按二进制指数增长（对齐原仓库退避策略），用户重新发言后回到基线，
+     * 避免长时间无人时持续消耗 token。
      *
      * 基线与主动聊天不同：只看上次生成时间，用户是否在场不影响节奏
      * （用户活跃时聊天链路的懒触发会命中同一个时间戳，两边不会重复生成）。
@@ -1901,14 +1904,17 @@ class LocalRepository(
             return
         }
         val characterId = session.characterId ?: return
-        val lastRun = try {
+        val scene = try {
             com.nekobot.app.data.local.ai.LocalCharacterStateRepository(db.characterStateDao())
-                .get(characterId, session.id)?.scene?.get("life_sim_last_run") as? String
+                .get(characterId, session.id)?.scene
         } catch (e: Exception) {
             null
         }
+        val lastRun = scene?.get(com.nekobot.app.data.local.ai.LifeSimulator.SCENE_KEY_LAST_RUN) as? String
         val baseline = parseStoredInstant(lastRun)
-        val dueAt = baseline?.plusSeconds(com.nekobot.app.data.local.ai.LifeSimulator.INTERVAL_MINUTES * 60L)
+        val intervalMinutes = com.nekobot.app.data.local.ai.LifeSimulator
+            .effectiveIntervalMinutes(com.nekobot.app.data.local.ai.LifeSimulator.sceneBackoff(scene))
+        val dueAt = baseline?.plusSeconds(intervalMinutes * 60L)
             ?: now
         automationScheduler?.scheduleLifeSim(
             sessionId = session.id,
@@ -1948,11 +1954,14 @@ class LocalRepository(
 
     /**
      * 生成一次角色生活片段（life_sim）并写入 MemoryFS，更新
-     * `life_sim_last_run` / `current_activity`。
+     * `life_sim_last_run` / `current_activity` / 退避计数。
      *
      * 两条触发路径共用：
      * 1. 聊天前懒触发——用户发消息时若已超过间隔则补生成；
      * 2. 后台静默心跳——WorkManager 定时触发（见 [scheduleLifeSimSession]）。
+     *
+     * 间隔按二进制指数退避增长（对齐原仓库 SessionHeartbeatManager）：
+     * 用户在上次生成之后重新发言则退避归零，否则每次递增，最长 8 小时。
      *
      * @return 生成的活动标签；未到间隔、无角色或生成失败时为空字符串
      */
@@ -1966,16 +1975,32 @@ class LocalRepository(
 
         val stateRepo = com.nekobot.app.data.local.ai.LocalCharacterStateRepository(db.characterStateDao())
         val state = stateRepo.get(character.id, sessionId)
-        val lastRun = state?.scene?.get("life_sim_last_run") as? String
-        if (!com.nekobot.app.data.local.ai.LifeSimulator.shouldTrigger(lastRun)) return ""
+        val scene = state?.scene ?: emptyMap()
+        val lastRun = scene[com.nekobot.app.data.local.ai.LifeSimulator.SCENE_KEY_LAST_RUN] as? String
+        val backoff = com.nekobot.app.data.local.ai.LifeSimulator.sceneBackoff(scene)
+        if (!com.nekobot.app.data.local.ai.LifeSimulator.shouldTrigger(lastRun, backoff)) return ""
 
-        // 构建角色卡文本
+        // 用户活跃判定：与上次生成时记录的用户活动时间比较（对齐原仓库 backoff 重置逻辑）
+        val latestUserAt = messageDao.latestUserBySession(sessionId)?.let {
+            parseStoredInstant(it.createdAt) ?: parseStoredInstant(it.timestamp)
+        }
+        val previousUserAt = parseStoredInstant(
+            scene[com.nekobot.app.data.local.ai.LifeSimulator.SCENE_KEY_LAST_USER_ACTIVITY] as? String
+        )
+        val userActiveSinceLastRun =
+            latestUserAt != null && (previousUserAt == null || latestUserAt.isAfter(previousUserAt))
+
+        // 构建角色卡文本（单字段截断，避免角色卡越长每次心跳 prompt 越大）
         val profileText = buildString {
             append("【角色名】${character.name}")
-            character.description?.takeIf { it.isNotBlank() }?.let { append("\n【描述】$it") }
-            character.personality?.takeIf { it.isNotBlank() }?.let { append("\n【性格】$it") }
-            character.scenario?.takeIf { it.isNotBlank() }?.let { append("\n【场景】$it") }
-            character.systemPrompt?.takeIf { it.isNotBlank() }?.let { append("\n【系统提示词】$it") }
+            character.description?.takeIf { it.isNotBlank() }
+                ?.let { append("\n【描述】${it.take(LIFE_SIM_PROFILE_FIELD_CHARS)}") }
+            character.personality?.takeIf { it.isNotBlank() }
+                ?.let { append("\n【性格】${it.take(LIFE_SIM_PROFILE_FIELD_CHARS)}") }
+            character.scenario?.takeIf { it.isNotBlank() }
+                ?.let { append("\n【场景】${it.take(LIFE_SIM_PROFILE_FIELD_CHARS)}") }
+            character.systemPrompt?.takeIf { it.isNotBlank() }
+                ?.let { append("\n【系统提示词】${it.take(LIFE_SIM_PROFILE_FIELD_CHARS)}") }
         }
 
         // 收集最近用户消息（仅用于了解用户身份）
@@ -1999,7 +2024,7 @@ class LocalRepository(
             profileText = profileText,
             circadianState = circadianState,
             recentMessages = recentMessages
-        ) { input, output, model, actualModel ->
+        ) { input, output, model, actualModel, estimated ->
             appendTokenUsageRecord(
                 sessionId = sessionId,
                 model = model,
@@ -2007,12 +2032,13 @@ class LocalRepository(
                 inputTokens = input,
                 outputTokens = output,
                 timestamp = nowIsoTimestamp(),
-                source = "web",
-                purpose = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_HEARTBEAT
+                source = "life_sim",
+                purpose = com.nekobot.app.data.local.ai.TokenStatsManager.PURPOSE_HEARTBEAT,
+                estimated = estimated
             )
         }
 
-        // 更新 CharacterState.scene（life_sim_last_run + current_activity）
+        // 更新 CharacterState.scene（life_sim_last_run + current_activity + 退避计数）
         val currentState = state ?: com.nekobot.app.data.local.ai.CharacterState(
             characterId = character.id,
             scopeId = sessionId
@@ -2020,6 +2046,16 @@ class LocalRepository(
         val newScene = currentState.scene.toMutableMap().apply {
             put("life_sim_last_run", java.time.LocalDateTime.now()
                 .format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME))
+            put(
+                com.nekobot.app.data.local.ai.LifeSimulator.SCENE_KEY_BACKOFF,
+                com.nekobot.app.data.local.ai.LifeSimulator.nextBackoff(backoff, userActiveSinceLastRun)
+            )
+            latestUserAt?.let {
+                put(
+                    com.nekobot.app.data.local.ai.LifeSimulator.SCENE_KEY_LAST_USER_ACTIVITY,
+                    it.toString()
+                )
+            }
             if (activity.isNotBlank()) {
                 put("current_activity", activity)
                 put("activity_source", "heartbeat_ai")
@@ -4789,12 +4825,16 @@ class LocalRepository(
 
             val raw = prefs.getString("records", "[]") ?: "[]"
             val parsed = runCatching { parseTokenUsageRecords(raw) }
+            val existingRecords = parsed.getOrDefault(emptyList())
+            // 历史 life_sim 心跳记录来源误标为 web（界面显示「联网搜索」），读取时一次性纠正
+            val legacySourceFixed =
+                com.nekobot.app.data.local.ai.normalizeLegacyHeartbeatSource(existingRecords)
             val reconciliation = reconcileLocalTokenUsageRecords(
-                records = parsed.getOrDefault(emptyList()),
+                records = existingRecords,
                 messages = messages
             )
             val normalized = reconciliation.records.takeLast(5000)
-            val needsWrite = parsed.isFailure || reconciliation.changed ||
+            val needsWrite = parsed.isFailure || reconciliation.changed || legacySourceFixed ||
                 normalized.size != reconciliation.records.size
 
             if (needsWrite) {
@@ -9249,6 +9289,9 @@ ${AiOutputLanguage.directive()}
         private const val JM_ESTIMATED_BYTES_PER_PAGE = 650L * 1024L
         private const val JM_REQUIRED_FREE_RESERVE = 128L * 1024L * 1024L
         private const val JM_MINIMUM_REMAINING_BYTES = 96L * 1024L * 1024L
+
+        /** life_sim 心跳 prompt 中角色卡单字段截断长度（对齐原仓库 200 字符） */
+        private const val LIFE_SIM_PROFILE_FIELD_CHARS = 200
 
         /** 静态时间戳工具（供 LocalPipelineCallbacks 等外部类使用） */
         fun nowIsoStatic(): String =

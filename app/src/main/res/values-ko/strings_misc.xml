@@ -82,6 +82,7 @@
     <string name="tokens_source_stt">음성 텍스트 변환</string>
     <string name="tokens_source_rule">규칙 검토</string>
     <string name="tokens_source_heartbeat">하트비트</string>
+    <string name="tokens_source_life_sim">생활 시뮬레이션</string>
 
     <!-- ==================== 세계관 설정 화면 ==================== -->
     <string name="worldbook_title">세계관 설정</string>

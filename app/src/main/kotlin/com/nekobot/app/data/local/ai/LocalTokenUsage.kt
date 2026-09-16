@@ -74,6 +74,28 @@ internal data class LocalContextTokenMessage(
     val outputTokens: Int?
 )
 
+/**
+ * 修正历史 life_sim 心跳记录的来源标签。
+ *
+ * 早期版本把 life_sim 心跳的 `source` 误写成 `"web"`，Token 记录界面因此显示成「联网搜索」；
+ * 用途本就是 heartbeat，据此把它改回 `"life_sim"`。
+ *
+ * @return 是否发生了修正（供调用方决定是否回写）
+ */
+internal fun normalizeLegacyHeartbeatSource(records: List<JsonObject>): Boolean {
+    var changed = false
+    records.forEach { record ->
+        if (
+            record.stringValue("purpose") == TokenStatsManager.PURPOSE_HEARTBEAT &&
+            record.stringValue("source") == "web"
+        ) {
+            record.addProperty("source", "life_sim")
+            changed = true
+        }
+    }
+    return changed
+}
+
 /** Room 中可用于补回 token 明细的 assistant 消息快照。 */
 internal data class LocalPersistedTokenMessage(
     val id: String,

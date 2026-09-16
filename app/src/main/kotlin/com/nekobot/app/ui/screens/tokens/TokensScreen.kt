@@ -1605,6 +1605,7 @@ private fun sourceLabel(source: String): String = when (source.lowercase()) {
     "stt" -> ServiceContainer.getString(R.string.tokens_source_stt)
     "rule" -> ServiceContainer.getString(R.string.tokens_source_rule)
     "heartbeat" -> ServiceContainer.getString(R.string.tokens_source_heartbeat)
+    "life_sim" -> ServiceContainer.getString(R.string.tokens_source_life_sim)
     else -> source
 }
 

@@ -110,6 +110,8 @@ class MemoryFS(
         private const val TIMELINE_MAX_TOTAL = 10
         // life_sim 注入策略
         private const val MAX_LIFE_SIM_INJECT = 5
+        // 单条生活片段注入长度上限（写入侧已截断，这里防止导入的旧数据过长挤占上下文）
+        private const val MAX_LIFE_SIM_ENTRY_CHARS = 400
     }
 
     /**
@@ -231,7 +233,7 @@ class MemoryFS(
         val sorted = entries.sortedByDescending { it.updatedAt ?: it.createdAt }.take(MAX_LIFE_SIM_INJECT)
         val lines = sorted.map { entry ->
             val title = entry.title.trim()
-            val content = entry.content.trim()
+            val content = entry.content.trim().take(MAX_LIFE_SIM_ENTRY_CHARS)
             if (title.isNotEmpty()) "- [$title] $content" else "- $content"
         }
         return "【角色生活片段】（用户不在场时的独处活动）\n${lines.joinToString("\n")}"

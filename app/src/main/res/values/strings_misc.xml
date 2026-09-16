@@ -83,6 +83,7 @@
     <string name="tokens_source_stt">语音识别</string>
     <string name="tokens_source_rule">规则审查</string>
     <string name="tokens_source_heartbeat">心跳</string>
+    <string name="tokens_source_life_sim">生活模拟</string>
 
     <!-- ==================== 世界书页 ==================== -->
     <string name="worldbook_title">世界书</string>

@@ -25,6 +25,23 @@ class LocalTokenUsageTest {
         assertFalse(result.estimated)
     }
 
+    /**
+     * OpenAI 兼容协议在 LocalAiClient 里被归一化为 prompt/completion/total 短键；
+     * life_sim 心跳曾只认 prompt_tokens/input_tokens，导致 token 记录恒为 0。
+     */
+    @Test
+    fun `openai short usage aliases are resolved instead of recorded as zero`() {
+        val result = resolveLocalTokenUsage(
+            usage = mapOf("prompt" to 900, "completion" to 120, "total" to 1020),
+            messages = listOf(mapOf("role" to "user", "content" to "不该走估算")),
+            outputText = "不该走估算"
+        )
+
+        assertEquals(900, result.inputTokens)
+        assertEquals(120, result.outputTokens)
+        assertFalse(result.estimated)
+    }
+
     @Test
     fun `missing usage falls back to request and response estimate`() {
         val result = resolveLocalTokenUsage(
@@ -36,6 +53,42 @@ class LocalTokenUsageTest {
         assertTrue(result.inputTokens > 0)
         assertEquals(1, result.outputTokens)
         assertTrue(result.estimated)
+    }
+
+    /** 历史 life_sim 心跳记录来源被误标为 web（界面显示「联网搜索」），读取时应纠正为 life_sim。 */
+    @Test
+    fun `legacy heartbeat records stop being labelled as web search`() {
+        val legacyLifeSim = JsonObject().apply {
+            addProperty("purpose", TokenStatsManager.PURPOSE_HEARTBEAT)
+            addProperty("source", "web")
+        }
+        val realWebSearch = JsonObject().apply {
+            addProperty("purpose", TokenStatsManager.PURPOSE_UTILITY)
+            addProperty("source", "web")
+        }
+        val alreadyFixed = JsonObject().apply {
+            addProperty("purpose", TokenStatsManager.PURPOSE_HEARTBEAT)
+            addProperty("source", "life_sim")
+        }
+
+        val changed = normalizeLegacyHeartbeatSource(listOf(legacyLifeSim, realWebSearch, alreadyFixed))
+
+        assertTrue(changed)
+        assertEquals("life_sim", legacyLifeSim.get("source").asString)
+        // 真正的联网搜索记录不能被改写
+        assertEquals("web", realWebSearch.get("source").asString)
+        assertEquals("life_sim", alreadyFixed.get("source").asString)
+    }
+
+    @Test
+    fun `records without legacy heartbeat source are left untouched`() {
+        val record = JsonObject().apply {
+            addProperty("purpose", TokenStatsManager.PURPOSE_CHAT)
+            addProperty("source", "web")
+        }
+
+        assertFalse(normalizeLegacyHeartbeatSource(listOf(record)))
+        assertEquals("web", record.get("source").asString)
     }
 
     @Test

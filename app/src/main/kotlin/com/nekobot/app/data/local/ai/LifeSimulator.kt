@@ -26,21 +26,72 @@ object LifeSimulator {
     /** life_sim 生成间隔（分钟），对齐原仓库默认 60 分钟 */
     const val INTERVAL_MINUTES = 60L
 
+    /**
+     * 二进制指数退避上限（对齐原仓库 `nbot/gateway/heartbeat.py` 的 `MAX_BACKOFF = 4`）。
+     * 会话闲置越久生成越稀疏，避免持续消耗 token。
+     */
+    const val MAX_BACKOFF = 4
+
+    /** 实际间隔硬上限 8 小时（对齐原仓库 changelog：`interval_minutes * 2^min(backoff, 4)`，上限 8 小时） */
+    const val MAX_INTERVAL_MINUTES = 8 * 60L
+
     /** life_sim 单会话最大持久化条目数（对齐原仓库 _MAX_LIFE_SIM_ENTRIES） */
     private const val MAX_LIFE_SIM_ENTRIES = 10
+
+    /** 单个 life_sim 文件的总字符上限（对齐原仓库 _MAX_MEMORY_FILE_CHARS） */
+    private const val MAX_LIFE_SIM_FILE_CHARS = 4000
+
+    /** 单条生活片段正文上限（prompt 只要求 50-100 字，这里是防御性截断） */
+    private const val MAX_LIFE_SIM_CONTENT_CHARS = 500
+
+    /** 参考信息（角色卡字段/历史消息/近期经历）单条截断长度（对齐原仓库 200 字符） */
+    private const val REFERENCE_TEXT_CHARS = 200
+
+    /** 参考的用户历史消息条数（对齐原仓库 5-6 条） */
+    private const val REFERENCE_MESSAGE_COUNT = 5
+
+    // CharacterState.scene 中的 life_sim 运行时字段
+    const val SCENE_KEY_LAST_RUN = "life_sim_last_run"
+    const val SCENE_KEY_BACKOFF = "life_sim_backoff"
+    const val SCENE_KEY_LAST_USER_ACTIVITY = "life_sim_last_user_activity"
+
+    /**
+     * 二进制指数退避后的实际间隔（分钟）：`INTERVAL_MINUTES * 2^min(backoff, MAX_BACKOFF)`，
+     * 并以 [MAX_INTERVAL_MINUTES] 兜底（对齐原仓库 heartbeat.py `_is_due`）。
+     */
+    fun effectiveIntervalMinutes(backoffCount: Int): Long {
+        val factor = 1L shl backoffCount.coerceIn(0, MAX_BACKOFF)
+        return (INTERVAL_MINUTES * factor).coerceAtMost(MAX_INTERVAL_MINUTES)
+    }
+
+    /** 读取会话 scene 中持久化的退避计数（JSON 回读后数字为 Double，故用 Number 兜底） */
+    fun sceneBackoff(scene: Map<String, Any>?): Int =
+        (scene?.get(SCENE_KEY_BACKOFF) as? Number)?.toInt()?.coerceIn(0, MAX_BACKOFF) ?: 0
+
+    /**
+     * 计算下一次退避计数（对齐原仓库 `SessionHeartbeatManager.execute_session`）：
+     * 用户在上次生成之后重新活跃 → 归零回到基线间隔；否则递增（上限 [MAX_BACKOFF]）。
+     */
+    fun nextBackoff(currentBackoff: Int, userActiveSinceLastRun: Boolean): Int =
+        if (userActiveSinceLastRun) 0 else (currentBackoff + 1).coerceAtMost(MAX_BACKOFF)
 
     /**
      * 检查是否需要触发生成。
      *
      * @param lastRunIso 上次生成时间（ISO 字符串），空表示从未生成
+     * @param backoffCount 当前退避计数（会话闲置越久越大，见 [effectiveIntervalMinutes]）
      * @param now 当前时间
      * @return true 表示需要触发
      */
-    fun shouldTrigger(lastRunIso: String?, now: LocalDateTime = LocalDateTime.now()): Boolean {
+    fun shouldTrigger(
+        lastRunIso: String?,
+        backoffCount: Int = 0,
+        now: LocalDateTime = LocalDateTime.now()
+    ): Boolean {
         if (lastRunIso.isNullOrBlank()) return true
         val last = parseDateTime(lastRunIso) ?: return true
         val elapsedMinutes = java.time.Duration.between(last, now).toMinutes()
-        return elapsedMinutes >= INTERVAL_MINUTES
+        return elapsedMinutes >= effectiveIntervalMinutes(backoffCount)
     }
 
     /**
@@ -134,7 +185,7 @@ object LifeSimulator {
      * @param circadianState 昼夜状态（来自 TimeContext.buildCircadianState）
      * @param recentMessages 最近用户消息列表（用于参考信息）
      * @param onTokenRecorded token 用量回调
-     *        参数：input, output, model（配置名）, actualModel（实际模型标识，用于排行榜聚合）
+     *        参数：input, output, model（配置名）, actualModel（实际模型标识，用于排行榜聚合）, estimated（是否为估算值）
      * @return 生成的活动标签（如"在厨房煮咖啡"），空字符串表示生成失败
      */
     suspend fun generateAndPersist(
@@ -148,7 +199,8 @@ object LifeSimulator {
         profileText: String,
         circadianState: Map<String, Any>,
         recentMessages: List<String>,
-        onTokenRecorded: (input: Int, output: Int, model: String, actualModel: String) -> Unit = { _, _, _, _ -> }
+        onTokenRecorded: (input: Int, output: Int, model: String, actualModel: String, estimated: Boolean) -> Unit =
+            { _, _, _, _, _ -> }
     ): String {
         if (characterId.isBlank() || conversationId.isBlank()) return ""
 
@@ -159,8 +211,11 @@ object LifeSimulator {
             // 收集近期经历：优先读本会话之前的 life_sim（最近 5 条），兜底 timeline
             val timelineText = collectTimeline(memoryDao, characterId, conversationId)
 
-            // 用户最近对话历史（仅用于了解用户身份）
-            val recentText = recentMessages.takeLast(5).joinToString("\n").ifBlank { "（暂无对话历史）" }
+            // 用户最近对话历史（仅用于了解用户身份，单条截断，避免上下文膨胀）
+            val recentText = recentMessages
+                .takeLast(REFERENCE_MESSAGE_COUNT)
+                .joinToString("\n") { it.trim().take(REFERENCE_TEXT_CHARS) }
+                .ifBlank { "（暂无对话历史）" }
 
             // 构建 prompt 并调用 LLM
             val messages = buildLifeSimPrompt(profileText, circadianText, timelineText, recentText, phase)
@@ -172,7 +227,8 @@ object LifeSimulator {
                 return ""
             }
 
-            val content = result.content.trim()
+            // 防御性截断：模型偶尔会写成长文，超出部分不落库，避免记忆文件持续膨胀
+            val content = result.content.trim().take(MAX_LIFE_SIM_CONTENT_CHARS)
             if (content.isBlank()) {
                 LocalLogger.w(TAG, "life_sim 生成内容为空")
                 return ""
@@ -211,19 +267,28 @@ object LifeSimulator {
             )
             memoryDao.upsert(entity)
 
-            // 截断：保留最新 MAX_LIFE_SIM_ENTRIES 条
+            // 截断：条目数上限 + 文件总字符上限（对齐原仓库 _truncate_entries）
             try {
-                memoryDao.trimByPath(lifeSimPath, keep = MAX_LIFE_SIM_ENTRIES)
+                trimLifeSimFile(memoryDao, lifeSimPath)
             } catch (e: Exception) {
                 LocalLogger.w(TAG, "life_sim 截断失败: ${e.message}")
             }
 
-            // 记录 token 用量
-            val usage = result.usage
-            if (usage.isNotEmpty()) {
-                val input = (usage["prompt_tokens"] ?: usage["input_tokens"] ?: 0) as Int
-                val output = (usage["completion_tokens"] ?: usage["output_tokens"] ?: 0) as Int
-                onTokenRecorded(input, output, usedModel.name, usedModel.model)
+            // 记录 token 用量：不同协议 usage 键名不同（prompt/completion vs *_tokens），
+            // 接口未返回 usage 时按请求与回复估算，避免记录成 0。
+            val usage = resolveLocalTokenUsage(
+                usage = result.usage,
+                messages = messages,
+                outputText = content
+            )
+            if (usage.inputTokens > 0 || usage.outputTokens > 0) {
+                onTokenRecorded(
+                    usage.inputTokens,
+                    usage.outputTokens,
+                    usedModel.name,
+                    usedModel.model,
+                    usage.estimated
+                )
             }
 
             LocalLogger.i(TAG, "life_sim 生成成功 | char=$characterId | conv=$conversationId | activity=$activity | contentLen=${content.length}")
@@ -232,6 +297,27 @@ object LifeSimulator {
             LocalLogger.w(TAG, "life_sim 生成异常: ${e.message}", e)
             return ""
         }
+    }
+
+    /**
+     * 截断 life_sim 文件，避免记忆持续膨胀并挤占上下文：
+     * 1. 条目数不超过 [MAX_LIFE_SIM_ENTRIES]（对齐原仓库 `_MAX_LIFE_SIM_ENTRIES`）；
+     * 2. 文件总字符不超过 [MAX_LIFE_SIM_FILE_CHARS]（对齐原仓库 `_MAX_MEMORY_FILE_CHARS`，从旧到新丢弃）。
+     */
+    private suspend fun trimLifeSimFile(memoryDao: MemoryDao, path: String) {
+        memoryDao.trimByPath(path, keep = MAX_LIFE_SIM_ENTRIES)
+        val rows = memoryDao.listByPath(path).sortedByDescending { it.version }
+        var total = 0
+        val stale = mutableListOf<String>()
+        rows.forEach { row ->
+            val length = row.content.length + 1
+            if (total + length > MAX_LIFE_SIM_FILE_CHARS) {
+                stale.add(row.id)
+            } else {
+                total += length
+            }
+        }
+        stale.forEach { id -> runCatching { memoryDao.deleteById(id) } }
     }
 
     /**
@@ -250,8 +336,8 @@ object LifeSimulator {
             if (lifeSimEntries.isNotEmpty()) {
                 val lines = lifeSimEntries
                     .sortedByDescending { it.updatedAt ?: it.createdAt }
-                    .take(5)
-                    .map { it.content.trim() }
+                    .take(REFERENCE_MESSAGE_COUNT)
+                    .map { it.content.trim().take(REFERENCE_TEXT_CHARS) }
                 if (lines.isNotEmpty()) return lines.joinToString("\n")
             }
 
@@ -261,8 +347,8 @@ object LifeSimulator {
             if (timelineEntries.isNotEmpty()) {
                 val lines = timelineEntries
                     .sortedByDescending { it.updatedAt ?: it.createdAt }
-                    .take(5)
-                    .map { it.content.trim() }
+                    .take(REFERENCE_MESSAGE_COUNT)
+                    .map { it.content.trim().take(REFERENCE_TEXT_CHARS) }
                 if (lines.isNotEmpty()) return lines.joinToString("\n")
             }
 

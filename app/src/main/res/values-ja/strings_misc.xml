@@ -82,6 +82,7 @@
     <string name="tokens_source_stt">音声認識</string>
     <string name="tokens_source_rule">ルール審査</string>
     <string name="tokens_source_heartbeat">ハートビート</string>
+    <string name="tokens_source_life_sim">ライフシミュレーション</string>
 
     <!-- ==================== 世界観帳画面 ==================== -->
     <string name="worldbook_title">世界観帳</string>
