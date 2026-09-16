@@ -29,8 +29,8 @@
     <string name="tool_name_read_image">读取工作区图片</string>
     <string name="tool_name_save_to_memory">保存到记忆</string>
     <string name="tool_name_read_memory">读取记忆</string>
-    <string name="tool_name_agent_memory_read">读取全局记忆</string>
-    <string name="tool_name_agent_memory_update">编辑全局记忆</string>
+    <string name="tool_name_agent_memory_read">读取长期记忆</string>
+    <string name="tool_name_agent_memory_update">编辑长期记忆</string>
     <string name="tool_name_todo_write">任务列表</string>
     <string name="tool_name_todo_read">读取当前任务列表</string>
     <string name="tool_name_ask_user_question">向用户提问</string>

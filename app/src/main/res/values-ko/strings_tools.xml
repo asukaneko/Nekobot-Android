@@ -29,8 +29,8 @@
     <string name="tool_name_read_image">이미지 읽기</string>
     <string name="tool_name_save_to_memory">기억에 저장</string>
     <string name="tool_name_read_memory">기억 읽기</string>
-    <string name="tool_name_agent_memory_read">전역 기억 읽기</string>
-    <string name="tool_name_agent_memory_update">전역 기억 편집</string>
+    <string name="tool_name_agent_memory_read">장기 기억 읽기</string>
+    <string name="tool_name_agent_memory_update">장기 기억 편집</string>
     <string name="tool_name_todo_write">작업 목록</string>
     <string name="tool_name_todo_read">현재 작업 목록 읽기</string>
     <string name="tool_name_ask_user_question">사용자에게 질문</string>

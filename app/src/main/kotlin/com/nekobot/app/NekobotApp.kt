@@ -60,8 +60,8 @@ object ServiceContainer {
         private set
     internal lateinit var realtimeCredentialStore: RealtimeCredentialStore
         private set
-    /** 跨会话、跨本地数据库 Profile 的 Agent 长期记忆。 */
-    lateinit var globalAgentMemory: GlobalAgentMemoryStore
+    /** 跨会话共享、按当前本地数据库 Profile 隔离的 Agent 长期记忆。 */
+    var globalAgentMemory: GlobalAgentMemoryStore = GlobalAgentMemoryStore.emptyPlaceholder()
         private set
     lateinit var socket: SocketManager
         private set
@@ -104,6 +104,14 @@ object ServiceContainer {
     private val _characterChanged = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val characterChanged: SharedFlow<String> = _characterChanged
 
+    /** 待用户决定的「旧版全局记忆迁移」询问；null 表示没有需要询问的事项。 */
+    private val _pendingMemoryMigration = MutableStateFlow<PendingMemoryMigration?>(null)
+    val pendingMemoryMigration: StateFlow<PendingMemoryMigration?> = _pendingMemoryMigration.asStateFlow()
+
+    /** Agent 记忆内容变化事件流：迁移写入后通知已打开的页面重新读取。 */
+    private val _memoryChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 4)
+    val memoryChanged: SharedFlow<Unit> = _memoryChanged
+
     fun setPendingSessionId(id: String?) { _pendingSessionId.value = id }
 
     fun setPendingShare(share: IncomingShare?) { _pendingShare.value = share }
@@ -121,7 +129,7 @@ object ServiceContainer {
         appContext = app.applicationContext
         prefs = PrefsManager(app)
         realtimeCredentialStore = RealtimeCredentialStore(app)
-        globalAgentMemory = GlobalAgentMemoryStore(app)
+        bindGlobalAgentMemory(app, prefs.activeDbName)
         prefs.migrateSensitivePreferences()
         freezeLegacyPlotStoryProfiles(app)
         network = NetworkClient(prefs)
@@ -220,6 +228,7 @@ object ServiceContainer {
             NekobotDatabase.switchProfile(ctx, profileName)
             val db = NekobotDatabase.get(ctx, profileName)
             migrateLegacyPlotStoryProfile(ctx, profileName, db)
+            bindGlobalAgentMemory(ctx, profileName)
             localRepository = LocalRepository(db, LocalAiClient(), ctx)
             unified = UnifiedRepository(prefs, repository, localRepository, ctx)
             com.nekobot.app.data.local.AchievementManager.switchScope(achievementScopeId())
@@ -256,6 +265,90 @@ object ServiceContainer {
         } else {
             "server"
         }
+
+    /**
+     * 把 Agent 长期记忆绑定到指定数据库 Profile。
+     *
+     * 记忆不再跨数据库共享：每个 Profile 读写自己的 `agent/<profile>/global-memory.md`。
+     * 若该 Profile 尚无记忆文件、而旧版全局记忆有内容，则挂起一个待确认的迁移询问
+     * （见 [pendingMemoryMigration]），由 UI 弹窗让用户选择「迁移」或「留空」。
+     * 用户做出选择后不再询问，避免把用户刻意清空的 Profile 反复塞回旧内容。
+     */
+    private fun bindGlobalAgentMemory(context: android.content.Context, profileName: String) {
+        globalAgentMemory = GlobalAgentMemoryStore(context, profileName)
+        _pendingMemoryMigration.value = resolvePendingMemoryMigration(context, profileName)
+    }
+
+    /**
+     * 判断是否需要就旧版全局记忆的迁移询问用户。
+     *
+     * 只有同时满足以下条件才询问：
+     * 1. 还没问过（[PrefsManager.agentMemoryMigrationAsked] 为 false）；
+     * 2. 当前 Profile 没有记忆文件（从未有过，或用户已删库重建）；
+     * 3. 旧版全局记忆确实有内容可迁移。
+     *
+     * 注意判据是「文件不存在」而不是「内容为空」：用户主动清空后文件仍在，
+     * 不应该再被当成「需要迁移」。
+     */
+    private fun resolvePendingMemoryMigration(
+        context: android.content.Context,
+        profileName: String
+    ): PendingMemoryMigration? = runCatching {
+        if (prefs.agentMemoryMigrationAsked) return@runCatching null
+        val store = GlobalAgentMemoryStore(context, profileName)
+        if (store.exists()) return@runCatching null
+        val legacyContent = GlobalAgentMemoryStore.legacyStore(context).read().content
+        if (legacyContent.isBlank()) return@runCatching null
+        PendingMemoryMigration(
+            profileName = profileName,
+            legacyCharCount = legacyContent.length
+        )
+    }.onFailure {
+        com.nekobot.app.data.local.LocalLogger.e(
+            "GlobalAgentMemory",
+            "解析记忆迁移询问失败: ${it.message}",
+            it
+        )
+    }.getOrNull()
+
+    /**
+     * 应用用户对记忆迁移的选择，并记录「已询问」，此后不再询问。
+     *
+     * @param migrate true = 把旧版全局记忆内容拷贝到当前 Profile；false = 保持为空。
+     */
+    fun resolveMemoryMigration(migrate: Boolean) {
+        val pending = _pendingMemoryMigration.value ?: return
+        appContext?.let { ctx ->
+            runCatching {
+                if (migrate) {
+                    // 迁移期间用户可能切了 Profile，这里始终写回询问时那个 Profile 的文件，
+                    // 而不是当前绑定，避免把旧记忆写进用户刚切过去的库。
+                    val target = GlobalAgentMemoryStore(ctx, pending.profileName)
+                    if (!target.exists()) {
+                        val legacyContent = GlobalAgentMemoryStore.legacyStore(ctx).read().content
+                        if (legacyContent.isNotBlank()) target.replace(legacyContent)
+                    }
+                }
+            }.onFailure {
+                com.nekobot.app.data.local.LocalLogger.e(
+                    "GlobalAgentMemory",
+                    "旧全局记忆迁移失败: ${it.message}",
+                    it
+                )
+            }
+        }
+        prefs.agentMemoryMigrationAsked = true
+        _pendingMemoryMigration.value = null
+        // 迁移写入了文件，通知已打开的页面对齐到最新内容。
+        _dataSourceRevision.value += 1L
+        _memoryChanged.tryEmit(Unit)
+    }
+
+    /** 旧版全局记忆等待用户决定是否迁移到当前 Profile。 */
+    data class PendingMemoryMigration(
+        val profileName: String,
+        val legacyCharCount: Int
+    )
 
     /** 广播登录状态变化（登录成功 / 登出 / token 失效）。
      *  本地模式恒为已登录，不接受 false（避免本地模式被强制跳转登录页）。 */

@@ -29,8 +29,8 @@
     <string name="tool_name_read_image">画像を読む</string>
     <string name="tool_name_save_to_memory">記憶に保存</string>
     <string name="tool_name_read_memory">記憶を読む</string>
-    <string name="tool_name_agent_memory_read">グローバル記憶を読む</string>
-    <string name="tool_name_agent_memory_update">グローバル記憶を編集</string>
+    <string name="tool_name_agent_memory_read">長期メモリーを読む</string>
+    <string name="tool_name_agent_memory_update">長期メモリーを編集</string>
     <string name="tool_name_todo_write">タスクリスト</string>
     <string name="tool_name_todo_read">現在のタスク一覧を読み取る</string>
     <string name="tool_name_ask_user_question">ユーザーに質問</string>

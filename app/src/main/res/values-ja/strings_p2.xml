@@ -163,7 +163,7 @@
     <string name="more_system_operations">Agent システム操作</string>
     <string name="more_system_operations_desc">アクセシビリティ、通知の読み取り、スクリーンショット、メディア操作の権限</string>
     <string name="more_global_agent_memory">グローバル Agent メモリー</string>
-    <string name="more_global_agent_memory_desc">セッションをまたいで自動挿入される長期メモリーを表示・編集</string>
+    <string name="more_global_agent_memory_desc">現在のデータベース内でセッションをまたいで自動挿入される長期メモリーを表示・編集</string>
     <string name="system_ops_title">Agent システム操作</string>
     <string name="system_ops_intro">これらの機能は初期状態では無効で、Android のシステム設定から手動でのみ有効にできます。Agent が機密内容を読み取ったり操作を実行したりする際は、引き続きセッションごとの許可が表示されます。</string>
     <string name="system_ops_accessibility">アクセシビリティ</string>
@@ -177,7 +177,7 @@
     <string name="system_ops_status_connected">有効・接続済み</string>
     <string name="system_ops_status_waiting">有効、サービス接続待ち</string>
     <string name="system_ops_status_disabled">無効</string>
-    <string name="global_memory_intro">この内容は Agent セッションとローカルデータベースプロファイルをまたいで保存されます。</string>
+    <string name="global_memory_intro">ここに書いた内容は同じデータベースの Agent セッション間で共有され、現在のデータベースプロファイルと一緒に保存されます。</string>
     <string name="global_memory_label">長期的な設定、背景、継続事項</string>
     <string name="global_memory_placeholder">例：使用言語、プロジェクトの規約、長期目標…</string>
     <string name="global_memory_last_saved">最終保存：%1$s</string>
@@ -186,6 +186,11 @@
     <string name="global_memory_saved">保存しました。次の Agent リクエストから反映されます。</string>
     <string name="global_memory_read_failed">読み取りに失敗しました</string>
     <string name="global_memory_save_failed">保存に失敗しました</string>
+    <string name="memory_migration_title">長期メモリーの移行</string>
+    <string name="memory_migration_message">旧バージョンのグローバルメモリー（%1$d 文字）が見つかりました。現在のデータベースにはまだメモリーがありません。コピーしますか？</string>
+    <string name="memory_migration_hint">「空のままにする」を選ぶと以後は確認されず、自動書き込みも行われません。旧データは残るので、メモリーページからいつでも手動で貼り付けられます。</string>
+    <string name="memory_migration_migrate">コピーする</string>
+    <string name="memory_migration_keep_empty">空のままにする</string>
     <string name="abtest_section_title">A/B テスト</string>
     <string name="abtest_section_subtitle">モデルルーティングの比較実験を有効にし、指定した割合のリクエストを実験モデルへ振り分けます</string>
     <string name="abtest_explanation">有効にすると、スマートルーティングが指定した割合のリクエストを実験モデルへ割り当て、ルーティング履歴に A/B グループを記録して結果を比較できるようにします。</string>

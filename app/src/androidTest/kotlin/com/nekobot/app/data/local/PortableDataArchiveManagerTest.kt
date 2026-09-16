@@ -32,7 +32,10 @@ class PortableDataArchiveManagerTest {
     fun setUp() {
         manager = PortableDataArchiveManager(context)
         workspaceRoot = File(context.filesDir, "workspace/portable-test")
-        memoryFile = File(context.filesDir, "agent/global-memory.md")
+        memoryFile = com.nekobot.app.data.local.ai.GlobalAgentMemoryStore.memoryFileFor(
+            context,
+            com.nekobot.app.ServiceContainer.prefs.activeDbName
+        )
         originalMemory = memoryFile.takeIf(File::isFile)?.readBytes()
         originalRecentSessionsIncludeArchived = com.nekobot.app.ServiceContainer.prefs.recentSessionsIncludeArchived
         mergeSessionId = "portable-merge-${UUID.randomUUID()}"

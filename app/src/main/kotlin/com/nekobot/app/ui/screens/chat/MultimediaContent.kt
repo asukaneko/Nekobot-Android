@@ -139,8 +139,21 @@ private val PDF_EXTS = setOf("pdf")
 /** URL 正则 */
 private val URL_REGEX = Regex("""https?://[^\s<>"'\]]+""")
 
-/** HTML 标签检测正则（检测内容是否包含 HTML 标签）*/
-private val HTML_TAG_REGEX = Regex("""<(div|span|table|p|br|h[1-6]|ul|ol|li|a|img|b|i|strong|em)\b[^>]*>""", RegexOption.IGNORE_CASE)
+/**
+ * 完整 HTML 文档检测：整段内容本身就是一个 HTML 文档（省略 doctype 也认）。
+ *
+ * 只认"以 `<html>` 开头"这一种形态——AI 回复里出现 `<div>`、`<p>`、`<a>` 等
+ * 行内标签是常态（尤其是在讲解 HTML 时），过去按"包含标签"判定会把整条回复
+ * 丢进 WebView 渲染，用户看到的是渲染后的网页而不是回复原文。
+ */
+private val HTML_DOCUMENT_REGEX = Regex(
+    """^\s*(?:<!DOCTYPE\s+html[^>]*>\s*)?<html\b[^>]*>""",
+    RegexOption.IGNORE_CASE
+)
+
+/** 判断内容是否为一个完整的 HTML 文档（用于决定是否交给 WebView 渲染）。 */
+internal fun isFullHtmlDocument(content: String): Boolean =
+    HTML_DOCUMENT_REGEX.containsMatchIn(content)
 
 /** 文件引用正则：匹配 [File: filename] 或 [文件: filename] */
 private val FILE_REF_REGEX = Regex("""\[(?:File|文件):\s*([^\]]+)\]""")
@@ -166,7 +179,8 @@ private fun classifyUrl(url: String): SegmentType {
 /**
  * 将消息 content 解析为内容段列表。
  * 检测 content 中的 URL，按扩展名分类，剩余文本作为 TEXT 段。
- * 如果 content 本身包含 HTML 标签且没有多媒体 URL，将整个内容作为 HTML 段。
+ * 只有当 content 本身是一个完整的 HTML 文档（以 `<html>` 开头）且没有多媒体 URL 时，
+ * 才把整个内容作为 HTML 段交给 WebView；夹带零散 HTML 标签的普通回复走 TEXT 段。
  */
 fun parseContentSegments(content: String): List<ContentSegment> {
     if (content.isBlank()) return listOf(ContentSegment(type = SegmentType.TEXT, text = content))
@@ -199,13 +213,14 @@ fun parseContentSegments(content: String): List<ContentSegment> {
         return result
     }
 
-    val hasHtmlTag = HTML_TAG_REGEX.containsMatchIn(content)
+    val hasHtmlTag = isFullHtmlDocument(content)
 
     // 收集所有 URL 并分类
     val urlMatches = URL_REGEX.findAll(content).toList()
     val hasMediaUrl = urlMatches.any { classifyUrl(it.value).let { t -> t == SegmentType.IMAGE || t == SegmentType.VIDEO || t == SegmentType.AUDIO } }
 
-    // 如果包含 HTML 标签且没有图片/视频/音频 URL，整个内容作为 HTML 段
+    // 只有整段内容本身是完整 HTML 文档且没有图片/视频/音频 URL 时，才整段交给 WebView。
+    // 其余一律按 Markdown 文本渲染，避免把夹带 HTML 标签的普通回复渲染成网页。
     if (hasHtmlTag && !hasMediaUrl) {
         return listOf(ContentSegment(type = SegmentType.HTML, text = content))
     }

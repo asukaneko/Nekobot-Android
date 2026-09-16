@@ -10,6 +10,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.stream.JsonWriter
+import com.nekobot.app.data.local.ai.GlobalAgentMemoryStore
 import com.nekobot.app.data.local.db.NekobotDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -850,7 +851,11 @@ class PortableDataArchiveManager(private val context: Context) {
     private fun countFiles(root: File): Int =
         if (!root.isDirectory) 0 else root.walkTopDown().count { it.isFile && !Files.isSymbolicLink(it.toPath()) }
 
-    private fun globalMemoryFile() = File(appContext.filesDir, "agent/global-memory.md")
+    /** 当前 Profile 的全局 Agent 记忆文件；记忆按数据库 Profile 隔离存放。 */
+    private fun globalMemoryFile() = GlobalAgentMemoryStore.memoryFileFor(
+        appContext,
+        ServiceContainerProfile.activeName()
+    )
 
     private fun manifestJson(preview: PortableArchivePreview, databaseVersion: Int): ByteArray {
         val root = JsonObject().apply {

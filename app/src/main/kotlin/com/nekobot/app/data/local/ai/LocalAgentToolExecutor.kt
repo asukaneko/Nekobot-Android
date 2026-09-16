@@ -441,12 +441,12 @@ internal class LocalAgentToolExecutor(
     }
 
     private fun readGlobalAgentMemory(): Map<String, Any> {
-        val store = globalAgentMemoryStore ?: return failure("全局 Agent 记忆存储不可用")
+        val store = globalAgentMemoryStore ?: return failure("Agent 记忆存储不可用")
         return memorySnapshotResult(store.read())
     }
 
     private suspend fun updateGlobalAgentMemory(args: Map<String, Any>): Map<String, Any> {
-        val store = globalAgentMemoryStore ?: return failure("全局 Agent 记忆存储不可用")
+        val store = globalAgentMemoryStore ?: return failure("Agent 记忆存储不可用")
         val mode = args.string("mode").trim().lowercase(Locale.ROOT).ifBlank { "replace_text" }
         if (mode !in setOf("replace", "append", "replace_text", "clear")) {
             return failure("mode 只支持 replace、append、replace_text 或 clear")
@@ -468,7 +468,7 @@ internal class LocalAgentToolExecutor(
             onRequest = onConfirmationRequired
         )
         if (authorization == ExecAuthorization.Reject) {
-            return failure("用户拒绝修改全局 Agent 记忆")
+            return failure("用户拒绝修改 Agent 记忆")
         }
         val snapshot = when (mode) {
             "replace" -> store.replace(args.string("content"))

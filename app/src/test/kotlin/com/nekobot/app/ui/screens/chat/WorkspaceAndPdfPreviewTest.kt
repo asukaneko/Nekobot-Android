@@ -53,6 +53,48 @@ class WorkspaceAndPdfPreviewTest {
     }
 
     @Test
+    fun inlineHtmlTagsInRepliesStayAsText() {
+        // AI 回复里夹带零散 HTML 标签是常态，不能整条丢进 WebView 渲染成网页
+        val reply = "可以这样写：<div class=\"box\">内容</div>，注意闭合标签。"
+        val segments = parseContentSegments(reply)
+        assertTrue(segments.none { it.type == SegmentType.HTML })
+        assertEquals(reply, segments.filter { it.type == SegmentType.TEXT }.joinToString("") { it.text })
+
+        // 讲解 HTML 的长回复同样按文本渲染
+        val tutorial = """
+            示例：
+            <table>
+              <tr><td><b>键</b></td></tr>
+            </table>
+        """.trimIndent()
+        assertTrue(parseContentSegments(tutorial).none { it.type == SegmentType.HTML })
+    }
+
+    @Test
+    fun onlyFullHtmlDocumentsRenderInWebView() {
+        assertTrue(isFullHtmlDocument("<!DOCTYPE html>\n<html><body>hi</body></html>"))
+        assertTrue(isFullHtmlDocument("  <html lang=\"zh\"><body>hi</body></html>"))
+        assertTrue(isFullHtmlDocument("<HTML><body>hi</body></HTML>"))
+
+        val document = "<!DOCTYPE html><html><body><p>页面</p></body></html>"
+        val segments = parseContentSegments(document)
+        assertEquals(SegmentType.HTML, segments.single().type)
+
+        // 仅仅出现标签名不算文档
+        assertTrue(!isFullHtmlDocument("先说 <html> 标签的用法"))
+        assertTrue(!isFullHtmlDocument("<div>片段</div>"))
+        assertTrue(!isFullHtmlDocument("普通回复"))
+    }
+
+    @Test
+    fun fullHtmlDocumentStillYieldsToInlineMediaUrls() {
+        val content = "<html><body><img src=\"https://example.com/a.png\"></body></html>"
+        val segments = parseContentSegments(content)
+        assertTrue(segments.none { it.type == SegmentType.HTML })
+        assertTrue(segments.any { it.type == SegmentType.IMAGE })
+    }
+
+    @Test
     fun readTextPreviewTruncatesLongMarkdown() {
         val file = File.createTempFile("neko-md-preview", ".md")
         try {

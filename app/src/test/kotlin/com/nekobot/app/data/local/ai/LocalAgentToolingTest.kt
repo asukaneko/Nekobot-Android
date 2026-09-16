@@ -81,6 +81,83 @@ class LocalAgentToolingTest {
     }
 
     @Test
+    fun globalAgentMemoryFilesAreIsolatedPerDatabaseProfile() {
+        val root = Files.createTempDirectory("nekobot-memory-root").toFile()
+        try {
+            val defaultFile = GlobalAgentMemoryStore.memoryFileIn(root, "nekobot_local")
+            val otherFile = GlobalAgentMemoryStore.memoryFileIn(root, "work-profile")
+
+            // 不同 Profile 落在不同文件，同名 Profile 结果稳定
+            assertTrue(defaultFile.path != otherFile.path)
+            assertEquals(defaultFile.path, GlobalAgentMemoryStore.memoryFileIn(root, "nekobot_local").path)
+            assertEquals("global-memory.md", defaultFile.name)
+            assertEquals("work-profile", otherFile.parentFile!!.name)
+
+            // 旧版全局路径（profile 传 null）落在 agent/ 根下，仅用于一次性迁移
+            val legacy = GlobalAgentMemoryStore.memoryFileIn(root, null)
+            assertEquals("global-memory.md", legacy.name)
+            assertEquals(root.name, legacy.parentFile!!.name)
+            assertTrue(legacy.path != defaultFile.path)
+
+            // 写入互不干扰
+            GlobalAgentMemoryStore.forFile(defaultFile).replace("默认库记忆")
+            assertEquals("", GlobalAgentMemoryStore.forFile(otherFile).read().content)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun globalAgentMemoryProfileNamesAreSanitized() {
+        // 路径分隔符等非法字符不能穿透到目录层级
+        assertEquals("a_b_c", GlobalAgentMemoryStore.safeProfileDirName("a/b\\c"))
+        // 纯点号名字会被 trim 空，回落到 default，不会变成 "." / ".." 这样的目录穿越名
+        assertEquals("default", GlobalAgentMemoryStore.safeProfileDirName("  .. "))
+        assertEquals("default", GlobalAgentMemoryStore.safeProfileDirName("   "))
+        assertEquals("default", GlobalAgentMemoryStore.safeProfileDirName("..."))
+        assertTrue(GlobalAgentMemoryStore.safeProfileDirName("x".repeat(200)).length <= 64)
+        assertEquals("hidden", GlobalAgentMemoryStore.safeProfileDirName("..hidden.."))
+    }
+
+    @Test
+    fun clearedMemoryStaysEmptyAndIsNotTreatedAsMissing() {
+        val root = Files.createTempDirectory("nekobot-memory-cleared").toFile()
+        try {
+            val profileFile = GlobalAgentMemoryStore.memoryFileIn(root, "nekobot_local")
+            val store = GlobalAgentMemoryStore.forFile(profileFile)
+
+            // 从未写过：文件不存在，可以被视为"可迁移"
+            assertTrue(!store.exists())
+
+            // 用户主动清空后：文件仍在但内容为空，不能再被当成"缺失"而回填旧记忆
+            store.replace("")
+            assertTrue(store.exists())
+            assertEquals("", store.read().content)
+
+            // 有内容时同样算存在
+            store.replace("语言：中文")
+            assertTrue(store.exists())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun legacyStorePointsAtPreIsolationPath() {
+        val root = Files.createTempDirectory("nekobot-memory-legacy").toFile()
+        try {
+            // 旧路径与任意 Profile 路径都不重合，避免迁移来源被当成目标
+            val legacy = GlobalAgentMemoryStore.memoryFileIn(root, null)
+            val profile = GlobalAgentMemoryStore.memoryFileIn(root, "nekobot_local")
+            assertTrue(legacy.path != profile.path)
+            assertEquals("global-memory.md", legacy.name)
+            assertEquals(root.name, legacy.parentFile!!.name)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun globalAgentMemoryStoreSupportsReplaceAppendAndPreciseEdit() {
         val root = Files.createTempDirectory("nekobot-global-agent-memory").toFile()
         try {

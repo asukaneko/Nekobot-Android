@@ -128,7 +128,7 @@
     <string name="more_system_operations">Agent system operations</string>
     <string name="more_system_operations_desc">Accessibility, notification reading, screenshots, and media-control access</string>
     <string name="more_global_agent_memory">Global Agent memory</string>
-    <string name="more_global_agent_memory_desc">View and edit long-term memory automatically injected across sessions</string>
+    <string name="more_global_agent_memory_desc">View and edit long-term memory automatically injected across sessions in the current database</string>
     <string name="system_ops_title">Agent system operations</string>
     <string name="system_ops_intro">These capabilities are off by default and can only be enabled manually in Android system settings. The Agent still asks for session authorization whenever it reads sensitive content or performs an operation.</string>
     <string name="system_ops_accessibility">Accessibility</string>
@@ -142,7 +142,7 @@
     <string name="system_ops_status_connected">Enabled and connected</string>
     <string name="system_ops_status_waiting">Enabled, waiting for service</string>
     <string name="system_ops_status_disabled">Not enabled</string>
-    <string name="global_memory_intro">This content is saved across Agent sessions and local database profiles.</string>
+    <string name="global_memory_intro">This content is shared across Agent sessions in the same database and saved with the current database profile.</string>
     <string name="global_memory_label">Long-term preferences, background, and ongoing items</string>
     <string name="global_memory_placeholder">For example: preferred language, project conventions, or long-term goals…</string>
     <string name="global_memory_last_saved">Last saved: %1$s</string>
@@ -151,6 +151,11 @@
     <string name="global_memory_saved">Saved. Changes take effect with the next Agent request.</string>
     <string name="global_memory_read_failed">Could not read memory</string>
     <string name="global_memory_save_failed">Could not save memory</string>
+    <string name="memory_migration_title">Migrate long-term memory</string>
+    <string name="memory_migration_message">Legacy global memory found (%1$d characters). This database has no memory yet. Copy it over?</string>
+    <string name="memory_migration_hint">Choosing "Keep empty" will not ask again and nothing is written automatically. The old data is kept, so you can paste it in manually from the memory page anytime.</string>
+    <string name="memory_migration_migrate">Copy it over</string>
+    <string name="memory_migration_keep_empty">Keep empty</string>
     <string name="abtest_section_title">A/B test</string>
     <string name="abtest_section_subtitle">Run a comparison experiment for model routing and send a configured share of requests to the experiment model</string>
     <string name="abtest_explanation">When enabled, smart routing sends the configured share of requests to the experiment model and labels each A/B group in routing history so their results can be compared.</string>

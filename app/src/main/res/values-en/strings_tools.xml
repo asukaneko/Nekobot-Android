@@ -29,8 +29,8 @@
     <string name="tool_name_read_image">Read image</string>
     <string name="tool_name_save_to_memory">Save to memory</string>
     <string name="tool_name_read_memory">Read memory</string>
-    <string name="tool_name_agent_memory_read">Read global memory</string>
-    <string name="tool_name_agent_memory_update">Edit global memory</string>
+    <string name="tool_name_agent_memory_read">Read long-term memory</string>
+    <string name="tool_name_agent_memory_update">Edit long-term memory</string>
     <string name="tool_name_todo_write">Task list</string>
     <string name="tool_name_todo_read">Read current todo list</string>
     <string name="tool_name_ask_user_question">Ask user</string>

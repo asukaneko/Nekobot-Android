@@ -65,6 +65,11 @@ class GlobalAgentMemoryViewModel : ViewModel() {
 
     init {
         reload()
+        // 记忆按 Profile 隔离后，迁移写入可能在页面已打开时发生（用户在弹窗里选了「迁移过来」），
+        // 订阅该事件让编辑框重新对齐到磁盘内容。
+        viewModelScope.launch {
+            ServiceContainer.memoryChanged.collect { reload() }
+        }
     }
 
     fun updateDraft(content: String) {

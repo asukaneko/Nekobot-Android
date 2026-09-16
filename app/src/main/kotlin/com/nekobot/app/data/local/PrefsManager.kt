@@ -318,6 +318,16 @@ class PrefsManager(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_AGENT_AUTO_MEMORY, value).apply()
 
     /**
+     * 是否已经就「旧版全局记忆要不要迁移到当前数据库」询问过用户。
+     *
+     * 用户做出选择（迁移或留空）后置为 true，此后不再询问——即使该 Profile
+     * 的记忆仍是空的，也不会把旧内容塞回去。
+     */
+    var agentMemoryMigrationAsked: Boolean
+        get() = prefs.getBoolean(KEY_AGENT_MEMORY_MIGRATION_ASKED, false)
+        set(value) = prefs.edit().putBoolean(KEY_AGENT_MEMORY_MIGRATION_ASKED, value).apply()
+
+    /**
      * 是否在 Agent 会话中自动把可复用的做法沉淀成 Skill。默认开启。
      *
      * 触发采用计数式（参考 Hermes 的 creation_nudge_interval）：单轮工具调用达到复杂度阈值，
@@ -1093,6 +1103,7 @@ class PrefsManager(context: Context) {
         private const val KEY_SUBAGENT_DEFAULT_BACKGROUND = "subagent_default_background"
         private const val KEY_AGENT_NETWORK_ACCESS = "agent_network_access_enabled"
         private const val KEY_AGENT_AUTO_MEMORY = "agent_auto_memory_enabled"
+        private const val KEY_AGENT_MEMORY_MIGRATION_ASKED = "agent_memory_migration_asked"
         private const val KEY_AGENT_AUTO_SKILL = "agent_auto_skill_enabled"
         private const val KEY_BROWSER_USER_AGENT_MODE = "browser_user_agent_mode"
         private const val KEY_BROWSER_CUSTOM_USER_AGENT = "browser_custom_user_agent"

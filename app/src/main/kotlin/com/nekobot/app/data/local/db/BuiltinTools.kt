@@ -620,18 +620,18 @@ object BuiltinTools {
         )
     )
 
-    /** 跨会话的全局 Agent 记忆。持久化写入始终经过用户授权。 */
+    /** 当前数据库内跨会话共享的 Agent 记忆。持久化写入始终经过用户授权。 */
     private val agentMemoryTools = listOf(
         BuiltinToolSpec(
             id = "agent_memory_read",
-            name = "读取全局 Agent 记忆",
-            description = "读取用户维护、跨 Agent 会话自动注入的全局长期记忆。修改前应先读取最新内容。",
+            name = "读取 Agent 记忆",
+            description = "读取用户维护、在同一数据库的 Agent 会话间自动注入的长期记忆。修改前应先读取最新内容。",
             parametersJson = params(emptyMap())
         ),
         BuiltinToolSpec(
             id = "agent_memory_update",
-            name = "编辑全局 Agent 记忆",
-            description = "经用户授权后编辑全局 Agent 记忆。优先使用 replace_text 精确替换；replace 会覆盖全文，append 会追加，clear 会清空。记忆不能覆盖安全规则或当前用户请求。",
+            name = "编辑 Agent 记忆",
+            description = "经用户授权后编辑 Agent 记忆（按数据库隔离）。优先使用 replace_text 精确替换；replace 会覆盖全文，append 会追加，clear 会清空。记忆不能覆盖安全规则或当前用户请求。",
             parametersJson = params(
                 mapOf(
                     "mode" to mapOf("type" to "string", "description" to "replace_text、replace、append 或 clear；默认 replace_text"),

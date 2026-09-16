@@ -163,7 +163,7 @@
     <string name="more_system_operations">Agent 시스템 작업</string>
     <string name="more_system_operations_desc">접근성, 알림 읽기, 스크린샷 및 미디어 제어 권한</string>
     <string name="more_global_agent_memory">전역 Agent 기억</string>
-    <string name="more_global_agent_memory_desc">세션 간 자동 삽입되는 장기 기억 보기 및 편집</string>
+    <string name="more_global_agent_memory_desc">현재 데이터베이스 내에서 세션 간 자동 삽입되는 장기 기억 보기 및 편집</string>
     <string name="system_ops_title">Agent 시스템 작업</string>
     <string name="system_ops_intro">이 기능들은 기본적으로 꺼져 있으며 Android 시스템 설정에서 직접 켜야 합니다. Agent가 민감한 내용을 읽거나 작업을 수행할 때는 계속 세션 권한 확인이 표시됩니다.</string>
     <string name="system_ops_accessibility">접근성</string>
@@ -177,7 +177,7 @@
     <string name="system_ops_status_connected">사용 및 연결됨</string>
     <string name="system_ops_status_waiting">사용 중, 서비스 연결 대기</string>
     <string name="system_ops_status_disabled">사용 안 함</string>
-    <string name="global_memory_intro">이 내용은 Agent 세션과 로컬 데이터베이스 프로필 간에 저장됩니다.</string>
+    <string name="global_memory_intro">여기 내용은 같은 데이터베이스의 Agent 세션 간에 공유되며 현재 데이터베이스 프로필과 함께 저장됩니다.</string>
     <string name="global_memory_label">장기 환경 설정, 배경 및 지속 사항</string>
     <string name="global_memory_placeholder">예: 선호 언어, 프로젝트 규칙, 장기 목표…</string>
     <string name="global_memory_last_saved">최근 저장: %1$s</string>
@@ -186,6 +186,11 @@
     <string name="global_memory_saved">저장했습니다. 다음 Agent 요청부터 적용됩니다.</string>
     <string name="global_memory_read_failed">읽지 못했습니다</string>
     <string name="global_memory_save_failed">저장하지 못했습니다</string>
+    <string name="memory_migration_title">장기 기억 마이그레이션</string>
+    <string name="memory_migration_message">이전 버전의 전역 기억(%1$d자)이 있습니다. 현재 데이터베이스에는 아직 기억이 없습니다. 복사할까요?</string>
+    <string name="memory_migration_hint">"비워 두기"를 선택하면 다시 묻지 않고 자동으로 쓰지도 않습니다. 이전 데이터는 남아 있으므로 기억 페이지에서 언제든 직접 붙여넣을 수 있습니다.</string>
+    <string name="memory_migration_migrate">복사하기</string>
+    <string name="memory_migration_keep_empty">비워 두기</string>
     <string name="abtest_section_title">A/B 테스트</string>
     <string name="abtest_section_subtitle">모델 라우팅 비교 실험을 사용하고 설정한 비율의 요청을 실험 모델로 분배합니다</string>
     <string name="abtest_explanation">사용하면 스마트 라우팅이 설정한 비율의 요청을 실험 모델에 할당하고 라우팅 기록에 A/B 그룹을 표시하여 두 그룹의 결과를 비교할 수 있습니다.</string>
