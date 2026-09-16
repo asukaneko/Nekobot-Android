@@ -32,6 +32,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
@@ -108,6 +109,9 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.charset.Charset
+import java.nio.charset.CodingErrorAction
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
@@ -135,6 +139,9 @@ private val TXT_EXTS = setOf("txt")
 private val HTML_EXTS = setOf("html", "htm")
 /** pdf 扩展名 */
 private val PDF_EXTS = setOf("pdf")
+
+/** 中文 txt 的回退编码（部分小说/记事本文件是 GBK）。 */
+private val GBK_CHARSET: Charset = runCatching { charset("GBK") }.getOrDefault(Charsets.UTF_8)
 
 /** URL 正则 */
 private val URL_REGEX = Regex("""https?://[^\s<>"'\]]+""")
@@ -1141,21 +1148,41 @@ internal fun resolveLocalWorkspaceFile(
 }
 
 /** 可直接预览的文件类型；MARKDOWN 用 MarkdownText 渲染，TEXT 原样等宽显示。 */
-private enum class FilePreviewType { IMAGE, MARKDOWN, TEXT, HTML, PDF, UNSUPPORTED }
-private fun classifyFilePreview(fileName: String): FilePreviewType {
+internal enum class FilePreviewType { IMAGE, MARKDOWN, TEXT, HTML, PDF, UNSUPPORTED }
+
+/** 按源码/纯文本预览的扩展名（txt 之外的常见文本格式）。 */
+private val TEXT_PREVIEW_EXTS = setOf(
+    "json", "csv", "log", "yaml", "yml", "xml", "ini", "toml", "conf", "cfg", "properties",
+    "py", "js", "ts", "kt", "java", "c", "cpp", "h", "go", "rs", "sh", "bat", "ps1", "sql", "css"
+)
+
+/**
+ * 判定文件的预览方式。
+ * [mimeType] 可为空；服务器报 `text/plain` 时，没有扩展名的文件也能按文本预览。
+ */
+internal fun classifyFilePreview(fileName: String, mimeType: String = ""): FilePreviewType {
     val ext = fileExt(fileName)
-    return when (ext) {
-        in IMAGE_EXTS -> FilePreviewType.IMAGE
-        in MARKDOWN_FILE_EXTS -> FilePreviewType.MARKDOWN
-        in TXT_EXTS, "json", "csv", "log", "yaml", "yml", "xml", "py", "js", "ts", "kt", "java", "c", "cpp", "go", "rs", "sh" -> FilePreviewType.TEXT
-        in HTML_EXTS -> FilePreviewType.HTML
-        in PDF_EXTS -> FilePreviewType.PDF
+    val mime = mimeType.substringBefore(';').trim().lowercase()
+    return when {
+        mime == "application/pdf" || ext in PDF_EXTS -> FilePreviewType.PDF
+        ext in IMAGE_EXTS || mime.startsWith("image/") -> FilePreviewType.IMAGE
+        ext in MARKDOWN_FILE_EXTS || mime == "text/markdown" -> FilePreviewType.MARKDOWN
+        ext in TXT_EXTS || mime == "text/plain" || ext in TEXT_PREVIEW_EXTS -> FilePreviewType.TEXT
+        ext in HTML_EXTS -> FilePreviewType.HTML
         else -> FilePreviewType.UNSUPPORTED
     }
 }
 
+/** 能否用内置的文件预览弹窗打开：PDF 仍交给外部应用，其余不支持的类型也走外部应用。 */
+internal fun isBuiltInPreviewable(fileName: String, mimeType: String = ""): Boolean =
+    classifyFilePreview(fileName, mimeType) != FilePreviewType.UNSUPPORTED &&
+        !isPdfWorkspaceFile(fileName, mimeType)
+
 /** Markdown 预览的最大字符数：超大文件只渲染前一段，避免解析与排版卡顿。 */
 internal const val MAX_MARKDOWN_PREVIEW_CHARS = 200_000
+
+/** 纯文本（txt）预览的最大字符数：整本小说也只需渲染开头一段。 */
+internal const val MAX_TEXT_PREVIEW_CHARS = 100_000
 
 /**
  * 按上限读取文本内容，返回 (内容, 是否截断)。
@@ -1163,10 +1190,11 @@ internal const val MAX_MARKDOWN_PREVIEW_CHARS = 200_000
  */
 internal fun readTextPreview(
     file: File,
-    maxChars: Int = MAX_MARKDOWN_PREVIEW_CHARS
+    maxChars: Int = MAX_MARKDOWN_PREVIEW_CHARS,
+    charset: Charset = Charsets.UTF_8
 ): Pair<String, Boolean> {
     if (maxChars <= 0) return "" to (file.length() > 0L)
-    return file.bufferedReader().use { reader ->
+    return file.bufferedReader(charset).use { reader ->
         val buffer = CharArray(maxChars + 1)
         var read = 0
         while (read < buffer.size) {
@@ -1175,9 +1203,84 @@ internal fun readTextPreview(
             read += count
         }
         val truncated = read > maxChars
-        String(buffer, 0, minOf(read, maxChars)) to truncated
+        String(buffer, 0, minOf(read, maxChars)).removePrefix("\uFEFF") to truncated
     }
 }
+
+/** 编码探测的采样字节数：足够区分 UTF-8 与 GBK，又不必读整份文件。 */
+private const val TEXT_CHARSET_SAMPLE_BYTES = 64 * 1024
+
+/**
+ * 读取纯文本（txt）内容，返回 (内容, 是否截断)。
+ *
+ * txt 的编码不受我们控制：优先按 UTF-8 解码，带 BOM 时按 BOM 判定；
+ * UTF-8 解码失败（中文小说常见的 GBK）时回退 GBK，避免整篇乱码。
+ */
+internal fun readPlainTextPreview(
+    file: File,
+    maxChars: Int = MAX_TEXT_PREVIEW_CHARS
+): Pair<String, Boolean> = readTextPreview(file, maxChars, detectPlainTextCharset(file))
+
+/** 采样文件头部判定纯文本编码。 */
+private fun detectPlainTextCharset(file: File): Charset {
+    val sample = readSampleBytes(file, TEXT_CHARSET_SAMPLE_BYTES)
+    if (sample.size >= 3 &&
+        sample[0] == 0xEF.toByte() && sample[1] == 0xBB.toByte() && sample[2] == 0xBF.toByte()
+    ) {
+        return Charsets.UTF_8
+    }
+    if (sample.size >= 2) {
+        if (sample[0] == 0xFF.toByte() && sample[1] == 0xFE.toByte()) return Charsets.UTF_16LE
+        if (sample[0] == 0xFE.toByte() && sample[1] == 0xFF.toByte()) return Charsets.UTF_16BE
+    }
+    if (sample.isEmpty()) return Charsets.UTF_8
+    // 采样可能在 UTF-8 多字节字符中间被截断，先去掉残缺的尾字节再判定
+    return if (isStrictUtf8(trimIncompleteUtf8Tail(sample))) Charsets.UTF_8 else GBK_CHARSET
+}
+
+private fun readSampleBytes(file: File, maxBytes: Int): ByteArray = runCatching {
+    file.inputStream().use { input ->
+        val buffer = ByteArray(maxBytes)
+        var read = 0
+        while (read < buffer.size) {
+            val count = input.read(buffer, read, buffer.size - read)
+            if (count <= 0) break
+            read += count
+        }
+        buffer.copyOf(read)
+    }
+}.getOrDefault(ByteArray(0))
+
+/** 去掉采样末尾因按字节截断而残缺的 UTF-8 多字节序列。 */
+private fun trimIncompleteUtf8Tail(bytes: ByteArray): ByteArray {
+    var index = bytes.size - 1
+    var steps = 0
+    while (index >= 0 && steps < 4) {
+        val value = bytes[index].toInt() and 0xFF
+        if (value and 0xC0 != 0x80) {
+            val expected = when {
+                value and 0x80 == 0 -> 1
+                value and 0xE0 == 0xC0 -> 2
+                value and 0xF0 == 0xE0 -> 3
+                value and 0xF8 == 0xF0 -> 4
+                else -> 1
+            }
+            return if (bytes.size - index < expected) bytes.copyOf(index) else bytes
+        }
+        index--
+        steps++
+    }
+    return bytes
+}
+
+/** 严格 UTF-8 解码：出现非法字节即判定不是 UTF-8。 */
+private fun isStrictUtf8(bytes: ByteArray): Boolean = runCatching {
+    Charsets.UTF_8.newDecoder()
+        .onMalformedInput(CodingErrorAction.REPORT)
+        .onUnmappableCharacter(CodingErrorAction.REPORT)
+        .decode(ByteBuffer.wrap(bytes))
+    true
+}.getOrDefault(false)
 
 /**
  * 文件卡片渲染器：根据文件类型选择渲染方式。
@@ -1204,21 +1307,12 @@ fun FileCardRenderer(fileName: String, sessionId: String, modifier: Modifier = M
                 fileName = fileName,
                 modifier = modifier,
                 onClick = {
-                    if (isMarkdownWorkspaceFile(fileName)) {
-                        // Markdown 文件走内置预览（渲染后展示），不交给外部应用。
+                    // Markdown / txt 等可直接预览的类型走内置预览弹窗（不再交给外部应用），
+                    // PDF 与未知类型仍交给系统应用打开。
+                    if (isBuiltInPreviewable(fileName)) {
                         showLocalPreview = true
-                    } else if (
-                        previewType == FilePreviewType.UNSUPPORTED ||
-                        isPdfWorkspaceFile(fileName) ||
-                        isPlainTextWorkspaceFile(fileName)
-                    ) {
-                        openLocalWorkspaceFile(
-                            context = context,
-                            file = localFile,
-                            forceChooser = isPlainTextWorkspaceFile(fileName)
-                        )
                     } else {
-                        showLocalPreview = true
+                        openLocalWorkspaceFile(context = context, file = localFile)
                     }
                 }
             )
@@ -1720,20 +1814,23 @@ internal fun calculatePdfRenderSize(
 }
 
 /**
- * 文件预览 Dialog：根据本地 [file] 的扩展名选择渲染方式。
+ * 文件预览 Dialog：根据本地 [file] 的扩展名（可辅以 [mimeType]）选择渲染方式。
  * 支持图片/文本/HTML/PDF；其他类型显示不支持提示。
  *
  * 顶栏提供全屏按钮：全屏时隐藏系统栏与顶栏，内容铺满整屏（返回键先退出全屏）。
+ * 文本预览额外提供「用其他应用打开」，方便导入外部编辑器。
  */
 @Composable
-fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
-    val previewType = remember(fileName) { classifyFilePreview(fileName) }
+fun FilePreviewDialog(fileName: String, file: File, mimeType: String = "", onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val previewType = remember(fileName, mimeType) { classifyFilePreview(fileName, mimeType) }
     val closeDesc = stringResource(R.string.common_close)
     val imagePreviewDesc = stringResource(R.string.chat_media_image_preview)
     val readFailed = stringResource(R.string.chat_media_read_failed)
     val loadFailedFmt = stringResource(R.string.chat_media_load_failed)
     val unsupportedPreview = stringResource(R.string.chat_media_unsupported_preview)
-    val markdownTruncatedFmt = stringResource(R.string.chat_media_markdown_truncated)
+    val truncatedFmt = stringResource(R.string.chat_media_markdown_truncated)
+    val openWithAppDesc = stringResource(R.string.chat_media_open_with_other_app)
     val fileDownloadedTo = stringResource(R.string.chat_media_file_downloaded_to, file.name)
     val fullscreenDesc = stringResource(R.string.chat_media_fullscreen)
     val exitFullscreenDesc = stringResource(R.string.chat_media_exit_fullscreen)
@@ -1779,6 +1876,12 @@ fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
+                    // 文本预览：保留一条交给外部应用打开的通道（如系统阅读器/编辑器）
+                    if (previewType == FilePreviewType.TEXT) {
+                        IconButton(onClick = { openLocalWorkspaceFile(context, file, forceChooser = true) }) {
+                            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = openWithAppDesc, tint = Color.White)
+                        }
+                    }
                     IconButton(onClick = { fullscreen = true }) {
                         Icon(Icons.Filled.Fullscreen, contentDescription = fullscreenDesc, tint = Color.White)
                     }
@@ -1846,7 +1949,7 @@ fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
                                     if (truncated) {
                                         Spacer(Modifier.height(10.dp))
                                         Text(
-                                            text = markdownTruncatedFmt.format(MAX_MARKDOWN_PREVIEW_CHARS),
+                                            text = truncatedFmt.format(MAX_MARKDOWN_PREVIEW_CHARS),
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             style = MaterialTheme.typography.labelSmall
                                         )
@@ -1866,10 +1969,14 @@ fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
                     }
                     FilePreviewType.TEXT -> {
                         var content by remember(file) { mutableStateOf<String?>(null) }
+                        var truncated by remember(file) { mutableStateOf(false) }
                         var loadErr by remember(file) { mutableStateOf<String?>(null) }
                         LaunchedEffect(file) {
                             try {
-                                content = withContext(Dispatchers.IO) { file.readText() }
+                                // txt 可能很大且编码不一（UTF-8/GBK），只读前一段并自适应解码
+                                val preview = withContext(Dispatchers.IO) { readPlainTextPreview(file) }
+                                content = preview.first
+                                truncated = preview.second
                             } catch (e: Exception) {
                                 loadErr = e.message ?: readFailed
                             }
@@ -1884,12 +1991,22 @@ fun FilePreviewDialog(fileName: String, file: File, onDismiss: () -> Unit) {
                                     .verticalScroll(rememberScrollState())
                                     .padding(12.dp)
                             ) {
-                                Text(
-                                    text = content!!,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontFamily = FontFamily.Monospace
-                                )
+                                Column {
+                                    Text(
+                                        text = content!!,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                    if (truncated) {
+                                        Spacer(Modifier.height(10.dp))
+                                        Text(
+                                            text = truncatedFmt.format(MAX_TEXT_PREVIEW_CHARS),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                }
                             }
                             loadErr != null -> Text(
                                 loadFailedFmt.format(loadErr),

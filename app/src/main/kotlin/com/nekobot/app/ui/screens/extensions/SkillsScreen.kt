@@ -2,7 +2,15 @@ package com.nekobot.app.ui.screens.extensions
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
+import android.content.ContentValues
+import android.content.Context
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +34,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenuItem
@@ -62,6 +71,8 @@ import com.nekobot.app.data.model.Skill
 import com.nekobot.app.data.model.SkillFileInfo
 import com.nekobot.app.data.model.SkillInstallRequest
 import com.nekobot.app.data.model.SkillRequest
+import com.nekobot.app.data.model.SkillZipExport
+import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.BaseViewModel
 import com.nekobot.app.ui.components.EmptyState
 import com.nekobot.app.ui.components.ErrorBanner
@@ -77,11 +88,23 @@ import com.nekobot.app.ui.theme.WarningAmber
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+/** ZIP 导出结果：已写入下载目录，或需要界面用系统选择器另存（Android 9 及以下）。 */
+private sealed interface SkillZipOutcome {
+    data class Saved(val fileName: String) : SkillZipOutcome
+    data class NeedsSaveAs(val export: SkillZipExport) : SkillZipOutcome
+}
 
 /** Skills 元数据、目录存储和 URL 安装的统一管理。 */
 class SkillsViewModel : BaseViewModel() {
     private val _list = MutableStateFlow<List<Skill>>(emptyList())
     val list: StateFlow<List<Skill>> = _list.asStateFlow()
+
+    /** Android 9 及以下导出的 ZIP 待界面用系统选择器另存。 */
+    private val _pendingSaveAs = MutableStateFlow<SkillZipExport?>(null)
+    val pendingSaveAs: StateFlow<SkillZipExport?> = _pendingSaveAs.asStateFlow()
 
     init {
         load()
@@ -90,6 +113,58 @@ class SkillsViewModel : BaseViewModel() {
     fun load() = launchResult(
         block = { unified.listSkills() },
         onSuccess = { _list.value = it }
+    )
+
+    fun clearPendingSaveAs() { _pendingSaveAs.value = null }
+
+    /**
+     * 导出 Skill 为 ZIP。
+     *
+     * Android 10+ 直接写入公共下载目录；Android 9 及以下没有 MediaStore Downloads，
+     * 改为把 ZIP 交给界面，用系统“创建文档”选择器保存。
+     */
+    fun exportZip(context: Context, skill: Skill) = launchResult(
+        block = {
+            when (val result = unified.exportSkillZip(skill)) {
+                is Resource.Success -> {
+                    val export = result.data
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        if (writeZipToDownloads(context, export)) {
+                            Resource.Success(SkillZipOutcome.Saved(export.fileName))
+                        } else {
+                            Resource.Error(string(R.string.skills_export_failed))
+                        }
+                    } else {
+                        Resource.Success(SkillZipOutcome.NeedsSaveAs(export))
+                    }
+                }
+                is Resource.Error -> Resource.Error(result.message)
+                is Resource.Loading -> Resource.Loading
+            }
+        },
+        onSuccess = { outcome ->
+            when (outcome) {
+                is SkillZipOutcome.Saved -> showToast(string(R.string.skills_export_saved, outcome.fileName))
+                is SkillZipOutcome.NeedsSaveAs -> _pendingSaveAs.value = outcome.export
+            }
+        }
+    )
+
+    /** Android 9 及以下：写入系统“创建文档”选择器返回的目标 Uri。 */
+    fun saveZipToUri(context: Context, target: Uri, export: SkillZipExport) = launchResult(
+        block = {
+            val written = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openOutputStream(target, "w")?.use { output ->
+                        output.write(export.bytes)
+                        true
+                    } == true
+                }.getOrDefault(false)
+            }
+            if (written) Resource.Success(export.fileName)
+            else Resource.Error(string(R.string.skills_export_failed))
+        },
+        onSuccess = { showToast(string(R.string.skills_export_saved, it)) }
     )
 
     fun loadDetail(skill: Skill, onSuccess: (Skill) -> Unit) =
@@ -126,6 +201,73 @@ class SkillsViewModel : BaseViewModel() {
         launchResult(block = { unified.toggleSkill(id) }, onSuccess = { load() })
 }
 
+/**
+ * Android 10+：把导出的 ZIP 写入公共下载目录。
+ *
+ * @return 是否写入成功
+ */
+private suspend fun writeZipToDownloads(context: Context, export: SkillZipExport): Boolean =
+    withContext(Dispatchers.IO) {
+        val resolver = context.contentResolver
+        var targetUri: Uri? = null
+        try {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, export.fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/zip")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            targetUri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: return@withContext false
+            val written = resolver.openOutputStream(targetUri, "w")?.use { output ->
+                output.write(export.bytes)
+                true
+            } == true
+            if (!written) {
+                resolver.delete(targetUri, null, null)
+                return@withContext false
+            }
+            resolver.update(
+                targetUri,
+                ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
+                null,
+                null
+            )
+            true
+        } catch (_: Exception) {
+            targetUri?.let { runCatching { resolver.delete(it, null, null) } }
+            false
+        }
+    }
+
+/**
+ * 复用的「下载 ZIP」入口。
+ *
+ * Android 10+ 由 ViewModel 直接写入下载目录；Android 9 及以下等 ViewModel 把 ZIP
+ * 交回来后，这里用系统“创建文档”选择器让用户选保存位置。
+ */
+@Composable
+private fun rememberZipExportAction(vm: SkillsViewModel): (Skill) -> Unit {
+    val context = LocalContext.current
+    var pendingExport by remember { mutableStateOf<SkillZipExport?>(null) }
+    val createDocument = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        val export = pendingExport
+        pendingExport = null
+        if (uri != null && export != null) vm.saveZipToUri(context, uri, export)
+    }
+    val needsSaveAs by vm.pendingSaveAs.collectAsStateWithLifecycle()
+    LaunchedEffect(needsSaveAs) {
+        needsSaveAs?.let {
+            vm.clearPendingSaveAs()
+            pendingExport = it
+            createDocument.launch(it.fileName)
+        }
+    }
+    return remember(vm, context) { { skill: Skill -> vm.exportZip(context, skill) } }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SkillsScreen(onBack: () -> Unit, onOpenStorage: (Skill) -> Unit = {}) {
@@ -140,6 +282,7 @@ fun SkillsScreen(onBack: () -> Unit, onOpenStorage: (Skill) -> Unit = {}) {
     var showInstaller by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<Skill?>(null) }
     var deleteTarget by remember { mutableStateOf<Skill?>(null) }
+    val exportZip = rememberZipExportAction(vm)
 
     LaunchedEffect(toast) {
         toast?.let {
@@ -220,7 +363,8 @@ fun SkillsScreen(onBack: () -> Unit, onOpenStorage: (Skill) -> Unit = {}) {
                             },
                             onDelete = { deleteTarget = skill },
                             onToggle = { skill.id?.let(vm::toggle) },
-                            onOpenStorage = { onOpenStorage(skill) }
+                            onOpenStorage = { onOpenStorage(skill) },
+                            onExportZip = { exportZip(skill) }
                         )
                     }
                 }
@@ -291,7 +435,8 @@ private fun SkillCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onToggle: () -> Unit,
-    onOpenStorage: () -> Unit
+    onOpenStorage: () -> Unit,
+    onExportZip: () -> Unit
 ) {
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -343,6 +488,10 @@ private fun SkillCard(
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.skill_open_storage)) },
                             onClick = { menuExpanded = false; onOpenStorage() }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.skills_export_zip)) },
+                            onClick = { menuExpanded = false; onExportZip() }
                         )
                     }
                     DropdownMenuItem(
@@ -630,6 +779,7 @@ fun SkillStorageScreen(skillName: String, onBack: () -> Unit) {
     var previewFile by remember { mutableStateOf<SkillFileInfo?>(null) }
     var previewContent by remember { mutableStateOf<String?>(null) }
     var previewError by remember { mutableStateOf<String?>(null) }
+    val exportZip = rememberZipExportAction(vm)
 
     LaunchedEffect(toast) {
         toast?.let {
@@ -656,6 +806,14 @@ fun SkillStorageScreen(skillName: String, onBack: () -> Unit) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.common_back)
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { exportZip(Skill(name = skillName, hasStorage = true)) }) {
+                        Icon(
+                            Icons.Filled.Download,
+                            contentDescription = stringResource(R.string.skills_export_zip)
                         )
                     }
                 },

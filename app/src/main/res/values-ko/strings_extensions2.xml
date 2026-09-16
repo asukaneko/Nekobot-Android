@@ -36,6 +36,9 @@
     <string name="skill_file_group_script">스크립트</string>
     <string name="skill_file_group_resource">리소스</string>
     <string name="skill_file_group_other">기타</string>
+    <string name="skills_export_zip">ZIP으로 다운로드</string>
+    <string name="skills_export_saved">다운로드 폴더에 저장했어요: %1$s</string>
+    <string name="skills_export_failed">ZIP 내보내기에 실패했어요</string>
     <string name="skill_file_no_files">탐색할 파일이 없어요</string>
     <string name="skill_file_preview_title">파일 미리보기</string>
 

@@ -5,6 +5,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -194,6 +195,85 @@ class LocalSkillStorageTest {
 
         assertTrue(storage.readText("preserve", "SIBLING.txt").contains("keep me"))
         assertEquals("# preserve v2", storage.skillMd("preserve"))
+    }
+
+    // ==================== 导出 ZIP ====================
+
+    @Test
+    fun `export package keeps every file and can be reinstalled`() {
+        val root = temporaryFolder.newFolder("skills-export")
+        val storage = LocalSkillStorage(root)
+        storage.install(
+            DownloadedSkillPackage(
+                name = "export-demo",
+                description = "Demo",
+                aliases = emptyList(),
+                skillMd = "# export-demo",
+                referenceMd = "reference",
+                sourceUrl = "https://example.com/export.zip",
+                files = mapOf(
+                    "SKILL.md" to "# export-demo".toByteArray(),
+                    "reference.md" to "reference".toByteArray(),
+                    "说明.md" to "同级说明".toByteArray(),
+                    "scripts/tool.py" to "print('ok')".toByteArray(),
+                    "assets/logo.bin" to byteArrayOf(0, 1, 2, 3, 4)
+                )
+            ),
+            overwrite = false
+        )
+
+        val exported = SkillZipExporter.build("export-demo", storage.readAllFiles("export-demo"))
+
+        // 导出的包结构与 GitHub 下载的 Skill 包一致，可直接被解析器还原。
+        val packages = SkillPackageDownloader(clientReturning(exported, "application/zip"))
+            .download("https://example.com/export-demo.zip")
+        val restored = packages.single()
+        assertEquals("export-demo", restored.name)
+        assertTrue(restored.files.containsKey("说明.md"))
+        assertTrue(restored.files.containsKey("scripts/tool.py"))
+        assertArrayEquals(byteArrayOf(0, 1, 2, 3, 4), restored.files["assets/logo.bin"])
+    }
+
+    @Test
+    fun `export excludes local source metadata and names file after skill`() {
+        val root = temporaryFolder.newFolder("skills-export-meta")
+        val storage = LocalSkillStorage(root)
+        storage.save("meta-demo", skillMd = "# meta-demo", referenceMd = null, sourceUrl = "https://example.com/x.zip")
+
+        val files = storage.readAllFiles("meta-demo")
+
+        assertTrue(files.containsKey("SKILL.md"))
+        assertFalse("config.json 只是本机安装来源元数据", files.containsKey("config.json"))
+        assertEquals("meta-demo.zip", SkillZipExporter.zipFileName("meta-demo"))
+    }
+
+    @Test
+    fun `export drops paths escaping the skill root`() {
+        val zip = SkillZipExporter.build(
+            "safe-demo",
+            mapOf(
+                "SKILL.md" to "# safe-demo".toByteArray(),
+                "../outside.txt" to "nope".toByteArray(),
+                "scripts/ok.py" to "print('ok')".toByteArray()
+            )
+        )
+
+        val entries = mutableListOf<String>()
+        java.util.zip.ZipInputStream(zip.inputStream()).use { input ->
+            while (true) {
+                val entry = input.nextEntry ?: break
+                entries += entry.name
+            }
+        }
+        assertEquals(listOf("safe-demo/SKILL.md", "safe-demo/scripts/ok.py"), entries)
+    }
+
+    @Test
+    fun `export rejects empty skill directory`() {
+        val result = runCatching { SkillZipExporter.build("empty-demo", emptyMap()) }
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("为空"))
     }
 
     private fun clientReturning(bytes: ByteArray, contentType: String): OkHttpClient =

@@ -57,6 +57,9 @@
     <string name="skill_file_group_other">Other</string>
     <string name="skill_file_no_files">No files to browse for this Skill</string>
     <string name="skill_file_preview_title">File preview</string>
+    <string name="skills_export_zip">Download as ZIP</string>
+    <string name="skills_export_saved">Saved to Downloads: %1$s</string>
+    <string name="skills_export_failed">Failed to export ZIP</string>
 
     <!-- ==================== MCP tool cards ==================== -->
     <string name="mcp_tools_count">%1$d tool(s) in total</string>

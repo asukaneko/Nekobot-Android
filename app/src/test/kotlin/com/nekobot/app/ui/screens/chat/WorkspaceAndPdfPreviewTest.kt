@@ -15,10 +15,65 @@ class WorkspaceAndPdfPreviewTest {
     }
 
     @Test
-    fun identifiesTxtFilesForSystemChooser() {
+    fun identifiesPlainTextFiles() {
         assertTrue(isPlainTextWorkspaceFile("novel/book.TXT"))
         assertTrue(isPlainTextWorkspaceFile("no-extension", "text/plain"))
         assertTrue(!isPlainTextWorkspaceFile("page.html", "text/html"))
+    }
+
+    @Test
+    fun txtAndMarkdownUseBuiltInPreview() {
+        // txt 与 Markdown 都走内置预览弹窗，不再交给外部应用
+        assertTrue(isBuiltInPreviewable("novel/book.TXT", "text/plain"))
+        assertTrue(isBuiltInPreviewable("notes.txt"))
+        assertTrue(isBuiltInPreviewable("no-extension", "text/plain"))
+        // PDF 仍交给外部应用
+        assertTrue(!isBuiltInPreviewable("downloads/JM123.pdf", "application/pdf"))
+        // 内部不支持的类型也走外部应用
+        assertTrue(!isBuiltInPreviewable("book.epub"))
+    }
+
+    @Test
+    fun classifiesPreviewTypesForTxt() {
+        assertEquals(FilePreviewType.TEXT, classifyFilePreview("novel.txt"))
+        assertEquals(FilePreviewType.TEXT, classifyFilePreview("no-extension", "text/plain"))
+        assertEquals(FilePreviewType.TEXT, classifyFilePreview("config.json"))
+        assertEquals(FilePreviewType.MARKDOWN, classifyFilePreview("notes.md", "text/plain"))
+        assertEquals(FilePreviewType.PDF, classifyFilePreview("a.PDF"))
+        assertEquals(FilePreviewType.UNSUPPORTED, classifyFilePreview("book.epub"))
+    }
+
+    @Test
+    fun readPlainTextPreviewHandlesGbkUtf8AndTruncation() {
+        val file = File.createTempFile("neko-txt-preview", ".txt")
+        try {
+            // GBK 中文 txt（UTF-8 解码会失败，必须回退 GBK 而不是整篇乱码）
+            val gbkText = "第一章 中文小说内容"
+            file.writeBytes(gbkText.toByteArray(charset("GBK")))
+            val (gbkContent, gbkTruncated) = readPlainTextPreview(file, maxChars = 100)
+            assertEquals(gbkText, gbkContent)
+            assertTrue(!gbkTruncated)
+
+            // UTF-8 BOM 要去掉
+            file.writeText("\uFEFF" + "c".repeat(50), Charsets.UTF_8)
+            assertEquals("c".repeat(50) to false, readPlainTextPreview(file, maxChars = 100))
+
+            // 超长内容按上限截断
+            file.writeText("d".repeat(120), Charsets.UTF_8)
+            val (content, truncated) = readPlainTextPreview(file, maxChars = 100)
+            assertEquals("d".repeat(100), content)
+            assertTrue(truncated)
+
+            // 大文件按 64KB 采样判定编码时，采样点可能落在多字节字符中间，不能误判成 GBK
+            val longUtf8 = "中文测试".repeat(20_000)
+            file.writeText(longUtf8, Charsets.UTF_8)
+            val (longContent, longTruncated) = readPlainTextPreview(file, maxChars = 200_000)
+            assertTrue(!longTruncated)
+            assertTrue(longContent.startsWith("中文测试"))
+            assertTrue(!longContent.contains('\uFFFD'))
+        } finally {
+            file.delete()
+        }
     }
 
     @Test

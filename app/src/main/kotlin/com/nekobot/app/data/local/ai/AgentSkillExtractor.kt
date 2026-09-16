@@ -70,6 +70,19 @@ internal object AgentSkillExtractor {
     internal fun systemPrompt(): String = SYSTEM_PROMPT
 
     /**
+     * SKILL.md 的标准二级小节名，顺序为：功能描述 / 适用场景 / 操作步骤 / 注意事项。
+     *
+     * 跟随当前输出语言，避免英文（或日文、韩文）输出里混入中文小节名。
+     * 正文校验只统计 `## ` 数量，不依赖具体标题文字，所以任意语言都能通过。
+     */
+    internal fun skillSectionTitles(): List<String> = listOf(
+        AiOutputLanguage.promptText("功能描述", "What this skill does", "機能概要", "기능 설명"),
+        AiOutputLanguage.promptText("适用场景", "When to use it", "利用シーン", "사용 상황"),
+        AiOutputLanguage.promptText("操作步骤", "Steps", "手順", "절차"),
+        AiOutputLanguage.promptText("注意事项", "Cautions", "注意事項", "주의 사항")
+    )
+
+    /**
      * 用户是否明确要求把这一轮的做法沉淀成 Skill。
      *
      * 明确要求时不再受计数阈值限制（对应 Hermes 的 `/learn` 与"用户纠正做法"场景）。
@@ -131,6 +144,7 @@ internal object AgentSkillExtractor {
         existingSkills: List<AgentSkillBrief>,
         explicit: Boolean
     ): String = buildString {
+        val sections = skillSectionTitles()
         appendLine("用户在 Agent 会话里刚完成一轮任务。请先判断这次的做法是否**真的值得**沉淀成可复用的 Skill，再给出结果。")
         appendLine()
         appendLine("【判断标准：默认 skip，宁缺勿滥】")
@@ -166,10 +180,10 @@ internal object AgentSkillExtractor {
         appendLine()
         appendLine("   # <技能名>")
         appendLine()
-        appendLine("   ## 功能描述")
-        appendLine("   ## 适用场景")
-        appendLine("   ## 操作步骤（编号列表，至少 3 条）")
-        appendLine("   ## 注意事项（列表）")
+        appendLine("   ## ${sections[0]}")
+        appendLine("   ## ${sections[1]}")
+        appendLine("   ## ${sections[2]}（编号列表，至少 3 条）")
+        appendLine("   ## ${sections[3]}（列表）")
         appendLine("   正文只能有一个一级标题、至少两个二级小节；总长度不少于 240 字符。")
         appendLine("5. 更新已有 Skill 时必须给出**完整**的新正文（含 frontmatter），保留其中仍然有效的内容，不要只给差异片段。")
         appendLine("6. 若还需要补充参考资料，可额外给出 reference_md（没有就省略该字段）。")

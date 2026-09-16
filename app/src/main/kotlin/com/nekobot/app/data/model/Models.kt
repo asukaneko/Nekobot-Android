@@ -1163,6 +1163,16 @@ data class SkillFileInfo(
     val type: String = "other"
 )
 
+/**
+ * Skill 导出产物：下载目录里使用的文件名 + ZIP 字节内容。
+ *
+ * 用普通类而不是 data class，避免自动生成的 equals/hashCode 直接比较 ByteArray。
+ */
+class SkillZipExport(
+    val fileName: String,
+    val bytes: ByteArray
+)
+
 data class SkillRequest(
     val name: String,
     val description: String? = null,

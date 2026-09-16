@@ -582,6 +582,7 @@
     <string name="chat_media_unsupported_preview">이 파일 형식은 미리보기를 지원하지 않아요</string>
     <string name="chat_media_markdown_truncated">내용이 너무 길어 처음 %1$d자만 표시합니다</string>
     <string name="chat_media_file_downloaded_to">파일 다운로드 위치: %1$s</string>
+    <string name="chat_media_open_with_other_app">다른 앱으로 열기</string>
     <string name="chat_sandbox_terminal">터미널</string>
     <string name="chat_sandbox_terminal_title">샌드박스 터미널</string>
     <string name="chat_sandbox_terminal_subtitle">Alpine Linux · 현재 세션 /workspace</string>

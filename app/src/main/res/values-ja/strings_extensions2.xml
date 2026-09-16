@@ -38,6 +38,9 @@
     <string name="skill_file_group_other">その他</string>
     <string name="skill_file_no_files">参照可能なファイルがありません</string>
     <string name="skill_file_preview_title">ファイル プレビュー</string>
+    <string name="skills_export_zip">ZIP としてダウンロード</string>
+    <string name="skills_export_saved">ダウンロードに保存しました: %1$s</string>
+    <string name="skills_export_failed">ZIP のエクスポートに失敗しました</string>
 
     <!-- ==================== MCP ツールカード ==================== -->
     <string name="mcp_tools_count">合計 %1$d 個のツール</string>

@@ -69,6 +69,7 @@ import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.Skill
 import com.nekobot.app.data.model.SkillInstallRequest
 import com.nekobot.app.data.model.SkillRequest
+import com.nekobot.app.data.model.SkillZipExport
 import com.nekobot.app.data.model.SttTranscribeResponse
 import com.nekobot.app.data.model.SwitchStateRequest
 import com.nekobot.app.data.model.SwitchToggleResponse
@@ -1568,6 +1569,17 @@ class UnifiedRepository(
         if (isLocal) runCatching { Resource.Success(local.readSkillFile(skillName, relativePath)) }
             .getOrElse { Resource.Error(it.message ?: "读取文件失败") }
         else Resource.Error("远程模式不支持读取 Skill 文件")
+
+    /**
+     * 导出 Skill 为 ZIP（供「下载 ZIP」保存到下载目录）。
+     *
+     * 本地模式直接打包磁盘上的 Skill 目录（含脚本、资源等二进制文件）；
+     * 远程模式逐个拉取服务端文件后在本地打包。
+     */
+    suspend fun exportSkillZip(skill: Skill): Resource<SkillZipExport> =
+        if (isLocal) runCatching { Resource.Success(local.exportSkillZip(skill.name)) }
+            .getOrElse { Resource.Error(it.message ?: "导出 Skill 失败") }
+        else remote.exportSkillZip(skill)
     suspend fun createSkill(req: SkillRequest): Resource<Skill> {
         val normalized = runCatching { validateSkillNameValue(req.name) }
             .getOrElse { return Resource.Error(it.message ?: "Skill 名称无效") }

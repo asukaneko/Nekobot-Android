@@ -587,6 +587,7 @@
     <string name="chat_media_unsupported_preview">该文件类型暂不支持预览</string>
     <string name="chat_media_markdown_truncated">内容过长，仅渲染前 %1$d 个字符</string>
     <string name="chat_media_file_downloaded_to">文件已下载到: %1$s</string>
+    <string name="chat_media_open_with_other_app">用其他应用打开</string>
     <string name="chat_sandbox_terminal">终端</string>
     <string name="chat_sandbox_terminal_title">沙箱终端</string>
     <string name="chat_sandbox_terminal_subtitle">Alpine Linux · 当前会话 /workspace</string>

@@ -545,6 +545,24 @@ internal class LocalSkillStorage(private val root: File) {
             .toList()
     }
 
+    /**
+     * 读取 Skill 目录下的全部文件字节（相对路径 → 内容），供导出 ZIP 使用。
+     *
+     * `config.json` 只是本机记录安装来源的元数据，不属于技能内容，导出时排除；
+     * 目录不存在时返回空表。
+     */
+    fun readAllFiles(name: String): Map<String, ByteArray> {
+        val directory = directoryFor(name)
+        if (!directory.isDirectory) return emptyMap()
+        return directory.walkTopDown()
+            .filter { it.isFile }
+            .mapNotNull { file ->
+                val relative = file.relativeTo(directory).invariantSeparatorsPath
+                if (relative.equals("config.json", ignoreCase = true)) null else relative to file
+            }
+            .associate { (relative, file) -> relative to file.readBytes() }
+    }
+
     fun readText(name: String, relativePath: String): String {
         val file = resolveInside(directoryFor(name), relativePath)
         require(file.isFile) { "文件「$relativePath」不存在" }

@@ -503,6 +503,18 @@ interface ApiService {
     @GET("api/skills/storage/{skillName}/file/config.json")
     suspend fun getSkillStorageConfig(@Path("skillName") skillName: String): Response<JsonElement>
 
+    /**
+     * 读取 Skill 目录下的任意文本文件（响应体为 `{"content": "..."}`）。
+     *
+     * 路径可能是 `scripts/main.py` 这种多级路径，因此整体按已编码路径传入，
+     * 由调用方负责逐段百分号编码。
+     */
+    @GET("api/skills/storage/{skillName}/file/{path}")
+    suspend fun getSkillFile(
+        @Path("skillName") skillName: String,
+        @Path(value = "path", encoded = true) path: String
+    ): Response<JsonElement>
+
     @POST("api/skills/storage/{skillName}/skill-md")
     suspend fun saveSkillMarkdown(
         @Path("skillName") skillName: String,

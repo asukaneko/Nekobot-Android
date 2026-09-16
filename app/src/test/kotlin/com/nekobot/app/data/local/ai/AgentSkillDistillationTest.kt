@@ -457,6 +457,16 @@ class AgentSkillDistillationTest {
         assertTrue(prompt.contains("明确要求"))
         // 标准 SKILL.md 格式要求必须出现在提示词里。
         assertTrue(prompt.contains("name: <与 name 字段一致的小写英文名>"))
-        assertTrue(prompt.contains("## 操作步骤"))
+        // 小节标题跟随当前输出语言，因此按实际生效标题断言（默认回退到英文）。
+        assertTrue(prompt.contains("## ${AgentSkillExtractor.skillSectionTitles()[2]}"))
+    }
+
+    @Test
+    fun skillSectionTitlesFollowOutputLanguage() {
+        val titles = AgentSkillExtractor.skillSectionTitles()
+
+        assertEquals(4, titles.size)
+        assertTrue(titles.all { it.isNotBlank() })
+        assertEquals(titles.size, titles.distinct().size)
     }
 }

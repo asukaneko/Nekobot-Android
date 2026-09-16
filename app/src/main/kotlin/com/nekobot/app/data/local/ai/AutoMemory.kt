@@ -454,11 +454,14 @@ class AutoMemory(
         // userPersona 为本会话配置的玩家身份描述（含姓名/背景），引导 LLM 从中识别玩家姓名
         // 并在记忆条目中用该姓名指代玩家，避免写"用户"泛称。
         // 注意：senderName 是 AI 扮演的角色名，不是玩家名，不能用作玩家标签。
+        // 指代玩家的词与要禁用的泛称都跟随当前输出语言，否则英文记忆里会混入中文的「玩家」「用户」。
+        val player = playerTerm()
+        val genericUser = genericUserTerm()
         val personaSection = if (userPersona.isNotBlank()) {
-            """玩家身份描述如下（请从中识别玩家姓名，并在记忆条目中用该姓名指代玩家）：
+            """玩家身份描述如下（请从中识别玩家姓名，并在记忆条目中用该姓名指代玩家；若只能泛称，请使用“$player”）：
 $userPersona"""
         } else {
-            "本会话未提供玩家身份描述，记忆条目中请用「玩家」指代玩家。"
+            "本会话未提供玩家身份描述，记忆条目中请使用“$player”指代玩家。"
         }
         return """你是一个记忆抽取中间件，不是角色扮演角色。
 
@@ -487,15 +490,25 @@ action 决策规则：
 
 要求：
 - 只提取与角色 "$characterName" 相关的有长期价值的信息
-- 写记忆时禁止使用「用户」泛称指代玩家；若玩家身份描述中给出了姓名，必须用该姓名，否则用「玩家」
+- 写记忆时禁止使用“$genericUser”这类泛称指代玩家；若玩家身份描述中给出了姓名，必须用该姓名，否则用“$player”
 - 忽略寒暄和闲聊
 - 尽量覆盖前 4 个类别，每类 1 条（重要的可多条）
 - 写摘要不写原始对话转录
 - importance 根据信息重要性评估（0.0-1.0）
 - 所有字段用${AiOutputLanguage.languageName()}
 
+${AiOutputLanguage.directive()}
+
 只返回 JSON 数组，不要其他文字。"""
     }
+
+    /** 记忆条目中指代玩家的词（跟随输出语言，避免中文「玩家」写进其他语言的记忆）。 */
+    private fun playerTerm(): String =
+        AiOutputLanguage.promptText("玩家", "the player", "プレイヤー", "플레이어")
+
+    /** 需要禁止使用的泛称（中文语境下的「用户」等）。 */
+    private fun genericUserTerm(): String =
+        AiOutputLanguage.promptText("用户", "the user", "ユーザー", "사용자")
 
     /** 构建记忆抽取 user prompt（附当前已有记忆供 LLM 取舍） */
     private fun buildMemoryUserPrompt(
@@ -504,20 +517,29 @@ action 决策规则：
         userPersona: String,
         existingMemories: List<ExistingMemoryView>
     ): String {
-        // turn 标签用中性「玩家」，避免"用户"字样；LLM 会按 system prompt 中的玩家身份描述识别姓名
+        // turn 标签用跟随输出语言的玩家称谓，避免"用户"字样；LLM 会按 system prompt 中的玩家身份描述识别姓名
+        val player = playerTerm()
         val turnTexts = turns.mapIndexed { idx, turn ->
-            "--- Turn ${idx + 1} ---\n玩家:\n${turn["user"] ?: ""}\n\n$characterName:\n${turn["assistant"] ?: ""}"
+            "--- Turn ${idx + 1} ---\n$player:\n${turn["user"] ?: ""}\n\n$characterName:\n${turn["assistant"] ?: ""}"
         }.joinToString("\n\n")
 
-        val parts = mutableListOf("请从以下对话中提取记忆（在记忆条目中按玩家身份描述里的姓名指代玩家，不要写「用户」）：\n\n$turnTexts")
+        val parts = mutableListOf(
+            "请从以下对话中提取记忆（在记忆条目中按玩家身份描述里的姓名指代玩家，不要写“${genericUserTerm()}”）：\n\n$turnTexts"
+        )
 
         // 附上当前已有记忆，让 LLM 决定 append/replace
         if (existingMemories.isNotEmpty()) {
             val existingText = existingMemories.joinToString("\n\n") { view ->
                 val label = when (view.category) {
-                    "user_persona" -> "玩家人格（当前）"
-                    "character_persona" -> "角色人格（当前）"
-                    "recent_digest" -> "近期摘要（当前）"
+                    "user_persona" -> AiOutputLanguage.promptText(
+                        "玩家人格（当前）", "Player persona (current)", "プレイヤー人格（現在）", "플레이어 인격 (현재)"
+                    )
+                    "character_persona" -> AiOutputLanguage.promptText(
+                        "角色人格（当前）", "Character persona (current)", "キャラクター人格（現在）", "캐릭터 인격 (현재)"
+                    )
+                    "recent_digest" -> AiOutputLanguage.promptText(
+                        "近期摘要（当前）", "Recent digest (current)", "最近の要約（現在）", "최근 요약 (현재)"
+                    )
                     else -> view.category
                 }
                 val body = view.contents.joinToString("\n---\n") { it }

@@ -577,6 +577,7 @@ fun WorkspaceScreen(
     var downloading by remember { mutableStateOf<String?>(null) }
     var previewFile by remember { mutableStateOf<java.io.File?>(null) }
     var previewFileName by remember { mutableStateOf("") }
+    var previewFileMime by remember { mutableStateOf("") }
     var previewLoading by remember { mutableStateOf(false) }
     var pendingLegacyDownload by remember { mutableStateOf<Pair<WorkspaceFile, Boolean>?>(null) } // (file, isShared)
     val snackbarHost = remember { SnackbarHostState() }
@@ -781,6 +782,7 @@ fun WorkspaceScreen(
                                     onPreview = {
                                         if (!previewLoading && previewFile == null) {
                                             previewFileName = f.path
+                                            previewFileMime = f.mimeType
                                             previewLoading = true
                                             scope.launch {
                                                 val saved = if (isShared) viewModel.prepareSharedForOpen(context, f.path)
@@ -788,17 +790,9 @@ fun WorkspaceScreen(
                                                 previewLoading = false
                                                 if (saved != null) {
                                                     when {
-                                                        // Markdown 文件内置渲染预览，不交给外部应用。
-                                                        isMarkdownWorkspaceFile(f.name, f.mimeType) -> {
+                                                        // Markdown / 纯文本（txt）等走内置预览弹窗，不交给外部应用
+                                                        isBuiltInPreviewable(f.name, f.mimeType) -> {
                                                             previewFile = saved
-                                                        }
-                                                        isPlainTextWorkspaceFile(f.name, f.mimeType) -> {
-                                                            openLocalWorkspaceFile(
-                                                                context = context,
-                                                                file = saved,
-                                                                forceChooser = true
-                                                            )
-                                                            previewFileName = ""
                                                         }
                                                         isPdfWorkspaceFile(f.name, f.mimeType) -> {
                                                             openLocalWorkspaceFile(context, saved)
@@ -864,9 +858,11 @@ fun WorkspaceScreen(
         FilePreviewDialog(
             fileName = File(previewFileName).name,
             file = pf,
+            mimeType = previewFileMime,
             onDismiss = {
                 previewFile = null
                 previewFileName = ""
+                previewFileMime = ""
             }
         )
     }

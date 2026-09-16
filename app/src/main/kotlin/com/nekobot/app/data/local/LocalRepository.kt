@@ -133,6 +133,7 @@ import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.Skill
 import com.nekobot.app.data.model.SkillInstallRequest
 import com.nekobot.app.data.model.SkillRequest
+import com.nekobot.app.data.model.SkillZipExport
 import com.nekobot.app.data.model.TaskItem
 import com.nekobot.app.data.model.TaskRequest
 import com.nekobot.app.data.model.ThinkingCard
@@ -10422,6 +10423,21 @@ ${AiOutputLanguage.directive()}
     suspend fun readSkillFile(skillName: String, relativePath: String): String = withContext(Dispatchers.IO) {
         localSkillStorage?.readText(skillName, relativePath)
             ?: throw IllegalStateException("本地 Skill 存储不可用")
+    }
+
+    /**
+     * 把 Skill 目录整体打包成 ZIP，供界面保存到下载目录。
+     *
+     * 打包内容为该 Skill 目录下除 `config.json` 外的全部文件，
+     * 生成的包结构与 GitHub 下载的 Skill 包一致，可直接再次安装。
+     */
+    suspend fun exportSkillZip(skillName: String): SkillZipExport = withContext(Dispatchers.IO) {
+        val storage = localSkillStorage ?: throw IllegalStateException("本地 Skill 存储不可用")
+        require(storage.exists(skillName)) { "Skill「$skillName」没有可导出的存储目录" }
+        SkillZipExport(
+            fileName = SkillZipExporter.zipFileName(skillName),
+            bytes = SkillZipExporter.build(skillName, storage.readAllFiles(skillName))
+        )
     }
 
     suspend fun createSkill(req: SkillRequest): Skill = withContext(Dispatchers.IO) {

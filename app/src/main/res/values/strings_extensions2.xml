@@ -57,6 +57,9 @@
     <string name="skill_file_group_other">其他</string>
     <string name="skill_file_no_files">该 Skill 没有可浏览的文件</string>
     <string name="skill_file_preview_title">文件预览</string>
+    <string name="skills_export_zip">下载为 ZIP</string>
+    <string name="skills_export_saved">已保存到下载目录: %1$s</string>
+    <string name="skills_export_failed">导出 ZIP 失败</string>
 
     <!-- ==================== MCP 工具卡片 ==================== -->
     <string name="mcp_tools_count">共 %1$d 个工具</string>

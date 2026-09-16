@@ -53,6 +53,20 @@ object AiOutputLanguage {
         "【输出语言】所有生成内容（包括所有字段值，如标题、名称、摘要、理由等）" +
             "必须使用${languageName()}书写，不要混用其他语言。"
 
+    /**
+     * 提示词模板里的多语言文案：按当前设置的语言挑一条。
+     *
+     * 用于模板中会被模型"照抄"进产物的词（如小节标题、指代玩家的称谓），
+     * 避免英文/日文/韩文输出里混入固化的中文词。日文与韩文缺省回退到英文。
+     */
+    fun promptText(zh: String, en: String, ja: String = en, ko: String = en): String =
+        when (languageTag()) {
+            PrefsManager.LANGUAGE_EN -> en
+            PrefsManager.LANGUAGE_JA -> ja
+            PrefsManager.LANGUAGE_KO -> ko
+            else -> zh
+        }
+
     /** 归一化语言代码：仅保留受支持的语言，未知语言回落到英语（与 LocaleHelper 一致）。 */
     private fun normalizeTag(tag: String): String {
         val lower = tag.lowercase(Locale.ROOT).substringBefore('-').substringBefore('_')

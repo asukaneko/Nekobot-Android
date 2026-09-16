@@ -6,6 +6,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonParser
 import com.nekobot.app.data.local.DownloadedSkillPackage
 import com.nekobot.app.data.local.PrefsManager
+import com.nekobot.app.data.local.SkillZipExporter
 import com.nekobot.app.data.model.*
 import com.nekobot.app.data.model.BindCharacterRequest
 import com.nekobot.app.data.model.MessageFavoriteRequest
@@ -929,8 +930,55 @@ class NekobotRepository(
         }
     }
 
+    /**
+     * 把服务端的 Skill 目录导出成 ZIP，供界面保存到下载目录。
+     *
+     * 服务端没有整体打包接口，这里先取目录清单，再逐个文件下载文本内容后本地打包。
+     * 服务端的文件接口不支持二进制文件，遇到这类文件时跳过并在结果中忽略。
+     */
+    suspend fun exportSkillZip(skill: Skill): Resource<SkillZipExport> {
+        val detail = when (val result = getSkillStorage(skill)) {
+            is Resource.Success -> result.data
+            is Resource.Error -> return result
+            is Resource.Loading -> return result
+        }
+        val files = linkedMapOf<String, ByteArray>()
+        detail.skillMd?.takeIf { it.isNotBlank() }
+            ?.let { files["SKILL.md"] = it.toByteArray(Charsets.UTF_8) }
+        detail.referenceMd?.takeIf { it.isNotBlank() }
+            ?.let { files["reference.md"] = it.toByteArray(Charsets.UTF_8) }
+        for (file in detail.files) {
+            val path = file.path.replace('\\', '/').trimStart('/')
+            if (path.isBlank() || files.containsKey(path)) continue
+            if (path.equals("config.json", ignoreCase = true)) continue
+            val content = readSkillFileText(skill.name, path) ?: continue
+            files[path] = content.toByteArray(Charsets.UTF_8)
+        }
+        if (files.isEmpty()) return Resource.Error("Skill 目录为空，无法导出")
+        return Resource.Success(
+            SkillZipExport(
+                fileName = SkillZipExporter.zipFileName(skill.name),
+                bytes = SkillZipExporter.build(skill.name, files)
+            )
+        )
+    }
+
+    /** 读取服务端 Skill 单个文本文件；失败或为二进制文件时返回 null。 */
+    private suspend fun readSkillFileText(skillName: String, relativePath: String): String? {
+        val encoded = relativePath
+            .split('/')
+            .joinToString("/") { segment -> java.net.URLEncoder.encode(segment, "UTF-8").replace("+", "%20") }
+        val body = when (val result = safeCall { api.getSkillFile(skillName, encoded) }) {
+            is Resource.Success -> result.data
+            else -> return null
+        }
+        return runCatching { body.asJsonObject.get("content")?.asString }.getOrNull()
+            ?.takeIf { it.isNotEmpty() }
+    }
+
     // ==================== Tools 配置 ====================
     suspend fun listTools(): Resource<List<Tool>> = safeCall { api.listTools() }
+
     suspend fun createTool(req: ToolRequest): Resource<Tool> = safeCall { api.createTool(req) }
     suspend fun updateTool(id: String, req: ToolRequest): Resource<Tool> = safeCall { api.updateTool(id, req) }
     suspend fun deleteTool(id: String): Resource<Unit> = safeCall { api.deleteTool(id) }.map { }
