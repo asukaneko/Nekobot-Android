@@ -319,8 +319,9 @@
     <string name="agent_git_modified">変更</string>
     <string name="agent_git_added">追加</string>
     <string name="agent_git_deleted">削除</string>
-    <string name="agent_git_files_truncated">ファイルが多すぎるため先頭 30 件のみ表示</string>
     <string name="agent_git_binary">バイナリファイルのため差分を非表示</string>
     <string name="agent_git_unavailable">ベースラインを読めないため状態のみ表示</string>
     <string name="agent_git_truncated">差分が長すぎるため省略</string>
+    <string name="agent_git_view_all">全 %1$d ファイルを表示</string>
+    <string name="agent_git_detail_title">すべての変更</string>
 </resources>

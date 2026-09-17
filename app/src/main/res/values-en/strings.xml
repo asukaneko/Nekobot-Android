@@ -319,8 +319,9 @@
     <string name="agent_git_modified">Modified</string>
     <string name="agent_git_added">Added</string>
     <string name="agent_git_deleted">Deleted</string>
-    <string name="agent_git_files_truncated">Too many files; showing first 30</string>
     <string name="agent_git_binary">Binary file, no text diff</string>
     <string name="agent_git_unavailable">Baseline unreadable; status only</string>
     <string name="agent_git_truncated">Diff too long, truncated</string>
+    <string name="agent_git_view_all">View all %1$d files</string>
+    <string name="agent_git_detail_title">All changes</string>
 </resources>

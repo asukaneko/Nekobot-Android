@@ -339,8 +339,9 @@
     <string name="agent_git_modified">修改</string>
     <string name="agent_git_added">新增</string>
     <string name="agent_git_deleted">删除</string>
-    <string name="agent_git_files_truncated">文件过多，仅显示前 30 个</string>
     <string name="agent_git_binary">二进制文件，不显示文字差异</string>
     <string name="agent_git_unavailable">无法读取基线内容，仅显示变更状态</string>
     <string name="agent_git_truncated">差异内容过长，已截断</string>
+    <string name="agent_git_view_all">查看全部 %1$d 个文件</string>
+    <string name="agent_git_detail_title">全部更改</string>
 </resources>

@@ -26,7 +26,7 @@ object WorkspaceGitDiff {
 
     // ---------- 上限与安全阀 ----------
     // GitRepository / TreeParser 等外层类也会读取这些上限，故声明为 internal 而非 private。
-    internal const val MAX_FILES_PER_SUMMARY = 30
+    internal const val MAX_FILES_PER_SUMMARY = 100
     internal const val MAX_TREE_ENTRIES = 60_000
     internal const val MAX_TREES = 10_000
     internal const val MAX_TREE_DEPTH = 40

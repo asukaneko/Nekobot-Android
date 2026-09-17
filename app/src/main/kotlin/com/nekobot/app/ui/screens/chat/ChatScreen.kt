@@ -3643,11 +3643,15 @@ internal fun formatToolDuration(durationMs: Long): String {
     return if (ms < 1_000) "${ms}ms" else "%.1f".format(ms / 1000.0) + "s"
 }
 
+/** 进度卡片内联展示的变更文件上限，超出部分放进「全部更改」子界面。 */
+private const val GIT_DIFF_INLINE_FILE_LIMIT = 5
+
 /**
  * 文件变更 git 摘要卡片区域：始终显示于进度卡片头部之下。
  *
- * 顶部展示仓库名/分支与总增减行数；下方列出变更文件，每个文件可展开查看
- * 完整的统一 diff 内容（上下文 3 行）。超过上限或被截断的文件显示提示。
+ * 顶部展示仓库名/分支与总增减行数；下方最多列出 [GIT_DIFF_INLINE_FILE_LIMIT] 个变更文件，
+ * 每个文件可展开查看完整的统一 diff 内容（上下文 3 行）。
+ * 文件数超过上限时，底部给出「查看全部」入口，点击进入 [GitDiffAllDialog] 子界面查看全部更改。
  */
 @Composable
 private fun GitDiffSummarySection(
@@ -3655,6 +3659,9 @@ private fun GitDiffSummarySection(
 ) {
     val addColor = Color(0xFF2EA043)
     val delColor = Color(0xFFCF6679)
+    var showAllChanges by remember { mutableStateOf(false) }
+    val visibleFiles = summary.files.take(GIT_DIFF_INLINE_FILE_LIMIT)
+    val hiddenCount = summary.files.size - visibleFiles.size
     Column(modifier = Modifier.fillMaxWidth()) {
         // 头部：标题 + 仓库/分支 + 总增减
         Row(
@@ -3697,19 +3704,121 @@ private fun GitDiffSummarySection(
             }
         }
 
-        if (summary.filesTruncated) {
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = stringResource(R.string.agent_git_files_truncated),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
         Spacer(Modifier.height(6.dp))
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            summary.files.forEach { file ->
+            visibleFiles.forEach { file ->
                 GitDiffFileRow(file, addColor = addColor, delColor = delColor)
+            }
+        }
+
+        // 超出内联上限：底部入口进入子界面查看全部更改
+        if (hiddenCount > 0) {
+            Spacer(Modifier.height(4.dp))
+            GitDiffViewAllRow(
+                text = stringResource(R.string.agent_git_view_all, summary.files.size),
+                onClick = { showAllChanges = true }
+            )
+        }
+    }
+
+    if (showAllChanges) {
+        GitDiffAllDialog(
+            summary = summary,
+            onDismiss = { showAllChanges = false }
+        )
+    }
+}
+
+/** 「查看全部更改」入口行：子界面（弹窗）打开。 */
+@Composable
+private fun GitDiffViewAllRow(
+    text: String,
+    onClick: () -> Unit
+) {
+    val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Checklist,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(14.dp)
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(16.dp)
+        )
+    }
+}
+
+/**
+ * 全部更改子界面：列出本轮会话的全部变更文件（不受内联条数限制），
+ * 每个文件同样可展开查看完整统一 diff。
+ */
+@Composable
+private fun GitDiffAllDialog(
+    summary: com.nekobot.app.data.model.GitDiffSummary,
+    onDismiss: () -> Unit
+) {
+    val addColor = Color(0xFF2EA043)
+    val delColor = Color(0xFFCF6679)
+    NekoDialog(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.agent_git_detail_title),
+        message = summary.repoName.ifBlank { "git" } +
+            (summary.branch?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
+        confirmText = stringResource(R.string.common_close),
+        onConfirm = null,
+        cancelText = null,
+        onCancel = null
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = stringResource(R.string.agent_git_files_changed, summary.files.size),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                DiffStatText(
+                    additions = summary.totalAdditions,
+                    deletions = summary.totalDeletions,
+                    addColor = addColor,
+                    delColor = delColor
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            // 弹窗内容区没有高度上界：内嵌滚动必须给出有界最大高度
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 460.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    summary.files.forEach { file ->
+                        GitDiffFileRow(file, addColor = addColor, delColor = delColor)
+                    }
+                }
             }
         }
     }
