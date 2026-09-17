@@ -36,7 +36,7 @@ object AnthropicMessagesProtocol : LocalProtocol {
         return "$base/v1/messages"
     }
 
-    override fun buildHeaders(apiKey: String, stream: Boolean): Map<String, String> {
+    override fun buildHeaders(apiKey: String, stream: Boolean, endpoint: String): Map<String, String> {
         val headers = linkedMapOf(
             "x-api-key" to apiKey,
             "Content-Type" to "application/json",

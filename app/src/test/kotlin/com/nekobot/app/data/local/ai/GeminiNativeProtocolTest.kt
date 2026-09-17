@@ -11,8 +11,9 @@ class GeminiNativeProtocolTest {
     @Test
     fun `native protocol is registered and resolves official endpoints`() {
         assertSame(GeminiNativeProtocol, LocalProtocols.get("gemini_native"))
+        // API key 不进 URL query，避免泄露到请求行日志
         assertEquals(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=test-key",
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
             GeminiNativeProtocol.resolveUrl(
                 baseUrl = "https://generativelanguage.googleapis.com/v1beta",
                 model = "models/gemini-2.5-flash",
@@ -31,6 +32,27 @@ class GeminiNativeProtocolTest {
                 apiKey = "test-key"
             )
         )
+    }
+
+    @Test
+    fun `official endpoint uses only x-goog-api-key header`() {
+        val headers = GeminiNativeProtocol.buildHeaders(
+            apiKey = "test-key",
+            stream = true,
+            endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse"
+        )
+        assertEquals("test-key", headers["x-goog-api-key"])
+        assertFalse(headers.containsKey("Authorization"))
+        assertTrue(headers.containsKey("Accept"))
+
+        // 第三方 Gemini 兼容代理保留 Authorization 双头
+        val proxyHeaders = GeminiNativeProtocol.buildHeaders(
+            apiKey = "test-key",
+            stream = false,
+            endpoint = "https://proxy.example/v1beta/models/gemini-2.5-flash:generateContent"
+        )
+        assertEquals("Bearer test-key", proxyHeaders["Authorization"])
+        assertEquals("test-key", proxyHeaders["x-goog-api-key"])
     }
 
     @Test

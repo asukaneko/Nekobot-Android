@@ -238,7 +238,7 @@ class LocalAiClient(
             )
             val headers = mergeRuntimeHeaders(
                 runtimeModel,
-                protocol.buildHeaders(runtimeModel.apiKey, stream = true),
+                protocol.buildHeaders(runtimeModel.apiKey, stream = true, endpoint = url),
                 credential,
                 requestTag
             )
@@ -379,7 +379,7 @@ class LocalAiClient(
         )
         val headers = mergeRuntimeHeaders(
             runtimeModel,
-            protocol.buildHeaders(runtimeModel.apiKey, stream = false),
+            protocol.buildHeaders(runtimeModel.apiKey, stream = false, endpoint = url),
             credential,
             requestTag
         )
@@ -449,7 +449,7 @@ class LocalAiClient(
         )
         val headers = mergeRuntimeHeaders(
             model,
-            protocol.buildHeaders(model.apiKey, stream = true),
+            protocol.buildHeaders(model.apiKey, stream = true, endpoint = url),
             credential,
             requestTag
         )
@@ -910,19 +910,18 @@ class LocalAiClient(
             path.contains("/models/") -> "${path.substringBefore("/models/")}/models"
             else -> "$path/models"
         }
-        val url = if (
-            apiKey.isNotBlank() &&
-            listUrl.contains("generativelanguage.googleapis.com", ignoreCase = true)
-        ) {
-            "$listUrl?key=${java.net.URLEncoder.encode(apiKey, Charsets.UTF_8.name())}"
-        } else {
-            listUrl
-        }
+        // 官方端点只用 x-goog-api-key 头；API key 不进 URL query，避免泄露到日志请求行。
+        // Authorization Bearer 仅对第三方代理保留（无效 Bearer 会被官方端点优先校验导致 401）。
+        val officialGoogle = listUrl.contains("generativelanguage.googleapis.com", ignoreCase = true)
         val request = Request.Builder()
-            .url(url)
+            .url(listUrl)
             .get()
             .header("x-goog-api-key", apiKey)
-            .header("Authorization", "Bearer $apiKey")
+            .apply {
+                if (!officialGoogle) {
+                    header("Authorization", "Bearer $apiKey")
+                }
+            }
             .build()
         clientFor(proxyUrl).newCall(request).execute().use { response ->
             val raw = response.body?.string().orEmpty()
@@ -1071,7 +1070,7 @@ class LocalAiClient(
             )
             val headers = mergeRuntimeHeaders(
                 runtimeModel,
-                protocol.buildHeaders(runtimeModel.apiKey, stream = true),
+                protocol.buildHeaders(runtimeModel.apiKey, stream = true, endpoint = url),
                 credential,
                 requestTag
             )
@@ -1271,7 +1270,7 @@ class LocalAiClient(
             stream = false,
             apiKey = model.apiKey
         )
-        val headers = protocol.buildHeaders(model.apiKey, stream = false)
+        val headers = protocol.buildHeaders(model.apiKey, stream = false, endpoint = url)
         val payload = buildVisionPayload(model, protocol, imageUrl, question)
         val body = gson.toJson(payload).toRequestBody(JSON_TYPE)
         val reqBuilder = Request.Builder().url(url).post(body)

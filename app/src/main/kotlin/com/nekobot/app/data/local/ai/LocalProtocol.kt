@@ -48,7 +48,11 @@ interface LocalProtocol {
         apiKey: String = ""
     ): String
 
-    fun buildHeaders(apiKey: String, stream: Boolean): Map<String, String>
+    /**
+     * [endpoint] 为 resolveUrl 产出的最终请求地址（含 query），协议实现可据此
+     * 区分官方端点与第三方代理（例如 Gemini 官方端点不应发送 Authorization 头）。
+     */
+    fun buildHeaders(apiKey: String, stream: Boolean, endpoint: String = ""): Map<String, String>
 
     /**
      * @param messages 统一格式：[{role: "system"|"user"|"assistant", content: "..."}]

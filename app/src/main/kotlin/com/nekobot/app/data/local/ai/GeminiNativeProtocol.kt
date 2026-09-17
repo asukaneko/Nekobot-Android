@@ -3,7 +3,6 @@ package com.nekobot.app.data.local.ai
 import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.google.gson.JsonParser
-import java.net.URLEncoder
 import java.util.UUID
 
 object GeminiNativeProtocol : LocalProtocol {
@@ -36,18 +35,23 @@ object GeminiNativeProtocol : LocalProtocol {
         if (stream && endpoint.contains("streamGenerateContent") && query.none { it.startsWith("alt=") }) {
             query += "alt=sse"
         }
-        if (apiKey.isNotBlank() && isGoogleEndpoint(endpoint) && query.none { it.startsWith("key=") }) {
-            query += "key=${URLEncoder.encode(apiKey, Charsets.UTF_8.name())}"
-        }
         return if (query.isEmpty()) endpoint else "$endpoint?${query.joinToString("&")}"
     }
 
-    override fun buildHeaders(apiKey: String, stream: Boolean): Map<String, String> = linkedMapOf<String, String>().apply {
+    /**
+     * 官方 Google 端点只发送 `x-goog-api-key` 头：
+     * - Authorization 头（哪怕是无效 Bearer）会被服务端优先校验，盖过 API key 造成 401；
+     * - API key 也绝不拼进 URL query，避免密钥泄露到代理与服务器日志的请求行。
+     * 第三方 Gemini 兼容代理保留 Authorization 双头，维持既有兼容性。
+     */
+    override fun buildHeaders(apiKey: String, stream: Boolean, endpoint: String): Map<String, String> = linkedMapOf<String, String>().apply {
         put("Content-Type", "application/json")
         if (stream) put("Accept", "text/event-stream")
         if (apiKey.isNotBlank()) {
             put("x-goog-api-key", apiKey)
-            put("Authorization", "Bearer $apiKey")
+            if (!isGoogleEndpoint(endpoint)) {
+                put("Authorization", "Bearer $apiKey")
+            }
         }
     }
 
