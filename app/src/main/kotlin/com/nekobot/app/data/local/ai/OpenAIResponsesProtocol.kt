@@ -29,7 +29,7 @@ object OpenAIResponsesProtocol : LocalProtocol {
         return if (appendBaseUrlPath) "$base/responses" else base
     }
 
-    override fun buildHeaders(apiKey: String, stream: Boolean): Map<String, String> = linkedMapOf(
+    override fun buildHeaders(apiKey: String, stream: Boolean, endpoint: String): Map<String, String> = linkedMapOf(
         "Authorization" to "Bearer $apiKey",
         "Content-Type" to "application/json",
         "Accept" to "text/event-stream",

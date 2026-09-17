@@ -26,7 +26,7 @@ object OpenAIChatProtocol : LocalProtocol {
         return if (base.endsWith("/v1")) "$base/chat/completions" else "$base/chat/completions"
     }
 
-    override fun buildHeaders(apiKey: String, stream: Boolean): Map<String, String> {
+    override fun buildHeaders(apiKey: String, stream: Boolean, endpoint: String): Map<String, String> {
         val headers = linkedMapOf(
             "Authorization" to "Bearer $apiKey",
             "Content-Type" to "application/json"
