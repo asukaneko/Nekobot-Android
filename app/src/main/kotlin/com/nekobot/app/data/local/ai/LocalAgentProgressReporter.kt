@@ -33,6 +33,12 @@ internal class LocalAgentProgressReporter(
             ?: String.format(Locale.getDefault(), fallback, arg)
 
     private val steps = mutableListOf<ThinkingStep>()
+    /**
+     * 当前这一轮思考的正文累加器。
+     *
+     * Agent 循环每迭代一次就是「思考 →（可能的回复）→ 工具调用」，
+     * 因此每轮思考各自成一个步骤，正文不跨轮拼接（跨轮拼接会把整轮思考全堆在卡片顶部）。
+     */
     private val reasoningContent = StringBuilder()
     private var lastStreamingEmitNanos: Long? = null
     private var lastEmittedReasoningLength: Int = 0
@@ -53,6 +59,64 @@ internal class LocalAgentProgressReporter(
                 thinkingContent = fullReasoning
             )
         }
+    }
+
+    /**
+     * 开始新一轮思考。
+     *
+     * 思考步骤按时间顺序追加：上一轮思考在此收尾，新步骤排在已经完成的工具步骤之后，
+     * 于是进度卡片里的顺序就是真实执行顺序（思考 → 工具 → 思考 → 工具 …），
+     * 而不是把所有思考堆在卡片顶部。
+     */
+    private fun beginThinkingRound() {
+        val index = steps.indexOfLast { it.type == "thinking" }
+        val previous = steps.getOrNull(index)
+        if (previous != null && !previous.status.equals("done", ignoreCase = true)) {
+            // 本轮思考已经开始且还没产出正文：复用该占位步骤，避免连续两个空气泡
+            val reusable = reasoningContent.isEmpty() &&
+                previous.thinkingContent.isNullOrBlank() &&
+                index == steps.lastIndex
+            if (reusable) return
+        }
+        if (previous != null) finishThinkingStep(index)
+        reasoningContent.setLength(0)
+        lastEmittedReasoningLength = 0
+        lastStreamingEmitNanos = null
+        steps.add(
+            ThinkingStep(
+                type = "thinking",
+                name = progressText(R.string.agent_progress_thinking, "AI 正在思考..."),
+                status = "active"
+            )
+        )
+    }
+
+    /**
+     * 收尾指定思考步骤：有正文就标记完成，没有正文的占位步骤直接移除。
+     * 模型没有输出思考内容时（思考强度关闭 / 该轮未产出思考），卡片里不留空气泡。
+     */
+    private fun finishThinkingStep(index: Int) {
+        val step = steps.getOrNull(index) ?: return
+        if (step.status.equals("done", ignoreCase = true)) return
+        if (step.thinkingContent.isNullOrBlank()) {
+            // 只移除仍是末尾的占位步骤，避免打乱已经排好的工具步骤顺序
+            if (index == steps.lastIndex) steps.removeAt(index)
+        } else {
+            steps[index] = step.copy(status = "done")
+        }
+    }
+
+    /** 工具开始执行：本轮思考就此收尾（后续思考属于下一轮）。 */
+    private fun finishCurrentThinkingRound() {
+        val index = steps.indexOfLast { it.type == "thinking" }
+        if (index >= 0) finishThinkingStep(index)
+    }
+
+    /** 兜底：确保存在一个能承载当前轮思考正文的步骤。 */
+    private fun ensureThinkingStep() {
+        val index = steps.indexOfLast { it.type == "thinking" }
+        val active = index >= 0 && !steps[index].status.equals("done", ignoreCase = true)
+        if (!active) beginThinkingRound()
     }
 
     private fun emit(
@@ -95,20 +159,13 @@ internal class LocalAgentProgressReporter(
         steps.indexOfLast { it.type == "preparing" }.takeIf { it >= 0 }?.let { index ->
             steps[index] = steps[index].copy(status = "done")
         }
-        if (steps.none { it.type == "thinking" }) {
-            steps.add(
-                ThinkingStep(
-                    type = "thinking",
-                    name = progressText(R.string.agent_progress_thinking, "AI 正在思考..."),
-                    status = "active"
-                )
-            )
-        }
+        beginThinkingRound()
         emit(progressText(R.string.agent_progress_processing, "AI 正在处理..."))
     }
 
     override fun onThinkingContent(ctx: PipelineContext, content: String) {
         if (content.isEmpty()) return
+        ensureThinkingStep()
         reasoningContent.append(content)
         val now = nowNanos()
         val elapsed = lastStreamingEmitNanos?.let { now - it } ?: Long.MAX_VALUE
@@ -133,6 +190,8 @@ internal class LocalAgentProgressReporter(
         if (thinking.isNotBlank() && ctx.metadata["agent_reasoning_streamed"] != true) {
             onThinkingContent(ctx, thinking)
         }
+        // 工具开始执行即本轮思考结束：思考步骤收尾后，工具步骤按时间顺序接在它后面
+        finishCurrentThinkingRound()
         val argumentPreview = boundedAgentValuePreview(
             arguments,
             AgentToolLimits.PROGRESS_STEP_DETAIL_CHARS
@@ -204,6 +263,8 @@ internal class LocalAgentProgressReporter(
     }
 
     override fun onToolIteration(ctx: PipelineContext, iteration: Int) {
+        // 每次工具循环迭代 = 新一轮思考：新一轮的思考步骤按时间顺序追加在已完成的工具步骤之后
+        beginThinkingRound()
         emit(progressText(R.string.agent_progress_processing_iteration, "AI 正在处理... (%1\$d)", iteration))
     }
 

@@ -101,6 +101,68 @@ class LocalAgentProgressReporterTest {
     }
 
     @Test
+    fun thinkingIsSplitIntoOneStepPerRoundInChronologicalOrder() {
+        val updates = mutableListOf<ThinkingCard>()
+        var now = 0L
+        val reporter = LocalAgentProgressReporter(
+            parentMessageId = "user-1",
+            onUpdate = updates::add,
+            nowNanos = { now.also { now += 200_000_000L } },
+            cardId = "card-1"
+        )
+        val context = PipelineContext(
+            ChatRequest.forLocal(sessionId = "session-1", content = "测试")
+        )
+
+        // 第 1 轮：思考 → 工具
+        reporter.onThinkingStart(context)
+        reporter.onToolIteration(context, 0)
+        reporter.onThinkingContent(context, "先看目录。")
+        reporter.onToolStart(context, toolName = "list_dir", arguments = mapOf("path" to "."), thinking = "")
+        reporter.onToolDone(context, toolName = "list_dir", result = mapOf("stdout" to "a.kt"), thinking = "")
+        // 第 2 轮：思考 → 工具
+        reporter.onToolIteration(context, 1)
+        reporter.onThinkingContent(context, "再读文件。")
+        reporter.onToolStart(context, toolName = "read_file", arguments = mapOf("path" to "a.kt"), thinking = "")
+        reporter.onToolDone(context, toolName = "read_file", result = mapOf("content" to "x"), thinking = "")
+
+        val steps = updates.last().steps
+        // 思考按时间顺序夹在工具之间，而不是全部堆在卡片顶部
+        assertEquals(listOf("thinking", "tool", "thinking", "tool"), steps.map { it.type })
+        assertEquals(
+            listOf("先看目录。", "再读文件。"),
+            steps.filter { it.type == "thinking" }.map { it.thinkingContent }
+        )
+        assertTrue(steps.filter { it.type == "thinking" }.all { it.status == "done" })
+    }
+
+    @Test
+    fun roundsWithoutReasoningContentLeaveNoEmptyThinkingSteps() {
+        val updates = mutableListOf<ThinkingCard>()
+        val reporter = LocalAgentProgressReporter(
+            parentMessageId = "user-1",
+            onUpdate = updates::add,
+            cardId = "card-1"
+        )
+        val context = PipelineContext(
+            ChatRequest.forLocal(sessionId = "session-1", content = "测试")
+        )
+
+        // 思考强度关闭时模型不产出思考：两轮都不应留下空的思考占位
+        reporter.onThinkingStart(context)
+        reporter.onToolIteration(context, 0)
+        reporter.onToolStart(context, toolName = "exec_command", arguments = emptyMap(), thinking = "")
+        reporter.onToolDone(context, toolName = "exec_command", result = mapOf("stdout" to "ok"), thinking = "")
+        reporter.onToolIteration(context, 1)
+        reporter.onToolStart(context, toolName = "exec_command", arguments = emptyMap(), thinking = "")
+        reporter.onToolDone(context, toolName = "exec_command", result = mapOf("stdout" to "ok"), thinking = "")
+
+        val steps = updates.last().steps
+        assertTrue("没有思考正文时不应留下空气泡", steps.none { it.type == "thinking" })
+        assertEquals(2, steps.count { it.type == "tool" })
+    }
+
+    @Test
     fun attachGitDiffInsertsOrUpdatesADedicatedStep() {
         val updates = mutableListOf<ThinkingCard>()
         val reporter = LocalAgentProgressReporter(

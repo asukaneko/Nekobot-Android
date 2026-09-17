@@ -52,17 +52,31 @@ internal object AgentToolLimits {
     /** 进度卡思考步骤 detail 预览上限（仅用于行内展示，正文另算）。 */
     const val PROGRESS_REASONING_DETAIL_CHARS = 160
 
-    /** 进度卡思考正文上限：落库与详情弹窗统一使用，避免"看得到、重启后变短"。 */
+    /** 进度卡思考正文上限：单条步骤落库与详情弹窗统一使用，避免"看得到、重启后变短"。 */
     const val PROGRESS_REASONING_CHARS = 20_000
 
-    /** 进度卡行内实时思考预览上限（非详情弹窗）。 */
-    const val PROGRESS_REASONING_LIVE_CHARS = 1_200
+    /**
+     * 进度卡思考正文的**总**预算：一轮 Agent 任务里每轮思考各自成步，
+     * 逐条都存 20k 会让进度卡 JSON 随轮数线性膨胀（超过历史解码上限会被整卡折叠），
+     * 因此落库时从最新一轮往前分配这份预算，更早的思考只保留步骤摘要。
+     *
+     * 按每轮 1~3k 字符的常见思考量，这个预算足够覆盖最近数十轮。
+     */
+    const val PROGRESS_REASONING_TOTAL_CHARS = 120_000
+
+    /** 进度卡行内实时思考预览的单行宽度（字符）：只保留末尾，最新内容始终可见。 */
+    const val PROGRESS_REASONING_LINE_CHARS = 96
 
     /** 进度卡落库时单步名称上限。 */
     const val PROGRESS_PERSISTED_NAME_CHARS = 200
 
-    /** 进度卡落库时保留的最大步骤数（超出时保留思考步骤 + 最近若干步）。 */
-    const val PROGRESS_PERSISTED_STEPS = 64
+    /**
+     * 进度卡落库时保留的最大步骤数（超出时保留开头的思考步骤 + 最近的若干步）。
+     *
+     * Agent 循环每轮会产生「思考 + 工具」两步，400 步约等于 200 轮，
+     * 覆盖长任务仍然完整可回看；真正撑爆体积的是上面那份正文预算，不是步骤条数。
+     */
+    const val PROGRESS_PERSISTED_STEPS = 400
 
     /** 进度卡落库时卡片正文上限。 */
     const val PROGRESS_PERSISTED_CONTENT_CHARS = 500

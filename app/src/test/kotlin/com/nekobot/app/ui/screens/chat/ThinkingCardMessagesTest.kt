@@ -1,7 +1,9 @@
 package com.nekobot.app.ui.screens.chat
 
+import com.nekobot.app.data.local.ai.AgentToolLimits
 import com.nekobot.app.data.model.Message
 import com.nekobot.app.data.model.ThinkingCard
+import com.nekobot.app.data.model.ThinkingStep
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -142,5 +144,174 @@ class ThinkingCardMessagesTest {
     @Test
     fun formatToolDurationClampsNegativeInput() {
         assertEquals("0ms", formatToolDuration(-5))
+    }
+
+    @Test
+    fun streamingThinkingStepIsRecognisedWhileToolsRun() {
+        assertTrue(
+            isStreamingThinkingStep(
+                ThinkingStep(type = "thinking", name = "AI 正在思考...", status = "active")
+            )
+        )
+        assertTrue(
+            isStreamingThinkingStep(
+                ThinkingStep(type = "thinking", name = "AI 正在思考...", status = "running")
+            )
+        )
+        assertFalse(
+            isStreamingThinkingStep(
+                ThinkingStep(type = "thinking", name = "AI 正在思考...", status = "done")
+            )
+        )
+        // 服务端下发的思考步骤类型可能是 ai_thinking
+        assertTrue(
+            isStreamingThinkingStep(
+                ThinkingStep(type = "ai_thinking", name = "AI 正在思考...", status = "active")
+            )
+        )
+        assertFalse(
+            isStreamingThinkingStep(ThinkingStep(type = "tool", name = "read_file", status = "active"))
+        )
+    }
+
+    @Test
+    fun resolvesStepDetailTargetToTheLatestStreamedThinkingContent() {
+        val stale = ThinkingStep(
+            type = "thinking",
+            name = "AI 正在思考...",
+            status = "active",
+            thinkingContent = "第一段思考"
+        )
+        val latest = stale.copy(thinkingContent = "第一段思考\n第二段思考")
+        val target = StepDetailTarget(
+            cardId = "card-1",
+            stepIndex = 0,
+            stepType = stale.type,
+            stepName = stale.name
+        )
+        val user = Message(
+            id = "message-1",
+            role = "user",
+            content = "继续",
+            thinkingCards = listOf(
+                ThinkingCard(
+                    id = "card-1",
+                    content = "调用工具: read_file",
+                    isAgent = true,
+                    steps = listOf(stale)
+                )
+            )
+        )
+
+        val resolved = resolveStepDetailTarget(listOf(user), target)
+
+        assertEquals("第一段思考", resolved?.thinkingContent)
+        // 卡片被下一轮流式更新整卡替换后，弹窗取到的仍是同一目标，但内容已是最新
+        val updatedUser = user.copy(
+            thinkingCards = listOf(
+                user.thinkingCards!!.single().copy(steps = listOf(latest))
+            )
+        )
+        assertEquals("第一段思考\n第二段思考", resolveStepDetailTarget(listOf(updatedUser), target)?.thinkingContent)
+    }
+
+    @Test
+    fun resolvesStepDetailTargetAfterPersistedStepsReorderTheThinkingStep() {
+        val thinking = ThinkingStep(
+            type = "thinking",
+            name = "AI 正在思考...",
+            status = "done",
+            thinkingContent = "完整思考"
+        )
+        val tool = ThinkingStep(type = "tool", name = "read_file", status = "done")
+        // 落库裁剪会把思考步骤提到列表首位，UI 里的旧下标因此漂移
+        val target = StepDetailTarget(
+            cardId = "card-1",
+            stepIndex = 1,
+            stepType = thinking.type,
+            stepName = thinking.name
+        )
+        val user = Message(
+            id = "message-1",
+            role = "user",
+            content = "继续",
+            thinkingCards = listOf(
+                ThinkingCard(
+                    id = "card-1",
+                    content = "处理完成",
+                    isAgent = true,
+                    steps = listOf(thinking, tool)
+                )
+            )
+        )
+
+        val resolved = resolveStepDetailTarget(listOf(user), target)
+
+        assertEquals("完整思考", resolved?.thinkingContent)
+    }
+
+    @Test
+    fun thinkingLinePreviewCollapsesToASingleLine() {
+        assertEquals(
+            "先看目录 再读文件",
+            buildThinkingLinePreview("先看目录\n\n   再读文件   ")
+        )
+    }
+
+    @Test
+    fun thinkingLinePreviewKeepsTheNewestContentVisible() {
+        val content = "开头" + "x".repeat(500) + "最新结论"
+
+        val preview = buildThinkingLinePreview(content)
+
+        assertEquals(AgentToolLimits.PROGRESS_REASONING_LINE_CHARS, preview.length)
+        assertTrue("行内预览必须停在最新内容上", preview.endsWith("最新结论"))
+    }
+
+    @Test
+    fun resolvesStepDetailTargetToTheNearestRoundWhenThinkingNamesRepeat() {
+        // 每轮思考的 type+name 完全相同（AI 正在思考...），下标漂移时必须取最近的一轮，
+        // 否则点开的会是别的一轮的思考内容。
+        val round1 = ThinkingStep(
+            type = "thinking",
+            name = "AI 正在思考...",
+            status = "done",
+            thinkingContent = "第一轮思考"
+        )
+        val round2 = round1.copy(thinkingContent = "第二轮思考")
+        val tool = ThinkingStep(type = "tool", name = "read_file", status = "done")
+        val target = StepDetailTarget(
+            cardId = "card-1",
+            stepIndex = 2,
+            stepType = "thinking",
+            stepName = "AI 正在思考..."
+        )
+        val user = Message(
+            id = "message-1",
+            role = "user",
+            content = "继续",
+            thinkingCards = listOf(
+                ThinkingCard(
+                    id = "card-1",
+                    content = "处理完成",
+                    isAgent = true,
+                    steps = listOf(round1, round2, tool)
+                )
+            )
+        )
+
+        assertEquals("第二轮思考", resolveStepDetailTarget(listOf(user), target)?.thinkingContent)
+    }
+
+    @Test
+    fun resolvesStepDetailTargetToNullWhenCardIsGone() {
+        val target = StepDetailTarget(
+            cardId = "missing-card",
+            stepIndex = 0,
+            stepType = "thinking",
+            stepName = "AI 正在思考..."
+        )
+
+        assertEquals(null, resolveStepDetailTarget(emptyList(), target))
     }
 }

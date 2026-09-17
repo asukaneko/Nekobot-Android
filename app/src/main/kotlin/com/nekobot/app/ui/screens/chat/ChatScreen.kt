@@ -152,6 +152,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -347,8 +348,9 @@ fun ChatScreen(
         ServiceContainer.prefs.setChatInputDraft(sessionId, input)
     }
     var pendingPlotChoiceId by rememberSaveable(sessionId) { mutableStateOf<String?>(null) }
-    // Agent 进度卡片步骤详情弹窗目标（点击 step 时填充）
-    var stepDetailTarget by remember { mutableStateOf<com.nekobot.app.data.model.ThinkingStep?>(null) }
+    // Agent 进度卡片步骤详情弹窗目标（点击 step 时填充）：只记录定位信息，
+    // 步骤本体每次重组时从最新消息里取，思考正文流式追加时弹窗内容能实时增长。
+    var stepDetailTarget by remember { mutableStateOf<StepDetailTarget?>(null) }
     var chatInputLayout by remember {
         mutableStateOf(ServiceContainer.prefs.chatInputLayoutMode)
     }
@@ -1261,8 +1263,8 @@ fun ChatScreen(
                                             onExpandedChange = { expanded ->
                                                 progressCardExpansionOverrides[card.id] = expanded
                                             },
-                                            onStepClick = { step ->
-                                                stepDetailTarget = step
+                                            onStepClick = { target ->
+                                                stepDetailTarget = target
                                             }
                                         )
                                     }
@@ -1308,10 +1310,12 @@ fun ChatScreen(
             }
         }
 
-        // Agent 进度卡片步骤详情弹窗（点击含详情的 step 时弹出）
-        stepDetailTarget?.let { step ->
+        // Agent 进度卡片步骤详情弹窗（点击含详情的 step 时弹出）。
+        // 每次重组都按定位信息从最新消息里取步骤，思考正文流式追加时弹窗内容实时增长。
+        val stepDetailStep = stepDetailTarget?.let { resolveStepDetailTarget(renderMessages, it) }
+        if (stepDetailStep != null) {
             StepDetailDialog(
-                step = step,
+                step = stepDetailStep,
                 onDismiss = { stepDetailTarget = null }
             )
         }
@@ -3258,7 +3262,7 @@ private fun ProgressCard(
     expanded: Boolean,
     showBrowserPreview: Boolean = false,
     onExpandedChange: (Boolean) -> Unit,
-    onStepClick: (com.nekobot.app.data.model.ThinkingStep) -> Unit = {}
+    onStepClick: (StepDetailTarget) -> Unit = {}
 ) {
     val progress = card.progress?.coerceIn(0, 100)
     val hasError = card.steps.any { it.status.equals("error", ignoreCase = true) }
@@ -3377,10 +3381,22 @@ private fun ProgressCard(
             )
             Spacer(Modifier.height(6.dp))
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                card.steps.forEach { step ->
+                card.steps.forEachIndexed { index, step ->
                     // git_diff 步骤的内容已在卡片头部的摘要区展示，避免重复
                     if (!step.type.equals("git_diff", ignoreCase = true)) {
-                        ProgressStepRow(step, onStepClick = onStepClick)
+                        ProgressStepRow(
+                            step = step,
+                            onOpenDetail = {
+                                onStepClick(
+                                    StepDetailTarget(
+                                        cardId = card.id,
+                                        stepIndex = index,
+                                        stepType = step.type,
+                                        stepName = step.name
+                                    )
+                                )
+                            }
+                        )
                     }
                 }
             }
@@ -3403,11 +3419,96 @@ internal fun shouldRenderProgressCards(
     sessionMode: String?
 ): Boolean = isLocalMode || sessionMode.equals("agent", ignoreCase = true)
 
-/** 进度卡片单步渲染：Material Icon + 名称 + 状态色 + 详情摘要，含详情时可点击。 */
+/** 是否为思考步骤（本地 Agent 上报 thinking，服务端历史里也可能是 ai_thinking）。 */
+internal fun isThinkingStep(step: com.nekobot.app.data.model.ThinkingStep): Boolean =
+    step.type.equals("thinking", ignoreCase = true) ||
+        step.type.equals("ai_thinking", ignoreCase = true)
+
+/** 思考步骤是否仍在流式追加正文（决定行内预览与详情弹窗的跟随行为）。 */
+internal fun isStreamingThinkingStep(step: com.nekobot.app.data.model.ThinkingStep): Boolean =
+    isThinkingStep(step) &&
+        (step.status.equals("running", ignoreCase = true) ||
+            step.status.equals("active", ignoreCase = true))
+
+/**
+ * 行内思考预览：压成单行并只保留末尾片段。
+ *
+ * 流式追加时最新内容始终停在可见位置；只处理末尾窗口，避免长思考每次重组都跑全量正则。
+ * 完整正文由详情弹窗展示。
+ */
+internal fun buildThinkingLinePreview(
+    content: String,
+    maxChars: Int = AgentToolLimits.PROGRESS_REASONING_LINE_CHARS
+): String {
+    val window = if (content.length > maxChars * 8) content.takeLast(maxChars * 8) else content
+    val flattened = window.replace(THINKING_PREVIEW_WHITESPACE, " ").trim()
+    return if (flattened.length <= maxChars) flattened else flattened.takeLast(maxChars)
+}
+
+private val THINKING_PREVIEW_WHITESPACE = Regex("\\s+")
+
+/**
+ * 进度卡片步骤详情弹窗的目标定位。
+ *
+ * 不持有 [com.nekobot.app.data.model.ThinkingStep] 快照：思考步骤的正文在流式过程中
+ * 会被整张卡片替换着增长，只记录定位信息才能让弹窗内容跟着实时刷新。
+ */
+internal data class StepDetailTarget(
+    val cardId: String,
+    val stepIndex: Int,
+    val stepType: String?,
+    val stepName: String?
+)
+
+/**
+ * 在最新消息里按定位信息取出步骤本体。
+ *
+ * 优先用下标命中（进度卡片的步骤只追加不插入）；卡片落库裁剪导致下标漂移时，
+ * 取离原下标最近的一条同类步骤——思考步骤的 type+name 每轮都一样，
+ * 取「最后一条」会跳到别的一轮去；再取不到就返回原下标处的步骤（可能为 null，调用方不渲染）。
+ */
+internal fun resolveStepDetailTarget(
+    messages: List<Message>,
+    target: StepDetailTarget
+): com.nekobot.app.data.model.ThinkingStep? {
+    val card = messages.asSequence()
+        .flatMap { it.thinkingCards.orEmpty().asSequence() }
+        .firstOrNull { it.id == target.cardId } ?: return null
+    val steps = card.steps
+    val byIndex = steps.getOrNull(target.stepIndex)
+    if (byIndex != null && matchesStepDetailTarget(byIndex, target)) return byIndex
+    return nearestStepDetailIndex(steps, target).takeIf { it >= 0 }?.let { steps[it] } ?: byIndex
+}
+
+/** 从原下标向两侧扩散，找到离它最近的同类步骤（找不到返回 -1）。 */
+private fun nearestStepDetailIndex(
+    steps: List<com.nekobot.app.data.model.ThinkingStep>,
+    target: StepDetailTarget
+): Int {
+    for (offset in 1..steps.size) {
+        val after = target.stepIndex + offset
+        if (after in steps.indices && matchesStepDetailTarget(steps[after], target)) return after
+        val before = target.stepIndex - offset
+        if (before in steps.indices && matchesStepDetailTarget(steps[before], target)) return before
+    }
+    return -1
+}
+
+private fun matchesStepDetailTarget(
+    step: com.nekobot.app.data.model.ThinkingStep,
+    target: StepDetailTarget
+): Boolean = step.type.equals(target.stepType, ignoreCase = true) && step.name == target.stepName
+
+/**
+ * 进度卡片单步渲染：Material Icon + 名称 + 状态色 + 详情摘要，含详情时可点击。
+ *
+ * 思考步骤正在流式输出时同样可点击：行内只放一个有界的预览窗口（长思考不拖慢列表），
+ * 完整正文通过详情弹窗查看，弹窗会跟随流式内容实时增长。
+ */
 @Composable
 private fun ProgressStepRow(
     step: com.nekobot.app.data.model.ThinkingStep,
-    onStepClick: (com.nekobot.app.data.model.ThinkingStep) -> Unit = {}
+    onOpenDetail: () -> Unit = {}
 ) {
     val statusColor = when (step.status?.lowercase()) {
         "done" -> MaterialTheme.colorScheme.primary
@@ -3416,7 +3517,7 @@ private fun ProgressStepRow(
     }
     // step.type 映射到 Material Icon（不使用 emoji）
     val iconVector = when (step.type?.lowercase()) {
-        "thinking" -> Icons.Filled.Psychology
+        "thinking", "ai_thinking" -> Icons.Filled.Psychology
         "tool", "tool_done" -> Icons.Filled.Build
         "upload" -> Icons.Filled.Upload
         "knowledge" -> Icons.Filled.MenuBook
@@ -3429,25 +3530,28 @@ private fun ProgressStepRow(
     val detail = step.detail?.stripEmoji()?.takeIf { it.isNotBlank() }
     // 工具执行耗时（本地 Agent 模式在工具完成后写入；远程/运行中为 null 时不展示）
     val durationLabel = step.durationMs?.let { formatToolDuration(it) }
-    val isStreamingThinking = step.type.equals("thinking", ignoreCase = true) &&
-        (step.status.equals("running", ignoreCase = true) ||
-            step.status.equals("active", ignoreCase = true))
-    val liveThinkingPreview = if (isStreamingThinking) {
-        step.thinkingContent
-            ?.takeLast(AgentToolLimits.PROGRESS_REASONING_LIVE_CHARS)
-            ?.stripEmoji()
-            ?.takeIf(String::isNotBlank)
+    val isStreamingThinking = isStreamingThinkingStep(step)
+    // 思考步骤统一压成一行：运行中跟着流式正文滚动（最新内容停在行尾），
+    // 已完成显示该轮思考的末尾摘要；完整正文一律点击步骤查看。
+    val thinkingPreview = if (isThinkingStep(step)) {
+        if (isStreamingThinking) {
+            step.thinkingContent
+                ?.let { buildThinkingLinePreview(it).stripEmoji() }
+                ?.takeIf(String::isNotBlank)
+        } else {
+            detail?.let { buildThinkingLinePreview(it) }?.takeIf(String::isNotBlank)
+        }
     } else null
     // 含任一详情字段时可点击查看详情（对齐原仓库 has-detail 判定）；
     // 工具步骤即使没有参数/结果也带工具说明，同样可点开
     val hasDetail = step.arguments != null || step.fullResult != null ||
         !step.thinkingContent.isNullOrBlank() || step.name?.let { toolDescResId(it) != 0 } == true
-    val canOpenDetail = hasDetail && !isStreamingThinking
+    val canOpenDetail = hasDetail
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (canOpenDetail) Modifier.clickable { onStepClick(step) } else Modifier),
+            .then(if (canOpenDetail) Modifier.clickable { onOpenDetail() } else Modifier),
         verticalAlignment = Alignment.Top
     ) {
         Box(
@@ -3500,7 +3604,7 @@ private fun ProgressStepRow(
                     )
                 }
             }
-            if (!liveThinkingPreview.isNullOrBlank()) {
+            if (!thinkingPreview.isNullOrBlank()) {
                 androidx.compose.material3.Surface(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -3509,11 +3613,11 @@ private fun ProgressStepRow(
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.45f)
                 ) {
                     Text(
-                        text = liveThinkingPreview,
+                        text = thinkingPreview,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                        maxLines = 8,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
@@ -3800,6 +3904,9 @@ private fun GitDiffFileRow(
     }
 }
 
+/** 详情弹窗流式跟随阈值：距底部不超过该像素数仍视为“正在跟随”，超过则尊重用户上滑。 */
+private const val STEP_DETAIL_FOLLOW_SLOP_PX = 240
+
 /**
  * 进度卡片步骤详情弹窗：展示工具说明（多语言）/ 输入参数 / AI 思考内容 / 返回结果。
  *
@@ -3807,7 +3914,10 @@ private fun GitDiffFileRow(
  * 取不到工具说明时（如动态 MCP 工具）回退展示步骤摘要；
  * 其余步骤（思考/等待确认等）沿用原来的摘要展示。
  *
- * @param step 步骤数据
+ * 思考步骤仍在流式输出时（status = active/running），弹窗会自动跟随正文尾部，
+ * 让用户在 Agent 调用工具的过程中也能看到完整思考内容；用户主动上滑后不再拉回。
+ *
+ * @param step 步骤数据（流式期间由调用方按定位实时刷新）
  * @param onDismiss 关闭回调
  */
 @Composable
@@ -3848,6 +3958,24 @@ private fun StepDetailDialog(
     val hasAny = stepDetail != null || toolDescription != null || thinkingContent != null ||
         !argumentsJson.isNullOrBlank() || !fullResultJson.isNullOrBlank()
 
+    val scrollState = rememberScrollState()
+    val followThinkingTail = isStreamingThinkingStep(step) && thinkingContent != null
+    // 打开弹窗时先跳到正文尾部（wait 一帧等布局算出 maxValue）
+    LaunchedEffect(followThinkingTail) {
+        if (followThinkingTail) {
+            withFrameNanos { }
+            scrollState.scrollTo(scrollState.maxValue)
+        }
+    }
+    // 流式追加期间保持跟随：距底部超过阈值（用户主动上滑阅读前文）时不再打扰
+    LaunchedEffect(scrollState.maxValue) {
+        if (followThinkingTail &&
+            scrollState.maxValue - scrollState.value <= STEP_DETAIL_FOLLOW_SLOP_PX
+        ) {
+            scrollState.scrollTo(scrollState.maxValue)
+        }
+    }
+
     NekoDialog(
         onDismiss = onDismiss,
         title = name,
@@ -3861,7 +3989,7 @@ private fun StepDetailDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = 480.dp)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (durationLabel != null) {
