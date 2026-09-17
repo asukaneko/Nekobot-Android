@@ -107,6 +107,7 @@ import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.VerticalSplit
 import androidx.compose.material.icons.filled.ViewAgenda
@@ -243,6 +244,9 @@ import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.MarkdownText
 import com.nekobot.app.ui.components.NekoDialog
 import com.nekobot.app.ui.components.resolveAvatarUrl
+import com.nekobot.app.ui.components.localToolDefinitionDescription
+import com.nekobot.app.ui.components.toolDescResId
+import com.nekobot.app.ui.components.ToolParameterList
 import com.nekobot.app.ui.theme.BubbleUser
 import com.nekobot.app.ui.theme.BubbleUserLight
 import com.nekobot.app.ui.theme.accentLink
@@ -3434,8 +3438,10 @@ private fun ProgressStepRow(
             ?.stripEmoji()
             ?.takeIf(String::isNotBlank)
     } else null
-    // 含任一详情字段时可点击查看详情（对齐原仓库 has-detail 判定）
-    val hasDetail = step.arguments != null || step.fullResult != null || !step.thinkingContent.isNullOrBlank()
+    // 含任一详情字段时可点击查看详情（对齐原仓库 has-detail 判定）；
+    // 工具步骤即使没有参数/结果也带工具说明，同样可点开
+    val hasDetail = step.arguments != null || step.fullResult != null ||
+        !step.thinkingContent.isNullOrBlank() || step.name?.let { toolDescResId(it) != 0 } == true
     val canOpenDetail = hasDetail && !isStreamingThinking
 
     Row(
@@ -3795,10 +3801,11 @@ private fun GitDiffFileRow(
 }
 
 /**
- * 进度卡片步骤详情弹窗：展示 AI 思考内容 / 工具参数 / 返回结果。
+ * 进度卡片步骤详情弹窗：展示工具说明（多语言）/ 输入参数 / AI 思考内容 / 返回结果。
  *
- * 对齐原仓库 Web 端 stepDetailModal：按字段存在与否展示对应区块，
- * 无详情时显示"该步骤没有详细信息"占位。
+ * 工具步骤优先展示该工具的说明与输入参数（同一份说明与模型看到的定义一致），
+ * 取不到工具说明时（如动态 MCP 工具）回退展示步骤摘要；
+ * 其余步骤（思考/等待确认等）沿用原来的摘要展示。
  *
  * @param step 步骤数据
  * @param onDismiss 关闭回调
@@ -3823,7 +3830,22 @@ private fun StepDetailDialog(
     val toolOutputWasTruncated = step.resultTruncated == true ||
         fullResultIndicatesTruncation(step.fullResult)
     val durationLabel = step.durationMs?.let { formatToolDuration(it) }
-    val hasAny = detail != null || thinkingContent != null ||
+    val toolName = step.name?.stripEmoji()?.takeIf { it.isNotBlank() }
+    // 优先本地化工具说明（tool_desc_<id>），其次取模型看到的工具定义说明，
+    // 最后回退数据库内置说明；动态 MCP 工具三者皆无时才回退步骤摘要
+    val toolDescriptionRes = remember(toolName) {
+        toolName?.let { toolDescResId(it) }?.takeIf { it != 0 }
+    }
+    val toolDescription = toolDescriptionRes?.let { stringResource(it) }
+        ?: remember(toolName) {
+            toolName?.let { localToolDefinitionDescription(it) }
+                ?: com.nekobot.app.data.local.db.BuiltinTools.all
+                    .firstOrNull { it.id == toolName }?.description
+                    ?.takeIf { it.isNotBlank() }
+        }
+    // 工具说明即该步骤的描述，不再重复显示调用参数/结果的摘要
+    val stepDetail = if (toolDescription.isNullOrBlank()) detail else null
+    val hasAny = stepDetail != null || toolDescription != null || thinkingContent != null ||
         !argumentsJson.isNullOrBlank() || !fullResultJson.isNullOrBlank()
 
     NekoDialog(
@@ -3867,10 +3889,20 @@ private fun StepDetailDialog(
                     )
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (!detail.isNullOrBlank()) {
+                        if (!toolDescription.isNullOrBlank()) {
+                            StepDetailSection(
+                                label = stringResource(R.string.chat_step_tool_description),
+                                icon = Icons.Filled.Build,
+                                content = toolDescription
+                            )
+                        }
+                        if (toolName != null) {
+                            StepToolParameterSection(toolName)
+                        }
+                        if (!stepDetail.isNullOrBlank()) {
                             StepDetailSection(
                                 label = stringResource(R.string.chat_step_description),
-                                content = detail
+                                content = stepDetail
                             )
                         }
                         if (!thinkingContent.isNullOrBlank()) {
@@ -3908,6 +3940,44 @@ private fun StepDetailDialog(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 工具输入参数区块：按工具定义展示参数名、多语言参数说明与是否必填，
+ * 没有参数的工具显示占位文案。
+ */
+@Composable
+private fun StepToolParameterSection(toolId: String) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Filled.Tune,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = stringResource(R.string.chat_step_tool_params),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        androidx.compose.material3.Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ) {
+            Column(
+                modifier = Modifier.padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                ToolParameterList(toolId)
             }
         }
     }

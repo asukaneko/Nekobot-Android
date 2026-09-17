@@ -1,4 +1,4 @@
-package com.nekobot.app.ui.components
+﻿package com.nekobot.app.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -43,6 +43,9 @@ import androidx.compose.ui.unit.dp
 import com.nekobot.app.R
 import com.nekobot.app.data.local.ai.ToolSetMode
 import com.nekobot.app.data.local.ai.ToolSetModeCatalog
+import com.nekobot.app.data.local.ai.buildLocalAgentToolDefinitions
+import com.nekobot.app.data.local.ai.buildLocalDbToolDefinitions
+import com.nekobot.app.data.local.ai.buildLocalSkillToolDefinitions
 import com.nekobot.app.data.local.ai.toolDisplayFallbackName
 import com.nekobot.app.data.local.db.BuiltinTools
 
@@ -480,7 +483,317 @@ internal fun toolDescResId(id: String): Int = when (id) {
     "android_notification_action" -> R.string.tool_desc_android_notification_action
     "android_media_control" -> R.string.tool_desc_android_media_control
     "subagent" -> R.string.tool_desc_subagent
+    "get_session_thinking_history" -> R.string.tool_desc_get_session_thinking_history
+    "send_message" -> R.string.tool_desc_send_message
+    "skill_list" -> R.string.tool_desc_skill_list
+    "skill_view" -> R.string.tool_desc_skill_view
+    "skill_read" -> R.string.tool_desc_skill_read
+    "skill_get_info" -> R.string.tool_desc_skill_get_info
     else -> 0
+}
+
+/**
+ * 工具输入参数名 → 本地化参数说明资源 id；未收录时返回 0。
+ *
+ * 参数名（如 path/url/max_chars）在各工具间含义一致，因此按参数名共用一份说明，
+ * 新增工具只要沿用这些参数名即可自动获得多语言说明，无需为每个工具重复登记。
+ */
+internal fun toolParamResId(paramName: String): Int = when (paramName) {
+    "path" -> R.string.tool_param_desc_path
+    "url" -> R.string.tool_param_desc_url
+    "query" -> R.string.tool_param_desc_query
+    "command" -> R.string.tool_param_desc_command
+    "content" -> R.string.tool_param_desc_content
+    "old_string" -> R.string.tool_param_desc_old_string
+    "new_string" -> R.string.tool_param_desc_new_string
+    "old_text" -> R.string.tool_param_desc_old_text
+    "new_text" -> R.string.tool_param_desc_new_text
+    "pattern" -> R.string.tool_param_desc_pattern
+    "glob" -> R.string.tool_param_desc_glob
+    "root" -> R.string.tool_param_desc_root
+    "headers" -> R.string.tool_param_desc_headers
+    "timeout" -> R.string.tool_param_desc_timeout
+    "timeout_ms" -> R.string.tool_param_desc_timeout_ms
+    "max_chars" -> R.string.tool_param_desc_max_chars
+    "max_results" -> R.string.tool_param_desc_max_results
+    "limit" -> R.string.tool_param_desc_limit
+    "start_line" -> R.string.tool_param_desc_start_line
+    "end_line" -> R.string.tool_param_desc_end_line
+    "start_index" -> R.string.tool_param_desc_start_index
+    "append" -> R.string.tool_param_desc_append
+    "replace_all" -> R.string.tool_param_desc_replace_all
+    "case_sensitive" -> R.string.tool_param_desc_case_sensitive
+    "background" -> R.string.tool_param_desc_background
+    "job_id" -> R.string.tool_param_desc_job_id
+    "mode" -> R.string.tool_param_desc_mode
+    "action" -> R.string.tool_param_desc_action
+    "action_index" -> R.string.tool_param_desc_action_index
+    "index" -> R.string.tool_param_desc_index
+    "text" -> R.string.tool_param_desc_text
+    "target" -> R.string.tool_param_desc_target
+    "field" -> R.string.tool_param_desc_field
+    "size" -> R.string.tool_param_desc_size
+    "n" -> R.string.tool_param_desc_n
+    "prompt" -> R.string.tool_param_desc_prompt
+    "question" -> R.string.tool_param_desc_question
+    "topic" -> R.string.tool_param_desc_topic
+    "level" -> R.string.tool_param_desc_level
+    "stream" -> R.string.tool_param_desc_stream
+    "direction" -> R.string.tool_param_desc_direction
+    "amount" -> R.string.tool_param_desc_amount
+    "selector" -> R.string.tool_param_desc_selector
+    "tab_id" -> R.string.tool_param_desc_tab_id
+    "script" -> R.string.tool_param_desc_script
+    "wait_ms" -> R.string.tool_param_desc_wait_ms
+    "full_page" -> R.string.tool_param_desc_full_page
+    "analyze" -> R.string.tool_param_desc_analyze
+    "max_depth" -> R.string.tool_param_desc_max_depth
+    "max_nodes" -> R.string.tool_param_desc_max_nodes
+    "max_interactive" -> R.string.tool_param_desc_max_interactive
+    "interactive_only" -> R.string.tool_param_desc_interactive_only
+    "keywords" -> R.string.tool_param_desc_keywords
+    "fuzzy" -> R.string.tool_param_desc_fuzzy
+    "cookies" -> R.string.tool_param_desc_cookies
+    "user_agent" -> R.string.tool_param_desc_user_agent
+    "reset" -> R.string.tool_param_desc_reset
+    "reload" -> R.string.tool_param_desc_reload
+    "viewport_width" -> R.string.tool_param_desc_viewport_width
+    "viewport_height" -> R.string.tool_param_desc_viewport_height
+    "item_selector" -> R.string.tool_param_desc_item_selector
+    "scroll_count" -> R.string.tool_param_desc_scroll_count
+    "coordinate_x" -> R.string.tool_param_desc_coordinate_x
+    "coordinate_y" -> R.string.tool_param_desc_coordinate_y
+    "save_path" -> R.string.tool_param_desc_save_path
+    "output_path" -> R.string.tool_param_desc_output_path
+    "package_name" -> R.string.tool_param_desc_package_name
+    "app_name" -> R.string.tool_param_desc_app_name
+    "class_name" -> R.string.tool_param_desc_class_name
+    "resource_id" -> R.string.tool_param_desc_resource_id
+    "content_desc" -> R.string.tool_param_desc_content_desc
+    "exact" -> R.string.tool_param_desc_exact
+    "fallback_gesture" -> R.string.tool_param_desc_fallback_gesture
+    "min_stable_ms" -> R.string.tool_param_desc_min_stable_ms
+    "include_content" -> R.string.tool_param_desc_include_content
+    "notification_key" -> R.string.tool_param_desc_notification_key
+    "media_action" -> R.string.tool_param_desc_media_action
+    "x" -> R.string.tool_param_desc_x
+    "y" -> R.string.tool_param_desc_y
+    "x1" -> R.string.tool_param_desc_x1
+    "y1" -> R.string.tool_param_desc_y1
+    "x2" -> R.string.tool_param_desc_x2
+    "y2" -> R.string.tool_param_desc_y2
+    "duration_ms" -> R.string.tool_param_desc_duration_ms
+    "all_day" -> R.string.tool_param_desc_all_day
+    "start_time" -> R.string.tool_param_desc_start_time
+    "end_time" -> R.string.tool_param_desc_end_time
+    "title" -> R.string.tool_param_desc_title
+    "location" -> R.string.tool_param_desc_location
+    "hour" -> R.string.tool_param_desc_hour
+    "minute" -> R.string.tool_param_desc_minute
+    "message" -> R.string.tool_param_desc_message
+    "city" -> R.string.tool_param_desc_city
+    "days" -> R.string.tool_param_desc_days
+    "timezone" -> R.string.tool_param_desc_timezone
+    "image_url" -> R.string.tool_param_desc_image_url
+    "skill_name" -> R.string.tool_param_desc_skill_name
+    "file_path" -> R.string.tool_param_desc_file_path
+    "id" -> R.string.tool_param_desc_id
+    "header" -> R.string.tool_param_desc_header
+    "label" -> R.string.tool_param_desc_label
+    "description" -> R.string.tool_param_desc_description
+    "status" -> R.string.tool_param_desc_status
+    "priority" -> R.string.tool_param_desc_priority
+    "multi_select" -> R.string.tool_param_desc_multi_select
+    "options" -> R.string.tool_param_desc_options
+    "questions" -> R.string.tool_param_desc_questions
+    "todos" -> R.string.tool_param_desc_todos
+    "args" -> R.string.tool_param_desc_args
+    "plugin_id" -> R.string.tool_param_desc_plugin_id
+    "manifest_json" -> R.string.tool_param_desc_manifest_json
+    "main_js" -> R.string.tool_param_desc_main_js
+    "extra_files_json" -> R.string.tool_param_desc_extra_files_json
+    "actions" -> R.string.tool_param_desc_actions
+    "active" -> R.string.tool_param_desc_active
+    "aliases" -> R.string.tool_param_desc_aliases
+    "alternate_greetings" -> R.string.tool_param_desc_alternate_greetings
+    "api_key" -> R.string.tool_param_desc_api_key
+    "append_base_url_path" -> R.string.tool_param_desc_append_base_url_path
+    "base_url" -> R.string.tool_param_desc_base_url
+    "basic_info" -> R.string.tool_param_desc_basic_info
+    "book_id" -> R.string.tool_param_desc_book_id
+    "character_id" -> R.string.tool_param_desc_character_id
+    "comment" -> R.string.tool_param_desc_comment
+    "condition_logic" -> R.string.tool_param_desc_condition_logic
+    "conditions" -> R.string.tool_param_desc_conditions
+    "config" -> R.string.tool_param_desc_config
+    "constant" -> R.string.tool_param_desc_constant
+    "conversation_id" -> R.string.tool_param_desc_conversation_id
+    "display_index" -> R.string.tool_param_desc_display_index
+    "enabled" -> R.string.tool_param_desc_enabled
+    "entry_id" -> R.string.tool_param_desc_entry_id
+    "entry_type" -> R.string.tool_param_desc_entry_type
+    "event" -> R.string.tool_param_desc_event
+    "example_dialogues" -> R.string.tool_param_desc_example_dialogues
+    "first_message" -> R.string.tool_param_desc_first_message
+    "greeting" -> R.string.tool_param_desc_greeting
+    "hook_id" -> R.string.tool_param_desc_hook_id
+    "input_price" -> R.string.tool_param_desc_input_price
+    "insertion_order" -> R.string.tool_param_desc_insertion_order
+    "keys" -> R.string.tool_param_desc_keys
+    "match_mode" -> R.string.tool_param_desc_match_mode
+    "max_retries" -> R.string.tool_param_desc_max_retries
+    "max_tokens" -> R.string.tool_param_desc_max_tokens
+    "memory_id" -> R.string.tool_param_desc_memory_id
+    "model" -> R.string.tool_param_desc_model
+    "model_id" -> R.string.tool_param_desc_model_id
+    "name" -> R.string.tool_param_desc_name
+    "output_price" -> R.string.tool_param_desc_output_price
+    "parameters" -> R.string.tool_param_desc_parameters
+    "permissions" -> R.string.tool_param_desc_permissions
+    "personality" -> R.string.tool_param_desc_personality
+    "position" -> R.string.tool_param_desc_position
+    "protocol" -> R.string.tool_param_desc_protocol
+    "provider" -> R.string.tool_param_desc_provider
+    "proxy_url" -> R.string.tool_param_desc_proxy_url
+    "purpose" -> R.string.tool_param_desc_purpose
+    "reference_md" -> R.string.tool_param_desc_reference_md
+    "response_format" -> R.string.tool_param_desc_response_format
+    "rules" -> R.string.tool_param_desc_rules
+    "scenario" -> R.string.tool_param_desc_scenario
+    "scope" -> R.string.tool_param_desc_scope
+    "selective" -> R.string.tool_param_desc_selective
+    "session_id" -> R.string.tool_param_desc_session_id
+    "skill_id" -> R.string.tool_param_desc_skill_id
+    "skill_md" -> R.string.tool_param_desc_skill_md
+    "state_triggers" -> R.string.tool_param_desc_state_triggers
+    "summary" -> R.string.tool_param_desc_summary
+    "supports_stream" -> R.string.tool_param_desc_supports_stream
+    "supports_vision" -> R.string.tool_param_desc_supports_vision
+    "system_prompt" -> R.string.tool_param_desc_system_prompt
+    "tags" -> R.string.tool_param_desc_tags
+    "target_session_id" -> R.string.tool_param_desc_target_session_id
+    "task_id" -> R.string.tool_param_desc_task_id
+    "temperature" -> R.string.tool_param_desc_temperature
+    "token_limit_daily" -> R.string.tool_param_desc_token_limit_daily
+    "token_limit_weekly" -> R.string.tool_param_desc_token_limit_weekly
+    "top_p" -> R.string.tool_param_desc_top_p
+    "trigger" -> R.string.tool_param_desc_trigger
+    "trigger_mode" -> R.string.tool_param_desc_trigger_mode
+    "trigger_sources" -> R.string.tool_param_desc_trigger_sources
+    "type" -> R.string.tool_param_desc_type
+    "user_id" -> R.string.tool_param_desc_user_id
+    "workflow_id" -> R.string.tool_param_desc_workflow_id
+    else -> 0
+}
+
+/** 工具输入参数条目：参数名 + 是否必填。 */
+internal data class ToolParameterEntry(val name: String, val required: Boolean)
+
+/**
+ * 本地可执行工具的全部 function-calling 定义，与 Agent 注入给模型的口径一致。
+ *
+ * 覆盖内置工具、Agent 工具、Skill 工具与数据库工具；新增本地工具只要并入这里
+ * 就能在「工具详情 / 进度卡片步骤详情」中展示说明与输入参数。
+ */
+internal fun allLocalToolDefinitions(): List<Map<String, Any>> =
+    buildLocalAgentToolDefinitions() + buildLocalSkillToolDefinitions() + buildLocalDbToolDefinitions()
+
+/** 从一份 function-calling 定义中取出 function 节点。 */
+private fun functionNode(definition: Map<String, Any>): Map<String, Any>? {
+    @Suppress("UNCHECKED_CAST")
+    return definition["function"] as? Map<String, Any>
+}
+
+/** 本地工具定义的 function 名称。 */
+internal fun localToolDefinitionName(definition: Map<String, Any>): String? =
+    functionNode(definition)?.get("name")?.toString()
+
+/**
+ * 本地工具定义中的说明文本（与模型看到的描述一致，含动态注入的当前上限）。
+ */
+internal fun localToolDefinitionDescription(name: String): String? =
+    allLocalToolDefinitions()
+        .firstOrNull { localToolDefinitionName(it) == name }
+        ?.let { functionNode(it)?.get("description")?.toString() }
+        ?.takeIf { it.isNotBlank() }
+
+/**
+ * 解析工具的输入参数 Schema，按声明顺序返回参数名与必填状态。
+ *
+ * 数据来源与 Agent 实际注入给模型的定义一致（见 [allLocalToolDefinitions]）；
+ * 非本地定义的动态工具（MCP 等）返回空列表。
+ */
+internal fun builtinToolParameterEntries(toolId: String): List<ToolParameterEntry> {
+    val parametersJson = BuiltinTools.all.firstOrNull { it.id == toolId }?.parametersJson
+    val schema: Map<*, *> = if (parametersJson != null) {
+        runCatching {
+            com.google.gson.Gson().fromJson(parametersJson, Map::class.java) as Map<*, *>
+        }.getOrNull() ?: return emptyList()
+    } else {
+        allLocalToolDefinitions()
+            .firstOrNull { localToolDefinitionName(it) == toolId }
+            ?.let { functionNode(it)?.get("parameters") as? Map<*, *> }
+            ?: return emptyList()
+    }
+    val properties = schema["properties"] as? Map<*, *> ?: return emptyList()
+    val required = (schema["required"] as? List<*>)
+        .orEmpty()
+        .mapNotNull { it?.toString() }
+        .toSet()
+    return properties.keys.mapNotNull { key ->
+        key?.toString()?.let { ToolParameterEntry(it, it in required) }
+    }
+}
+
+/**
+ * 工具输入参数列表：参数名 + 多语言参数说明 + 必填标记，无参数时显示占位文案。
+ *
+ * 进度卡片步骤详情弹窗与工具详情弹窗共用，保证两处口径一致。
+ */
+@Composable
+internal fun ToolParameterList(toolId: String) {
+    val params = remember(toolId) { builtinToolParameterEntries(toolId) }
+    if (params.isEmpty()) {
+        Text(
+            text = stringResource(R.string.chat_step_tool_params_none),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        return
+    }
+    params.forEach { entry ->
+        val resId = remember(entry.name) { toolParamResId(entry.name) }
+        val description = if (resId != 0) stringResource(resId) else null
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top
+        ) {
+            Text(
+                text = entry.name,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            if (!description.isNullOrBlank()) {
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1.7f)
+                )
+            }
+            if (entry.required) {
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = stringResource(R.string.tool_param_required),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+    }
 }
 
 /** 内置工具集模式名称资源；自定义模式返回 0（名称由用户填写）。 */

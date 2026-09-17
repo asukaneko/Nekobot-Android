@@ -57,6 +57,8 @@ import com.nekobot.app.ui.components.ErrorBanner
 import com.nekobot.app.ui.components.GlassCard
 import com.nekobot.app.ui.components.LoadingOverlay
 import com.nekobot.app.ui.components.NekoDialog
+import com.nekobot.app.ui.components.ToolParameterList
+import com.nekobot.app.ui.components.builtinToolParameterEntries
 import com.nekobot.app.ui.components.toolDescResId
 import com.nekobot.app.ui.components.toolNameResId
 import com.nekobot.app.ui.theme.Primary
@@ -189,6 +191,19 @@ fun ToolsScreen(onBack: () -> Unit) {
                     Text(stringResource(R.string.tools_id, target.id ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(8.dp))
                     Text(localizedToolDescription(target), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    target.id?.let { id ->
+                        if (builtinToolParameterEntries(id).isNotEmpty()) {
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                text = stringResource(R.string.chat_step_tool_params),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            ToolParameterList(id)
+                        }
+                    }
                     Spacer(Modifier.height(8.dp))
                     Text(stringResource(R.string.tools_status, if (target.enabled) stringResource(R.string.tools_status_enabled) else stringResource(R.string.tools_status_disabled)), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (isSearchWebTool) {
