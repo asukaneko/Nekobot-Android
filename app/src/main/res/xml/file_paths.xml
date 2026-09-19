@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
+    <!-- 下载的会话附件（cacheDir/downloads） -->
     <cache-path name="downloads" path="downloads/" />
+    <!-- 缓存浏览与预览所需的其余缓存文件（DataMaintenanceScreen 以 cacheDir 为根递归浏览） -->
     <cache-path name="cache" path="." />
-    <files-path name="files" path="." />
+    <!--
+      只共享会话工作区。原来这里是 files-path path="."，把整个 filesDir 都纳入可授权范围，
+      其中包含 plugins/、沙盒 rootfs、Agent 全局记忆等私有数据；实际通过 FileProvider
+      分享的 filesDir 文件全部来自工作区，因此收窄到 workspace/。
+    -->
+    <files-path name="workspace" path="workspace/" />
 </paths>
