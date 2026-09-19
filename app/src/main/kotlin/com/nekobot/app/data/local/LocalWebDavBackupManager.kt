@@ -1934,10 +1934,17 @@ class LocalWebDavBackupManager(
             ?.takeIf { it.isNotBlank() }
     }
 
+    /**
+     * 规范化 WebDAV 根地址。
+     *
+     * 只接受 HTTPS：这里的请求会带 HTTP Basic 凭据（用户名 + 密码），并上传加密备份包，
+     * 明文端点等于把凭据与备份直接暴露给链路上的观察者。release 的网络安全配置已禁止
+     * 明文流量，这里再在输入校验层挡一次，避免依赖运行时策略。
+     */
     private fun normalizeBaseUrl(url: String): String {
         val normalized = url.trim().trimEnd('/')
-        require(normalized.startsWith("http://") || normalized.startsWith("https://")) {
-            "WebDAV 根地址必须以 http:// 或 https:// 开头"
+        require(normalized.startsWith("https://")) {
+            "WebDAV 根地址必须以 https:// 开头"
         }
         return normalized
     }
