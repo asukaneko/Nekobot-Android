@@ -1542,13 +1542,34 @@ private fun MermaidWebView(
     }
 }
 
-/** JS 桥接：把 PNG base64 传回 Kotlin。 */
+/**
+ * JS 桥接：把 PNG base64 传回 Kotlin。
+ *
+ * 页面内容来自 AI 生成的 Mermaid 代码，属于不可信输入，因此这里只接受真正的 PNG：
+ * 校验 base64 合法性与 PNG magic（89 50 4E 47），并限制长度，避免桥被当作
+ * 「往外部存储写任意字节」的通道。
+ */
 private class MermaidDownloadBridge(private val onSave: (String) -> Unit) {
     @android.webkit.JavascriptInterface
     fun savePng(base64: String) {
         // 截掉 "data:image/png;base64," 前缀
-        val data = base64.substringAfter("base64,")
+        val data = base64.substringAfter("base64,").trim()
+        if (data.isEmpty() || data.length > MAX_PNG_BASE64_CHARS) return
+        val bytes = runCatching {
+            android.util.Base64.decode(data, android.util.Base64.DEFAULT)
+        }.getOrNull() ?: return
+        if (!bytes.isPng()) return
         onSave(data)
+    }
+
+    private fun ByteArray.isPng(): Boolean =
+        size > PNG_MAGIC.size &&
+            PNG_MAGIC.indices.all { this[it] == PNG_MAGIC[it] }
+
+    private companion object {
+        val PNG_MAGIC = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47)
+        /** 约 48MB 原始数据对应的 base64 长度上限。 */
+        const val MAX_PNG_BASE64_CHARS = 64 * 1024 * 1024
     }
 }
 
@@ -1610,7 +1631,7 @@ private fun buildMermaidHtml(mermaidCode: String): String {
     else {
       target.textContent = code;
       target.setAttribute('class', 'mermaid');
-      mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+      mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'strict' });
       mermaid.run({ nodes: [target] })
         .catch(showFallback);
     }
