@@ -143,10 +143,16 @@ object NbotConfigImporter {
             portraitDir.mkdirs()
             val portraitUrlMap = mutableMapOf<String, String>()  // 旧 filename → 新本地路径
             var portraitCount = 0
+            val portraitRoot = portraitDir.canonicalFile
             extracted.entries.filter { it.key.startsWith("portraits/") }.forEach { (path, data) ->
                 val name = path.removePrefix("portraits/")
                 if (name.isNotEmpty()) {
-                    val destFile = File(portraitDir, name)
+                    // ZIP 条目名来自远端服务器，不可信：canonical 归一化后必须仍在立绘目录内。
+                    // 否则 `portraits/../../shared_prefs/nekobot_prefs.xml` 之类条目可写出应用私有目录。
+                    val destFile = runCatching { File(portraitDir, name).canonicalFile }.getOrNull()
+                        ?: return@forEach
+                    if (!destFile.path.startsWith(portraitRoot.path + File.separator)) return@forEach
+                    destFile.parentFile?.mkdirs()
                     destFile.writeBytes(data)
                     // 项目约定：portrait URI 用 Uri.fromFile() 生成标准 file:/// URI，Coil 才能正确加载
                     portraitUrlMap[name] = android.net.Uri.fromFile(destFile).toString()
@@ -177,6 +183,9 @@ object NbotConfigImporter {
             var entry = zis.nextEntry
             while (entry != null) {
                 if (!entry.isDirectory) {
+                    if (!isSafeZipEntryName(entry.name)) {
+                        throw IllegalArgumentException("ZIP 包含不安全路径：${entry.name}")
+                    }
                     val buf = java.io.ByteArrayOutputStream()
                     val buffer = ByteArray(8192)
                     while (true) {
@@ -191,6 +200,18 @@ object NbotConfigImporter {
             }
         }
         return result
+    }
+
+    /**
+     * ZIP 条目名安全校验：拒绝绝对路径、Windows 盘符与 `..` 逃逸。
+     *
+     * 这里只做词法判断用于尽早报错，真正的落盘保护由写文件处的 canonical 前缀校验负责。
+     */
+    private fun isSafeZipEntryName(rawName: String): Boolean {
+        val normalized = rawName.replace('\\', '/')
+        if (normalized.isBlank() || normalized.startsWith('/')) return false
+        if (Regex("^[A-Za-z]:").containsMatchIn(normalized)) return false
+        return normalized.split('/').none { it == ".." }
     }
 
     /**
