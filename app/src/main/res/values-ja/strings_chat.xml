@@ -524,6 +524,7 @@
     <string name="chat_exec_confirm_description">AI が次のコマンドの実行を要求しています。安全リストにないため、信頼できる操作の場合のみ許可してください。</string>
     <string name="chat_exec_confirm_allow">実行を許可</string>
     <string name="chat_exec_confirm_always_allow">このセッションでこのコマンドのみ常に許可（%1$s）</string>
+    <string name="chat_exec_confirm_once_only">%1$s はインタプリタまたは汎用コマンドのため、実行のたびに確認が必要で、許可を記憶できません</string>
     <string name="chat_exec_confirm_this_command">このコマンド</string>
     <string name="chat_exec_confirm_reject">拒否</string>
     <string name="chat_exec_confirm_unknown_command">不明なコマンド</string>

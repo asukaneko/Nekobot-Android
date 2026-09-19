@@ -148,6 +148,37 @@ internal fun extractLocalAuthorizationCommands(
 }
 
 /**
+ * 解释器 / 通用启动器：授权指纹会退化成命令名，因此不允许「始终允许」。
+ *
+ * `sh -c "任意脚本"` 的指纹就是 `sh`（`-c` 被当选项跳过、脚本文本因含 `/` 被跳过），
+ * `python -c`、`node -e`、`busybox sh` 同理。按命令名记住这类授权等于永久放行任意代码，
+ * 所以它们只接受「仅本次」。
+ */
+private val localInterpreterCommands = setOf(
+    "sh", "bash", "zsh", "fish", "dash", "ash", "ksh", "csh", "tcsh",
+    "busybox", "env", "xargs", "nohup", "setsid", "timeout", "eval", "exec", "source",
+    "python", "python3", "python3.11", "node", "deno", "bun", "npx",
+    "perl", "ruby", "php", "lua"
+)
+
+/**
+ * 该命令是否允许被「始终允许」记忆。
+ *
+ * 任意一个 shell 分段以解释器/通用启动器开头就返回 false：`git status && sh -c ...`
+ * 这种组合里只要有解释器，整条命令都不应被记住。
+ */
+internal fun isMemorizableCommand(command: String): Boolean {
+    val segments = extractLocalSegments(command).map(String::trim).filter(String::isNotBlank)
+    if (segments.isEmpty()) return false
+    return segments.none { segment ->
+        val main = localCommandTokens(segment).firstOrNull()
+            ?.let(::normalizeLocalCommandName)
+            .orEmpty()
+        main in localInterpreterCommands
+    }
+}
+
+/**
  * 需要连带记住“子命令”的高危多用途命令。
  *
  * `git`、`npm`、`python` 这类命令的能力完全取决于第一个参数：
@@ -332,7 +363,8 @@ class LocalExecAuthorizationManager(
         mainCommand = mainCommand,
         authorizationKeys = extractLocalAuthorizationFingerprints(command, mainCommand),
         message = "本地 Agent 请求执行命令",
-        memorizable = memorizable,
+        // 解释器类命令强制降级为「仅本次」，调用方只能让它更严格，不能更宽松。
+        memorizable = memorizable && isMemorizableCommand(command),
         onRequest = onRequest
     )
 
@@ -392,7 +424,8 @@ class LocalExecAuthorizationManager(
                 command = command,
                 mainCommand = mainCommand,
                 message = message,
-                sessionId = sessionId
+                sessionId = sessionId,
+                memorizable = memorizable
             )
         )
 

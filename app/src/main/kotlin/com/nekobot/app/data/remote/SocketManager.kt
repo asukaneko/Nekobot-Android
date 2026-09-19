@@ -76,7 +76,14 @@ data class ExecConfirmationRequest(
     val command: String,
     val mainCommand: String,
     val message: String,
-    val sessionId: String
+    val sessionId: String,
+    /**
+     * 是否允许「始终允许」记忆。
+     *
+     * 为 false 时 UI 不提供该按钮：这类操作（解释器命令、读取界面、截图）一次授权
+     * 就等于无限期放行，必须每次确认。
+     */
+    val memorizable: Boolean = true
 )
 
 /**

@@ -506,6 +506,7 @@
     <string name="chat_exec_confirm_description">AI wants to run the following command. It is not on the safe allowlist; only approve it if you trust this operation.</string>
     <string name="chat_exec_confirm_allow">Allow execution</string>
     <string name="chat_exec_confirm_always_allow">Always allow this exact command (%1$s) in this session</string>
+    <string name="chat_exec_confirm_once_only">%1$s is an interpreter or multi-purpose command; every run needs fresh approval and cannot be remembered</string>
     <string name="chat_exec_confirm_this_command">this command</string>
     <string name="chat_exec_confirm_reject">Reject</string>
     <string name="chat_exec_confirm_unknown_command">Unknown command</string>

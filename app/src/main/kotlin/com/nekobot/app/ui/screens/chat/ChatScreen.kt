@@ -1617,17 +1617,29 @@ fun ChatScreen(
                 }
             }
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = {
-                    viewModel.respondToExecConfirmation(ExecAuthorization.Always)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    stringResource(
-                        R.string.chat_exec_confirm_always_allow,
-                        mainCommandLabel
+            // 解释器命令、读取界面、截图等操作不提供「始终允许」：一次授权等于无限期放行。
+            if (request.memorizable) {
+                OutlinedButton(
+                    onClick = {
+                        viewModel.respondToExecConfirmation(ExecAuthorization.Always)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        stringResource(
+                            R.string.chat_exec_confirm_always_allow,
+                            mainCommandLabel
+                        )
                     )
+                }
+            } else {
+                Text(
+                    text = stringResource(
+                        R.string.chat_exec_confirm_once_only,
+                        mainCommandLabel
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Spacer(Modifier.height(8.dp))

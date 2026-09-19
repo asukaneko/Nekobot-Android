@@ -512,6 +512,7 @@
     <string name="chat_exec_confirm_description">AI 请求执行以下命令。该命令不在安全白名单中，请确认你信任此操作。</string>
     <string name="chat_exec_confirm_allow">允许执行</string>
     <string name="chat_exec_confirm_always_allow">本会话始终允许这一条命令（%1$s）</string>
+    <string name="chat_exec_confirm_once_only">%1$s 属于解释器或多用途命令，每次执行都需要重新确认，不能记住授权</string>
     <string name="chat_exec_confirm_this_command">该主命令</string>
     <string name="chat_exec_confirm_reject">拒绝</string>
     <string name="chat_exec_confirm_unknown_command">未知命令</string>

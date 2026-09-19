@@ -524,6 +524,7 @@
     <string name="chat_exec_confirm_description">AI가 다음 명령 실행을 요청했어요. 안전 허용 목록에 없는 명령이므로 신뢰하는 작업일 때만 허용하세요.</string>
     <string name="chat_exec_confirm_allow">실행 허용</string>
     <string name="chat_exec_confirm_always_allow">이 세션에서 이 명령만 항상 허용 (%1$s)</string>
+    <string name="chat_exec_confirm_once_only">%1$s 은(는) 인터프리터 또는 범용 명령이므로 실행할 때마다 다시 확인해야 하며 권한을 기억할 수 없습니다</string>
     <string name="chat_exec_confirm_this_command">이 명령</string>
     <string name="chat_exec_confirm_reject">거부</string>
     <string name="chat_exec_confirm_unknown_command">알 수 없는 명령</string>
