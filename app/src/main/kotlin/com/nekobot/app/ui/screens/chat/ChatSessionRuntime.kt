@@ -57,6 +57,18 @@ data class AutoSkillUiState(
 )
 
 /**
+ * 自动长期记忆的内联提示状态。
+ *
+ * 形态与 [AutoSkillUiState] 一致：[running] 为 true 时显示"正在整理长期记忆"；
+ * 完成后显示"已自动记忆 N 条"并**持久保留**（写进设置，退出页面或重启应用后
+ * 重新进入会话仍然可见），直到本会话下一次抽取结果覆盖它。
+ */
+data class AutoMemoryUiState(
+    val changedItems: Int = 0,
+    val running: Boolean = true
+)
+
+/**
  * Agent 会话在 AI 生成期间排队的待发送消息。
  *
  * - 生成结束后自动发送队顶消息（[ChatSessionState.queuedMessages]）
@@ -94,6 +106,15 @@ class ChatSessionState(
      */
     private val loadSkillNotice: (String) -> Pair<String, Boolean>? = { id ->
         runCatching { ServiceContainer.prefs.getAgentSkillNotice(id) }.getOrNull()
+    },
+    /**
+     * 读取本会话最近一次自动长期记忆的改动条数。
+     *
+     * 与 [loadSkillNotice] 同理：默认从 [ServiceContainer.prefs] 读，注入点让状态机
+     * 可以在单元测试里不依赖 Android/SharedPreferences。
+     */
+    private val loadMemoryNotice: (String) -> Int? = { id ->
+        runCatching { ServiceContainer.prefs.getAgentMemoryNotice(id) }.getOrNull()
     }
 ) {
 
@@ -117,6 +138,8 @@ class ChatSessionState(
     val agentSpec = MutableStateFlow<com.nekobot.app.data.model.AgentSessionSpec?>(null)
     /** 自动技能沉淀提示（后台审查进行中 / 刚刚沉淀完成）。 */
     val autoSkillNotice = MutableStateFlow<AutoSkillUiState?>(null)
+    /** 自动长期记忆提示（后台整理进行中 / 刚刚写入）。 */
+    val autoMemoryNotice = MutableStateFlow<AutoMemoryUiState?>(null)
 
     /**
      * 应用一次自动技能沉淀通知。
@@ -157,6 +180,40 @@ class ChatSessionState(
             ?.let { (name, created) ->
                 AutoSkillUiState(skillName = name, created = created, running = false)
             }
+
+    /**
+     * 应用一次自动长期记忆通知。
+     *
+     * - RUNNING：显示"正在整理长期记忆"；
+     * - DONE 且有改动：显示"已自动记忆 N 条"，并**持久保留**（不自动消失）；
+     * - DONE 但没有改动：收起进行中的提示，回退显示上一次已持久化的结果。
+     */
+    fun applyAutoMemoryNotice(notice: com.nekobot.app.data.local.ai.AgentMemoryNotice) {
+        if (notice.phase == com.nekobot.app.data.local.ai.AgentMemoryPhase.RUNNING) {
+            autoMemoryNotice.value = AutoMemoryUiState(running = true)
+            return
+        }
+        if (notice.changedItems <= 0) {
+            autoMemoryNotice.value = loadPersistedMemoryNotice(sessionId)
+            return
+        }
+        autoMemoryNotice.value = AutoMemoryUiState(
+            changedItems = notice.changedItems,
+            running = false
+        )
+    }
+
+    /** 从上次记忆写入结果恢复内联提示（进入会话时也用它恢复持久显示）。 */
+    fun restoreAutoMemoryNotice() {
+        if (autoMemoryNotice.value?.running == true) return
+        autoMemoryNotice.value = loadPersistedMemoryNotice(sessionId)
+    }
+
+    /** 读取持久化的记忆改动条数并转成界面状态；没有记录时返回 null（不显示提示）。 */
+    private fun loadPersistedMemoryNotice(id: String): AutoMemoryUiState? =
+        loadMemoryNotice(id)
+            ?.takeIf { it > 0 }
+            ?.let { AutoMemoryUiState(changedItems = it, running = false) }
 
     // ============ Agent 会话消息排队 ============
     /**

@@ -346,6 +346,26 @@ class PrefsManager(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_AGENT_AUTO_MEMORY, value).apply()
 
     /**
+     * 读取某会话最近一次自动长期记忆的改动条数；没有记录时返回 -1。
+     *
+     * 与自动 Skill 提示同形态：仅供聊天界面把后台写入结果**持久显示**出来，
+     * 让用户知道记忆被改了，而不是一个可配置项。
+     */
+    fun getAgentMemoryNotice(sessionId: String): Int =
+        prefs.getInt("agent_auto_memory_notice_$sessionId", -1)
+
+    /** 保存自动记忆改动条数，供聊天界面持久显示。 */
+    fun setAgentMemoryNotice(sessionId: String, changedItems: Int) {
+        if (sessionId.isBlank()) return
+        prefs.edit().putInt("agent_auto_memory_notice_$sessionId", changedItems).apply()
+    }
+
+    /** 清除某会话的自动记忆提示（删除会话时调用，避免残留无用键）。 */
+    fun clearAgentMemoryNotice(sessionId: String) {
+        prefs.edit().remove("agent_auto_memory_notice_$sessionId").apply()
+    }
+
+    /**
      * 是否已经就「旧版全局记忆要不要迁移到当前数据库」询问过用户。
      *
      * 用户做出选择（迁移或留空）后置为 true，此后不再询问——即使该 Profile

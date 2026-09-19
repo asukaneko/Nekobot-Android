@@ -271,12 +271,13 @@ class LocalWebFetchExtractionTest {
 }
 
 /**
- * Agent 长期记忆抽取：只在值得时触发，按固定分类整理，过滤一次性任务细节。
+ * Agent 长期记忆抽取：只在值得时触发；先审查已有记忆，再按增/改/删操作改写。
  */
 class AgentMemoryExtractorTest {
 
     private val preferenceHeading = AgentMemoryExtractor.Category.PREFERENCE.heading()
     private val environmentHeading = AgentMemoryExtractor.Category.ENVIRONMENT.heading()
+    private val conventionHeading = AgentMemoryExtractor.Category.CONVENTION.heading()
 
     @Test
     fun `过短的回合不触发抽取`() {
@@ -296,76 +297,252 @@ class AgentMemoryExtractorTest {
     }
 
     @Test
-    fun `NONE 与空输出都不写入`() {
-        assertEquals("", AgentMemoryExtractor.sanitizeExtraction("NONE"))
-        assertEquals("", AgentMemoryExtractor.sanitizeExtraction("   "))
-        assertEquals("", AgentMemoryExtractor.sanitizeExtraction("这是一段没有小节的说明"))
-        assertEquals("", AgentMemoryExtractor.sanitizeExtraction("# 项目细节\n- 改了 MainActivity"))
+    fun `NONE 与空输出不产生任何操作`() {
+        assertTrue(AgentMemoryExtractor.parseActions("NONE").isEmpty())
+        assertTrue(AgentMemoryExtractor.parseActions("   ").isEmpty())
+        assertTrue(AgentMemoryExtractor.parseActions("这是一段没有操作的说明").isEmpty())
     }
 
     @Test
     fun `代码块围栏被清理`() {
-        val cleaned = AgentMemoryExtractor.sanitizeExtraction(
-            "```markdown\n## 用户偏好\n- 回复使用简体中文\n```"
+        val actions = AgentMemoryExtractor.parseActions(
+            "```markdown\nadd | $preferenceHeading | 回复使用简体中文\n```"
         )
 
-        assertTrue(cleaned.startsWith("## "))
-        assertTrue(cleaned.contains("回复使用简体中文"))
-        assertFalse(cleaned.contains("```"))
+        assertEquals(1, actions.size)
+        assertTrue(actions.first() is AgentMemoryExtractor.MemoryAction.Add)
+        assertEquals("回复使用简体中文", actions.first().content)
     }
 
     @Test
-    fun `非标准分类的小节被丢弃`() {
-        val cleaned = AgentMemoryExtractor.sanitizeExtraction(
-            "## 本次改动\n- 修了按钮颜色\n\n## 用户偏好\n- 喜欢简洁回答"
+    fun `非标准分类的操作被丢弃`() {
+        val actions = AgentMemoryExtractor.parseActions(
+            "add | 本次改动 | 修了按钮颜色\nadd | $preferenceHeading | 喜欢简洁回答"
         )
 
-        assertTrue(cleaned.contains("喜欢简洁回答"))
-        assertFalse("非标准分类不应写入", cleaned.contains("修了按钮颜色"))
+        assertEquals(1, actions.size)
+        assertEquals("喜欢简洁回答", actions.first().content)
     }
 
     @Test
-    fun `一次性任务细节被过滤`() {
-        val cleaned = AgentMemoryExtractor.sanitizeExtraction(
-            "## 环境与工具\n- 本轮临时把 JAVA_HOME 指向了 JDK 21\n- Android 项目使用 gradlew.bat 构建"
+    fun `无法识别的动作被丢弃`() {
+        val actions = AgentMemoryExtractor.parseActions(
+            "记得 | $preferenceHeading | 喜欢简洁回答"
         )
 
-        assertTrue(cleaned.contains("gradlew.bat"))
-        assertFalse("临时状态不应写入", cleaned.contains("本轮"))
+        assertTrue(actions.isEmpty())
     }
 
     @Test
-    fun `合并时同分类小节被更新而非重复追加`() {
-        val existing = "# 用户偏好\n- 喜欢简洁回复\n\n# 项目\nNekobot"
-        val addition = "## 用户偏好\n- 喜欢简洁的中文回复"
-
-        val merged = AgentMemoryExtractor.mergeMemory(existing, addition)
-
-        assertTrue(merged.contains("## $preferenceHeading"))
-        assertEquals(1, Regex("(?m)^##\\s").findAll(merged).count())
-        assertTrue(merged.contains("喜欢简洁的中文回复"))
-        assertFalse("旧内容应被同分类新内容替换", merged.contains("喜欢简洁回复"))
-        assertTrue("未涉及的既有小节必须保留", merged.contains("# 项目"))
-    }
-
-    @Test
-    fun `合并新分类时追加在末尾`() {
-        val merged = AgentMemoryExtractor.mergeMemory(
-            "## 用户偏好\n- 中文",
-            "## 环境与工具\n- 工作区使用 /workspace"
+    fun `三种动作都能解析`() {
+        val actions = AgentMemoryExtractor.parseActions(
+            """
+            add | $preferenceHeading | 喜欢简洁回答
+            replace | $environmentHeading | 构建需要 JDK 21
+            delete | $conventionHeading | 旧约定原文
+            """.trimIndent()
         )
 
-        assertTrue(merged.indexOf(preferenceHeading) < merged.indexOf(environmentHeading))
+        assertEquals(3, actions.size)
+        assertTrue(actions[0] is AgentMemoryExtractor.MemoryAction.Add)
+        assertTrue(actions[1] is AgentMemoryExtractor.MemoryAction.Replace)
+        assertTrue(actions[2] is AgentMemoryExtractor.MemoryAction.Delete)
     }
 
     @Test
-    fun `抽取提示词包含双方内容与格式要求`() {
-        val prompt = AgentMemoryExtractor.buildExtractionPrompt("用户说了 A", "Agent 回答了 B")
+    fun `内容里的竖线不会被当成分隔符丢掉`() {
+        val actions = AgentMemoryExtractor.parseActions(
+            "add | $preferenceHeading | 构建命令是 a | b"
+        )
+
+        // 中间的 `|` 属于内容本身，拼回后必须还在，只有动作/分类两处才当分隔符。
+        assertEquals(1, actions.size)
+        assertTrue(actions.first().content.startsWith("构建命令是 a"))
+        assertTrue(actions.first().content.endsWith("b"))
+        assertTrue(actions.first().content.contains("|"))
+    }
+
+    @Test
+    fun `一次性任务细节不写入`() {
+        val actions = AgentMemoryExtractor.parseActions(
+            "add | $environmentHeading | 本轮临时把 JAVA_HOME 指向了 JDK 21\n" +
+                "add | $environmentHeading | Android 项目使用 gradlew.bat 构建"
+        )
+
+        assertEquals(1, actions.size)
+        assertTrue(actions.first().content.contains("gradlew.bat"))
+    }
+
+    @Test
+    fun `新增条目时既有内容原样保留`() {
+        val existing = "## $preferenceHeading\n- 喜欢简洁回复\n\n# 项目\nNekobot"
+
+        val result = AgentMemoryExtractor.applyActions(
+            existing,
+            listOf(
+                AgentMemoryExtractor.MemoryAction.Add(
+                    AgentMemoryExtractor.Category.ENVIRONMENT,
+                    "构建需要 JDK 21"
+                )
+            )
+        )
+
+        assertEquals(1, result.added)
+        assertTrue("既有偏好条目必须保留", result.content.contains("喜欢简洁回复"))
+        assertTrue("用户手写的无关小节必须保留", result.content.contains("# 项目"))
+        assertTrue(result.content.contains("构建需要 JDK 21"))
+    }
+
+    @Test
+    fun `重复的新增不会写第二遍`() {
+        val existing = "## $preferenceHeading\n- 喜欢简洁回复"
+
+        val result = AgentMemoryExtractor.applyActions(
+            existing,
+            listOf(
+                AgentMemoryExtractor.MemoryAction.Add(
+                    AgentMemoryExtractor.Category.PREFERENCE,
+                    "喜欢简洁回复"
+                )
+            )
+        )
+
+        assertEquals(0, result.changedItems)
+        assertEquals(1, Regex("喜欢简洁回复").findAll(result.content).count())
+    }
+
+    @Test
+    fun `删除只作用于真实存在的条目`() {
+        val existing = "## $preferenceHeading\n- 喜欢简洁回复\n- 使用中文"
+
+        val result = AgentMemoryExtractor.applyActions(
+            existing,
+            listOf(
+                AgentMemoryExtractor.MemoryAction.Delete(
+                    AgentMemoryExtractor.Category.PREFERENCE,
+                    "使用中文"
+                ),
+                // 凭空删除一条不存在的条目：必须被忽略，不能破坏既有内容。
+                AgentMemoryExtractor.MemoryAction.Delete(
+                    AgentMemoryExtractor.Category.PREFERENCE,
+                    "这条根本不存在"
+                )
+            )
+        )
+
+        assertEquals(1, result.deleted)
+        assertFalse(result.content.contains("使用中文"))
+        assertTrue("未被删除的条目必须保留", result.content.contains("喜欢简洁回复"))
+    }
+
+    @Test
+    fun `改写本分类条目而非整段覆盖`() {
+        val existing = "## $environmentHeading\n- 构建用 gradlew\n- 工作区在 /workspace"
+
+        val result = AgentMemoryExtractor.applyActions(
+            existing,
+            listOf(
+                AgentMemoryExtractor.MemoryAction.Replace(
+                    AgentMemoryExtractor.Category.ENVIRONMENT,
+                    "构建用 gradlew.bat 且需要 JDK 21",
+                    target = null
+                )
+            )
+        )
+
+        assertEquals(1, result.replaced)
+        assertTrue(result.content.contains("JDK 21"))
+        assertTrue("同分类的其它条目不能被一起抹掉", result.content.contains("/workspace"))
+    }
+
+    @Test
+    fun `改写时按旧原文精确定位`() {
+        val existing = "## $environmentHeading\n- 构建用 gradlew\n- 工作区在 /workspace"
+
+        val result = AgentMemoryExtractor.applyActions(
+            existing,
+            listOf(
+                AgentMemoryExtractor.MemoryAction.Replace(
+                    AgentMemoryExtractor.Category.ENVIRONMENT,
+                    "工作区改到 /sdcard/nekobot",
+                    target = "工作区在 /workspace"
+                )
+            )
+        )
+
+        assertTrue(result.content.contains("/sdcard/nekobot"))
+        assertTrue("另一条不能被误改", result.content.contains("构建用 gradlew"))
+    }
+
+    @Test
+    fun `别名标题在改动后归一到标准小节`() {
+        val existing = "# 偏好\n- 喜欢简洁回复"
+
+        val result = AgentMemoryExtractor.applyActions(
+            existing,
+            listOf(
+                AgentMemoryExtractor.MemoryAction.Add(
+                    AgentMemoryExtractor.Category.PREFERENCE,
+                    "使用中文"
+                )
+            )
+        )
+
+        // 不能同时留下 `# 偏好` 和 `## 用户偏好` 两个同类小节。
+        assertEquals(1, Regex("(?m)^#{1,6}\\s").findAll(result.content).count())
+        assertTrue(result.content.contains("喜欢简洁回复"))
+        assertTrue(result.content.contains("使用中文"))
+    }
+
+    @Test
+    fun `清空后的分类小节不再保留空标题`() {
+        val existing = "## $preferenceHeading\n- 唯一一条"
+
+        val result = AgentMemoryExtractor.applyActions(
+            existing,
+            listOf(
+                AgentMemoryExtractor.MemoryAction.Delete(
+                    AgentMemoryExtractor.Category.PREFERENCE,
+                    "唯一一条"
+                )
+            )
+        )
+
+        assertEquals(1, result.deleted)
+        assertFalse(result.content.contains(preferenceHeading))
+    }
+
+    @Test
+    fun `抽取提示词注入当前记忆并要求先审查`() {
+        val prompt = AgentMemoryExtractor.buildExtractionPrompt(
+            userMessage = "用户说了 A",
+            assistantMessage = "Agent 回答了 B",
+            existingMemory = "## $preferenceHeading\n- 喜欢简洁回复"
+        )
 
         assertTrue(prompt.contains("用户说了 A"))
         assertTrue(prompt.contains("Agent 回答了 B"))
+        assertTrue("必须把现有记忆发给模型", prompt.contains("喜欢简洁回复"))
+        assertTrue("必须要求先审查再决定", prompt.contains("先审查已有记忆"))
         assertTrue(prompt.contains("NONE"))
         assertTrue(prompt.contains(preferenceHeading))
         assertTrue(prompt.contains("绝对不要记录"))
+    }
+
+    @Test
+    fun `没有记忆时提示词说明按新增处理`() {
+        val prompt = AgentMemoryExtractor.buildExtractionPrompt("A", "B", existingMemory = "")
+
+        assertTrue(prompt.contains("尚无任何记忆"))
+    }
+
+    @Test
+    fun `记忆过长时截断并明确告知模型`() {
+        val long = "## $preferenceHeading\n" + (1..5_000).joinToString("\n") { "- 条目 $it" }
+
+        val prompt = AgentMemoryExtractor.buildExtractionPrompt("A", "B", existingMemory = long)
+
+        assertTrue(prompt.contains("只显示了前面一部分"))
+        assertTrue("提示词不能无界增长", prompt.length < long.length)
     }
 }

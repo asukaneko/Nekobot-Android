@@ -311,6 +311,14 @@ sealed class RealtimeEvent {
     data class AutoSkillDistillStatus(
         val notice: com.nekobot.app.data.local.ai.AgentSkillNotice
     ) : RealtimeEvent()
+    /**
+     * 自动长期记忆状态（仅本地 Agent 管线发出）。
+     * 与自动技能沉淀提示同形态：RUNNING 显示"正在整理长期记忆"，
+     * DONE 显示本轮的改动条数并持久保留。
+     */
+    data class AutoMemoryStatus(
+        val notice: com.nekobot.app.data.local.ai.AgentMemoryNotice
+    ) : RealtimeEvent()
 }
 
 /** 返回事件所属会话；远程聊天使用它做严格隔离，避免全局 SharedFlow 串到其他页面。 */
@@ -337,6 +345,7 @@ fun RealtimeEvent.targetSessionId(): String? = when (this) {
     is RealtimeEvent.AgentSpecUpdated -> sessionId
     is RealtimeEvent.AskUserQuestionRequired -> request.sessionId
     is RealtimeEvent.AutoSkillDistillStatus -> notice.sessionId
+    is RealtimeEvent.AutoMemoryStatus -> notice.sessionId
     is RealtimeEvent.Usage -> null
 }
 

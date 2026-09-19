@@ -923,6 +923,17 @@ class LocalRepository(
     val autoSkillEvents: kotlinx.coroutines.flow.SharedFlow<com.nekobot.app.data.local.ai.AgentSkillNotice> =
         _autoSkillEvents
 
+    /**
+     * 自动长期记忆抽取通知流：Agent 回合结束后的后台抽取开始/结束时发出，
+     * 由 ChatViewModel 收集并在会话界面提示用户（记忆内容可在「更多 → Agent 记忆」查看）。
+     */
+    private val _autoMemoryEvents =
+        kotlinx.coroutines.flow.MutableSharedFlow<com.nekobot.app.data.local.ai.AgentMemoryNotice>(
+            extraBufferCapacity = 8
+        )
+    val autoMemoryEvents: kotlinx.coroutines.flow.SharedFlow<com.nekobot.app.data.local.ai.AgentMemoryNotice> =
+        _autoMemoryEvents
+
     /** 本地模式会话自动命名器（跨会话保持 autoNamed/lastRenameCount 状态） */
     private val sessionNameGenerator by lazy {
         com.nekobot.app.data.local.ai.SessionNameGenerator(
@@ -980,12 +991,32 @@ class LocalRepository(
         if (!com.nekobot.app.data.local.ai.AgentMemoryExtractor.shouldExtract(userMessage, assistantMessage)) {
             return
         }
+        // 先通知界面"正在整理记忆"（与自动技能沉淀提示同一形态），再后台跑抽取。
+        _autoMemoryEvents.tryEmit(
+            com.nekobot.app.data.local.ai.AgentMemoryNotice(
+                sessionId = sessionId,
+                changedItems = 0,
+                phase = com.nekobot.app.data.local.ai.AgentMemoryPhase.RUNNING
+            )
+        )
         ServiceContainer.applicationScope.launch(Dispatchers.IO) {
-            runCatching {
+            val changed = runCatching {
                 agentMemoryWriter.extractAndAppend(sessionId, userMessage, assistantMessage)
             }.onFailure {
                 LocalLogger.w(TAG, "Agent 长期记忆抽取失败（不影响主流程）: ${it.message}")
+            }.getOrDefault(0)
+            // 抽取结果写进设置：聊天界面的提示需要持久显示（不自动消失、重启后仍在）。
+            if (changed > 0) {
+                runCatching { ServiceContainer.prefs.setAgentMemoryNotice(sessionId, changed) }
             }
+            // 抽取结束必须回一个 DONE：没有写入任何内容时也要让界面收起"正在整理"提示。
+            _autoMemoryEvents.tryEmit(
+                com.nekobot.app.data.local.ai.AgentMemoryNotice(
+                    sessionId = sessionId,
+                    changedItems = changed,
+                    phase = com.nekobot.app.data.local.ai.AgentMemoryPhase.DONE
+                )
+            )
         }
     }
 
@@ -1682,6 +1713,8 @@ class LocalRepository(
         sessionDao.deleteById(id)
         // 会话级设置（自动技能沉淀提示 / 审查计数）随会话一起清理，避免残留无用键。
         ServiceContainer.prefs.clearAgentSkillNotice(id)
+        // 自动长期记忆的会话级提示同理（记忆内容本身是跨会话共享的，不在这里删除）。
+        ServiceContainer.prefs.clearAgentMemoryNotice(id)
     }
 
     /**

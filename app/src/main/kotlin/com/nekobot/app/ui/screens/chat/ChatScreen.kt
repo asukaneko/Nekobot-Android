@@ -304,6 +304,7 @@ fun ChatScreen(
     val agentRecovery by viewModel.agentRecovery.collectAsStateWithLifecycle()
     val agentContextCompressionInProgress by viewModel.agentContextCompressionInProgress.collectAsStateWithLifecycle()
     val autoSkillNotice by viewModel.autoSkillNotice.collectAsStateWithLifecycle()
+    val autoMemoryNotice by viewModel.autoMemoryNotice.collectAsStateWithLifecycle()
     val agentTodos by viewModel.agentTodos.collectAsStateWithLifecycle()
     // Agent 会话目标/规格任务（/goal、/spec 命令设置，输入框上方横幅展示）
     val agentGoal by viewModel.agentGoal.collectAsStateWithLifecycle()
@@ -1238,6 +1239,13 @@ fun ChatScreen(
                                 if (index == renderMessages.lastIndex) {
                                     Spacer(Modifier.height(4.dp))
                                     AutoSkillDistillDivider(state = notice)
+                                }
+                            }
+                            // 自动长期记忆提示：与技能沉淀提示同一形态，渲染在列表末尾。
+                            autoMemoryNotice?.let { notice ->
+                                if (index == renderMessages.lastIndex) {
+                                    Spacer(Modifier.height(4.dp))
+                                    AutoMemoryDivider(state = notice)
                                 }
                             }
                             if (
@@ -4807,9 +4815,60 @@ private fun AutoSkillDistillDivider(state: AutoSkillUiState) {
     }
 }
 
+/**
+ * 自动长期记忆提示条：与 [AutoSkillDistillDivider] 同形态（居中胶囊分隔条）。
+ *
+ * - 整理进行中：转圈 + "正在整理长期记忆"；
+ * - 已完成：图标 + "已自动记忆 N 条"，持久保留直到本会话下一次写入结果覆盖。
+ */
 @Composable
-private fun DateSeparatorChip(label: String) {
-    Box(
+private fun AutoMemoryDivider(state: AutoMemoryUiState) {
+    val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = color.copy(alpha = 0.38f)
+        )
+        Spacer(Modifier.width(10.dp))
+        if (state.running) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(14.dp),
+                strokeWidth = 1.5.dp,
+                color = color
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Filled.Psychology,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                tint = color
+            )
+        }
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = if (state.running) {
+                stringResource(R.string.chat_auto_memory_running)
+            } else {
+                stringResource(R.string.chat_auto_memory_done, state.changedItems)
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = color
+        )
+        Spacer(Modifier.width(10.dp))
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = color.copy(alpha = 0.38f)
+        )
+    }
+}
+
+@Composable
+private fun DateSeparatorChip(label: String) {    Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),

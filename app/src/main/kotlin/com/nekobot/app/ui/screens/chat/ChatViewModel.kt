@@ -315,6 +315,16 @@ class ChatViewModel : BaseViewModel() {
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     /**
+     * 自动长期记忆提示（进行中 / 已完成）。
+     * 与自动技能沉淀提示同形态：渲染在消息列表末尾；完成后持久保留。
+     */
+    val autoMemoryNotice: StateFlow<AutoMemoryUiState?> = _runtime
+        .map { it.autoMemoryNotice }
+        .distinctUntilChanged()
+        .flatMapLatest { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /**
      * Agent 任务列表（todo_write 工具写入，会话级持久化）。
      * 输入框上方的可折叠面板按此状态渲染；进入会话时从会话实体恢复。
      */
@@ -612,6 +622,8 @@ class ChatViewModel : BaseViewModel() {
         _runtime.value = ChatSessionManager.acquire(sessionId)
         // 自动技能沉淀提示是持久显示的：进入会话时从设置恢复上次的沉淀结果。
         runtime.restoreAutoSkillNotice()
+        // 自动长期记忆提示同理：恢复上次的写入结果，避免提示消失后无处可查。
+        runtime.restoreAutoMemoryNotice()
         startQueuedAutoSendWatcher()
         // 订阅本地后台压缩结果：仅通知当前存活界面（退出期间完成的压缩由 loadMessages 恢复）。
         compressionEventsJob?.cancel()
@@ -663,19 +675,24 @@ class ChatViewModel : BaseViewModel() {
         //    以"上下文压缩提示"同形态的内联提示展示（消息列表末尾），不再走 Hook 弹窗。
         val autoSkillEvents = com.nekobot.app.ServiceContainer.localRepository.autoSkillEvents
             .map { notice -> RealtimeEvent.AutoSkillDistillStatus(notice) }
-        // 同时收集四路：
+        // 5. localRepository.autoMemoryEvents → 自动长期记忆状态
+        val autoMemoryEvents = com.nekobot.app.ServiceContainer.localRepository.autoMemoryEvents
+            .map { notice -> RealtimeEvent.AutoMemoryStatus(notice) }
+        // 同时收集五路：
         // 1. hookExecutor.events → HookNotificationEvent
         // 2. localRepository.execConfirmationEvents → 高风险工具（删除角色卡等）的确认请求
         //    修复"删除角色卡卡住"：原实现把确认事件 emit 到 LocalPipelineCallbacks.eventChannel
         //    但 eventChannel 没人 collect，导致 requestAuthorization 的 runBlocking 永远等待。
         // 3. localRepository.askUserQuestionEvents → ask_user_question 提问请求（挂起等待用户回答）
         // 4. localRepository.autoSkillEvents → 自动沉淀 Skill 的进行中/完成提示
+        // 5. localRepository.autoMemoryEvents → 自动长期记忆的进行中/完成提示
         eventsJob = ServiceContainer.applicationScope.launch {
             kotlinx.coroutines.flow.merge(
                 hookEvents,
                 confirmationEvents,
                 askQuestionEvents,
-                autoSkillEvents
+                autoSkillEvents,
+                autoMemoryEvents
             ).collect { event ->
                 // 这里不能调用 ChatViewModel.handleRealtimeEvent：eventsJob 跨页面存活，捕获 this
                 // 会永久保留已经退出的 ViewModel 和 Agent 大消息列表。
@@ -716,6 +733,12 @@ class ChatViewModel : BaseViewModel() {
                         if (notice.sessionId.isBlank() || notice.sessionId == targetSessionId) {
                             // 状态应用逻辑在 ChatSessionState 上，避免事件 Job 捕获已退出的 ViewModel。
                             target.applyAutoSkillNotice(notice)
+                        }
+                    }
+                    is RealtimeEvent.AutoMemoryStatus -> {
+                        val notice = event.notice
+                        if (notice.sessionId.isBlank() || notice.sessionId == targetSessionId) {
+                            target.applyAutoMemoryNotice(notice)
                         }
                     }
                     else -> Unit
@@ -1031,6 +1054,10 @@ class ChatViewModel : BaseViewModel() {
             is RealtimeEvent.AutoSkillDistillStatus -> {
                 // 自动技能沉淀的进行中/完成提示（本地后台审查发出）
                 runtime.applyAutoSkillNotice(event.notice)
+            }
+            is RealtimeEvent.AutoMemoryStatus -> {
+                // 自动长期记忆的进行中/完成提示（本地后台抽取发出）
+                runtime.applyAutoMemoryNotice(event.notice)
             }
             is RealtimeEvent.ForegroundComplete -> completeLocalForeground()
             is RealtimeEvent.ReplyPostProcessed -> {

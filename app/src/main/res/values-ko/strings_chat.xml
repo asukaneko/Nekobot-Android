@@ -559,6 +559,10 @@
     <string name="chat_auto_skill_created">스킬 「%1$s」 자동 생성됨</string>
     <string name="chat_auto_skill_updated">스킬 「%1$s」 자동 갱신됨</string>
 
+    <!-- ==================== 장기 기억 자동 정리 알림 (스킬 알림과 같은 형태) ==================== -->
+    <string name="chat_auto_memory_running">장기 기억 정리 중…</string>
+    <string name="chat_auto_memory_done">%1$d개 자동 기억됨</string>
+
     <!-- ==================== 멀티미디어 콘텐츠 (MultimediaContent) ==================== -->
     <string name="chat_media_image">이미지</string>
     <string name="chat_media_pause">일시정지</string>
