@@ -292,6 +292,7 @@ class LocalExecAuthorizationManager(
         val sessionId: String,
         val mainCommand: String,
         val authorizationKeys: Set<String>,
+        val memorizable: Boolean,
         val decision: CompletableDeferred<ExecAuthorization>
     )
 
@@ -323,6 +324,7 @@ class LocalExecAuthorizationManager(
         sessionId: String,
         command: String,
         mainCommand: String,
+        memorizable: Boolean = true,
         onRequest: (ExecConfirmationRequest) -> Unit
     ): ExecAuthorization = awaitDecision(
         sessionId = sessionId,
@@ -330,6 +332,7 @@ class LocalExecAuthorizationManager(
         mainCommand = mainCommand,
         authorizationKeys = extractLocalAuthorizationFingerprints(command, mainCommand),
         message = "本地 Agent 请求执行命令",
+        memorizable = memorizable,
         onRequest = onRequest
     )
 
@@ -367,17 +370,22 @@ class LocalExecAuthorizationManager(
         mainCommand: String,
         authorizationKeys: Set<String>,
         message: String,
-        onRequest: (ExecConfirmationRequest) -> Unit
+        onRequest: (ExecConfirmationRequest) -> Unit,
+        memorizable: Boolean = true
     ): ExecAuthorization {
-        if (isYoloEnabled(sessionId)) return ExecAuthorization.Once
-        val allowedKeys = allowedKeySet(sessionId)
-        if (authorizationKeys.isNotEmpty() && authorizationKeys.all { it in allowedKeys }) {
-            return ExecAuthorization.Always
+        // 不可记忆的请求（读取界面树、截图）连 YOLO 也不能跳过：一次提示注入就能
+        // 通过它们悄悄取走整个界面内容，必须每次由用户显式确认。
+        if (memorizable && isYoloEnabled(sessionId)) return ExecAuthorization.Once
+        if (memorizable) {
+            val allowedKeys = allowedKeySet(sessionId)
+            if (authorizationKeys.isNotEmpty() && authorizationKeys.all { it in allowedKeys }) {
+                return ExecAuthorization.Always
+            }
         }
 
         val requestId = UUID.randomUUID().toString()
         val decision = CompletableDeferred<ExecAuthorization>()
-        pending[requestId] = Pending(sessionId, mainCommand, authorizationKeys, decision)
+        pending[requestId] = Pending(sessionId, mainCommand, authorizationKeys, memorizable, decision)
         onRequest(
             ExecConfirmationRequest(
                 requestId = requestId,
@@ -403,7 +411,8 @@ class LocalExecAuthorizationManager(
     ): Boolean {
         val request = pending[requestId] ?: return false
         if (request.sessionId != sessionId) return false
-        if (authorization == ExecAuthorization.Always) {
+        // 不可记忆的请求不允许写入「始终允许」记忆，即使 UI 传了 Always。
+        if (authorization == ExecAuthorization.Always && request.memorizable) {
             val keys = allowedKeySet(sessionId)
             keys.addAll(request.authorizationKeys)
             runCatching { savePersistedRules?.invoke(sessionId, keys.toSet()) }

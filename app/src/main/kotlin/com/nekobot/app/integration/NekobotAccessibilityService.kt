@@ -33,6 +33,14 @@ class NekobotAccessibilityService : AccessibilityService() {
         super.onDestroy()
     }
 
+    /**
+     * 当前前台应用的包名；无障碍未就绪时返回空串。
+     *
+     * 工具层据此判断当前应用是否在用户的排除列表中，从而拒绝读取界面、截图与操作。
+     */
+    internal fun foregroundPackageName(): String =
+        rootInActiveWindow?.packageName?.toString().orEmpty()
+
     internal fun snapshot(maxNodes: Int = DEFAULT_MAX_NODES, maxInteractive: Int = MAX_INTERACTIVE): AccessibilitySnapshot {
         val windows = windows.orEmpty().sortedByDescending { it.layer }
         val result = mutableListOf<Map<String, Any?>>()

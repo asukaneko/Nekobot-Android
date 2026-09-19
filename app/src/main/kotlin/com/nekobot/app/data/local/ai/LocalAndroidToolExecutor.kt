@@ -442,7 +442,11 @@ internal class LocalAndroidToolExecutor(
     }
 
     private suspend fun uiTree(args: Map<String, Any>): Map<String, Any> {
-        if (!authorize("android_ui_tree", "read current UI tree")) return failure("用户拒绝读取当前界面")
+        excludedPackageFailure()?.let { return it }
+        // 读取界面树不提供「始终允许」记忆：一次提示注入就能悄悄读完整个界面。
+        if (!authorize("android_ui_tree", "read current UI tree", memorizable = false)) {
+            return failure("用户拒绝读取当前界面")
+        }
         val service = accessibilityService() ?: return accessibilityUnavailable()
         val snapshot = service.snapshot(
             args.int("max_nodes", NekobotAccessibilityService.DEFAULT_MAX_NODES),
@@ -472,6 +476,7 @@ internal class LocalAndroidToolExecutor(
         val index = args.intOrNull("index")
         val selector = args.string("selector")
         if (index == null && selector.isBlank()) return failure("需要提供 selector 或 index")
+        excludedPackageFailure()?.let { return it }
         if (!authorize("android_ui_click", if (index != null) "click index=$index" else "click $selector")) {
             return failure("用户拒绝点击界面元素")
         }
@@ -497,6 +502,7 @@ internal class LocalAndroidToolExecutor(
         val selector = args.string("selector")
         val text = args.string("text")
         if (index == null && selector.isBlank()) return failure("需要提供 selector 或 index")
+        excludedPackageFailure()?.let { return it }
         if (!authorize("android_ui_set_text", if (index != null) "set text on index=$index" else "set text on $selector")) {
             return failure("用户拒绝向界面输入文字")
         }
@@ -511,6 +517,7 @@ internal class LocalAndroidToolExecutor(
 
     private suspend fun uiScroll(args: Map<String, Any>): Map<String, Any> {
         val direction = args.string("direction").ifBlank { "down" }
+        excludedPackageFailure()?.let { return it }
         if (!authorize("android_ui_scroll", "scroll $direction")) return failure("用户拒绝滚动当前界面")
         val service = accessibilityService() ?: return accessibilityUnavailable()
         val index = args.intOrNull("index")
@@ -540,6 +547,7 @@ internal class LocalAndroidToolExecutor(
 
     /** android_ui_tap：坐标点击或按编号/文字定位后在其 bounds 中心手势点击。 */
     private suspend fun uiTap(args: Map<String, Any>): Map<String, Any> {
+        excludedPackageFailure()?.let { return it }
         val x = args.floatOrNull("x")
         val y = args.floatOrNull("y")
         if (x != null && y != null) {
@@ -565,6 +573,7 @@ internal class LocalAndroidToolExecutor(
 
     /** android_ui_swipe：坐标滑动或按编号/文字定位后在元素 bounds 内沿方向滑动。 */
     private suspend fun uiSwipe(args: Map<String, Any>): Map<String, Any> {
+        excludedPackageFailure()?.let { return it }
         val x1 = args.floatOrNull("x1")
         val y1 = args.floatOrNull("y1")
         val x2 = args.floatOrNull("x2")
@@ -593,6 +602,7 @@ internal class LocalAndroidToolExecutor(
 
     /** android_ui_ime_action：对输入框执行 IME 回车（触发搜索/确认）。 */
     private suspend fun uiImeAction(args: Map<String, Any>): Map<String, Any> {
+        excludedPackageFailure()?.let { return it }
         if (!authorize("android_ui_ime_action", "trigger IME enter")) return failure("用户拒绝执行输入法回车")
         val service = accessibilityService() ?: return accessibilityUnavailable()
         val index = args.intOrNull("index")
@@ -613,6 +623,7 @@ internal class LocalAndroidToolExecutor(
             val written = writeClipboard(appContext, args + ("text" to text))
             if ((written["success"] as? Boolean) != true) return written
         }
+        excludedPackageFailure()?.let { return it }
         if (!authorize("android_ui_paste", "paste into input")) return failure("用户拒绝粘贴文本")
         val service = accessibilityService() ?: return accessibilityUnavailable()
         val index = args.intOrNull("index")
@@ -627,6 +638,7 @@ internal class LocalAndroidToolExecutor(
 
     /** android_wait_for_idle：等待界面稳定（加载/动画结束）。 */
     private suspend fun waitForIdle(args: Map<String, Any>): Map<String, Any> {
+        excludedPackageFailure()?.let { return it }
         val service = accessibilityService() ?: return accessibilityUnavailable()
         // 等待本身不修改界面状态，无需用户授权
         val result = service.waitForStable(
@@ -643,13 +655,18 @@ internal class LocalAndroidToolExecutor(
     private suspend fun globalAction(args: Map<String, Any>): Map<String, Any> {
         val action = args.string("action")
         if (action.isBlank()) return failure("action 不能为空")
+        excludedPackageFailure()?.let { return it }
         if (!authorize("android_global_action", action)) return failure("用户拒绝系统全局动作")
         val result = accessibilityService()?.runGlobalAction(action) ?: return accessibilityUnavailable()
         return actionResult(result.success, result.message, result.matched, result.metadata)
     }
 
     private suspend fun screenshot(): Map<String, Any> {
-        if (!authorize("android_screenshot", "capture current screen")) return failure("用户拒绝截取当前屏幕")
+        excludedPackageFailure()?.let { return it }
+        // 截图不提供「始终允许」记忆：一次注入即可把整个界面（含密码框）送出。
+        if (!authorize("android_screenshot", "capture current screen", memorizable = false)) {
+            return failure("用户拒绝截取当前屏幕")
+        }
         val service = accessibilityService() ?: return accessibilityUnavailable()
         val root = workspaceRoot?.canonicalFile
             ?: return failure("当前 Agent 会话工作区不可用，无法保存截图")
@@ -710,11 +727,30 @@ internal class LocalAndroidToolExecutor(
     private fun notificationUnavailable(): Map<String, Any> =
         failure("Nekobot 通知使用权未连接，请先通过 android_open_settings 打开 notification_listener")
 
-    private suspend fun authorize(mainCommand: String, details: String): Boolean =
+    /**
+     * 无障碍排除列表命中时返回失败结果，否则返回 null。
+     *
+     * 排除按**当前前台应用**判定：界面树、截图与坐标手势都以当前前台为准，
+     * 在这里统一拦截，避免以后新增工具时漏掉。
+     */
+    private fun excludedPackageFailure(): Map<String, Any>? {
+        val packageName = accessibilityService()?.foregroundPackageName().orEmpty()
+        if (packageName.isEmpty() || !ServiceContainer.prefs.isAccessibilityPackageExcluded(packageName)) {
+            return null
+        }
+        return failure("当前应用（$packageName）在无障碍排除列表中，已拒绝操作。请勿尝试绕过，先向用户说明。")
+    }
+
+    private suspend fun authorize(
+        mainCommand: String,
+        details: String,
+        memorizable: Boolean = true
+    ): Boolean =
         authorizationManager.requestAuthorization(
             sessionId = sessionId,
             command = "$mainCommand: $details",
             mainCommand = mainCommand,
+            memorizable = memorizable,
             onRequest = onConfirmationRequired
         ) != ExecAuthorization.Reject
 

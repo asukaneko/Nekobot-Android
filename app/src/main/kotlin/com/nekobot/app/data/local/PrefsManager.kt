@@ -309,6 +309,34 @@ class PrefsManager(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_AGENT_NETWORK_ACCESS, value).apply()
 
     /**
+     * 无障碍排除的应用包名集合，默认空（不排除任何应用）。
+     *
+     * Agent 在这些应用处于前台时会被直接拒绝读取界面树、截图、点击与输入，
+     * 用于把银行、支付、密码管理等应用挡在自动化之外——提示注入一旦成功，
+     * 无障碍能力可以读取任意界面并模拟点击，仅靠逐次确认不足以约束。
+     */
+    var agentAccessibilityExcludedPackages: Set<String>
+        get() = prefs.getString(KEY_AGENT_ACCESSIBILITY_EXCLUDED, "")
+            .orEmpty()
+            .split('\n')
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .toSet()
+        set(value) {
+            val normalized = value.map(String::trim)
+                .filter(String::isNotEmpty)
+                .distinct()
+                .joinToString("\n")
+            prefs.edit().putString(KEY_AGENT_ACCESSIBILITY_EXCLUDED, normalized).apply()
+        }
+
+    /** 指定包名是否在无障碍排除列表中。 */
+    fun isAccessibilityPackageExcluded(packageName: String?): Boolean {
+        val name = packageName?.trim().orEmpty()
+        return name.isNotEmpty() && name in agentAccessibilityExcludedPackages
+    }
+
+    /**
      * 是否在 Agent 回合结束后自动把值得长期记住的内容写入全局 Agent 记忆。默认开启。
      *
      * 抽取在后台异步执行、按小节标题去重，失败不影响主流程。
@@ -1102,6 +1130,7 @@ class PrefsManager(context: Context) {
         private const val KEY_SUBAGENT_MAX_TOOL_CALLS = "subagent_max_tool_calls"
         private const val KEY_SUBAGENT_DEFAULT_BACKGROUND = "subagent_default_background"
         private const val KEY_AGENT_NETWORK_ACCESS = "agent_network_access_enabled"
+        private const val KEY_AGENT_ACCESSIBILITY_EXCLUDED = "agent_accessibility_excluded_packages"
         private const val KEY_AGENT_AUTO_MEMORY = "agent_auto_memory_enabled"
         private const val KEY_AGENT_MEMORY_MIGRATION_ASKED = "agent_memory_migration_asked"
         private const val KEY_AGENT_AUTO_SKILL = "agent_auto_skill_enabled"

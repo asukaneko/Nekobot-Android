@@ -1,5 +1,6 @@
 package com.nekobot.app.ui.screens.settings
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Timeline
@@ -60,9 +62,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
@@ -106,6 +110,19 @@ fun AgentSettingsScreen(
     var editingCustomModeId by remember { mutableStateOf<String?>(null) }
     var toolSetRevision by remember { mutableStateOf(0) }
     val toolSetStat = remember(toolSetRevision) { loadToolSetStat() }
+    // 无障碍排除的应用：命中后 Agent 无法读取界面/截图/操作该应用
+    var showExcludedAppsDialog by remember { mutableStateOf(false) }
+    var excludedAppsRevision by remember { mutableStateOf(0) }
+    val excludedAppsCount = remember(excludedAppsRevision) {
+        ServiceContainer.prefs.agentAccessibilityExcludedPackages.size
+    }
+
+    if (showExcludedAppsDialog) {
+        AccessibilityExcludedAppsDialog(
+            onDismiss = { showExcludedAppsDialog = false },
+            onChanged = { excludedAppsRevision++ }
+        )
+    }
 
     if (showDefaultModeDialog) {
         DefaultModeDialog(
@@ -282,6 +299,20 @@ fun AgentSettingsScreen(
                                 ServiceContainer.prefs.agentNetworkAccessEnabled = it
                             }
                         )
+                    }
+                )
+                AgentSettingRow(
+                    icon = Icons.Filled.Shield,
+                    tint = MaterialTheme.colorScheme.tertiary,
+                    title = stringResource(R.string.agent_settings_accessibility_excluded),
+                    desc = stringResource(
+                        R.string.agent_settings_accessibility_excluded_desc,
+                        excludedAppsCount
+                    ),
+                    trailing = {
+                        TextButton(onClick = { showExcludedAppsDialog = true }) {
+                            Text(stringResource(R.string.agent_settings_accessibility_excluded_action))
+                        }
                     }
                 )
                 var autoMemory by remember {
@@ -516,6 +547,127 @@ private fun NumericInput(
         textStyle = MaterialTheme.typography.bodyMedium,
         shape = RoundedCornerShape(12.dp),
         modifier = Modifier.width(92.dp)
+    )
+}
+
+/**
+ * 「无障碍排除的应用」弹窗：勾选后，Agent 在这些应用处于前台时会被拒绝读取界面树、
+ * 截图、点击与输入。用于把银行、支付、密码管理类应用挡在自动化之外。
+ *
+ * 只列举桌面可启动应用（Manifest 已声明 LAUNCHER 的 `<queries>`，无需 QUERY_ALL_PACKAGES）。
+ */
+@Composable
+private fun AccessibilityExcludedAppsDialog(
+    onDismiss: () -> Unit,
+    onChanged: () -> Unit
+) {
+    val context = LocalContext.current
+    val apps = remember(context) {
+        runCatching {
+            val manager = context.packageManager
+            val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            manager.queryIntentActivities(intent, 0)
+                .mapNotNull { info ->
+                    val packageName = info.activityInfo?.packageName ?: return@mapNotNull null
+                    if (packageName == context.packageName) return@mapNotNull null
+                    val label = runCatching { info.loadLabel(manager).toString() }.getOrDefault(packageName)
+                    packageName to label
+                }
+                .distinctBy { it.first }
+                .sortedBy { it.second.lowercase() }
+        }.getOrDefault(emptyList())
+    }
+    var excluded by remember {
+        mutableStateOf(ServiceContainer.prefs.agentAccessibilityExcludedPackages)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(
+                    text = stringResource(R.string.agent_settings_accessibility_excluded_dialog_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = stringResource(R.string.agent_settings_accessibility_excluded_dialog_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        text = {
+            if (apps.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.agent_settings_accessibility_excluded_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 460.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    itemsIndexed(apps) { _, app ->
+                        val selected = app.first in excluded
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(
+                                    if (selected) {
+                                        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.14f)
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f)
+                                    }
+                                )
+                                .clickable {
+                                    excluded = if (selected) excluded - app.first else excluded + app.first
+                                    ServiceContainer.prefs.agentAccessibilityExcludedPackages = excluded
+                                    onChanged()
+                                }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                if (selected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
+                                contentDescription = null,
+                                tint = if (selected) {
+                                    MaterialTheme.colorScheme.tertiary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = app.second,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = app.first,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.common_close))
+            }
+        }
     )
 }
 

@@ -271,6 +271,12 @@
     <string name="agent_settings_subagent_enable">Enable Subagent</string>
     <string name="agent_settings_network_access">Network access</string>
     <string name="agent_settings_network_access_desc">When disabled, networked tools (http_get / search_web / browser_use / download_file) and MCP tools are rejected outright; only local tools remain. The local Linux sandbox cannot truly isolate networking, so this switch enforces the policy in-app.</string>
+    <string name="agent_settings_accessibility_excluded">Excluded apps (accessibility)</string>
+    <string name="agent_settings_accessibility_excluded_desc">%1$d app(s) excluded. The Agent cannot read their UI, take screenshots, or tap/type in them. Banking, payment, and password manager apps are recommended.</string>
+    <string name="agent_settings_accessibility_excluded_action">Manage</string>
+    <string name="agent_settings_accessibility_excluded_dialog_title">Excluded apps</string>
+    <string name="agent_settings_accessibility_excluded_dialog_subtitle">When checked, the Agent cannot read, screenshot, or operate these apps while they are in the foreground</string>
+    <string name="agent_settings_accessibility_excluded_empty">No launchable apps available</string>
     <string name="agent_settings_auto_memory">Automatic long-term memory</string>
     <string name="agent_settings_auto_memory_desc">After each Agent turn, only stable preferences, standing conventions, and environment facts are written to global Agent memory, organized under fixed sections with no one-off task details (deduplicated by section, failures never affect the reply). When off, only explicit memory tool calls can write.</string>
     <string name="agent_settings_auto_skill">Automatic skill distillation</string>

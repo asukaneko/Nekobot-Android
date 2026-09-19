@@ -277,6 +277,12 @@
     <string name="agent_settings_subagent_enable">启用 Subagent</string>
     <string name="agent_settings_network_access">网络访问</string>
     <string name="agent_settings_network_access_desc">关闭后 Agent 的联网工具（http_get / search_web / browser_use / download_file）与 MCP 工具会被直接拒绝，只保留本地工具。本地 Linux 沙盒无法真正隔离网络，此开关在策略层兜底。</string>
+    <string name="agent_settings_accessibility_excluded">无障碍排除的应用</string>
+    <string name="agent_settings_accessibility_excluded_desc">已排除 %1$d 个应用。排除后 Agent 无法读取其界面、截图或点击输入，建议加入银行、支付与密码管理类应用。</string>
+    <string name="agent_settings_accessibility_excluded_action">管理</string>
+    <string name="agent_settings_accessibility_excluded_dialog_title">无障碍排除的应用</string>
+    <string name="agent_settings_accessibility_excluded_dialog_subtitle">勾选后，这些应用处于前台时 Agent 无法读取界面、截图或操作</string>
+    <string name="agent_settings_accessibility_excluded_empty">没有可选的桌面应用</string>
     <string name="agent_settings_auto_memory">自动长期记忆</string>
     <string name="agent_settings_auto_memory_desc">Agent 回合结束后，只把稳定的偏好、长期约定与环境事实写入全局 Agent 记忆，按固定分类整理，不记录一次性任务细节（按小节去重，失败不影响对话）。关闭后只能由 AI 主动调用记忆工具写入。</string>
     <string name="agent_settings_auto_skill">自动总结 Skill</string>

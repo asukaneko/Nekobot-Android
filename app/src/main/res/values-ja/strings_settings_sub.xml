@@ -264,6 +264,12 @@
     <string name="agent_settings_subagent_enable">Subagent を有効にする</string>
     <string name="agent_settings_network_access">ネットワークアクセス</string>
     <string name="agent_settings_network_access_desc">オフにすると Agent のネットワーク系ツール（http_get / search_web / browser_use / download_file）と MCP ツールは拒否され、ローカルツールのみ利用できます。ローカル Linux サンドボックスはネットワークを完全には分離できないため、このスイッチでポリシー側から制御します。</string>
+    <string name="agent_settings_accessibility_excluded">アクセシビリティ除外アプリ</string>
+    <string name="agent_settings_accessibility_excluded_desc">%1$d 件のアプリを除外中。除外したアプリは Agent が画面の読み取り・スクリーンショット・タップ入力を行えません。銀行・決済・パスワード管理アプリの追加を推奨します。</string>
+    <string name="agent_settings_accessibility_excluded_action">管理</string>
+    <string name="agent_settings_accessibility_excluded_dialog_title">アクセシビリティ除外アプリ</string>
+    <string name="agent_settings_accessibility_excluded_dialog_subtitle">チェックしたアプリが前面にある間、Agent は画面の読み取り・スクリーンショット・操作を行えません</string>
+    <string name="agent_settings_accessibility_excluded_empty">選択可能な起動アプリがありません</string>
     <string name="agent_settings_auto_memory">長期記憶の自動保存</string>
     <string name="agent_settings_auto_memory_desc">Agent の各ターン終了後、安定した好み・長期的な取り決め・環境情報だけをグローバル Agent メモリへ保存します（固定の分類で整理し、単発のタスク詳細は記録しません。セクション単位で重複排除、失敗しても会話には影響しません）。オフの場合、記憶ツールの明示的な呼び出しのみ書き込みます。</string>
     <string name="agent_settings_auto_skill">Skill の自動要約</string>
