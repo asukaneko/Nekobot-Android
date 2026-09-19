@@ -546,6 +546,9 @@ interface AiModelDao {
     @Query("UPDATE local_ai_models SET active = CASE WHEN id = :id THEN 1 ELSE 0 END WHERE purpose = :purpose")
     suspend fun setActiveForPurpose(id: String, purpose: String)
 
+    @Query("UPDATE local_ai_models SET enabled = :enabled WHERE id = :id")
+    suspend fun setEnabled(id: String, enabled: Boolean)
+
     @Query("DELETE FROM local_ai_models WHERE id = :id")
     suspend fun deleteById(id: String)
 

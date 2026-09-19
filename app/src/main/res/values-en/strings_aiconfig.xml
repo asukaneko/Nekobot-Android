@@ -145,6 +145,11 @@
     <string name="localai_more">More</string>
     <string name="localai_current_model">Current Model</string>
     <string name="localai_set_current">Set as Current</string>
+    <string name="localai_enable">Enable</string>
+    <string name="localai_disable">Disable</string>
+    <string name="localai_enabled_toast">Enabled \"%1$s\"</string>
+    <string name="localai_disabled_toast">Disabled \"%1$s\"</string>
+    <string name="localai_disabled_badge">Disabled</string>
     <string name="localai_new_model">New AI Model</string>
     <string name="localai_edit_model">Edit AI Model</string>
     <string name="localai_protocol">Protocol</string>

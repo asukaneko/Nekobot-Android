@@ -145,6 +145,11 @@
     <string name="localai_more">その他</string>
     <string name="localai_current_model">現在のモデル</string>
     <string name="localai_set_current">現在のモデルに設定</string>
+    <string name="localai_enable">有効化</string>
+    <string name="localai_disable">無効化</string>
+    <string name="localai_enabled_toast">「%1$s」を有効にしました</string>
+    <string name="localai_disabled_toast">「%1$s」を無効にしました</string>
+    <string name="localai_disabled_badge">無効</string>
     <string name="localai_new_model">新規 AI モデル</string>
     <string name="localai_edit_model">AI モデルを編集</string>
     <string name="localai_protocol">プロトコル</string>

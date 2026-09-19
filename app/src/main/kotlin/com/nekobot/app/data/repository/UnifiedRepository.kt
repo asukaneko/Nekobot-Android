@@ -1005,6 +1005,11 @@ class UnifiedRepository(
         if (isLocal) local.deleteAiModel(id)
     }
 
+    /** 启用/停用本地模型。停用即从故障转移队列中排除，不影响 active 选中状态。 */
+    suspend fun setLocalAiModelEnabled(id: String, enabled: Boolean) {
+        if (isLocal) local.setModelEnabled(id, enabled)
+    }
+
     suspend fun getActiveLocalModel(): LocalAiModelEntity? =
         if (isLocal) local.getActiveModel() else null
 

@@ -30,8 +30,10 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
@@ -71,6 +73,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -187,6 +190,19 @@ class LocalAiModelsViewModel : BaseViewModel() {
         viewModelScope.launch {
             ServiceContainer.unified.setActiveLocalModel(id)
             showToast(string(R.string.localai_set_active))
+        }
+    }
+
+    /** 启用/停用模型：停用后不再参与故障转移队列，但保留当前选中(active)状态。 */
+    fun setEnabled(model: LocalAiModelEntity, enabled: Boolean) {
+        viewModelScope.launch {
+            ServiceContainer.unified.setLocalAiModelEnabled(model.id, enabled)
+            showToast(
+                string(
+                    if (enabled) R.string.localai_enabled_toast else R.string.localai_disabled_toast,
+                    model.name
+                )
+            )
         }
     }
 
@@ -400,6 +416,7 @@ fun LocalAiModelsScreen(onBack: () -> Unit) {
                                 model = model,
                                 isActive = model.active,
                                 onSetActive = { vm.setActive(model.id) },
+                                onToggleEnabled = { vm.setEnabled(model, !model.enabled) },
                                 onEdit = {
                                     editingModel = model
                                     showEditDialog = true
@@ -696,6 +713,7 @@ private fun ModelCard(
     model: LocalAiModelEntity,
     isActive: Boolean,
     onSetActive: () -> Unit,
+    onToggleEnabled: () -> Unit,
     onEdit: () -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
@@ -703,6 +721,10 @@ private fun ModelCard(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val purposeLabel = localModelPurposeLabel(model.purpose)
+    val isEnabled = model.enabled
+
+    // 停用模型整体降透明度，与启用模型形成一眼可辨的对比（选中态侧边标记保留）。
+    val contentAlpha = if (isEnabled) 1f else 0.45f
 
     ModelCardFrame(
         isActive = isActive,
@@ -713,14 +735,20 @@ private fun ModelCard(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            ProviderLogo(
-                provider = model.provider,
-                baseUrl = model.baseUrl,
-                model = model.model,
-                size = 46.dp
-            )
+            Box(modifier = Modifier.alpha(contentAlpha)) {
+                ProviderLogo(
+                    provider = model.provider,
+                    baseUrl = model.baseUrl,
+                    model = model.model,
+                    size = 46.dp
+                )
+            }
             Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .alpha(contentAlpha)
+            ) {
                 Text(
                     text = model.name,
                     style = MaterialTheme.typography.titleMedium,
@@ -740,6 +768,19 @@ private fun ModelCard(
                 )
             }
             Spacer(Modifier.width(10.dp))
+            if (!isEnabled) {
+                // 停用态文字徽标：仅用弱色小字，避免与"当前模型"对勾争夺注意力。
+                Text(
+                    text = stringResource(R.string.localai_disabled_badge),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+            }
             if (isActive) {
                 Icon(
                     imageVector = Icons.Filled.Check,
@@ -774,6 +815,28 @@ private fun ModelCard(
                             onDuplicate()
                         }
                     )
+                    // 启用/停用：与卡片右上角徽标、整体透明度联动，操作后立即可见。
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                stringResource(
+                                    if (isEnabled) R.string.localai_disable else R.string.localai_enable
+                                )
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = if (isEnabled) Icons.Filled.Block else Icons.Filled.CheckCircle,
+                                contentDescription = null,
+                                tint = if (isEnabled) MaterialTheme.colorScheme.onSurfaceVariant
+                                else MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onToggleEnabled()
+                        }
+                    )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) },
                         leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
@@ -790,7 +853,8 @@ private fun ModelCard(
 
         Row(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.alpha(contentAlpha)
         ) {
             ModelInfoChip(text = model.protocol)
             if (model.proxyUrl.isNotBlank()) {
@@ -805,7 +869,9 @@ private fun ModelCard(
 
         if (model.baseUrl.isNotBlank()) {
             Spacer(Modifier.height(9.dp))
-            ModelEndpointRow(url = model.baseUrl)
+            Box(modifier = Modifier.alpha(contentAlpha)) {
+                ModelEndpointRow(url = model.baseUrl)
+            }
         }
 
         ModelCardDivider(modifier = Modifier.padding(vertical = 10.dp))

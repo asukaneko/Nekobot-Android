@@ -156,6 +156,11 @@
     <string name="localai_more">更多</string>
     <string name="localai_current_model">当前模型</string>
     <string name="localai_set_current">设为当前</string>
+    <string name="localai_enable">启用</string>
+    <string name="localai_disable">停用</string>
+    <string name="localai_enabled_toast">已启用「%1$s」</string>
+    <string name="localai_disabled_toast">已停用「%1$s」</string>
+    <string name="localai_disabled_badge">已停用</string>
     <string name="localai_new_model">新建 AI 模型</string>
     <string name="localai_edit_model">编辑 AI 模型</string>
     <string name="localai_protocol">协议</string>

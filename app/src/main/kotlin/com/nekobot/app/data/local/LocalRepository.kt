@@ -8276,6 +8276,11 @@ ${AiOutputLanguage.directive()}
         aiModelDao.setActive(id)
     }
 
+    /** 启用/停用模型：停用后该模型不再进入故障转移队列（listByPurpose 带 enabled = 1 过滤）。 */
+    suspend fun setModelEnabled(id: String, enabled: Boolean) = withContext(Dispatchers.IO) {
+        aiModelDao.setEnabled(id, enabled)
+    }
+
     /** 设置指定 purpose 的激活模型，同 purpose 下其他模型自动取消激活。 */
     suspend fun setActiveModelForPurpose(id: String, purpose: String) = withContext(Dispatchers.IO) {
         val p = purpose.ifBlank { "chat" }

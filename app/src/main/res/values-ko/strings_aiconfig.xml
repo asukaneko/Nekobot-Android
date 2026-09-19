@@ -145,6 +145,11 @@
     <string name="localai_more">더보기</string>
     <string name="localai_current_model">현재 모델</string>
     <string name="localai_set_current">현재로 설정</string>
+    <string name="localai_enable">사용</string>
+    <string name="localai_disable">사용 안 함</string>
+    <string name="localai_enabled_toast">「%1$s」을(를) 사용하도록 설정했습니다</string>
+    <string name="localai_disabled_toast">「%1$s」을(를) 사용 안 함으로 설정했습니다</string>
+    <string name="localai_disabled_badge">사용 안 함</string>
     <string name="localai_new_model">새 AI 모델</string>
     <string name="localai_edit_model">AI 모델 편집</string>
     <string name="localai_protocol">프로토콜</string>
