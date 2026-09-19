@@ -29,12 +29,14 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
+import java.net.InetAddress
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -371,9 +373,7 @@ class PluginManager(context: Context) {
     private fun installFromUrlBlocking(url: String): InstalledPlugin {
         requireNetworkAccessAllowed()
         val trimmed = url.trim()
-        if (!trimmed.startsWith("https://", ignoreCase = true)) {
-            throw PluginInstallException("只允许从 HTTPS 地址安装插件")
-        }
+        requirePublicHttpsUrl(trimmed, "插件安装")
         val tempZip = File.createTempFile("nekobot-plugin-", ".zip", appContext.cacheDir)
         try {
             val request = Request.Builder().url(trimmed).get().build()
@@ -862,9 +862,7 @@ class PluginManager(context: Context) {
                 requirePermission(plugin, "network")
                 requireNetworkAccessAllowed()
                 val url = payload.string("url").trim()
-                if (!url.startsWith("https://", ignoreCase = true)) {
-                    throw IllegalArgumentException("插件网络请求只允许 HTTPS")
-                }
+                requirePublicHttpsUrl(url, "插件网络请求")
                 val request = Request.Builder().url(url).get().build()
                 httpClient.newCall(request).execute().use { response ->
                     val body = response.body?.byteStream()?.use { input -> readLimitedText(input, MAX_HTTP_BYTES) }.orEmpty()
@@ -889,6 +887,47 @@ class PluginManager(context: Context) {
         if (!com.nekobot.app.ServiceContainer.prefs.agentNetworkAccessEnabled) {
             throw SecurityException("Agent 网络访问已在设置中关闭，插件无法发起网络请求")
         }
+    }
+
+    /**
+     * 只允许访问公网 HTTPS 地址。
+     *
+     * 插件由 AI 通过 plugin_use 创建，「从 URL 安装」与 http_get 的目标都不可信：
+     * 仅校验 scheme 时可以用 `https://127.0.0.1/`、`https://192.168.x.x/` 探测内网服务
+     * （SSRF）。这里同时解析域名，拦住「域名解析到内网」这种常见绕过。
+     *
+     * 局限：DNS 重绑定（先解析为公网、连接时再解析为内网）无法在此彻底杜绝，
+     * 要完全解决需要把校验过的 IP 绑定到连接层。
+     */
+    private fun requirePublicHttpsUrl(raw: String, what: String) {
+        val url = runCatching { raw.toHttpUrlOrNull() }.getOrNull()
+            ?: throw IllegalArgumentException("$what 地址无效")
+        if (!url.isHttps) throw IllegalArgumentException("$what 只允许 HTTPS")
+        val host = url.host
+        if (isBlockedHostName(host)) {
+            throw IllegalArgumentException("$what 不允许访问内网或本机地址：$host")
+        }
+        val addresses = runCatching { InetAddress.getAllByName(host) }.getOrNull().orEmpty()
+        if (addresses.isEmpty() || addresses.any(::isBlockedAddress)) {
+            throw IllegalArgumentException("$what 不允许访问内网或本机地址：$host")
+        }
+    }
+
+    private fun isBlockedHostName(host: String): Boolean =
+        host.equals("localhost", ignoreCase = true) || host.endsWith(".localhost", ignoreCase = true)
+
+    private fun isBlockedAddress(address: InetAddress): Boolean =
+        address.isAnyLocalAddress ||
+            address.isLoopbackAddress ||
+            address.isLinkLocalAddress ||
+            address.isSiteLocalAddress ||
+            address.isMulticastAddress ||
+            isUniqueLocalIpv6(address)
+
+    /** IPv6 唯一本地地址 fc00::/7。 */
+    private fun isUniqueLocalIpv6(address: InetAddress): Boolean {
+        val bytes = address.address
+        return bytes.size == 16 && (bytes[0].toInt() and 0xFE) == 0xFC
     }
 
     private fun storageKey(pluginId: String, raw: String): String {
