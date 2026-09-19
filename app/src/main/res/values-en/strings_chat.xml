@@ -83,6 +83,9 @@
     <string name="sessions_detail_enter_chat">Enter chat</string>
     <string name="sessions_detail_export">Export session</string>
     <string name="sessions_detail_export_success">Exported to Downloads: %1$s</string>
+    <string name="sessions_detail_export_warning_title">Export to public Downloads</string>
+    <string name="sessions_detail_export_warning_message">The exported JSON is plaintext and contains every message in this session, saved to the system Downloads folder where other apps with storage access can read it. Confirm before exporting.</string>
+    <string name="sessions_detail_export_warning_confirm">Export anyway</string>
     <string name="sessions_detail_export_failed">Export failed: %1$s</string>
     <string name="sessions_detail_export_empty">No messages to export</string>
     <string name="sessions_import">Import session</string>

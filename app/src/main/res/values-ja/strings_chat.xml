@@ -83,6 +83,9 @@
     <string name="sessions_detail_enter_chat">チャットへ</string>
     <string name="sessions_detail_export">セッションをエクスポート</string>
     <string name="sessions_detail_export_success">ダウンロードフォルダにエクスポートしました: %1$s</string>
+    <string name="sessions_detail_export_warning_title">公開ダウンロードフォルダへの書き出し</string>
+    <string name="sessions_detail_export_warning_message">書き出した JSON は平文で、このセッションの全会話内容を含み、システムの「ダウンロード」フォルダに保存されます。ストレージ権限を持つ他のアプリから読み取れます。確認してから実行してください。</string>
+    <string name="sessions_detail_export_warning_confirm">それでも書き出す</string>
     <string name="sessions_detail_export_failed">エクスポート失敗: %1$s</string>
     <string name="sessions_detail_export_empty">エクスポートするメッセージがありません</string>
     <string name="sessions_import">セッションをインポート</string>

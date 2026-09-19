@@ -89,6 +89,9 @@
     <string name="sessions_detail_enter_chat">进入对话</string>
     <string name="sessions_detail_export">导出会话</string>
     <string name="sessions_detail_export_success">已导出到下载目录：%1$s</string>
+    <string name="sessions_detail_export_warning_title">导出到公共下载目录</string>
+    <string name="sessions_detail_export_warning_message">导出的 JSON 是明文，包含本会话的全部聊天内容，并会保存到系统「下载」目录——其他拥有存储权限的应用可以读取。请确认后再导出。</string>
+    <string name="sessions_detail_export_warning_confirm">仍然导出</string>
     <string name="sessions_detail_export_failed">导出失败：%1$s</string>
     <string name="sessions_detail_export_empty">会话无消息，无法导出</string>
     <string name="sessions_import">导入会话</string>

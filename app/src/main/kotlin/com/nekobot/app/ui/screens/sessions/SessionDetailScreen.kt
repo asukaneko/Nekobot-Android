@@ -781,6 +781,7 @@ fun SessionDetailScreen(
     val context = LocalContext.current
 
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showExportDialog by remember { mutableStateOf(false) }
     var showBindCharacterDialog by remember { mutableStateOf(false) }
     var selectedPromptStackItem by remember { mutableStateOf<PromptStackItem?>(null) }
 
@@ -935,7 +936,7 @@ fun SessionDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { vm.exportSessionAsJson() }) {
+                    IconButton(onClick = { showExportDialog = true }) {
                         Icon(Icons.Filled.FileDownload, contentDescription = exportDesc, tint = MaterialTheme.colorScheme.primary)
                     }
                     IconButton(onClick = { vm.save(onBack) }) {
@@ -1640,6 +1641,21 @@ fun SessionDetailScreen(
                 showDeleteDialog = false
                 vm.delete(onBack)
             }
+        )
+    }
+
+    if (showExportDialog) {
+        NekoDialog(
+            onDismiss = { showExportDialog = false },
+            title = stringResource(R.string.sessions_detail_export_warning_title),
+            message = stringResource(R.string.sessions_detail_export_warning_message),
+            confirmText = stringResource(R.string.sessions_detail_export_warning_confirm),
+            onConfirm = {
+                showExportDialog = false
+                vm.exportSessionAsJson()
+            },
+            cancelText = stringResource(R.string.common_cancel),
+            onCancel = { showExportDialog = false }
         )
     }
 

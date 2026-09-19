@@ -83,6 +83,9 @@
     <string name="sessions_detail_enter_chat">대화 입장</string>
     <string name="sessions_detail_export">세션 내보내기</string>
     <string name="sessions_detail_export_success">다운로드 폴더에 내보냈습니다: %1$s</string>
+    <string name="sessions_detail_export_warning_title">공용 다운로드 폴더로 내보내기</string>
+    <string name="sessions_detail_export_warning_message">내보낸 JSON은 평문이며 이 세션의 모든 대화 내용을 포함하고 시스템 "다운로드" 폴더에 저장됩니다. 저장소 권한이 있는 다른 앱이 읽을 수 있습니다. 확인 후 진행하세요.</string>
+    <string name="sessions_detail_export_warning_confirm">그래도 내보내기</string>
     <string name="sessions_detail_export_failed">내보내기 실패: %1$s</string>
     <string name="sessions_detail_export_empty">내보낼 메시지가 없습니다</string>
     <string name="sessions_import">세션 가져오기</string>
