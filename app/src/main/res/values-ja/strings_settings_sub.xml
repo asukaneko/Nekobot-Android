@@ -263,7 +263,7 @@
     <string name="agent_settings_group_tools">ツールとネットワーク</string>
     <string name="agent_settings_subagent_enable">Subagent を有効にする</string>
     <string name="agent_settings_network_access">ネットワークアクセス</string>
-    <string name="agent_settings_network_access_desc">オフにすると Agent のネットワーク系ツール（http_get / search_web / browser_use / download_file）と MCP ツールは拒否され、ローカルツールのみ利用できます。ローカル Linux サンドボックスはネットワークを完全には分離できないため、このスイッチでポリシー側から制御します。</string>
+    <string name="agent_settings_network_access_desc">オフにすると Agent のネットワーク系ツール（http_get / search_web / browser_use / download_file）、MCP ツール、プラグインのネットワーク要求は拒否されます。ローカル Linux サンドボックスはネットワークを完全には分離できないため、サンドボックスターミナル（exec_command）も併せて無効になります。ローカルコマンドが必要な場合はオンのままにしてください。</string>
     <string name="agent_settings_accessibility_excluded">アクセシビリティ除外アプリ</string>
     <string name="agent_settings_accessibility_excluded_desc">%1$d 件のアプリを除外中。除外したアプリは Agent が画面の読み取り・スクリーンショット・タップ入力を行えません。銀行・決済・パスワード管理アプリの追加を推奨します。</string>
     <string name="agent_settings_accessibility_excluded_action">管理</string>

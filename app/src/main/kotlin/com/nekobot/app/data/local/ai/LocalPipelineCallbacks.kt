@@ -1476,13 +1476,20 @@ internal class LocalPipelineCallbacks(
         return result
     }
 
-    /** 联网类工具：受 Agent 设置里的“网络访问”总开关约束（PRoot 沙盒无法真正隔离网络）。 */
+    /**
+     * 联网类工具：受 Agent 设置里的「网络访问」总开关约束。
+     *
+     * exec_command 也在内：PRoot 沙盒没有网络隔离，wget/curl/ssh 等可以直接外发数据，
+     * 仅靠命令名黑名单无法穷尽（busybox、/dev/tcp、解释器内发请求都能绕过），
+     * 因此关闭网络访问时连沙盒终端一并停用。
+     */
     private val networkToolIds = setOf(
         "http_get",
         "web_fetch",
         "search_web",
         "browser_use",
-        "download_file"
+        "download_file",
+        "exec_command"
     )
 
     /** 需要用户确认的破坏性工具操作。 */
@@ -1535,10 +1542,15 @@ internal class LocalPipelineCallbacks(
     ): Map<String, Any>? {
         val isNetworkTool = toolName in networkToolIds || parseMcpToolName(toolName) != null
         if (isNetworkTool && !com.nekobot.app.ServiceContainer.prefs.agentNetworkAccessEnabled) {
+            val hint = if (toolName == "exec_command") {
+                "沙盒终端没有网络隔离，关闭网络访问时一并停用；需要执行本地命令请让用户开启该开关。"
+            } else {
+                "请先说明需要联网的原因，或让用户开启该开关。"
+            }
             return mapOf(
                 "success" to false,
-                "error" to "Agent 网络访问已在设置中关闭（设置 → Agent 设置 → 网络访问）," +
-                    "无法调用 $toolName。请先说明需要联网的原因，或让用户开启该开关。"
+                "error" to "Agent 网络访问已在设置中关闭（设置 → Agent 设置 → 网络访问），" +
+                    "无法调用 $toolName。$hint"
             )
         }
 

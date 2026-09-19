@@ -369,6 +369,7 @@ class PluginManager(context: Context) {
     }
 
     private fun installFromUrlBlocking(url: String): InstalledPlugin {
+        requireNetworkAccessAllowed()
         val trimmed = url.trim()
         if (!trimmed.startsWith("https://", ignoreCase = true)) {
             throw PluginInstallException("只允许从 HTTPS 地址安装插件")
@@ -859,6 +860,7 @@ class PluginManager(context: Context) {
             }
             "http_get" -> {
                 requirePermission(plugin, "network")
+                requireNetworkAccessAllowed()
                 val url = payload.string("url").trim()
                 if (!url.startsWith("https://", ignoreCase = true)) {
                     throw IllegalArgumentException("插件网络请求只允许 HTTPS")
@@ -875,6 +877,18 @@ class PluginManager(context: Context) {
 
     private fun requirePermission(plugin: InstalledPlugin, permission: String) {
         if (permission !in plugin.permissions) throw SecurityException("插件未声明权限：$permission")
+    }
+
+    /**
+     * 插件发起的网络请求同样受 Agent 设置里的「网络访问」总开关约束。
+     *
+     * 插件由 AI 通过 plugin_use 创建/安装，能力边界必须与内置联网工具一致，否则
+     * 关闭网络访问后仍可借插件外发数据。
+     */
+    private fun requireNetworkAccessAllowed() {
+        if (!com.nekobot.app.ServiceContainer.prefs.agentNetworkAccessEnabled) {
+            throw SecurityException("Agent 网络访问已在设置中关闭，插件无法发起网络请求")
+        }
     }
 
     private fun storageKey(pluginId: String, raw: String): String {

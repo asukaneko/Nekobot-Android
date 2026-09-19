@@ -276,7 +276,7 @@
     <string name="agent_settings_group_tools">工具与网络</string>
     <string name="agent_settings_subagent_enable">启用 Subagent</string>
     <string name="agent_settings_network_access">网络访问</string>
-    <string name="agent_settings_network_access_desc">关闭后 Agent 的联网工具（http_get / search_web / browser_use / download_file）与 MCP 工具会被直接拒绝，只保留本地工具。本地 Linux 沙盒无法真正隔离网络，此开关在策略层兜底。</string>
+    <string name="agent_settings_network_access_desc">关闭后 Agent 的联网工具（http_get / search_web / browser_use / download_file）、MCP 工具与插件网络请求会被直接拒绝。本地 Linux 沙盒无法真正隔离网络，因此关闭时沙盒终端（exec_command）也会一并停用——需要跑本地命令请保持开启。</string>
     <string name="agent_settings_accessibility_excluded">无障碍排除的应用</string>
     <string name="agent_settings_accessibility_excluded_desc">已排除 %1$d 个应用。排除后 Agent 无法读取其界面、截图或点击输入，建议加入银行、支付与密码管理类应用。</string>
     <string name="agent_settings_accessibility_excluded_action">管理</string>
