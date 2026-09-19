@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -967,7 +968,9 @@ private fun UrlLinkChip(
  */
 @Composable
 fun UrlPreviewDialog(url: String, onDismiss: () -> Unit) {
+    val context = LocalContext.current
     val closeDesc = stringResource(R.string.common_close)
+    val shareDesc = stringResource(R.string.common_share)
     val cleanUrl = remember(url) { url.substringBefore('?').substringBefore('#') }
     val markdown = remember(cleanUrl) { isMarkdownFileName(cleanUrl) }
     val plainText = remember(cleanUrl) { fileExt(cleanUrl) == "txt" }
@@ -995,6 +998,9 @@ fun UrlPreviewDialog(url: String, onDismiss: () -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
+                IconButton(onClick = { openUrlInSystemBrowser(context, url) }) {
+                    Icon(Icons.Filled.Share, contentDescription = shareDesc, tint = Color.White)
+                }
                 IconButton(onClick = onDismiss) {
                     Icon(Icons.Filled.Close, contentDescription = closeDesc, tint = Color.White)
                 }
@@ -1438,6 +1444,29 @@ private fun LocalWorkspaceFileCard(
         }
     }
 }
+
+/**
+ * 用系统默认浏览器打开网址。
+ *
+ * 通过 `ACTION_VIEW` 交给系统解析，用户可在弹出的应用选择器里挑浏览器；
+ * 没有浏览器或该网址无人认领时提示失败，而不是静默无反应。
+ */
+internal fun openUrlInSystemBrowser(context: android.content.Context, url: String): Boolean =
+    runCatching {
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            addCategory(android.content.Intent.CATEGORY_BROWSABLE)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+        true
+    }.getOrElse {
+        android.widget.Toast.makeText(
+            context,
+            context.getString(R.string.chat_media_open_file_failed),
+            android.widget.Toast.LENGTH_SHORT
+        ).show()
+        false
+    }
 
 internal fun openLocalWorkspaceFile(
     context: android.content.Context,
