@@ -2,8 +2,12 @@ package com.nekobot.app.update
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.content.pm.Signature
 import android.net.Uri
 import android.os.Build
+import android.util.Base64
 import androidx.core.content.FileProvider
 import com.google.gson.JsonParser
 import com.nekobot.app.R
@@ -154,7 +158,7 @@ object UpdateChecker {
 
         for (url in downloadUrls) {
             onProgress(DownloadResult.Progress(0))
-            val failure = downloadFromSource(target, url, asset.size, onProgress)
+            val failure = downloadFromSource(context, target, url, asset.size, onProgress)
             if (failure == null) {
                 onProgress(DownloadResult.Done(target))
                 return@withContext DownloadResult.Done(target)
@@ -261,6 +265,7 @@ object UpdateChecker {
         listOf(browserDownloadUrl)
 
     private fun downloadFromSource(
+        context: Context,
         target: File,
         url: String,
         expectedSize: Long,
@@ -303,7 +308,7 @@ object UpdateChecker {
 
                 when {
                     expectedSize > 0 && downloaded != expectedSize -> "下载文件不完整"
-                    !isValidApk(target) -> "下载内容不是有效 APK"
+                    !isValidApk(context, target) -> "下载内容不是本应用的合法更新包（签名或包名不匹配）"
                     else -> null
                 }
             }
@@ -312,9 +317,46 @@ object UpdateChecker {
         return failure
     }
 
-    private fun isValidApk(file: File): Boolean = runCatching {
-        ZipFile(file).use { zip -> zip.getEntry("AndroidManifest.xml") != null }
+    /**
+     * 校验下载内容确实是本应用的合法更新包。
+     *
+     * 仅检查 ZIP 内是否存在 AndroidManifest.xml 是不够的：应用会引导用户安装该文件
+     * （Manifest 声明了 REQUEST_INSTALL_PACKAGES），必须同时确认包名一致、且签名与本机
+     * 已安装版本完全一致，否则任意 APK 都能被当作「更新」投递。
+     */
+    private fun isValidApk(context: Context, file: File): Boolean = runCatching {
+        ZipFile(file).use { zip ->
+            if (zip.getEntry("AndroidManifest.xml") == null) return false
+        }
+        val manager = context.packageManager
+        val downloaded = packageInfo(manager, file.absolutePath) ?: return false
+        if (downloaded.packageName != context.packageName) return false
+        val installed = packageInfo(manager, context.packageName) ?: return false
+        val expected = signerDigests(installed)
+        val actual = signerDigests(downloaded)
+        expected.isNotEmpty() && actual == expected
     }.getOrDefault(false)
+
+    private fun packageInfo(manager: PackageManager, path: String): PackageInfo? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            manager.getPackageArchiveInfo(path, PackageManager.GET_SIGNING_CERTIFICATES)
+        } else {
+            @Suppress("DEPRECATION")
+            manager.getPackageArchiveInfo(path, PackageManager.GET_SIGNATURES)
+        }
+
+    /** 取 APK 当前签名证书的指纹集合，用于比较「是否同一把密钥签发」。 */
+    private fun signerDigests(info: PackageInfo): Set<String> {
+        val signatures: Array<Signature> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            info.signingInfo?.apkContentsSigners ?: return emptySet()
+        } else {
+            @Suppress("DEPRECATION")
+            info.signatures ?: return emptySet()
+        }
+        return signatures.mapTo(mutableSetOf()) {
+            Base64.encodeToString(it.toByteArray(), Base64.NO_WRAP)
+        }
+    }
 
     /** 解析 GitHub release JSON 为 ReleaseInfo。 */
     private fun parseRelease(json: String): ReleaseInfo? = runCatching {
