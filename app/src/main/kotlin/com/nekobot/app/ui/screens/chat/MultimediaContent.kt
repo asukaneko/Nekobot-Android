@@ -143,6 +143,9 @@ private val PDF_EXTS = setOf("pdf")
 /** 中文 txt 的回退编码（部分小说/记事本文件是 GBK）。 */
 private val GBK_CHARSET: Charset = runCatching { charset("GBK") }.getOrDefault(Charsets.UTF_8)
 
+/** 单个附件下载上限：避免超大响应体撑满用户存储。 */
+private const val MAX_DOWNLOAD_BYTES = 200L * 1024 * 1024
+
 /** URL 正则 */
 private val URL_REGEX = Regex("""https?://[^\s<>"'\]]+""")
 
@@ -1525,11 +1528,40 @@ private fun DownloadButton(fileName: String, fileUrl: String) {
                         val body = response.body ?: throw IllegalStateException(ServiceContainer.getString(R.string.chat_media_empty_response))
                         val dir = java.io.File(context.cacheDir, "downloads")
                         if (!dir.exists()) dir.mkdirs()
-                        val file = java.io.File(dir, fileName)
-                        body.byteStream().use { input ->
-                            java.io.FileOutputStream(file).use { output ->
-                                input.copyTo(output)
+                        // 文件名来自消息正文的 [File: ...] 标记，不可信：只取最后一段并过滤路径分隔符，
+                        // 否则 ../../shared_prefs/x.xml 之类条目可以写出缓存目录。
+                        val safeName = fileName
+                            .substringAfterLast('/')
+                            .substringAfterLast('\\')
+                            .replace(Regex("""[^\p{L}\p{N}._ -]"""), "_")
+                            .take(120)
+                            .ifBlank { "download" }
+                        val root = dir.canonicalFile
+                        val file = java.io.File(root, safeName).canonicalFile
+                        if (!file.path.startsWith(root.path + java.io.File.separator)) {
+                            throw IllegalStateException(ServiceContainer.getString(R.string.chat_media_download_failed))
+                        }
+                        try {
+                            body.byteStream().use { input ->
+                                java.io.FileOutputStream(file).use { output ->
+                                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                                    var total = 0L
+                                    while (true) {
+                                        val read = input.read(buffer)
+                                        if (read < 0) break
+                                        total += read
+                                        if (total > MAX_DOWNLOAD_BYTES) {
+                                            throw IllegalStateException(
+                                                ServiceContainer.getString(R.string.chat_media_download_failed)
+                                            )
+                                        }
+                                        output.write(buffer, 0, read)
+                                    }
+                                }
                             }
+                        } catch (error: Exception) {
+                            file.delete()
+                            throw error
                         }
                         file.absolutePath
                     }
