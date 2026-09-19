@@ -107,9 +107,10 @@ class MainActivity : FragmentActivity() {
                         )
                     } else {
                         NekobotNavGraph()
+                        // 记忆迁移询问与业务页面无关，且可能在任意 Profile 切换时出现，挂在这里最稳妥。
+                        // 必须放在解锁分支内：隐私锁生效时不应在锁屏之上弹出任何业务弹窗。
+                        MemoryMigrationDialog()
                     }
-                    // 记忆迁移询问与业务页面无关，且可能在任意 Profile 切换时出现，挂在这里最稳妥
-                    MemoryMigrationDialog()
                 }
             }
         }
