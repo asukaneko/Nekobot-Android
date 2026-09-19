@@ -10,12 +10,15 @@ import android.webkit.WebViewClient
 import android.webkit.WebResourceRequest
 import android.widget.Toast
 import com.google.gson.Gson
+import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonNull
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.nekobot.app.data.local.LocalCommandProgressReporter
 import com.nekobot.app.data.local.LocalRepository
 import com.nekobot.app.data.local.LocalSlashCommands
+import com.nekobot.app.data.model.ThinkingStep
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -201,7 +204,8 @@ class PluginManager(context: Context) {
         binding: PluginCommandBinding,
         sessionId: String,
         args: String,
-        repository: LocalRepository
+        repository: LocalRepository,
+        progressReporter: LocalCommandProgressReporter? = null
     ): String {
         val plugin = installed.value.firstOrNull { it.id == binding.pluginId && it.enabled }
             ?: return "插件未安装或已停用：${binding.pluginId}"
@@ -219,7 +223,7 @@ class PluginManager(context: Context) {
 
         return try {
             withTimeout(RUNTIME_TIMEOUT_MS) {
-                executeInWebView(plugin, binding, sessionId, args, source, repository)
+                executeInWebView(plugin, binding, sessionId, args, source, repository, progressReporter)
             }
         } catch (_: TimeoutCancellationException) {
             "插件执行超时（${RUNTIME_TIMEOUT_MS / 1000} 秒）"
@@ -575,7 +579,8 @@ class PluginManager(context: Context) {
         sessionId: String,
         args: String,
         source: String,
-        repository: LocalRepository
+        repository: LocalRepository,
+        progressReporter: LocalCommandProgressReporter?
     ): String = suspendCancellableCoroutine { continuation ->
         val finished = AtomicBoolean(false)
         val webViewRef = AtomicReference<WebView?>(null)
@@ -640,7 +645,15 @@ class PluginManager(context: Context) {
                     }
                 }
                 webView.addJavascriptInterface(
-                    RuntimeBridge(plugin, sessionId, repository, token, webView, ::finish),
+                    RuntimeBridge(
+                        plugin = plugin,
+                        sessionId = sessionId,
+                        repository = repository,
+                        progressReporter = progressReporter,
+                        token = token,
+                        webView = webView,
+                        finish = ::finish
+                    ),
                     BRIDGE_NAME
                 )
                 webView.loadDataWithBaseURL(
@@ -712,6 +725,7 @@ class PluginManager(context: Context) {
                 getMessages: function(limit) { return __api("get_messages", { limit: limit }); },
                 notify: function(message) { return __api("notify", { message: message }); },
                 httpGet: function(url) { return __api("http_get", { url: url }); },
+                progress: function(options) { return __api("progress", options || {}); },
                 storage: {
                   get: function(key) { return __api("storage_get", { key: key }); },
                   set: function(key, value) { return __api("storage_set", { key: key, value: value }); },
@@ -760,6 +774,7 @@ class PluginManager(context: Context) {
         private val plugin: InstalledPlugin,
         private val sessionId: String,
         private val repository: LocalRepository,
+        private val progressReporter: LocalCommandProgressReporter?,
         private val token: String,
         private val webView: WebView,
         private val finish: (Boolean, String) -> Unit
@@ -779,7 +794,14 @@ class PluginManager(context: Context) {
             if (requestId.isNullOrBlank() || name.isNullOrBlank()) return
             runtimeScope.launch {
                 try {
-                    val value = handleApi(plugin, sessionId, repository, name, payloadJson.orEmpty())
+                    val value = handleApi(
+                        plugin = plugin,
+                        sessionId = sessionId,
+                        repository = repository,
+                        progressReporter = progressReporter,
+                        name = name,
+                        payloadJson = payloadJson.orEmpty()
+                    )
                     sendApiResult(requestId, true, gson.toJson(value))
                 } catch (error: Exception) {
                     sendApiResult(
@@ -808,6 +830,7 @@ class PluginManager(context: Context) {
         plugin: InstalledPlugin,
         sessionId: String,
         repository: LocalRepository,
+        progressReporter: LocalCommandProgressReporter?,
         name: String,
         payloadJson: String
     ): Any? {
@@ -856,6 +879,28 @@ class PluginManager(context: Context) {
                 requirePermission(plugin, "notify")
                 val message = payload.string("message").take(500)
                 mainHandler.post { Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show() }
+                true
+            }
+            "progress" -> {
+                requirePermission(plugin, "chat.progress")
+                // 没有关联的用户消息时（如 plugin_use 的 execute 测试）静默忽略：
+                // 这是宿主环境的差异，不该让插件命令本身失败。
+                val reporter = progressReporter ?: return false
+                val content = payload.string("content").take(MAX_PROGRESS_CONTENT_CHARS)
+                val steps = parseProgressSteps(payload.getAsJsonArray("steps"))
+                val progress = payload.get("progress")
+                    ?.takeIf { it.isJsonPrimitive }
+                    ?.let { runCatching { it.asInt }.getOrNull() }
+                    ?.coerceIn(0, 100)
+                    ?: 0
+                reporter.update(
+                    content = content,
+                    progress = progress,
+                    steps = steps,
+                    isComplete = payload.boolean("complete", false),
+                    // 插件自行决定上报节奏，宿主不再按百分比二次合并掉它的中间态。
+                    force = payload.boolean("force", false)
+                )
                 true
             }
             "http_get" -> {
@@ -942,6 +987,29 @@ class PluginManager(context: Context) {
     private fun JsonObject.int(name: String, default: Int): Int =
         get(name)?.takeIf { it.isJsonPrimitive }?.asInt ?: default
 
+    private fun JsonObject.boolean(name: String, default: Boolean): Boolean =
+        get(name)?.takeIf { it.isJsonPrimitive }?.let { runCatching { it.asBoolean }.getOrNull() }
+            ?: default
+
+    /**
+     * 把插件上报的 steps 数组转成进度卡片步骤。
+     *
+     * 字段全部可选、越界值一律丢弃：插件是不可信代码，不能让它构造出
+     * 巨大步骤列表或任意 type/status 撑爆 UI。步骤数上限见 [MAX_PROGRESS_STEPS]。
+     */
+    private fun parseProgressSteps(raw: JsonArray?): List<ThinkingStep> {
+        if (raw == null) return emptyList()
+        return raw.mapNotNull { element ->
+            val step = element as? JsonObject ?: return@mapNotNull null
+            ThinkingStep(
+                type = step.string("type").take(32).ifBlank { "tool" },
+                name = step.string("name").take(MAX_PROGRESS_NAME_CHARS),
+                status = step.string("status").take(16).ifBlank { "running" },
+                detail = step.string("detail").take(MAX_PROGRESS_DETAIL_CHARS)
+            )
+        }.take(MAX_PROGRESS_STEPS)
+    }
+
     private fun readLimitedText(input: InputStream, limit: Long): String {
         val output = ByteArrayOutputStream()
         copyLimited(input, output, limit, 0L)
@@ -967,5 +1035,10 @@ class PluginManager(context: Context) {
         const val MAX_REPLY_CHARS = 20_000
         const val MAX_SCRIPT_CHARS = MAX_SCRIPT_BYTES / 2
         const val RUNTIME_TIMEOUT_MS = 20_000L
+        /** 插件进度卡片：步骤数、头部文本与单步文本上限，避免不可信脚本撑爆聊天 UI。 */
+        const val MAX_PROGRESS_STEPS = 32
+        const val MAX_PROGRESS_CONTENT_CHARS = 200
+        const val MAX_PROGRESS_NAME_CHARS = 60
+        const val MAX_PROGRESS_DETAIL_CHARS = 200
     }
 }

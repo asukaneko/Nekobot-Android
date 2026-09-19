@@ -2749,6 +2749,15 @@ class LocalRepository(
                     onProgress(card)
                 }
             )
+            // 插件命令由脚本自行决定是否上报进度；报告器本身廉价，
+            // 统一建好再交给运行时，插件不调用 chat.progress 就不会产生任何卡片。
+            LocalCommandAction.PLUGIN -> LocalCommandProgressReporter(
+                parentMessageId = parentMessageId,
+                onUpdate = { card ->
+                    updateMessageThinkingCards(parentMessageId, listOf(card))
+                    onProgress(card)
+                }
+            )
             else -> null
         }
         val content = when (command.action) {
@@ -2819,7 +2828,8 @@ class LocalRepository(
                         binding = binding,
                         sessionId = session.id,
                         args = command.args,
-                        repository = this@LocalRepository
+                        repository = this@LocalRepository,
+                        progressReporter = progressReporter
                     )
                 } ?: "插件命令绑定已失效，请重新打开会话后重试。"
             LocalCommandAction.UNKNOWN -> LocalSlashCommands.unknownMessage(command.name, appContext)
@@ -5999,10 +6009,12 @@ class LocalRepository(
                 if (
                     command.action == LocalCommandAction.JM_RANK ||
                     command.action == LocalCommandAction.JM_DOWNLOAD ||
-                    command.action == LocalCommandAction.JM_SEARCH
+                    command.action == LocalCommandAction.JM_SEARCH ||
+                    // 插件脚本可通过 chat.progress 自行上报步骤，同样需要实时推送。
+                    command.action == LocalCommandAction.PLUGIN
                 ) {
                     // Room 持久化不会在命令执行期间自动刷新 ChatViewModel。
-                    // 用 channelFlow 把并发封面/章节任务的卡片安全地实时推给聊天界面。
+                    // 用 channelFlow 把并发封面/章节任务与插件脚本上报的卡片安全地实时推给聊天界面。
                     channelFlow {
                         val reply = executeLocalSlashCommand(
                             session = session,

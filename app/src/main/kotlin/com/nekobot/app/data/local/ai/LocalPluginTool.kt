@@ -375,7 +375,7 @@ internal class LocalPluginTool(
             可选字段：
             - author、description
             - entry: 入口文件，默认 "main.js"，必须是安全的 .js 相对路径
-            - permissions: 权限数组，可用值：storage（键值存储）、chat.read（读取会话与消息）、notify（Toast 通知）、network（HTTPS GET）。调用未声明权限的 API 会失败。
+            - permissions: 权限数组，可用值：storage（键值存储）、chat.read（读取会话与消息）、notify（Toast 通知）、network（HTTPS GET）、chat.progress（进度卡片）。调用未声明权限的 API 会失败。
 
             二、入口 JS 运行时
             - 用 NekoPlugin.registerCommand(name, handler) 或 NekoPlugin.register({commands: {name: handler}}) 注册命令
@@ -385,6 +385,7 @@ internal class LocalPluginTool(
               await ctx.api.getSession()            // 当前会话信息（chat.read）
               await ctx.api.getMessages(limit)      // 最近消息，默认 30、最大 100（chat.read）
               await ctx.api.notify(message)         // Toast 提示（notify）
+              await ctx.api.progress(options)       // 更新进度卡片（chat.progress），耗时命令用
               await ctx.api.httpGet(url)            // 仅 https://，返回 {status, body}，body 上限 512KB（network）
               await ctx.api.storage.get(key)        // 读存储，返回 JSON 值或 null（storage）
               await ctx.api.storage.set(key, value) // 写存储（storage）

@@ -133,6 +133,7 @@ JavaScript 只能通过 `ctx.api` 调用宿主能力。每个方法都返回 `Pr
 | `storage` | `ctx.api.storage.remove(key)` | 删除当前插件的键，返回 `true`。 |
 | `storage` | `ctx.api.storage.list()` | 返回当前插件全部键值组成的对象。 |
 | `notify` | `ctx.api.notify(message)` | 显示短 Toast，消息最多 500 个字符，返回 `true`。 |
+| `chat.progress` | `ctx.api.progress(options)` | 更新当前命令的进度卡片，见下文「进度卡片」。 |
 | `network` | `ctx.api.httpGet(url)` | 仅允许 `https://` 的 GET 请求，返回 `{ status, body }`；响应正文最多 512 KiB。 |
 
 存储按插件 ID 隔离。键不能为空、最多 128 个字符，且不能包含换行。卸载插件会删除它自己的存储数据。
@@ -150,6 +151,59 @@ NekoPlugin.registerCommand("status", async () => {
   return response.body;
 });
 ```
+
+### 进度卡片（`chat.progress`）
+
+耗时命令可以用 `ctx.api.progress()` 在聊天界面显示一张进度卡片，效果与内置 `/jm` 命令一致：卡片展示在用户气泡下方，带百分比进度条与步骤列表。
+
+```js
+NekoPlugin.registerCommand("download", async (ctx) => {
+  await ctx.api.progress({
+    content: "准备下载",
+    progress: 0,
+    steps: [{ type: "file", name: "解析链接", status: "running" }]
+  });
+
+  for (let i = 1; i <= 10; i++) {
+    // ... 处理第 i 项 ...
+    await ctx.api.progress({
+      content: `下载中 (${i}/10)`,
+      progress: i * 10,
+      steps: [
+        { type: "file", name: "解析链接", status: "done", detail: "已完成" },
+        { type: "file", name: "下载分片", status: i === 10 ? "done" : "running", detail: `${i}/10` }
+      ],
+      complete: i === 10
+    });
+  }
+  return "下载完成。";
+});
+```
+
+`options` 字段：
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `content` | 否 | 卡片头部文本，最多 200 个字符。 |
+| `progress` | 否 | `0`-`100` 的确定进度；省略或非数字时为 `0`。进度只前进不后退，宿主要求上必须单调递增。 |
+| `steps` | 否 | 步骤数组，最多 32 项。每项字段见下。 |
+| `complete` | 否 | 为 `true` 时把整张卡片标记为完成，之后的上报会被忽略。 |
+| `force` | 否 | 为 `true` 时跳过宿主节流，立即写入（默认节流约 250ms）。 |
+
+每个步骤对象的字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `type` | 图标类型：`thinking`、`tool`、`image`、`file`、`knowledge`、`done` 等；缺省为 `tool`。 |
+| `name` | 步骤名称，最多 60 个字符。 |
+| `status` | `running`（进行中）、`done`（完成）、`error`（失败）；缺省为 `running`。 |
+| `detail` | 步骤摘要，最多 200 个字符。 |
+
+注意事项：
+
+- 进度卡片只在本地模式的聊天会话中可用。在 `plugin_use` 工具的测试环境中，因为没有关联的用户消息，`progress()` 会被静默忽略（返回 `false`），命令本身仍会正常执行完成。
+- 每次调用都会**整体替换**卡片内容，步骤列表不会自动累加。需要保留前面的步骤时，请在每次上报中重新传入完整列表。
+- 卡片不会随命令结束自动收尾，请在最后一次上报中传 `complete: true`；否则卡片会停留在未完成状态。
 
 ## 5. JavaScript 运行模型
 

@@ -13,7 +13,8 @@ object PluginManifestValidator {
         "storage",
         "chat.read",
         "notify",
-        "network"
+        "network",
+        "chat.progress"
     )
 
     private val pluginIdPattern = Regex("^[a-zA-Z][a-zA-Z0-9._-]{1,63}$")
