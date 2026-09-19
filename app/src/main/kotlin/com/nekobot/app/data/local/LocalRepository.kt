@@ -991,12 +991,23 @@ class LocalRepository(
         if (!com.nekobot.app.data.local.ai.AgentMemoryExtractor.shouldExtract(userMessage, assistantMessage)) {
             return
         }
+        // 触发频率：本会话首轮一定抽取，之后每隔 N 轮抽一次（N 由 Agent 设置里的「记忆间隔」决定）。
+        // 计数放在内容门槛之后累加，避免过短的寒暄把间隔位次吃掉。
+        val extractor = com.nekobot.app.data.local.ai.AgentMemoryExtractor
+        val interval = ServiceContainer.prefs.agentMemoryInterval
+        val turnIndex = ServiceContainer.prefs.incrementAgentMemoryTurnCount(sessionId)
+        if (!extractor.shouldExtractOnTurn(turnIndex, interval)) {
+            LocalLogger.i(TAG, "本轮不触发记忆抽取（第 $turnIndex 轮，间隔 $interval 轮）")
+            return
+        }
         // 先通知界面"正在整理记忆"（与自动技能沉淀提示同一形态），再后台跑抽取。
+        // 带 anchorContent：界面据此把提示锚定到触发它的那条回复，而不是一直贴在列表末尾。
         _autoMemoryEvents.tryEmit(
             com.nekobot.app.data.local.ai.AgentMemoryNotice(
                 sessionId = sessionId,
                 changedItems = 0,
-                phase = com.nekobot.app.data.local.ai.AgentMemoryPhase.RUNNING
+                phase = com.nekobot.app.data.local.ai.AgentMemoryPhase.RUNNING,
+                anchorContent = assistantMessage
             )
         )
         ServiceContainer.applicationScope.launch(Dispatchers.IO) {
@@ -1006,15 +1017,20 @@ class LocalRepository(
                 LocalLogger.w(TAG, "Agent 长期记忆抽取失败（不影响主流程）: ${it.message}")
             }.getOrDefault(0)
             // 抽取结果写进设置：聊天界面的提示需要持久显示（不自动消失、重启后仍在）。
+            // 同时记下触发它的回复，让提示重新进入会话时仍锚定在同一条消息下。
             if (changed > 0) {
-                runCatching { ServiceContainer.prefs.setAgentMemoryNotice(sessionId, changed) }
+                runCatching {
+                    ServiceContainer.prefs.setAgentMemoryNotice(sessionId, changed)
+                    ServiceContainer.prefs.setAgentMemoryNoticeAnchor(sessionId, assistantMessage)
+                }
             }
             // 抽取结束必须回一个 DONE：没有写入任何内容时也要让界面收起"正在整理"提示。
             _autoMemoryEvents.tryEmit(
                 com.nekobot.app.data.local.ai.AgentMemoryNotice(
                     sessionId = sessionId,
                     changedItems = changed,
-                    phase = com.nekobot.app.data.local.ai.AgentMemoryPhase.DONE
+                    phase = com.nekobot.app.data.local.ai.AgentMemoryPhase.DONE,
+                    anchorContent = assistantMessage
                 )
             )
         }

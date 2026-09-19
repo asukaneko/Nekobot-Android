@@ -285,6 +285,10 @@
     <string name="agent_settings_accessibility_excluded_empty">没有可选的桌面应用</string>
     <string name="agent_settings_auto_memory">自动长期记忆</string>
     <string name="agent_settings_auto_memory_desc">Agent 回合结束后，只把稳定的偏好、长期约定与环境事实写入全局 Agent 记忆，按固定分类整理，不记录一次性任务细节（按小节去重，失败不影响对话）。关闭后只能由 AI 主动调用记忆工具写入。</string>
+    <string name="agent_settings_memory_interval">记忆间隔</string>
+    <string name="agent_settings_memory_interval_desc">首轮必定抽取，之后每隔多少轮再抽取一次。间隔越大越省 token。</string>
+    <string name="agent_settings_memory_interval_dialog_title">记忆间隔</string>
+    <string name="agent_settings_memory_interval_value">每 %1$d 轮</string>
     <string name="agent_settings_auto_skill">自动总结 Skill</string>
     <string name="agent_settings_auto_skill_desc">Agent 回合结束后，仅把复杂且可复用的做法自动沉淀成 Skill（优先更新已有同类技能，达到较高门槛才触发，失败不影响对话）。生成的技能见「拓展功能 → Skills」，关闭后不再自动沉淀。</string>
     <string name="agent_settings_subagent_enable_desc">允许 AI 调用 subagent 工具，将独立任务委派给新的子代理执行（子代理使用同一故障转移模型队列）。</string>

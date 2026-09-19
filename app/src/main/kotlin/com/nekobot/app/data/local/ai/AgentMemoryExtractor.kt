@@ -25,6 +25,28 @@ internal object AgentMemoryExtractor {
     /** 触发抽取的最小回合字数（用户消息 + 回复）：太短的回合通常没有长期价值。 */
     internal const val MIN_TURN_CHARS = 600
 
+    /**
+     * 间隔触发的默认轮数：本会话首轮一定抽取，之后每隔这么多轮再抽一次。
+     *
+     * 之前是"每轮都抽"，一轮一问就会跑一次模型，既费 token 又让记忆被高频改写；
+     * 改成首轮 + 每 N 轮一次，兼顾"尽早记住"与"不要每句都记"。
+     * 实际间隔由用户在 Agent 设置里选择（[com.nekobot.app.data.local.PrefsManager.agentMemoryInterval]），
+     * 这里的常量只作为默认值。
+     */
+    internal const val MEMORY_TURN_INTERVAL = 3
+
+    /**
+     * 判断本会话的这一轮是否该触发抽取：首轮必定抽取，之后每 [interval] 轮一次。
+     *
+     * @param turnIndex 本会话已完成的对话轮数（含本轮，从 1 开始计数）
+     * @param interval 触发间隔（轮）；小于 1 时按 1（每轮都抽）处理
+     * @return true 表示应当抽取
+     */
+    internal fun shouldExtractOnTurn(turnIndex: Int, interval: Int = MEMORY_TURN_INTERVAL): Boolean {
+        if (turnIndex <= 1) return true
+        return turnIndex % interval.coerceAtLeast(1) == 0
+    }
+
     /** 单次最多追加的字符数，避免一次抽取吃掉整个记忆预算。 */
     internal const val MAX_APPEND_CHARS = 800
 
@@ -477,11 +499,15 @@ enum class AgentMemoryPhase { RUNNING, DONE }
  *
  * 与 [AgentSkillNotice] 同形态，让用户在会话里能直接看到后台自动写了什么，
  * 而不是记忆被静默改写。
+ *
+ * [anchorContent] 是触发本次抽取的那条回复正文：界面用它把提示**锚定到对应的那条消息**下，
+ * 而不是永远贴在消息列表末尾——记忆是针对某一轮对话发生的，提示也该停在发生的位置。
  */
 data class AgentMemoryNotice(
     val sessionId: String,
     val changedItems: Int,
-    val phase: AgentMemoryPhase = AgentMemoryPhase.DONE
+    val phase: AgentMemoryPhase = AgentMemoryPhase.DONE,
+    val anchorContent: String = ""
 )
 
 /**

@@ -325,6 +325,19 @@ class ChatViewModel : BaseViewModel() {
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     /**
+     * 记忆提示应当渲染在哪条消息之后的消息 id。
+     *
+     * 由锚点（触发抽取的回复正文）反查得出；为 null 时界面回退到贴在列表末尾。
+     * 消息列表变化时会重新计算，因此压缩归档、删除消息后也不会把提示留在错误位置。
+     */
+    val autoMemoryAnchorMessageId: StateFlow<String?> = kotlinx.coroutines.flow.combine(
+        autoMemoryNotice,
+        messages
+    ) { notice, list ->
+        if (notice == null) null else runtime.resolveAutoMemoryAnchorMessageId(list)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /**
      * Agent 任务列表（todo_write 工具写入，会话级持久化）。
      * 输入框上方的可折叠面板按此状态渲染；进入会话时从会话实体恢复。
      */

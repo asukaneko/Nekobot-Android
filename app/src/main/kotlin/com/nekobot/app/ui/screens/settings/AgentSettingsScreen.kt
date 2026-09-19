@@ -70,6 +70,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.nekobot.app.R
 import com.nekobot.app.ServiceContainer
+import com.nekobot.app.data.local.PrefsManager
 import com.nekobot.app.data.local.ai.AgentToolLimits
 import com.nekobot.app.data.local.ai.SessionToolCatalog
 import com.nekobot.app.ui.components.AgentToolSetPickerDialog
@@ -115,6 +116,21 @@ fun AgentSettingsScreen(
     var excludedAppsRevision by remember { mutableStateOf(0) }
     val excludedAppsCount = remember(excludedAppsRevision) {
         ServiceContainer.prefs.agentAccessibilityExcludedPackages.size
+    }
+    // 自动长期记忆的触发间隔（轮）：写入设置后立即刷新摘要文案
+    var showMemoryIntervalDialog by remember { mutableStateOf(false) }
+    var memoryInterval by remember { mutableStateOf(ServiceContainer.prefs.agentMemoryInterval) }
+
+    if (showMemoryIntervalDialog) {
+        MemoryIntervalDialog(
+            current = memoryInterval,
+            onSelect = {
+                ServiceContainer.prefs.agentMemoryInterval = it
+                memoryInterval = ServiceContainer.prefs.agentMemoryInterval
+                showMemoryIntervalDialog = false
+            },
+            onDismiss = { showMemoryIntervalDialog = false }
+        )
     }
 
     if (showExcludedAppsDialog) {
@@ -331,6 +347,21 @@ fun AgentSettingsScreen(
                                 ServiceContainer.prefs.agentAutoMemoryEnabled = it
                             }
                         )
+                    }
+                )
+                // 记忆抽取频率：只在自动长期记忆开启时才有意义，关闭时整行淡出并禁用。
+                AgentSettingRow(
+                    icon = Icons.Filled.Timeline,
+                    tint = MaterialTheme.colorScheme.secondary,
+                    title = stringResource(R.string.agent_settings_memory_interval),
+                    desc = stringResource(R.string.agent_settings_memory_interval_desc),
+                    trailing = {
+                        TextButton(
+                            onClick = { showMemoryIntervalDialog = true },
+                            enabled = autoMemory
+                        ) {
+                            Text(stringResource(R.string.agent_settings_memory_interval_value, memoryInterval))
+                        }
                     }
                 )
                 // 自动总结 Skill：与自动长期记忆同组，沉淀"怎么做事"的流程型知识。
@@ -787,6 +818,78 @@ private sealed interface CustomModeAction {
 
     /** 删除指定模式。 */
     data class Delete(val id: String, val name: String) : CustomModeAction
+}
+
+/**
+ * 「记忆间隔」选择弹窗：列出可选轮数，点选即写入设置。
+ *
+ * 首轮一定会抽取，这里选的是之后每隔多少轮再抽一次。
+ */
+@Composable
+private fun MemoryIntervalDialog(
+    current: Int,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = stringResource(R.string.agent_settings_memory_interval_dialog_title),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 460.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                PrefsManager.AGENT_MEMORY_INTERVAL_OPTIONS.forEach { option ->
+                    val selected = option == current
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (selected) {
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f)
+                                }
+                            )
+                            .clickable { onSelect(option) }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (selected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
+                            contentDescription = null,
+                            tint = if (selected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            text = stringResource(R.string.agent_settings_memory_interval_value, option),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
+        }
+    )
 }
 
 /**

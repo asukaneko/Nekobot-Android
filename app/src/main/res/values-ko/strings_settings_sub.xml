@@ -272,6 +272,10 @@
     <string name="agent_settings_accessibility_excluded_empty">선택할 수 있는 실행 앱이 없습니다</string>
     <string name="agent_settings_auto_memory">자동 장기 기억</string>
     <string name="agent_settings_auto_memory_desc">Agent 턴이 끝나면 안정적인 선호·장기 약속·환경 정보만 전역 Agent 기억에 저장합니다(고정 분류로 정리하고 일회성 작업 세부는 기록하지 않음, 섹션 단위 중복 제거, 실패해도 대화에는 영향 없음). 끄면 기억 도구를 명시적으로 호출할 때만 기록됩니다.</string>
+    <string name="agent_settings_memory_interval">기억 간격</string>
+    <string name="agent_settings_memory_interval_desc">첫 턴은 항상 추출하고, 이후에는 N턴마다 추출합니다. 간격이 클수록 토큰을 절약합니다.</string>
+    <string name="agent_settings_memory_interval_dialog_title">기억 간격</string>
+    <string name="agent_settings_memory_interval_value">%1$d턴마다</string>
     <string name="agent_settings_auto_skill">Skill 자동 요약</string>
     <string name="agent_settings_auto_skill_desc">Agent 턴이 끝나면 복잡하고 재사용할 수 있는 절차만 Skill로 자동 정리합니다(같은 종류의 기존 Skill을 우선 갱신하고, 높은 기준을 충족할 때만 실행하며 실패해도 대화에는 영향 없음). 생성된 Skill은 「확장 기능 → Skills」에서 확인할 수 있고, 끄면 자동 정리가 중단됩니다.</string>
     <string name="agent_settings_subagent_enable_desc">AI가 subagent 도구를 호출하여 독립적인 작업을 새 하위 에이전트에 위임할 수 있게 허용합니다(하위 에이전트도 동일한 장애 조치 모델 큐 사용).</string>

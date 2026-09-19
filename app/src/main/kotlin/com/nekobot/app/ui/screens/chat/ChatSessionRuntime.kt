@@ -62,11 +62,18 @@ data class AutoSkillUiState(
  * 形态与 [AutoSkillUiState] 一致：[running] 为 true 时显示"正在整理长期记忆"；
  * 完成后显示"已自动记忆 N 条"并**持久保留**（写进设置，退出页面或重启应用后
  * 重新进入会话仍然可见），直到本会话下一次抽取结果覆盖它。
+ *
+ * [anchorContent] 是触发本次抽取的回复正文（前缀）：提示渲染在**那条消息下面**，
+ * 而不是一直贴在消息列表末尾——记忆是针对某一轮发生的，提示留在发生处更符合预期。
  */
 data class AutoMemoryUiState(
     val changedItems: Int = 0,
-    val running: Boolean = true
+    val running: Boolean = true,
+    val anchorContent: String = ""
 )
+
+/** 记忆提示锚点保留的回复正文长度上限（与 PrefsManager 的持久化长度保持一致）。 */
+private const val AGENT_MEMORY_ANCHOR_CHARS = 200
 
 /**
  * Agent 会话在 AI 生成期间排队的待发送消息。
@@ -115,6 +122,10 @@ class ChatSessionState(
      */
     private val loadMemoryNotice: (String) -> Int? = { id ->
         runCatching { ServiceContainer.prefs.getAgentMemoryNotice(id) }.getOrNull()
+    },
+    /** 读取触发上次记忆抽取的回复正文锚点（前缀）；没有记录时返回空串。 */
+    private val loadMemoryAnchor: (String) -> String = { id ->
+        runCatching { ServiceContainer.prefs.getAgentMemoryNoticeAnchor(id) }.getOrDefault("")
     }
 ) {
 
@@ -184,13 +195,14 @@ class ChatSessionState(
     /**
      * 应用一次自动长期记忆通知。
      *
-     * - RUNNING：显示"正在整理长期记忆"；
+     * - RUNNING：显示"正在整理长期记忆"（锚定到触发它的那条回复）；
      * - DONE 且有改动：显示"已自动记忆 N 条"，并**持久保留**（不自动消失）；
      * - DONE 但没有改动：收起进行中的提示，回退显示上一次已持久化的结果。
      */
     fun applyAutoMemoryNotice(notice: com.nekobot.app.data.local.ai.AgentMemoryNotice) {
+        val anchor = notice.anchorContent.trim().take(AGENT_MEMORY_ANCHOR_CHARS)
         if (notice.phase == com.nekobot.app.data.local.ai.AgentMemoryPhase.RUNNING) {
-            autoMemoryNotice.value = AutoMemoryUiState(running = true)
+            autoMemoryNotice.value = AutoMemoryUiState(running = true, anchorContent = anchor)
             return
         }
         if (notice.changedItems <= 0) {
@@ -199,7 +211,8 @@ class ChatSessionState(
         }
         autoMemoryNotice.value = AutoMemoryUiState(
             changedItems = notice.changedItems,
-            running = false
+            running = false,
+            anchorContent = anchor
         )
     }
 
@@ -209,11 +222,35 @@ class ChatSessionState(
         autoMemoryNotice.value = loadPersistedMemoryNotice(sessionId)
     }
 
-    /** 读取持久化的记忆改动条数并转成界面状态；没有记录时返回 null（不显示提示）。 */
+    /** 读取持久化的记忆改动条数与锚点并转成界面状态；没有记录时返回 null（不显示提示）。 */
     private fun loadPersistedMemoryNotice(id: String): AutoMemoryUiState? =
         loadMemoryNotice(id)
             ?.takeIf { it > 0 }
-            ?.let { AutoMemoryUiState(changedItems = it, running = false) }
+            ?.let {
+                AutoMemoryUiState(
+                    changedItems = it,
+                    running = false,
+                    anchorContent = loadMemoryAnchor(id).trim().take(AGENT_MEMORY_ANCHOR_CHARS)
+                )
+            }
+
+    /**
+     * 把记忆提示的锚点解析成"应当渲染在哪条消息之后"。
+     *
+     * 锚点是触发抽取的那条回复正文前缀，靠它反查消息 id：
+     * 找不到（消息被删、被压缩归档、或锚点为空）时返回 null，
+     * 由调用方回退到贴列表末尾，避免提示整个消失。
+     */
+    fun resolveAutoMemoryAnchorMessageId(
+        messages: List<com.nekobot.app.data.model.Message>
+    ): String? {
+        val anchor = autoMemoryNotice.value?.anchorContent.orEmpty()
+        if (anchor.isBlank()) return null
+        val match = messages.lastOrNull { message ->
+            !message.isUser && message.content?.trim()?.startsWith(anchor) == true
+        }
+        return match?.id
+    }
 
     // ============ Agent 会话消息排队 ============
     /**

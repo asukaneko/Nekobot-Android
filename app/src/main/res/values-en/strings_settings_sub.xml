@@ -279,6 +279,10 @@
     <string name="agent_settings_accessibility_excluded_empty">No launchable apps available</string>
     <string name="agent_settings_auto_memory">Automatic long-term memory</string>
     <string name="agent_settings_auto_memory_desc">After each Agent turn, only stable preferences, standing conventions, and environment facts are written to global Agent memory, organized under fixed sections with no one-off task details (deduplicated by section, failures never affect the reply). When off, only explicit memory tool calls can write.</string>
+    <string name="agent_settings_memory_interval">Memory interval</string>
+    <string name="agent_settings_memory_interval_desc">The first turn always extracts; afterwards it extracts every N turns. A larger interval saves more tokens.</string>
+    <string name="agent_settings_memory_interval_dialog_title">Memory interval</string>
+    <string name="agent_settings_memory_interval_value">Every %1$d turns</string>
     <string name="agent_settings_auto_skill">Automatic skill distillation</string>
     <string name="agent_settings_auto_skill_desc">After each Agent turn, only complex and reusable procedures are distilled into a Skill automatically (existing similar skills are updated first, a high bar must be met, failures never affect the reply). Created skills appear under Extensions → Skills; when off, nothing is distilled automatically.</string>
     <string name="agent_settings_subagent_enable_desc">Allow the AI to call the subagent tool and delegate self-contained tasks to a fresh child agent (which uses the same failover model queue).</string>

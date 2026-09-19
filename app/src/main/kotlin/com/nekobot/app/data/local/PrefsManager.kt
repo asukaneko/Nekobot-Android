@@ -346,6 +346,22 @@ class PrefsManager(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_AGENT_AUTO_MEMORY, value).apply()
 
     /**
+     * 自动长期记忆的触发间隔（轮）：首轮必定抽取，此后每 N 轮抽取一次。
+     *
+     * 写入时收敛到 [AGENT_MEMORY_INTERVAL_OPTIONS]：选项之外的旧值或非法值一律回落到默认值，
+     * 避免界面显示与实际行为不一致。
+     */
+    var agentMemoryInterval: Int
+        get() = prefs.getInt(KEY_AGENT_MEMORY_INTERVAL, DEFAULT_AGENT_MEMORY_INTERVAL)
+            .takeIf { it in AGENT_MEMORY_INTERVAL_OPTIONS }
+            ?: DEFAULT_AGENT_MEMORY_INTERVAL
+        set(value) {
+            val normalized = value.takeIf { it in AGENT_MEMORY_INTERVAL_OPTIONS }
+                ?: DEFAULT_AGENT_MEMORY_INTERVAL
+            prefs.edit().putInt(KEY_AGENT_MEMORY_INTERVAL, normalized).apply()
+        }
+
+    /**
      * 读取某会话最近一次自动长期记忆的改动条数；没有记录时返回 -1。
      *
      * 与自动 Skill 提示同形态：仅供聊天界面把后台写入结果**持久显示**出来，
@@ -360,9 +376,47 @@ class PrefsManager(context: Context) {
         prefs.edit().putInt("agent_auto_memory_notice_$sessionId", changedItems).apply()
     }
 
+    /**
+     * 保存触发本次记忆抽取的回复正文（锚点）。
+     *
+     * 提示要停在"发生记忆的那条消息"下面，因此除了条数还要记住是哪条回复触发的；
+     * 重新进入会话、消息列表重新加载后，界面靠这段正文把提示放回原处。
+     * 只存正文前缀：整条回复可能很长，而锚点只需要够区分即可。
+     */
+    fun setAgentMemoryNoticeAnchor(sessionId: String, assistantContent: String) {
+        if (sessionId.isBlank()) return
+        val anchor = assistantContent.trim().take(AGENT_MEMORY_ANCHOR_CHARS)
+        prefs.edit().putString("agent_auto_memory_anchor_$sessionId", anchor).apply()
+    }
+
+    /** 读取触发本次记忆抽取的回复正文锚点；没有记录时返回空串。 */
+    fun getAgentMemoryNoticeAnchor(sessionId: String): String =
+        prefs.getString("agent_auto_memory_anchor_$sessionId", "").orEmpty()
+
     /** 清除某会话的自动记忆提示（删除会话时调用，避免残留无用键）。 */
     fun clearAgentMemoryNotice(sessionId: String) {
-        prefs.edit().remove("agent_auto_memory_notice_$sessionId").apply()
+        prefs.edit()
+            .remove("agent_auto_memory_notice_$sessionId")
+            .remove("agent_auto_memory_anchor_$sessionId")
+            .remove("agent_auto_memory_turn_$sessionId")
+            .apply()
+    }
+
+    /**
+     * 读取某会话已完成的对话轮数（用于「首轮 + 每 N 轮」触发记忆抽取）。
+     *
+     * 持久化而非只放内存：进程被杀后重进会话，间隔计数不会从头再来，
+     * 否则每次冷启动都会把下一轮当成首轮而多抽一次。
+     */
+    fun getAgentMemoryTurnCount(sessionId: String): Int =
+        prefs.getInt("agent_auto_memory_turn_$sessionId", 0).coerceAtLeast(0)
+
+    /** 递增并保存某会话的对话轮数，返回递增后的值。 */
+    fun incrementAgentMemoryTurnCount(sessionId: String): Int {
+        if (sessionId.isBlank()) return 0
+        val next = getAgentMemoryTurnCount(sessionId) + 1
+        prefs.edit().putInt("agent_auto_memory_turn_$sessionId", next).apply()
+        return next
     }
 
     /**
@@ -1152,6 +1206,19 @@ class PrefsManager(context: Context) {
         private const val KEY_AGENT_NETWORK_ACCESS = "agent_network_access_enabled"
         private const val KEY_AGENT_ACCESSIBILITY_EXCLUDED = "agent_accessibility_excluded_packages"
         private const val KEY_AGENT_AUTO_MEMORY = "agent_auto_memory_enabled"
+        private const val KEY_AGENT_MEMORY_INTERVAL = "agent_auto_memory_interval"
+
+        /**
+         * 自动长期记忆间隔的可选值（轮）。首轮始终抽取，这里的数值决定之后的间隔：
+         * 1 = 每轮都抽，其余为每 N 轮一次。
+         */
+        val AGENT_MEMORY_INTERVAL_OPTIONS = listOf(1, 2, 3, 5, 10)
+
+        /** 默认间隔（轮）：与 [AgentMemoryExtractor.MEMORY_TURN_INTERVAL] 的取值保持一致。 */
+        const val DEFAULT_AGENT_MEMORY_INTERVAL = 3
+
+        /** 记忆提示锚点保存的回复正文长度上限。 */
+        private const val AGENT_MEMORY_ANCHOR_CHARS = 200
         private const val KEY_AGENT_MEMORY_MIGRATION_ASKED = "agent_memory_migration_asked"
         private const val KEY_AGENT_AUTO_SKILL = "agent_auto_skill_enabled"
         private const val KEY_BROWSER_USER_AGENT_MODE = "browser_user_agent_mode"

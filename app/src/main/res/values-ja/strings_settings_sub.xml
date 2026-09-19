@@ -272,6 +272,10 @@
     <string name="agent_settings_accessibility_excluded_empty">選択可能な起動アプリがありません</string>
     <string name="agent_settings_auto_memory">長期記憶の自動保存</string>
     <string name="agent_settings_auto_memory_desc">Agent の各ターン終了後、安定した好み・長期的な取り決め・環境情報だけをグローバル Agent メモリへ保存します（固定の分類で整理し、単発のタスク詳細は記録しません。セクション単位で重複排除、失敗しても会話には影響しません）。オフの場合、記憶ツールの明示的な呼び出しのみ書き込みます。</string>
+    <string name="agent_settings_memory_interval">記憶の間隔</string>
+    <string name="agent_settings_memory_interval_desc">最初のターンは必ず抽出し、以降は N ターンごとに抽出します。間隔が大きいほどトークンを節約できます。</string>
+    <string name="agent_settings_memory_interval_dialog_title">記憶の間隔</string>
+    <string name="agent_settings_memory_interval_value">%1$d ターンごと</string>
     <string name="agent_settings_auto_skill">Skill の自動要約</string>
     <string name="agent_settings_auto_skill_desc">Agent の各ターン終了後、複雑で再利用できる手順だけを自動で Skill にまとめます（同種の既存 Skill を優先して更新し、高い基準を満たす場合のみ実行、失敗しても会話には影響しません）。生成された Skill は「拡張機能 → Skills」で確認できます。オフにすると自動要約は行われません。</string>
     <string name="agent_settings_subagent_enable_desc">AI に subagent ツールの呼び出しを許可し、独立したタスクを新しい子エージェントに委任させます（子エージェントも同じフェイルオーバー モデル キューを使用）。</string>

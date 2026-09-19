@@ -305,6 +305,7 @@ fun ChatScreen(
     val agentContextCompressionInProgress by viewModel.agentContextCompressionInProgress.collectAsStateWithLifecycle()
     val autoSkillNotice by viewModel.autoSkillNotice.collectAsStateWithLifecycle()
     val autoMemoryNotice by viewModel.autoMemoryNotice.collectAsStateWithLifecycle()
+    val autoMemoryAnchorMessageId by viewModel.autoMemoryAnchorMessageId.collectAsStateWithLifecycle()
     val agentTodos by viewModel.agentTodos.collectAsStateWithLifecycle()
     // Agent 会话目标/规格任务（/goal、/spec 命令设置，输入框上方横幅展示）
     val agentGoal by viewModel.agentGoal.collectAsStateWithLifecycle()
@@ -1241,9 +1242,15 @@ fun ChatScreen(
                                     AutoSkillDistillDivider(state = notice)
                                 }
                             }
-                            // 自动长期记忆提示：与技能沉淀提示同一形态，渲染在列表末尾。
+                            // 自动长期记忆提示：渲染在**触发它的那条回复下面**（锚点）。
+                            // 锚点消息找不到时（被删除/归档）回退到列表末尾，避免提示消失。
                             autoMemoryNotice?.let { notice ->
-                                if (index == renderMessages.lastIndex) {
+                                val anchored = autoMemoryAnchorMessageId != null &&
+                                    msg.id != null &&
+                                    msg.id == autoMemoryAnchorMessageId
+                                val fallback = autoMemoryAnchorMessageId == null &&
+                                    index == renderMessages.lastIndex
+                                if (anchored || fallback) {
                                     Spacer(Modifier.height(4.dp))
                                     AutoMemoryDivider(state = notice)
                                 }

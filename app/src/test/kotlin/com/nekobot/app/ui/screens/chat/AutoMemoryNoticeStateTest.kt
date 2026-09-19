@@ -43,6 +43,69 @@ class AutoMemoryNoticeStateTest {
     }
 
     @Test
+    fun noticeCarriesAnchorFromTriggeringReply() {
+        val state = ChatSessionState("session")
+
+        state.applyAutoMemoryNotice(
+            AgentMemoryNotice("session", changedItems = 2, anchorContent = "这是触发记忆的回复")
+        )
+
+        assertEquals("这是触发记忆的回复", state.autoMemoryNotice.value?.anchorContent)
+    }
+
+    /**
+     * 锚点解析：提示要停在触发它的那条回复下面，而不是永远贴列表末尾。
+     */
+    @Test
+    fun anchorResolvesToTriggeringMessage() {
+        val state = ChatSessionState("session")
+        state.applyAutoMemoryNotice(
+            AgentMemoryNotice("session", changedItems = 1, anchorContent = "第二条回复")
+        )
+        val messages = listOf(
+            message(id = "m1", content = "第一条回复", isUser = false),
+            message(id = "m2", content = "第二条回复", isUser = false)
+        )
+
+        assertEquals("m2", state.resolveAutoMemoryAnchorMessageId(messages))
+    }
+
+    @Test
+    fun anchorMatchesTruncatedPrefix() {
+        val state = ChatSessionState("session")
+        // 锚点只存正文前缀：整条回复更长时也要能匹配上。
+        state.applyAutoMemoryNotice(
+            AgentMemoryNotice("session", changedItems = 1, anchorContent = "前缀内容")
+        )
+        val messages = listOf(message(id = "m1", content = "前缀内容后面还有很多字", isUser = false))
+
+        assertEquals("m1", state.resolveAutoMemoryAnchorMessageId(messages))
+    }
+
+    @Test
+    fun anchorFallsBackWhenMessageIsGone() {
+        val state = ChatSessionState("session")
+        state.applyAutoMemoryNotice(
+            AgentMemoryNotice("session", changedItems = 1, anchorContent = "已被删除的回复")
+        )
+        val messages = listOf(message(id = "m1", content = "别的回复", isUser = false))
+
+        // 找不到锚点消息时返回 null，界面据此回退到列表末尾，而不是让提示消失。
+        assertNull(state.resolveAutoMemoryAnchorMessageId(messages))
+    }
+
+    @Test
+    fun anchorDoesNotMatchUserMessages() {
+        val state = ChatSessionState("session")
+        state.applyAutoMemoryNotice(
+            AgentMemoryNotice("session", changedItems = 1, anchorContent = "同样的文字")
+        )
+        val messages = listOf(message(id = "u1", content = "同样的文字", isUser = true))
+
+        assertNull("记忆锚点是回复，不应匹配到用户消息", state.resolveAutoMemoryAnchorMessageId(messages))
+    }
+
+    @Test
     fun doneWithoutChangesFallsBackToPersistedNotice() {
         val state = ChatSessionState("session", loadMemoryNotice = { 5 })
         state.applyAutoMemoryNotice(
@@ -102,4 +165,28 @@ class AutoMemoryNoticeStateTest {
 
         assertEquals(AutoMemoryUiState(running = true), state.autoMemoryNotice.value)
     }
+
+    @Test
+    fun restoreKeepsPersistedAnchor() {
+        val state = ChatSessionState(
+            "session",
+            loadMemoryNotice = { 4 },
+            loadMemoryAnchor = { "上次触发记忆的回复" }
+        )
+
+        state.restoreAutoMemoryNotice()
+
+        assertEquals(
+            AutoMemoryUiState(changedItems = 4, running = false, anchorContent = "上次触发记忆的回复"),
+            state.autoMemoryNotice.value
+        )
+    }
+
+    private fun message(id: String, content: String, isUser: Boolean) =
+        com.nekobot.app.data.model.Message(
+            id = id,
+            role = if (isUser) "user" else "assistant",
+            content = content,
+            timestamp = "2026-01-01T00:00:00Z"
+        )
 }
