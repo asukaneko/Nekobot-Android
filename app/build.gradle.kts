@@ -25,12 +25,36 @@ android {
 
     // Release 固定使用旧 Windows 构建证书，保证可覆盖安装已发布版本。
     // 密钥文件仅保存在本地 .signing/ 目录，不纳入 Git。
+    //
+    // 口令优先从环境变量 / local.properties 读取（CI 场景），缺省回退到历史值以保持
+    // 本地构建与已发布 APK 的签名一致。要更换发布密钥属于产品决策：一旦换密钥，
+    // 老用户无法覆盖安装，必须先确认再改。
+    val legacyStoreFile = rootProject.file(".signing/legacy-debug.keystore")
+    // 直接按行解析 local.properties，避免在 Kotlin DSL 中引入 java.util.Properties。
+    val localProps: Map<String, String> = rootProject.file("local.properties")
+        .takeIf { it.isFile }
+        ?.readLines()
+        ?.mapNotNull { line ->
+            val trimmed = line.trim()
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) return@mapNotNull null
+            val separator = trimmed.indexOf('=')
+            if (separator <= 0) return@mapNotNull null
+            trimmed.substring(0, separator).trim() to trimmed.substring(separator + 1).trim()
+        }
+        ?.toMap()
+        .orEmpty()
+    fun signingValue(key: String, fallback: String): String {
+        System.getenv("NEKOBOT_SIGNING_${key.uppercase()}")?.takeIf { it.isNotBlank() }?.let { return it }
+        localProps["nekobot.signing.$key"]?.takeIf { it.isNotBlank() }?.let { return it }
+        return fallback
+    }
+
     signingConfigs {
         create("legacyRelease") {
-            storeFile = rootProject.file(".signing/legacy-debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+            storeFile = legacyStoreFile
+            storePassword = signingValue("storePassword", "android")
+            keyAlias = signingValue("keyAlias", "androiddebugkey")
+            keyPassword = signingValue("keyPassword", "android")
         }
     }
 
