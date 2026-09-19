@@ -30,6 +30,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.InputStream
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
@@ -51,6 +52,12 @@ import javax.crypto.spec.SecretKeySpec
 object NbotConfigImporter {
 
     private const val KDF_ITERATIONS = 390_000
+    /** 配置包下载上限（压缩态）。 */
+    private const val MAX_ARCHIVE_BYTES = 64L * 1024 * 1024
+    /** 配置包解压后总大小上限，防压缩炸弹。 */
+    private const val MAX_UNCOMPRESSED_BYTES = 256L * 1024 * 1024
+    /** 配置包条目数量上限。 */
+    private const val MAX_ARCHIVE_ENTRIES = 2048
     private val FERNET_VERSION: Byte = 0x80.toByte()
     private val JSON_TYPE = "application/json; charset=utf-8".toMediaType()
 
@@ -96,7 +103,7 @@ object NbotConfigImporter {
                 .header("Content-Type", "application/json")
                 .build()
 
-            // 2. 下载 zip 字节
+            // 2. 下载 zip 字节（响应体上限见 MAX_ARCHIVE_BYTES，避免恶意服务端用超大响应撑爆内存）
             val zipBytes: ByteArray?
             val dlErr: String?
             client.newCall(req).execute().use { resp ->
@@ -104,8 +111,14 @@ object NbotConfigImporter {
                     zipBytes = null
                     dlErr = "HTTP ${resp.code}: ${resp.body?.string()?.take(200)}"
                 } else {
-                    zipBytes = resp.body?.bytes() ?: byteArrayOf()
-                    dlErr = null
+                    val declared = resp.body?.contentLength() ?: -1L
+                    if (declared > MAX_ARCHIVE_BYTES) {
+                        zipBytes = null
+                        dlErr = "配置包过大（${declared / 1024 / 1024} MB），上限 ${MAX_ARCHIVE_BYTES / 1024 / 1024} MB"
+                    } else {
+                        zipBytes = resp.body?.byteStream()?.use { readLimited(it, MAX_ARCHIVE_BYTES) }
+                        dlErr = null
+                    }
                 }
             }
             if (dlErr != null || zipBytes == null || zipBytes.isEmpty()) {
@@ -176,13 +189,23 @@ object NbotConfigImporter {
         }
     }
 
-    /** 解压 ZIP，返回文件名 → 字节 内容映射。 */
+    /**
+     * 解压 ZIP，返回文件名 → 字节 内容映射。
+     *
+     * 对条目数量、单条目大小与解压总大小都设上限：ZIP 来自远端服务器，
+     * 缺少限制时一个压缩炸弹就能把导入流程打成 OOM。
+     */
     private fun extractZip(zipBytes: ByteArray): Map<String, ByteArray> {
         val result = mutableMapOf<String, ByteArray>()
+        var totalBytes = 0L
         ZipInputStream(ByteArrayInputStream(zipBytes)).use { zis ->
             var entry = zis.nextEntry
+            var count = 0
             while (entry != null) {
                 if (!entry.isDirectory) {
+                    if (++count > MAX_ARCHIVE_ENTRIES) {
+                        throw IllegalArgumentException("配置包文件数量超过 $MAX_ARCHIVE_ENTRIES")
+                    }
                     if (!isSafeZipEntryName(entry.name)) {
                         throw IllegalArgumentException("ZIP 包含不安全路径：${entry.name}")
                     }
@@ -191,6 +214,12 @@ object NbotConfigImporter {
                     while (true) {
                         val n = zis.read(buffer)
                         if (n <= 0) break
+                        totalBytes += n
+                        if (totalBytes > MAX_UNCOMPRESSED_BYTES) {
+                            throw IllegalArgumentException(
+                                "配置包解压后超过 ${MAX_UNCOMPRESSED_BYTES / 1024 / 1024} MB"
+                            )
+                        }
                         buf.write(buffer, 0, n)
                     }
                     result[entry.name] = buf.toByteArray()
@@ -200,6 +229,21 @@ object NbotConfigImporter {
             }
         }
         return result
+    }
+
+    /** 按上限读取输入流；超过上限抛异常而不是继续占用内存。 */
+    private fun readLimited(input: InputStream, limit: Long): ByteArray {
+        val buffer = java.io.ByteArrayOutputStream()
+        val chunk = ByteArray(8192)
+        var total = 0L
+        while (true) {
+            val read = input.read(chunk)
+            if (read < 0) break
+            total += read
+            if (total > limit) throw IllegalArgumentException("配置包超过 ${limit / 1024 / 1024} MB 上限")
+            buffer.write(chunk, 0, read)
+        }
+        return buffer.toByteArray()
     }
 
     /**
