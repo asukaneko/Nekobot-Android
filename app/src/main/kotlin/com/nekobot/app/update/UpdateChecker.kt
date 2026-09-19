@@ -22,8 +22,13 @@ import java.util.zip.ZipFile
 /**
  * GitHub Releases 更新检查器。
  *
- * 优先使用 GitHub 代理拉取发布信息和 APK，直连 GitHub 仅作为最终回退。
- * 这样可以改善国内网络下载速度，并降低共享 VPN 出口触发 GitHub API 限流的概率。
+ * 发布信息与 APK 目前都直接取自 GitHub（api.github.com 与 release 资产的
+ * browser_download_url）。历史版本曾引入第三方 GitHub 代理以改善国内下载速度，
+ * 但代理属于额外的信任方，会同时经手发布元数据与 APK 字节，已移除。
+ *
+ * 如果以后要重新引入镜像加速，必须同时补齐：域名白名单、资产 SHA-256 校验，
+ * 否则等于把「谁能投递更新」交给了第三方。下载完成后会强制校验包名与签名，
+ * 见 [isValidApk]。
  */
 object UpdateChecker {
 
@@ -261,6 +266,12 @@ object UpdateChecker {
             .apply()
     }
 
+    /**
+     * 由发布资产的 browser_download_url 推导候选下载地址。
+     *
+     * 当前只返回 GitHub 原始地址（不再经过第三方代理）。保留为列表是为了给
+     * 将来加入可信镜像留出回退位，但新增来源前必须先做域名白名单与哈希校验。
+     */
     internal fun buildDownloadUrls(browserDownloadUrl: String): List<String> =
         listOf(browserDownloadUrl)
 
