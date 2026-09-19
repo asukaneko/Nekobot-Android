@@ -5,6 +5,7 @@ import android.graphics.pdf.PdfRenderer
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.VideoView
@@ -145,6 +146,32 @@ private val GBK_CHARSET: Charset = runCatching { charset("GBK") }.getOrDefault(C
 
 /** 单个附件下载上限：避免超大响应体撑满用户存储。 */
 private const val MAX_DOWNLOAD_BYTES = 200L * 1024 * 1024
+
+/**
+ * 聊天内嵌预览 WebView 的统一下沉配置。
+ *
+ * 渲染内容来自助手回复或远程抓取的 HTML，属于不可信输入：关闭文件/内容访问与多窗口，
+ * 并把**页面发起的导航**限制在 about:blank，避免预览窗被当成浏览器跳去钓鱼页或广告页。
+ * 保留 JS 是因为 HTML 预览本身依赖它；这些 WebView 没有挂任何 JS 桥，子资源加载不受影响。
+ */
+private fun WebView.applyPreviewSandbox() {
+    settings.javaScriptEnabled = true
+    settings.domStorageEnabled = true
+    settings.loadWithOverviewMode = true
+    settings.useWideViewPort = true
+    settings.allowFileAccess = false
+    settings.allowContentAccess = false
+    settings.allowFileAccessFromFileURLs = false
+    settings.allowUniversalAccessFromFileURLs = false
+    settings.javaScriptCanOpenWindowsAutomatically = false
+    settings.setSupportMultipleWindows(false)
+    webViewClient = object : WebViewClient() {
+        override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean = true
+
+        @Suppress("DEPRECATION")
+        override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean = true
+    }
+}
 
 /** URL 正则 */
 private val URL_REGEX = Regex("""https?://[^\s<>"'\]]+""")
@@ -715,11 +742,7 @@ fun HtmlRenderer(
         AndroidView(
             factory = { ctx ->
                 WebView(ctx).apply {
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    settings.loadWithOverviewMode = true
-                    settings.useWideViewPort = true
-                    webViewClient = WebViewClient()
+                    applyPreviewSandbox()
                     if (hasContent) {
                         loadDataWithBaseURL(null, resolvedContent, "text/html", "UTF-8", null)
                     }
@@ -826,13 +849,9 @@ private fun FullscreenHtmlDialog(content: String, onDismiss: () -> Unit) {
             AndroidView(
                 factory = { ctx ->
                     WebView(ctx).apply {
-                        settings.javaScriptEnabled = true
-                        settings.domStorageEnabled = true
-                        settings.loadWithOverviewMode = true
-                        settings.useWideViewPort = true
+                        applyPreviewSandbox()
                         settings.builtInZoomControls = true
                         settings.displayZoomControls = false
-                        webViewClient = WebViewClient()
                         loadDataWithBaseURL(null, content, "text/html", "UTF-8", null)
                         webView = this
                     }
@@ -2067,11 +2086,7 @@ fun FilePreviewDialog(fileName: String, file: File, mimeType: String = "", onDis
                                 AndroidView(
                                     factory = { ctx ->
                                         WebView(ctx).apply {
-                                            settings.javaScriptEnabled = true
-                                            settings.domStorageEnabled = true
-                                            settings.loadWithOverviewMode = true
-                                            settings.useWideViewPort = true
-                                            webViewClient = WebViewClient()
+                                            applyPreviewSandbox()
                                             loadDataWithBaseURL("about:blank", content, "text/html", "UTF-8", null)
                                             webView = this
                                         }
