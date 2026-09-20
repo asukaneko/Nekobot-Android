@@ -73,6 +73,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.google.gson.JsonPrimitive
 import com.nekobot.app.R
 import com.nekobot.app.data.repository.Resource
 import com.nekobot.app.ui.BaseViewModel
@@ -114,27 +115,59 @@ private val metricDefs = listOf(
     Triple(R.string.state_history_metric_energy, "energy", Color(0xFF22c55e))
 )
 
+/** 时间轴滑块刻度上限：节点过多时只保留有限刻度，避免逐刻度绘制导致卡顿。 */
+private const val MAX_SLIDER_STEPS = 120
+
 // ==================== JsonObject 取值辅助 ====================
+// Gson 的 asInt/asFloat/asString 遇到 JsonNull、对象、数组或非数字字符串会直接抛异常，
+// 而状态历程数据可能来自远端服务器或旧缓存，字段类型不可控。这里统一容错，
+// 避免某个会话的脏数据把界面打崩。
 
-private fun JsonObject.intOr(key: String, default: Int = 0): Int =
-    get(key)?.takeIf { it.isJsonPrimitive }?.asInt ?: default
+/** 取基本类型；JsonNull / 对象 / 数组一律视为不存在。 */
+private fun JsonObject.primitiveOrNull(key: String): JsonPrimitive? =
+    get(key)?.takeIf { it.isJsonPrimitive }?.asJsonPrimitive
 
-private fun JsonObject.intOrNull(key: String): Int? =
-    get(key)?.takeIf { it.isJsonPrimitive }?.asInt
+/** JsonElement 级安全字符串读取：JsonNull / 对象 / 数组返回 null。 */
+private fun JsonElement?.jsonStrOrNull(): String? =
+    this?.takeIf { it.isJsonPrimitive }?.asJsonPrimitive?.let { p ->
+        runCatching { p.asString }.getOrNull()
+    }
 
-private fun JsonObject.floatOrNull(key: String): Float? =
-    get(key)?.takeIf { it.isJsonPrimitive }?.asFloat
+private fun JsonObject.intOr(key: String, default: Int = 0): Int = intOrNull(key) ?: default
 
-private fun JsonObject.strOr(key: String, default: String = "—"): String =
-    get(key)?.takeIf { it.isJsonPrimitive }?.asString ?: default
+private fun JsonObject.intOrNull(key: String): Int? = primitiveOrNull(key)?.let { p ->
+    if (p.isNumber) runCatching { p.asInt }.getOrNull()
+    else p.asString.trim().toFloatOrNull()?.toInt()
+}
 
-private fun JsonObject.strOrNull(key: String): String? =
-    get(key)?.takeIf { it.isJsonPrimitive }?.asString
+private fun JsonObject.floatOrNull(key: String): Float? = primitiveOrNull(key)?.let { p ->
+    if (p.isNumber) runCatching { p.asFloat }.getOrNull()
+    else p.asString.trim().toFloatOrNull()
+}
+
+private fun JsonObject.strOr(key: String, default: String = "—"): String = strOrNull(key) ?: default
+
+private fun JsonObject.strOrNull(key: String): String? = primitiveOrNull(key)?.let { p ->
+    runCatching { p.asString }.getOrNull()
+}
+
+/** 会话按 updated_at 倒序排序时使用的安全取值。 */
+private fun JsonObject.updatedAtOrEmpty(): String = strOrNull("updated_at") ?: ""
+
+/**
+ * 仅比较对象标识的 remember / LaunchedEffect key。
+ * JsonObject / JsonArray 的 equals 是深层内容比较，时间线很长时在滑动、播放期间
+ * 每次重组都会深比较整棵 JSON，容易造成卡顿，这里改用标识比较。
+ */
+private class IdentityKey(private val element: Any?) {
+    override fun equals(other: Any?): Boolean = other is IdentityKey && other.element === element
+    override fun hashCode(): Int = System.identityHashCode(element)
+}
 
 internal fun filterStateHistorySessions(sessions: List<JsonObject>): List<JsonObject> =
     sessions.filterNot { session ->
         sequenceOf("session_mode", "sessionMode")
-            .mapNotNull { key -> session.get(key)?.takeIf { it.isJsonPrimitive }?.asString }
+            .mapNotNull { key -> session.get(key)?.jsonStrOrNull() }
             .any { it.equals("agent", ignoreCase = true) }
     }
 
@@ -157,27 +190,26 @@ class StateHistoryViewModel : BaseViewModel() {
 
     init { loadFromCache() }
 
-    /** 从缓存文件加载（进入页面时调用） */
+    /** 从缓存文件加载（进入页面时调用）；无缓存或缓存损坏/为空时回退到数据源 */
     fun loadFromCache() {
         viewModelScope.launch {
             val cacheJson = withContext(Dispatchers.IO) {
                 com.nekobot.app.ServiceContainer.localRepository.loadStateHistoryCache()
             }
-            if (!cacheJson.isNullOrBlank()) {
+            val cached = cacheJson?.takeIf { it.isNotBlank() }?.let { raw ->
                 runCatching {
-                    val arr = JsonParser.parseString(cacheJson).asJsonArray
-                    val list = filterStateHistorySessions(
-                        arr.mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject }
-                    )
-                    // 按 updated_at 倒序：最新会话排在最前
-                    val sorted = list.sortedByDescending { it.get("updated_at")?.asString ?: "" }
-                    _sessions.value = sorted
-                    if (_selected.value == null) _selected.value = sorted.firstOrNull()
-                }
-            } else {
-                // 无缓存，首次加载从数据源获取
-                fetchFromSource()
+                    JsonParser.parseString(raw).asJsonArray
+                        .mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject }
+                }.getOrNull()
             }
+            if (cached.isNullOrEmpty()) {
+                fetchFromSource()
+                return@launch
+            }
+            // 按 updated_at 倒序：最新会话排在最前
+            val sorted = filterStateHistorySessions(cached).sortedByDescending { it.updatedAtOrEmpty() }
+            _sessions.value = sorted
+            if (_selected.value == null) _selected.value = sorted.firstOrNull()
         }
     }
 
@@ -254,7 +286,7 @@ class StateHistoryViewModel : BaseViewModel() {
             },
             onSuccess = { merged ->
                 // 按 updated_at 倒序：最新会话排在最前
-                val sorted = merged.sortedByDescending { it.get("updated_at")?.asString ?: "" }
+                val sorted = merged.sortedByDescending { it.updatedAtOrEmpty() }
                 _sessions.value = sorted
                 if (_selected.value == null) _selected.value = sorted.firstOrNull()
                 saveCache(sorted)
@@ -280,7 +312,7 @@ class StateHistoryViewModel : BaseViewModel() {
 
                 // 3. 对不在渠道时间线中的会话（web 会话），逐个获取时间线
                 val channelIds = channelSessions.mapNotNull {
-                    it.get("session_id")?.asString ?: it.get("id")?.asString
+                    it.get("session_id")?.jsonStrOrNull() ?: it.get("id")?.jsonStrOrNull()
                 }.toSet()
 
                 val webTimelines = allSessions
@@ -301,7 +333,7 @@ class StateHistoryViewModel : BaseViewModel() {
             },
             onSuccess = { merged ->
                 // 按 updated_at 倒序：最新会话排在最前
-                val sorted = merged.sortedByDescending { it.get("updated_at")?.asString ?: "" }
+                val sorted = merged.sortedByDescending { it.updatedAtOrEmpty() }
                 _sessions.value = sorted
                 if (_selected.value == null) _selected.value = sorted.firstOrNull()
                 saveCache(sorted)
@@ -407,10 +439,12 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                 }
                 else -> {
                     val selectedSession = selected
-                    val sessionName = selectedSession?.get("name")?.asString ?: stringResource(R.string.state_history_unnamed_session)
+                    val sessionName = selectedSession?.strOrNull("name")?.takeIf { it.isNotBlank() }
+                        ?: stringResource(R.string.state_history_unnamed_session)
+                    val selectedSessionId = selectedSession?.strOrNull("id")
                     val timelineEl = selectedSession?.get("character_runtime_timeline")
                         ?: selectedSession?.get("timeline")
-                    val timeline: List<JsonObject> = remember(selectedSession) {
+                    val timeline: List<JsonObject> = remember(selectedSessionId, IdentityKey(timelineEl)) {
                         when {
                             timelineEl?.isJsonArray == true -> timelineEl.asJsonArray
                                 .mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject }
@@ -425,16 +459,16 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                     var selectedMetricIndex by remember { mutableStateOf(0) }
 
                     // 切换会话时重置到最新节点（末尾）
-                    LaunchedEffect(timeline) {
+                    LaunchedEffect(selectedSessionId, timeline.size) {
                         currentIndex = (timeline.size - 1).coerceAtLeast(0)
                         isPlaying = false
                     }
                     // 自动播放：每 1.5 秒推进一节，到末尾自动停止
-                    LaunchedEffect(isPlaying, timeline) {
+                    LaunchedEffect(isPlaying, selectedSessionId, timeline.size) {
                         if (isPlaying && timeline.isNotEmpty()) {
                             while (isActive) {
                                 delay(1500)
-                                val next = currentIndex + 1
+                                val next = currentIndex.coerceIn(0, timeline.lastIndex) + 1
                                 if (next >= timeline.size) {
                                     isPlaying = false
                                     break
@@ -444,10 +478,11 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                         }
                     }
 
-                    val currentNode = if (timeline.isNotEmpty())
-                        timeline.getOrElse(currentIndex.coerceIn(0, timeline.lastIndex)) { timeline.first() }
-                    else null
-                    val prevNode = if (currentIndex > 0 && timeline.isNotEmpty()) timeline[currentIndex - 1] else null
+                    // 会话切换的瞬间 currentIndex 可能仍是上一个会话的旧下标，
+                    // 所有读取一律夹取到当前时间线的合法范围，避免越界崩溃。
+                    val safeIndex = if (timeline.isEmpty()) 0 else currentIndex.coerceIn(0, timeline.lastIndex)
+                    val currentNode = timeline.getOrNull(safeIndex)
+                    val prevNode = if (safeIndex > 0) timeline.getOrNull(safeIndex - 1) else null
 
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -487,8 +522,10 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                                     modifier = Modifier.heightIn(max = 420.dp)
                                 ) {
                                     sessions.forEach { s ->
-                                        val name = s.get("name")?.asString ?: stringResource(R.string.state_history_unnamed_session)
-                                        val isActive = s == selectedSession
+                                        val name = s.strOrNull("name")?.takeIf { it.isNotBlank() }
+                                            ?: stringResource(R.string.state_history_unnamed_session)
+                                        val isActive = s === selectedSession ||
+                                            (selectedSessionId != null && s.strOrNull("id") == selectedSessionId)
                                         DropdownMenuItem(
                                             text = {
                                                 Text(
@@ -533,7 +570,7 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                                 ) {
                                     // 节点序号（紧凑）
                                     Text(
-                                        text = "${currentIndex + 1}/${timeline.size}",
+                                        text = "${safeIndex + 1}/${timeline.size}",
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.primary,
                                         fontWeight = FontWeight.SemiBold
@@ -543,25 +580,26 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                                     val lastIndex = (timeline.size - 1).coerceAtLeast(0)
                                     val single = timeline.size <= 1
                                     Slider(
-                                        value = if (single) 0f else currentIndex.toFloat(),
+                                        value = if (single) 0f else safeIndex.toFloat(),
                                         onValueChange = { if (!single) currentIndex = it.roundToInt().coerceIn(0, lastIndex) },
                                         valueRange = if (single) 0f..1f else 0f..lastIndex.toFloat(),
-                                        steps = if (timeline.size > 2) timeline.size - 2 else 0,
+                                        // 节点极多时限制度量刻度数量，避免逐刻度绘制带来的卡顿
+                                        steps = (timeline.size - 2).coerceIn(0, MAX_SLIDER_STEPS),
                                         enabled = !single,
                                         modifier = Modifier.weight(1f)
                                     )
                                     Spacer(Modifier.width(4.dp))
                                     // 紧凑播放控制
                                     IconButton(
-                                        onClick = { currentIndex = (currentIndex - 1).coerceAtLeast(0); isPlaying = false },
-                                        enabled = currentIndex > 0,
+                                        onClick = { currentIndex = (safeIndex - 1).coerceAtLeast(0); isPlaying = false },
+                                        enabled = safeIndex > 0,
                                         modifier = Modifier.size(32.dp)
                                     ) {
                                         Icon(Icons.Filled.SkipPrevious, contentDescription = stringResource(R.string.state_history_prev), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                                     }
                                     IconButton(
                                         onClick = {
-                                            if (!isPlaying && timeline.isNotEmpty() && currentIndex >= timeline.size - 1) {
+                                            if (!isPlaying && timeline.isNotEmpty() && safeIndex >= timeline.size - 1) {
                                                 currentIndex = 0  // 已在末尾，从头开始播放
                                             }
                                             isPlaying = !isPlaying
@@ -576,8 +614,8 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                                         )
                                     }
                                     IconButton(
-                                        onClick = { currentIndex = (currentIndex + 1).coerceAtMost(lastIndex); isPlaying = false },
-                                        enabled = currentIndex < lastIndex,
+                                        onClick = { currentIndex = (safeIndex + 1).coerceAtMost(lastIndex); isPlaying = false },
+                                        enabled = safeIndex < lastIndex,
                                         modifier = Modifier.size(32.dp)
                                     ) {
                                         Icon(Icons.Filled.SkipNext, contentDescription = stringResource(R.string.state_history_next), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
@@ -588,7 +626,7 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                             // 其他内容：节点元信息/雷达图/趋势图/Delta/对话回放
                             item {
                                 GlassCard(modifier = Modifier.fillMaxWidth()) {
-                                    NodeMetaPanel(node = currentNode, index = currentIndex, total = timeline.size)
+                                    NodeMetaPanel(node = currentNode, index = safeIndex, total = timeline.size)
                                     Spacer(Modifier.height(12.dp))
 
                                     SectionHeader(title = stringResource(R.string.state_history_radar_title), subtitle = stringResource(R.string.state_history_radar_subtitle))
@@ -601,12 +639,12 @@ fun StateHistoryScreen(onBack: () -> Unit) {
                                     Spacer(Modifier.height(8.dp))
                                     MetricSelector(selectedIndex = selectedMetricIndex, onSelect = { selectedMetricIndex = it })
                                     Spacer(Modifier.height(8.dp))
-                                    val (_, metricKey, metricColor) = metricDefs[selectedMetricIndex]
+                                    val (_, metricKey, metricColor) = metricDefs.getOrElse(selectedMetricIndex) { metricDefs.first() }
                                     TrendLineChart(
                                         timeline = timeline,
                                         metricKey = metricKey,
                                         metricColor = metricColor,
-                                        currentIndex = currentIndex
+                                        currentIndex = safeIndex
                                     )
                                     Spacer(Modifier.height(12.dp))
 
@@ -917,10 +955,12 @@ private fun TrendLineChart(
         val curX = xOf(curIdx)
         drawLine(metricColor.copy(alpha = 0.35f), Offset(curX, padTop), Offset(curX, padTop + chartH), strokeWidth = 1f)
 
-        // 数据点
+        // 数据点（节点极多时只画当前节点，避免逐点绘制导致卡顿）
+        val dense = n > 300
         values.forEachIndexed { i, v ->
-            val x = xOf(i); val y = yOf(v)
             val isCurrent = i == curIdx
+            if (dense && !isCurrent) return@forEachIndexed
+            val x = xOf(i); val y = yOf(v)
             if (isCurrent) {
                 drawCircle(metricColor.copy(alpha = 0.25f), radius = 10f, center = Offset(x, y))
             }
