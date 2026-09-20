@@ -552,7 +552,7 @@ object BuiltinTools {
         BuiltinToolSpec(
             id = "workspace_send_file",
             name = "工作区-发送文件",
-            description = "将工作区中的文件作为附件发送到当前会话。path 使用 shared:// 前缀可发送共享工作区文件。",
+            description = "交付文件：用于完成用户的任务后，把工作区文件作为附件发送到当前会话向用户展示内容。path 使用 shared:// 前缀可交付共享工作区文件。",
             parametersJson = params(
                 mapOf("path" to mapOf("type" to "string", "description" to "文件路径。使用 shared://filename 发送共享工作区文件，或直接使用相对路径发送当前会话工作区文件")),
                 listOf("path")

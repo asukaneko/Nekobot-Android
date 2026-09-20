@@ -137,7 +137,7 @@
     <string name="tool_desc_workspace_edit_file">ワークスペース内の既存テキストを正確に置換します。</string>
     <string name="tool_desc_workspace_delete_file">ワークスペース内の指定ファイルを削除します。</string>
     <string name="tool_desc_workspace_list_files">ワークスペースのディレクトリ内のファイルを一覧します。</string>
-    <string name="tool_desc_workspace_send_file">ワークスペースのファイルを添付として現在のセッションに送信します。</string>
+    <string name="tool_desc_workspace_send_file">ファイルを納品：タスク完了後、ワークスペースのファイルを添付として送信しユーザーに提示します。</string>
     <string name="tool_desc_workspace_parse_file">ワークスペースのファイル（PDF/DOCX/TXT など）を解析しテキストを返します。</string>
     <string name="tool_desc_workspace_extract_epub">EPUB の本文を読書順に抽出し TXT を生成します。</string>
     <string name="tool_desc_workspace_file_info">ワークスペースファイルのサイズ・種類・更新日時を確認します。</string>

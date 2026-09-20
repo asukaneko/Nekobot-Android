@@ -137,7 +137,7 @@
     <string name="tool_desc_workspace_edit_file">精确替换工作区文件中已有的文本。</string>
     <string name="tool_desc_workspace_delete_file">删除工作区中的指定文件。</string>
     <string name="tool_desc_workspace_list_files">列出工作区目录下的文件。</string>
-    <string name="tool_desc_workspace_send_file">把工作区文件作为附件发送到当前会话。</string>
+    <string name="tool_desc_workspace_send_file">交付文件：完成任务后，把工作区文件作为附件发送给用户。</string>
     <string name="tool_desc_workspace_parse_file">解析工作区文件（PDF/DOCX/TXT 等）并返回文本。</string>
     <string name="tool_desc_workspace_extract_epub">按阅读顺序提取 EPUB 正文并生成 TXT。</string>
     <string name="tool_desc_workspace_file_info">查看工作区文件的大小、类型与修改时间。</string>

@@ -137,7 +137,7 @@
     <string name="tool_desc_workspace_edit_file">Replace existing text in a workspace file precisely.</string>
     <string name="tool_desc_workspace_delete_file">Delete a file from the workspace.</string>
     <string name="tool_desc_workspace_list_files">List files in a workspace directory.</string>
-    <string name="tool_desc_workspace_send_file">Send a workspace file to the current session as an attachment.</string>
+    <string name="tool_desc_workspace_send_file">Deliver a file: after the task is done, send a workspace file as an attachment for the user to view.</string>
     <string name="tool_desc_workspace_parse_file">Parse a workspace file (PDF/DOCX/TXT) and return its text.</string>
     <string name="tool_desc_workspace_extract_epub">Extract EPUB content in reading order into a TXT file.</string>
     <string name="tool_desc_workspace_file_info">Show size, type and modified time of a workspace file.</string>

@@ -137,7 +137,7 @@
     <string name="tool_desc_workspace_edit_file">워크스페이스 파일의 기존 텍스트를 정확히 교체합니다.</string>
     <string name="tool_desc_workspace_delete_file">워크스페이스의 지정 파일을 삭제합니다.</string>
     <string name="tool_desc_workspace_list_files">워크스페이스 디렉터리의 파일을 나열합니다.</string>
-    <string name="tool_desc_workspace_send_file">워크스페이스 파일을 첨부로 현재 세션에 보냅니다.</string>
+    <string name="tool_desc_workspace_send_file">파일 전달: 작업 완료 후 워크스페이스 파일을 첨부로 보내 사용자에게 제시합니다.</string>
     <string name="tool_desc_workspace_parse_file">워크스페이스 파일(PDF/DOCX/TXT 등)을 분석해 텍스트를 반환합니다.</string>
     <string name="tool_desc_workspace_extract_epub">EPUB 본문을 읽기 순서로 추출해 TXT를 생성합니다.</string>
     <string name="tool_desc_workspace_file_info">워크스페이스 파일의 크기, 종류, 수정 시간을 확인합니다.</string>
