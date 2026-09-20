@@ -127,6 +127,103 @@ class ThinkingCardMessagesTest {
     }
 
     @Test
+    fun fusesTypingIndicatorIntoTheRunningProgressCard() {
+        val running = Message(
+            id = "user-1",
+            role = "user",
+            content = "帮我改一下",
+            thinkingCards = listOf(
+                ThinkingCard(id = "card-1", content = "正在处理", isAgent = true, isComplete = false)
+            )
+        )
+
+        assertTrue(
+            shouldFuseTypingIndicatorIntoProgressCard(
+                progressCardsVisible = true,
+                progressCardHost = running
+            )
+        )
+    }
+
+    @Test
+    fun keepsTypingIndicatorAfterTheProgressCardCompletes() {
+        val done = Message(
+            id = "user-1",
+            role = "user",
+            content = "帮我改一下",
+            thinkingCards = listOf(
+                ThinkingCard(id = "card-1", content = "处理完成", isAgent = true, isComplete = true)
+            )
+        )
+
+        assertFalse(
+            shouldFuseTypingIndicatorIntoProgressCard(
+                progressCardsVisible = true,
+                progressCardHost = done
+            )
+        )
+    }
+
+    @Test
+    fun keepsTypingIndicatorWithoutAVisibleProgressCard() {
+        val withCard = Message(
+            id = "user-1",
+            role = "user",
+            content = "帮我改一下",
+            thinkingCards = listOf(ThinkingCard(id = "card-1", content = "正在处理", isAgent = true))
+        )
+
+        // 远程角色/群聊不渲染进度卡片，气泡必须保留
+        assertFalse(
+            shouldFuseTypingIndicatorIntoProgressCard(
+                progressCardsVisible = false,
+                progressCardHost = withCard
+            )
+        )
+        // 占位气泡之前没有消息（本轮尚无用户消息）
+        assertFalse(
+            shouldFuseTypingIndicatorIntoProgressCard(
+                progressCardsVisible = true,
+                progressCardHost = null
+            )
+        )
+        // 前一条是 AI 消息：卡片不在其上方，气泡保留
+        assertFalse(
+            shouldFuseTypingIndicatorIntoProgressCard(
+                progressCardsVisible = true,
+                progressCardHost = Message(id = "ai-1", role = "assistant", content = "好的")
+            )
+        )
+        // 用户消息但没有卡片
+        assertFalse(
+            shouldFuseTypingIndicatorIntoProgressCard(
+                progressCardsVisible = true,
+                progressCardHost = Message(id = "user-2", role = "user", content = "继续")
+            )
+        )
+    }
+
+    @Test
+    fun fusesTypingIndicatorUsingTheLatestCardOfTheRound() {
+        val user = Message(
+            id = "user-1",
+            role = "user",
+            content = "帮我改一下",
+            thinkingCards = listOf(
+                ThinkingCard(id = "card-1", content = "第一轮", isAgent = true, isComplete = true),
+                ThinkingCard(id = "card-2", content = "第二轮", isAgent = true, isComplete = false)
+            )
+        )
+
+        assertTrue(
+            shouldFuseTypingIndicatorIntoProgressCard(
+                progressCardsVisible = true,
+                progressCardHost = user
+            )
+        )
+    }
+
+    @Test
     fun formatToolDurationShowsMillisecondsUnderOneSecond() {
         assertEquals("0ms", formatToolDuration(0))
         assertEquals("320ms", formatToolDuration(320))

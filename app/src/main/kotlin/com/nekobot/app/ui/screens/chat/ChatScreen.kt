@@ -329,6 +329,23 @@ fun ChatScreen(
             renderMessages.add(m)
         }
     }
+    // 进度卡片挂在父用户消息上、本轮“思考中”占位气泡是紧随其后的独立 item，
+    // 两者同时出现时观感上像两个并列的加载态。紧随占位气泡之前的消息若挂着**未完成**的
+    // 进度卡片，卡片自身已经表达了“正在处理”，这里就不再渲染独立气泡，融合成一个卡片。
+    val progressCardsVisible = shouldRenderProgressCards(
+        isLocalMode = ServiceContainer.prefs.isLocalMode,
+        sessionMode = session?.sessionMode
+    )
+    val streamingPlaceholderIndex = renderMessages.indexOfLast { it.id == ChatViewModel.STREAMING_ID }
+    val progressCardHost = if (streamingPlaceholderIndex > 0) {
+        renderMessages[streamingPlaceholderIndex - 1]
+    } else {
+        null
+    }
+    val fuseTypingIndicator = shouldFuseTypingIndicatorIntoProgressCard(
+        progressCardsVisible = progressCardsVisible,
+        progressCardHost = progressCardHost
+    )
     // 不把完整 Message 列表作为 remember key：Agent 历史可能携带较大的嵌套进度数据，
     // Compose 对 key 做 equals 时会递归比较整棵工具结果。
     val latestBrowserProgressCardId = messages.asReversed().firstNotNullOfOrNull { message ->
@@ -1150,7 +1167,8 @@ fun ChatScreen(
                                     showAiAvatar = showAiAvatar,
                                     fillAiWidth = fillAiWidth,
                                     fallbackIcon = if (session?.sessionMode == "group") Icons.Outlined.Group else Icons.Outlined.SmartToy,
-                                    sessionId = sessionId
+                                    sessionId = sessionId,
+                                    fuseTypingIndicator = fuseTypingIndicator
                                 )
                             } else {
                                 val groupIdentityBase = if (session?.sessionMode.equals("group", ignoreCase = true)) {
@@ -1265,10 +1283,7 @@ fun ChatScreen(
                             }
                             if (
                                 msg.isUser &&
-                                shouldRenderProgressCards(
-                                    isLocalMode = ServiceContainer.prefs.isLocalMode,
-                                    sessionMode = session?.sessionMode
-                                ) &&
+                                progressCardsVisible &&
                                 !msg.thinkingCards.isNullOrEmpty()
                             ) {
                                 Spacer(Modifier.height(6.dp))
@@ -1283,6 +1298,10 @@ fun ChatScreen(
                                                 expansionOverrides = progressCardExpansionOverrides
                                             ),
                                             showBrowserPreview = card.id == latestBrowserProgressCardId,
+                                            // 继承完整角色能力的 Agent 会话：卡片头部带角色头像，
+                                            // 与角色会话的视觉身份保持一致。
+                                            showCharacterBadge = inheritsCharacter,
+                                            portraitUrl = session?.portraitUrl,
                                             onExpandedChange = { expanded ->
                                                 progressCardExpansionOverrides[card.id] = expanded
                                             },
@@ -2301,11 +2320,14 @@ private fun StreamingAssistantBubble(
     showAiAvatar: Boolean,
     fillAiWidth: Boolean,
     fallbackIcon: ImageVector,
-    sessionId: String
+    sessionId: String,
+    // 本轮已有未完成的进度卡片时，加载态由卡片承担，这里不再重复渲染“思考中”气泡
+    fuseTypingIndicator: Boolean = false
 ) {
     val content by contentFlow.collectAsStateWithLifecycle()
     val reasoning by reasoningFlow.collectAsStateWithLifecycle()
     if (content.isBlank() && reasoning.isBlank()) {
+        if (fuseTypingIndicator) return
         ThinkingIndicator(
             portraitUrl = portraitUrl,
             showAiAvatar = showAiAvatar,
@@ -3296,6 +3318,9 @@ private fun ProgressCard(
     sessionId: String,
     expanded: Boolean,
     showBrowserPreview: Boolean = false,
+    // 继承完整角色能力的 Agent 会话：头部用角色头像替代通用旋转图标
+    showCharacterBadge: Boolean = false,
+    portraitUrl: String? = null,
     onExpandedChange: (Boolean) -> Unit,
     onStepClick: (StepDetailTarget) -> Unit = {}
 ) {
@@ -3326,27 +3351,34 @@ private fun ProgressCard(
                 ) { onExpandedChange(!expanded) },
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (hasError) {
-                Icon(
-                    imageVector = Icons.Filled.Error,
-                    contentDescription = null,
-                    tint = statusColor,
-                    modifier = Modifier.size(18.dp)
-                )
-            } else if (card.isComplete) {
-                Icon(
-                    imageVector = Icons.Filled.CheckCircle,
-                    contentDescription = null,
-                    tint = statusColor,
-                    modifier = Modifier.size(18.dp)
-                )
-            } else {
-                // CircularProgressIndicator 自带旋转动画
-                CircularProgressIndicator(
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp)
-                )
+            // 头部状态标识：错误 / 完成 / 角色头像（进行中，仅继承角色的会话）/ 通用旋转图标。
+            // 带角色头像时三种状态统一占 24dp，避免完成瞬间头部横向跳动。
+            Box(
+                modifier = Modifier.size(if (showCharacterBadge) 24.dp else 18.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                when {
+                    hasError -> Icon(
+                        imageVector = Icons.Filled.Error,
+                        contentDescription = null,
+                        tint = statusColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    card.isComplete -> Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        tint = statusColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    // 角色头像 + 旋转进度环：一个标识同时表达“是谁”和“正在处理”
+                    showCharacterBadge -> ProgressAvatarBadge(portraitUrl = portraitUrl)
+                    // CircularProgressIndicator 自带旋转动画
+                    else -> CircularProgressIndicator(
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
             Spacer(Modifier.width(10.dp))
             Text(
@@ -3440,6 +3472,33 @@ private fun ProgressCard(
 }
 
 /**
+ * 进度卡片头部的角色标识：角色头像外套一圈旋转进度环。
+ *
+ * 用于「继承完整角色能力」的 Agent 会话——把角色会话的加载气泡融进进度卡片，
+ * 卡片头部既显示绑定角色的头像，又保留“正在处理”的动效。
+ */
+@Composable
+private fun ProgressAvatarBadge(portraitUrl: String?) {
+    Box(
+        modifier = Modifier.size(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        CircularProgressIndicator(
+            strokeWidth = 2.dp,
+            color = MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+            modifier = Modifier.fillMaxSize()
+        )
+        ChatAvatar(
+            portraitUrl = portraitUrl,
+            size = 18.dp,
+            ring = false,
+            fallbackIcon = Icons.Outlined.SmartToy
+        )
+    }
+}
+
+/**
  * Agent 卡片默认折叠、本地命令卡片默认展开；一旦用户操作过，则始终以页面级覆盖值为准。
  */
 internal fun resolveProgressCardExpanded(
@@ -3453,6 +3512,24 @@ internal fun shouldRenderProgressCards(
     isLocalMode: Boolean,
     sessionMode: String?
 ): Boolean = isLocalMode || sessionMode.equals("agent", ignoreCase = true)
+
+/**
+ * 本轮的“思考中”占位气泡是否应融进进度卡片。
+ *
+ * 进度卡片挂在父用户消息上，占位气泡是紧随其后的独立 item，两者同时出现时观感上像
+ * 两个并列的加载态。仅当紧随占位气泡之前的消息就是挂卡的用户消息、且最后一张卡片
+ * 仍在进行中时，才由进度卡片单独承担加载反馈；卡片完成后恢复独立气泡（角色打字）。
+ *
+ * @param progressCardsVisible 当前会话是否会渲染进度卡片
+ * @param progressCardHost 占位气泡之前的那条消息（不存在时为 null）
+ */
+internal fun shouldFuseTypingIndicatorIntoProgressCard(
+    progressCardsVisible: Boolean,
+    progressCardHost: Message?
+): Boolean = progressCardsVisible &&
+    progressCardHost != null &&
+    progressCardHost.isUser &&
+    progressCardHost.thinkingCards?.lastOrNull()?.isComplete == false
 
 /** 是否为思考步骤（本地 Agent 上报 thinking，服务端历史里也可能是 ai_thinking）。 */
 internal fun isThinkingStep(step: com.nekobot.app.data.model.ThinkingStep): Boolean =
