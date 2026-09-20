@@ -99,6 +99,41 @@ internal fun buildLocalAgentBasePrompt(language: String = "zh"): String {
 /** 环境信息注入项 key（当前时间/时区/设备/工作区布局）。 */
 internal const val AGENT_ENV_PROMPT_KEY = "agent.env"
 
+/** 角色能力继承衔接说明的注入项 key。 */
+internal const val AGENT_CHARACTER_BRIDGE_PROMPT_KEY = "agent.character_bridge"
+
+/**
+ * 「继承完整角色能力」的衔接说明。
+ *
+ * 开启后同一轮提示词里同时存在角色卡（"你就是 X"）与 Agent 核心规则（"你是通用智能体"），
+ * 二者字面上互相矛盾。这里用一段最短的说明固定优先级：以角色身份与语气表达，
+ * 工具能力与安全策略不变。
+ */
+internal fun PromptStack.addCharacterInheritanceBridgePrompt(language: String = "zh") {
+    val normalized = language.lowercase(Locale.ROOT).substringBefore('-').substringBefore('_')
+    val content = when (normalized) {
+        "zh" -> "本会话绑定了角色卡并开启「继承完整角色能力」：以该角色的身份、语气和记忆回应，" +
+            "同时保留全部 Agent 工具能力（安卓操作、MCP、Skills、工作流等）。" +
+            "角色设定与工具能力、安全策略冲突时，以后者为准。"
+        "ja" -> "このセッションはキャラクターカードを紐付け、「キャラクター能力を完全継承」が有効です。" +
+            "そのキャラクターの立場・口調・記憶で応答しつつ、Agent のツール能力（Android 操作、MCP、Skills、ワークフローなど）はすべて維持します。" +
+            "キャラクター設定がツール能力や安全方針と衝突する場合は、後者を優先してください。"
+        "ko" -> "이 세션은 캐릭터 카드를 연결하고 '캐릭터 능력 완전 상속'을 켰습니다. " +
+            "해당 캐릭터의 정체성·말투·기억으로 응답하되, Agent 도구 능력(안드로이드 조작, MCP, Skills, 워크플로 등)은 모두 유지하세요. " +
+            "캐릭터 설정이 도구 능력이나 안전 정책과 충돌하면 후자를 우선하세요."
+        else -> "This session has a character card bound with \"inherit full character abilities\" enabled. " +
+            "Respond in that character's identity, voice, and memories while keeping all Agent tool abilities " +
+            "(Android control, MCP, Skills, workflows, and so on). When the character definition conflicts with " +
+            "tool abilities or safety policy, the latter wins."
+    }
+    add(
+        key = AGENT_CHARACTER_BRIDGE_PROMPT_KEY,
+        content = content,
+        priority = PromptStack.Priority.BEHAVIOR,
+        scope = "session"
+    )
+}
+
 /**
  * 注入 Agent 运行环境信息（对齐 Claude Code / DSH 的 `<env>` 段）。
  *

@@ -132,6 +132,12 @@
     <string name="sessions_detail_scenario">场景</string>
     <string name="sessions_detail_group_characters">群聊角色</string>
     <string name="sessions_detail_change_character">更改绑定角色</string>
+    <string name="sessions_detail_inherit_character">继承完整角色能力</string>
+    <string name="sessions_detail_inherit_character_desc">以角色身份回应，同时保留全部 Agent 工具能力；加载角色卡、记忆、世界书与关系状态。</string>
+    <string name="sessions_detail_inherit_character_on">继承完整角色能力：开</string>
+    <string name="sessions_detail_inherit_character_off">继承完整角色能力：关</string>
+    <string name="sessions_detail_inherit_greeting_on">使用角色开场白：开</string>
+    <string name="sessions_detail_inherit_greeting_off">使用角色开场白：关</string>
     <string name="sessions_detail_runtime_state">角色运行时状态</string>
     <string name="sessions_detail_mood">心情</string>
     <string name="sessions_detail_intensity">强度</string>

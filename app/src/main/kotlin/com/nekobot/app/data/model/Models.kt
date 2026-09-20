@@ -107,7 +107,16 @@ data class Session(
     /** Agent 会话目标（/goal 命令设置；本地模式持久化，UI 输入框上方展示） */
     @SerializedName(value = "agent_goal", alternate = ["agentGoal"]) val agentGoal: String? = null,
     /** Agent 规格任务 JSON（/spec 命令设置；本地模式持久化，UI 输入框上方展示） */
-    @SerializedName(value = "agent_spec", alternate = ["agentSpec"]) val agentSpec: String? = null
+    @SerializedName(value = "agent_spec", alternate = ["agentSpec"]) val agentSpec: String? = null,
+    /**
+     * Agent 会话是否继承绑定角色的完整能力（角色卡/记忆/世界书/关系状态/现实时间连续性/
+     * 主动聊天与独处生活模拟/角色头像）。默认关闭。
+     */
+    @SerializedName(value = "inherit_character", alternate = ["inheritCharacter"])
+    val inheritCharacter: Boolean? = null,
+    /** 继承角色能力时是否使用角色卡开场白作为首条消息。 */
+    @SerializedName(value = "inherit_character_greeting", alternate = ["inheritCharacterGreeting"])
+    val inheritCharacterGreeting: Boolean? = null
 ) {
     val displayName: String get() = name?.takeIf { it.isNotBlank() } ?: "未命名会话"
     /** 角色立绘 URL：优先 portrait，回退 characterAvatar */
@@ -156,7 +165,11 @@ data class UpdateSessionRequest(
     @SerializedName("tts_config") val ttsConfig: JsonElement? = null,
     @SerializedName("share_config") val shareConfig: JsonElement? = null,
     @SerializedName("disabled_prompt_keys") val disabledPromptKeys: List<String>? = null,
-    @SerializedName("is_public") val isPublic: Boolean? = null
+    @SerializedName("is_public") val isPublic: Boolean? = null,
+    /** Agent 会话继承绑定角色的完整能力（仅本地模式生效）。 */
+    @SerializedName("inherit_character") val inheritCharacter: Boolean? = null,
+    /** 继承角色能力时使用角色卡开场白。 */
+    @SerializedName("inherit_character_greeting") val inheritCharacterGreeting: Boolean? = null
 )
 
 /** 创建或更新公开分享时提交给独立 public API 的配置。 */

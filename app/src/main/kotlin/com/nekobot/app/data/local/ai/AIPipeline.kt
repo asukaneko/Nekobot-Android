@@ -323,6 +323,10 @@ class AIPipeline {
         // CharacterRuntime 未注入时由管线兜底注入，确保现实时间感知生效。
         phaseRealTimeAndCircadianInjection(ctx)
 
+        // 继承完整角色能力的 Agent 会话：角色记忆与 Agent 全局长期记忆会同时注入，
+        // 关于用户的事实往往重复，这里做一次去重。
+        dedupeInheritedAgentMemory(ctx)
+
         // 使用角色运行时编译的提示词作为 basePrompt（包含角色卡 systemPrompt / 基本信息 / 性格 / 状态 / 关系 / 记忆 / 世界书）
         val characterBasePrompt = ctx.characterTurn?.promptText ?: ""
 
@@ -514,9 +518,10 @@ class AIPipeline {
      */
     private fun phaseRealTimeAndCircadianInjection(ctx: PipelineContext) {
         try {
-            // Agent 模式不注入现实时间相关 prompt
+            // Agent 模式不注入现实时间相关 prompt；开启「继承完整角色能力」的 Agent 会话例外。
             val sessionMode = (ctx.metadata["session_mode"] as? String).orEmpty()
-            if (sessionMode.equals("agent", ignoreCase = true)) return
+            val inheritsCharacter = ctx.metadata[com.nekobot.app.data.local.META_INHERIT_CHARACTER] == true
+            if (sessionMode.equals("agent", ignoreCase = true) && !inheritsCharacter) return
 
             // === 1. real_time.continuity ===
             // 上次互动时间取自角色运行时状态 lastActiveAt（由 CharacterRuntime 维护）
@@ -589,6 +594,69 @@ class AIPipeline {
         } catch (e: Exception) {
             com.nekobot.app.data.local.LocalLogger.w(TAG, "现实时间注入异常: ${e.message}", e)
         }
+    }
+
+    /**
+     * 去掉 Agent 全局长期记忆中与角色记忆重复的行。
+     *
+     * Agent 会话开启「继承完整角色能力」后，角色 MemoryFS（用户人格/角色人格/事件/摘要）
+     * 与 Agent 全局长期记忆（跨会话共享的用户背景与偏好）会同时注入同一轮提示词，
+     * 同一事实被写两遍既浪费上下文，也可能出现两处描述不一致。
+     *
+     * 这里以角色记忆为准：只删除在角色记忆中能找到同行的全局记忆行，
+     * 全局记忆里独有的内容（例如工作流约定、项目偏好）仍然保留。
+     */
+    private fun dedupeInheritedAgentMemory(ctx: PipelineContext) {
+        if (ctx.metadata[com.nekobot.app.data.local.META_INHERIT_CHARACTER] != true) return
+
+        val characterMemory = ctx.characterTurn?.promptStackItems
+            ?.firstOrNull { it.key == "memory_fs" }
+            ?.content
+            ?.takeIf { it.isNotBlank() }
+            ?: return
+
+        val agentItem = ctx.promptStack.get(GLOBAL_AGENT_MEMORY_PROMPT_KEY) ?: return
+
+        val characterLines = characterMemory.lineSequence()
+            .mapNotNull(::normalizeMemoryLine)
+            .toHashSet()
+        if (characterLines.isEmpty()) return
+
+        val originalLines = agentItem.content.lines()
+        val keptLines = originalLines.filterNot { line ->
+            val key = normalizeMemoryLine(line) ?: return@filterNot false
+            key in characterLines
+        }
+        val removed = originalLines.size - keptLines.size
+        if (removed <= 0) return
+
+        val remaining = keptLines.joinToString("\n").trim()
+        if (remaining.isBlank()) {
+            ctx.promptStack.remove(GLOBAL_AGENT_MEMORY_PROMPT_KEY)
+        } else {
+            ctx.promptStack.add(
+                key = GLOBAL_AGENT_MEMORY_PROMPT_KEY,
+                content = remaining,
+                priority = agentItem.priority,
+                scope = agentItem.scope
+            )
+        }
+        com.nekobot.app.data.local.LocalLogger.i(
+            TAG,
+            "继承角色能力：已去除 $removed 行与角色记忆重复的 Agent 长期记忆"
+        )
+    }
+
+    /** 记忆行归一化：去掉列表符号与空白，只保留可比对的内容骨架；过短的行不参与比对。 */
+    private fun normalizeMemoryLine(line: String): String? {
+        val normalized = line.trim()
+            .removePrefix("-")
+            .removePrefix("•")
+            .removePrefix("*")
+            .trim()
+            .lowercase()
+            .replace(Regex("\\s+"), "")
+        return normalized.takeIf { it.length >= 8 }
     }
 
     // ------------------------------------------------------------------

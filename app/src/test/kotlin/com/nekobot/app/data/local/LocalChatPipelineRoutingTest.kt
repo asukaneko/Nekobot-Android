@@ -44,4 +44,20 @@ class LocalChatPipelineRoutingTest {
         assertTrue(shouldInjectWorldBooks("character"))
         assertTrue(shouldInjectWorldBooks("group"))
     }
+
+    @Test
+    fun agentSessionInheritingCharacterInjectsWorldBooks() {
+        assertTrue(shouldInjectWorldBooks("agent", inheritCharacter = true))
+        assertTrue(shouldInjectWorldBooks("AGENT", inheritCharacter = true))
+    }
+
+    @Test
+    fun onlyAgentSessionsCanInheritCharacter() {
+        assertTrue(inheritsCharacter("agent", true))
+        assertTrue(inheritsCharacter("AGENT", true))
+        assertFalse(inheritsCharacter("agent", false))
+        assertFalse(inheritsCharacter("agent", null))
+        assertFalse(inheritsCharacter("character", true))
+        assertFalse(inheritsCharacter("group", true))
+    }
 }

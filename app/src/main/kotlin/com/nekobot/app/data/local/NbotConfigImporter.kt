@@ -601,7 +601,9 @@ object NbotConfigImporter {
                     characterIds = obj.jsonStr("character_ids"),
                     groupConfig = obj.jsonStr("group_config"),
                     groupActiveSpeaker = obj.str("group_active_speaker"),
-                    groupTurnCount = obj.int("group_turn_count", 0)
+                    groupTurnCount = obj.int("group_turn_count", 0),
+                    inheritCharacter = obj.bool("inherit_character"),
+                    inheritCharacterGreeting = obj.bool("inherit_character_greeting")
                 )
             )
             count++

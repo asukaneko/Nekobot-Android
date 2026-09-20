@@ -43,7 +43,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RoutingDecisionLogEntity::class,
         LocalMessageVariantEntity::class
     ],
-    version = 43,
+    version = 44,
     exportSchema = true
 )
 abstract class NekobotDatabase : RoomDatabase() {
@@ -897,6 +897,21 @@ abstract class NekobotDatabase : RoomDatabase() {
         }
 
         /**
+         * v43 → v44：local_sessions 新增 inherit_character / inherit_character_greeting 列
+         * （Agent 会话是否继承绑定角色的完整能力，以及是否使用角色卡开场白）。默认关闭。
+         */
+        val MIGRATION_43_44 = object : Migration(43, 44) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE local_sessions ADD COLUMN inherit_character INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL(
+                    "ALTER TABLE local_sessions ADD COLUMN inherit_character_greeting INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+        }
+
+        /**
          * 完整迁移链同时供生产数据库构建和迁移回归测试使用。
          * 新版本必须把迁移追加到这里；缺少迁移时直接失败，绝不静默清空用户数据。
          */
@@ -911,7 +926,7 @@ abstract class NekobotDatabase : RoomDatabase() {
             MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33,
             MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37,
             MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41,
-            MIGRATION_41_42, MIGRATION_42_43
+            MIGRATION_41_42, MIGRATION_42_43, MIGRATION_43_44
         )
 
         fun get(context: Context): NekobotDatabase =

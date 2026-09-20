@@ -126,6 +126,12 @@
     <string name="sessions_detail_scenario">シナリオ</string>
     <string name="sessions_detail_group_characters">グループキャラクター</string>
     <string name="sessions_detail_change_character">紐付けキャラクターを変更</string>
+    <string name="sessions_detail_inherit_character">キャラクター能力を完全継承</string>
+    <string name="sessions_detail_inherit_character_desc">キャラクターとして応答しつつ、Agent のツール能力はすべて維持します。キャラクターカード・記憶・世界観・関係状態を読み込みます。</string>
+    <string name="sessions_detail_inherit_character_on">キャラクター能力を完全継承：オン</string>
+    <string name="sessions_detail_inherit_character_off">キャラクター能力を完全継承：オフ</string>
+    <string name="sessions_detail_inherit_greeting_on">キャラクターの挨拶を使用：オン</string>
+    <string name="sessions_detail_inherit_greeting_off">キャラクターの挨拶を使用：オフ</string>
     <string name="sessions_detail_runtime_state">キャラクター実行時状態</string>
     <string name="sessions_detail_mood">気分</string>
     <string name="sessions_detail_intensity">強度</string>

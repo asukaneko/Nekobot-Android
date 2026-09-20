@@ -126,6 +126,12 @@
     <string name="sessions_detail_scenario">Scenario</string>
     <string name="sessions_detail_group_characters">Group characters</string>
     <string name="sessions_detail_change_character">Change bound character</string>
+    <string name="sessions_detail_inherit_character">Inherit full character abilities</string>
+    <string name="sessions_detail_inherit_character_desc">Reply in character while keeping all Agent tools; loads the character card, memories, world book, and relationship state.</string>
+    <string name="sessions_detail_inherit_character_on">Inherit full character abilities: on</string>
+    <string name="sessions_detail_inherit_character_off">Inherit full character abilities: off</string>
+    <string name="sessions_detail_inherit_greeting_on">Use character greeting: on</string>
+    <string name="sessions_detail_inherit_greeting_off">Use character greeting: off</string>
     <string name="sessions_detail_runtime_state">Character runtime state</string>
     <string name="sessions_detail_mood">Mood</string>
     <string name="sessions_detail_intensity">Intensity</string>

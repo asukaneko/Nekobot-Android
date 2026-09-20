@@ -78,7 +78,14 @@ data class LocalSessionEntity(
     /** Agent 会话目标文本（/goal 命令设置；每轮注入提示词，输入框上方展示）。 */
     @ColumnInfo(name = "agent_goal") val agentGoal: String? = null,
     /** Agent 规格任务 JSON（/spec 命令设置；规格驱动开发状态机，输入框上方展示）。 */
-    @ColumnInfo(name = "agent_spec") val agentSpec: String? = null
+    @ColumnInfo(name = "agent_spec") val agentSpec: String? = null,
+    /**
+     * Agent 会话是否继承绑定角色的完整能力（角色卡/记忆/世界书/关系状态/现实时间连续性/
+     * 主动聊天与独处生活模拟/角色头像）。默认关闭，保持既有 Agent 会话行为不变。
+     */
+    @ColumnInfo(name = "inherit_character", defaultValue = "0") val inheritCharacter: Boolean = false,
+    /** 继承角色能力时是否使用角色卡开场白作为首条消息（仅 [inheritCharacter] 开启时生效）。 */
+    @ColumnInfo(name = "inherit_character_greeting", defaultValue = "0") val inheritCharacterGreeting: Boolean = false
 )
 
 /**

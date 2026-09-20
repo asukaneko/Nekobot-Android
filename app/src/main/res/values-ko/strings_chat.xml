@@ -126,6 +126,12 @@
     <string name="sessions_detail_scenario">시나리오</string>
     <string name="sessions_detail_group_characters">그룹 캐릭터</string>
     <string name="sessions_detail_change_character">바인딩된 캐릭터 변경</string>
+    <string name="sessions_detail_inherit_character">캐릭터 능력 완전 상속</string>
+    <string name="sessions_detail_inherit_character_desc">캐릭터로서 응답하면서 Agent 도구 능력은 모두 유지합니다. 캐릭터 카드, 기억, 세계관, 관계 상태를 불러옵니다.</string>
+    <string name="sessions_detail_inherit_character_on">캐릭터 능력 완전 상속: 켬</string>
+    <string name="sessions_detail_inherit_character_off">캐릭터 능력 완전 상속: 끔</string>
+    <string name="sessions_detail_inherit_greeting_on">캐릭터 인사말 사용: 켬</string>
+    <string name="sessions_detail_inherit_greeting_off">캐릭터 인사말 사용: 끔</string>
     <string name="sessions_detail_runtime_state">캐릭터 런타임 상태</string>
     <string name="sessions_detail_mood">기분</string>
     <string name="sessions_detail_intensity">강도</string>

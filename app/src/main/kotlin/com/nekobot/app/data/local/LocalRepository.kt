@@ -50,6 +50,7 @@ import com.nekobot.app.data.local.ai.RoutingDecisionLogger
 import com.nekobot.app.data.local.ai.TokenStatsManager
 import com.nekobot.app.data.local.ai.currentLocalContextTokens
 import com.nekobot.app.data.local.ai.addLocalAgentBasePrompt
+import com.nekobot.app.data.local.ai.addCharacterInheritanceBridgePrompt
 import com.nekobot.app.data.local.ai.addAgentEnvPrompt
 import com.nekobot.app.data.local.ai.addAgentTodosPrompt
 import com.nekobot.app.data.local.ai.addAgentGoalPrompt
@@ -128,6 +129,7 @@ import com.nekobot.app.data.model.KnowledgeSearchResult
 import com.nekobot.app.data.model.KnowledgeStats
 import com.nekobot.app.service.AgentForegroundService
 import com.nekobot.app.data.model.MessageFavoriteRequest
+import com.nekobot.app.data.model.RELATIONSHIP_STATE_SOURCE_INHERIT
 import com.nekobot.app.data.model.RELATIONSHIP_STATE_SOURCE_INITIAL
 import com.nekobot.app.data.model.Session
 import com.nekobot.app.data.model.Skill
@@ -1494,6 +1496,8 @@ class LocalRepository(
             proactiveChat = sessionObj.jsonStr("proactive_chat", "proactiveChat"),
             groupConfig = sessionObj.jsonStr("group_config", "groupConfig")?.takeIf { isGroup },
             sessionMode = sessionMode,
+            inheritCharacter = sessionObj.boolVal("inherit_character", "inheritCharacter") ?: false,
+            inheritCharacterGreeting = sessionObj.boolVal("inherit_character_greeting", "inheritCharacterGreeting") ?: false,
             groupId = if (isGroup) "gc_${UUID.randomUUID().toString().replace("-", "").take(12)}" else null,
             characterIds = if (isGroup && groupCharacterIds.isNotEmpty()) gson.toJson(groupCharacterIds) else null
         )
@@ -1650,7 +1654,9 @@ class LocalRepository(
         proactiveChat: String? = null,
         ttsConfig: String? = null,
         shareConfig: String? = null,
-        archived: Boolean? = null
+        archived: Boolean? = null,
+        inheritCharacter: Boolean? = null,
+        inheritCharacterGreeting: Boolean? = null
     ) = withContext(Dispatchers.IO) {
         val entity = sessionDao.getById(id) ?: run {
             android.util.Log.d("LocalRepo", "updateSession: entity not found for id=$id")
@@ -1678,6 +1684,8 @@ class LocalRepository(
             ttsConfig = ttsConfig ?: entity.ttsConfig,
             shareConfig = shareConfig ?: entity.shareConfig,
             archived = archived ?: entity.archived,
+            inheritCharacter = inheritCharacter ?: entity.inheritCharacter,
+            inheritCharacterGreeting = inheritCharacterGreeting ?: entity.inheritCharacterGreeting,
             updatedAt = nowIso()
         )
         // 使用 @Update 而非 upsert(@Insert REPLACE)，避免触发外键级联删除消息
@@ -1703,11 +1711,83 @@ class LocalRepository(
         if (proactiveChat != null) {
             scheduleProactiveSession(updated)
         }
-        // 剧情模式 / 同步现实时间 / 归档状态变化时，同步「角色自我生活」后台静默心跳
-        if (plotMode != null || plotRealTimeSync != null || archived != null) {
+        // 剧情模式 / 同步现实时间 / 归档状态 / 继承角色能力变化时，
+        // 同步「角色自我生活」后台静默心跳（继承开关决定 Agent 会话是否有资格运行）
+        if (
+            plotMode != null ||
+            plotRealTimeSync != null ||
+            archived != null ||
+            inheritCharacter != null
+        ) {
             scheduleLifeSimSession(updated)
         }
+        // 开启「继承完整角色能力」时补齐角色开场白与关系状态初始化。
+        if (inheritCharacter == true) {
+            ensureInheritedCharacterSetup(updated)
+        }
         android.util.Log.d("LocalRepo", "updateSession: updated.isPublic=${updated.isPublic}, updated.ttsConfig=${updated.ttsConfig}, updated.shareConfig=${updated.shareConfig}")
+    }
+
+    /**
+     * Agent 会话开启「继承完整角色能力」后的补齐动作：
+     * 1. 按需插入角色卡开场白（仅在开关开启、会话还没有任何消息时插入一次）；
+     * 2. 从其他会话继承六维关系状态（角色运行时本身也会懒创建，这里保持与角色会话一致）。
+     */
+    private suspend fun ensureInheritedCharacterSetup(session: LocalSessionEntity) {
+        if (!session.inheritCharacter) return
+        if (!session.sessionMode.equals("agent", ignoreCase = true)) return
+        val characterId = session.characterId?.takeIf { it.isNotBlank() } ?: return
+        val character = characterDao.getById(characterId) ?: return
+
+        if (session.inheritCharacterGreeting) {
+            insertCharacterGreetingIfEmpty(session, character)
+        }
+
+        // 关系状态：仅在该会话还没有自己的关系状态时，才从其他会话继承已有进度
+        // （角色运行时本来也会懒创建；这里与角色会话创建时的行为保持一致）。
+        // 已有进度时绝不覆盖，避免开启开关就把当前会话的关系数值重置掉。
+        val targetId = sessionRelationshipTargetId(session.id)
+        val existing = runCatching { db.relationshipDao().get(characterId, targetId) }.getOrNull()
+        if (existing == null) {
+            runCatching {
+                initializeSessionRelationship(
+                    characterId = characterId,
+                    sessionId = session.id,
+                    source = RELATIONSHIP_STATE_SOURCE_INHERIT
+                )
+            }.onFailure {
+                LocalLogger.w(TAG, "继承角色能力时初始化关系状态失败: ${it.message}")
+            }
+        }
+    }
+
+    /**
+     * 角色开场白补插：只对「Agent + 继承角色能力 + 使用角色开场白」且**尚无任何消息**的会话
+     * 生效，避免在已有对话中途插入一条突兀的开场白。
+     */
+    private suspend fun insertCharacterGreetingIfEmpty(
+        session: LocalSessionEntity,
+        character: LocalCharacterEntity
+    ) {
+        val greeting = session.firstMessage?.takeIf { it.isNotBlank() }
+            ?: character.firstMessage?.takeIf { it.isNotBlank() }
+            ?: character.greeting?.takeIf { it.isNotBlank() }
+            ?: return
+        if (messageDao.listBySession(session.id).isNotEmpty()) return
+        val now = nowIso()
+        messageDao.upsert(
+            LocalMessageEntity(
+                id = UUID.randomUUID().toString(),
+                sessionId = session.id,
+                role = "assistant",
+                content = greeting,
+                sender = character.name,
+                timestamp = System.currentTimeMillis().toString(),
+                createdAt = now
+            )
+        )
+        sessionDao.touch(session.id, greeting.take(200), 1, now)
+        LocalLogger.i(TAG, "Agent 会话继承角色开场白 | session=${session.id} | char=${character.id}")
     }
 
     suspend fun deleteSession(id: String) = withContext(Dispatchers.IO) {
@@ -1920,13 +2000,14 @@ class LocalRepository(
 
     /**
      * 会话是否应该运行「角色自我生活」静默心跳：
-     * 剧情模式 + 同步现实时间开启、非 Agent 会话、已绑定角色且未归档。
+     * 剧情模式 + 同步现实时间开启、非 Agent 会话（或 Agent 会话开启了继承完整角色能力）、
+     * 已绑定角色且未归档。
      */
     private fun lifeSimEligible(session: LocalSessionEntity): Boolean =
         session.plotMode &&
             session.plotRealTimeSync &&
             !session.archived &&
-            !session.sessionMode.equals("agent", ignoreCase = true) &&
+            (!session.sessionMode.equals("agent", ignoreCase = true) || session.inheritCharacter) &&
             !session.characterId.isNullOrBlank()
 
     /**
@@ -5118,7 +5199,7 @@ class LocalRepository(
         val history = listAiContextMessages(sessionId)
             .filter { it.role != "system" }
             .dropLast(1)  // 最后一条是刚保存的用户消息，会在 prompt 中单独处理
-        val worldBookEntries = if (shouldInjectWorldBooks(session.sessionMode)) {
+        val worldBookEntries = if (shouldInjectWorldBooks(session.sessionMode, session.inheritCharacter)) {
             loadWorldBookEntries(session.characterId)
         } else {
             emptyList()
@@ -5635,7 +5716,7 @@ class LocalRepository(
             ?: aiModelDao.getActive()
             ?: return@withContext null
         val character = session.characterId?.let { characterDao.getById(it) }
-        val worldBookEntries = if (shouldInjectWorldBooks(session.sessionMode)) {
+        val worldBookEntries = if (shouldInjectWorldBooks(session.sessionMode, session.inheritCharacter)) {
             loadWorldBookEntries(session.characterId)
         } else {
             emptyList()
@@ -5672,6 +5753,7 @@ class LocalRepository(
                 put("session_mode", session.sessionMode)
                 if (session.plotMode) put("plot_mode", true)
                 if (session.plotRealTimeSync) put("plot_realtime_sync", true)
+                if (session.inheritCharacter) put(META_INHERIT_CHARACTER, true)
                 put("auto_state_interval", session.autoStateInterval)
                 if (disabledKeys.isNotEmpty()) put("disabled_prompt_keys", disabledKeys)
                 session.senderName?.takeIf { it.isNotBlank() }?.let { put("sender_name", it) }
@@ -5680,6 +5762,7 @@ class LocalRepository(
         )
         val ctx = com.nekobot.app.data.local.ai.PipelineContext(chatRequest)
         ctx.metadata["session_mode"] = session.sessionMode
+        if (session.inheritCharacter) ctx.metadata[META_INHERIT_CHARACTER] = true
         if (session.plotMode) ctx.metadata["plot_mode"] = true
         if (session.plotRealTimeSync) ctx.metadata["plot_realtime_sync"] = true
         ctx.metadata["auto_state_interval"] = session.autoStateInterval
@@ -5692,6 +5775,9 @@ class LocalRepository(
                 LocaleHelper.getEffectiveLocale(it, ServiceContainer.prefs.language).language
             } ?: Locale.getDefault().language
             ctx.promptStack.addLocalAgentBasePrompt(promptLanguage)
+            if (inheritsCharacter(session.sessionMode, session.inheritCharacter)) {
+                ctx.promptStack.addCharacterInheritanceBridgePrompt(promptLanguage)
+            }
             // 环境信息（时间/时区/设备/工作区布局）：Agent 模式没有角色模式的实时时间注入，
             // 不注入的话模型无法判断日期与相对时间。
             ctx.promptStack.addAgentEnvPrompt(
@@ -6150,7 +6236,8 @@ class LocalRepository(
         }
 
         // 2. Agent 是通用工具会话，不注入角色世界书；无角色时也不能加载全部公共世界书。
-        val worldBookEntries = if (shouldInjectWorldBooks(session.sessionMode)) {
+        //    开启「继承完整角色能力」的 Agent 会话例外——此时按角色会话处理。
+        val worldBookEntries = if (shouldInjectWorldBooks(session.sessionMode, session.inheritCharacter)) {
             loadWorldBookEntries(session.characterId)
         } else {
             emptyList()
@@ -6287,6 +6374,7 @@ class LocalRepository(
                 put("session_mode", session.sessionMode)
                 if (session.plotMode) put("plot_mode", true)
                 if (session.plotRealTimeSync) put("plot_realtime_sync", true)
+                if (session.inheritCharacter) put(META_INHERIT_CHARACTER, true)
                 put("auto_state_interval", session.autoStateInterval)
                 put("reasoning_effort", reasoningEffort.wireValue)
                 if (disabledKeys.isNotEmpty()) put("disabled_prompt_keys", disabledKeys)
@@ -6300,6 +6388,7 @@ class LocalRepository(
         val ctx = com.nekobot.app.data.local.ai.PipelineContext(chatRequest)
         ctx.stopRequested = { generationController.isStopped }
         ctx.metadata["session_mode"] = session.sessionMode
+        if (session.inheritCharacter) ctx.metadata[META_INHERIT_CHARACTER] = true
         ctx.metadata.putAll(internalMetadata)
         if (session.sessionMode.equals("agent", ignoreCase = true)) {
             val promptLanguage = appContext?.let {
@@ -6309,6 +6398,11 @@ class LocalRepository(
             // 重新读取会话实体，确保注入的是最新持久化的目标与规格任务。
             val promptSession = sessionDao.getById(sessionId) ?: session
             ctx.promptStack.addLocalAgentBasePrompt(promptLanguage)
+            // 继承角色能力时补一段「角色身份 + Agent 能力」的衔接说明，
+            // 避免角色卡（"你就是 X"）与 Agent 核心规则（"你是通用智能体"）互相打架。
+            if (inheritsCharacter(session.sessionMode, session.inheritCharacter)) {
+                ctx.promptStack.addCharacterInheritanceBridgePrompt(promptLanguage)
+            }
             // 环境信息（时间/时区/设备/工作区布局）：Agent 模式没有角色模式的实时时间注入。
             ctx.promptStack.addAgentEnvPrompt(
                 deviceSummary = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}，" +
@@ -9417,7 +9511,9 @@ ${AiOutputLanguage.directive()}
         groupConfig = groupConfig?.let { runCatching { JsonParser.parseString(it) }.getOrNull() },
         agentTodos = agentTodos,
         agentGoal = agentGoal,
-        agentSpec = agentSpec
+        agentSpec = agentSpec,
+        inheritCharacter = inheritCharacter,
+        inheritCharacterGreeting = inheritCharacterGreeting
     )
 
     private fun LocalMessageEntity.toMessage(): Message = Message(

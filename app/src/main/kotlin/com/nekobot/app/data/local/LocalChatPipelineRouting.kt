@@ -14,5 +14,23 @@ internal fun shouldUseLocalPipeline(
         sessionMode.equals("group", ignoreCase = true)
 
 /** Agent 是通用工具会话，不继承角色世界观；世界书只属于角色/群聊链路。 */
-internal fun shouldInjectWorldBooks(sessionMode: String?): Boolean =
-    !sessionMode.equals("agent", ignoreCase = true)
+internal fun shouldInjectWorldBooks(
+    sessionMode: String?,
+    inheritCharacter: Boolean = false
+): Boolean =
+    !sessionMode.equals("agent", ignoreCase = true) || inheritCharacter
+
+/**
+ * Agent 会话是否开启「继承完整角色能力」。
+ *
+ * 只对绑定了角色的 Agent 会话有意义；群聊与角色会话本身就走角色链路，无需该开关。
+ */
+internal fun inheritsCharacter(
+    sessionMode: String?,
+    inheritCharacter: Boolean?
+): Boolean =
+    inheritCharacter == true &&
+        sessionMode.equals("agent", ignoreCase = true)
+
+/** Agent 会话在继承角色能力时使用的元数据键（管线各阶段据此放行角色相关注入）。 */
+internal const val META_INHERIT_CHARACTER = "inherit_character"

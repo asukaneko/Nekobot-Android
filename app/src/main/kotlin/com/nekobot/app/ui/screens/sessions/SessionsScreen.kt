@@ -1866,7 +1866,7 @@ private fun SessionItem(
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
-                    val fallbackPainter = if (row.isAgentSession) {
+                    val fallbackPainter = if (row.isAgentSession && !row.inheritCharacter) {
                         painterResource(R.drawable.ic_agent_neko)
                     } else {
                         rememberVectorPainter(

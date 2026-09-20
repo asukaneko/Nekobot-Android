@@ -134,6 +134,10 @@ class SessionDetailViewModel : BaseViewModel() {
     val plotChoiceStyle = MutableStateFlow("")
     val plotOutline = MutableStateFlow("")
     val userPersona = MutableStateFlow("")
+    /** Agent 会话是否继承绑定角色的完整能力（角色卡/记忆/世界书/关系/主动聊天/头像）。 */
+    val inheritCharacter = MutableStateFlow(false)
+    /** 继承角色能力时是否使用角色卡开场白。 */
+    val inheritCharacterGreeting = MutableStateFlow(false)
     // TTS / 主动聊天 / 公开分享
     val ttsEnabled = MutableStateFlow(false)
     val ttsModelId = MutableStateFlow("")
@@ -305,6 +309,8 @@ class SessionDetailViewModel : BaseViewModel() {
                 plotChoiceStyle.value = s.plotChoiceStyle ?: ""
                 plotOutline.value = s.plotOutline ?: ""
                 userPersona.value = s.userPersona ?: ""
+                inheritCharacter.value = s.inheritCharacter == true
+                inheritCharacterGreeting.value = s.inheritCharacterGreeting == true
                 // 解析 TTS / 主动聊天 / 公开分享
                 android.util.Log.d("SessionDetail", "load: s.isPublic=${s.isPublic}, s.ttsConfig=${s.ttsConfig}, s.shareConfig=${s.shareConfig}")
                 isPublic.value = false
@@ -486,7 +492,10 @@ class SessionDetailViewModel : BaseViewModel() {
                         userPersona = userPersona.value.ifBlank { null },
                         disabledPromptKeys = _disabledPromptKeys.value.toList(),
                         proactiveChat = proactiveJson,
-                        ttsConfig = ttsJson
+                        ttsConfig = ttsJson,
+                        inheritCharacter = inheritCharacter.value,
+                        // 继承开关关闭时同时关闭开场白，避免留下无意义的残留状态。
+                        inheritCharacterGreeting = inheritCharacter.value && inheritCharacterGreeting.value
                     )
                 )
             },
@@ -750,6 +759,8 @@ fun SessionDetailScreen(
     val plotChoiceStyle by vm.plotChoiceStyle.collectAsStateWithLifecycle()
     val plotOutline by vm.plotOutline.collectAsStateWithLifecycle()
     val userPersona by vm.userPersona.collectAsStateWithLifecycle()
+    val inheritCharacter by vm.inheritCharacter.collectAsStateWithLifecycle()
+    val inheritCharacterGreeting by vm.inheritCharacterGreeting.collectAsStateWithLifecycle()
     val ttsEnabled by vm.ttsEnabled.collectAsStateWithLifecycle()
     val ttsModelId by vm.ttsModelId.collectAsStateWithLifecycle()
     val ttsVoice by vm.ttsVoice.collectAsStateWithLifecycle()
@@ -845,6 +856,12 @@ fun SessionDetailScreen(
     val scenarioLabel = stringResource(R.string.sessions_detail_scenario)
     val groupCharactersLabel = stringResource(R.string.sessions_detail_group_characters)
     val changeCharacterLabel = stringResource(R.string.sessions_detail_change_character)
+    val inheritCharacterTitle = stringResource(R.string.sessions_detail_inherit_character)
+    val inheritCharacterDesc = stringResource(R.string.sessions_detail_inherit_character_desc)
+    val inheritCharacterOn = stringResource(R.string.sessions_detail_inherit_character_on)
+    val inheritCharacterOff = stringResource(R.string.sessions_detail_inherit_character_off)
+    val inheritGreetingOn = stringResource(R.string.sessions_detail_inherit_greeting_on)
+    val inheritGreetingOff = stringResource(R.string.sessions_detail_inherit_greeting_off)
     val runtimeStateTitle = stringResource(R.string.sessions_detail_runtime_state)
     val moodLabel = stringResource(R.string.sessions_detail_mood)
     val intensityLabel = stringResource(R.string.sessions_detail_intensity)
@@ -1201,6 +1218,43 @@ fun SessionDetailScreen(
                                     changeCharacterLabel,
                                     color = MaterialTheme.colorScheme.primary
                                 )
+                            }
+                        }
+
+                        // === 4.2 Agent 会话：继承完整角色能力 ===
+                        // 仅对已绑定角色的 Agent 会话展示；默认关闭，保持既有 Agent 行为。
+                        // 该能力依赖本地角色运行时，因此只在本地模式提供。
+                        if (
+                            com.nekobot.app.ServiceContainer.prefs.isLocalMode &&
+                            s.sessionMode.equals("agent", ignoreCase = true) &&
+                            !s.characterId.isNullOrBlank()
+                        ) {
+                            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                                SectionHeader(title = inheritCharacterTitle)
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    inheritCharacterDesc,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                ToggleChipRow(
+                                    label = if (inheritCharacter) inheritCharacterOn else inheritCharacterOff,
+                                    selected = inheritCharacter,
+                                    onClick = { vm.inheritCharacter.value = !inheritCharacter },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                if (inheritCharacter) {
+                                    Spacer(Modifier.height(8.dp))
+                                    ToggleChipRow(
+                                        label = if (inheritCharacterGreeting) inheritGreetingOn else inheritGreetingOff,
+                                        selected = inheritCharacterGreeting,
+                                        onClick = {
+                                            vm.inheritCharacterGreeting.value = !inheritCharacterGreeting
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
                             }
                         }
 

@@ -189,7 +189,9 @@ class UnifiedRepository(
                 proactiveChat = req.proactiveChat?.toString(),
                 ttsConfig = req.ttsConfig?.toString(),
                 shareConfig = req.shareConfig?.toString(),
-                archived = req.archived
+                archived = req.archived,
+                inheritCharacter = req.inheritCharacter,
+                inheritCharacterGreeting = req.inheritCharacterGreeting
             )
             local.getSession(id)?.let { Resource.Success(it) } ?: Resource.Error("会话不存在")
         } else remote.updateSession(id, req)

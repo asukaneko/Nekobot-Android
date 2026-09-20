@@ -289,6 +289,10 @@ fun ChatScreen(
     val ttsStates by viewModel.ttsStates.collectAsStateWithLifecycle()
     val liveStreamingSubtitle by viewModel.streamingContentPreview.collectAsStateWithLifecycle()
     val session by viewModel.session.collectAsStateWithLifecycle()
+    // Agent 会话开启「继承完整角色能力」后按角色会话渲染：显示角色头像，气泡不再占满整宽。
+    val inheritsCharacter = session?.sessionMode == "agent" && session?.inheritCharacter == true
+    val showAiAvatar = session?.sessionMode != "agent" || inheritsCharacter
+    val fillAiWidth = session?.sessionMode == "agent" && !inheritsCharacter
     val groupCharacters by viewModel.groupCharacters.collectAsStateWithLifecycle()
     val sending by viewModel.sending.collectAsStateWithLifecycle()
     val loading by viewModel.loading.collectAsStateWithLifecycle()
@@ -1052,7 +1056,10 @@ fun ChatScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    if (session?.sessionMode != "agent" && session?.sessionMode != "group") {
+                    if (
+                        session?.sessionMode != "group" &&
+                        (session?.sessionMode != "agent" || inheritsCharacter)
+                    ) {
                         ChatAvatar(
                             portraitUrl = session?.portraitUrl,
                             size = 88.dp,
@@ -1113,8 +1120,9 @@ fun ChatScreen(
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Agent 模式不显示背景设定卡片（agent 会话不继承角色卡配置）
-                    if (session?.sessionMode != "agent") {
+                    // Agent 模式不显示背景设定卡片（agent 会话不继承角色卡配置）；
+                    // 开启「继承完整角色能力」的 Agent 会话按角色会话显示。
+                    if (session?.sessionMode != "agent" || inheritsCharacter) {
                         item(key = "background_setting", contentType = "background_setting") {
                             BackgroundSettingCard(content = session?.scenario)
                         }
@@ -1139,8 +1147,8 @@ fun ChatScreen(
                                     contentFlow = viewModel.streamingContentPreview,
                                     reasoningFlow = viewModel.streamingReasoningPreview,
                                     portraitUrl = session?.portraitUrl,
-                                    showAiAvatar = session?.sessionMode != "agent",
-                                    fillAiWidth = session?.sessionMode == "agent",
+                                    showAiAvatar = showAiAvatar,
+                                    fillAiWidth = fillAiWidth,
                                     fallbackIcon = if (session?.sessionMode == "group") Icons.Outlined.Group else Icons.Outlined.SmartToy,
                                     sessionId = sessionId
                                 )
@@ -1168,8 +1176,8 @@ fun ChatScreen(
                                         ttsState = target.id?.let { ttsStates[it] },
                                         portraitUrl = groupIdentity.portraitUrl ?: session?.portraitUrl,
                                         senderName = groupIdentity.name,
-                                        showAiAvatar = session?.sessionMode != "agent",
-                                        fillAiWidth = session?.sessionMode == "agent",
+                                        showAiAvatar = showAiAvatar,
+                                        fillAiWidth = fillAiWidth,
                                         onLongClick = {
                                             if (selectionMode) {
                                                 target.id?.let(viewModel::toggleSelection)

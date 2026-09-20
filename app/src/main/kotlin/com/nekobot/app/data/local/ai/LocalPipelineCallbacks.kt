@@ -409,7 +409,7 @@ internal class LocalPipelineCallbacks(
                     history = contextHistory,
                     userInput = ctx.chatRequest.content,
                     worldBookEntries = worldBookEntries.takeIf {
-                        shouldInjectWorldBooks(session.sessionMode)
+                        shouldInjectWorldBooks(session.sessionMode, session.inheritCharacter)
                     }.orEmpty()
                 ),
                 durableToolHistory

@@ -1,6 +1,7 @@
 package com.nekobot.app.data.local.ai
 
 import android.util.Log
+import com.nekobot.app.data.local.META_INHERIT_CHARACTER
 import com.nekobot.app.data.local.shouldInjectWorldBooks
 import java.time.Instant
 import kotlinx.coroutines.launch
@@ -146,8 +147,14 @@ class CharacterRuntime(
         // 6. 生成反应计划
         val plan = ReactionPlanner.plan(profile, state, relationship, memories, signals, chatRequest.content)
 
-        // 7. 世界书匹配。Agent 是通用工具会话，即使意外绑定了角色也不注入世界书。
-        val worldBookEntries = if (shouldInjectWorldBooks(chatRequest.metadata["session_mode"] as? String)) {
+        // 7. 世界书匹配。Agent 是通用工具会话，即使意外绑定了角色也不注入世界书；
+        //    开启「继承完整角色能力」的 Agent 会话例外（按角色会话处理）。
+        val worldBookEntries = if (
+            shouldInjectWorldBooks(
+                chatRequest.metadata["session_mode"] as? String,
+                chatRequest.metadata[META_INHERIT_CHARACTER] == true
+            )
+        ) {
             matchWorldBooks(
                 identity,
                 chatRequest.content,
