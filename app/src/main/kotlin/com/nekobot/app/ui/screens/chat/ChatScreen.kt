@@ -4071,7 +4071,13 @@ private fun StepDetailDialog(
         ?.takeLast(AgentToolLimits.PROGRESS_REASONING_CHARS)
         ?.stripEmoji()
         ?.takeIf(String::isNotBlank)
-    val argumentsJson = step.arguments?.let { formatJsonForDisplay(it) }
+    // 参数优先整理成「参数名 → 参数值」列表；整理不出来（如空预览）时回退原始 JSON
+    val argumentRows = remember(step.arguments) { toolArgumentRows(step.arguments) }
+    val argumentsJson = if (argumentRows.isEmpty()) {
+        step.arguments?.let { formatJsonForDisplay(it) }
+    } else {
+        null
+    }
     val fullResultJson = step.fullResult?.let { formatJsonForDisplay(it) }
     val toolOutputWasTruncated = step.resultTruncated == true ||
         fullResultIndicatesTruncation(step.fullResult)
@@ -4092,7 +4098,7 @@ private fun StepDetailDialog(
     // 工具说明即该步骤的描述，不再重复显示调用参数/结果的摘要
     val stepDetail = if (toolDescription.isNullOrBlank()) detail else null
     val hasAny = stepDetail != null || toolDescription != null || thinkingContent != null ||
-        !argumentsJson.isNullOrBlank() || !fullResultJson.isNullOrBlank()
+        argumentRows.isNotEmpty() || !argumentsJson.isNullOrBlank() || !fullResultJson.isNullOrBlank()
 
     val scrollState = rememberScrollState()
     val followThinkingTail = isStreamingThinkingStep(step) && thinkingContent != null
@@ -4181,6 +4187,9 @@ private fun StepDetailDialog(
                                 accent = true
                             )
                         }
+                        if (argumentRows.isNotEmpty()) {
+                            StepArgumentSection(argumentRows)
+                        }
                         if (!argumentsJson.isNullOrBlank()) {
                             StepDetailSection(
                                 label = stringResource(R.string.chat_step_arguments),
@@ -4242,6 +4251,86 @@ private fun StepToolParameterSection(toolId: String) {
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 ToolParameterList(toolId)
+            }
+        }
+    }
+}
+
+/**
+ * 工具调用参数区块：把本次调用实际传入的参数整理成「参数名 → 参数值」列表。
+ *
+ * 短值同行展示（名称 + 值），长值/多行值换成堆叠排版，避免原来整段 JSON 里
+ * 转义字符和嵌套括号让人读不出到底传了什么。
+ */
+@Composable
+private fun StepArgumentSection(rows: List<ToolArgumentRow>) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Filled.Key,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = stringResource(R.string.chat_step_arguments),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        androidx.compose.material3.Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ) {
+            Column(
+                modifier = Modifier.padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                rows.forEach { row ->
+                    if (row.fitsInline()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Text(
+                                text = row.name,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = row.value,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1.7f)
+                            )
+                        }
+                    } else {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            if (row.name.isNotBlank()) {
+                                Text(
+                                    text = row.name,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(Modifier.height(2.dp))
+                            }
+                            Text(
+                                text = row.value,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
             }
         }
     }
